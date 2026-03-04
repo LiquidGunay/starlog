@@ -34,4 +34,4 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-04: User wants strong clipping from browser and any desktop app (copy/screenshot flow).
 
 ## Issue log
-- (empty; add entries as they occur)
+- 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
