@@ -48,6 +48,7 @@ class GoogleRemoteEventResponse(BaseModel):
 
 
 class GoogleSyncRunResponse(BaseModel):
+    run_id: str
     pushed: int
     pulled: int
     conflicts: int

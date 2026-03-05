@@ -89,6 +89,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - `/` - launch dashboard + API console
 - `/artifacts` - clip inbox viewer + artifact graph/version history
 - `/calendar` - weekly board with create/update/delete event lifecycle controls
+- `/integrations` - provider config + health diagnostics workspace
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
 - `/mobile-share` - deep-link generator for mobile capture handoff
@@ -110,6 +111,8 @@ curl -X POST http://localhost:8000/v1/auth/login \
   - `GET /v1/calendar/sync/google/conflicts`
   - `POST /v1/calendar/sync/google/conflicts/{conflict_id}/resolve`
 
+Sync responses now include a `run_id` for conflict diagnostics correlation.
+
 When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configured, callback performs a real Google token exchange and sync can pull/push/update/delete events against Google Calendar.
 
 ## Calendar event lifecycle
@@ -128,6 +131,7 @@ When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configure
 
 - Sensitive provider fields (`api_key`, `token`, `secret`, etc.) are encrypted at rest.
 - API responses redact sensitive values as `__redacted__`.
+- Local-mode providers with `endpoint`/`base_url` now run localhost runtime probes.
 - Set `STARLOG_SECRETS_MASTER_KEY` in production to avoid fallback insecure key mode.
 
 ## Ops endpoints

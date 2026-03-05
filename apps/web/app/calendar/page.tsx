@@ -16,6 +16,7 @@ type CalendarEvent = {
 };
 
 type GoogleSyncResult = {
+  run_id: string;
   pushed: number;
   pulled: number;
   conflicts: number;
@@ -202,7 +203,7 @@ export default function CalendarPage() {
       });
       setLastSync(result);
       await refresh();
-      setStatus(`Sync pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
+      setStatus(`Sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Google sync failed");
     }
@@ -306,6 +307,7 @@ export default function CalendarPage() {
               <p className="console-copy">Pushed: {lastSync.pushed}</p>
               <p className="console-copy">Pulled: {lastSync.pulled}</p>
               <p className="console-copy">Conflicts: {lastSync.conflicts}</p>
+              <p className="console-copy">Run id: {lastSync.run_id}</p>
               <p className="console-copy">Last sync: {lastSync.last_synced_at}</p>
             </div>
           ) : (

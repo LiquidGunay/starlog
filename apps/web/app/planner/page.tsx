@@ -159,13 +159,13 @@ export default function PlannerPage() {
 
   async function runGoogleSync() {
     try {
-      const result = await apiRequest<{ pushed: number; pulled: number; conflicts: number }>(
+      const result = await apiRequest<{ run_id: string; pushed: number; pulled: number; conflicts: number }>(
         apiBase,
         token,
         "/v1/calendar/sync/google/run",
         { method: "POST" },
       );
-      setStatus(`Google sync pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
+      setStatus(`Google sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       await Promise.all([load(), loadOauthStatus()]);

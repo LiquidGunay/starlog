@@ -1,6 +1,8 @@
 import json
 from sqlite3 import Connection
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from app.core.security import (
     decrypt_sensitive_config,
@@ -39,9 +41,47 @@ def _valid_url(value: object) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-def _health_checks(provider_name: str, mode: str, config: dict) -> tuple[bool, list[str], dict[str, bool]]:
+def _is_local_url(url: str) -> bool:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _default_probe_url(endpoint: str, explicit_health_url: str | None) -> str:
+    if explicit_health_url and _valid_url(explicit_health_url):
+        return explicit_health_url
+
+    parsed = urlparse(endpoint)
+    if parsed.path and parsed.path not in {"", "/"}:
+        return endpoint
+    base = endpoint.rstrip("/")
+    return f"{base}/health"
+
+
+def _probe_endpoint(probe_url: str, timeout_seconds: float = 2.0) -> tuple[bool, str]:
+    request = Request(probe_url, method="GET")
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+            status = int(response.status)
+        if 200 <= status < 400:
+            return True, f"Probe succeeded ({status})"
+        return False, f"Probe failed with status {status}"
+    except HTTPError as exc:
+        return False, f"Probe failed with HTTP {exc.code}"
+    except URLError as exc:
+        return False, f"Probe failed: {exc.reason}"
+    except TimeoutError:
+        return False, "Probe timed out"
+
+
+def _health_checks(
+    provider_name: str,
+    mode: str,
+    config: dict,
+) -> tuple[bool, list[str], dict[str, bool], dict[str, str]]:
     checks: dict[str, bool] = {}
     problems: list[str] = []
+    probe: dict[str, str] = {}
 
     if mode.startswith("api"):
         has_credential = _contains_any(config, {"api_key", "access_token", "token"})
@@ -55,6 +95,20 @@ def _health_checks(provider_name: str, mode: str, config: dict) -> tuple[bool, l
         checks["endpoint_valid"] = endpoint_ok
         if not endpoint_ok:
             problems.append("invalid endpoint URL")
+        elif mode.startswith("local") or provider_name in {"codex_bridge", "local_llm", "local_tts", "local_stt"}:
+            endpoint_str = str(endpoint)
+            probe["target"] = _default_probe_url(endpoint_str, str(config.get("health_url") or ""))
+            if _is_local_url(endpoint_str):
+                probe_ok, probe_detail = _probe_endpoint(probe["target"])
+                checks["runtime_probe_ok"] = probe_ok
+                probe["status"] = "ok" if probe_ok else "failed"
+                probe["detail"] = probe_detail
+                if not probe_ok:
+                    problems.append(probe_detail)
+            else:
+                checks["runtime_probe_ok"] = True
+                probe["status"] = "skipped_non_local"
+                probe["detail"] = "Runtime probe is only executed for localhost endpoints"
 
     if provider_name == "google_calendar":
         source = str(config.get("source") or "")
@@ -73,7 +127,7 @@ def _health_checks(provider_name: str, mode: str, config: dict) -> tuple[bool, l
         if not has_bridge:
             problems.append("missing codex bridge URL")
 
-    return len(problems) == 0, problems, checks
+    return len(problems) == 0, problems, checks, probe
 
 
 def upsert_provider_config(
@@ -179,7 +233,7 @@ def provider_health(conn: Connection, provider_name: str) -> dict:
             "secure_storage": secrets_encryption_mode(),
         }
 
-    healthy, problems, checks = _health_checks(provider_name, mode, config)
+    healthy, problems, checks, probe = _health_checks(provider_name, mode, config)
     checks["enabled"] = True
     checks["config_present"] = bool(config)
     checks["secure_storage_configured"] = secrets_encryption_mode() == "configured"
@@ -197,4 +251,5 @@ def provider_health(conn: Connection, provider_name: str) -> dict:
         "detail": detail,
         "checks": checks,
         "secure_storage": secrets_encryption_mode(),
+        "probe": probe,
     }

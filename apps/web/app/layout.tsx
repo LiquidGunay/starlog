@@ -24,6 +24,7 @@ export default function RootLayout({
               <Link href="/artifacts">Artifacts</Link>
               <Link href="/planner">Planner</Link>
               <Link href="/calendar">Calendar</Link>
+              <Link href="/integrations">Integrations</Link>
               <Link href="/review">Review</Link>
               <Link href="/mobile-share">Mobile Share</Link>
             </nav>

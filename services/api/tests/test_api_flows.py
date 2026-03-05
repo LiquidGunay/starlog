@@ -209,6 +209,19 @@ def test_provider_config_and_webhooks(client: TestClient, auth_headers: dict[str
     health = client.get("/v1/integrations/providers/local_llm/health", headers=auth_headers)
     assert health.status_code == 200
     assert health.json()["healthy"] is True
+    assert "secure_storage" in health.json()
+
+    runtime_probe = client.post(
+        "/v1/integrations/providers/local_probe",
+        json={"enabled": True, "mode": "local_first", "config": {"endpoint": "http://127.0.0.1:65530"}},
+        headers=auth_headers,
+    )
+    assert runtime_probe.status_code == 200
+    probe_health = client.get("/v1/integrations/providers/local_probe/health", headers=auth_headers)
+    assert probe_health.status_code == 200
+    assert probe_health.json()["healthy"] is False
+    assert probe_health.json()["checks"]["runtime_probe_ok"] is False
+    assert probe_health.json()["probe"]["status"] == "failed"
 
     secret_value = "sk-live-provider-secret"
     api_config = client.post(
@@ -303,6 +316,8 @@ def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict
     sync = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
     assert sync.status_code == 200
     payload = sync.json()
+    assert isinstance(payload["run_id"], str)
+    assert payload["run_id"].startswith("gsr_")
     assert payload["pushed"] >= 1
     assert payload["pulled"] >= 1
 
@@ -356,6 +371,8 @@ def test_google_conflict_resolution_flow(client: TestClient, auth_headers: dict[
     assert conflicts.status_code == 200
     payload = conflicts.json()
     assert len(payload) >= 1
+    assert "sync_run_id" in payload[0]["detail"]
+    assert "phase" in payload[0]["detail"]
 
     conflict_id = payload[0]["id"]
     resolved = client.post(

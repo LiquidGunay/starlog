@@ -503,7 +503,18 @@ def _last_sync_at(conn: Connection) -> str:
     return value if isinstance(value, str) else "1970-01-01T00:00:00+00:00"
 
 
-def _record_conflict(conn: Connection, local_event_id: str | None, remote_id: str, detail: dict) -> None:
+def _record_conflict(
+    conn: Connection,
+    local_event_id: str | None,
+    remote_id: str,
+    detail: dict,
+    sync_run_id: str,
+    phase: str,
+) -> None:
+    enriched_detail = dict(detail)
+    enriched_detail["sync_run_id"] = sync_run_id
+    enriched_detail["phase"] = phase
+    enriched_detail["recorded_at"] = utc_now().isoformat()
     conn.execute(
         """
         INSERT INTO calendar_sync_conflicts (
@@ -516,7 +527,7 @@ def _record_conflict(conn: Connection, local_event_id: str | None, remote_id: st
             local_event_id,
             remote_id,
             "prefer_local",
-            json.dumps(detail, sort_keys=True),
+            json.dumps(enriched_detail, sort_keys=True),
             0,
             None,
             None,
@@ -604,6 +615,7 @@ def _upsert_remote_mirror(
 
 
 def run_two_way_sync(conn: Connection) -> dict:
+    sync_run_id = new_id("gsr")
     imported_from_google_api = sync_remote_from_google_api(conn)
     try:
         google_access_token, google_config = _ensure_google_access_token(conn)
@@ -668,6 +680,8 @@ def run_two_way_sync(conn: Connection) -> dict:
                             "deleted": remote_deleted,
                         },
                     },
+                    sync_run_id=sync_run_id,
+                    phase="push_conflict",
                 )
                 continue
 
@@ -717,6 +731,8 @@ def run_two_way_sync(conn: Connection) -> dict:
                     local_event_id=str(event["id"]),
                     remote_id=remote_id,
                     detail={"reason": "google_push_failed", "error": str(exc)},
+                    sync_run_id=sync_run_id,
+                    phase="push_error",
                 )
                 continue
         else:
@@ -764,6 +780,8 @@ def run_two_way_sync(conn: Connection) -> dict:
                     local_event_id=str(local["id"]),
                     remote_id=str(remote["remote_id"]),
                     detail={"reason": "remote_deleted_local_changed"},
+                    sync_run_id=sync_run_id,
+                    phase="pull_conflict",
                 )
                 continue
             conn.execute(
@@ -815,6 +833,8 @@ def run_two_way_sync(conn: Connection) -> dict:
                 local_event_id=str(local["id"]),
                 remote_id=str(remote["remote_id"]),
                 detail={"reason": "both_changed_since_last_sync"},
+                sync_run_id=sync_run_id,
+                phase="pull_conflict",
             )
             continue
 
@@ -842,6 +862,7 @@ def run_two_way_sync(conn: Connection) -> dict:
         conn,
         "calendar.google_sync_ran",
         {
+            "sync_run_id": sync_run_id,
             "pushed": pushed,
             "pulled": pulled,
             "conflicts": conflicts,
@@ -852,6 +873,7 @@ def run_two_way_sync(conn: Connection) -> dict:
     conn.commit()
 
     return {
+        "run_id": sync_run_id,
         "pushed": pushed,
         "pulled": pulled,
         "conflicts": conflicts,

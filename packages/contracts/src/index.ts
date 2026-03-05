@@ -170,6 +170,9 @@ export interface ProviderHealthResponse {
   provider_name: string;
   healthy: boolean;
   detail: string;
+  checks: Record<string, boolean>;
+  secure_storage: string;
+  probe: Record<string, string>;
 }
 
 export interface GoogleOAuthStartResponse {
@@ -192,6 +195,7 @@ export interface GoogleOAuthStatusResponse {
 }
 
 export interface GoogleSyncRunResponse {
+  run_id: string;
   pushed: number;
   pulled: number;
   conflicts: number;
