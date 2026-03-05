@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Starlog Clipper</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 12px;
+        width: 300px;
+        background: #0c1224;
+        color: #e7eeff;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .field {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      input {
+        border: 1px solid #30446e;
+        background: #131e3a;
+        color: #e7eeff;
+        border-radius: 8px;
+        padding: 8px;
+      }
+      button {
+        border: 1px solid #3a5ca1;
+        border-radius: 999px;
+        background: #1a2a4d;
+        color: #e7eeff;
+        padding: 8px 10px;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #95acd4;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Starlog Clipper</h1>
+    <div class="field">
+      <label for="apiBase">API base</label>
+      <input id="apiBase" placeholder="http://localhost:8000" />
+    </div>
+    <div class="field">
+      <label for="token">Bearer token</label>
+      <input id="token" placeholder="paste token" type="password" />
+    </div>
+    <button id="capture">Clip Selection</button>
+    <p id="status">Ready</p>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

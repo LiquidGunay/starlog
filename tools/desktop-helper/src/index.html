@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Starlog Desktop Helper</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        background: radial-gradient(circle at top right, #1f315d, #0a1020);
+        color: #e6eeff;
+      }
+      main {
+        padding: 18px;
+      }
+      h1 {
+        margin: 0 0 8px;
+      }
+      .card {
+        border: 1px solid rgba(126, 168, 255, 0.35);
+        background: rgba(17, 26, 50, 0.7);
+        border-radius: 14px;
+        padding: 12px;
+      }
+      .label {
+        color: #9db4dd;
+        font-size: 13px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      button {
+        border: 1px solid rgba(126, 168, 255, 0.35);
+        border-radius: 999px;
+        background: rgba(126, 168, 255, 0.14);
+        color: #e6eeff;
+        padding: 7px 10px;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 8px;
+        color: #9db4dd;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Starlog Helper</h1>
+      <div class="card">
+        <p class="label">Cross-platform capture helper scaffold (Tauri)</p>
+        <div class="row">
+          <button id="clipSelection">Clip Clipboard</button>
+          <button id="clipScreenshot">Clip Screenshot (stub)</button>
+        </div>
+        <p id="status">Waiting for action</p>
+      </div>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

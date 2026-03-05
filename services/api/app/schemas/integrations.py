@@ -1,0 +1,23 @@
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class ProviderConfigRequest(BaseModel):
+    enabled: bool = True
+    mode: str = Field(default="local_first", min_length=1)
+    config: dict = Field(default_factory=dict)
+
+
+class ProviderConfigResponse(BaseModel):
+    provider_name: str
+    enabled: bool
+    mode: str
+    config: dict = Field(default_factory=dict)
+    updated_at: datetime
+
+
+class ProviderHealthResponse(BaseModel):
+    provider_name: str
+    healthy: bool
+    detail: str

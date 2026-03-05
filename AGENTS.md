@@ -32,6 +32,12 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-04: User prefers manual AI action buttons over automatic pipelines.
 - 2026-03-04: User wants low hosting cost and single-user simplicity.
 - 2026-03-04: User wants strong clipping from browser and any desktop app (copy/screenshot flow).
+- 2026-03-05: User is open to subagents/worktrees for independent tasks.
+- 2026-03-05: User wants Starlog UI to feel modern and \"spacy\" with both dark and light themes.
+- 2026-03-05: User prefers `uv` for Python dependency and environment workflow.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
+- 2026-03-05: Local `pytest` run failed because Python dependencies (e.g., `fastapi`) are not installed in the current environment yet.
+- 2026-03-05: Running `uv` commands required elevated permission because sandbox blocked default access to `~/.cache/uv`.
+- 2026-03-05: `corepack pnpm install` failed due to DNS/network resolution (`ENOTFOUND registry.npmjs.org`), so JS dependency-based checks are currently blocked.

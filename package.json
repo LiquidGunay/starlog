@@ -1,0 +1,17 @@
+{
+  "name": "starlog",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:mobile": "pnpm --filter mobile start",
+    "dev:desktop-helper": "pnpm --filter starlog-desktop-helper dev",
+    "lint:web": "pnpm --filter web lint"
+  }
+}

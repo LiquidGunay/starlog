@@ -1,0 +1,251 @@
+import json
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Iterator
+
+from app.core.config import get_settings
+
+SCHEMA_SQL = """
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  passphrase_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id TEXT NOT NULL,
+  mutation_id TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  op TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  server_received_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  source_type TEXT NOT NULL,
+  title TEXT,
+  raw_content TEXT,
+  normalized_content TEXT,
+  extracted_content TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS action_runs (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  status TEXT NOT NULL,
+  output_ref TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS summary_versions (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id),
+  UNIQUE(artifact_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  body_md TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS note_blocks (
+  id TEXT PRIMARY KEY,
+  note_id TEXT NOT NULL,
+  artifact_id TEXT,
+  block_type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (note_id) REFERENCES notes(id),
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS card_set_versions (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id),
+  UNIQUE(artifact_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS cards (
+  id TEXT PRIMARY KEY,
+  card_set_version_id TEXT,
+  artifact_id TEXT,
+  note_block_id TEXT,
+  card_type TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  due_at TEXT NOT NULL,
+  interval_days INTEGER NOT NULL,
+  repetitions INTEGER NOT NULL,
+  ease_factor REAL NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (card_set_version_id) REFERENCES card_set_versions(id),
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id),
+  FOREIGN KEY (note_block_id) REFERENCES note_blocks(id)
+);
+
+CREATE TABLE IF NOT EXISTS review_events (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL,
+  rating INTEGER NOT NULL,
+  latency_ms INTEGER,
+  reviewed_at TEXT NOT NULL,
+  FOREIGN KEY (card_id) REFERENCES cards(id)
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  estimate_min INTEGER,
+  priority INTEGER NOT NULL,
+  due_at TEXT,
+  linked_note_id TEXT,
+  source_artifact_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (linked_note_id) REFERENCES notes(id),
+  FOREIGN KEY (source_artifact_id) REFERENCES artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  source TEXT NOT NULL,
+  remote_id TEXT,
+  etag TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS time_blocks (
+  id TEXT PRIMARY KEY,
+  task_id TEXT,
+  title TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  locked INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id)
+);
+
+CREATE TABLE IF NOT EXISTS briefing_packages (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  text TEXT NOT NULL,
+  audio_ref TEXT,
+  generated_by_provider TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS alarm_plans (
+  id TEXT PRIMARY KEY,
+  trigger_at TEXT NOT NULL,
+  briefing_package_id TEXT NOT NULL,
+  device_target TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (briefing_package_id) REFERENCES briefing_packages(id)
+);
+
+CREATE TABLE IF NOT EXISTS domain_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+  id TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS provider_configs (
+  id TEXT PRIMARY KEY,
+  provider_name TEXT NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  mode TEXT NOT NULL,
+  config_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
+CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_starts ON calendar_events(starts_at);
+CREATE INDEX IF NOT EXISTS idx_time_blocks_start ON time_blocks(starts_at);
+CREATE INDEX IF NOT EXISTS idx_briefing_date ON briefing_packages(date);
+CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
+CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
+"""
+
+
+def _ensure_db_parent() -> None:
+    settings = get_settings()
+    db_path = Path(settings.db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def get_connection() -> Iterator[sqlite3.Connection]:
+    _ensure_db_parent()
+    settings = get_settings()
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def init_storage() -> None:
+    with get_connection() as conn:
+        conn.executescript(SCHEMA_SQL)
+        conn.commit()
+
+
+def row_to_dict(row: sqlite3.Row) -> dict:
+    result: dict[str, object] = {}
+    for key in row.keys():
+        value = row[key]
+        if isinstance(value, str) and key.endswith("_json"):
+            result[key] = json.loads(value)
+        else:
+            result[key] = value
+    return result
