@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     auth_session_hours: int = 24 * 14
     sync_pull_limit: int = Field(default=100, ge=1, le=500)
     cors_allow_origins: str = "*"
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/v1/calendar/sync/google/oauth/callback"
+    google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
 
 
 @lru_cache(maxsize=1)

@@ -22,15 +22,27 @@
         background: rgba(17, 26, 50, 0.7);
         border-radius: 14px;
         padding: 12px;
+        margin-bottom: 12px;
       }
       .label {
         color: #9db4dd;
         font-size: 13px;
+        display: block;
+        margin-top: 8px;
       }
       .row {
         display: flex;
         gap: 8px;
         margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      input {
+        width: 100%;
+        border: 1px solid rgba(126, 168, 255, 0.35);
+        border-radius: 8px;
+        padding: 8px;
+        background: rgba(17, 26, 50, 0.7);
+        color: #e6eeff;
       }
       button {
         border: 1px solid rgba(126, 168, 255, 0.35);
@@ -45,13 +57,34 @@
         color: #9db4dd;
         font-size: 13px;
       }
+      .help {
+        color: #9db4dd;
+        font-size: 12px;
+        margin: 0;
+      }
+      code {
+        background: rgba(126, 168, 255, 0.15);
+        padding: 2px 4px;
+        border-radius: 4px;
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>Starlog Helper</h1>
       <div class="card">
-        <p class="label">Cross-platform capture helper scaffold (Tauri)</p>
+        <p class="label">Hotkeys</p>
+        <p class="help"><code>Cmd/Ctrl + Shift + C</code> clip clipboard to Starlog</p>
+        <p class="help"><code>Cmd/Ctrl + Shift + S</code> screenshot clip (placeholder command)</p>
+      </div>
+
+      <div class="card">
+        <label class="label" for="apiBase">API base</label>
+        <input id="apiBase" value="http://localhost:8000" />
+
+        <label class="label" for="token">Bearer token</label>
+        <input id="token" type="password" placeholder="paste token" />
+
         <div class="row">
           <button id="clipSelection">Clip Clipboard</button>
           <button id="clipScreenshot">Clip Screenshot (stub)</button>

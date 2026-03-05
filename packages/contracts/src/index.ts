@@ -101,3 +101,41 @@ export interface ProviderHealthResponse {
   healthy: boolean;
   detail: string;
 }
+
+export interface GoogleOAuthStartResponse {
+  auth_url: string;
+  state: string;
+}
+
+export interface GoogleOAuthCallbackRequest {
+  code: string;
+  state: string;
+}
+
+export interface GoogleSyncRunResponse {
+  pushed: number;
+  pulled: number;
+  conflicts: number;
+  last_synced_at: string;
+}
+
+export interface GoogleRemoteEventCreateRequest {
+  remote_id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface GoogleRemoteEventResponse extends GoogleRemoteEventCreateRequest {
+  etag: string;
+  updated_at: string;
+}
+
+export interface CalendarConflictResponse {
+  id: string;
+  local_event_id?: string | null;
+  remote_id: string;
+  strategy: string;
+  detail: Record<string, unknown>;
+  created_at: string;
+}

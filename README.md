@@ -82,6 +82,15 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
 
+## Google calendar sync scaffold
+
+- Start OAuth intent: `POST /v1/calendar/sync/google/oauth/start`
+- Complete OAuth callback: `POST /v1/calendar/sync/google/oauth/callback`
+- Run two-way delta sync: `POST /v1/calendar/sync/google/run`
+- Inspect remote mirror + conflicts:
+  - `GET /v1/calendar/sync/google/remote/events`
+  - `GET /v1/calendar/sync/google/conflicts`
+
 ## Current status
 
 This is an active implementation pass toward the approved v1 plan in `docs/STARLOG_V1_PLAN.md`.

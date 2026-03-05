@@ -183,3 +183,55 @@ def test_provider_config_and_webhooks(client: TestClient, auth_headers: dict[str
     webhooks = client.get("/v1/webhooks", headers=auth_headers)
     assert webhooks.status_code == 200
     assert len(webhooks.json()) >= 1
+
+
+def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict[str, str]) -> None:
+    start = client.post("/v1/calendar/sync/google/oauth/start", json={}, headers=auth_headers)
+    assert start.status_code == 200
+    state = start.json()["state"]
+    assert "accounts.google.com" in start.json()["auth_url"]
+
+    callback = client.post(
+        "/v1/calendar/sync/google/oauth/callback",
+        json={"code": "demo-code-1234", "state": state},
+        headers=auth_headers,
+    )
+    assert callback.status_code == 200
+    assert callback.json()["connected"] is True
+
+    local_event = client.post(
+        "/v1/calendar/events",
+        json={
+            "title": "Local Deep Work",
+            "starts_at": "2026-03-07T09:00:00+00:00",
+            "ends_at": "2026-03-07T10:00:00+00:00",
+            "source": "internal",
+        },
+        headers=auth_headers,
+    )
+    assert local_event.status_code == 201
+
+    remote_event = client.post(
+        "/v1/calendar/sync/google/remote/events",
+        json={
+            "remote_id": "remote_meeting_1",
+            "title": "Remote Planning",
+            "starts_at": "2026-03-07T11:00:00+00:00",
+            "ends_at": "2026-03-07T11:30:00+00:00",
+        },
+        headers=auth_headers,
+    )
+    assert remote_event.status_code == 201
+
+    sync = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert sync.status_code == 200
+    payload = sync.json()
+    assert payload["pushed"] >= 1
+    assert payload["pulled"] >= 1
+
+    remote_list = client.get("/v1/calendar/sync/google/remote/events", headers=auth_headers)
+    assert remote_list.status_code == 200
+    assert len(remote_list.json()) >= 1
+
+    conflicts = client.get("/v1/calendar/sync/google/conflicts", headers=auth_headers)
+    assert conflicts.status_code == 200

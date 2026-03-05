@@ -1,18 +1,108 @@
 const statusNode = document.getElementById("status");
+const apiBaseInput = document.getElementById("apiBase");
+const tokenInput = document.getElementById("token");
 const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
 
-clipSelectionButton.addEventListener("click", async () => {
+function setStatus(message) {
+  statusNode.textContent = message;
+}
+
+function readConfig() {
+  return {
+    apiBase: apiBaseInput.value.trim(),
+    token: tokenInput.value.trim(),
+  };
+}
+
+async function sendArtifact(rawContent, metadata) {
+  const { apiBase, token } = readConfig();
+
+  if (!token) {
+    setStatus("Add bearer token first");
+    return;
+  }
+
+  const response = await fetch(`${apiBase}/v1/artifacts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      source_type: "clip_desktop_helper",
+      title: "Desktop clip",
+      raw_content: rawContent,
+      normalized_content: rawContent,
+      extracted_content: rawContent,
+      metadata,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const payload = await response.json();
+  setStatus(`Clip saved: ${payload.id}`);
+}
+
+async function clipClipboard() {
   try {
     const text = await navigator.clipboard.readText();
-    statusNode.textContent = text
-      ? `Clipboard captured (${Math.min(text.length, 120)} chars)`
-      : "Clipboard is empty";
-  } catch (_error) {
-    statusNode.textContent = "Clipboard read not available in this environment";
+    if (!text) {
+      setStatus("Clipboard is empty");
+      return;
+    }
+
+    await sendArtifact(text, {
+      source: "desktop_helper",
+      clipped_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Clipboard clip failed");
   }
+}
+
+async function clipScreenshotStub() {
+  try {
+    const tauriGlobal = window.__TAURI__;
+    if (!tauriGlobal) {
+      setStatus("Screenshot clip requires Tauri runtime");
+      return;
+    }
+
+    const { invoke } = await import("@tauri-apps/api/core");
+    const result = await invoke("clip_screenshot_stub");
+    setStatus(String(result));
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Screenshot stub failed");
+  }
+}
+
+async function wireGlobalShortcuts() {
+  const tauriGlobal = window.__TAURI__;
+  if (!tauriGlobal) {
+    return;
+  }
+
+  const { listen } = await import("@tauri-apps/api/event");
+  await listen("starlog://clip-clipboard", () => {
+    clipClipboard().catch(() => undefined);
+  });
+  await listen("starlog://clip-screenshot", () => {
+    clipScreenshotStub().catch(() => undefined);
+  });
+  setStatus("Global shortcuts wired");
+}
+
+clipSelectionButton.addEventListener("click", () => {
+  clipClipboard().catch(() => undefined);
 });
 
 clipScreenshotButton.addEventListener("click", () => {
-  statusNode.textContent = "Screenshot capture wiring comes in next implementation pass.";
+  clipScreenshotStub().catch(() => undefined);
 });
+
+wireGlobalShortcuts().catch(() => undefined);

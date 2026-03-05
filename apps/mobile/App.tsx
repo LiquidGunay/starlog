@@ -1,14 +1,26 @@
 import { StatusBar } from "expo-status-bar";
-import { useMemo } from "react";
+import * as FileSystem from "expo-file-system";
+import * as Notifications from "expo-notifications";
+import * as Speech from "expo-speech";
+import { useEffect, useMemo, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useColorScheme,
   View,
 } from "react-native";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 type Palette = {
   bg: string;
@@ -19,6 +31,13 @@ type Palette = {
   muted: string;
   accent: string;
 };
+
+type BriefingPayload = {
+  date: string;
+  text: string;
+};
+
+const quickActions = ["Summarize", "Create Cards", "Generate Tasks", "Append Note"];
 
 function usePalette(): Palette {
   const scheme = useColorScheme();
@@ -46,11 +65,143 @@ function usePalette(): Palette {
   }, [scheme]);
 }
 
-const quickActions = ["Summarize", "Create Cards", "Generate Tasks", "Append Note"];
+function tomorrowDateString(): string {
+  const next = new Date();
+  next.setDate(next.getDate() + 1);
+  return next.toISOString().slice(0, 10);
+}
+
+function nextMorningAt(hour: number): Date {
+  const target = new Date();
+  target.setDate(target.getDate() + 1);
+  target.setHours(hour, 0, 0, 0);
+  return target;
+}
+
+async function loadBriefingFromApi(
+  apiBase: string,
+  token: string,
+  date: string,
+): Promise<BriefingPayload> {
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
+  const existing = await fetch(`${apiBase}/v1/briefings/${date}`, { headers });
+  if (existing.ok) {
+    const payload = (await existing.json()) as { text: string };
+    return { date, text: payload.text };
+  }
+
+  const generated = await fetch(`${apiBase}/v1/briefings/generate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ date, provider: "mobile-template" }),
+  });
+
+  if (!generated.ok) {
+    const errorBody = await generated.text();
+    throw new Error(`Briefing fetch failed: ${generated.status} ${errorBody}`);
+  }
+
+  const payload = (await generated.json()) as { text: string };
+  return { date, text: payload.text };
+}
+
+async function cacheBriefing(payload: BriefingPayload): Promise<string> {
+  const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+  if (!dir) {
+    throw new Error("No writable directory for briefing cache");
+  }
+
+  const path = `${dir}briefing-${payload.date}.json`;
+  await FileSystem.writeAsStringAsync(path, JSON.stringify(payload));
+  return path;
+}
+
+async function readCachedBriefing(path: string): Promise<BriefingPayload> {
+  const text = await FileSystem.readAsStringAsync(path);
+  return JSON.parse(text) as BriefingPayload;
+}
 
 export default function App() {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
+  const [apiBase, setApiBase] = useState("http://localhost:8000");
+  const [token, setToken] = useState("");
+  const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
+  const [cachedPath, setCachedPath] = useState<string | null>(null);
+  const [status, setStatus] = useState("Ready");
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      const path = response.notification.request.content.data?.briefingPath;
+      if (typeof path === "string") {
+        const briefing = await readCachedBriefing(path);
+        Speech.speak(briefing.text);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  async function generateAndCache() {
+    try {
+      if (!token) {
+        setStatus("Add API token first");
+        return;
+      }
+      const briefing = await loadBriefingFromApi(apiBase, token, briefingDate);
+      const path = await cacheBriefing(briefing);
+      setCachedPath(path);
+      setStatus(`Cached briefing for ${briefingDate}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to cache briefing");
+    }
+  }
+
+  async function playCached() {
+    try {
+      if (!cachedPath) {
+        setStatus("No cached briefing yet");
+        return;
+      }
+      const briefing = await readCachedBriefing(cachedPath);
+      Speech.speak(briefing.text);
+      setStatus("Playing cached briefing");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to play cached briefing");
+    }
+  }
+
+  async function scheduleMorningAlarm() {
+    try {
+      if (!cachedPath) {
+        setStatus("Cache briefing before scheduling");
+        return;
+      }
+
+      const permission = await Notifications.requestPermissionsAsync();
+      if (!permission.granted) {
+        setStatus("Notification permission denied");
+        return;
+      }
+
+      const triggerDate = nextMorningAt(7);
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Starlog Morning Brief",
+          body: "Tap to play your cached spoken briefing.",
+          data: { briefingPath: cachedPath },
+        },
+        trigger: triggerDate,
+      });
+
+      setStatus(`Alarm scheduled for ${triggerDate.toLocaleString()}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to schedule alarm");
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -60,8 +211,7 @@ export default function App() {
           <Text style={styles.eyebrow}>Starlog Companion</Text>
           <Text style={styles.title}>Capture fast. Wake focused.</Text>
           <Text style={styles.body}>
-            Mobile app handles clipping, alarms, and quick review while deep planning stays in the
-            PWA.
+            Mobile app handles clipping, alarms, and quick review while deep planning stays in the PWA.
           </Text>
         </View>
 
@@ -77,14 +227,34 @@ export default function App() {
         </View>
 
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Alarm package status</Text>
-          <Text style={styles.body}>Morning briefing cache: ready for offline playback.</Text>
-          <Text style={styles.subtle}>Next trigger: 07:00 AM</Text>
-        </View>
+          <Text style={styles.panelTitle}>Offline Morning Brief Pipeline</Text>
+          <Text style={styles.label}>API base</Text>
+          <TextInput style={styles.input} value={apiBase} onChangeText={setApiBase} autoCapitalize="none" />
+          <Text style={styles.label}>Bearer token</Text>
+          <TextInput
+            style={styles.input}
+            value={token}
+            onChangeText={setToken}
+            autoCapitalize="none"
+            secureTextEntry
+          />
+          <Text style={styles.label}>Briefing date (YYYY-MM-DD)</Text>
+          <TextInput style={styles.input} value={briefingDate} onChangeText={setBriefingDate} autoCapitalize="none" />
 
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Capture channels</Text>
-          <Text style={styles.body}>Share sheet • Screenshot clipper • Voice memo • Quick note</Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={generateAndCache}>
+              <Text style={styles.buttonText}>Cache Briefing</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={playCached}>
+              <Text style={styles.buttonText}>Play Cached</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={scheduleMorningAlarm}>
+              <Text style={styles.buttonText}>Schedule 7AM Alarm</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.body}>Cached file: {cachedPath ?? "none"}</Text>
+          <Text style={styles.subtle}>{status}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -162,6 +332,39 @@ function themedStyles(palette: Palette) {
     },
     subtle: {
       color: palette.muted,
+      fontSize: 13,
+    },
+    label: {
+      color: palette.muted,
+      fontSize: 13,
+      marginTop: 6,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 10,
+      color: palette.text,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      backgroundColor: palette.bgAlt,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 6,
+    },
+    button: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 999,
+      backgroundColor: palette.bgAlt,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    buttonText: {
+      color: palette.text,
+      fontWeight: "600",
       fontSize: 13,
     },
   });

@@ -204,6 +204,31 @@ CREATE TABLE IF NOT EXISTS provider_configs (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS google_remote_events (
+  remote_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  etag TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_sync_meta (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_sync_conflicts (
+  id TEXT PRIMARY KEY,
+  local_event_id TEXT,
+  remote_id TEXT NOT NULL,
+  strategy TEXT NOT NULL,
+  detail_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (local_event_id) REFERENCES calendar_events(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
@@ -213,6 +238,8 @@ CREATE INDEX IF NOT EXISTS idx_time_blocks_start ON time_blocks(starts_at);
 CREATE INDEX IF NOT EXISTS idx_briefing_date ON briefing_packages(date);
 CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
 CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
+CREATE INDEX IF NOT EXISTS idx_google_remote_updated ON google_remote_events(updated_at);
+CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_created ON calendar_sync_conflicts(created_at);
 """
 
 
