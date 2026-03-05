@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 
@@ -207,6 +209,40 @@ def test_provider_config_and_webhooks(client: TestClient, auth_headers: dict[str
     health = client.get("/v1/integrations/providers/local_llm/health", headers=auth_headers)
     assert health.status_code == 200
     assert health.json()["healthy"] is True
+
+    secret_value = "sk-live-provider-secret"
+    api_config = client.post(
+        "/v1/integrations/providers/api_llm",
+        json={
+            "enabled": True,
+            "mode": "api_fallback",
+            "config": {"api_key": secret_value, "model": "gpt-4.1-mini"},
+        },
+        headers=auth_headers,
+    )
+    assert api_config.status_code == 200
+    assert api_config.json()["config"]["api_key"] == "__redacted__"
+
+    listed = client.get("/v1/integrations/providers", headers=auth_headers)
+    assert listed.status_code == 200
+    provider_map = {item["provider_name"]: item for item in listed.json()}
+    assert provider_map["api_llm"]["config"]["api_key"] == "__redacted__"
+
+    missing_secret = client.post(
+        "/v1/integrations/providers/api_missing_secret",
+        json={"enabled": True, "mode": "api_fallback", "config": {"model": "gpt-4.1-mini"}},
+        headers=auth_headers,
+    )
+    assert missing_secret.status_code == 200
+    missing_health = client.get("/v1/integrations/providers/api_missing_secret/health", headers=auth_headers)
+    assert missing_health.status_code == 200
+    assert missing_health.json()["healthy"] is False
+    assert missing_health.json()["checks"]["credential_present"] is False
+
+    exported = client.get("/v1/export", headers=auth_headers)
+    assert exported.status_code == 200
+    raw_configs = exported.json()["entities"]["provider_configs"]
+    assert secret_value not in json.dumps(raw_configs)
 
     webhook = client.post(
         "/v1/webhooks",

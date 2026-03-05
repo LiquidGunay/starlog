@@ -289,3 +289,23 @@ body {
   color: var(--muted);
   white-space: nowrap;
 }
+
+.calendar-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.calendar-day {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: var(--chip);
+}
+
+.calendar-day h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}

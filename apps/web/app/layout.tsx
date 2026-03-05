@@ -23,6 +23,7 @@ export default function RootLayout({
               <Link href="/">Home</Link>
               <Link href="/artifacts">Artifacts</Link>
               <Link href="/planner">Planner</Link>
+              <Link href="/calendar">Calendar</Link>
               <Link href="/review">Review</Link>
               <Link href="/mobile-share">Mobile Share</Link>
             </nav>

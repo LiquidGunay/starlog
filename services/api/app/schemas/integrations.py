@@ -21,3 +21,5 @@ class ProviderHealthResponse(BaseModel):
     provider_name: str
     healthy: bool
     detail: str
+    checks: dict[str, bool] = Field(default_factory=dict)
+    secure_storage: str = "fallback_insecure"

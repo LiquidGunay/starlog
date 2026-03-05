@@ -66,6 +66,14 @@ type PersistedState = {
   pendingCaptures: PendingCapture[];
 };
 
+type DueCard = {
+  id: string;
+  card_type: string;
+  prompt: string;
+  answer: string;
+  due_at: string;
+};
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
@@ -231,10 +239,13 @@ export default function App() {
   const [alarmMinute, setAlarmMinute] = useState(0);
   const [alarmNotificationId, setAlarmNotificationId] = useState<string | null>(null);
   const [pendingCaptures, setPendingCaptures] = useState<PendingCapture[]>([]);
+  const [dueCards, setDueCards] = useState<DueCard[]>([]);
+  const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
   const [status, setStatus] = useState("Ready");
   const [hydrated, setHydrated] = useState(false);
   const flushInFlight = useRef(false);
+  const cardPromptStartedAt = useRef<number | null>(null);
 
   async function sendCapture(item: PendingCapture): Promise<string> {
     const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/capture`, {
@@ -346,6 +357,72 @@ export default function App() {
     } catch (error) {
       queueCapture(capture, error instanceof Error ? error.message : "request failed");
       setQuickCaptureText("");
+    }
+  }
+
+  async function loadDueCards() {
+    try {
+      if (!token) {
+        setStatus("Add API token first");
+        return;
+      }
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/cards/due?limit=20`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Due cards fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as DueCard[];
+      setDueCards(payload);
+      setShowAnswer(false);
+      cardPromptStartedAt.current = payload.length > 0 ? Date.now() : null;
+      setStatus(`Loaded ${payload.length} due card(s)`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load due cards");
+    }
+  }
+
+  async function submitReview(rating: number) {
+    const current = dueCards[0];
+    if (!current) {
+      setStatus("No due card selected");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+    const latency = cardPromptStartedAt.current ? Date.now() - cardPromptStartedAt.current : undefined;
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          card_id: current.id,
+          rating,
+          latency_ms: typeof latency === "number" ? Math.max(latency, 0) : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Review submit failed: ${response.status} ${errorBody}`);
+      }
+
+      const remaining = dueCards.slice(1);
+      setDueCards(remaining);
+      setShowAnswer(false);
+      cardPromptStartedAt.current = remaining.length > 0 ? Date.now() : null;
+      setStatus(`Recorded rating ${rating}. ${remaining.length} due card(s) left`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to submit review");
     }
   }
 
@@ -667,6 +744,46 @@ export default function App() {
         </View>
 
         <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Quick review session</Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={loadDueCards}>
+              <Text style={styles.buttonText}>Load Due Cards</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => {
+                if (!dueCards[0]) {
+                  setStatus("No due card selected");
+                  return;
+                }
+                setShowAnswer(true);
+              }}
+            >
+              <Text style={styles.buttonText}>Reveal Answer</Text>
+            </TouchableOpacity>
+          </View>
+
+          {dueCards[0] ? (
+            <View style={styles.reviewCard}>
+              <Text style={styles.subtle}>
+                Card type: {dueCards[0].card_type} | due queue: {dueCards.length}
+              </Text>
+              <Text style={styles.reviewPrompt}>{dueCards[0].prompt}</Text>
+              {showAnswer ? <Text style={styles.reviewAnswer}>{dueCards[0].answer}</Text> : null}
+              <View style={styles.buttonRow}>
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <TouchableOpacity key={rating} style={styles.button} onPress={() => submitReview(rating)}>
+                    <Text style={styles.buttonText}>Rate {rating}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.subtle}>No due card loaded yet.</Text>
+          )}
+        </View>
+
+        <View style={styles.panel}>
           <Text style={styles.panelTitle}>Phone + PWA linkage</Text>
           <Text style={styles.label}>PWA URL</Text>
           <TextInput style={styles.input} value={pwaBase} onChangeText={setPwaBase} autoCapitalize="none" />
@@ -865,6 +982,26 @@ function themedStyles(palette: Palette) {
       color: palette.muted,
       fontSize: 12,
       fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    },
+    reviewCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 10,
+      padding: 10,
+      gap: 8,
+      backgroundColor: palette.bgAlt,
+      marginTop: 6,
+    },
+    reviewPrompt: {
+      color: palette.text,
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: "600",
+    },
+    reviewAnswer: {
+      color: palette.muted,
+      fontSize: 14,
+      lineHeight: 20,
     },
   });
 }

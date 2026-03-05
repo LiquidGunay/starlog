@@ -9,6 +9,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from app.core.config import get_settings
+from app.core.security import decrypt_sensitive_config, encrypt_sensitive_config
 from app.core.time import utc_now
 from app.services import events_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
@@ -65,11 +66,12 @@ def _provider_config(conn: Connection) -> dict | None:
     config = row.get("config_json")
     if not isinstance(config, dict):
         return None
-    return {"mode": row.get("mode"), "config": config}
+    return {"mode": row.get("mode"), "config": decrypt_sensitive_config(config)}
 
 
 def _save_provider_config(conn: Connection, mode: str, payload: dict) -> None:
     now = utc_now().isoformat()
+    encrypted_payload = encrypt_sensitive_config(payload)
     conn.execute(
         """
         INSERT INTO provider_configs (id, provider_name, enabled, mode, config_json, updated_at)
@@ -80,7 +82,7 @@ def _save_provider_config(conn: Connection, mode: str, payload: dict) -> None:
           config_json = excluded.config_json,
           updated_at = excluded.updated_at
         """,
-        (new_id("prv"), "google_calendar", 1, mode, json.dumps(payload, sort_keys=True), now),
+        (new_id("prv"), "google_calendar", 1, mode, json.dumps(encrypted_payload, sort_keys=True), now),
     )
 
 

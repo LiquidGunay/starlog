@@ -58,6 +58,10 @@ pnpm --filter mobile start
 4. In app settings fields:
    - API base: `http://<LAN_IP>:8000`
    - Bearer token: paste token from PWA/web login
+5. Optional sanity checks in the mobile app:
+   - Capture/Queue a quick clip.
+   - Load due cards in "Quick review session" and submit a rating.
+   - Cache and play a briefing, then schedule the daily alarm.
 
 ## 6) Test mobile share capture (deep-link path)
 

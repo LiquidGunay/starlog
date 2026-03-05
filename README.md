@@ -2,8 +2,8 @@
 
 Starlog is a single-user, clip-first personal system for knowledge, scheduling, and learning loops.
 
-This repository now includes an implementation scaffold across backend, web/PWA, mobile companion,
-and clipping surfaces (browser extension + desktop helper).
+This repository now includes working backend, web/PWA, mobile companion, and clipping surfaces
+(browser extension + desktop helper) for the approved v1 plan.
 
 ## Repository layout
 
@@ -45,7 +45,8 @@ Use the phone setup guide for both PWA and Expo companion flows:
 
 - `docs/PHONE_SETUP.md`
 
-Mobile companion currently supports queued capture retries, daily alarm scheduling, and deep-link capture prefill via `starlog://capture?...`.
+Mobile companion currently supports queued capture retries, quick SRS review sessions, daily alarm
+scheduling, and deep-link capture prefill via `starlog://capture?...`.
 
 ### Tests
 
@@ -87,6 +88,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 
 - `/` - launch dashboard + API console
 - `/artifacts` - clip inbox viewer + artifact graph/version history
+- `/calendar` - weekly board with create/update/delete event lifecycle controls
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
 - `/mobile-share` - deep-link generator for mobile capture handoff
@@ -121,6 +123,12 @@ When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configure
 
 - Register/list plugins: `POST /v1/plugins`, `GET /v1/plugins`
 - Import markdown notes: `POST /v1/import/markdown`
+
+## Provider config security
+
+- Sensitive provider fields (`api_key`, `token`, `secret`, etc.) are encrypted at rest.
+- API responses redact sensitive values as `__redacted__`.
+- Set `STARLOG_SECRETS_MASTER_KEY` in production to avoid fallback insecure key mode.
 
 ## Ops endpoints
 

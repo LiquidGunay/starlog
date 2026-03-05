@@ -11,7 +11,8 @@ dependencies = [
   "fastapi>=0.118.0,<0.119.0",
   "uvicorn[standard]>=0.31.0,<0.32.0",
   "pydantic>=2.9.0,<3.0.0",
-  "pydantic-settings>=2.5.0,<3.0.0"
+  "pydantic-settings>=2.5.0,<3.0.0",
+  "cryptography>=44.0.0,<45.0.0"
 ]
 
 [project.optional-dependencies]

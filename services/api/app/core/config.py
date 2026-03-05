@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/v1/calendar/sync/google/oauth/callback"
     google_calendar_id: str = "primary"
     google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
+    secrets_master_key: str = ""
 
 
 @lru_cache(maxsize=1)
