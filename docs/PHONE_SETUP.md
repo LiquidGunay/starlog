@@ -1,0 +1,66 @@
+# Starlog Phone Setup (PWA + Mobile Companion)
+
+Use this guide to run Starlog on your laptop and test progress from your phone.
+
+## 1) Start local services
+
+From repo root:
+
+```bash
+pnpm install
+uv sync --project services/api --extra dev
+make dev-api
+```
+
+`make dev-api` already binds API to `0.0.0.0:8000`.
+
+In a second terminal, start web on LAN host:
+
+```bash
+pnpm --filter web dev -- --hostname 0.0.0.0 --port 3000
+```
+
+## 2) Find your laptop LAN IP
+
+macOS examples:
+
+```bash
+ipconfig getifaddr en0
+ipconfig getifaddr en1
+```
+
+Use the non-empty IP (example: `192.168.1.42`).
+
+## 3) Open the PWA on phone
+
+1. Connect phone and laptop to the same network.
+2. On phone browser, open:
+   - `http://<LAN_IP>:3000`
+3. In Starlog session controls, set:
+   - API base: `http://<LAN_IP>:8000`
+4. Bootstrap/login from the web console and keep token in session controls.
+
+## 4) Install PWA to home screen
+
+- iOS (Safari): Share -> Add to Home Screen
+- Android (Chrome): Menu -> Install app / Add to Home screen
+
+## 5) Run mobile companion app (Expo Go)
+
+1. Install Expo Go on your phone.
+2. From repo root:
+
+```bash
+pnpm --filter mobile start
+```
+
+3. Scan QR from terminal/Expo DevTools with Expo Go.
+4. In app settings fields:
+   - API base: `http://<LAN_IP>:8000`
+   - Bearer token: paste token from PWA/web login
+
+## Troubleshooting
+
+- If phone cannot reach web/API, check firewall and that both devices are on same network.
+- If corporate Wi-Fi blocks LAN traffic, use a personal hotspot.
+- If Expo LAN is unstable, switch Expo to Tunnel; keep API base pointing to reachable backend URL.

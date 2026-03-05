@@ -36,6 +36,7 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-05: User wants Starlog UI to feel modern and \"spacy\" with both dark and light themes.
 - 2026-03-05: User prefers `uv` for Python dependency and environment workflow.
 - 2026-03-05: User prefers periodic pushes during implementation.
+- 2026-03-05: User reprioritized desktop clipper work behind web/mobile/app-core progress.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.

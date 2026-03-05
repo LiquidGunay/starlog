@@ -39,6 +39,12 @@ make dev-web
 pnpm --filter mobile start
 ```
 
+## View progress on phone
+
+Use the phone setup guide for both PWA and Expo companion flows:
+
+- `docs/PHONE_SETUP.md`
+
 ### Tests
 
 ```bash

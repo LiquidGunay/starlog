@@ -40,6 +40,6 @@
 
 1. Persist provider credentials securely (keychain/encrypted storage) and harden health checks.
 2. Expand Google API coverage from pull to full push/update/delete parity with conflict resolution policy.
-3. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline.
-4. Harden mobile alarm/background behavior for production (permissions UX, retries, edge cases) plus share-sheet capture.
-5. Deepen PWA multi-page workspace toward production UX (calendar board, richer review sessions, artifact graph navigation).
+3. Harden mobile alarm/background behavior for production (permissions UX, retries, edge cases) plus share-sheet capture.
+4. Deepen PWA multi-page workspace toward production UX (calendar board, richer review sessions, artifact graph navigation).
+5. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
