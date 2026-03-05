@@ -48,7 +48,7 @@ make test-api
 ### Seed demo data
 
 ```bash
-PYTHONPATH=services/api python scripts/dev_seed.py
+make seed-api
 ```
 
 ### Browser extension
@@ -78,9 +78,15 @@ curl -X POST http://localhost:8000/v1/auth/login \
 ## Workspace pages
 
 - `/` - launch dashboard + API console
-- `/artifacts` - clip inbox viewer
+- `/artifacts` - clip inbox viewer + artifact graph/version history
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
+
+## Clip-first API additions
+
+- Ingest capture with raw/normalized/extracted layers: `POST /v1/capture`
+- Inspect artifact graph links: `GET /v1/artifacts/{artifact_id}/graph`
+- Inspect summary/card/action version history: `GET /v1/artifacts/{artifact_id}/versions`
 
 ## Google calendar sync scaffold
 
@@ -95,6 +101,11 @@ curl -X POST http://localhost:8000/v1/auth/login \
 
 - Register/list plugins: `POST /v1/plugins`, `GET /v1/plugins`
 - Import markdown notes: `POST /v1/import/markdown`
+
+## Ops endpoints
+
+- Runtime metrics snapshot: `GET /v1/ops/metrics`
+- Local backup snapshot export: `POST /v1/ops/backup`
 
 ## Current status
 

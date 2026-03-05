@@ -9,6 +9,7 @@ from app.schemas.artifacts import (
     ArtifactCreateRequest,
     ArtifactGraphResponse,
     ArtifactResponse,
+    ArtifactVersionsResponse,
 )
 from app.services import artifacts_service
 
@@ -72,3 +73,15 @@ def artifact_graph(
     if graph is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
     return ArtifactGraphResponse.model_validate(graph)
+
+
+@router.get("/{artifact_id}/versions", response_model=ArtifactVersionsResponse)
+def artifact_versions(
+    artifact_id: str,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> ArtifactVersionsResponse:
+    versions = artifacts_service.get_artifact_versions(db, artifact_id)
+    if versions is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+    return ArtifactVersionsResponse.model_validate(versions)

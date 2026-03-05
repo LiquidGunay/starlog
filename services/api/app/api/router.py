@@ -6,12 +6,14 @@ from app.api.routes import (
     auth,
     briefings,
     calendar,
+    capture,
     events,
     export,
     health,
     importing,
     integrations,
     notes,
+    ops,
     planning,
     plugins,
     srs,
@@ -24,6 +26,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(ai.router, tags=["ai"])
 api_router.include_router(sync.router, tags=["sync"])
+api_router.include_router(capture.router, tags=["capture"])
 api_router.include_router(artifacts.router, tags=["artifacts"])
 api_router.include_router(notes.router, tags=["notes"])
 api_router.include_router(tasks.router, tags=["tasks"])
@@ -35,4 +38,5 @@ api_router.include_router(events.router, tags=["events"])
 api_router.include_router(integrations.router, tags=["integrations"])
 api_router.include_router(plugins.router, tags=["plugins"])
 api_router.include_router(importing.router, tags=["import"])
+api_router.include_router(ops.router, tags=["ops"])
 api_router.include_router(export.router, tags=["export"])

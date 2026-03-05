@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS action_runs (
   FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
 );
 
+CREATE TABLE IF NOT EXISTS artifact_relations (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL,
+  relation_type TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+);
+
 CREATE TABLE IF NOT EXISTS summary_versions (
   id TEXT PRIMARY KEY,
   artifact_id TEXT NOT NULL,
@@ -242,6 +252,7 @@ CREATE TABLE IF NOT EXISTS plugins (
 
 CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
+CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_starts ON calendar_events(starts_at);

@@ -130,6 +130,8 @@ export default function App() {
   const styles = useMemo(() => themedStyles(palette), [palette]);
   const [apiBase, setApiBase] = useState("http://localhost:8000");
   const [token, setToken] = useState("");
+  const [quickCaptureTitle, setQuickCaptureTitle] = useState("Mobile capture");
+  const [quickCaptureText, setQuickCaptureText] = useState("");
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
   const [cachedPath, setCachedPath] = useState<string | null>(null);
   const [status, setStatus] = useState("Ready");
@@ -157,6 +159,52 @@ export default function App() {
       setStatus(`Cached briefing for ${briefingDate}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to cache briefing");
+    }
+  }
+
+  async function submitQuickCapture() {
+    try {
+      if (!token) {
+        setStatus("Add API token first");
+        return;
+      }
+
+      const text = quickCaptureText.trim();
+      if (!text) {
+        setStatus("Enter capture text first");
+        return;
+      }
+
+      const response = await fetch(`${apiBase}/v1/capture`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          source_type: "clip_mobile",
+          capture_source: "mobile_companion",
+          title: quickCaptureTitle || "Mobile capture",
+          raw: { text, mime_type: "text/plain" },
+          normalized: { text, mime_type: "text/plain" },
+          extracted: { text, mime_type: "text/plain" },
+          metadata: {
+            source: "mobile_app",
+            captured_at: new Date().toISOString(),
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Capture failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as { artifact: { id: string } };
+      setQuickCaptureText("");
+      setStatus(`Captured artifact ${payload.artifact.id}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Capture failed");
     }
   }
 
@@ -224,6 +272,20 @@ export default function App() {
               </TouchableOpacity>
             ))}
           </View>
+          <Text style={styles.label}>Capture title</Text>
+          <TextInput style={styles.input} value={quickCaptureTitle} onChangeText={setQuickCaptureTitle} />
+          <Text style={styles.label}>Quick capture text</Text>
+          <TextInput
+            style={styles.input}
+            value={quickCaptureText}
+            onChangeText={setQuickCaptureText}
+            placeholder="Clip text, ideas, or reminders..."
+            placeholderTextColor={palette.muted}
+            multiline
+          />
+          <TouchableOpacity style={styles.button} onPress={submitQuickCapture}>
+            <Text style={styles.buttonText}>Capture to Inbox</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.panel}>

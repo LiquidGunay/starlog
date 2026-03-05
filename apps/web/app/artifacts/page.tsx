@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
 import { apiRequest } from "../lib/starlog-client";
@@ -14,10 +14,23 @@ type Artifact = {
 };
 
 type ArtifactGraph = {
+  artifact: Artifact;
   summaries: Array<{ id: string; version: number; content: string }>;
   cards: Array<{ id: string; prompt: string }>;
   tasks: Array<{ id: string; title: string; status: string }>;
   notes: Array<{ id: string; title: string }>;
+  relations: Array<{
+    id: string;
+    relation_type: string;
+    target_type: string;
+    target_id: string;
+  }>;
+};
+
+type ArtifactVersions = {
+  summaries: Array<{ id: string; version: number; created_at: string }>;
+  card_sets: Array<{ id: string; version: number; created_at: string }>;
+  actions: Array<{ id: string; action: string; status: string; output_ref?: string | null; created_at: string }>;
 };
 
 export default function ArtifactsPage() {
@@ -25,10 +38,13 @@ export default function ArtifactsPage() {
   const [items, setItems] = useState<Artifact[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [graph, setGraph] = useState<ArtifactGraph | null>(null);
+  const [versions, setVersions] = useState<ArtifactVersions | null>(null);
   const [status, setStatus] = useState("Ready");
+  const [quickTitle, setQuickTitle] = useState("Workspace clip");
+  const [quickUrl, setQuickUrl] = useState("");
   const [quickClip, setQuickClip] = useState("Capture from artifact workspace.");
 
-  async function loadArtifacts() {
+  const loadArtifacts = useCallback(async () => {
     try {
       const data = await apiRequest<Artifact[]>(apiBase, token, "/v1/artifacts");
       setItems(data);
@@ -39,38 +55,44 @@ export default function ArtifactsPage() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load artifacts");
     }
-  }
+  }, [apiBase, token, selectedId]);
 
   async function createArtifact() {
     try {
-      const payload = await apiRequest<{ id: string }>(apiBase, token, "/v1/artifacts", {
+      const payload = await apiRequest<{ artifact: Artifact }>(apiBase, token, "/v1/capture", {
         method: "POST",
         body: JSON.stringify({
           source_type: "clip_manual",
-          title: "Workspace clip",
-          raw_content: quickClip,
-          normalized_content: quickClip,
-          extracted_content: quickClip,
+          capture_source: "pwa_workspace",
+          title: quickTitle || "Workspace clip",
+          source_url: quickUrl || undefined,
+          raw: { text: quickClip, mime_type: "text/plain" },
+          normalized: { text: quickClip, mime_type: "text/plain" },
+          extracted: { text: quickClip, mime_type: "text/plain" },
           metadata: { source: "artifacts_page" },
         }),
       });
-      setStatus(`Created artifact ${payload.id}`);
-      setSelectedId(payload.id);
+      setStatus(`Captured artifact ${payload.artifact.id}`);
+      setSelectedId(payload.artifact.id);
       await loadArtifacts();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to create artifact");
     }
   }
 
-  async function loadGraph(artifactId: string) {
+  const loadArtifactContext = useCallback(async (artifactId: string) => {
     try {
-      const payload = await apiRequest<ArtifactGraph>(apiBase, token, `/v1/artifacts/${artifactId}/graph`);
-      setGraph(payload);
+      const [graphPayload, versionPayload] = await Promise.all([
+        apiRequest<ArtifactGraph>(apiBase, token, `/v1/artifacts/${artifactId}/graph`),
+        apiRequest<ArtifactVersions>(apiBase, token, `/v1/artifacts/${artifactId}/versions`),
+      ]);
+      setGraph(graphPayload);
+      setVersions(versionPayload);
       setStatus(`Loaded graph for ${artifactId}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load graph");
     }
-  }
+  }, [apiBase, token]);
 
   async function runAction(action: "summarize" | "cards" | "tasks" | "append_note") {
     if (!selectedId) {
@@ -84,7 +106,7 @@ export default function ArtifactsPage() {
         body: JSON.stringify({ action }),
       });
       setStatus(`${action} suggested for ${selectedId}`);
-      await loadGraph(selectedId);
+      await loadArtifactContext(selectedId);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : `${action} failed`);
     }
@@ -94,7 +116,16 @@ export default function ArtifactsPage() {
     if (token) {
       loadArtifacts().catch(() => undefined);
     }
-  }, [token]);
+  }, [token, loadArtifacts]);
+
+  useEffect(() => {
+    if (selectedId) {
+      loadArtifactContext(selectedId).catch(() => undefined);
+    } else {
+      setGraph(null);
+      setVersions(null);
+    }
+  }, [selectedId, loadArtifactContext]);
 
   return (
     <main className="shell">
@@ -104,6 +135,21 @@ export default function ArtifactsPage() {
           <p className="eyebrow">Artifacts</p>
           <h1>Clip inbox and references</h1>
           <p className="console-copy">Review everything clipped from browser, desktop helper, and mobile share.</p>
+          <label className="label" htmlFor="quick-title">Title</label>
+          <input
+            id="quick-title"
+            className="input"
+            value={quickTitle}
+            onChange={(event) => setQuickTitle(event.target.value)}
+          />
+          <label className="label" htmlFor="quick-url">Source URL (optional)</label>
+          <input
+            id="quick-url"
+            className="input"
+            value={quickUrl}
+            onChange={(event) => setQuickUrl(event.target.value)}
+            placeholder="https://..."
+          />
           <label className="label" htmlFor="quick-clip">Quick clip</label>
           <textarea
             id="quick-clip"
@@ -134,16 +180,15 @@ export default function ArtifactsPage() {
                 <li key={artifact.id}>
                   <button className="button" type="button" onClick={() => {
                     setSelectedId(artifact.id);
-                    loadGraph(artifact.id).catch(() => undefined);
                   }}>
-                    {artifact.title || artifact.id}
+                    {artifact.title || artifact.id} ({artifact.source_type})
                   </button>
                 </li>
               ))}
             </ul>
           )}
 
-          <h2>Linked outputs</h2>
+          <h2>Linked graph</h2>
           {!graph ? (
             <p className="console-copy">Select an artifact to inspect graph links.</p>
           ) : (
@@ -152,6 +197,28 @@ export default function ArtifactsPage() {
               <p className="console-copy">Cards: {graph.cards.length}</p>
               <p className="console-copy">Tasks: {graph.tasks.length}</p>
               <p className="console-copy">Notes: {graph.notes.length}</p>
+              <p className="console-copy">Relations: {graph.relations.length}</p>
+              {graph.relations.slice(0, 4).map((relation) => (
+                <p key={relation.id} className="console-copy">
+                  {relation.relation_type} → {relation.target_type} ({relation.target_id})
+                </p>
+              ))}
+            </div>
+          )}
+
+          <h2>Version history</h2>
+          {!versions ? (
+            <p className="console-copy">Select an artifact to inspect versions.</p>
+          ) : (
+            <div>
+              <p className="console-copy">Summary versions: {versions.summaries.length}</p>
+              <p className="console-copy">Card set versions: {versions.card_sets.length}</p>
+              <p className="console-copy">Action runs: {versions.actions.length}</p>
+              {versions.actions.slice(0, 5).map((action) => (
+                <p key={action.id} className="console-copy">
+                  {action.action} [{action.status}]
+                </p>
+              ))}
             </div>
           )}
         </div>

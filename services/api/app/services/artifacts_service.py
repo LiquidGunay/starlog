@@ -91,6 +91,22 @@ def _next_version(conn: Connection, table: str, artifact_id: str) -> int:
     return int(value) + 1
 
 
+def _record_relation(
+    conn: Connection,
+    artifact_id: str,
+    relation_type: str,
+    target_type: str,
+    target_id: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO artifact_relations (id, artifact_id, relation_type, target_type, target_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (new_id("rel"), artifact_id, relation_type, target_type, target_id, utc_now().isoformat()),
+    )
+
+
 def _create_summary(conn: Connection, artifact: dict) -> str:
     version = _next_version(conn, "summary_versions", str(artifact["id"]))
     text_source = (
@@ -115,6 +131,7 @@ def _create_summary(conn: Connection, artifact: dict) -> str:
         """,
         (summary_id, artifact["id"], version, summary_text, "template", now),
     )
+    _record_relation(conn, str(artifact["id"]), "artifact.summary_version", "summary_version", summary_id)
     conn.commit()
     return summary_id
 
@@ -167,6 +184,7 @@ def _create_cards(conn: Connection, artifact: dict) -> str:
             ),
         )
 
+    _record_relation(conn, str(artifact["id"]), "artifact.card_set_version", "card_set_version", set_id)
     conn.commit()
     return set_id
 
@@ -188,6 +206,7 @@ def _create_task(conn: Connection, artifact: dict) -> str:
         "task.suggested",
         {"task_id": task_id, "artifact_id": artifact["id"], "source": "artifact_action"},
     )
+    _record_relation(conn, str(artifact["id"]), "artifact.task", "task", task_id)
     conn.commit()
     return task_id
 
@@ -213,6 +232,7 @@ def _append_note(conn: Connection, artifact: dict) -> str:
         "note.suggested",
         {"note_id": note_id, "artifact_id": artifact["id"], "source": "artifact_action"},
     )
+    _record_relation(conn, str(artifact["id"]), "artifact.note", "note", note_id)
     conn.commit()
     return note_id
 
@@ -291,6 +311,16 @@ def get_artifact_graph(conn: Connection, artifact_id: str) -> dict | None:
         """,
         (artifact_id,),
     )
+    relations = execute_fetchall(
+        conn,
+        """
+        SELECT id, artifact_id, relation_type, target_type, target_id, created_at
+        FROM artifact_relations
+        WHERE artifact_id = ?
+        ORDER BY created_at DESC
+        """,
+        (artifact_id,),
+    )
 
     return {
         "artifact": artifact,
@@ -298,4 +328,34 @@ def get_artifact_graph(conn: Connection, artifact_id: str) -> dict | None:
         "cards": cards,
         "tasks": tasks,
         "notes": notes,
+        "relations": relations,
+    }
+
+
+def get_artifact_versions(conn: Connection, artifact_id: str) -> dict | None:
+    artifact = get_artifact(conn, artifact_id)
+    if artifact is None:
+        return None
+
+    summaries = execute_fetchall(
+        conn,
+        "SELECT id, artifact_id, version, content, provider, created_at FROM summary_versions WHERE artifact_id = ? ORDER BY version DESC",
+        (artifact_id,),
+    )
+    card_sets = execute_fetchall(
+        conn,
+        "SELECT id, artifact_id, version, created_at FROM card_set_versions WHERE artifact_id = ? ORDER BY version DESC",
+        (artifact_id,),
+    )
+    actions = execute_fetchall(
+        conn,
+        "SELECT id, artifact_id, action, status, output_ref, created_at FROM action_runs WHERE artifact_id = ? ORDER BY created_at DESC",
+        (artifact_id,),
+    )
+
+    return {
+        "artifact_id": artifact_id,
+        "summaries": summaries,
+        "card_sets": card_sets,
+        "actions": actions,
     }

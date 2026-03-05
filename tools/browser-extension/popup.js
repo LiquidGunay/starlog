@@ -39,17 +39,28 @@ async function captureSelection() {
   const payload = response.payload;
   const request = {
     source_type: "clip_browser",
+    capture_source: "browser_extension",
     title: payload.title,
-    raw_content: payload.selection || payload.url,
-    normalized_content: payload.selection || payload.url,
-    extracted_content: payload.selection,
+    source_url: payload.url,
+    raw: {
+      text: payload.rawHtml || payload.selection || payload.url,
+      mime_type: "text/html",
+    },
+    normalized: {
+      text: payload.selection || payload.url,
+      mime_type: "text/plain",
+    },
+    extracted: {
+      text: payload.selection,
+      mime_type: "text/plain",
+    },
     metadata: {
       url: payload.url,
       clipped_at: new Date().toISOString(),
     },
   };
 
-  const result = await fetch(`${apiBaseInput.value.trim()}/v1/artifacts`, {
+  const result = await fetch(`${apiBaseInput.value.trim()}/v1/capture`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

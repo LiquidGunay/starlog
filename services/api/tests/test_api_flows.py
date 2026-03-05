@@ -19,18 +19,21 @@ def test_health_and_auth_bootstrap(client: TestClient) -> None:
 
 def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]) -> None:
     artifact = client.post(
-        "/v1/artifacts",
+        "/v1/capture",
         json={
             "source_type": "clip_browser",
+            "capture_source": "browser_ext",
             "title": "Nebula Notes",
-            "raw_content": "A long clip about stars and recall systems.",
-            "normalized_content": "Stars form in nebulas and memory forms in review loops.",
+            "source_url": "https://example.com/nebula",
+            "raw": {"text": "<html>raw clip</html>", "mime_type": "text/html"},
+            "normalized": {"text": "Stars form in nebulas and memory forms in review loops.", "mime_type": "text/plain"},
+            "extracted": {"text": "Extracted: stars and recall systems."},
             "metadata": {"url": "https://example.com"},
         },
         headers=auth_headers,
     )
     assert artifact.status_code == 201
-    artifact_id = artifact.json()["id"]
+    artifact_id = artifact.json()["artifact"]["id"]
 
     for action in ["summarize", "cards", "tasks", "append_note"]:
         response = client.post(
@@ -47,10 +50,19 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
     assert len(payload["cards"]) >= 1
     assert len(payload["tasks"]) >= 1
     assert len(payload["notes"]) >= 1
+    assert len(payload["relations"]) >= 4
+
+    versions = client.get(f"/v1/artifacts/{artifact_id}/versions", headers=auth_headers)
+    assert versions.status_code == 200
+    version_payload = versions.json()
+    assert len(version_payload["summaries"]) >= 1
+    assert len(version_payload["card_sets"]) >= 1
+    assert len(version_payload["actions"]) >= 4
 
     events = client.get("/v1/events?cursor=0", headers=auth_headers)
     assert events.status_code == 200
     event_types = {item["event_type"] for item in events.json()}
+    assert "capture.ingested" in event_types
     assert "artifact.created" in event_types
     assert "artifact.action_suggested" in event_types
 
@@ -266,3 +278,18 @@ def test_plugins_and_markdown_import(client: TestClient, auth_headers: dict[str,
     assert notes.status_code == 200
     titles = {note["title"] for note in notes.json()}
     assert "Imported Note" in titles
+
+
+def test_ops_metrics_and_backup(client: TestClient, auth_headers: dict[str, str]) -> None:
+    metric_response = client.get("/v1/ops/metrics", headers=auth_headers)
+    assert metric_response.status_code == 200
+    metrics = metric_response.json()
+    assert "queue_depth_sync_events" in metrics
+    assert "cards_due" in metrics
+    assert "tasks_todo" in metrics
+
+    backup_response = client.post("/v1/ops/backup", headers=auth_headers)
+    assert backup_response.status_code == 201
+    payload = backup_response.json()
+    assert payload["bytes_written"] > 0
+    assert payload["backup_path"].endswith(".json")

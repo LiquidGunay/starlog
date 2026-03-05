@@ -9,6 +9,35 @@ export interface ArtifactCreateRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface ArtifactResponse extends ArtifactCreateRequest {
+  id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaptureLayer {
+  text?: string;
+  mime_type?: string;
+  blob_ref?: string;
+  checksum_sha256?: string;
+}
+
+export interface CaptureRequest {
+  source_type: string;
+  capture_source: string;
+  title?: string;
+  source_url?: string;
+  raw?: CaptureLayer;
+  normalized?: CaptureLayer;
+  extracted?: CaptureLayer;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CaptureResponse {
+  artifact: ArtifactResponse;
+}
+
 export interface ArtifactActionRequest {
   action: ArtifactAction;
 }
@@ -18,6 +47,47 @@ export interface ArtifactActionResponse {
   action: ArtifactAction;
   status: "suggested" | "queued" | "completed" | "failed";
   output_ref?: string | null;
+}
+
+export interface ArtifactRelation {
+  id: string;
+  artifact_id: string;
+  relation_type: string;
+  target_type: string;
+  target_id: string;
+  created_at: string;
+}
+
+export interface SummaryVersion {
+  id: string;
+  artifact_id: string;
+  version: number;
+  content: string;
+  provider: string;
+  created_at: string;
+}
+
+export interface CardSetVersion {
+  id: string;
+  artifact_id: string;
+  version: number;
+  created_at: string;
+}
+
+export interface ArtifactActionRun {
+  id: string;
+  artifact_id: string;
+  action: string;
+  status: string;
+  output_ref?: string | null;
+  created_at: string;
+}
+
+export interface ArtifactVersionsResponse {
+  artifact_id: string;
+  summaries: SummaryVersion[];
+  card_sets: CardSetVersion[];
+  actions: ArtifactActionRun[];
 }
 
 export interface SyncMutation {
@@ -166,4 +236,18 @@ export interface MarkdownImportRequest {
 export interface MarkdownImportResponse {
   note_id: string;
   created_at: string;
+}
+
+export interface MetricsResponse {
+  queue_depth_sync_events: number;
+  cards_due: number;
+  tasks_todo: number;
+  alarms_scheduled: number;
+  timestamp: string;
+}
+
+export interface BackupResponse {
+  backup_path: string;
+  exported_at: string;
+  bytes_written: number;
 }

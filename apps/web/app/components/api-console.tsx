@@ -62,15 +62,16 @@ export function ApiConsole() {
   }
 
   async function createClip() {
-    const response = await fetch(`${apiBase}/v1/artifacts`, {
+    const response = await fetch(`${apiBase}/v1/capture`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({
         source_type: "clip_manual",
+        capture_source: "pwa_console",
         title: "Quick clip",
-        raw_content: clipText,
-        normalized_content: clipText,
-        extracted_content: clipText,
+        raw: { text: clipText, mime_type: "text/plain" },
+        normalized: { text: clipText, mime_type: "text/plain" },
+        extracted: { text: clipText, mime_type: "text/plain" },
         metadata: { source: "web_console" },
       }),
     });
@@ -80,8 +81,12 @@ export function ApiConsole() {
       return;
     }
 
-    const payload = (await response.json()) as { id: string };
-    setState((prev) => ({ ...prev, artifactId: payload.id, status: `Clip saved: ${payload.id}` }));
+    const payload = (await response.json()) as { artifact: { id: string } };
+    setState((prev) => ({
+      ...prev,
+      artifactId: payload.artifact.id,
+      status: `Clip saved: ${payload.artifact.id}`,
+    }));
   }
 
   async function runAction(action: "summarize" | "cards" | "tasks" | "append_note") {

@@ -8,6 +8,7 @@
   - auth (`/v1/auth/*`)
   - sync (`/v1/sync/*`)
   - artifacts + graph + manual quick actions (`/v1/artifacts/*`)
+  - clip ingest endpoint with source layers (`/v1/capture`)
   - notes (`/v1/notes`)
   - tasks (`/v1/tasks`)
   - calendar (`/v1/calendar/events`, `/v1/calendar/sync/google/*`)
@@ -18,19 +19,25 @@
   - provider integration config/health (`/v1/integrations/providers/*`)
   - plugin registry API (`/v1/plugins`)
   - markdown import API (`/v1/import/markdown`)
+  - ops metrics + backup snapshot (`/v1/ops/metrics`, `/v1/ops/backup`)
   - AI provider routing (`/v1/ai/run`)
   - export (`/v1/export`)
 - Browser extension scaffold for clipping.
 - Desktop Tauri helper scaffold for non-browser clipping.
-- Desktop helper now posts clipboard clips to API and includes screenshot command wiring.
+- Artifact graph now persists explicit relation edges and exposes version history (`/v1/artifacts/{id}/versions`).
+- Browser extension now posts raw/normalized/extracted capture layers to `/v1/capture`.
+- Desktop helper now posts captures to `/v1/capture` and attempts strict on-device OCR (`tesseract`) for screenshots.
+- Mobile companion now supports quick text capture to `/v1/capture`.
 - Web UI refresh with modern "spacy" look and dark/light modes.
-- Mobile companion now includes briefing cache + notification alarm pipeline scaffold.
-- API tests + lint + type checks passing via `uv` (`9 passed`).
+- Artifacts workspace now includes graph and version-history panels.
+- Mobile companion includes briefing cache + notification alarm pipeline scaffold.
+- API tests + lint + type checks passing via `uv` (`10 passed`).
+- Web lint + TypeScript checks pass.
 
 ## Next implementation targets
 
-1. Persist real AI provider configs/secrets and health checks.
+1. Persist provider credentials securely (keychain/encrypted storage) and harden health checks.
 2. Add real Google API token exchange and remote API calls (current flow uses local sync mirror scaffolding).
-3. Replace desktop helper local hotkey wiring with true global OS shortcuts + OCR pipeline.
-4. Harden mobile alarm/background behavior for production (permissions UX, retries, and edge cases).
-5. Deepen PWA multi-page workspace from scaffold to production-grade UX (artifact graph explorer, calendar board, richer review sessions).
+3. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline.
+4. Harden mobile alarm/background behavior for production (permissions UX, retries, edge cases) plus share-sheet capture.
+5. Deepen PWA multi-page workspace toward production UX (calendar board, richer review sessions, artifact graph navigation).

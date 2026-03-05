@@ -15,7 +15,7 @@ function readConfig() {
   };
 }
 
-async function sendArtifact(rawContent, metadata) {
+async function sendCapture(rawContent, metadata, sourceType = "clip_desktop_helper") {
   const { apiBase, token } = readConfig();
 
   if (!token) {
@@ -23,18 +23,19 @@ async function sendArtifact(rawContent, metadata) {
     return;
   }
 
-  const response = await fetch(`${apiBase}/v1/artifacts`, {
+  const response = await fetch(`${apiBase}/v1/capture`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      source_type: "clip_desktop_helper",
+      source_type: sourceType,
+      capture_source: "desktop_helper",
       title: "Desktop clip",
-      raw_content: rawContent,
-      normalized_content: rawContent,
-      extracted_content: rawContent,
+      raw: { text: rawContent, mime_type: "text/plain" },
+      normalized: { text: rawContent, mime_type: "text/plain" },
+      extracted: { text: rawContent, mime_type: "text/plain" },
       metadata,
     }),
   });
@@ -45,7 +46,7 @@ async function sendArtifact(rawContent, metadata) {
   }
 
   const payload = await response.json();
-  setStatus(`Clip saved: ${payload.id}`);
+  setStatus(`Clip saved: ${payload.artifact.id}`);
 }
 
 async function clipClipboard() {
@@ -56,7 +57,7 @@ async function clipClipboard() {
       return;
     }
 
-    await sendArtifact(text, {
+    await sendCapture(text, {
       source: "desktop_helper",
       clipped_at: new Date().toISOString(),
     });
@@ -75,7 +76,16 @@ async function clipScreenshotStub() {
 
     const { invoke } = await import("@tauri-apps/api/core");
     const result = await invoke("clip_screenshot_stub");
-    setStatus(String(result));
+    if (result?.status === "captured" && typeof result.text === "string" && result.text.trim().length > 0) {
+      await sendCapture(result.text, {
+        source: "desktop_helper",
+        screenshot_path: result.path,
+        ocr_engine: result.ocr_engine,
+        clipped_at: new Date().toISOString(),
+      }, "clip_desktop_screenshot");
+      return;
+    }
+    setStatus(typeof result?.message === "string" ? result.message : String(result));
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Screenshot stub failed");
   }

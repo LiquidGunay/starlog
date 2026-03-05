@@ -77,9 +77,42 @@ class NoteResponse(BaseModel):
     version: int
 
 
+class ArtifactRelationResponse(BaseModel):
+    id: str
+    artifact_id: str
+    relation_type: str
+    target_type: str
+    target_id: str
+    created_at: datetime
+
+
+class ActionRunResponse(BaseModel):
+    id: str
+    artifact_id: str
+    action: str
+    status: str
+    output_ref: str | None = None
+    created_at: datetime
+
+
+class CardSetVersionResponse(BaseModel):
+    id: str
+    artifact_id: str
+    version: int
+    created_at: datetime
+
+
 class ArtifactGraphResponse(BaseModel):
     artifact: ArtifactResponse
     summaries: list[SummaryVersionResponse]
     cards: list[CardResponse]
     tasks: list[TaskResponse]
     notes: list[NoteResponse]
+    relations: list[ArtifactRelationResponse]
+
+
+class ArtifactVersionsResponse(BaseModel):
+    artifact_id: str
+    summaries: list[SummaryVersionResponse]
+    card_sets: list[CardSetVersionResponse]
+    actions: list[ActionRunResponse]
