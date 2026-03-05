@@ -41,6 +41,7 @@
 - Artifacts workspace now includes graph and version-history panels.
 - Planner workspace now includes day-board timeline view for blocks/events plus richer sync status surfaces.
 - Review workspace now supports focused single-card sessions with live session metrics and queue preview.
+- Added `/mobile-share` workspace page to generate and launch `starlog://capture?...` deep-links for phone capture handoff.
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
 - API tests + lint + type checks passing via `uv` (`10 passed`).
 - Web lint + TypeScript checks pass.

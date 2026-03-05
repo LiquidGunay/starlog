@@ -63,6 +63,8 @@ pnpm --filter mobile start
 
 The companion app now supports incoming capture payloads via `starlog://capture?...`.
 
+You can also generate deep-links from the web workspace at `/mobile-share`.
+
 Example payload format:
 
 ```text

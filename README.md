@@ -89,6 +89,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - `/artifacts` - clip inbox viewer + artifact graph/version history
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
+- `/mobile-share` - deep-link generator for mobile capture handoff
 
 ## Clip-first API additions
 
