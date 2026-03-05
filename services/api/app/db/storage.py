@@ -239,6 +239,9 @@ CREATE TABLE IF NOT EXISTS calendar_sync_conflicts (
   remote_id TEXT NOT NULL,
   strategy TEXT NOT NULL,
   detail_json TEXT NOT NULL,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  resolved_at TEXT,
+  resolution_strategy TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (local_event_id) REFERENCES calendar_events(id)
 );
@@ -267,6 +270,7 @@ CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
 CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
 CREATE INDEX IF NOT EXISTS idx_google_remote_updated ON google_remote_events(updated_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_created ON calendar_sync_conflicts(created_at);
+CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_resolved ON calendar_sync_conflicts(resolved, created_at);
 CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
 """
 
@@ -302,6 +306,9 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "calendar_events", "deleted_at", "TEXT")
     _ensure_column(conn, "google_remote_events", "deleted", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "google_remote_events", "deleted_at", "TEXT")
+    _ensure_column(conn, "calendar_sync_conflicts", "resolved", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "calendar_sync_conflicts", "resolved_at", "TEXT")
+    _ensure_column(conn, "calendar_sync_conflicts", "resolution_strategy", "TEXT")
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:

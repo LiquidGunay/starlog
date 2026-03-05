@@ -105,6 +105,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - Inspect remote mirror + conflicts:
   - `GET /v1/calendar/sync/google/remote/events`
   - `GET /v1/calendar/sync/google/conflicts`
+  - `POST /v1/calendar/sync/google/conflicts/{conflict_id}/resolve`
 
 When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configured, callback performs a real Google token exchange and sync can pull/push/update/delete events against Google Calendar.
 

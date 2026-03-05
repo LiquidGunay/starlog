@@ -278,6 +278,69 @@ def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict
     assert conflicts.status_code == 200
 
 
+def test_google_conflict_resolution_flow(client: TestClient, auth_headers: dict[str, str]) -> None:
+    start = client.post("/v1/calendar/sync/google/oauth/start", json={}, headers=auth_headers)
+    state = start.json()["state"]
+    callback = client.post(
+        "/v1/calendar/sync/google/oauth/callback",
+        json={"code": "demo-code-5678", "state": state},
+        headers=auth_headers,
+    )
+    assert callback.status_code == 200
+
+    local_event = client.post(
+        "/v1/calendar/events",
+        json={
+            "title": "Local Version",
+            "starts_at": "2026-03-10T08:00:00+00:00",
+            "ends_at": "2026-03-10T09:00:00+00:00",
+            "source": "internal",
+            "remote_id": "remote_conflict_1",
+        },
+        headers=auth_headers,
+    )
+    assert local_event.status_code == 201
+
+    remote_event = client.post(
+        "/v1/calendar/sync/google/remote/events",
+        json={
+            "remote_id": "remote_conflict_1",
+            "title": "Remote Version",
+            "starts_at": "2026-03-10T10:00:00+00:00",
+            "ends_at": "2026-03-10T11:00:00+00:00",
+        },
+        headers=auth_headers,
+    )
+    assert remote_event.status_code == 201
+
+    sync = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert sync.status_code == 200
+
+    conflicts = client.get("/v1/calendar/sync/google/conflicts", headers=auth_headers)
+    assert conflicts.status_code == 200
+    payload = conflicts.json()
+    assert len(payload) >= 1
+
+    conflict_id = payload[0]["id"]
+    resolved = client.post(
+        f"/v1/calendar/sync/google/conflicts/{conflict_id}/resolve",
+        json={"resolution_strategy": "local_wins"},
+        headers=auth_headers,
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["conflict"]["resolved"] is True
+
+    unresolved = client.get("/v1/calendar/sync/google/conflicts", headers=auth_headers)
+    assert unresolved.status_code == 200
+    unresolved_ids = {item["id"] for item in unresolved.json()}
+    assert conflict_id not in unresolved_ids
+
+    all_conflicts = client.get("/v1/calendar/sync/google/conflicts?include_resolved=true", headers=auth_headers)
+    assert all_conflicts.status_code == 200
+    resolved_items = {item["id"]: item for item in all_conflicts.json()}
+    assert resolved_items[conflict_id]["resolution_strategy"] == "local_wins"
+
+
 def test_plugins_and_markdown_import(client: TestClient, auth_headers: dict[str, str]) -> None:
     plugin = client.post(
         "/v1/plugins",

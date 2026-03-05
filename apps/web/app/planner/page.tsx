@@ -25,6 +25,10 @@ type Conflict = {
   id: string;
   remote_id: string;
   strategy: string;
+  detail: Record<string, unknown>;
+  resolved: boolean;
+  resolved_at?: string | null;
+  resolution_strategy?: string | null;
 };
 
 type OAuthStatus = {
@@ -170,6 +174,21 @@ export default function PlannerPage() {
     }
   }
 
+  async function resolveConflict(conflictId: string, resolutionStrategy: "local_wins" | "remote_wins" | "dismiss") {
+    try {
+      await apiRequest(apiBase, token, `/v1/calendar/sync/google/conflicts/${conflictId}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({ resolution_strategy: resolutionStrategy }),
+      });
+      setStatus(`Resolved conflict ${conflictId} with ${resolutionStrategy}`);
+      const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
+      setConflicts(conflictPayload);
+      await load();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Conflict resolution failed");
+    }
+  }
+
   return (
     <main className="shell">
       <section className="workspace glass">
@@ -247,7 +266,20 @@ export default function PlannerPage() {
             <ul>
               {conflicts.map((conflict) => (
                 <li key={conflict.id}>
-                  Remote {conflict.remote_id} - strategy {conflict.strategy}
+                  <p className="console-copy">
+                    Remote {conflict.remote_id} - policy {conflict.strategy}
+                  </p>
+                  <div className="button-row">
+                    <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "local_wins")}>
+                      Local Wins
+                    </button>
+                    <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "remote_wins")}>
+                      Remote Wins
+                    </button>
+                    <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
+                      Dismiss
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -504,8 +504,10 @@ def _last_sync_at(conn: Connection) -> str:
 def _record_conflict(conn: Connection, local_event_id: str | None, remote_id: str, detail: dict) -> None:
     conn.execute(
         """
-        INSERT INTO calendar_sync_conflicts (id, local_event_id, remote_id, strategy, detail_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO calendar_sync_conflicts (
+          id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             new_id("cnf"),
@@ -513,9 +515,12 @@ def _record_conflict(conn: Connection, local_event_id: str | None, remote_id: st
             remote_id,
             "prefer_local",
             json.dumps(detail, sort_keys=True),
+            0,
+            None,
+            None,
             utc_now().isoformat(),
         ),
-        )
+    )
 
 
 def _google_payload(title: str, starts_at: str, ends_at: str) -> dict:
@@ -852,21 +857,157 @@ def run_two_way_sync(conn: Connection) -> dict:
     }
 
 
-def list_conflicts(conn: Connection) -> list[dict]:
-    rows = execute_fetchall(
-        conn,
-        "SELECT id, local_event_id, remote_id, strategy, detail_json, created_at FROM calendar_sync_conflicts ORDER BY created_at DESC",
-    )
-    formatted: list[dict] = []
-    for row in rows:
-        formatted.append(
-            {
-                "id": row["id"],
-                "local_event_id": row["local_event_id"],
-                "remote_id": row["remote_id"],
-                "strategy": row["strategy"],
-                "detail": row["detail_json"],
-                "created_at": row["created_at"],
-            }
+def _format_conflict(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "local_event_id": row["local_event_id"],
+        "remote_id": row["remote_id"],
+        "strategy": row["strategy"],
+        "detail": row["detail_json"],
+        "resolved": bool(row["resolved"]),
+        "resolved_at": row["resolved_at"],
+        "resolution_strategy": row["resolution_strategy"],
+        "created_at": row["created_at"],
+    }
+
+
+def list_conflicts(conn: Connection, include_resolved: bool = False) -> list[dict]:
+    if include_resolved:
+        rows = execute_fetchall(
+            conn,
+            """
+            SELECT id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+            FROM calendar_sync_conflicts
+            ORDER BY created_at DESC
+            """,
         )
-    return formatted
+    else:
+        rows = execute_fetchall(
+            conn,
+            """
+            SELECT id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+            FROM calendar_sync_conflicts
+            WHERE resolved = 0
+            ORDER BY created_at DESC
+            """,
+        )
+    return [_format_conflict(row) for row in rows]
+
+
+def resolve_conflict(conn: Connection, conflict_id: str, resolution_strategy: str) -> dict | None:
+    conflict = execute_fetchone(
+        conn,
+        """
+        SELECT id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+        FROM calendar_sync_conflicts
+        WHERE id = ?
+        """,
+        (conflict_id,),
+    )
+    if conflict is None:
+        return None
+
+    if bool(conflict.get("resolved")):
+        return _format_conflict(conflict)
+
+    strategy = resolution_strategy.strip().lower()
+    if strategy not in {"local_wins", "remote_wins", "dismiss"}:
+        raise ValueError("Unsupported conflict resolution strategy")
+
+    local_event_id = conflict.get("local_event_id")
+    remote_id = str(conflict["remote_id"])
+
+    if strategy == "local_wins":
+        if local_event_id:
+            local = execute_fetchone(
+                conn,
+                """
+                SELECT id, title, starts_at, ends_at, etag, deleted
+                FROM calendar_events
+                WHERE id = ?
+                """,
+                (local_event_id,),
+            )
+            if local is not None:
+                local_etag = _etag(str(local["title"]), str(local["starts_at"]), str(local["ends_at"]))
+                _upsert_remote_mirror(
+                    conn,
+                    remote_id=remote_id,
+                    title=str(local["title"]),
+                    starts_at=str(local["starts_at"]),
+                    ends_at=str(local["ends_at"]),
+                    etag=local_etag,
+                    deleted=bool(local["deleted"]),
+                )
+    elif strategy == "remote_wins":
+        remote = execute_fetchone(
+            conn,
+            """
+            SELECT remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at
+            FROM google_remote_events
+            WHERE remote_id = ?
+            """,
+            (remote_id,),
+        )
+        if remote is not None and local_event_id:
+            if bool(remote["deleted"]):
+                conn.execute(
+                    """
+                    UPDATE calendar_events
+                    SET deleted = 1, deleted_at = ?, source = ?, etag = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        remote.get("deleted_at") or remote["updated_at"],
+                        "google",
+                        remote["etag"],
+                        remote["updated_at"],
+                        local_event_id,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE calendar_events
+                    SET title = ?, starts_at = ?, ends_at = ?, source = ?, etag = ?, deleted = 0, deleted_at = NULL, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        remote["title"],
+                        remote["starts_at"],
+                        remote["ends_at"],
+                        "google",
+                        remote["etag"],
+                        remote["updated_at"],
+                        local_event_id,
+                    ),
+                )
+
+    resolved_at = utc_now().isoformat()
+    conn.execute(
+        """
+        UPDATE calendar_sync_conflicts
+        SET resolved = 1, resolved_at = ?, resolution_strategy = ?
+        WHERE id = ?
+        """,
+        (resolved_at, strategy, conflict_id),
+    )
+    events_service.emit(
+        conn,
+        "calendar.sync_conflict_resolved",
+        {"conflict_id": conflict_id, "resolution_strategy": strategy},
+    )
+    conn.commit()
+
+    updated = execute_fetchone(
+        conn,
+        """
+        SELECT id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+        FROM calendar_sync_conflicts
+        WHERE id = ?
+        """,
+        (conflict_id,),
+    )
+    if updated is None:
+        raise RuntimeError("Conflict resolution update failed")
+    return _format_conflict(updated)

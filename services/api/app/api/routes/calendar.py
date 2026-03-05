@@ -10,6 +10,8 @@ from app.schemas.calendar import (
 )
 from app.schemas.google_sync import (
     CalendarConflictResponse,
+    CalendarConflictResolveRequest,
+    CalendarConflictResolveResponse,
     GoogleOAuthCallbackRequest,
     GoogleOAuthCallbackResponse,
     GoogleOAuthStatusResponse,
@@ -141,8 +143,25 @@ def list_remote_events(
 
 @router.get("/sync/google/conflicts", response_model=list[CalendarConflictResponse])
 def list_conflicts(
+    include_resolved: bool = False,
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> list[CalendarConflictResponse]:
-    rows = google_calendar_service.list_conflicts(db)
+    rows = google_calendar_service.list_conflicts(db, include_resolved=include_resolved)
     return [CalendarConflictResponse.model_validate(item) for item in rows]
+
+
+@router.post("/sync/google/conflicts/{conflict_id}/resolve", response_model=CalendarConflictResolveResponse)
+def resolve_conflict(
+    conflict_id: str,
+    payload: CalendarConflictResolveRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> CalendarConflictResolveResponse:
+    try:
+        resolved = google_calendar_service.resolve_conflict(db, conflict_id, payload.resolution_strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if resolved is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync conflict not found")
+    return CalendarConflictResolveResponse(conflict=CalendarConflictResponse.model_validate(resolved))

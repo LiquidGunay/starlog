@@ -60,4 +60,15 @@ class CalendarConflictResponse(BaseModel):
     remote_id: str
     strategy: str
     detail: dict
+    resolved: bool = False
+    resolved_at: datetime | None = None
+    resolution_strategy: str | None = None
     created_at: datetime
+
+
+class CalendarConflictResolveRequest(BaseModel):
+    resolution_strategy: str = Field(..., min_length=1)
+
+
+class CalendarConflictResolveResponse(BaseModel):
+    conflict: CalendarConflictResponse

@@ -216,7 +216,18 @@ export interface CalendarConflictResponse {
   remote_id: string;
   strategy: string;
   detail: Record<string, unknown>;
+  resolved: boolean;
+  resolved_at?: string | null;
+  resolution_strategy?: string | null;
   created_at: string;
+}
+
+export interface CalendarConflictResolveRequest {
+  resolution_strategy: "local_wins" | "remote_wins" | "dismiss";
+}
+
+export interface CalendarConflictResolveResponse {
+  conflict: CalendarConflictResponse;
 }
 
 export interface PluginRegisterRequest {
