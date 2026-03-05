@@ -114,6 +114,44 @@ def _http_get_json(url: str, access_token: str) -> dict:
     raise RuntimeError("Unexpected Google API payload shape")
 
 
+def _http_json_request(
+    url: str,
+    access_token: str,
+    method: str,
+    payload: dict | None = None,
+    allow_not_found: bool = False,
+) -> dict | None:
+    body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {"Authorization": f"Bearer {access_token}"}
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+    request = Request(url=url, data=body, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=20) as response:  # noqa: S310
+            raw = response.read().decode("utf-8")
+    except HTTPError as exc:
+        if allow_not_found and exc.code in {404, 410}:
+            return None
+        raise
+
+    if not raw.strip():
+        return {}
+    parsed = json.loads(raw)
+    if isinstance(parsed, dict):
+        return parsed
+    raise RuntimeError("Unexpected Google API payload shape")
+
+
+def _events_collection_url() -> str:
+    settings = get_settings()
+    calendar_id = quote(settings.google_calendar_id, safe="")
+    return GOOGLE_EVENTS_API.format(calendar_id=calendar_id)
+
+
+def _event_url(remote_id: str) -> str:
+    return f"{_events_collection_url()}/{quote(remote_id, safe='')}"
+
+
 def _iso_or_default(value: str | None) -> str:
     if not value:
         return utc_now().isoformat()
@@ -164,6 +202,26 @@ def _refresh_google_token(conn: Connection, config: dict) -> dict:
     return refreshed
 
 
+def _ensure_google_access_token(conn: Connection) -> tuple[str | None, dict | None]:
+    provider = _provider_config(conn)
+    if provider is None:
+        return None, None
+
+    config = provider["config"]
+    if str(config.get("source", "")) != "google_oauth":
+        return None, config
+
+    access_token = str(config.get("access_token") or "")
+    if not access_token:
+        return None, config
+
+    if _token_expired(str(config.get("expires_at") or "")):
+        config = _refresh_google_token(conn, config)
+        access_token = str(config.get("access_token") or "")
+
+    return access_token, config
+
+
 def _parse_google_event_time(payload: dict[str, object]) -> str:
     date_time = payload.get("dateTime")
     if isinstance(date_time, str) and date_time:
@@ -179,13 +237,15 @@ def _parse_google_event_time(payload: dict[str, object]) -> str:
 def _upsert_remote_from_google(conn: Connection, remote: dict) -> None:
     conn.execute(
         """
-        INSERT INTO google_remote_events (remote_id, title, starts_at, ends_at, etag, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO google_remote_events (remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(remote_id) DO UPDATE SET
           title = excluded.title,
           starts_at = excluded.starts_at,
           ends_at = excluded.ends_at,
           etag = excluded.etag,
+          deleted = excluded.deleted,
+          deleted_at = excluded.deleted_at,
           updated_at = excluded.updated_at
         """,
         (
@@ -194,38 +254,63 @@ def _upsert_remote_from_google(conn: Connection, remote: dict) -> None:
             remote["starts_at"],
             remote["ends_at"],
             remote["etag"],
+            remote["deleted"],
+            remote["deleted_at"],
             remote["updated_at"],
         ),
     )
 
 
+def _google_event_to_remote(item: dict, previous: dict | None) -> dict | None:
+    remote_id = item.get("id")
+    if not isinstance(remote_id, str) or not remote_id:
+        return None
+
+    status = str(item.get("status") or "")
+    deleted = status == "cancelled"
+    title = item.get("summary")
+    if not isinstance(title, str) or not title:
+        title = str(previous["title"]) if previous and previous.get("title") else "(untitled)"
+
+    if deleted:
+        starts_at = str(previous["starts_at"]) if previous and previous.get("starts_at") else utc_now().isoformat()
+        ends_at = str(previous["ends_at"]) if previous and previous.get("ends_at") else starts_at
+    else:
+        start_payload = item.get("start")
+        end_payload = item.get("end")
+        starts_at = _parse_google_event_time(start_payload if isinstance(start_payload, dict) else {})
+        ends_at = _parse_google_event_time(end_payload if isinstance(end_payload, dict) else {})
+
+    etag = item.get("etag")
+    updated_at = item.get("updated")
+    resolved_updated = _iso_or_default(str(updated_at) if isinstance(updated_at, str) else None)
+    deleted_at = resolved_updated if deleted else None
+    return {
+        "remote_id": remote_id,
+        "title": title,
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+        "etag": str(etag or _etag(title, starts_at, ends_at)),
+        "deleted": 1 if deleted else 0,
+        "deleted_at": deleted_at,
+        "updated_at": resolved_updated,
+    }
+
+
 def sync_remote_from_google_api(conn: Connection) -> int:
-    provider = _provider_config(conn)
-    if provider is None:
+    try:
+        access_token, _ = _ensure_google_access_token(conn)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("google token refresh failed: %s", exc)
+        events_service.emit(conn, "google.remote_pull_failed", {"reason": "token_refresh_failed"})
+        conn.commit()
         return 0
 
-    config = provider["config"]
-    if str(config.get("source", "")) != "google_oauth":
-        return 0
-
-    access_token = str(config.get("access_token") or "")
     if not access_token:
         return 0
 
-    if _token_expired(str(config.get("expires_at") or "")):
-        try:
-            config = _refresh_google_token(conn, config)
-            access_token = str(config.get("access_token") or "")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("google token refresh failed: %s", exc)
-            events_service.emit(conn, "google.remote_pull_failed", {"reason": "token_refresh_failed"})
-            conn.commit()
-            return 0
-
-    settings = get_settings()
-    calendar_id = quote(settings.google_calendar_id, safe="")
-    query = urlencode({"singleEvents": "true", "showDeleted": "false", "maxResults": 250})
-    url = f"{GOOGLE_EVENTS_API.format(calendar_id=calendar_id)}?{query}"
+    query = urlencode({"singleEvents": "true", "showDeleted": "true", "maxResults": 250})
+    url = f"{_events_collection_url()}?{query}"
 
     try:
         response = _http_get_json(url, access_token)
@@ -246,27 +331,15 @@ def sync_remote_from_google_api(conn: Connection) -> int:
         remote_id = item.get("id")
         if not isinstance(remote_id, str) or not remote_id:
             continue
-        title = item.get("summary")
-        if not isinstance(title, str) or not title:
-            title = "(untitled)"
-
-        start_payload = item.get("start")
-        end_payload = item.get("end")
-        starts_at = _parse_google_event_time(start_payload if isinstance(start_payload, dict) else {})
-        ends_at = _parse_google_event_time(end_payload if isinstance(end_payload, dict) else {})
-        etag = item.get("etag")
-        updated_at = item.get("updated")
-        _upsert_remote_from_google(
+        previous = execute_fetchone(
             conn,
-            {
-                "remote_id": remote_id,
-                "title": title,
-                "starts_at": starts_at,
-                "ends_at": ends_at,
-                "etag": str(etag or _etag(title, starts_at, ends_at)),
-                "updated_at": _iso_or_default(str(updated_at) if isinstance(updated_at, str) else None),
-            },
+            "SELECT remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at FROM google_remote_events WHERE remote_id = ?",
+            (remote_id,),
         )
+        remote = _google_event_to_remote(item, previous)
+        if remote is None:
+            continue
+        _upsert_remote_from_google(conn, remote)
         imported += 1
 
     events_service.emit(conn, "google.remote_pull_succeeded", {"imported": imported})
@@ -394,16 +467,18 @@ def upsert_remote_event(
 
     conn.execute(
         """
-        INSERT INTO google_remote_events (remote_id, title, starts_at, ends_at, etag, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO google_remote_events (remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(remote_id) DO UPDATE SET
           title = excluded.title,
           starts_at = excluded.starts_at,
           ends_at = excluded.ends_at,
           etag = excluded.etag,
+          deleted = excluded.deleted,
+          deleted_at = excluded.deleted_at,
           updated_at = excluded.updated_at
         """,
-        (remote_id, title, start_iso, end_iso, event_etag, now),
+        (remote_id, title, start_iso, end_iso, event_etag, 0, None, now),
     )
     events_service.emit(conn, "google.remote_event_upserted", {"remote_id": remote_id})
     conn.commit()
@@ -440,11 +515,102 @@ def _record_conflict(conn: Connection, local_event_id: str | None, remote_id: st
             json.dumps(detail, sort_keys=True),
             utc_now().isoformat(),
         ),
+        )
+
+
+def _google_payload(title: str, starts_at: str, ends_at: str) -> dict:
+    return {
+        "summary": title,
+        "start": {"dateTime": starts_at},
+        "end": {"dateTime": ends_at},
+    }
+
+
+def _create_google_event(access_token: str, title: str, starts_at: str, ends_at: str) -> dict:
+    response = _http_json_request(
+        _events_collection_url(),
+        access_token=access_token,
+        method="POST",
+        payload=_google_payload(title, starts_at, ends_at),
+    )
+    if not isinstance(response, dict):
+        raise RuntimeError("Google event create returned no payload")
+    return response
+
+
+def _update_google_event(access_token: str, remote_id: str, title: str, starts_at: str, ends_at: str) -> dict:
+    response = _http_json_request(
+        _event_url(remote_id),
+        access_token=access_token,
+        method="PATCH",
+        payload=_google_payload(title, starts_at, ends_at),
+    )
+    if not isinstance(response, dict):
+        raise RuntimeError("Google event update returned no payload")
+    return response
+
+
+def _delete_google_event(access_token: str, remote_id: str) -> None:
+    _http_json_request(
+        _event_url(remote_id),
+        access_token=access_token,
+        method="DELETE",
+        allow_not_found=True,
+    )
+
+
+def _upsert_remote_mirror(
+    conn: Connection,
+    remote_id: str,
+    title: str,
+    starts_at: str,
+    ends_at: str,
+    etag: str,
+    deleted: bool,
+    updated_at: str | None = None,
+) -> None:
+    resolved_updated = updated_at or utc_now().isoformat()
+    conn.execute(
+        """
+        INSERT INTO google_remote_events (remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(remote_id) DO UPDATE SET
+          title = excluded.title,
+          starts_at = excluded.starts_at,
+          ends_at = excluded.ends_at,
+          etag = excluded.etag,
+          deleted = excluded.deleted,
+          deleted_at = excluded.deleted_at,
+          updated_at = excluded.updated_at
+        """,
+        (
+            remote_id,
+            title,
+            starts_at,
+            ends_at,
+            etag,
+            1 if deleted else 0,
+            resolved_updated if deleted else None,
+            resolved_updated,
+        ),
     )
 
 
 def run_two_way_sync(conn: Connection) -> dict:
     imported_from_google_api = sync_remote_from_google_api(conn)
+    try:
+        google_access_token, google_config = _ensure_google_access_token(conn)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("google token refresh failed before sync run: %s", exc)
+        google_access_token = None
+        google_config = None
+
+    google_mode_enabled = bool(
+        google_access_token
+        and google_config is not None
+        and str(google_config.get("source", "")) == "google_oauth"
+    )
+
     last_sync_at = _last_sync_at(conn)
 
     pushed = 0
@@ -454,7 +620,7 @@ def run_two_way_sync(conn: Connection) -> dict:
     local_changed = execute_fetchall(
         conn,
         """
-        SELECT id, title, starts_at, ends_at, remote_id, etag, updated_at
+        SELECT id, title, starts_at, ends_at, remote_id, etag, deleted, deleted_at, updated_at
         FROM calendar_events
         WHERE updated_at > ?
         ORDER BY updated_at ASC
@@ -463,49 +629,100 @@ def run_two_way_sync(conn: Connection) -> dict:
     )
 
     for event in local_changed:
+        local_deleted = bool(event.get("deleted"))
         remote_id = str(event["remote_id"] or f"gcal_{event['id']}")
         local_etag = _etag(str(event["title"]), str(event["starts_at"]), str(event["ends_at"]))
 
         remote = execute_fetchone(
             conn,
-            "SELECT remote_id, title, starts_at, ends_at, etag, updated_at FROM google_remote_events WHERE remote_id = ?",
+            "SELECT remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at FROM google_remote_events WHERE remote_id = ?",
             (remote_id,),
         )
 
         if remote is not None and str(remote["updated_at"]) > last_sync_at and str(event["updated_at"]) > last_sync_at:
-            if str(remote["etag"]) != local_etag:
+            remote_deleted = bool(remote.get("deleted"))
+            if str(remote["etag"]) != local_etag or remote_deleted != local_deleted:
                 conflicts += 1
                 _record_conflict(
                     conn,
                     local_event_id=str(event["id"]),
                     remote_id=remote_id,
                     detail={
-                        "local": {"title": event["title"], "starts_at": event["starts_at"], "ends_at": event["ends_at"]},
-                        "remote": {"title": remote["title"], "starts_at": remote["starts_at"], "ends_at": remote["ends_at"]},
+                        "local": {
+                            "title": event["title"],
+                            "starts_at": event["starts_at"],
+                            "ends_at": event["ends_at"],
+                            "deleted": local_deleted,
+                        },
+                        "remote": {
+                            "title": remote["title"],
+                            "starts_at": remote["starts_at"],
+                            "ends_at": remote["ends_at"],
+                            "deleted": remote_deleted,
+                        },
                     },
                 )
                 continue
 
-        conn.execute(
-            """
-            INSERT INTO google_remote_events (remote_id, title, starts_at, ends_at, etag, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(remote_id) DO UPDATE SET
-              title = excluded.title,
-              starts_at = excluded.starts_at,
-              ends_at = excluded.ends_at,
-              etag = excluded.etag,
-              updated_at = excluded.updated_at
-            """,
-            (
-                remote_id,
-                event["title"],
-                event["starts_at"],
-                event["ends_at"],
-                local_etag,
-                utc_now().isoformat(),
-            ),
-        )
+        if google_mode_enabled:
+            try:
+                if local_deleted:
+                    if event.get("remote_id"):
+                        _delete_google_event(str(google_access_token), remote_id)
+                    _upsert_remote_mirror(
+                        conn,
+                        remote_id=remote_id,
+                        title=str(event["title"]),
+                        starts_at=str(event["starts_at"]),
+                        ends_at=str(event["ends_at"]),
+                        etag=local_etag,
+                        deleted=True,
+                    )
+                elif event.get("remote_id"):
+                    updated_payload = _update_google_event(
+                        access_token=str(google_access_token),
+                        remote_id=remote_id,
+                        title=str(event["title"]),
+                        starts_at=str(event["starts_at"]),
+                        ends_at=str(event["ends_at"]),
+                    )
+                    parsed = _google_event_to_remote(updated_payload, remote)
+                    if parsed is not None:
+                        _upsert_remote_from_google(conn, parsed)
+                        remote_id = parsed["remote_id"]
+                        local_etag = parsed["etag"]
+                else:
+                    created_payload = _create_google_event(
+                        access_token=str(google_access_token),
+                        title=str(event["title"]),
+                        starts_at=str(event["starts_at"]),
+                        ends_at=str(event["ends_at"]),
+                    )
+                    parsed = _google_event_to_remote(created_payload, remote)
+                    if parsed is not None:
+                        _upsert_remote_from_google(conn, parsed)
+                        remote_id = parsed["remote_id"]
+                        local_etag = parsed["etag"]
+            except (HTTPError, URLError, RuntimeError, TimeoutError) as exc:
+                conflicts += 1
+                _record_conflict(
+                    conn,
+                    local_event_id=str(event["id"]),
+                    remote_id=remote_id,
+                    detail={"reason": "google_push_failed", "error": str(exc)},
+                )
+                continue
+        else:
+            _upsert_remote_mirror(
+                conn,
+                remote_id=remote_id,
+                title=str(event["title"]),
+                starts_at=str(event["starts_at"]),
+                ends_at=str(event["ends_at"]),
+                etag=local_etag,
+                deleted=local_deleted,
+            )
+
         conn.execute(
             "UPDATE calendar_events SET remote_id = ?, etag = ?, source = ? WHERE id = ?",
             (remote_id, local_etag, "google", event["id"]),
@@ -514,22 +731,58 @@ def run_two_way_sync(conn: Connection) -> dict:
 
     remote_changed = execute_fetchall(
         conn,
-        "SELECT remote_id, title, starts_at, ends_at, etag, updated_at FROM google_remote_events WHERE updated_at > ?",
+        """
+        SELECT remote_id, title, starts_at, ends_at, etag, deleted, deleted_at, updated_at
+        FROM google_remote_events
+        WHERE updated_at > ?
+        """,
         (last_sync_at,),
     )
 
     for remote in remote_changed:
+        remote_deleted = bool(remote.get("deleted"))
         local = execute_fetchone(
             conn,
-            "SELECT id, updated_at, etag FROM calendar_events WHERE remote_id = ?",
+            "SELECT id, updated_at, etag, deleted FROM calendar_events WHERE remote_id = ?",
             (remote["remote_id"],),
         )
+
+        if remote_deleted:
+            if local is None:
+                continue
+            if str(local["updated_at"]) > last_sync_at and not bool(local.get("deleted")):
+                conflicts += 1
+                _record_conflict(
+                    conn,
+                    local_event_id=str(local["id"]),
+                    remote_id=str(remote["remote_id"]),
+                    detail={"reason": "remote_deleted_local_changed"},
+                )
+                continue
+            conn.execute(
+                """
+                UPDATE calendar_events
+                SET deleted = 1, deleted_at = ?, source = ?, etag = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    remote.get("deleted_at") or remote["updated_at"],
+                    "google",
+                    remote["etag"],
+                    remote["updated_at"],
+                    local["id"],
+                ),
+            )
+            pulled += 1
+            continue
 
         if local is None:
             conn.execute(
                 """
-                INSERT INTO calendar_events (id, title, starts_at, ends_at, source, remote_id, etag, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO calendar_events (
+                  id, title, starts_at, ends_at, source, remote_id, etag, deleted, deleted_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     new_id("cal"),
@@ -539,6 +792,8 @@ def run_two_way_sync(conn: Connection) -> dict:
                     "google",
                     remote["remote_id"],
                     remote["etag"],
+                    0,
+                    None,
                     utc_now().isoformat(),
                     remote["updated_at"],
                 ),
@@ -557,7 +812,11 @@ def run_two_way_sync(conn: Connection) -> dict:
             continue
 
         conn.execute(
-            "UPDATE calendar_events SET title = ?, starts_at = ?, ends_at = ?, etag = ?, source = ?, updated_at = ? WHERE id = ?",
+            """
+            UPDATE calendar_events
+            SET title = ?, starts_at = ?, ends_at = ?, etag = ?, source = ?, deleted = 0, deleted_at = NULL, updated_at = ?
+            WHERE id = ?
+            """,
             (
                 remote["title"],
                 remote["starts_at"],

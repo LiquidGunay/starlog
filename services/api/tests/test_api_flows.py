@@ -172,6 +172,29 @@ def test_generate_time_blocks(client: TestClient, auth_headers: dict[str, str]) 
     assert len(listed.json()) >= 1
 
 
+def test_calendar_soft_delete_hides_events(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/v1/calendar/events",
+        json={
+            "title": "Disposable Event",
+            "starts_at": "2026-03-09T10:00:00+00:00",
+            "ends_at": "2026-03-09T10:30:00+00:00",
+            "source": "internal",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    event_id = created.json()["id"]
+
+    deleted = client.delete(f"/v1/calendar/events/{event_id}", headers=auth_headers)
+    assert deleted.status_code == 204
+
+    listed = client.get("/v1/calendar/events", headers=auth_headers)
+    assert listed.status_code == 200
+    ids = {item["id"] for item in listed.json()}
+    assert event_id not in ids
+
+
 def test_provider_config_and_webhooks(client: TestClient, auth_headers: dict[str, str]) -> None:
     configured = client.post(
         "/v1/integrations/providers/local_llm",

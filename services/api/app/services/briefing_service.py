@@ -16,7 +16,13 @@ def _build_brief_text(conn: Connection, date: str) -> str:
     ).fetchone()[0]
     events = execute_fetchall(
         conn,
-        "SELECT title, starts_at, ends_at FROM calendar_events WHERE starts_at LIKE ? ORDER BY starts_at ASC LIMIT 5",
+        """
+        SELECT title, starts_at, ends_at
+        FROM calendar_events
+        WHERE starts_at LIKE ? AND deleted = 0
+        ORDER BY starts_at ASC
+        LIMIT 5
+        """,
         (f"{date}%",),
     )
 

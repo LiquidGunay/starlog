@@ -18,10 +18,12 @@ def create_event(
     event_id = new_id("cal")
     conn.execute(
         """
-        INSERT INTO calendar_events (id, title, starts_at, ends_at, source, remote_id, etag, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO calendar_events (
+          id, title, starts_at, ends_at, source, remote_id, etag, deleted, deleted_at, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (event_id, title, iso(starts_at), iso(ends_at), source, remote_id, etag, now, now),
+        (event_id, title, iso(starts_at), iso(ends_at), source, remote_id, etag, 0, None, now, now),
     )
     events_service.emit(
         conn,
@@ -36,16 +38,20 @@ def create_event(
 
 
 def list_events(conn: Connection) -> list[dict]:
-    return execute_fetchall(conn, "SELECT * FROM calendar_events ORDER BY starts_at ASC")
+    return execute_fetchall(conn, "SELECT * FROM calendar_events WHERE deleted = 0 ORDER BY starts_at ASC")
 
 
-def get_event(conn: Connection, event_id: str) -> dict | None:
-    return execute_fetchone(conn, "SELECT * FROM calendar_events WHERE id = ?", (event_id,))
+def get_event(conn: Connection, event_id: str, include_deleted: bool = False) -> dict | None:
+    if include_deleted:
+        return execute_fetchone(conn, "SELECT * FROM calendar_events WHERE id = ?", (event_id,))
+    return execute_fetchone(conn, "SELECT * FROM calendar_events WHERE id = ? AND deleted = 0", (event_id,))
 
 
 def update_event(conn: Connection, event_id: str, changes: dict) -> dict | None:
-    event = get_event(conn, event_id)
+    event = get_event(conn, event_id, include_deleted=True)
     if event is None:
+        return None
+    if bool(event.get("deleted")):
         return None
 
     merged = dict(event)
@@ -76,3 +82,20 @@ def update_event(conn: Connection, event_id: str, changes: dict) -> dict | None:
     )
     conn.commit()
     return get_event(conn, event_id)
+
+
+def delete_event(conn: Connection, event_id: str) -> bool:
+    existing = get_event(conn, event_id, include_deleted=True)
+    if existing is None:
+        return False
+    if bool(existing.get("deleted")):
+        return True
+
+    now = utc_now().isoformat()
+    conn.execute(
+        "UPDATE calendar_events SET deleted = 1, deleted_at = ?, updated_at = ? WHERE id = ?",
+        (now, now, event_id),
+    )
+    events_service.emit(conn, "calendar_event.deleted", {"event_id": event_id, "source": existing["source"]})
+    conn.commit()
+    return True

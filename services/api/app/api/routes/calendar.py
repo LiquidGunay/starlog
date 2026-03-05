@@ -65,6 +65,17 @@ def update_event(
     return CalendarEventResponse.model_validate(updated)
 
 
+@router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_event(
+    event_id: str,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> None:
+    deleted = calendar_service.delete_event(db, event_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+
+
 @router.post("/sync/google/oauth/start", response_model=GoogleOAuthStartResponse)
 def google_oauth_start(
     payload: GoogleOAuthStartRequest,

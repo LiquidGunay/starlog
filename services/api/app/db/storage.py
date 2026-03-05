@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   source TEXT NOT NULL,
   remote_id TEXT,
   etag TEXT,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -220,6 +222,8 @@ CREATE TABLE IF NOT EXISTS google_remote_events (
   starts_at TEXT NOT NULL,
   ends_at TEXT NOT NULL,
   etag TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
   updated_at TEXT NOT NULL
 );
 
@@ -256,6 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_starts ON calendar_events(starts_at);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_deleted ON calendar_events(deleted, starts_at);
 CREATE INDEX IF NOT EXISTS idx_time_blocks_start ON time_blocks(starts_at);
 CREATE INDEX IF NOT EXISTS idx_briefing_date ON briefing_packages(date);
 CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
@@ -287,7 +292,23 @@ def get_connection() -> Iterator[sqlite3.Connection]:
 def init_storage() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA_SQL)
+        _ensure_runtime_columns(conn)
         conn.commit()
+
+
+def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
+    # Keep local dev DBs forward-compatible when columns are added after initial bootstrap.
+    _ensure_column(conn, "calendar_events", "deleted", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "calendar_events", "deleted_at", "TEXT")
+    _ensure_column(conn, "google_remote_events", "deleted", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "google_remote_events", "deleted_at", "TEXT")
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    if any(row["name"] == column for row in rows):
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:

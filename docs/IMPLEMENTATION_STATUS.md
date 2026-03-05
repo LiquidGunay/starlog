@@ -34,6 +34,8 @@
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
+- Calendar events now support sync-aware soft delete (`DELETE /v1/calendar/events/{id}`) with tombstone tracking.
+- Google sync now includes push/update/delete parity paths when connected in real OAuth mode, while retaining mirror-mode fallback.
 - Web UI refresh with modern "spacy" look and dark/light modes.
 - Artifacts workspace now includes graph and version-history panels.
 - Planner workspace now includes day-board timeline view for blocks/events plus richer sync status surfaces.
@@ -45,7 +47,7 @@
 ## Next implementation targets
 
 1. Persist provider credentials securely (keychain/encrypted storage) and harden health checks.
-2. Expand Google API coverage from pull to full push/update/delete parity with conflict resolution policy.
+2. Harden Google push/update/delete sync behavior with live integration tests and clearer conflict-resolution UX.
 3. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
 4. Deepen PWA multi-page workspace toward production UX (calendar board, richer review sessions, artifact graph navigation).
 5. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).

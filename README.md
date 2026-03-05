@@ -106,7 +106,14 @@ curl -X POST http://localhost:8000/v1/auth/login \
   - `GET /v1/calendar/sync/google/remote/events`
   - `GET /v1/calendar/sync/google/conflicts`
 
-When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configured, callback performs a real Google token exchange.
+When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configured, callback performs a real Google token exchange and sync can pull/push/update/delete events against Google Calendar.
+
+## Calendar event lifecycle
+
+- Create event: `POST /v1/calendar/events`
+- Update event: `PATCH /v1/calendar/events/{event_id}`
+- Soft-delete event (sync-aware): `DELETE /v1/calendar/events/{event_id}`
+- List active events: `GET /v1/calendar/events`
 
 ## Extensibility + import
 
