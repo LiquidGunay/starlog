@@ -549,6 +549,14 @@ export default function App() {
       setStatus("Loaded capture from share deep link");
     });
 
+    return () => {
+      active = false;
+      notificationSubscription.remove();
+      linkSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active" && token && pendingCaptures.length > 0) {
         flushPendingCaptures("auto").catch(() => undefined);
@@ -556,12 +564,9 @@ export default function App() {
     });
 
     return () => {
-      active = false;
-      notificationSubscription.remove();
-      linkSubscription.remove();
       appStateSubscription.remove();
     };
-  }, [pendingCaptures.length, token]);
+  }, [token, pendingCaptures.length, apiBase]);
 
   useEffect(() => {
     if (!hydrated) {
