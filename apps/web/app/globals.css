@@ -246,3 +246,46 @@ body {
   gap: 0.8rem;
   margin-bottom: 1rem;
 }
+
+.timeline-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.timeline-item {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
+  background: var(--chip);
+}
+
+.timeline-kind {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.65rem;
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+  margin-right: 0.45rem;
+}
+
+.timeline-kind-block {
+  background: rgba(118, 166, 255, 0.23);
+}
+
+.timeline-kind-event {
+  background: rgba(182, 132, 255, 0.23);
+}
+
+.timeline-time {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}

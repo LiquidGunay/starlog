@@ -36,6 +36,28 @@ type OAuthStatus = {
   detail: string;
 };
 
+type TimelineItem = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  kind: "block" | "event";
+  source: string;
+};
+
+function isSameDay(iso: string, date: string): boolean {
+  return iso.slice(0, 10) === date;
+}
+
+function toMinutes(iso: string): number {
+  const stamp = new Date(iso);
+  return stamp.getHours() * 60 + stamp.getMinutes();
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function PlannerPage() {
   const { apiBase, token } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -45,6 +67,30 @@ export default function PlannerPage() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
   const [status, setStatus] = useState("Ready");
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const blockItems = blocks
+      .filter((block) => isSameDay(block.starts_at, date))
+      .map<TimelineItem>((block) => ({
+        id: `blk-${block.id}`,
+        title: block.title,
+        startsAt: block.starts_at,
+        endsAt: block.ends_at,
+        kind: "block",
+        source: "planner",
+      }));
+    const eventItems = events
+      .filter((event) => isSameDay(event.starts_at, date))
+      .map<TimelineItem>((event) => ({
+        id: `evt-${event.id}`,
+        title: event.title,
+        startsAt: event.starts_at,
+        endsAt: event.ends_at,
+        kind: "event",
+        source: event.source,
+      }));
+
+    return [...blockItems, ...eventItems].sort((left, right) => toMinutes(left.startsAt) - toMinutes(right.startsAt));
+  }, [blocks, events, date]);
 
   async function generate() {
     try {
@@ -143,6 +189,31 @@ export default function PlannerPage() {
         </div>
 
         <div className="panel glass">
+          <h2>Day board</h2>
+          <p className="console-copy">
+            {timeline.length} scheduled item(s) on {date}
+          </p>
+          {timeline.length === 0 ? (
+            <p className="console-copy">No timeline items for this day yet.</p>
+          ) : (
+            <ul className="timeline-list">
+              {timeline.map((item) => (
+                <li key={item.id} className="timeline-item">
+                  <div>
+                    <span className={`timeline-kind ${item.kind === "block" ? "timeline-kind-block" : "timeline-kind-event"}`}>
+                      {item.kind}
+                    </span>
+                    <strong>{item.title}</strong>
+                    <p className="console-copy">{item.source}</p>
+                  </div>
+                  <div className="timeline-time">
+                    {formatTime(item.startsAt)} - {formatTime(item.endsAt)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <h2>Blocks</h2>
           {blocks.length === 0 ? (
             <p className="console-copy">No blocks yet.</p>
