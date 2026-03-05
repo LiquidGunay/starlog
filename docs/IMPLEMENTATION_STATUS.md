@@ -28,6 +28,10 @@
 - Browser extension now posts raw/normalized/extracted capture layers to `/v1/capture`.
 - Desktop helper now posts captures to `/v1/capture` and attempts strict on-device OCR (`tesseract`) for screenshots.
 - Mobile companion now supports quick text capture to `/v1/capture`.
+- Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
+- Mobile companion capture path now supports retry queue + manual/auto flush for transient network failures.
+- Mobile companion now supports `starlog://capture?...` deep-link ingestion for share-to-app style capture prefill.
+- Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
 - Web UI refresh with modern "spacy" look and dark/light modes.
@@ -40,6 +44,6 @@
 
 1. Persist provider credentials securely (keychain/encrypted storage) and harden health checks.
 2. Expand Google API coverage from pull to full push/update/delete parity with conflict resolution policy.
-3. Harden mobile alarm/background behavior for production (permissions UX, retries, edge cases) plus share-sheet capture.
+3. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
 4. Deepen PWA multi-page workspace toward production UX (calendar board, richer review sessions, artifact graph navigation).
 5. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).

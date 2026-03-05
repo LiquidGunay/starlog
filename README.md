@@ -45,6 +45,8 @@ Use the phone setup guide for both PWA and Expo companion flows:
 
 - `docs/PHONE_SETUP.md`
 
+Mobile companion currently supports queued capture retries, daily alarm scheduling, and deep-link capture prefill via `starlog://capture?...`.
+
 ### Tests
 
 ```bash

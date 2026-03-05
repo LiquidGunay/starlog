@@ -59,6 +59,22 @@ pnpm --filter mobile start
    - API base: `http://<LAN_IP>:8000`
    - Bearer token: paste token from PWA/web login
 
+## 6) Test mobile share capture (deep-link path)
+
+The companion app now supports incoming capture payloads via `starlog://capture?...`.
+
+Example payload format:
+
+```text
+starlog://capture?title=Clip&text=Remember%20this&source_url=https%3A%2F%2Fexample.com
+```
+
+Ways to trigger:
+- iOS: open the URL from Notes/Safari/Shortcuts.
+- Android: `adb shell am start -a android.intent.action.VIEW -d "starlog://capture?title=Clip&text=Hello"` (when testing with emulator/device + debug tools).
+
+When opened, the app pre-fills the capture form so you can submit immediately or queue offline.
+
 ## Troubleshooting
 
 - If phone cannot reach web/API, check firewall and that both devices are on same network.
