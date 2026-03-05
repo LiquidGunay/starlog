@@ -27,6 +27,15 @@ type Conflict = {
   strategy: string;
 };
 
+type OAuthStatus = {
+  connected: boolean;
+  mode?: string | null;
+  source?: string | null;
+  expires_at?: string | null;
+  has_refresh_token: boolean;
+  detail: string;
+};
+
 export default function PlannerPage() {
   const { apiBase, token } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -34,6 +43,7 @@ export default function PlannerPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
   const [status, setStatus] = useState("Ready");
 
   async function generate() {
@@ -54,14 +64,25 @@ export default function PlannerPage() {
     }
   }
 
+  async function loadOauthStatus() {
+    try {
+      const payload = await apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status");
+      setOauthStatus(payload);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "OAuth status load failed");
+    }
+  }
+
   async function load() {
     try {
-      const [blockPayload, eventPayload] = await Promise.all([
+      const [blockPayload, eventPayload, oauthPayload] = await Promise.all([
         apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
         apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
+        apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
       ]);
       setBlocks(blockPayload);
       setEvents(eventPayload);
+      setOauthStatus(oauthPayload);
       setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Load failed");
@@ -97,7 +118,7 @@ export default function PlannerPage() {
       setStatus(`Google sync pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
-      await load();
+      await Promise.all([load(), loadOauthStatus()]);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Google sync failed");
     }
@@ -159,6 +180,19 @@ export default function PlannerPage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          <h2>Google OAuth</h2>
+          {!oauthStatus ? (
+            <p className="console-copy">OAuth status not loaded.</p>
+          ) : (
+            <div>
+              <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
+              <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
+              <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
+              <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
+              <p className="console-copy">{oauthStatus.detail}</p>
+            </div>
           )}
         </div>
       </section>

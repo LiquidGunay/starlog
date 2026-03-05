@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/v1/calendar/sync/google/oauth/callback"
+    google_calendar_id: str = "primary"
     google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
 
 

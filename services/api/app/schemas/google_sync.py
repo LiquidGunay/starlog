@@ -22,6 +22,15 @@ class GoogleOAuthCallbackResponse(BaseModel):
     detail: str
 
 
+class GoogleOAuthStatusResponse(BaseModel):
+    connected: bool
+    mode: str | None = None
+    source: str | None = None
+    expires_at: datetime | None = None
+    has_refresh_token: bool = False
+    detail: str
+
+
 class GoogleRemoteEventCreateRequest(BaseModel):
     remote_id: str = Field(..., min_length=1)
     title: str = Field(..., min_length=1)

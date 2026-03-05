@@ -44,3 +44,4 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-05: `corepack pnpm install` failed due to DNS/network resolution (`ENOTFOUND registry.npmjs.org`), so JS dependency-based checks are currently blocked.
 - 2026-03-05: Re-running `corepack pnpm install --force` again hit intermittent DNS resolution errors to `registry.npmjs.org`.
 - 2026-03-05: `pnpm install` succeeds when run with elevated network permissions; default sandbox networking still intermittently fails for npm registry access.
+- 2026-03-05: Rust toolchain (`cargo`) is unavailable in this environment, so desktop-helper Rust compile checks cannot run here.

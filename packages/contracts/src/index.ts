@@ -182,6 +182,15 @@ export interface GoogleOAuthCallbackRequest {
   state: string;
 }
 
+export interface GoogleOAuthStatusResponse {
+  connected: boolean;
+  mode?: string | null;
+  source?: string | null;
+  expires_at?: string | null;
+  has_refresh_token: boolean;
+  detail: string;
+}
+
 export interface GoogleSyncRunResponse {
   pushed: number;
   pulled: number;

@@ -92,10 +92,13 @@ curl -X POST http://localhost:8000/v1/auth/login \
 
 - Start OAuth intent: `POST /v1/calendar/sync/google/oauth/start`
 - Complete OAuth callback: `POST /v1/calendar/sync/google/oauth/callback`
+- Inspect OAuth connection mode/token state: `GET /v1/calendar/sync/google/oauth/status`
 - Run two-way delta sync: `POST /v1/calendar/sync/google/run`
 - Inspect remote mirror + conflicts:
   - `GET /v1/calendar/sync/google/remote/events`
   - `GET /v1/calendar/sync/google/conflicts`
+
+When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configured, callback performs a real Google token exchange.
 
 ## Extensibility + import
 

@@ -211,6 +211,12 @@ def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict
     assert callback.status_code == 200
     assert callback.json()["connected"] is True
 
+    oauth_status = client.get("/v1/calendar/sync/google/oauth/status", headers=auth_headers)
+    assert oauth_status.status_code == 200
+    oauth_payload = oauth_status.json()
+    assert oauth_payload["connected"] is True
+    assert oauth_payload["source"] in {"mock_oauth", "google_oauth"}
+
     local_event = client.post(
         "/v1/calendar/events",
         json={

@@ -12,6 +12,7 @@ from app.schemas.google_sync import (
     CalendarConflictResponse,
     GoogleOAuthCallbackRequest,
     GoogleOAuthCallbackResponse,
+    GoogleOAuthStatusResponse,
     GoogleOAuthStartRequest,
     GoogleOAuthStartResponse,
     GoogleRemoteEventCreateRequest,
@@ -82,6 +83,15 @@ def google_oauth_callback(
 ) -> GoogleOAuthCallbackResponse:
     connected, detail = google_calendar_service.oauth_callback(db, payload.code, payload.state)
     return GoogleOAuthCallbackResponse(connected=connected, detail=detail)
+
+
+@router.get("/sync/google/oauth/status", response_model=GoogleOAuthStatusResponse)
+def google_oauth_status(
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> GoogleOAuthStatusResponse:
+    status_payload = google_calendar_service.oauth_status(db)
+    return GoogleOAuthStatusResponse.model_validate(status_payload)
 
 
 @router.post("/sync/google/run", response_model=GoogleSyncRunResponse)
