@@ -16,6 +16,8 @@
   - briefings + alarms (`/v1/briefings/*`, `/v1/alarms`)
   - events + webhook registry (`/v1/events`, `/v1/webhooks`)
   - provider integration config/health (`/v1/integrations/providers/*`)
+  - plugin registry API (`/v1/plugins`)
+  - markdown import API (`/v1/import/markdown`)
   - AI provider routing (`/v1/ai/run`)
   - export (`/v1/export`)
 - Browser extension scaffold for clipping.
@@ -23,7 +25,7 @@
 - Desktop helper now posts clipboard clips to API and includes screenshot command wiring.
 - Web UI refresh with modern "spacy" look and dark/light modes.
 - Mobile companion now includes briefing cache + notification alarm pipeline scaffold.
-- API tests + lint + type checks passing via `uv` (`8 passed`).
+- API tests + lint + type checks passing via `uv` (`9 passed`).
 
 ## Next implementation targets
 

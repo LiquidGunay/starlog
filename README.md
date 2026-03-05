@@ -91,6 +91,11 @@ curl -X POST http://localhost:8000/v1/auth/login \
   - `GET /v1/calendar/sync/google/remote/events`
   - `GET /v1/calendar/sync/google/conflicts`
 
+## Extensibility + import
+
+- Register/list plugins: `POST /v1/plugins`, `GET /v1/plugins`
+- Import markdown notes: `POST /v1/import/markdown`
+
 ## Current status
 
 This is an active implementation pass toward the approved v1 plan in `docs/STARLOG_V1_PLAN.md`.

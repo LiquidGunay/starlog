@@ -9,9 +9,11 @@ from app.api.routes import (
     events,
     export,
     health,
+    importing,
     integrations,
     notes,
     planning,
+    plugins,
     srs,
     sync,
     tasks,
@@ -31,4 +33,6 @@ api_router.include_router(srs.router, tags=["srs"])
 api_router.include_router(briefings.router, tags=["briefings"])
 api_router.include_router(events.router, tags=["events"])
 api_router.include_router(integrations.router, tags=["integrations"])
+api_router.include_router(plugins.router, tags=["plugins"])
+api_router.include_router(importing.router, tags=["import"])
 api_router.include_router(export.router, tags=["export"])

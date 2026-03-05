@@ -139,3 +139,31 @@ export interface CalendarConflictResponse {
   detail: Record<string, unknown>;
   created_at: string;
 }
+
+export interface PluginRegisterRequest {
+  name: string;
+  version: string;
+  capabilities: string[];
+  manifest: Record<string, unknown>;
+}
+
+export interface PluginResponse {
+  id: string;
+  name: string;
+  version: string;
+  capabilities: string[];
+  manifest: Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarkdownImportRequest {
+  title: string;
+  markdown: string;
+}
+
+export interface MarkdownImportResponse {
+  note_id: string;
+  created_at: string;
+}

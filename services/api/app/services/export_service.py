@@ -22,6 +22,7 @@ TABLES = [
     "google_remote_events",
     "calendar_sync_meta",
     "calendar_sync_conflicts",
+    "plugins",
 ]
 
 

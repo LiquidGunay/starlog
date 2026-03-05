@@ -235,3 +235,34 @@ def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict
 
     conflicts = client.get("/v1/calendar/sync/google/conflicts", headers=auth_headers)
     assert conflicts.status_code == 200
+
+
+def test_plugins_and_markdown_import(client: TestClient, auth_headers: dict[str, str]) -> None:
+    plugin = client.post(
+        "/v1/plugins",
+        json={
+            "name": "starlog-card-ext",
+            "version": "0.1.0",
+            "capabilities": ["card_type.custom", "artifact.transform"],
+            "manifest": {"entrypoint": "plugins/card_ext.py"},
+        },
+        headers=auth_headers,
+    )
+    assert plugin.status_code == 201
+    assert plugin.json()["name"] == "starlog-card-ext"
+
+    plugins = client.get("/v1/plugins", headers=auth_headers)
+    assert plugins.status_code == 200
+    assert len(plugins.json()) >= 1
+
+    imported = client.post(
+        "/v1/import/markdown",
+        json={"title": "Imported Note", "markdown": "# Heading\\n\\nImported content"},
+        headers=auth_headers,
+    )
+    assert imported.status_code == 201
+
+    notes = client.get("/v1/notes", headers=auth_headers)
+    assert notes.status_code == 200
+    titles = {note["title"] for note in notes.json()}
+    assert "Imported Note" in titles

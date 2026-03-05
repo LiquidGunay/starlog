@@ -229,6 +229,17 @@ CREATE TABLE IF NOT EXISTS calendar_sync_conflicts (
   FOREIGN KEY (local_event_id) REFERENCES calendar_events(id)
 );
 
+CREATE TABLE IF NOT EXISTS plugins (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  version TEXT NOT NULL,
+  capabilities_json TEXT NOT NULL,
+  manifest_json TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
@@ -240,6 +251,7 @@ CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
 CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
 CREATE INDEX IF NOT EXISTS idx_google_remote_updated ON google_remote_events(updated_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_created ON calendar_sync_conflicts(created_at);
+CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
 """
 
 
