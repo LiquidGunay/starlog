@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     env: str = "dev"
     db_path: str = ".localdata/starlog.db"
+    media_dir: str = ".localdata/media"
     auth_session_hours: int = 24 * 14
     sync_pull_limit: int = Field(default=100, ge=1, le=500)
     cors_allow_origins: str = "*"

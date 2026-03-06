@@ -70,6 +70,246 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
     assert "artifact.action_suggested" in event_types
 
 
+def test_artifact_actions_use_ai_provider_outputs(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import ai_service
+
+    def fake_run(_conn, capability: str, payload: dict, prefer_local: bool):
+        assert prefer_local is True
+        if capability == "llm_summary":
+            return "codex_bridge", "ok", {"summary": f"Summary for {payload['title']}"}
+        if capability == "llm_cards":
+            return "api_fallback", "fallback", {
+                "cards": [
+                    {
+                        "prompt": "What matters most?",
+                        "answer": "Strong provenance and quick recall.",
+                        "card_type": "qa",
+                    }
+                ]
+            }
+        if capability == "llm_tasks":
+            return "local", "ok", {
+                "tasks": [
+                    {
+                        "title": "Review the captured source",
+                        "estimate_min": 20,
+                        "priority": 4,
+                    }
+                ]
+            }
+        return "none", "failed", {}
+
+    monkeypatch.setattr(ai_service, "run", fake_run)
+
+    artifact = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_browser",
+            "capture_source": "browser_ext",
+            "title": "Provider-backed clip",
+            "normalized": {"text": "Remember the source and act on it."},
+        },
+        headers=auth_headers,
+    )
+    assert artifact.status_code == 201
+    artifact_id = artifact.json()["artifact"]["id"]
+
+    for action in ["summarize", "cards", "tasks"]:
+        response = client.post(
+            f"/v1/artifacts/{artifact_id}/actions",
+            json={"action": action},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "completed"
+
+    graph = client.get(f"/v1/artifacts/{artifact_id}/graph", headers=auth_headers)
+    assert graph.status_code == 200
+    payload = graph.json()
+    assert payload["summaries"][0]["provider"] == "codex_bridge"
+    assert payload["summaries"][0]["content"] == "Summary for Provider-backed clip"
+    assert payload["cards"][0]["prompt"] == "What matters most?"
+    assert payload["tasks"][0]["title"] == "Review the captured source"
+
+
+def test_deferred_ai_job_queue_flow(client: TestClient, auth_headers: dict[str, str]) -> None:
+    artifact = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_browser",
+            "capture_source": "browser_ext",
+            "title": "Queued Codex clip",
+            "normalized": {"text": "Batch this later with Codex."},
+        },
+        headers=auth_headers,
+    )
+    assert artifact.status_code == 201
+    artifact_id = artifact.json()["artifact"]["id"]
+
+    queued = client.post(
+        f"/v1/artifacts/{artifact_id}/actions",
+        json={"action": "summarize", "defer": True, "provider_hint": "codex_local"},
+        headers=auth_headers,
+    )
+    assert queued.status_code == 200
+    assert queued.json()["status"] == "queued"
+    job_id = queued.json()["output_ref"]
+    assert job_id
+
+    jobs = client.get("/v1/ai/jobs?status=pending&provider_hint=codex_local", headers=auth_headers)
+    assert jobs.status_code == 200
+    ids = {job["id"] for job in jobs.json()}
+    assert job_id in ids
+
+    claimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-codex-runner"},
+        headers=auth_headers,
+    )
+    assert claimed.status_code == 200
+    assert claimed.json()["status"] == "running"
+
+    completed = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-codex-runner",
+            "provider_used": "codex_local",
+            "output": {"summary": "Queued summary from Codex."},
+        },
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+
+    graph = client.get(f"/v1/artifacts/{artifact_id}/graph", headers=auth_headers)
+    assert graph.status_code == 200
+    assert graph.json()["summaries"][0]["content"] == "Queued summary from Codex."
+    assert graph.json()["summaries"][0]["provider"] == "codex_local"
+
+
+def test_voice_capture_queues_whisper_transcription(client: TestClient, auth_headers: dict[str, str]) -> None:
+    captured = client.post(
+        "/v1/capture/voice",
+        headers=auth_headers,
+        files={"file": ("voice-note.wav", b"RIFF....WAVEfmt ", "audio/wav")},
+        data={
+            "title": "Voice thought",
+            "duration_ms": "4200",
+            "provider_hint": "whisper_local",
+        },
+    )
+    assert captured.status_code == 201
+    payload = captured.json()
+    artifact_id = payload["artifact"]["id"]
+    job_id = payload["job_id"]
+    assert payload["artifact"]["source_type"] == "voice_note"
+
+    jobs = client.get("/v1/ai/jobs?status=pending&provider_hint=whisper_local", headers=auth_headers)
+    assert jobs.status_code == 200
+    assert job_id in {job["id"] for job in jobs.json()}
+
+    claimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-whisper-runner"},
+        headers=auth_headers,
+    )
+    assert claimed.status_code == 200
+
+    completed = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-whisper-runner",
+            "provider_used": "whisper_local",
+            "output": {"transcript": "Transcribed voice note from Whisper."},
+        },
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+
+    graph = client.get(f"/v1/artifacts/{artifact_id}/graph", headers=auth_headers)
+    assert graph.status_code == 200
+    assert graph.json()["artifact"]["normalized_content"] == "Transcribed voice note from Whisper."
+
+    media_asset = client.get(
+        f"/v1/media/{payload['artifact']['metadata']['capture']['layers']['raw']['blob_ref'].removeprefix('media://')}",
+        headers=auth_headers,
+    )
+    assert media_asset.status_code == 200
+
+
+def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict[str, str]) -> None:
+    tools = client.get("/v1/agent/tools", headers=auth_headers)
+    assert tools.status_code == 200
+    tool_names = {item["name"] for item in tools.json()}
+    assert "run_artifact_action" in tool_names
+    assert "schedule_morning_brief_alarm" in tool_names
+
+    openai_tools = client.get("/v1/agent/tools?format=openai", headers=auth_headers)
+    assert openai_tools.status_code == 200
+    assert openai_tools.json()[0]["type"] == "function"
+
+    captured = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "capture_text_as_artifact",
+            "arguments": {
+                "title": "Agent-created clip",
+                "text": "Create cards from this later.",
+                "tags": ["agent", "chat"],
+            },
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 200
+    artifact_id = captured.json()["result"]["artifact"]["id"]
+
+    queued = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "run_artifact_action",
+            "arguments": {
+                "artifact_id": artifact_id,
+                "action": "cards",
+                "defer": True,
+                "provider_hint": "codex_local",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert queued.status_code == 200
+    assert queued.json()["result"]["status"] == "queued"
+
+    scheduled = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "schedule_morning_brief_alarm",
+            "arguments": {
+                "date": "2026-03-07",
+                "trigger_at": "2026-03-07T07:30:00+00:00",
+                "device_target": "android-phone",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert scheduled.status_code == 200
+    assert scheduled.json()["result"]["alarm"]["device_target"] == "android-phone"
+
+    search = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "search_starlog",
+            "arguments": {"query": "Agent-created", "limit": 5},
+        },
+        headers=auth_headers,
+    )
+    assert search.status_code == 200
+    assert any(item["id"] == artifact_id for item in search.json()["result"])
+
+
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:
     artifact = client.post(
         "/v1/artifacts",
@@ -304,6 +544,96 @@ def test_sync_activity_history(client: TestClient, auth_headers: dict[str, str])
     assert len(filtered.json()["entries"]) == 2
 
 
+def test_export_import_roundtrip(client: TestClient, auth_headers: dict[str, str]) -> None:
+    artifact = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_browser",
+            "capture_source": "browser_ext",
+            "title": "Roundtrip article",
+            "raw": {"text": "<html>Roundtrip article raw</html>", "mime_type": "text/html"},
+            "normalized": {"text": "Roundtrip article normalized text", "mime_type": "text/plain"},
+            "extracted": {"text": "Roundtrip extracted text"},
+            "metadata": {"source": "roundtrip_test"},
+        },
+        headers=auth_headers,
+    )
+    assert artifact.status_code == 201
+    artifact_id = artifact.json()["artifact"]["id"]
+
+    for action in ["summarize", "cards", "tasks", "append_note"]:
+        response = client.post(
+            f"/v1/artifacts/{artifact_id}/actions",
+            json={"action": action},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+
+    created_event = client.post(
+        "/v1/calendar/events",
+        json={
+            "title": "Roundtrip event",
+            "starts_at": "2026-03-06T12:00:00+00:00",
+            "ends_at": "2026-03-06T12:30:00+00:00",
+            "source": "internal",
+        },
+        headers=auth_headers,
+    )
+    assert created_event.status_code == 201
+
+    voice_capture = client.post(
+        "/v1/capture/voice",
+        headers=auth_headers,
+        files={"file": ("roundtrip-voice.wav", b"RIFF....WAVEfmt ", "audio/wav")},
+        data={"title": "Roundtrip voice", "provider_hint": "whisper_local"},
+    )
+    assert voice_capture.status_code == 201
+
+    exported = client.get("/v1/export", headers=auth_headers)
+    assert exported.status_code == 200
+    export_payload = exported.json()
+    assert export_payload["manifest"]["table_counts"]["media_assets"] == 1
+    assert len(export_payload["media_blobs"]) == 1
+
+    restored = client.post(
+        "/v1/import/export",
+        json={"export_payload": export_payload, "replace_existing": True},
+        headers=auth_headers,
+    )
+    assert restored.status_code == 201
+    restored_counts = restored.json()["restored_tables"]
+    assert restored_counts["artifacts"] >= 1
+    assert restored_counts["artifact_relations"] >= 1
+
+    reexported = client.get("/v1/export", headers=auth_headers)
+    assert reexported.status_code == 200
+    reexport_payload = reexported.json()
+
+    for table in [
+        "artifacts",
+        "media_assets",
+        "action_runs",
+        "artifact_relations",
+        "summary_versions",
+        "notes",
+        "note_blocks",
+        "card_set_versions",
+        "cards",
+        "tasks",
+        "calendar_events",
+    ]:
+        assert reexport_payload["manifest"]["table_counts"][table] == export_payload["manifest"]["table_counts"][table]
+
+    original_artifact_ids = {row["id"] for row in export_payload["entities"]["artifacts"]}
+    roundtrip_artifact_ids = {row["id"] for row in reexport_payload["entities"]["artifacts"]}
+    assert roundtrip_artifact_ids == original_artifact_ids
+
+    original_relation_ids = {row["id"] for row in export_payload["entities"]["artifact_relations"]}
+    roundtrip_relation_ids = {row["id"] for row in reexport_payload["entities"]["artifact_relations"]}
+    assert roundtrip_relation_ids == original_relation_ids
+    assert set(reexport_payload["media_blobs"]) == set(export_payload["media_blobs"])
+
+
 def test_calendar_soft_delete_hides_events(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/v1/calendar/events",
@@ -418,6 +748,27 @@ def test_provider_config_and_webhooks(
     assert api_probe_health.json()["healthy"] is True
     assert api_probe_health.json()["checks"]["auth_probe_ok"] is True
     assert api_probe_health.json()["auth_probe"]["status"] == "ok"
+
+    codex_provider = client.post(
+        "/v1/integrations/providers/codex_bridge",
+        json={
+            "enabled": True,
+            "mode": "bridge",
+            "config": {
+                "bridge_url": "https://codex.example.com",
+                "api_key": "sk-codex-bridge",
+                "model": "gpt-4.1-mini",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert codex_provider.status_code == 200
+    codex_health = client.get("/v1/integrations/providers/codex_bridge/health", headers=auth_headers)
+    assert codex_health.status_code == 200
+    assert codex_health.json()["healthy"] is True
+    assert codex_health.json()["checks"]["auth_probe_ok"] is True
+    assert codex_health.json()["auth_probe"]["target"] == "https://codex.example.com/v1/models"
+    assert codex_health.json()["auth_probe"]["status"] == "ok"
 
     def fake_google_probe(_conn) -> tuple[bool, str, dict[str, str]]:
         return True, "Google auth probe succeeded", {

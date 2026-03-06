@@ -1,7 +1,9 @@
 import { StatusBar } from "expo-status-bar";
+import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import * as Notifications from "expo-notifications";
 import * as Speech from "expo-speech";
+import * as SQLite from "expo-sqlite";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
@@ -40,8 +42,9 @@ type BriefingPayload = {
   text: string;
 };
 
-type PendingCapture = {
+type PendingTextCapture = {
   id: string;
+  kind: "text";
   title: string;
   text: string;
   sourceUrl: string;
@@ -50,8 +53,23 @@ type PendingCapture = {
   lastError?: string;
 };
 
+type PendingVoiceCapture = {
+  id: string;
+  kind: "voice";
+  title: string;
+  sourceUrl: string;
+  createdAt: string;
+  attempts: number;
+  localUri: string;
+  mimeType: string;
+  durationMs: number;
+  lastError?: string;
+};
+
+type PendingCapture = PendingTextCapture | PendingVoiceCapture;
+
 type PersistedState = {
-  version: 1;
+  version: 2;
   apiBase: string;
   pwaBase: string;
   token: string;
@@ -64,6 +82,18 @@ type PersistedState = {
   alarmMinute: number;
   alarmNotificationId: string | null;
   pendingCaptures: PendingCapture[];
+  artifacts: ArtifactListItem[];
+  selectedArtifactId: string;
+  artifactGraph: ArtifactGraph | null;
+  artifactVersions: ArtifactVersions | null;
+  dueCards: DueCard[];
+};
+
+type LegacyPersistedState = Omit<
+  PersistedState,
+  "version" | "artifacts" | "selectedArtifactId" | "artifactGraph" | "artifactVersions" | "dueCards"
+> & {
+  version: 1;
 };
 
 type DueCard = {
@@ -109,12 +139,17 @@ type ArtifactVersions = {
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
+const DEFAULT_VOICE_MIME = "audio/x-m4a";
+const MOBILE_DB_NAME = "starlog-mobile.db";
+const MOBILE_STATE_KEY = "state_v2";
 const artifactQuickActions: Array<{ label: string; action: ArtifactAction }> = [
   { label: "Summarize", action: "summarize" },
   { label: "Create Cards", action: "cards" },
   { label: "Generate Tasks", action: "tasks" },
   { label: "Append Note", action: "append_note" },
 ];
+
+let stateDbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 function usePalette(): Palette {
   const scheme = useColorScheme();
@@ -154,6 +189,24 @@ function stateFilePath(): string {
   return `${writableDir()}mobile-state-v1.json`;
 }
 
+async function stateDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (!stateDbPromise) {
+    stateDbPromise = (async () => {
+      const db = await SQLite.openDatabaseAsync(MOBILE_DB_NAME);
+      await db.execAsync(`
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE IF NOT EXISTS app_state (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      return db;
+    })();
+  }
+  return stateDbPromise;
+}
+
 function tomorrowDateString(): string {
   const next = new Date();
   next.setDate(next.getDate() + 1);
@@ -176,25 +229,60 @@ function boundedInt(value: number, min: number, max: number): number {
 
 async function readPersistedState(): Promise<PersistedState | null> {
   try {
+    const db = await stateDatabase();
+    const row = await db.getFirstAsync<{ value: string }>(
+      "SELECT value FROM app_state WHERE key = ?",
+      MOBILE_STATE_KEY,
+    );
+    if (row?.value) {
+      const parsed = JSON.parse(row.value) as PersistedState;
+      if (parsed.version === 2) {
+        return parsed;
+      }
+    }
+
     const file = stateFilePath();
     const info = await FileSystem.getInfoAsync(file);
     if (!info.exists) {
       return null;
     }
     const raw = await FileSystem.readAsStringAsync(file);
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (parsed.version !== 1) {
+    const legacy = JSON.parse(raw) as LegacyPersistedState;
+    if (legacy.version !== 1) {
       return null;
     }
-    return parsed;
+
+    const migrated: PersistedState = {
+      ...legacy,
+      version: 2,
+      artifacts: [],
+      selectedArtifactId: "",
+      artifactGraph: null,
+      artifactVersions: null,
+      dueCards: [],
+    };
+    await writePersistedState(migrated);
+    await FileSystem.deleteAsync(file, { idempotent: true });
+    return migrated;
   } catch {
     return null;
   }
 }
 
 async function writePersistedState(payload: PersistedState): Promise<void> {
-  const file = stateFilePath();
-  await FileSystem.writeAsStringAsync(file, JSON.stringify(payload));
+  const db = await stateDatabase();
+  await db.runAsync(
+    `
+      INSERT INTO app_state (key, value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at
+    `,
+    MOBILE_STATE_KEY,
+    JSON.stringify(payload),
+    new Date().toISOString(),
+  );
 }
 
 async function loadBriefingFromApi(
@@ -270,6 +358,9 @@ export default function App() {
   const [quickCaptureTitle, setQuickCaptureTitle] = useState(DEFAULT_CAPTURE_TITLE);
   const [quickCaptureText, setQuickCaptureText] = useState("");
   const [quickCaptureSourceUrl, setQuickCaptureSourceUrl] = useState("");
+  const [voiceRecording, setVoiceRecording] = useState<Audio.Recording | null>(null);
+  const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
+  const [voiceClipDurationMs, setVoiceClipDurationMs] = useState(0);
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
   const [cachedPath, setCachedPath] = useState<string | null>(null);
   const [alarmHour, setAlarmHour] = useState(7);
@@ -291,6 +382,41 @@ export default function App() {
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
 
   async function sendCapture(item: PendingCapture): Promise<string> {
+    if (item.kind === "voice") {
+      const formData = new FormData();
+      formData.append("title", item.title);
+      if (item.sourceUrl) {
+        formData.append("source_url", item.sourceUrl);
+      }
+      formData.append("duration_ms", String(item.durationMs));
+      formData.append("provider_hint", "whisper_local");
+      formData.append(
+        "file",
+        {
+          uri: item.localUri,
+          name: `${item.id}.m4a`,
+          type: item.mimeType,
+        } as unknown as Blob,
+      );
+
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/capture/voice`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Voice capture failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as { artifact: { id: string }; job_id: string };
+      setStatus(`Queued Whisper transcript job ${payload.job_id}`);
+      return payload.artifact.id;
+    }
+
     const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/capture`, {
       method: "POST",
       headers: {
@@ -428,16 +554,46 @@ export default function App() {
     }
   }
 
+  function speakSelectedArtifact() {
+    const latestSummary = artifactGraph?.summaries[0]?.content?.trim();
+    const fallback = artifactGraph?.artifact.normalized_content?.trim() || artifactGraph?.artifact.extracted_content?.trim();
+    const text = latestSummary || fallback;
+    if (!text) {
+      setStatus("No selected artifact text is available for local speech");
+      return;
+    }
+    Speech.stop();
+    Speech.speak(text);
+    setStatus("Speaking selected artifact locally");
+  }
+
   async function openSelectedArtifactInPwa() {
-    const base = normalizeBaseUrl(pwaBase);
     if (!selectedArtifactId) {
       await openPwa();
       return;
     }
     try {
-      await Linking.openURL(`${base}/artifacts?artifact=${encodeURIComponent(selectedArtifactId)}`);
+      await Linking.openURL(
+        `${normalizeBaseUrl(pwaBase)}/artifacts?artifact=${encodeURIComponent(selectedArtifactId)}`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to open artifact in PWA");
+    }
+  }
+
+  async function openNoteInPwa(noteId: string) {
+    try {
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/notes?note=${encodeURIComponent(noteId)}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to open note in PWA");
+    }
+  }
+
+  async function openTaskInPwa(taskId: string) {
+    try {
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/tasks?task=${encodeURIComponent(taskId)}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to open task in PWA");
     }
   }
 
@@ -489,7 +645,7 @@ export default function App() {
 
   function queueCapture(item: PendingCapture, reason: string) {
     setPendingCaptures((previous) => [item, ...previous]);
-    setStatus(`Capture queued (${reason}). Pending: ${pendingCaptures.length + 1}`);
+    setStatus(`${item.kind === "voice" ? "Voice note" : "Capture"} queued (${reason}). Pending: ${pendingCaptures.length + 1}`);
   }
 
   async function submitQuickCapture() {
@@ -499,8 +655,9 @@ export default function App() {
       return;
     }
 
-    const capture: PendingCapture = {
+    const capture: PendingTextCapture = {
       id: `mobcap_${Date.now()}`,
+      kind: "text",
       title: quickCaptureTitle.trim() || DEFAULT_CAPTURE_TITLE,
       text,
       sourceUrl: quickCaptureSourceUrl.trim(),
@@ -523,6 +680,99 @@ export default function App() {
     } catch (error) {
       queueCapture(capture, error instanceof Error ? error.message : "request failed");
       setQuickCaptureText("");
+    }
+  }
+
+  async function startVoiceRecording() {
+    if (voiceRecording) {
+      setStatus("Voice recording is already in progress");
+      return;
+    }
+
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setStatus("Microphone permission denied");
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setVoiceRecording(recording);
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
+      setStatus("Recording voice note...");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to start voice recording");
+    }
+  }
+
+  async function stopVoiceRecording() {
+    if (!voiceRecording) {
+      setStatus("No voice recording is in progress");
+      return;
+    }
+
+    try {
+      await voiceRecording.stopAndUnloadAsync();
+      const status = await voiceRecording.getStatusAsync();
+      const uri = voiceRecording.getURI();
+      setVoiceRecording(null);
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+      if (!uri) {
+        throw new Error("Voice recording finished without a file");
+      }
+      setVoiceClipUri(uri);
+      setVoiceClipDurationMs(typeof status.durationMillis === "number" ? status.durationMillis : 0);
+      setStatus("Voice note ready to upload or queue");
+    } catch (error) {
+      setVoiceRecording(null);
+      setStatus(error instanceof Error ? error.message : "Failed to stop voice recording");
+    }
+  }
+
+  async function submitVoiceCapture() {
+    if (!voiceClipUri) {
+      setStatus("Record a voice note first");
+      return;
+    }
+
+    const capture: PendingVoiceCapture = {
+      id: `mobvoice_${Date.now()}`,
+      kind: "voice",
+      title: quickCaptureTitle.trim() || "Voice note",
+      sourceUrl: quickCaptureSourceUrl.trim(),
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+      localUri: voiceClipUri,
+      mimeType: DEFAULT_VOICE_MIME,
+      durationMs: voiceClipDurationMs,
+    };
+
+    if (!token) {
+      queueCapture(capture, "missing token");
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
+      return;
+    }
+
+    try {
+      const artifactId = await sendCapture(capture);
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
+      setSelectedArtifactId(artifactId);
+      loadArtifacts().catch(() => undefined);
+      setStatus(`Queued voice note ${artifactId} for transcription`);
+    } catch (error) {
+      queueCapture(capture, error instanceof Error ? error.message : "voice upload failed");
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
     }
   }
 
@@ -731,6 +981,11 @@ export default function App() {
         setAlarmMinute(boundedInt(persisted.alarmMinute, 0, 59));
         setAlarmNotificationId(persisted.alarmNotificationId);
         setPendingCaptures(persisted.pendingCaptures || []);
+        setArtifacts(persisted.artifacts || []);
+        setSelectedArtifactId(persisted.selectedArtifactId || "");
+        setArtifactGraph(persisted.artifactGraph);
+        setArtifactVersions(persisted.artifactVersions);
+        setDueCards(persisted.dueCards || []);
       }
 
       const initialUrl = await Linking.getInitialURL();
@@ -817,7 +1072,7 @@ export default function App() {
     }
 
     writePersistedState({
-      version: 1,
+      version: 2,
       apiBase,
       pwaBase,
       token,
@@ -830,20 +1085,30 @@ export default function App() {
       alarmMinute: boundedInt(alarmMinute, 0, 59),
       alarmNotificationId,
       pendingCaptures,
+      artifacts,
+      selectedArtifactId,
+      artifactGraph,
+      artifactVersions,
+      dueCards,
     }).catch(() => undefined);
   }, [
     alarmHour,
     alarmMinute,
     alarmNotificationId,
     apiBase,
+    artifactGraph,
+    artifactVersions,
+    artifacts,
     briefingDate,
     cachedPath,
+    dueCards,
     hydrated,
     pendingCaptures,
     pwaBase,
     quickCaptureSourceUrl,
     quickCaptureText,
     quickCaptureTitle,
+    selectedArtifactId,
     token,
   ]);
 
@@ -912,6 +1177,17 @@ export default function App() {
               <Text style={styles.buttonText}>Flush Queue</Text>
             </TouchableOpacity>
           </View>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+              <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Note" : "Start Voice Note"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
+              <Text style={styles.buttonText}>Upload / Queue Voice</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.subtle}>
+            Voice clip: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
+          </Text>
           <Text style={styles.subtle}>Pending captures: {pendingCaptures.length}</Text>
           {pendingCaptures[0]?.lastError ? (
             <Text style={styles.subtle}>Last queue error: {pendingCaptures[0].lastError}</Text>
@@ -920,7 +1196,7 @@ export default function App() {
             <View key={capture.id} style={styles.inlineCard}>
               <Text style={styles.subtle}>{capture.title}</Text>
               <Text style={styles.subtle}>
-                attempts: {capture.attempts} | queued {new Date(capture.createdAt).toLocaleTimeString()}
+                {capture.kind} | attempts: {capture.attempts} | queued {new Date(capture.createdAt).toLocaleTimeString()}
               </Text>
             </View>
           ))}
@@ -937,6 +1213,9 @@ export default function App() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={openSelectedArtifactInPwa}>
               <Text style={styles.buttonText}>Open in PWA</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={speakSelectedArtifact}>
+              <Text style={styles.buttonText}>Speak Locally</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.subtle}>
@@ -994,6 +1273,11 @@ export default function App() {
                 <View key={task.id} style={styles.inlineCard}>
                   <Text style={styles.inlineCardTitle}>{task.title}</Text>
                   <Text style={styles.subtle}>task status: {task.status}</Text>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.button} onPress={() => openTaskInPwa(task.id)}>
+                      <Text style={styles.buttonText}>Open Task</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
               {artifactGraph.notes.slice(0, 1).map((note) => (
@@ -1003,6 +1287,11 @@ export default function App() {
                     {note.body_md.slice(0, 160)}
                     {note.body_md.length > 160 ? "..." : ""}
                   </Text>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.button} onPress={() => openNoteInPwa(note.id)}>
+                      <Text style={styles.buttonText}>Open Note</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
               {artifactGraph.cards.slice(0, 2).map((card) => (

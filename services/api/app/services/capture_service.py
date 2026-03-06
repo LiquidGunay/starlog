@@ -1,7 +1,9 @@
 from copy import deepcopy
 from sqlite3 import Connection
 
-from app.services import artifacts_service, events_service
+from app.core.time import utc_now
+from app.services import ai_jobs_service, artifacts_service, events_service
+from app.services.common import new_id
 
 
 def _layer_text(layer: dict | None) -> str | None:
@@ -70,3 +72,62 @@ def ingest_capture(
     conn.commit()
 
     return artifact
+
+
+def ingest_voice_capture(
+    conn: Connection,
+    *,
+    title: str | None,
+    source_url: str | None,
+    blob_ref: str,
+    mime_type: str | None,
+    checksum_sha256: str,
+    duration_ms: int | None,
+    provider_hint: str,
+) -> tuple[dict, str]:
+    metadata = {
+        "voice_note": {
+            "duration_ms": duration_ms,
+            "provider_hint": provider_hint,
+        }
+    }
+    artifact = ingest_capture(
+        conn,
+        source_type="voice_note",
+        capture_source="mobile_voice",
+        title=title,
+        source_url=source_url,
+        raw={
+            "blob_ref": blob_ref,
+            "mime_type": mime_type,
+            "checksum_sha256": checksum_sha256,
+        },
+        normalized=None,
+        extracted=None,
+        tags=[],
+        metadata=metadata,
+    )
+
+    job = ai_jobs_service.create_job(
+        conn,
+        capability="stt",
+        payload={
+            "blob_ref": blob_ref,
+            "content_type": mime_type,
+            "title": title or artifact["id"],
+        },
+        provider_hint=provider_hint,
+        artifact_id=artifact["id"],
+        action="transcribe",
+    )
+    conn.execute(
+        "INSERT INTO action_runs (id, artifact_id, action, status, output_ref, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (new_id("act"), artifact["id"], "transcribe", "queued", job["id"], utc_now().isoformat()),
+    )
+    events_service.emit(
+        conn,
+        "artifact.action_queued",
+        {"artifact_id": artifact["id"], "action": "transcribe", "job_id": job["id"]},
+    )
+    conn.commit()
+    return artifact, str(job["id"])

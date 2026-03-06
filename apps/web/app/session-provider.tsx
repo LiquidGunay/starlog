@@ -126,6 +126,10 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
 
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+
     return () => {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);

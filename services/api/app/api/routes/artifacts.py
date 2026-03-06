@@ -51,7 +51,13 @@ def run_artifact_action(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> ArtifactActionResponse:
-    status_text, output_ref = artifacts_service.run_action(db, artifact_id, payload.action)
+    status_text, output_ref = artifacts_service.run_action(
+        db,
+        artifact_id,
+        payload.action,
+        defer=payload.defer,
+        provider_hint=payload.provider_hint,
+    )
     if status_text == "not_found":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
 

@@ -63,6 +63,16 @@ CREATE TABLE IF NOT EXISTS artifacts (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS media_assets (
+  id TEXT PRIMARY KEY,
+  source_filename TEXT,
+  content_type TEXT,
+  bytes_size INTEGER NOT NULL,
+  checksum_sha256 TEXT NOT NULL,
+  storage_relpath TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS action_runs (
   id TEXT PRIMARY KEY,
   artifact_id TEXT NOT NULL,
@@ -232,6 +242,24 @@ CREATE TABLE IF NOT EXISTS provider_configs (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ai_jobs (
+  id TEXT PRIMARY KEY,
+  capability TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider_hint TEXT,
+  provider_used TEXT,
+  artifact_id TEXT,
+  action TEXT,
+  payload_json TEXT NOT NULL,
+  output_json TEXT,
+  error_text TEXT,
+  worker_id TEXT,
+  created_at TEXT NOT NULL,
+  claimed_at TEXT,
+  finished_at TEXT,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+);
+
 CREATE TABLE IF NOT EXISTS google_remote_events (
   remote_id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -277,6 +305,7 @@ CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
 CREATE INDEX IF NOT EXISTS idx_sync_activity_recorded ON sync_activity(recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_activity_client ON sync_activity(client_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
+CREATE INDEX IF NOT EXISTS idx_media_assets_created_at ON media_assets(created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
@@ -286,6 +315,8 @@ CREATE INDEX IF NOT EXISTS idx_time_blocks_start ON time_blocks(starts_at);
 CREATE INDEX IF NOT EXISTS idx_briefing_date ON briefing_packages(date);
 CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
 CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
+CREATE INDEX IF NOT EXISTS idx_ai_jobs_status_created ON ai_jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_jobs_provider_status ON ai_jobs(provider_hint, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_google_remote_updated ON google_remote_events(updated_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_created ON calendar_sync_conflicts(created_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_resolved ON calendar_sync_conflicts(resolved, created_at);
@@ -297,6 +328,7 @@ def _ensure_db_parent() -> None:
     settings = get_settings()
     db_path = Path(settings.db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    Path(settings.media_dir).mkdir(parents=True, exist_ok=True)
 
 
 @contextmanager

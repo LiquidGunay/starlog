@@ -143,6 +143,22 @@ For each clip, store:
 - `GET /v1/artifacts/:id/versions`
 - Existing sync/tasks/calendar/review endpoints remain; now relation-aware.
 
+### Agent-control surface (new v1 addition)
+- Every meaningful Starlog action should remain reachable through a stable programmatic interface, not only click-driven UI.
+- The backend should expose a tool catalog with machine-readable schemas so LLM/chat/voice interfaces can call Starlog actions directly.
+- Minimum v1 tool coverage:
+  - capture text as artifact
+  - run artifact actions (`summarize`, `cards`, `tasks`, `append_note`)
+  - create/update task
+  - create calendar event
+  - generate briefing
+  - schedule morning briefing alarm
+  - list due cards
+  - submit review
+  - search Starlog
+- Voice/chat UX can be phased in later, but the tool/control layer should exist early so the interface is not blocked on frontend polish.
+- Tool definitions should be exportable in an LLM-friendly schema format (OpenAI function-style or equivalent).
+
 ### Desktop/helper local interface
 - Local authenticated bridge from helper/extension to API client layer.
 - Signed session token + short TTL for helper-origin calls.

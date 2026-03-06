@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
@@ -48,6 +49,7 @@ function ArtifactsPageContent() {
   const [quickTitle, setQuickTitle] = useState("Workspace clip");
   const [quickUrl, setQuickUrl] = useState("");
   const [quickClip, setQuickClip] = useState("Capture from artifact workspace.");
+  const [deferAi, setDeferAi] = useState(false);
   const visibleItems = useMemo(() => applyOptimisticArtifacts(items, outbox), [items, outbox]);
 
   const loadArtifacts = useCallback(async () => {
@@ -126,7 +128,7 @@ function ArtifactsPageContent() {
         `/v1/artifacts/${selectedId}/actions`,
         {
           method: "POST",
-          body: JSON.stringify({ action }),
+          body: JSON.stringify({ action, defer: deferAi, provider_hint: deferAi ? "codex_local" : undefined }),
         },
         {
           label: `Artifact action: ${action}`,
@@ -139,7 +141,11 @@ function ArtifactsPageContent() {
         return;
       }
 
-      setStatus(`${action} suggested for ${selectedId}`);
+      setStatus(
+        deferAi
+          ? `${action} queued for Codex batch processing on ${selectedId}`
+          : `${action} suggested for ${selectedId}`,
+      );
       await loadArtifactContext(selectedId);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : `${action} failed`);
@@ -209,7 +215,17 @@ function ArtifactsPageContent() {
           <div className="button-row">
             <button className="button" type="button" onClick={() => createArtifact()}>Create Clip</button>
             <button className="button" type="button" onClick={() => loadArtifacts()}>Refresh</button>
+            <Link className="button" href="/ai-jobs">AI Jobs</Link>
           </div>
+          <label className="label" htmlFor="defer-ai">
+            <input
+              id="defer-ai"
+              type="checkbox"
+              checked={deferAi}
+              onChange={(event) => setDeferAi(event.target.checked)}
+            />{" "}
+            Queue summarize/cards/tasks for local Codex runner instead of running now
+          </label>
           <div className="button-row">
             <button className="button" type="button" onClick={() => runAction("summarize")}>Summarize</button>
             <button className="button" type="button" onClick={() => runAction("cards")}>Create Cards</button>

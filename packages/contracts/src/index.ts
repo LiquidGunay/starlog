@@ -310,6 +310,23 @@ export interface MarkdownImportResponse {
   created_at: string;
 }
 
+export interface ExportResponse {
+  exported_at: string;
+  manifest: Record<string, unknown>;
+  notes_markdown: Record<string, string>;
+  entities: Record<string, Array<Record<string, unknown>>>;
+}
+
+export interface ExportImportRequest {
+  export_payload: ExportResponse;
+  replace_existing: boolean;
+}
+
+export interface ExportImportResponse {
+  restored_tables: Record<string, number>;
+  restored_at: string;
+}
+
 export interface MetricsResponse {
   queue_depth_sync_events: number;
   cards_due: number;

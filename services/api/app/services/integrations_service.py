@@ -58,6 +58,27 @@ def _default_probe_url(endpoint: str, explicit_health_url: str | None) -> str:
     return f"{base}/health"
 
 
+def _default_codex_bridge_probe_url(config: dict) -> str | None:
+    candidate = str(
+        config.get("model_list_url")
+        or config.get("auth_probe_url")
+        or config.get("bridge_url")
+        or config.get("endpoint")
+        or ""
+    ).strip()
+    if not _valid_url(candidate):
+        return None
+
+    parsed = urlparse(candidate)
+    if parsed.path.endswith("/models"):
+        return candidate
+    if parsed.path.endswith("/v1"):
+        return f"{candidate.rstrip('/')}/models"
+    if parsed.path in {"", "/"}:
+        return f"{candidate.rstrip('/')}/v1/models"
+    return f"{candidate.rstrip('/')}/models"
+
+
 def _probe_endpoint(
     probe_url: str,
     timeout_seconds: float = 2.0,
@@ -101,6 +122,11 @@ def _auth_probe_header(config: dict) -> tuple[dict[str, str], str | None]:
         return {header_name: f"{prefix}{token}" if prefix else token}, header_name
 
     return {}, None
+
+
+def build_auth_headers(config: dict) -> dict[str, str]:
+    headers, _ = _auth_probe_header(config)
+    return headers
 
 
 def _probe_authenticated_endpoint(
@@ -182,7 +208,11 @@ def _health_checks(
                     problems.append(probe_detail)
 
     auth_probe_url = str(config.get("auth_probe_url") or "").strip()
-    if mode.startswith("api") and auth_probe_url:
+    if provider_name == "codex_bridge" and not auth_probe_url:
+        derived_probe_url = _default_codex_bridge_probe_url(config)
+        auth_probe_url = derived_probe_url or ""
+
+    if (mode.startswith("api") or provider_name == "codex_bridge") and auth_probe_url:
         checks["auth_probe_configured"] = True
         if not _valid_url(auth_probe_url):
             checks["auth_probe_ok"] = False
@@ -283,6 +313,25 @@ def list_provider_configs(conn: Connection) -> list[dict]:
             }
         )
     return formatted
+
+
+def get_provider_config(conn: Connection, provider_name: str, redact: bool = True) -> dict | None:
+    row = execute_fetchone(
+        conn,
+        "SELECT provider_name, enabled, mode, config_json, updated_at FROM provider_configs WHERE provider_name = ?",
+        (provider_name,),
+    )
+    if row is None:
+        return None
+
+    config = _response_config(row) if redact else _decoded_config(row)
+    return {
+        "provider_name": row["provider_name"],
+        "enabled": bool(row["enabled"]),
+        "mode": row["mode"],
+        "config": config,
+        "updated_at": row["updated_at"],
+    }
 
 
 def provider_health(conn: Connection, provider_name: str) -> dict:

@@ -26,3 +26,8 @@ class CaptureRequest(BaseModel):
 
 class CaptureResponse(BaseModel):
     artifact: ArtifactResponse
+
+
+class VoiceCaptureResponse(BaseModel):
+    artifact: ArtifactResponse
+    job_id: str

@@ -1,10 +1,17 @@
+import base64
+from pathlib import Path
 from sqlite3 import Connection
 
+from app.core.config import get_settings
 from app.core.time import utc_now_iso
 from app.services.common import execute_fetchall
 
 TABLES = [
     "artifacts",
+    "media_assets",
+    "action_runs",
+    "ai_jobs",
+    "artifact_relations",
     "summary_versions",
     "notes",
     "note_blocks",
@@ -16,6 +23,8 @@ TABLES = [
     "time_blocks",
     "briefing_packages",
     "alarm_plans",
+    "sync_events",
+    "sync_activity",
     "domain_events",
     "webhook_subscriptions",
     "provider_configs",
@@ -31,6 +40,19 @@ def build_export(conn: Connection) -> dict:
     for table in TABLES:
         entities[table] = execute_fetchall(conn, f"SELECT * FROM {table}")
 
+    media_dir = Path(get_settings().media_dir)
+    media_blobs: dict[str, dict[str, str]] = {}
+    for media in entities["media_assets"]:
+        relpath = str(media.get("storage_relpath") or "").strip()
+        if not relpath:
+            continue
+        path = media_dir / relpath
+        if not path.exists():
+            continue
+        media_blobs[str(media["id"])] = {
+            "base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+        }
+
     notes_markdown = {
         note["id"]: f"# {note['title']}\n\n{note['body_md']}"
         for note in entities["notes"]
@@ -45,5 +67,6 @@ def build_export(conn: Connection) -> dict:
         "exported_at": utc_now_iso(),
         "manifest": manifest,
         "notes_markdown": notes_markdown,
+        "media_blobs": media_blobs,
         "entities": entities,
     }

@@ -17,7 +17,19 @@ make dev-api
 In a second terminal, start web on LAN host:
 
 ```bash
-pnpm --filter web dev -- --hostname 0.0.0.0 --port 3000
+make dev-web-lan
+```
+
+In a third terminal, if you want queued Codex/Whisper work to complete locally:
+
+```bash
+export STARLOG_TOKEN=YOUR_BEARER_TOKEN
+export STARLOG_WHISPER_COMMAND='whisper-cli -m /ABS/PATH/ggml-base.en.bin -f {input_path} -otxt -of {output_base}'
+
+PYTHONPATH=services/api uv run --project services/api \
+  python scripts/local_ai_worker.py \
+  --api-base http://<LAN_IP>:8000 \
+  --token "$STARLOG_TOKEN"
 ```
 
 ## 2) Find your laptop LAN IP
@@ -46,25 +58,39 @@ Use the non-empty IP (example: `192.168.1.42`).
 - iOS (Safari): Share -> Add to Home Screen
 - Android (Chrome): Menu -> Install app / Add to Home screen
 
-## 5) Run mobile companion app (Expo Go)
+Once installed, the PWA now exposes a share target route at `/share-target` and keeps a service worker
+registered for installability.
 
-1. Install Expo Go on your phone.
-2. From repo root:
+## 5) Run mobile companion app
+
+Preferred native Android path:
+
+```bash
+pnpm --filter mobile android:local
+pnpm --filter mobile start:dev-client
+```
+
+Fallback JS-only path:
 
 ```bash
 pnpm --filter mobile start
 ```
 
-3. Scan QR from terminal/Expo DevTools with Expo Go.
-4. In app settings fields:
+1. Install the Android dev build on your phone, or use Expo Go for the fallback path.
+2. In app settings fields:
    - API base: `http://<LAN_IP>:8000`
    - Bearer token: paste token from PWA/web login
-5. Optional sanity checks in the mobile app:
-   - Capture/Queue a quick clip.
+3. Optional sanity checks in the mobile app:
+   - Capture/Queue a quick text clip.
+   - Record a voice note, then upload/queue it.
    - Refresh the artifact inbox, select a recent clip, and trigger `Summarize` or `Create Cards`.
    - Inspect the selected artifact detail block to confirm summary/task/card/note context loads on phone.
+   - Use `Speak Locally` in artifact triage to confirm on-device TTS.
    - Load due cards in "Quick review session" and submit a rating.
    - Cache and play a briefing, then schedule the daily alarm.
+4. If you queued a voice note, confirm the laptop worker is running so the transcript can complete.
+
+Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 
 ## 5b) Test PWA offline queue
 
@@ -91,8 +117,34 @@ Ways to trigger:
 
 When opened, the app pre-fills the capture form so you can submit immediately or queue offline.
 
+## 7) Test installed PWA share target
+
+This works best on Android/Chromium where installed PWAs support the Web Share Target API.
+
+1. Install the PWA to the phone home screen.
+2. From Chrome (or another app that supports web sharing), choose Share on a page or selected text.
+3. Pick the installed Starlog app from the share sheet.
+4. Starlog opens `/share-target` with the shared title/text/url prefilled.
+5. Tap `Capture to Inbox`, then open `/artifacts` to confirm the new artifact exists.
+
+If your browser does not show Starlog in the share sheet, open `/share-target` directly and paste the
+content manually; iOS browser support for PWA share targets is still limited.
+
+## 8) Test portability workflow
+
+1. Open `/portability` in the PWA.
+2. Tap `Load Export` to fetch the current JSON snapshot.
+3. Tap `Download JSON` to save a copy locally.
+4. To drill restore behavior, paste an export payload back into the textarea and tap `Restore Snapshot`.
+5. On your laptop, you can also run:
+
+```bash
+make verify-export
+```
+
 ## Troubleshooting
 
 - If phone cannot reach web/API, check firewall and that both devices are on same network.
 - If corporate Wi-Fi blocks LAN traffic, use a personal hotspot.
 - If Expo LAN is unstable, switch Expo to Tunnel; keep API base pointing to reachable backend URL.
+- If voice-note transcription stays queued, confirm the laptop worker is running and `STARLOG_WHISPER_COMMAND` points to a working `whisper.cpp` command.

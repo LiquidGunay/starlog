@@ -38,6 +38,8 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-05: User prefers periodic pushes during implementation.
 - 2026-03-05: User reprioritized desktop clipper work behind web/mobile/app-core progress.
 - 2026-03-06: User now prefers longer stable implementation passes with fewer stage/push checkpoints.
+- 2026-03-06: User wants Android-first native app/build work before iOS.
+- 2026-03-06: User prefers queued laptop-local Codex/Whisper processing over always-on hosted AI compute.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -48,3 +50,8 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-05: `pnpm install` succeeds when run with elevated network permissions; default sandbox networking still intermittently fails for npm registry access.
 - 2026-03-05: Rust toolchain (`cargo`) is unavailable in this environment, so desktop-helper Rust compile checks cannot run here.
 - 2026-03-06: Shared web API helper assumed all successful responses returned JSON, which broke `204 No Content` mutation flows until the helper was fixed.
+- 2026-03-06: Native mobile share extension work is blocked in the current Expo-managed app because the repo does not yet include a share-intent native module/config plugin; deep-link and installed-PWA share-target capture are the active fallbacks.
+- 2026-03-06: Mobile SQLite persistence upgrade is blocked until an Expo SQLite dependency is added to the mobile app workspace.
+- 2026-03-06: Mobile SQLite persistence blocker resolved after adding `expo-sqlite` and migrating state into a local SQLite store.
+- 2026-03-06: In-app native STT package work was intentionally dropped in favor of a queued Whisper sidecar pattern so phone and laptop can share the same local transcription path.
+- 2026-03-06: `whisper_local` processing depends on a working local `whisper.cpp` command template and `ffmpeg` for non-WAV audio conversion.

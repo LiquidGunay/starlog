@@ -22,11 +22,14 @@ export default function RootLayout({
             <nav className="top-nav">
               <Link href="/">Home</Link>
               <Link href="/artifacts">Artifacts</Link>
+              <Link href="/agent-tools">Agent Tools</Link>
+              <Link href="/ai-jobs">AI Jobs</Link>
               <Link href="/notes">Notes</Link>
               <Link href="/tasks">Tasks</Link>
               <Link href="/planner">Planner</Link>
               <Link href="/calendar">Calendar</Link>
               <Link href="/integrations">Integrations</Link>
+              <Link href="/portability">Portability</Link>
               <Link href="/search">Search</Link>
               <Link href="/sync-center">Sync</Link>
               <Link href="/review">Review</Link>

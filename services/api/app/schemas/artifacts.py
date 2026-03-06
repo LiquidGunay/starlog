@@ -29,6 +29,8 @@ class ArtifactResponse(BaseModel):
 
 class ArtifactActionRequest(BaseModel):
     action: ArtifactAction
+    defer: bool = False
+    provider_hint: str | None = None
 
 
 class ArtifactActionResponse(BaseModel):

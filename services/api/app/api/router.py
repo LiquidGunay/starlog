@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    agent,
     ai,
     artifacts,
     auth,
@@ -12,6 +13,7 @@ from app.api.routes import (
     health,
     importing,
     integrations,
+    media,
     notes,
     ops,
     planning,
@@ -25,9 +27,11 @@ from app.api.routes import (
 api_router = APIRouter(prefix="/v1")
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
+api_router.include_router(agent.router, tags=["agent"])
 api_router.include_router(ai.router, tags=["ai"])
 api_router.include_router(sync.router, tags=["sync"])
 api_router.include_router(capture.router, tags=["capture"])
+api_router.include_router(media.router, tags=["media"])
 api_router.include_router(artifacts.router, tags=["artifacts"])
 api_router.include_router(notes.router, tags=["notes"])
 api_router.include_router(tasks.router, tags=["tasks"])

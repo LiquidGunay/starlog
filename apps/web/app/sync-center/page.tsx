@@ -26,6 +26,22 @@ type SyncActivityListResponse = {
   entries: SyncActivityEntry[];
 };
 
+type SyncEvent = {
+  cursor: number;
+  client_id: string;
+  mutation_id: string;
+  entity: string;
+  op: string;
+  payload: Record<string, unknown>;
+  occurred_at: string;
+  server_received_at: string;
+};
+
+type SyncPullResponse = {
+  next_cursor: number;
+  events: SyncEvent[];
+};
+
 export default function SyncCenterPage() {
   const {
     apiBase,
@@ -42,6 +58,24 @@ export default function SyncCenterPage() {
   const [serverEntries, setServerEntries] = useState<SyncActivityEntry[]>([]);
   const [serverScope, setServerScope] = useState<"client" | "all">("client");
   const [serverStatus, setServerStatus] = useState("Server sync history idle");
+  const [pullCursor, setPullCursor] = useState(0);
+  const [pulledEvents, setPulledEvents] = useState<SyncEvent[]>([]);
+  const [pullStatus, setPullStatus] = useState("Server delta pull idle");
+
+  useEffect(() => {
+    const storedCursor = window.localStorage.getItem("starlog-sync-cursor");
+    if (!storedCursor) {
+      return;
+    }
+    const parsed = Number(storedCursor);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      setPullCursor(parsed);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("starlog-sync-cursor", String(pullCursor));
+  }, [pullCursor]);
 
   const loadServerHistory = useCallback(async (scope: "client" | "all" = serverScope) => {
     if (!token) {
@@ -66,6 +100,28 @@ export default function SyncCenterPage() {
   useEffect(() => {
     loadServerHistory().catch(() => undefined);
   }, [loadServerHistory]);
+
+  async function pullServerEvents(resetCursor = false) {
+    if (!token) {
+      setPulledEvents([]);
+      setPullStatus("Add bearer token to pull sync deltas");
+      return;
+    }
+
+    const cursor = resetCursor ? 0 : pullCursor;
+    try {
+      const payload = await apiRequest<SyncPullResponse>(apiBase, token, `/v1/sync/pull?cursor=${cursor}`);
+      setPulledEvents((previous) => (resetCursor ? payload.events : [...payload.events, ...previous].slice(0, 40)));
+      setPullCursor(payload.next_cursor);
+      setPullStatus(
+        payload.events.length === 0
+          ? `No new deltas after cursor ${cursor}`
+          : `Pulled ${payload.events.length} delta event(s); next cursor ${payload.next_cursor}`,
+      );
+    } catch (error) {
+      setPullStatus(error instanceof Error ? error.message : "Failed to pull sync deltas");
+    }
+  }
 
   return (
     <main className="shell">
@@ -100,9 +156,17 @@ export default function SyncCenterPage() {
             }}>
               Refresh All Devices
             </button>
+            <button className="button" type="button" onClick={() => pullServerEvents(false)}>
+              Pull Deltas
+            </button>
+            <button className="button" type="button" onClick={() => pullServerEvents(true)}>
+              Reset Pull Cursor
+            </button>
           </div>
           <p className="status">{flushSummary}</p>
           <p className="console-copy">{serverStatus}</p>
+          <p className="console-copy">{pullStatus}</p>
+          <p className="console-copy">Current pull cursor: {pullCursor}</p>
         </div>
 
         <div className="panel glass">
@@ -149,6 +213,25 @@ export default function SyncCenterPage() {
                   {entry.detail ? (
                     <p className="console-copy">Detail: {entry.detail}</p>
                   ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h2>Server delta pull</h2>
+          {pulledEvents.length === 0 ? (
+            <p className="console-copy">No pulled delta events yet.</p>
+          ) : (
+            <ul>
+              {pulledEvents.map((event) => (
+                <li key={`${event.cursor}-${event.mutation_id}`}>
+                  <p className="console-copy">
+                    <strong>{event.entity}</strong> [{event.op}] cursor {event.cursor}
+                  </p>
+                  <p className="console-copy">
+                    Client: {event.client_id} | Received: {new Date(event.server_received_at).toLocaleString()}
+                  </p>
+                  <p className="console-copy">Payload: {JSON.stringify(event.payload)}</p>
                 </li>
               ))}
             </ul>

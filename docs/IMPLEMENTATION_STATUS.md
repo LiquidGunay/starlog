@@ -29,12 +29,16 @@
 - Desktop helper now posts captures to `/v1/capture` and attempts strict on-device OCR (`tesseract`) for screenshots.
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
+- Mobile companion local state is now backed by Expo SQLite with migration from the earlier JSON-file store.
 - Mobile companion capture path now supports retry queue + manual/auto flush for transient network failures.
+- Mobile companion now supports local voice-note recording, upload/queue, and Whisper-backed deferred transcription jobs.
 - Mobile companion now supports `starlog://capture?...` deep-link ingestion for share-to-app style capture prefill.
+- Android dev-build path is now configured with `expo-dev-client`, variant-aware app config, and EAS build profiles for installable APK builds.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
 - Mobile companion now supports lightweight artifact inbox triage, manual artifact actions, and open-in-PWA handoff.
 - Mobile companion now shows selected artifact context (latest summary, related tasks/notes/cards, recent action history) for quick triage on phone.
+- Mobile companion can now jump directly from artifact triage into related PWA note/task targets.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
 - Calendar events now support sync-aware soft delete (`DELETE /v1/calendar/events/{id}`) with tombstone tracking.
@@ -43,6 +47,8 @@
 - Provider configs now encrypt sensitive values at rest, redact secrets in API responses, and expose richer health checks.
 - Provider health now includes localhost runtime endpoint probes for local-mode providers.
 - Provider health now supports auth-level probes for Google OAuth and opt-in remote/API providers via `auth_probe_url`.
+- Codex bridge health now derives authenticated model-list probes from the configured bridge URL when explicit probe URLs are not supplied.
+- Artifact summarize/cards/tasks actions now flow through the AI provider chain (local -> codex bridge -> API fallback) instead of template-only stubs.
 - Google sync run responses now include `run_id`, and conflict details now carry sync run/phase metadata for replay diagnostics.
 - Google sync conflicts can now trigger replay runs from the API and planner/calendar UI surfaces.
 - Web UI refresh with modern "spacy" look and dark/light modes.
@@ -56,17 +62,27 @@
 - PWA now has a browser-side mutation outbox with replay-on-reconnect and manual flush/drop controls.
 - Artifacts and calendar workspaces now overlay queued mutations immediately and support deep-link selection from search.
 - Sync workspace now exposes queued mutations, local replay history, and server-recorded mutation activity (`/sync-center`).
+- Sync workspace now also exposes pull-by-cursor server delta inspection on top of outbox replay history.
 - Artifacts, review, planner event creation, calendar CRUD, integrations config, and home console clip/actions now use the outbox-aware mutation path.
 - Review workspace now supports focused single-card sessions with live session metrics and queue preview.
 - Added `/mobile-share` workspace page to generate and launch `starlog://capture?...` deep-links for phone capture handoff.
+- Added installable PWA shell assets (`/manifest.webmanifest`, service worker, icons) plus `/share-target` for browser/PWA share ingress.
+- Added `/portability` workspace for export download, restore replay, and roundtrip-verification workflow visibility.
+- Added protected media storage/download endpoints plus media export/import payload support for voice-note portability.
+- Added queued local AI worker tooling for laptop-local `codex exec` and Whisper processing (`scripts/local_ai_worker.py`).
+- Added `/ai-jobs` workspace for queued local Codex/Whisper job inspection.
+- Added an agent-control API/tool catalog (`/v1/agent/tools`, `/v1/agent/execute`) plus a web tester page at `/agent-tools` so future voice/chat surfaces can call Starlog actions without UI clicks.
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
-- API tests + lint + type checks passing via `uv` (`14 passed`).
+- Mobile companion now exposes on-device TTS for selected artifact playback.
+- Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
+- API tests + lint + type checks passing via `uv` (`18 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
 
 ## Next implementation targets
 
 1. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
-2. Add richer provider-specific probes where possible (for example Codex bridge/authenticated model-list endpoints) on top of the new generic auth-probe path.
-3. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
-4. Add export/import round-trip verification tooling and restore drill docs around the current export API.
-5. Add deeper mobile-to-PWA handoff targets for related notes/tasks directly from artifact triage.
+2. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
+3. Add an optional packaged Piper/local-TTS worker path for server-side audio generation parity with the existing on-device phone playback.
+4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized.
+5. Deepen PWA local-first caches beyond the current outbox/replay/state persistence (IndexedDB entity snapshots + offline read paths).
+6. Add a user-facing chat/voice shell that sits on top of the new tool catalog and tool executor.
