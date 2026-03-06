@@ -39,7 +39,7 @@ Use the non-empty IP (example: `192.168.1.42`).
 3. In Starlog session controls, set:
    - API base: `http://<LAN_IP>:8000`
 4. Bootstrap/login from the web console and keep token in session controls.
-5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting.
+5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
 
 ## 4) Install PWA to home screen
 
@@ -61,6 +61,7 @@ pnpm --filter mobile start
    - Bearer token: paste token from PWA/web login
 5. Optional sanity checks in the mobile app:
    - Capture/Queue a quick clip.
+   - Refresh the artifact inbox, select a recent clip, and trigger `Summarize` or `Create Cards`.
    - Load due cards in "Quick review session" and submit a rating.
    - Cache and play a briefing, then schedule the daily alarm.
 

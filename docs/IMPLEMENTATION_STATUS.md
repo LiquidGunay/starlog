@@ -33,6 +33,7 @@
 - Mobile companion now supports `starlog://capture?...` deep-link ingestion for share-to-app style capture prefill.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
+- Mobile companion now supports lightweight artifact inbox triage, manual artifact actions, and open-in-PWA handoff.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
 - Calendar events now support sync-aware soft delete (`DELETE /v1/calendar/events/{id}`) with tombstone tracking.
@@ -46,20 +47,24 @@
 - Artifacts workspace now includes graph and version-history panels.
 - Planner workspace now includes day-board timeline view for blocks/events plus richer sync status surfaces.
 - Calendar workspace now includes weekly board, event CRUD lifecycle, Google sync trigger, and unresolved conflict visibility.
+- Notes workspace now supports direct note fetch/edit flows with optimistic queued updates.
+- Tasks workspace now supports optimistic create/update/status flows.
+- Search workspace now supports cross-workspace retrieval across artifacts, notes, tasks, and calendar events.
 - Integrations workspace now supports provider config edits plus live health/probe inspection.
 - PWA now has a browser-side mutation outbox with replay-on-reconnect and manual flush/drop controls.
-- Sync workspace now exposes queued mutations plus local replay history (`/sync-center`).
+- Artifacts and calendar workspaces now overlay queued mutations immediately and support deep-link selection from search.
+- Sync workspace now exposes queued mutations, local replay history, and server-recorded mutation activity (`/sync-center`).
 - Artifacts, review, planner event creation, calendar CRUD, integrations config, and home console clip/actions now use the outbox-aware mutation path.
 - Review workspace now supports focused single-card sessions with live session metrics and queue preview.
 - Added `/mobile-share` workspace page to generate and launch `starlog://capture?...` deep-links for phone capture handoff.
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
-- API tests + lint + type checks passing via `uv` (`12 passed`).
-- Web lint + TypeScript checks pass.
+- API tests + lint + type checks passing via `uv` (`14 passed`).
+- Web lint + TypeScript checks pass, and production build succeeds.
 
 ## Next implementation targets
 
 1. Add auth-level provider probes (e.g., token validity pings for configured remote providers) beyond localhost endpoint checks.
-2. Add optimistic local cache views so queued artifact/calendar mutations appear immediately before replay.
-3. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
-4. Add remote sync event history on the server side so PWA replay state is mirrored beyond browser local storage.
-5. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
+2. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
+3. Add artifact-detail triage on mobile (summary/cards/tasks preview) beyond the current action launcher.
+4. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
+5. Add export/import round-trip verification tooling and restore drill docs around the current export API.

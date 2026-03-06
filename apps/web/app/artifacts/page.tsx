@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { applyOptimisticArtifacts } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -11,6 +13,8 @@ type Artifact = {
   source_type: string;
   title?: string;
   created_at: string;
+  pending?: boolean;
+  pendingLabel?: string;
 };
 
 type ArtifactGraph = {
@@ -33,8 +37,9 @@ type ArtifactVersions = {
   actions: Array<{ id: string; action: string; status: string; output_ref?: string | null; created_at: string }>;
 };
 
-export default function ArtifactsPage() {
-  const { apiBase, token, mutateWithQueue } = useSessionConfig();
+function ArtifactsPageContent() {
+  const searchParams = useSearchParams();
+  const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const [items, setItems] = useState<Artifact[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [graph, setGraph] = useState<ArtifactGraph | null>(null);
@@ -43,6 +48,7 @@ export default function ArtifactsPage() {
   const [quickTitle, setQuickTitle] = useState("Workspace clip");
   const [quickUrl, setQuickUrl] = useState("");
   const [quickClip, setQuickClip] = useState("Capture from artifact workspace.");
+  const visibleItems = useMemo(() => applyOptimisticArtifacts(items, outbox), [items, outbox]);
 
   const loadArtifacts = useCallback(async () => {
     try {
@@ -147,13 +153,28 @@ export default function ArtifactsPage() {
   }, [token, loadArtifacts]);
 
   useEffect(() => {
-    if (selectedId) {
+    if (selectedId && !selectedId.startsWith("pending:")) {
       loadArtifactContext(selectedId).catch(() => undefined);
     } else {
       setGraph(null);
       setVersions(null);
     }
   }, [selectedId, loadArtifactContext]);
+
+  useEffect(() => {
+    const requestedId = searchParams.get("artifact");
+    if (!requestedId) {
+      if (!selectedId && visibleItems[0]) {
+        setSelectedId(visibleItems[0].id);
+      }
+      return;
+    }
+
+    const requestedArtifact = visibleItems.find((artifact) => artifact.id === requestedId);
+    if (requestedArtifact) {
+      setSelectedId(requestedArtifact.id);
+    }
+  }, [searchParams, selectedId, visibleItems]);
 
   return (
     <main className="shell">
@@ -200,24 +221,29 @@ export default function ArtifactsPage() {
 
         <div className="panel glass">
           <h2>Inbox</h2>
-          {items.length === 0 ? (
+          {visibleItems.length === 0 ? (
             <p className="console-copy">No artifacts yet.</p>
           ) : (
             <ul>
-              {items.map((artifact) => (
+              {visibleItems.map((artifact) => (
                 <li key={artifact.id}>
                   <button className="button" type="button" onClick={() => {
                     setSelectedId(artifact.id);
                   }}>
                     {artifact.title || artifact.id} ({artifact.source_type})
                   </button>
+                  {artifact.pending ? (
+                    <p className="console-copy">Pending: {artifact.pendingLabel || "queued mutation"}</p>
+                  ) : null}
                 </li>
               ))}
             </ul>
           )}
 
           <h2>Linked graph</h2>
-          {!graph ? (
+          {selectedId.startsWith("pending:") ? (
+            <p className="console-copy">Replay the queued capture before graph data is available.</p>
+          ) : !graph ? (
             <p className="console-copy">Select an artifact to inspect graph links.</p>
           ) : (
             <div>
@@ -235,7 +261,9 @@ export default function ArtifactsPage() {
           )}
 
           <h2>Version history</h2>
-          {!versions ? (
+          {selectedId.startsWith("pending:") ? (
+            <p className="console-copy">Replay the queued capture before version history is available.</p>
+          ) : !versions ? (
             <p className="console-copy">Select an artifact to inspect versions.</p>
           ) : (
             <div>
@@ -252,5 +280,13 @@ export default function ArtifactsPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function ArtifactsPage() {
+  return (
+    <Suspense fallback={<main className="shell"><section className="workspace glass"><p className="status">Loading artifacts...</p></section></main>}>
+      <ArtifactsPageContent />
+    </Suspense>
   );
 }

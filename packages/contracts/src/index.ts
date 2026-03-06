@@ -103,6 +103,48 @@ export interface SyncPushRequest {
   mutations: SyncMutation[];
 }
 
+export type SyncActivityStatus = "queued" | "flushed" | "failed" | "dropped";
+
+export interface SyncActivityEntry {
+  id: string;
+  client_id: string;
+  mutation_id: string;
+  label: string;
+  entity: string;
+  op: string;
+  method: string;
+  path: string;
+  status: SyncActivityStatus;
+  attempts: number;
+  detail?: string | null;
+  created_at: string;
+  recorded_at: string;
+}
+
+export interface SyncActivityWriteRequest {
+  id: string;
+  mutation_id: string;
+  label: string;
+  entity: string;
+  op: string;
+  method: string;
+  path: string;
+  status: SyncActivityStatus;
+  attempts: number;
+  detail?: string | null;
+  created_at: string;
+  recorded_at: string;
+}
+
+export interface SyncActivityPushRequest {
+  client_id: string;
+  entries: SyncActivityWriteRequest[];
+}
+
+export interface SyncActivityListResponse {
+  entries: SyncActivityEntry[];
+}
+
 export interface AIRequest {
   capability: "llm_summary" | "llm_cards" | "llm_tasks" | "stt" | "tts" | "ocr";
   input: Record<string, unknown>;

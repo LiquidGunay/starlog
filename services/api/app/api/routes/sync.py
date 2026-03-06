@@ -3,7 +3,16 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_db, require_user_id
-from app.schemas.sync import SyncEvent, SyncPullResponse, SyncPushRequest, SyncPushResponse
+from app.schemas.sync import (
+    SyncActivityListResponse,
+    SyncActivityPushRequest,
+    SyncActivityPushResponse,
+    SyncActivityResponse,
+    SyncEvent,
+    SyncPullResponse,
+    SyncPushRequest,
+    SyncPushResponse,
+)
 from app.services import sync_service
 
 router = APIRouter(prefix="/sync")
@@ -29,4 +38,27 @@ def pull_sync(
     return SyncPullResponse(
         next_cursor=next_cursor,
         events=[SyncEvent.model_validate(event) for event in events],
+    )
+
+
+@router.post("/activity", response_model=SyncActivityPushResponse)
+def push_activity(
+    payload: SyncActivityPushRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> SyncActivityPushResponse:
+    accepted = sync_service.push_activity(db, payload.client_id, payload.entries)
+    return SyncActivityPushResponse(accepted=accepted)
+
+
+@router.get("/activity", response_model=SyncActivityListResponse)
+def list_activity(
+    limit: int = Query(default=50, ge=1, le=200),
+    client_id: str | None = Query(default=None),
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> SyncActivityListResponse:
+    entries = sync_service.list_activity(db, limit=limit, client_id=client_id)
+    return SyncActivityListResponse(
+        entries=[SyncActivityResponse.model_validate(entry) for entry in entries],
     )

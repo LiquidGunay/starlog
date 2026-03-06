@@ -33,3 +33,36 @@ def get_note(conn: Connection, note_id: str) -> dict | None:
         "SELECT id, title, body_md, version, created_at, updated_at FROM notes WHERE id = ?",
         (note_id,),
     )
+
+
+def update_note(conn: Connection, note_id: str, changes: dict) -> dict | None:
+    current = get_note(conn, note_id)
+    if current is None:
+        return None
+
+    merged = dict(current)
+    merged.update({key: value for key, value in changes.items() if value is not None})
+    merged["version"] = int(current["version"]) + 1
+    merged["updated_at"] = utc_now().isoformat()
+
+    conn.execute(
+        """
+        UPDATE notes
+        SET title = ?, body_md = ?, version = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            merged["title"],
+            merged["body_md"],
+            merged["version"],
+            merged["updated_at"],
+            note_id,
+        ),
+    )
+    events_service.emit(
+        conn,
+        "note.updated",
+        {"note_id": note_id, "version": merged["version"], "title": merged["title"]},
+    )
+    conn.commit()
+    return get_note(conn, note_id)

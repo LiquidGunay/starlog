@@ -45,11 +45,11 @@ Use the phone setup guide for both PWA and Expo companion flows:
 
 - `docs/PHONE_SETUP.md`
 
-Mobile companion currently supports queued capture retries, quick SRS review sessions, daily alarm
-scheduling, and deep-link capture prefill via `starlog://capture?...`.
+Mobile companion currently supports queued capture retries, artifact inbox triage, quick SRS review
+sessions, daily alarm scheduling, and deep-link capture prefill via `starlog://capture?...`.
 
 PWA mutations now use a local browser outbox with replay on reconnect, plus a dedicated sync workspace
-at `/sync-center`.
+at `/sync-center` that also surfaces recent server-recorded mutation activity.
 
 ### Tests
 
@@ -91,11 +91,14 @@ curl -X POST http://localhost:8000/v1/auth/login \
 
 - `/` - launch dashboard + API console
 - `/artifacts` - clip inbox viewer + artifact graph/version history
+- `/notes` - primary note editor with optimistic queued updates
+- `/tasks` - task execution workspace with optimistic status/edit flows
 - `/calendar` - weekly board with create/update/delete event lifecycle controls
 - `/integrations` - provider config + health diagnostics workspace
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
-- `/sync-center` - queued mutation replay and local sync history
+- `/search` - cross-workspace retrieval across artifacts, notes, tasks, and calendar events
+- `/sync-center` - queued mutation replay, local replay log, and server sync history
 - `/mobile-share` - deep-link generator for mobile capture handoff
 
 ## Clip-first API additions
@@ -103,6 +106,9 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - Ingest capture with raw/normalized/extracted layers: `POST /v1/capture`
 - Inspect artifact graph links: `GET /v1/artifacts/{artifact_id}/graph`
 - Inspect summary/card/action version history: `GET /v1/artifacts/{artifact_id}/versions`
+- Edit/fetch notes: `GET /v1/notes/{note_id}`, `PATCH /v1/notes/{note_id}`
+- Search across workspaces: `GET /v1/search?q=...`
+- Inspect/upload sync activity history: `GET /v1/sync/activity`, `POST /v1/sync/activity`
 
 ## Google calendar sync scaffold
 

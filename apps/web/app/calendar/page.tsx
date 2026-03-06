@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { applyOptimisticCalendarEvents } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -13,6 +15,8 @@ type CalendarEvent = {
   ends_at: string;
   source: string;
   remote_id?: string | null;
+  pending?: boolean;
+  pendingLabel?: string;
 };
 
 type GoogleSyncResult = {
@@ -79,8 +83,9 @@ function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function CalendarPage() {
-  const { apiBase, token, mutateWithQueue } = useSessionConfig();
+function CalendarPageContent() {
+  const searchParams = useSearchParams();
+  const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const initialDay = useMemo(() => isoDate(new Date()), []);
   const [selectedDay, setSelectedDay] = useState(initialDay);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -101,12 +106,17 @@ export default function CalendarPage() {
     });
   }, [selectedDay]);
 
+  const visibleEvents = useMemo(
+    () => applyOptimisticCalendarEvents(events, outbox),
+    [events, outbox],
+  );
+
   const eventsByDay = useMemo(() => {
     const buckets = new Map<string, CalendarEvent[]>();
     for (const day of weekDays) {
       buckets.set(day, []);
     }
-    for (const event of events) {
+    for (const event of visibleEvents) {
       const day = event.starts_at.slice(0, 10);
       const bucket = buckets.get(day);
       if (!bucket) {
@@ -118,7 +128,7 @@ export default function CalendarPage() {
       buckets.get(day)?.sort((left, right) => left.starts_at.localeCompare(right.starts_at));
     }
     return buckets;
-  }, [events, weekDays]);
+  }, [visibleEvents, weekDays]);
 
   async function refresh() {
     try {
@@ -205,6 +215,10 @@ export default function CalendarPage() {
   }
 
   function startEdit(event: CalendarEvent) {
+    if (event.id.startsWith("pending:")) {
+      setStatus("Replay queued event creation before editing it");
+      return;
+    }
     setEditingId(event.id);
     setTitle(event.title);
     setStartsAt(toDateTimeLocal(event.starts_at));
@@ -214,6 +228,10 @@ export default function CalendarPage() {
   }
 
   async function removeEvent(eventId: string) {
+    if (eventId.startsWith("pending:")) {
+      setStatus("Drop the queued event from Sync if you want to remove it before replay");
+      return;
+    }
     try {
       const result = await mutateWithQueue(
         `/v1/calendar/events/${eventId}`,
@@ -285,6 +303,24 @@ export default function CalendarPage() {
       setStatus(error instanceof Error ? error.message : "Conflict replay failed");
     }
   }
+
+  useEffect(() => {
+    const requestedId = searchParams.get("event");
+    if (!requestedId) {
+      return;
+    }
+    const requestedEvent = visibleEvents.find((event) => event.id === requestedId);
+    if (!requestedEvent) {
+      return;
+    }
+    setSelectedDay(requestedEvent.starts_at.slice(0, 10));
+    if (!requestedEvent.id.startsWith("pending:")) {
+      setEditingId(requestedEvent.id);
+      setTitle(requestedEvent.title);
+      setStartsAt(toDateTimeLocal(requestedEvent.starts_at));
+      setEndsAt(toDateTimeLocal(requestedEvent.ends_at));
+    }
+  }, [searchParams, visibleEvents]);
 
   return (
     <main className="shell">
@@ -360,6 +396,9 @@ export default function CalendarPage() {
                               {formatTime(event.starts_at)} - {formatTime(event.ends_at)}
                             </p>
                             <p className="console-copy">Source: {event.source}</p>
+                            {event.pending ? (
+                              <p className="console-copy">Pending: {event.pendingLabel || "queued mutation"}</p>
+                            ) : null}
                           </div>
                           <div className="button-row">
                             <button className="button" type="button" onClick={() => startEdit(event)}>
@@ -413,5 +452,13 @@ export default function CalendarPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={<main className="shell"><section className="workspace glass"><p className="status">Loading calendar...</p></section></main>}>
+      <CalendarPageContent />
+    </Suspense>
   );
 }

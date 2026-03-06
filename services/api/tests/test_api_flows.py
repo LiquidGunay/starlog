@@ -174,6 +174,135 @@ def test_generate_time_blocks(client: TestClient, auth_headers: dict[str, str]) 
     assert len(listed.json()) >= 1
 
 
+def test_notes_edit_and_search(client: TestClient, auth_headers: dict[str, str]) -> None:
+    note = client.post(
+        "/v1/notes",
+        json={"title": "Nebula Notebook", "body_md": "Spacing review notes and orbit ideas."},
+        headers=auth_headers,
+    )
+    assert note.status_code == 201
+    note_id = note.json()["id"]
+
+    fetched = client.get(f"/v1/notes/{note_id}", headers=auth_headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["title"] == "Nebula Notebook"
+
+    updated = client.patch(
+        f"/v1/notes/{note_id}",
+        json={"body_md": "Spacing review notes, orbit ideas, and capture workflow."},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["version"] == 2
+
+    task = client.post(
+        "/v1/tasks",
+        json={"title": "Capture nebula article", "estimate_min": 20, "priority": 3},
+        headers=auth_headers,
+    )
+    assert task.status_code == 201
+
+    artifact = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_browser",
+            "capture_source": "browser_ext",
+            "title": "Nebula article",
+            "raw": {"text": "<html>Nebula article raw</html>", "mime_type": "text/html"},
+            "normalized": {"text": "Nebula article on spaced review loops", "mime_type": "text/plain"},
+            "extracted": {"text": "Nebula text extracted"},
+            "metadata": {"source": "search_test"},
+        },
+        headers=auth_headers,
+    )
+    assert artifact.status_code == 201
+
+    search = client.get("/v1/search?q=nebula&limit=10", headers=auth_headers)
+    assert search.status_code == 200
+    payload = search.json()
+    kinds = {item["kind"] for item in payload["results"]}
+    assert "note" in kinds
+    assert "task" in kinds
+    assert "artifact" in kinds
+
+
+def test_sync_activity_history(client: TestClient, auth_headers: dict[str, str]) -> None:
+    pushed = client.post(
+        "/v1/sync/activity",
+        json={
+            "client_id": "web_local",
+            "entries": [
+                {
+                    "id": "act_mut_queued",
+                    "mutation_id": "mut_1",
+                    "label": "Create note: Nebula",
+                    "entity": "note",
+                    "op": "create",
+                    "method": "POST",
+                    "path": "/v1/notes",
+                    "status": "queued",
+                    "attempts": 0,
+                    "detail": "Browser offline",
+                    "created_at": "2026-03-06T08:00:00+00:00",
+                    "recorded_at": "2026-03-06T08:00:01+00:00",
+                },
+                {
+                    "id": "act_mut_flushed_1",
+                    "mutation_id": "mut_1",
+                    "label": "Create note: Nebula",
+                    "entity": "note",
+                    "op": "create",
+                    "method": "POST",
+                    "path": "/v1/notes",
+                    "status": "flushed",
+                    "attempts": 1,
+                    "created_at": "2026-03-06T08:00:00+00:00",
+                    "recorded_at": "2026-03-06T08:05:00+00:00",
+                },
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert pushed.status_code == 200
+    assert pushed.json()["accepted"] == 2
+
+    duplicate = client.post(
+        "/v1/sync/activity",
+        json={
+            "client_id": "web_local",
+            "entries": [
+                {
+                    "id": "act_mut_flushed_1",
+                    "mutation_id": "mut_1",
+                    "label": "Create note: Nebula",
+                    "entity": "note",
+                    "op": "create",
+                    "method": "POST",
+                    "path": "/v1/notes",
+                    "status": "flushed",
+                    "attempts": 1,
+                    "created_at": "2026-03-06T08:00:00+00:00",
+                    "recorded_at": "2026-03-06T08:05:00+00:00",
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert duplicate.status_code == 200
+    assert duplicate.json()["accepted"] == 0
+
+    listed = client.get("/v1/sync/activity?limit=10", headers=auth_headers)
+    assert listed.status_code == 200
+    entries = listed.json()["entries"]
+    assert len(entries) == 2
+    assert entries[0]["status"] == "flushed"
+    assert entries[0]["client_id"] == "web_local"
+
+    filtered = client.get("/v1/sync/activity?limit=10&client_id=web_local", headers=auth_headers)
+    assert filtered.status_code == 200
+    assert len(filtered.json()["entries"]) == 2
+
+
 def test_calendar_soft_delete_hides_events(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/v1/calendar/events",

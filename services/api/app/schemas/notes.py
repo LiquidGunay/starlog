@@ -8,6 +8,11 @@ class NoteCreateRequest(BaseModel):
     body_md: str = ""
 
 
+class NoteUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1)
+    body_md: str | None = None
+
+
 class NoteResponse(BaseModel):
     id: str
     title: str

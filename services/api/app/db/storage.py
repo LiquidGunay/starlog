@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS sync_events (
   server_received_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_activity (
+  id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  mutation_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  op TEXT NOT NULL,
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  detail TEXT,
+  created_at TEXT NOT NULL,
+  recorded_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   source_type TEXT NOT NULL,
@@ -258,6 +274,8 @@ CREATE TABLE IF NOT EXISTS plugins (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
+CREATE INDEX IF NOT EXISTS idx_sync_activity_recorded ON sync_activity(recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_activity_client ON sync_activity(client_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);

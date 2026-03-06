@@ -1,0 +1,113 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+import { SessionControls } from "../components/session-controls";
+import { apiRequest } from "../lib/starlog-client";
+import { useSessionConfig } from "../session-provider";
+
+type SearchResult = {
+  kind: "artifact" | "note" | "task" | "calendar_event";
+  id: string;
+  title: string;
+  snippet: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
+};
+
+type SearchResponse = {
+  query: string;
+  total: number;
+  results: SearchResult[];
+};
+
+function resultHref(result: SearchResult): string {
+  if (result.kind === "artifact") {
+    return `/artifacts?artifact=${encodeURIComponent(result.id)}`;
+  }
+  if (result.kind === "note") {
+    return `/notes?note=${encodeURIComponent(result.id)}`;
+  }
+  if (result.kind === "task") {
+    return `/tasks?task=${encodeURIComponent(result.id)}`;
+  }
+  if (result.kind === "calendar_event") {
+    return `/calendar?event=${encodeURIComponent(result.id)}`;
+  }
+  return "/";
+}
+
+export default function SearchPage() {
+  const { apiBase, token } = useSessionConfig();
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [status, setStatus] = useState("Ready");
+
+  async function runSearch() {
+    if (!query.trim()) {
+      setStatus("Enter a query first");
+      return;
+    }
+
+    try {
+      const payload = await apiRequest<SearchResponse>(
+        apiBase,
+        token,
+        `/v1/search?q=${encodeURIComponent(query.trim())}&limit=30`,
+      );
+      setResults(payload.results);
+      setStatus(`Found ${payload.total} result(s)`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Search failed");
+    }
+  }
+
+  return (
+    <main className="shell">
+      <section className="workspace glass">
+        <SessionControls />
+        <div>
+          <p className="eyebrow">Search</p>
+          <h1>Cross-workspace retrieval</h1>
+          <p className="console-copy">
+            Search notes, artifacts, tasks, and calendar events from one place.
+          </p>
+          <label className="label" htmlFor="search-query">Query</label>
+          <input
+            id="search-query"
+            className="input"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="nebula, calendar, review..."
+          />
+          <div className="button-row">
+            <button className="button" type="button" onClick={() => runSearch()}>Run Search</button>
+          </div>
+          <p className="status">{status}</p>
+        </div>
+
+        <div className="panel glass">
+          <h2>Results</h2>
+          {results.length === 0 ? (
+            <p className="console-copy">No search results yet.</p>
+          ) : (
+            <ul>
+              {results.map((result) => (
+                <li key={`${result.kind}-${result.id}`}>
+                  <Link className="button" href={resultHref(result)}>
+                    {result.title}
+                  </Link>
+                  <p className="console-copy">
+                    {result.kind} | updated {new Date(result.updated_at).toLocaleString()}
+                  </p>
+                  <p className="console-copy">{result.snippet}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}

@@ -1,9 +1,9 @@
 from sqlite3 import Connection
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_db, require_user_id
-from app.schemas.notes import NoteCreateRequest, NoteResponse
+from app.schemas.notes import NoteCreateRequest, NoteResponse, NoteUpdateRequest
 from app.services import notes_service
 
 router = APIRouter(prefix="/notes")
@@ -24,3 +24,28 @@ def list_notes(
     db: Connection = Depends(get_db),
 ) -> list[NoteResponse]:
     return [NoteResponse.model_validate(item) for item in notes_service.list_notes(db)]
+
+
+@router.get("/{note_id}", response_model=NoteResponse)
+def get_note(
+    note_id: str,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> NoteResponse:
+    note = notes_service.get_note(db, note_id)
+    if note is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+    return NoteResponse.model_validate(note)
+
+
+@router.patch("/{note_id}", response_model=NoteResponse)
+def update_note(
+    note_id: str,
+    payload: NoteUpdateRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> NoteResponse:
+    updated = notes_service.update_note(db, note_id, payload.model_dump())
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+    return NoteResponse.model_validate(updated)

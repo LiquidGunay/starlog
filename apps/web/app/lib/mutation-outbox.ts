@@ -19,7 +19,7 @@ export type ReplayEntry = {
   method: string;
   entity: string;
   op: string;
-  status: "queued" | "flushed" | "failed";
+  status: "queued" | "flushed" | "failed" | "dropped";
   created_at: string;
   updated_at: string;
   attempts: number;
@@ -136,6 +136,14 @@ export function createReplayEntry(
     attempts: mutation.attempts,
     last_error: lastError,
   };
+}
+
+export function createActivityId(
+  mutationId: string,
+  status: ReplayEntry["status"],
+  attempts: number,
+): string {
+  return `act_${mutationId}_${status}_${attempts}`;
 }
 
 export function appendReplayEntry(entries: ReplayEntry[], entry: ReplayEntry): ReplayEntry[] {

@@ -74,10 +74,24 @@ type DueCard = {
   due_at: string;
 };
 
+type ArtifactListItem = {
+  id: string;
+  source_type: string;
+  title?: string;
+  created_at: string;
+};
+
+type ArtifactAction = "summarize" | "cards" | "tasks" | "append_note";
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
-const quickActions = ["Summarize", "Create Cards", "Generate Tasks", "Append Note"];
+const artifactQuickActions: Array<{ label: string; action: ArtifactAction }> = [
+  { label: "Summarize", action: "summarize" },
+  { label: "Create Cards", action: "cards" },
+  { label: "Generate Tasks", action: "tasks" },
+  { label: "Append Note", action: "append_note" },
+];
 
 function usePalette(): Palette {
   const scheme = useColorScheme();
@@ -239,6 +253,8 @@ export default function App() {
   const [alarmMinute, setAlarmMinute] = useState(0);
   const [alarmNotificationId, setAlarmNotificationId] = useState<string | null>(null);
   const [pendingCaptures, setPendingCaptures] = useState<PendingCapture[]>([]);
+  const [artifacts, setArtifacts] = useState<ArtifactListItem[]>([]);
+  const [selectedArtifactId, setSelectedArtifactId] = useState("");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
@@ -246,6 +262,7 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const flushInFlight = useRef(false);
   const cardPromptStartedAt = useRef<number | null>(null);
+  const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
 
   async function sendCapture(item: PendingCapture): Promise<string> {
     const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/capture`, {
@@ -278,6 +295,77 @@ export default function App() {
 
     const payload = (await response.json()) as { artifact: { id: string } };
     return payload.artifact.id;
+  }
+
+  async function loadArtifacts() {
+    try {
+      if (!token) {
+        setStatus("Add API token first");
+        return;
+      }
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/artifacts`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Artifact inbox fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as ArtifactListItem[];
+      setArtifacts(payload);
+      if (!selectedArtifactId && payload[0]) {
+        setSelectedArtifactId(payload[0].id);
+      }
+      setStatus(`Loaded ${payload.length} artifact(s) for triage`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load artifacts");
+    }
+  }
+
+  async function runArtifactAction(action: ArtifactAction) {
+    if (!selectedArtifactId) {
+      setStatus("Load artifacts and select one first");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${normalizeBaseUrl(apiBase)}/v1/artifacts/${selectedArtifactId}/actions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action }),
+        },
+      );
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Artifact action failed: ${response.status} ${errorBody}`);
+      }
+      setStatus(`Requested ${action} for ${selectedArtifactId}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Artifact action failed");
+    }
+  }
+
+  async function openSelectedArtifactInPwa() {
+    const base = normalizeBaseUrl(pwaBase);
+    if (!selectedArtifactId) {
+      await openPwa();
+      return;
+    }
+    try {
+      await Linking.openURL(`${base}/artifacts?artifact=${encodeURIComponent(selectedArtifactId)}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to open artifact in PWA");
+    }
   }
 
   async function flushPendingCaptures(origin: "auto" | "manual") {
@@ -315,6 +403,9 @@ export default function App() {
     }
 
     setPendingCaptures(remaining);
+    if (flushed > 0) {
+      loadArtifacts().catch(() => undefined);
+    }
     if (remaining.length === 0) {
       setStatus(`Flushed ${flushed} queued capture(s)`);
     } else {
@@ -353,6 +444,8 @@ export default function App() {
     try {
       const artifactId = await sendCapture(capture);
       setQuickCaptureText("");
+      setSelectedArtifactId(artifactId);
+      loadArtifacts().catch(() => undefined);
       setStatus(`Captured artifact ${artifactId}`);
     } catch (error) {
       queueCapture(capture, error instanceof Error ? error.message : "request failed");
@@ -688,6 +781,13 @@ export default function App() {
     flushPendingCaptures("auto").catch(() => undefined);
   }, [hydrated, token, apiBase, pendingCaptures.length]);
 
+  useEffect(() => {
+    if (!hydrated || !token) {
+      return;
+    }
+    loadArtifacts().catch(() => undefined);
+  }, [hydrated, token, apiBase]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style={palette.bg === "#070c1b" ? "light" : "dark"} />
@@ -702,13 +802,6 @@ export default function App() {
 
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Quick capture + queue</Text>
-          <View style={styles.chipRow}>
-            {quickActions.map((action) => (
-              <TouchableOpacity key={action} style={styles.chip} activeOpacity={0.8}>
-                <Text style={styles.chipText}>{action}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
           <Text style={styles.label}>Capture title</Text>
           <TextInput style={styles.input} value={quickCaptureTitle} onChangeText={setQuickCaptureTitle} />
           <Text style={styles.label}>Source URL (optional)</Text>
@@ -741,6 +834,64 @@ export default function App() {
           {pendingCaptures[0]?.lastError ? (
             <Text style={styles.subtle}>Last queue error: {pendingCaptures[0].lastError}</Text>
           ) : null}
+          {pendingCaptures.slice(0, 3).map((capture) => (
+            <View key={capture.id} style={styles.inlineCard}>
+              <Text style={styles.subtle}>{capture.title}</Text>
+              <Text style={styles.subtle}>
+                attempts: {capture.attempts} | queued {new Date(capture.createdAt).toLocaleTimeString()}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Artifact triage</Text>
+          <Text style={styles.subtle}>
+            Load recent clips, trigger manual AI actions, then jump into the full artifact graph in the PWA.
+          </Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={loadArtifacts}>
+              <Text style={styles.buttonText}>Refresh Inbox</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={openSelectedArtifactInPwa}>
+              <Text style={styles.buttonText}>Open in PWA</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.subtle}>
+            Selected: {selectedArtifact ? `${selectedArtifact.title || selectedArtifact.id}` : "none"}
+          </Text>
+          <View style={styles.chipRow}>
+            {artifactQuickActions.map((item) => (
+              <TouchableOpacity
+                key={item.action}
+                style={styles.chip}
+                activeOpacity={0.8}
+                onPress={() => runArtifactAction(item.action)}
+              >
+                <Text style={styles.chipText}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {artifacts.length === 0 ? (
+            <Text style={styles.subtle}>No artifacts loaded yet.</Text>
+          ) : (
+            artifacts.slice(0, 6).map((artifact) => {
+              const active = artifact.id === selectedArtifactId;
+              return (
+                <TouchableOpacity
+                  key={artifact.id}
+                  style={[styles.inlineCard, active ? styles.inlineCardActive : null]}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedArtifactId(artifact.id)}
+                >
+                  <Text style={styles.inlineCardTitle}>{artifact.title || artifact.id}</Text>
+                  <Text style={styles.subtle}>
+                    {artifact.source_type} | {new Date(artifact.created_at).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
         <View style={styles.panel}>
@@ -929,6 +1080,27 @@ function themedStyles(palette: Palette) {
       color: palette.text,
       fontWeight: "600",
       fontSize: 13,
+    },
+    inlineCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 12,
+      padding: 10,
+      gap: 4,
+      backgroundColor: palette.bgAlt,
+      marginTop: 4,
+    },
+    inlineCardActive: {
+      borderColor: palette.accent,
+      shadowColor: palette.accent,
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    inlineCardTitle: {
+      color: palette.text,
+      fontSize: 14,
+      fontWeight: "700",
     },
     subtle: {
       color: palette.muted,

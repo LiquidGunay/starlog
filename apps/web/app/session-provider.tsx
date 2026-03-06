@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import {
   appendReplayEntry,
+  createActivityId,
   createQueuedMutation,
   createReplayEntry,
   getOrCreateClientId,
@@ -49,11 +50,48 @@ type SessionConfig = {
 
 const SessionContext = createContext<SessionConfig | null>(null);
 
+type SyncActivityWrite = {
+  id: string;
+  mutation_id: string;
+  label: string;
+  entity: string;
+  op: string;
+  method: string;
+  path: string;
+  status: "queued" | "flushed" | "failed" | "dropped";
+  attempts: number;
+  detail?: string;
+  created_at: string;
+  recorded_at: string;
+};
+
 function bodyString(init?: RequestInit): string | undefined {
   if (!init?.body) {
     return undefined;
   }
   return typeof init.body === "string" ? init.body : undefined;
+}
+
+function toSyncActivity(
+  mutation: QueuedMutation,
+  status: SyncActivityWrite["status"],
+  detail?: string,
+): SyncActivityWrite {
+  const attempts = mutation.attempts;
+  return {
+    id: createActivityId(mutation.id, status, attempts),
+    mutation_id: mutation.id,
+    label: mutation.label,
+    entity: mutation.entity,
+    op: mutation.op,
+    method: mutation.method,
+    path: mutation.path,
+    status,
+    attempts,
+    detail,
+    created_at: mutation.created_at,
+    recorded_at: new Date().toISOString(),
+  };
 }
 
 export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -113,6 +151,27 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
     setTokenState(next);
   };
 
+  const reportSyncActivity = useCallback(
+    async (entries: SyncActivityWrite[]) => {
+      if (entries.length === 0 || !isOnline || !token) {
+        return;
+      }
+
+      try {
+        await apiRequest(apiBase, token, "/v1/sync/activity", {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: clientId,
+            entries,
+          }),
+        });
+      } catch {
+        // Best-effort telemetry for cross-device sync visibility; never block user mutations.
+      }
+    },
+    [apiBase, clientId, isOnline, token],
+  );
+
   const queueMutation = useCallback((mutation: QueuedMutation, reason: string) => {
     const queued = {
       ...mutation,
@@ -123,7 +182,8 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
       appendReplayEntry(previous, createReplayEntry(queued, "queued", reason)),
     );
     setFlushSummary(`Queued for replay: ${queued.label}`);
-  }, []);
+    void reportSyncActivity([toSyncActivity(queued, "queued", reason)]);
+  }, [reportSyncActivity]);
 
   const mutateWithQueue = useCallback(
     async <T,>(path: string, init: RequestInit | undefined, options: MutationOptions): Promise<MutationResult<T>> => {
@@ -158,6 +218,7 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
           appendReplayEntry(previous, createReplayEntry(sentMutation, "flushed")),
         );
         setFlushSummary(`Sent mutation: ${options.label}`);
+        void reportSyncActivity([toSyncActivity(sentMutation, "flushed")]);
         return { queued: false, data };
       } catch (error) {
         if (error instanceof ApiError && error.status < 500) {
@@ -175,7 +236,7 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         return { queued: true };
       }
     },
-    [apiBase, isOnline, queueMutation, token],
+    [apiBase, isOnline, queueMutation, reportSyncActivity, token],
   );
 
   const flushOutbox = useCallback(async () => {
@@ -199,6 +260,7 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
     let flushed = 0;
     let remaining: QueuedMutation[] = [];
     let replayEntries: ReplayEntry[] = [];
+    let activityEntries: SyncActivityWrite[] = [];
 
     for (const mutation of outbox) {
       const attempted = {
@@ -214,9 +276,19 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         });
         flushed += 1;
         replayEntries = [...replayEntries, createReplayEntry(attempted, "flushed")];
+        activityEntries = [
+          ...activityEntries,
+          toSyncActivity(mutation, "queued", mutation.last_error),
+          toSyncActivity(attempted, "flushed"),
+        ];
       } catch (error) {
         const reason = error instanceof Error ? error.message : "Replay failed";
         replayEntries = [...replayEntries, createReplayEntry(attempted, "failed", reason)];
+        activityEntries = [
+          ...activityEntries,
+          toSyncActivity(mutation, "queued", mutation.last_error),
+          toSyncActivity(attempted, "failed", reason),
+        ];
 
         if (error instanceof ApiError && error.status < 500) {
           continue;
@@ -245,12 +317,23 @@ export function SessionProvider({ children }: Readonly<{ children: React.ReactNo
         : `Replayed ${flushed}; ${remaining.length} queued mutation(s) remain`,
     );
     setFlushInFlight(false);
-  }, [apiBase, flushInFlight, isOnline, outbox, token]);
+    void reportSyncActivity(activityEntries);
+  }, [apiBase, flushInFlight, isOnline, outbox, reportSyncActivity, token]);
 
   const dropQueuedMutation = useCallback((mutationId: string) => {
+    const mutation = outbox.find((item) => item.id === mutationId);
     setOutbox((previous) => previous.filter((mutation) => mutation.id !== mutationId));
     setFlushSummary(`Dropped queued mutation ${mutationId}`);
-  }, []);
+    if (mutation) {
+      setReplayLog((previous) =>
+        appendReplayEntry(previous, createReplayEntry(mutation, "dropped", mutation.last_error)),
+      );
+      void reportSyncActivity([
+        toSyncActivity(mutation, "queued", mutation.last_error),
+        toSyncActivity(mutation, "dropped", mutation.last_error),
+      ]);
+    }
+  }, [outbox, reportSyncActivity]);
 
   useEffect(() => {
     if (!hydrated || !isOnline || !token || flushInFlight || outbox.length === 0) {

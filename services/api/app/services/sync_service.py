@@ -3,7 +3,7 @@ from sqlite3 import Connection
 
 from app.core.config import get_settings
 from app.core.time import utc_now
-from app.schemas.sync import SyncMutation
+from app.schemas.sync import SyncActivityWrite, SyncMutation
 from app.services.common import execute_fetchall
 
 
@@ -66,3 +66,65 @@ def pull(conn: Connection, cursor: int) -> tuple[int, list[dict]]:
             }
         )
     return next_cursor, events
+
+
+def push_activity(conn: Connection, client_id: str, entries: list[SyncActivityWrite]) -> int:
+    accepted = 0
+
+    for entry in entries:
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO sync_activity (
+              id, client_id, mutation_id, label, entity, op, method, path, status,
+              attempts, detail, created_at, recorded_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                entry.id,
+                client_id,
+                entry.mutation_id,
+                entry.label,
+                entry.entity,
+                entry.op,
+                entry.method,
+                entry.path,
+                entry.status,
+                entry.attempts,
+                entry.detail,
+                entry.created_at.isoformat(),
+                entry.recorded_at.isoformat(),
+            ),
+        )
+        accepted += int(cursor.rowcount > 0)
+
+    conn.commit()
+    return accepted
+
+
+def list_activity(conn: Connection, limit: int, client_id: str | None = None) -> list[dict]:
+    if client_id:
+        return execute_fetchall(
+            conn,
+            """
+            SELECT id, client_id, mutation_id, label, entity, op, method, path, status,
+                   attempts, detail, created_at, recorded_at
+            FROM sync_activity
+            WHERE client_id = ?
+            ORDER BY recorded_at DESC
+            LIMIT ?
+            """,
+            (client_id, limit),
+        )
+
+    return execute_fetchall(
+        conn,
+        """
+        SELECT id, client_id, mutation_id, label, entity, op, method, path, status,
+               attempts, detail, created_at, recorded_at
+        FROM sync_activity
+        ORDER BY recorded_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
