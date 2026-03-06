@@ -24,3 +24,4 @@ class ProviderHealthResponse(BaseModel):
     checks: dict[str, bool] = Field(default_factory=dict)
     secure_storage: str = "fallback_insecure"
     probe: dict[str, str] = Field(default_factory=dict)
+    auth_probe: dict[str, str] = Field(default_factory=dict)

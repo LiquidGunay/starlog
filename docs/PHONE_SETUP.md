@@ -62,6 +62,7 @@ pnpm --filter mobile start
 5. Optional sanity checks in the mobile app:
    - Capture/Queue a quick clip.
    - Refresh the artifact inbox, select a recent clip, and trigger `Summarize` or `Create Cards`.
+   - Inspect the selected artifact detail block to confirm summary/task/card/note context loads on phone.
    - Load due cards in "Quick review session" and submit a rating.
    - Cache and play a briefing, then schedule the daily alarm.
 

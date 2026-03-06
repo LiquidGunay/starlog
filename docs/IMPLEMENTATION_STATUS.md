@@ -34,6 +34,7 @@
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
 - Mobile companion now supports lightweight artifact inbox triage, manual artifact actions, and open-in-PWA handoff.
+- Mobile companion now shows selected artifact context (latest summary, related tasks/notes/cards, recent action history) for quick triage on phone.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
 - Calendar events now support sync-aware soft delete (`DELETE /v1/calendar/events/{id}`) with tombstone tracking.
@@ -41,6 +42,7 @@
 - Google sync conflicts now support unresolved/resolved views plus API resolution actions (`local_wins` / `remote_wins` / `dismiss`).
 - Provider configs now encrypt sensitive values at rest, redact secrets in API responses, and expose richer health checks.
 - Provider health now includes localhost runtime endpoint probes for local-mode providers.
+- Provider health now supports auth-level probes for Google OAuth and opt-in remote/API providers via `auth_probe_url`.
 - Google sync run responses now include `run_id`, and conflict details now carry sync run/phase metadata for replay diagnostics.
 - Google sync conflicts can now trigger replay runs from the API and planner/calendar UI surfaces.
 - Web UI refresh with modern "spacy" look and dark/light modes.
@@ -63,8 +65,8 @@
 
 ## Next implementation targets
 
-1. Add auth-level provider probes (e.g., token validity pings for configured remote providers) beyond localhost endpoint checks.
-2. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
-3. Add artifact-detail triage on mobile (summary/cards/tasks preview) beyond the current action launcher.
-4. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
-5. Add export/import round-trip verification tooling and restore drill docs around the current export API.
+1. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
+2. Add richer provider-specific probes where possible (for example Codex bridge/authenticated model-list endpoints) on top of the new generic auth-probe path.
+3. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
+4. Add export/import round-trip verification tooling and restore drill docs around the current export API.
+5. Add deeper mobile-to-PWA handoff targets for related notes/tasks directly from artifact triage.

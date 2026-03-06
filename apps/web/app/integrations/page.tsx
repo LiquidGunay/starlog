@@ -21,6 +21,7 @@ type ProviderHealth = {
   checks: Record<string, boolean>;
   secure_storage: string;
   probe: Record<string, string>;
+  auth_probe: Record<string, string>;
 };
 
 export default function IntegrationsPage() {
@@ -178,6 +179,7 @@ export default function IntegrationsPage() {
                         </p>
                         <p className="console-copy">Checks: {JSON.stringify(health.checks)}</p>
                         <p className="console-copy">Probe: {JSON.stringify(health.probe)}</p>
+                        <p className="console-copy">Auth probe: {JSON.stringify(health.auth_probe)}</p>
                       </div>
                     ) : (
                       <p className="console-copy">Health not loaded.</p>

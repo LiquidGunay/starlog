@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -326,7 +327,13 @@ def test_calendar_soft_delete_hides_events(client: TestClient, auth_headers: dic
     assert event_id not in ids
 
 
-def test_provider_config_and_webhooks(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_provider_config_and_webhooks(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import google_calendar_service, integrations_service
+
     configured = client.post(
         "/v1/integrations/providers/local_llm",
         json={"enabled": True, "mode": "local_first", "config": {"model": "qwen2.5"}},
@@ -380,6 +387,67 @@ def test_provider_config_and_webhooks(client: TestClient, auth_headers: dict[str
     assert missing_health.status_code == 200
     assert missing_health.json()["healthy"] is False
     assert missing_health.json()["checks"]["credential_present"] is False
+    assert missing_health.json()["auth_probe"] == {}
+
+    def fake_auth_probe(url: str, config: dict, timeout_seconds: float = 4.0) -> tuple[bool, str, dict[str, str]]:
+        return True, "Auth probe succeeded (200)", {
+            "target": url,
+            "status": "ok",
+            "detail": "Auth probe succeeded (200)",
+            "header": "Authorization",
+        }
+
+    monkeypatch.setattr(integrations_service, "_probe_authenticated_endpoint", fake_auth_probe)
+
+    api_probe = client.post(
+        "/v1/integrations/providers/api_with_probe",
+        json={
+            "enabled": True,
+            "mode": "api_fallback",
+            "config": {
+                "api_key": "sk-probe-secret",
+                "model": "gpt-4.1-mini",
+                "auth_probe_url": "https://example.com/v1/models",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert api_probe.status_code == 200
+    api_probe_health = client.get("/v1/integrations/providers/api_with_probe/health", headers=auth_headers)
+    assert api_probe_health.status_code == 200
+    assert api_probe_health.json()["healthy"] is True
+    assert api_probe_health.json()["checks"]["auth_probe_ok"] is True
+    assert api_probe_health.json()["auth_probe"]["status"] == "ok"
+
+    def fake_google_probe(_conn) -> tuple[bool, str, dict[str, str]]:
+        return True, "Google auth probe succeeded", {
+            "target": "https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=1",
+            "status": "ok",
+            "detail": "Loaded 0 event(s) from Google Calendar API",
+        }
+
+    monkeypatch.setattr(google_calendar_service, "probe_oauth_connection", fake_google_probe)
+
+    google_provider = client.post(
+        "/v1/integrations/providers/google_calendar",
+        json={
+            "enabled": True,
+            "mode": "oauth_google",
+            "config": {
+                "source": "google_oauth",
+                "access_token": "ya29.test",
+                "refresh_token": "refresh_test",
+                "expires_at": "2026-03-07T08:00:00+00:00",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert google_provider.status_code == 200
+    google_health = client.get("/v1/integrations/providers/google_calendar/health", headers=auth_headers)
+    assert google_health.status_code == 200
+    assert google_health.json()["healthy"] is True
+    assert google_health.json()["checks"]["auth_probe_ok"] is True
+    assert google_health.json()["auth_probe"]["status"] == "ok"
 
     exported = client.get("/v1/export", headers=auth_headers)
     assert exported.status_code == 200

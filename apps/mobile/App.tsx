@@ -83,6 +83,29 @@ type ArtifactListItem = {
 
 type ArtifactAction = "summarize" | "cards" | "tasks" | "append_note";
 
+type ArtifactGraph = {
+  artifact: {
+    id: string;
+    source_type: string;
+    title?: string;
+    raw_content?: string | null;
+    normalized_content?: string | null;
+    extracted_content?: string | null;
+  };
+  summaries: Array<{ id: string; version: number; content: string; created_at: string }>;
+  cards: Array<{ id: string; prompt: string; answer: string; card_type: string }>;
+  tasks: Array<{ id: string; title: string; status: string }>;
+  notes: Array<{ id: string; title: string; body_md: string; version: number }>;
+  relations: Array<{ id: string; relation_type: string; target_type: string; target_id: string }>;
+};
+
+type ArtifactVersions = {
+  artifact_id: string;
+  summaries: Array<{ id: string; version: number; created_at: string }>;
+  card_sets: Array<{ id: string; version: number; created_at: string }>;
+  actions: Array<{ id: string; action: string; status: string; output_ref?: string | null; created_at: string }>;
+};
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
@@ -255,6 +278,9 @@ export default function App() {
   const [pendingCaptures, setPendingCaptures] = useState<PendingCapture[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactListItem[]>([]);
   const [selectedArtifactId, setSelectedArtifactId] = useState("");
+  const [artifactGraph, setArtifactGraph] = useState<ArtifactGraph | null>(null);
+  const [artifactVersions, setArtifactVersions] = useState<ArtifactVersions | null>(null);
+  const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
@@ -314,12 +340,58 @@ export default function App() {
       }
       const payload = (await response.json()) as ArtifactListItem[];
       setArtifacts(payload);
-      if (!selectedArtifactId && payload[0]) {
+      if (payload.length === 0) {
+        setSelectedArtifactId("");
+        setArtifactGraph(null);
+        setArtifactVersions(null);
+        setArtifactDetailStatus("No artifact selected");
+      } else if (!selectedArtifactId || !payload.some((artifact) => artifact.id === selectedArtifactId)) {
         setSelectedArtifactId(payload[0].id);
       }
       setStatus(`Loaded ${payload.length} artifact(s) for triage`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load artifacts");
+    }
+  }
+
+  async function loadArtifactDetail(artifactId: string) {
+    try {
+      if (!token) {
+        setArtifactGraph(null);
+        setArtifactVersions(null);
+        setArtifactDetailStatus("Add API token first");
+        return;
+      }
+
+      const [graphResponse, versionsResponse] = await Promise.all([
+        fetch(`${normalizeBaseUrl(apiBase)}/v1/artifacts/${artifactId}/graph`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${normalizeBaseUrl(apiBase)}/v1/artifacts/${artifactId}/versions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (!graphResponse.ok) {
+        const errorBody = await graphResponse.text();
+        throw new Error(`Artifact graph fetch failed: ${graphResponse.status} ${errorBody}`);
+      }
+      if (!versionsResponse.ok) {
+        const errorBody = await versionsResponse.text();
+        throw new Error(`Artifact versions fetch failed: ${versionsResponse.status} ${errorBody}`);
+      }
+
+      const graphPayload = (await graphResponse.json()) as ArtifactGraph;
+      const versionsPayload = (await versionsResponse.json()) as ArtifactVersions;
+      setArtifactGraph(graphPayload);
+      setArtifactVersions(versionsPayload);
+      setArtifactDetailStatus(
+        `Loaded artifact detail: ${graphPayload.summaries.length} summaries, ${graphPayload.cards.length} cards`,
+      );
+    } catch (error) {
+      setArtifactGraph(null);
+      setArtifactVersions(null);
+      setArtifactDetailStatus(error instanceof Error ? error.message : "Failed to load artifact detail");
     }
   }
 
@@ -349,6 +421,7 @@ export default function App() {
         const errorBody = await response.text();
         throw new Error(`Artifact action failed: ${response.status} ${errorBody}`);
       }
+      await loadArtifactDetail(selectedArtifactId);
       setStatus(`Requested ${action} for ${selectedArtifactId}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Artifact action failed");
@@ -788,6 +861,15 @@ export default function App() {
     loadArtifacts().catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
+  useEffect(() => {
+    if (!hydrated || !token || !selectedArtifactId) {
+      setArtifactGraph(null);
+      setArtifactVersions(null);
+      return;
+    }
+    loadArtifactDetail(selectedArtifactId).catch(() => undefined);
+  }, [hydrated, token, apiBase, selectedArtifactId]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style={palette.bg === "#070c1b" ? "light" : "dark"} />
@@ -860,6 +942,7 @@ export default function App() {
           <Text style={styles.subtle}>
             Selected: {selectedArtifact ? `${selectedArtifact.title || selectedArtifact.id}` : "none"}
           </Text>
+          <Text style={styles.subtle}>{artifactDetailStatus}</Text>
           <View style={styles.chipRow}>
             {artifactQuickActions.map((item) => (
               <TouchableOpacity
@@ -892,6 +975,60 @@ export default function App() {
               );
             })
           )}
+          {artifactGraph ? (
+            <View style={styles.detailCard}>
+              <Text style={styles.inlineCardTitle}>Selected artifact detail</Text>
+              <Text style={styles.subtle}>
+                summaries {artifactGraph.summaries.length} | cards {artifactGraph.cards.length} | tasks {artifactGraph.tasks.length} | notes {artifactGraph.notes.length}
+              </Text>
+              {artifactGraph.summaries[0] ? (
+                <View style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>Latest summary v{artifactGraph.summaries[0].version}</Text>
+                  <Text style={styles.subtle}>
+                    {artifactGraph.summaries[0].content.slice(0, 180)}
+                    {artifactGraph.summaries[0].content.length > 180 ? "..." : ""}
+                  </Text>
+                </View>
+              ) : null}
+              {artifactGraph.tasks.slice(0, 2).map((task) => (
+                <View key={task.id} style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>{task.title}</Text>
+                  <Text style={styles.subtle}>task status: {task.status}</Text>
+                </View>
+              ))}
+              {artifactGraph.notes.slice(0, 1).map((note) => (
+                <View key={note.id} style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>{note.title}</Text>
+                  <Text style={styles.subtle}>
+                    {note.body_md.slice(0, 160)}
+                    {note.body_md.length > 160 ? "..." : ""}
+                  </Text>
+                </View>
+              ))}
+              {artifactGraph.cards.slice(0, 2).map((card) => (
+                <View key={card.id} style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>{card.prompt}</Text>
+                  <Text style={styles.subtle}>
+                    {card.answer.slice(0, 140)}
+                    {card.answer.length > 140 ? "..." : ""}
+                  </Text>
+                </View>
+              ))}
+              {artifactVersions ? (
+                <View style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>Version history</Text>
+                  <Text style={styles.subtle}>
+                    {artifactVersions.summaries.length} summaries | {artifactVersions.card_sets.length} card sets | {artifactVersions.actions.length} actions
+                  </Text>
+                  {artifactVersions.actions.slice(0, 3).map((action) => (
+                    <Text key={action.id} style={styles.subtle}>
+                      {action.action} [{action.status}]
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.panel}>
@@ -1101,6 +1238,15 @@ function themedStyles(palette: Palette) {
       color: palette.text,
       fontSize: 14,
       fontWeight: "700",
+    },
+    detailCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 10,
+      gap: 8,
+      backgroundColor: palette.panel,
+      marginTop: 6,
     },
     subtle: {
       color: palette.muted,

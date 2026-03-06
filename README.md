@@ -94,7 +94,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - `/notes` - primary note editor with optimistic queued updates
 - `/tasks` - task execution workspace with optimistic status/edit flows
 - `/calendar` - weekly board with create/update/delete event lifecycle controls
-- `/integrations` - provider config + health diagnostics workspace
+- `/integrations` - provider config, runtime probes, and auth-probe diagnostics workspace
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
 - `/search` - cross-workspace retrieval across artifacts, notes, tasks, and calendar events
@@ -143,6 +143,7 @@ When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configure
 - Sensitive provider fields (`api_key`, `token`, `secret`, etc.) are encrypted at rest.
 - API responses redact sensitive values as `__redacted__`.
 - Local-mode providers with `endpoint`/`base_url` now run localhost runtime probes.
+- Remote/API providers can opt into auth probes with `auth_probe_url`, and Google OAuth health now performs a real Calendar API auth probe.
 - Set `STARLOG_SECRETS_MASTER_KEY` in production to avoid fallback insecure key mode.
 
 ## Ops endpoints

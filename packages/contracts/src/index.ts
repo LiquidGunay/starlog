@@ -215,6 +215,7 @@ export interface ProviderHealthResponse {
   checks: Record<string, boolean>;
   secure_storage: string;
   probe: Record<string, string>;
+  auth_probe: Record<string, string>;
 }
 
 export interface GoogleOAuthStartResponse {

@@ -11,7 +11,7 @@ from app.core.security import (
     secrets_encryption_mode,
 )
 from app.core.time import utc_now
-from app.services import events_service
+from app.services import events_service, google_calendar_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 
@@ -58,8 +58,12 @@ def _default_probe_url(endpoint: str, explicit_health_url: str | None) -> str:
     return f"{base}/health"
 
 
-def _probe_endpoint(probe_url: str, timeout_seconds: float = 2.0) -> tuple[bool, str]:
-    request = Request(probe_url, method="GET")
+def _probe_endpoint(
+    probe_url: str,
+    timeout_seconds: float = 2.0,
+    headers: dict[str, str] | None = None,
+) -> tuple[bool, str]:
+    request = Request(probe_url, headers=headers or {}, method="GET")
     try:
         with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
             status = int(response.status)
@@ -74,14 +78,63 @@ def _probe_endpoint(probe_url: str, timeout_seconds: float = 2.0) -> tuple[bool,
         return False, "Probe timed out"
 
 
+def _auth_probe_header(config: dict) -> tuple[dict[str, str], str | None]:
+    explicit_header = str(config.get("auth_probe_header") or "").strip()
+    explicit_prefix = str(config.get("auth_probe_prefix") or "")
+
+    if isinstance(config.get("access_token"), str) and str(config["access_token"]).strip():
+        token = str(config["access_token"]).strip()
+        header_name = explicit_header or "Authorization"
+        prefix = explicit_prefix if explicit_header else (explicit_prefix or "Bearer ")
+        return {header_name: f"{prefix}{token}" if prefix else token}, header_name
+
+    if isinstance(config.get("token"), str) and str(config["token"]).strip():
+        token = str(config["token"]).strip()
+        header_name = explicit_header or "Authorization"
+        prefix = explicit_prefix if explicit_header else (explicit_prefix or "Bearer ")
+        return {header_name: f"{prefix}{token}" if prefix else token}, header_name
+
+    if isinstance(config.get("api_key"), str) and str(config["api_key"]).strip():
+        token = str(config["api_key"]).strip()
+        header_name = explicit_header or "Authorization"
+        prefix = explicit_prefix if explicit_header else (explicit_prefix or "Bearer ")
+        return {header_name: f"{prefix}{token}" if prefix else token}, header_name
+
+    return {}, None
+
+
+def _probe_authenticated_endpoint(
+    probe_url: str,
+    config: dict,
+    timeout_seconds: float = 4.0,
+) -> tuple[bool, str, dict[str, str]]:
+    headers, header_name = _auth_probe_header(config)
+    if not headers:
+        return False, "Auth probe could not build auth headers from configured credentials", {
+            "target": probe_url,
+            "status": "failed",
+            "detail": "Credential missing or unsupported header configuration",
+        }
+
+    ok, detail = _probe_endpoint(probe_url, timeout_seconds=timeout_seconds, headers=headers)
+    return ok, detail, {
+        "target": probe_url,
+        "status": "ok" if ok else "failed",
+        "detail": detail,
+        "header": header_name or "Authorization",
+    }
+
+
 def _health_checks(
+    conn: Connection,
     provider_name: str,
     mode: str,
     config: dict,
-) -> tuple[bool, list[str], dict[str, bool], dict[str, str]]:
+) -> tuple[bool, list[str], dict[str, bool], dict[str, str], dict[str, str]]:
     checks: dict[str, bool] = {}
     problems: list[str] = []
     probe: dict[str, str] = {}
+    auth_probe: dict[str, str] = {}
 
     if mode.startswith("api"):
         has_credential = _contains_any(config, {"api_key", "access_token", "token"})
@@ -120,6 +173,31 @@ def _health_checks(
             checks["access_token_present"] = has_access
             if not has_access:
                 problems.append("missing Google access token")
+            else:
+                probe_ok, probe_detail, probe_meta = google_calendar_service.probe_oauth_connection(conn)
+                checks["auth_probe_configured"] = True
+                checks["auth_probe_ok"] = probe_ok
+                auth_probe = probe_meta
+                if not probe_ok:
+                    problems.append(probe_detail)
+
+    auth_probe_url = str(config.get("auth_probe_url") or "").strip()
+    if mode.startswith("api") and auth_probe_url:
+        checks["auth_probe_configured"] = True
+        if not _valid_url(auth_probe_url):
+            checks["auth_probe_ok"] = False
+            auth_probe = {
+                "target": auth_probe_url,
+                "status": "failed",
+                "detail": "Invalid auth probe URL",
+            }
+            problems.append("invalid auth probe URL")
+        else:
+            auth_ok, auth_detail, auth_meta = _probe_authenticated_endpoint(auth_probe_url, config)
+            checks["auth_probe_ok"] = auth_ok
+            auth_probe = auth_meta
+            if not auth_ok:
+                problems.append(auth_detail)
 
     if provider_name == "codex_bridge":
         has_bridge = _valid_url(config.get("bridge_url") or config.get("endpoint"))
@@ -127,7 +205,7 @@ def _health_checks(
         if not has_bridge:
             problems.append("missing codex bridge URL")
 
-    return len(problems) == 0, problems, checks, probe
+    return len(problems) == 0, problems, checks, probe, auth_probe
 
 
 def upsert_provider_config(
@@ -233,7 +311,7 @@ def provider_health(conn: Connection, provider_name: str) -> dict:
             "secure_storage": secrets_encryption_mode(),
         }
 
-    healthy, problems, checks, probe = _health_checks(provider_name, mode, config)
+    healthy, problems, checks, probe, auth_probe = _health_checks(conn, provider_name, mode, config)
     checks["enabled"] = True
     checks["config_present"] = bool(config)
     checks["secure_storage_configured"] = secrets_encryption_mode() == "configured"
@@ -252,4 +330,5 @@ def provider_health(conn: Connection, provider_name: str) -> dict:
         "checks": checks,
         "secure_storage": secrets_encryption_mode(),
         "probe": probe,
+        "auth_probe": auth_probe,
     }

@@ -349,6 +349,50 @@ def sync_remote_from_google_api(conn: Connection) -> int:
     return imported
 
 
+def probe_oauth_connection(conn: Connection) -> tuple[bool, str, dict[str, str]]:
+    query = urlencode({"singleEvents": "true", "showDeleted": "false", "maxResults": 1})
+    target = f"{_events_collection_url()}?{query}"
+
+    try:
+        access_token, _ = _ensure_google_access_token(conn)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Google auth probe failed during token refresh: {exc}", {
+            "target": target,
+            "status": "failed",
+            "detail": "Token refresh failed before probe",
+        }
+
+    if not access_token:
+        return False, "Google auth probe failed: missing access token", {
+            "target": target,
+            "status": "failed",
+            "detail": "Access token missing",
+        }
+
+    try:
+        payload = _http_get_json(target, access_token)
+    except (HTTPError, URLError, RuntimeError, TimeoutError) as exc:
+        return False, f"Google auth probe failed: {exc}", {
+            "target": target,
+            "status": "failed",
+            "detail": str(exc),
+        }
+
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return False, "Google auth probe failed: unexpected payload shape", {
+            "target": target,
+            "status": "failed",
+            "detail": "items array missing from response",
+        }
+
+    return True, "Google auth probe succeeded", {
+        "target": target,
+        "status": "ok",
+        "detail": f"Loaded {len(items)} event(s) from Google Calendar API",
+    }
+
+
 def oauth_status(conn: Connection) -> dict:
     provider = _provider_config(conn)
     if provider is None:
