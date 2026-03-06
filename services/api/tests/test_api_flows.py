@@ -375,6 +375,13 @@ def test_google_conflict_resolution_flow(client: TestClient, auth_headers: dict[
     assert "phase" in payload[0]["detail"]
 
     conflict_id = payload[0]["id"]
+    replayed = client.post(
+        f"/v1/calendar/sync/google/conflicts/{conflict_id}/replay",
+        headers=auth_headers,
+    )
+    assert replayed.status_code == 200
+    assert replayed.json()["sync_run"]["run_id"].startswith("gsr_")
+
     resolved = client.post(
         f"/v1/calendar/sync/google/conflicts/{conflict_id}/resolve",
         json={"resolution_strategy": "local_wins"},

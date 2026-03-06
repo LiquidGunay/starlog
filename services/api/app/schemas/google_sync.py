@@ -73,3 +73,8 @@ class CalendarConflictResolveRequest(BaseModel):
 
 class CalendarConflictResolveResponse(BaseModel):
     conflict: CalendarConflictResponse
+
+
+class CalendarConflictReplayResponse(BaseModel):
+    sync_run: GoogleSyncRunResponse
+    conflict: CalendarConflictResponse | None = None

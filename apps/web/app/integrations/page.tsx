@@ -24,7 +24,7 @@ type ProviderHealth = {
 };
 
 export default function IntegrationsPage() {
-  const { apiBase, token } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [providerName, setProviderName] = useState("local_llm");
   const [enabled, setEnabled] = useState(true);
   const [mode, setMode] = useState("local_first");
@@ -65,14 +65,26 @@ export default function IntegrationsPage() {
     }
 
     try {
-      await apiRequest<ProviderConfig>(apiBase, token, `/v1/integrations/providers/${providerName}`, {
-        method: "POST",
-        body: JSON.stringify({
-          enabled,
-          mode,
-          config: parsedConfig,
-        }),
-      });
+      const result = await mutateWithQueue<ProviderConfig>(
+        `/v1/integrations/providers/${providerName}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            enabled,
+            mode,
+            config: parsedConfig,
+          }),
+        },
+        {
+          label: `Save provider config: ${providerName}`,
+          entity: "provider_config",
+          op: "upsert",
+        },
+      );
+      if (result.queued) {
+        setStatus(`Queued provider config for ${providerName}`);
+        return;
+      }
       setStatus(`Saved provider ${providerName}`);
       await loadProviders();
     } catch (error) {

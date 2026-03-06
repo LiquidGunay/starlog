@@ -34,7 +34,7 @@ type ArtifactVersions = {
 };
 
 export default function ArtifactsPage() {
-  const { apiBase, token } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [items, setItems] = useState<Artifact[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [graph, setGraph] = useState<ArtifactGraph | null>(null);
@@ -59,21 +59,36 @@ export default function ArtifactsPage() {
 
   async function createArtifact() {
     try {
-      const payload = await apiRequest<{ artifact: Artifact }>(apiBase, token, "/v1/capture", {
-        method: "POST",
-        body: JSON.stringify({
-          source_type: "clip_manual",
-          capture_source: "pwa_workspace",
-          title: quickTitle || "Workspace clip",
-          source_url: quickUrl || undefined,
-          raw: { text: quickClip, mime_type: "text/plain" },
-          normalized: { text: quickClip, mime_type: "text/plain" },
-          extracted: { text: quickClip, mime_type: "text/plain" },
-          metadata: { source: "artifacts_page" },
-        }),
-      });
-      setStatus(`Captured artifact ${payload.artifact.id}`);
-      setSelectedId(payload.artifact.id);
+      const result = await mutateWithQueue<{ artifact: Artifact }>(
+        "/v1/capture",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            source_type: "clip_manual",
+            capture_source: "pwa_workspace",
+            title: quickTitle || "Workspace clip",
+            source_url: quickUrl || undefined,
+            raw: { text: quickClip, mime_type: "text/plain" },
+            normalized: { text: quickClip, mime_type: "text/plain" },
+            extracted: { text: quickClip, mime_type: "text/plain" },
+            metadata: { source: "artifacts_page" },
+          }),
+        },
+        {
+          label: `Capture artifact: ${quickTitle || "Workspace clip"}`,
+          entity: "artifact",
+          op: "create",
+        },
+      );
+      if (result.queued || !result.data) {
+        setStatus("Capture queued for replay");
+        setQuickClip("");
+        return;
+      }
+
+      setStatus(`Captured artifact ${result.data.artifact.id}`);
+      setSelectedId(result.data.artifact.id);
+      setQuickClip("");
       await loadArtifacts();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to create artifact");
@@ -101,10 +116,23 @@ export default function ArtifactsPage() {
     }
 
     try {
-      await apiRequest(apiBase, token, `/v1/artifacts/${selectedId}/actions`, {
-        method: "POST",
-        body: JSON.stringify({ action }),
-      });
+      const result = await mutateWithQueue(
+        `/v1/artifacts/${selectedId}/actions`,
+        {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        },
+        {
+          label: `Artifact action: ${action}`,
+          entity: "artifact_action",
+          op: action,
+        },
+      );
+      if (result.queued) {
+        setStatus(`${action} queued for replay on ${selectedId}`);
+        return;
+      }
+
       setStatus(`${action} suggested for ${selectedId}`);
       await loadArtifactContext(selectedId);
     } catch (error) {

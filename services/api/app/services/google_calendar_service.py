@@ -1035,3 +1035,44 @@ def resolve_conflict(conn: Connection, conflict_id: str, resolution_strategy: st
     if updated is None:
         raise RuntimeError("Conflict resolution update failed")
     return _format_conflict(updated)
+
+
+def replay_conflict(conn: Connection, conflict_id: str) -> dict | None:
+    conflict = execute_fetchone(
+        conn,
+        """
+        SELECT id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+        FROM calendar_sync_conflicts
+        WHERE id = ?
+        """,
+        (conflict_id,),
+    )
+    if conflict is None:
+        return None
+
+    remote_id = str(conflict["remote_id"])
+    local_event_id = conflict.get("local_event_id")
+    sync_result = run_two_way_sync(conn)
+    refreshed = execute_fetchone(
+        conn,
+        """
+        SELECT id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+        FROM calendar_sync_conflicts
+        WHERE remote_id = ?
+          AND (? IS NULL OR local_event_id = ?)
+          AND resolved = 0
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (remote_id, local_event_id, local_event_id),
+    )
+    events_service.emit(
+        conn,
+        "calendar.sync_conflict_replayed",
+        {"conflict_id": conflict_id, "remote_id": remote_id, "sync_run_id": sync_result["run_id"]},
+    )
+    conn.commit()
+    return {
+        "sync_run": sync_result,
+        "conflict": _format_conflict(refreshed) if refreshed is not None else None,
+    }

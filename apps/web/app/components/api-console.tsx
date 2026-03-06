@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useSessionConfig } from "../session-provider";
 import { SessionControls } from "./session-controls";
@@ -13,21 +13,13 @@ type ConsoleState = {
 const defaultPassphrase = "correct horse battery staple";
 
 export function ApiConsole() {
-  const { apiBase, token, setToken } = useSessionConfig();
+  const { apiBase, setToken, mutateWithQueue } = useSessionConfig();
   const [state, setState] = useState<ConsoleState>({
     artifactId: "",
     status: "API console ready",
   });
   const [passphrase, setPassphrase] = useState(defaultPassphrase);
   const [clipText, setClipText] = useState("A clipped idea about active recall and spaced repetition.");
-
-  const authHeaders = useMemo(
-    () => ({
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }),
-    [token],
-  );
 
   async function bootstrap() {
     const response = await fetch(`${apiBase}/v1/auth/bootstrap`, {
@@ -62,26 +54,33 @@ export function ApiConsole() {
   }
 
   async function createClip() {
-    const response = await fetch(`${apiBase}/v1/capture`, {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify({
-        source_type: "clip_manual",
-        capture_source: "pwa_console",
-        title: "Quick clip",
-        raw: { text: clipText, mime_type: "text/plain" },
-        normalized: { text: clipText, mime_type: "text/plain" },
-        extracted: { text: clipText, mime_type: "text/plain" },
-        metadata: { source: "web_console" },
-      }),
-    });
+    const result = await mutateWithQueue<{ artifact: { id: string } }>(
+      "/v1/capture",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          source_type: "clip_manual",
+          capture_source: "pwa_console",
+          title: "Quick clip",
+          raw: { text: clipText, mime_type: "text/plain" },
+          normalized: { text: clipText, mime_type: "text/plain" },
+          extracted: { text: clipText, mime_type: "text/plain" },
+          metadata: { source: "web_console" },
+        }),
+      },
+      {
+        label: "Console clip",
+        entity: "artifact",
+        op: "create",
+      },
+    );
 
-    if (!response.ok) {
-      setState((prev) => ({ ...prev, status: `Clip failed (${response.status})` }));
+    if (result.queued || !result.data) {
+      setState((prev) => ({ ...prev, status: "Clip queued for replay" }));
       return;
     }
 
-    const payload = (await response.json()) as { artifact: { id: string } };
+    const payload = result.data;
     setState((prev) => ({
       ...prev,
       artifactId: payload.artifact.id,
@@ -95,18 +94,25 @@ export function ApiConsole() {
       return;
     }
 
-    const response = await fetch(`${apiBase}/v1/artifacts/${state.artifactId}/actions`, {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify({ action }),
-    });
+    const result = await mutateWithQueue(
+      `/v1/artifacts/${state.artifactId}/actions`,
+      {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      },
+      {
+        label: `Console action: ${action}`,
+        entity: "artifact_action",
+        op: action,
+      },
+    );
 
-    if (!response.ok) {
-      setState((prev) => ({ ...prev, status: `${action} failed (${response.status})` }));
-      return;
-    }
-
-    setState((prev) => ({ ...prev, status: `${action} suggested for ${state.artifactId}` }));
+    setState((prev) => ({
+      ...prev,
+      status: result.queued
+        ? `${action} queued for replay`
+        : `${action} suggested for ${state.artifactId}`,
+    }));
   }
 
   return (

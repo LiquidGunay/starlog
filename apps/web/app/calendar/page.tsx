@@ -30,6 +30,17 @@ type CalendarConflict = {
   resolved: boolean;
 };
 
+type ConflictReplayResult = {
+  sync_run: {
+    run_id: string;
+    pushed: number;
+    pulled: number;
+    conflicts: number;
+    last_synced_at: string;
+  };
+  conflict?: CalendarConflict | null;
+};
+
 function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
@@ -69,7 +80,7 @@ function formatTime(value: string): string {
 }
 
 export default function CalendarPage() {
-  const { apiBase, token } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const initialDay = useMemo(() => isoDate(new Date()), []);
   const [selectedDay, setSelectedDay] = useState(initialDay);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -146,19 +157,47 @@ export default function CalendarPage() {
 
     try {
       if (editingId) {
-        await apiRequest<CalendarEvent>(apiBase, token, `/v1/calendar/events/${editingId}`, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
+        const result = await mutateWithQueue<CalendarEvent>(
+          `/v1/calendar/events/${editingId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          },
+          {
+            label: `Update calendar event: ${title.trim()}`,
+            entity: "calendar_event",
+            op: "update",
+          },
+        );
+        if (result.queued) {
+          setEditingId(null);
+          clearForm();
+          setStatus("Event update queued for replay");
+          return;
+        }
         setStatus("Event updated");
       } else {
-        await apiRequest<CalendarEvent>(apiBase, token, "/v1/calendar/events", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        const result = await mutateWithQueue<CalendarEvent>(
+          "/v1/calendar/events",
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          },
+          {
+            label: `Create calendar event: ${title.trim()}`,
+            entity: "calendar_event",
+            op: "create",
+          },
+        );
+        if (result.queued) {
+          clearForm();
+          setStatus("Event create queued for replay");
+          return;
+        }
         setStatus("Event created");
       }
       setEditingId(null);
+      clearForm();
       await refresh();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Event save failed");
@@ -176,11 +215,23 @@ export default function CalendarPage() {
 
   async function removeEvent(eventId: string) {
     try {
-      await apiRequest(apiBase, token, `/v1/calendar/events/${eventId}`, {
-        method: "DELETE",
-      });
+      const result = await mutateWithQueue(
+        `/v1/calendar/events/${eventId}`,
+        {
+          method: "DELETE",
+        },
+        {
+          label: `Delete calendar event: ${eventId}`,
+          entity: "calendar_event",
+          op: "delete",
+        },
+      );
       if (editingId === eventId) {
         setEditingId(null);
+      }
+      if (result.queued) {
+        setStatus("Event delete queued for replay");
+        return;
       }
       await refresh();
       setStatus("Event deleted");
@@ -206,6 +257,32 @@ export default function CalendarPage() {
       setStatus(`Sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Google sync failed");
+    }
+  }
+
+  async function replayConflict(conflictId: string) {
+    try {
+      const payload = await apiRequest<ConflictReplayResult>(
+        apiBase,
+        token,
+        `/v1/calendar/sync/google/conflicts/${conflictId}/replay`,
+        { method: "POST" },
+      );
+      setLastSync({
+        run_id: payload.sync_run.run_id,
+        pushed: payload.sync_run.pushed,
+        pulled: payload.sync_run.pulled,
+        conflicts: payload.sync_run.conflicts,
+        last_synced_at: payload.sync_run.last_synced_at,
+      });
+      await refresh();
+      setStatus(
+        payload.conflict
+          ? `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; conflict still present`
+          : `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; no unresolved conflict remains`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Conflict replay failed");
     }
   }
 
@@ -324,6 +401,11 @@ export default function CalendarPage() {
                   <p className="console-copy">
                     {conflict.remote_id} ({conflict.strategy})
                   </p>
+                  <div className="button-row">
+                    <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
+                      Replay Sync
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

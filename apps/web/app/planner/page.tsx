@@ -40,6 +40,17 @@ type OAuthStatus = {
   detail: string;
 };
 
+type ConflictReplayResult = {
+  sync_run: {
+    run_id: string;
+    pushed: number;
+    pulled: number;
+    conflicts: number;
+    last_synced_at: string;
+  };
+  conflict?: Conflict | null;
+};
+
 type TimelineItem = {
   id: string;
   title: string;
@@ -63,7 +74,7 @@ function formatTime(iso: string): string {
 }
 
 export default function PlannerPage() {
-  const { apiBase, token } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [date, setDate] = useState(today);
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -141,15 +152,27 @@ export default function PlannerPage() {
 
   async function addSampleEvent() {
     try {
-      await apiRequest(apiBase, token, "/v1/calendar/events", {
-        method: "POST",
-        body: JSON.stringify({
-          title: "Focus Block",
-          starts_at: `${date}T08:00:00+00:00`,
-          ends_at: `${date}T09:00:00+00:00`,
-          source: "internal",
-        }),
-      });
+      const result = await mutateWithQueue(
+        "/v1/calendar/events",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "Focus Block",
+            starts_at: `${date}T08:00:00+00:00`,
+            ends_at: `${date}T09:00:00+00:00`,
+            source: "internal",
+          }),
+        },
+        {
+          label: `Create sample focus block for ${date}`,
+          entity: "calendar_event",
+          op: "create",
+        },
+      );
+      if (result.queued) {
+        setStatus("Sample event queued for replay");
+        return;
+      }
       setStatus("Created sample calendar event");
       await load();
     } catch (error) {
@@ -186,6 +209,27 @@ export default function PlannerPage() {
       await load();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Conflict resolution failed");
+    }
+  }
+
+  async function replayConflict(conflictId: string) {
+    try {
+      const payload = await apiRequest<ConflictReplayResult>(
+        apiBase,
+        token,
+        `/v1/calendar/sync/google/conflicts/${conflictId}/replay`,
+        { method: "POST" },
+      );
+      const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
+      setConflicts(conflictPayload);
+      await load();
+      setStatus(
+        payload.conflict
+          ? `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; conflict still present`
+          : `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; no unresolved conflict remains`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Conflict replay failed");
     }
   }
 
@@ -270,6 +314,9 @@ export default function PlannerPage() {
                     Remote {conflict.remote_id} - policy {conflict.strategy}
                   </p>
                   <div className="button-row">
+                    <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
+                      Replay Sync
+                    </button>
                     <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "local_wins")}>
                       Local Wins
                     </button>

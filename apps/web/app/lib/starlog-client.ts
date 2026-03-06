@@ -1,3 +1,15 @@
+export class ApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string) {
+    super(`HTTP ${status}: ${body}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function apiRequest<T>(
   apiBase: string,
   token: string,
@@ -15,8 +27,12 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`HTTP ${response.status}: ${body}`);
+    throw new ApiError(response.status, body);
   }
 
-  return response.json() as Promise<T>;
+  const body = await response.text();
+  if (!body.trim()) {
+    return undefined as T;
+  }
+  return JSON.parse(body) as T;
 }

@@ -41,11 +41,15 @@
 - Provider configs now encrypt sensitive values at rest, redact secrets in API responses, and expose richer health checks.
 - Provider health now includes localhost runtime endpoint probes for local-mode providers.
 - Google sync run responses now include `run_id`, and conflict details now carry sync run/phase metadata for replay diagnostics.
+- Google sync conflicts can now trigger replay runs from the API and planner/calendar UI surfaces.
 - Web UI refresh with modern "spacy" look and dark/light modes.
 - Artifacts workspace now includes graph and version-history panels.
 - Planner workspace now includes day-board timeline view for blocks/events plus richer sync status surfaces.
 - Calendar workspace now includes weekly board, event CRUD lifecycle, Google sync trigger, and unresolved conflict visibility.
 - Integrations workspace now supports provider config edits plus live health/probe inspection.
+- PWA now has a browser-side mutation outbox with replay-on-reconnect and manual flush/drop controls.
+- Sync workspace now exposes queued mutations plus local replay history (`/sync-center`).
+- Artifacts, review, planner event creation, calendar CRUD, integrations config, and home console clip/actions now use the outbox-aware mutation path.
 - Review workspace now supports focused single-card sessions with live session metrics and queue preview.
 - Added `/mobile-share` workspace page to generate and launch `starlog://capture?...` deep-links for phone capture handoff.
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
@@ -55,7 +59,7 @@
 ## Next implementation targets
 
 1. Add auth-level provider probes (e.g., token validity pings for configured remote providers) beyond localhost endpoint checks.
-2. Add conflict replay tooling (trigger targeted re-sync/retry from a selected conflict in UI).
+2. Add optimistic local cache views so queued artifact/calendar mutations appear immediately before replay.
 3. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
-4. Add PWA offline mutation queue + replay UX to better align with local-first behavior.
+4. Add remote sync event history on the server side so PWA replay state is mirrored beyond browser local storage.
 5. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).

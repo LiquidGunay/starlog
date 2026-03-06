@@ -48,6 +48,9 @@ Use the phone setup guide for both PWA and Expo companion flows:
 Mobile companion currently supports queued capture retries, quick SRS review sessions, daily alarm
 scheduling, and deep-link capture prefill via `starlog://capture?...`.
 
+PWA mutations now use a local browser outbox with replay on reconnect, plus a dedicated sync workspace
+at `/sync-center`.
+
 ### Tests
 
 ```bash
@@ -92,6 +95,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - `/integrations` - provider config + health diagnostics workspace
 - `/planner` - time-block generation workspace
 - `/review` - due card review queue
+- `/sync-center` - queued mutation replay and local sync history
 - `/mobile-share` - deep-link generator for mobile capture handoff
 
 ## Clip-first API additions
@@ -110,6 +114,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
   - `GET /v1/calendar/sync/google/remote/events`
   - `GET /v1/calendar/sync/google/conflicts`
   - `POST /v1/calendar/sync/google/conflicts/{conflict_id}/resolve`
+  - `POST /v1/calendar/sync/google/conflicts/{conflict_id}/replay`
 
 Sync responses now include a `run_id` for conflict diagnostics correlation.
 

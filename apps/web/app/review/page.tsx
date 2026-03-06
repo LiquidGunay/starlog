@@ -21,7 +21,7 @@ type SessionStats = {
 };
 
 export default function ReviewPage() {
-  const { apiBase, token } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [cards, setCards] = useState<Card[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -50,10 +50,18 @@ export default function ReviewPage() {
     }
 
     try {
-      await apiRequest(apiBase, token, "/v1/reviews", {
-        method: "POST",
-        body: JSON.stringify({ card_id: currentCard.id, rating }),
-      });
+      const result = await mutateWithQueue(
+        "/v1/reviews",
+        {
+          method: "POST",
+          body: JSON.stringify({ card_id: currentCard.id, rating }),
+        },
+        {
+          label: `Review card ${currentCard.id}`,
+          entity: "review",
+          op: "create",
+        },
+      );
       setStats((previous) => ({
         reviewed: previous.reviewed + 1,
         again: previous.again + (rating === 2 ? 1 : 0),
@@ -63,7 +71,11 @@ export default function ReviewPage() {
       setCards((previous) => previous.filter((card) => card.id !== currentCard.id));
       setCurrentIndex(0);
       setShowAnswer(false);
-      setStatus(`Reviewed card ${currentCard.id} with rating ${rating}`);
+      setStatus(
+        result.queued
+          ? `Queued review for ${currentCard.id} with rating ${rating}`
+          : `Reviewed card ${currentCard.id} with rating ${rating}`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Review failed");
     }

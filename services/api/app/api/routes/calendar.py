@@ -10,6 +10,7 @@ from app.schemas.calendar import (
 )
 from app.schemas.google_sync import (
     CalendarConflictResponse,
+    CalendarConflictReplayResponse,
     CalendarConflictResolveRequest,
     CalendarConflictResolveResponse,
     GoogleOAuthCallbackRequest,
@@ -165,3 +166,19 @@ def resolve_conflict(
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync conflict not found")
     return CalendarConflictResolveResponse(conflict=CalendarConflictResponse.model_validate(resolved))
+
+
+@router.post("/sync/google/conflicts/{conflict_id}/replay", response_model=CalendarConflictReplayResponse)
+def replay_conflict(
+    conflict_id: str,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> CalendarConflictReplayResponse:
+    replayed = google_calendar_service.replay_conflict(db, conflict_id)
+    if replayed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync conflict not found")
+    conflict = replayed.get("conflict")
+    return CalendarConflictReplayResponse(
+        sync_run=GoogleSyncRunResponse.model_validate(replayed["sync_run"]),
+        conflict=CalendarConflictResponse.model_validate(conflict) if isinstance(conflict, dict) else None,
+    )

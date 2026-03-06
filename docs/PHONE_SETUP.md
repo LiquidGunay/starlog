@@ -39,6 +39,7 @@ Use the non-empty IP (example: `192.168.1.42`).
 3. In Starlog session controls, set:
    - API base: `http://<LAN_IP>:8000`
 4. Bootstrap/login from the web console and keep token in session controls.
+5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting.
 
 ## 4) Install PWA to home screen
 
@@ -62,6 +63,13 @@ pnpm --filter mobile start
    - Capture/Queue a quick clip.
    - Load due cards in "Quick review session" and submit a rating.
    - Cache and play a briefing, then schedule the daily alarm.
+
+## 5b) Test PWA offline queue
+
+1. Open the PWA.
+2. Disconnect from the network or point the API base at an unreachable host.
+3. Create a clip, submit a review, or create a calendar event.
+4. Reconnect, then use the session panel or `/sync-center` to replay the queued mutations.
 
 ## 6) Test mobile share capture (deep-link path)
 

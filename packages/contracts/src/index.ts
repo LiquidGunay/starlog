@@ -234,6 +234,11 @@ export interface CalendarConflictResolveResponse {
   conflict: CalendarConflictResponse;
 }
 
+export interface CalendarConflictReplayResponse {
+  sync_run: GoogleSyncRunResponse;
+  conflict?: CalendarConflictResponse | null;
+}
+
 export interface PluginRegisterRequest {
   name: string;
   version: string;
