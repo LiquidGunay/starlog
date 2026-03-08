@@ -53,6 +53,7 @@ Use the non-empty IP (example: `192.168.1.42`).
 4. Bootstrap/login from the web console and keep token in session controls.
 5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
 6. Open `/assistant` if you want to test typed commands such as `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
+7. In `/assistant`, you can also use browser voice recording (`Start Voice Command` -> `Execute Voice`) to queue a Whisper-backed command without installing the native app.
 
 ## 4) Install PWA to home screen
 
@@ -84,6 +85,7 @@ pnpm --filter mobile start
 3. Optional sanity checks in the mobile app:
    - Open the `Execution routing` panel and tap `Refresh Policy` to confirm the phone sees the same policy order as the PWA.
    - In `Assistant command`, try `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
+   - In the same panel, record a short voice clip and use `Execute Voice` to queue a Whisper-backed voice command.
    - Capture/Queue a quick text clip.
    - Record a voice note, then upload/queue it.
    - Refresh the artifact inbox, select a recent clip, and trigger `Summarize` or `Create Cards`.
@@ -92,6 +94,7 @@ pnpm --filter mobile start
    - Load due cards in "Quick review session" and submit a rating.
    - Cache and play a briefing, then schedule the daily alarm.
 4. If you queued a voice note, confirm the laptop worker is running so the transcript can complete.
+5. If you queued a voice command, tap `Refresh Voice Jobs` in the assistant panel to inspect the transcript and executed command result after the worker finishes.
 
 Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 

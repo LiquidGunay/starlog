@@ -5,8 +5,8 @@ Starlog can now keep AI compute on your laptop while the phone/PWA use either yo
 The intended split is:
 
 - Railway or local API: stores artifacts, jobs, metadata, and media.
-- Laptop-local worker: runs `codex exec` for queued LLM jobs and `whisper.cpp` for queued voice-note transcription.
-- Phone: records voice notes, uploads them, and waits for the worker to process the queued jobs.
+- Laptop-local worker: runs `codex exec` for queued LLM jobs and `whisper.cpp` for queued voice-note / voice-command transcription.
+- Phone/PWA: records voice notes or voice commands, uploads them, and waits for the worker to process the queued jobs.
 
 This keeps Railway costs low because Codex/Whisper execution stays off Railway.
 
@@ -18,6 +18,8 @@ This keeps Railway costs low because Codex/Whisper execution stays off Railway.
   - `llm_tasks`
 - `provider_hint=whisper_local`
   - `stt`
+
+For `stt` jobs with `action=assistant_command`, the transcript is fed back into Starlog's command planner automatically after Whisper finishes.
 
 ## Requirements on your laptop
 

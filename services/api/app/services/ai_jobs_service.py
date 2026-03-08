@@ -80,6 +80,7 @@ def list_jobs(
     conn: Connection,
     status: str | None = None,
     provider_hint: str | None = None,
+    action: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     clauses: list[str] = []
@@ -90,6 +91,9 @@ def list_jobs(
     if provider_hint:
         clauses.append("provider_hint = ?")
         params.append(provider_hint)
+    if action:
+        clauses.append("action = ?")
+        params.append(action)
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     rows = execute_fetchall(
@@ -126,7 +130,7 @@ def complete_job(
     provider_used: str,
     output: dict,
 ) -> dict | None:
-    from app.services import artifacts_service
+    from app.services import agent_command_service, artifacts_service
 
     job = get_job(conn, job_id)
     if job is None:
@@ -150,6 +154,34 @@ def complete_job(
                 """,
                 ("completed", created_ref, job["artifact_id"], job["action"], job_id),
             )
+
+    payload = dict(job.get("payload") or {})
+    if str(job.get("action") or "") == "assistant_command":
+        transcript = str(output.get("transcript") or "").strip()
+        assistant_payload = dict(payload.get("assistant_command") or {})
+        if transcript:
+            command_result = agent_command_service.run_command(
+                conn,
+                command=transcript,
+                execute=bool(assistant_payload.get("execute", True)),
+                device_target=str(assistant_payload.get("device_target") or "primary-device"),
+            )
+            output = {
+                **output,
+                "assistant_command": command_result.model_dump(mode="json"),
+            }
+        else:
+            output = {
+                **output,
+                "assistant_command": {
+                    "command": "",
+                    "planner": "deterministic",
+                    "matched_intent": "none",
+                    "status": "failed",
+                    "summary": "Voice command transcript was empty.",
+                    "steps": [],
+                },
+            }
 
     finished_at = utc_now().isoformat()
     conn.execute(

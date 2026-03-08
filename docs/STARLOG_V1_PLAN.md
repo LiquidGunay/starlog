@@ -155,16 +155,29 @@ For each clip, store:
 - The backend should expose a tool catalog with machine-readable schemas so LLM/chat/voice interfaces can call Starlog actions directly.
 - Minimum v1 tool coverage:
   - capture text as artifact
+  - list artifacts and inspect artifact graph
   - run artifact actions (`summarize`, `cards`, `tasks`, `append_note`)
+  - create/update/list/get note
   - create/update task
+  - list tasks
   - create calendar event
+  - list calendar events
+  - generate time blocks
   - generate briefing
   - schedule morning briefing alarm
+  - get/set execution policy
   - list due cards
   - submit review
   - search Starlog
-- Voice/chat UX can be phased in later, but the tool/control layer should exist early so the interface is not blocked on frontend polish.
+- v1 should include a thin typed-command assistant over that tool layer so core workflows are usable without clicking through the UI.
+- v1 should also support queued voice commands by running STT first, then feeding the transcript into the same command planner/tool layer.
 - Tool definitions should be exportable in an LLM-friendly schema format (OpenAI function-style or equivalent).
+
+### Assistant shell additions
+- Provide `POST /v1/agent/command` as a deterministic typed-command planner/executor over the tool layer.
+- Provide `POST /v1/agent/command/voice` for queued voice commands that transcribe locally/batch-locally, then run the same command planner.
+- Both mobile companion and PWA should surface this assistant shell so phone and laptop have the same command-oriented interface.
+- Assistant history should be visible in the client and show planned steps, executed tools, and final result status.
 
 ### Desktop/helper local interface
 - Local authenticated bridge from helper/extension to API client layer.

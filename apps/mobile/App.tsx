@@ -90,6 +90,7 @@ type PersistedState = {
   executionPolicy: ExecutionPolicy;
   assistantCommand?: string;
   assistantHistory?: AssistantCommandResponse[];
+  assistantVoiceJobs?: AssistantVoiceJob[];
 };
 
 type PersistedStateV2 = Omit<
@@ -180,6 +181,23 @@ type AssistantCommandResponse = {
   status: "planned" | "executed" | "failed";
   summary: string;
   steps: AssistantCommandStep[];
+};
+
+type AssistantVoiceJob = {
+  id: string;
+  capability: "stt";
+  status: "pending" | "running" | "completed" | "failed";
+  provider_hint?: string | null;
+  provider_used?: string | null;
+  action?: string | null;
+  payload: Record<string, unknown>;
+  output: {
+    transcript?: string;
+    assistant_command?: AssistantCommandResponse;
+  };
+  error_text?: string | null;
+  created_at: string;
+  finished_at?: string | null;
 };
 
 const DEFAULT_API_BASE = "http://localhost:8000";
@@ -372,6 +390,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           executionPolicy: defaultExecutionPolicy(),
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
+          assistantVoiceJobs: [],
         };
         await writePersistedState(migrated);
         return migrated;
@@ -380,6 +399,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
         return {
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
+          assistantVoiceJobs: [],
           ...parsed,
         };
       }
@@ -407,6 +427,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
       executionPolicy: defaultExecutionPolicy(),
       assistantCommand: "summarize latest artifact",
       assistantHistory: [],
+      assistantVoiceJobs: [],
     };
     await writePersistedState(migrated);
     await FileSystem.deleteAsync(file, { idempotent: true });
@@ -523,6 +544,7 @@ export default function App() {
   const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
   const [assistantCommand, setAssistantCommand] = useState("summarize latest artifact");
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
+  const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
   const [status, setStatus] = useState("Ready");
@@ -1256,6 +1278,86 @@ export default function App() {
     }
   }
 
+  async function loadAssistantVoiceJobs(origin: "auto" | "manual") {
+    if (!token) {
+      if (origin === "manual") {
+        setStatus("Add API token first");
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${normalizeBaseUrl(apiBase)}/v1/ai/jobs?limit=10&action=assistant_command`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Voice command job fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as AssistantVoiceJob[];
+      setAssistantVoiceJobs(payload);
+      if (origin === "manual") {
+        setStatus(`Loaded ${payload.length} voice command job(s)`);
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load voice command jobs");
+      }
+    }
+  }
+
+  async function submitVoiceAssistantCommand(execute: boolean) {
+    if (!voiceClipUri) {
+      setStatus("Record a voice clip first");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("title", "Mobile voice command");
+      formData.append("duration_ms", String(voiceClipDurationMs));
+      formData.append("execute", execute ? "true" : "false");
+      formData.append("device_target", "mobile-companion");
+      formData.append("provider_hint", BATCH_PROVIDER_HINT.stt ?? "whisper_local");
+      formData.append(
+        "file",
+        {
+          uri: voiceClipUri,
+          name: `voice-command-${Date.now()}.m4a`,
+          type: DEFAULT_VOICE_MIME,
+        } as unknown as Blob,
+      );
+
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/agent/command/voice`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Voice command upload failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as AssistantVoiceJob;
+      setAssistantVoiceJobs((previous) => [payload, ...previous].slice(0, 10));
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
+      setStatus(`Queued voice command ${payload.id} via ${formatExecutionTarget(sttResolution.active)}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Voice command upload failed");
+    }
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -1295,6 +1397,7 @@ export default function App() {
         setExecutionPolicy(persisted.executionPolicy || defaultExecutionPolicy());
         setAssistantCommand(persisted.assistantCommand || "summarize latest artifact");
         setAssistantHistory(persisted.assistantHistory || []);
+        setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
       }
 
       const initialUrl = await Linking.getInitialURL();
@@ -1365,8 +1468,11 @@ export default function App() {
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active" && token && pendingCaptures.length > 0) {
-        flushPendingCaptures("auto").catch(() => undefined);
+      if (nextState === "active" && token) {
+        if (pendingCaptures.length > 0) {
+          flushPendingCaptures("auto").catch(() => undefined);
+        }
+        loadAssistantVoiceJobs("auto").catch(() => undefined);
       }
     });
 
@@ -1402,6 +1508,7 @@ export default function App() {
       executionPolicy,
       assistantCommand,
       assistantHistory,
+      assistantVoiceJobs,
     }).catch(() => undefined);
   }, [
     alarmHour,
@@ -1410,6 +1517,7 @@ export default function App() {
     apiBase,
     assistantCommand,
     assistantHistory,
+    assistantVoiceJobs,
     artifactGraph,
     artifactVersions,
     artifacts,
@@ -1446,6 +1554,13 @@ export default function App() {
       return;
     }
     loadExecutionPolicy("auto").catch(() => undefined);
+  }, [hydrated, token, apiBase]);
+
+  useEffect(() => {
+    if (!hydrated || !token) {
+      return;
+    }
+    loadAssistantVoiceJobs("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -1511,7 +1626,7 @@ export default function App() {
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Assistant command</Text>
           <Text style={styles.subtle}>
-            Send typed commands through the same tool-backed assistant layer used by the PWA.
+            Send typed or queued voice commands through the same tool-backed assistant layer used by the PWA.
           </Text>
           <TextInput
             style={styles.input}
@@ -1544,6 +1659,23 @@ export default function App() {
               <Text style={styles.buttonText}>Open PWA Assistant</Text>
             </TouchableOpacity>
           </View>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+              <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Command" : "Start Voice Command"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(false)}>
+              <Text style={styles.buttonText}>Plan Voice Command</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
+              <Text style={styles.buttonText}>Execute Voice</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => loadAssistantVoiceJobs("manual")}>
+              <Text style={styles.buttonText}>Refresh Voice Jobs</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.subtle}>
+            Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
+          </Text>
           {assistantHistory[0] ? (
             <View style={styles.detailCard}>
               <Text style={styles.inlineCardTitle}>
@@ -1563,6 +1695,28 @@ export default function App() {
           ) : (
             <Text style={styles.subtle}>No mobile assistant command history yet.</Text>
           )}
+          {assistantVoiceJobs.length > 0 ? (
+            <View style={styles.detailCard}>
+              <Text style={styles.inlineCardTitle}>Voice command jobs</Text>
+              {assistantVoiceJobs.slice(0, 4).map((job) => (
+                <View key={job.id} style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>
+                    {job.id} [{job.status}]
+                  </Text>
+                  <Text style={styles.subtle}>
+                    provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
+                  </Text>
+                  {job.output.transcript ? <Text style={styles.subtle}>Transcript: {job.output.transcript}</Text> : null}
+                  {job.output.assistant_command ? (
+                    <Text style={styles.subtle}>
+                      Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                    </Text>
+                  ) : null}
+                  {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.panel}>

@@ -441,6 +441,10 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
 
 
 def test_agent_command_shell_plans_and_executes(client: TestClient, auth_headers: dict[str, str]) -> None:
+    intents = client.get("/v1/agent/intents", headers=auth_headers)
+    assert intents.status_code == 200
+    assert any(item["name"] == "execution_policy" for item in intents.json())
+
     artifact = client.post(
         "/v1/capture",
         json={
@@ -503,6 +507,107 @@ def test_agent_command_shell_plans_and_executes(client: TestClient, auth_headers
     )
     assert executed_search.status_code == 200
     assert executed_search.json()["steps"][0]["result"]
+
+    list_tasks = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "list tasks",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert list_tasks.status_code == 200
+    assert list_tasks.json()["matched_intent"] == "list_tasks"
+    assert list_tasks.json()["steps"][0]["result"]["tasks"]
+
+    policy = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "show execution policy",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert policy.status_code == 200
+    assert "policy" in policy.json()["steps"][0]["result"]
+
+    updated_policy = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "set llm policy to batch_local_bridge, server_local, api_fallback",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert updated_policy.status_code == 200
+    assert updated_policy.json()["matched_intent"] == "set_execution_policy"
+    assert updated_policy.json()["steps"][0]["result"]["policy"]["llm"][0] == "batch_local_bridge"
+
+    blocks = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "generate time blocks for tomorrow from 8 to 12",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert blocks.status_code == 200
+    assert blocks.json()["matched_intent"] == "generate_time_blocks"
+
+
+def test_voice_agent_command_queue_executes_after_transcription(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    queued = client.post(
+        "/v1/agent/command/voice",
+        headers=auth_headers,
+        files={"file": ("assistant-command.wav", b"RIFF....WAVEfmt ", "audio/wav")},
+        data={
+            "title": "Voice command",
+            "duration_ms": "3200",
+            "execute": "true",
+            "device_target": "android-phone",
+            "provider_hint": "whisper_local",
+        },
+    )
+    assert queued.status_code == 201
+    payload = queued.json()
+    job_id = payload["id"]
+    assert payload["action"] == "assistant_command"
+
+    listed = client.get("/v1/ai/jobs?status=pending&action=assistant_command", headers=auth_headers)
+    assert listed.status_code == 200
+    assert job_id in {job["id"] for job in listed.json()}
+
+    claimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-voice-command-worker"},
+        headers=auth_headers,
+    )
+    assert claimed.status_code == 200
+
+    completed = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-voice-command-worker",
+            "provider_used": "whisper_local",
+            "output": {"transcript": "create task Voice command task due tomorrow priority 3"},
+        },
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+    completed_payload = completed.json()
+    assert completed_payload["output"]["assistant_command"]["status"] == "executed"
+    assert completed_payload["output"]["assistant_command"]["matched_intent"] == "create_task"
+
+    tasks = client.get("/v1/tasks", headers=auth_headers)
+    assert tasks.status_code == 200
+    assert any(task["title"] == "Voice command task" for task in tasks.json())
 
 
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:

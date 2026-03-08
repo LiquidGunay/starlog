@@ -58,11 +58,12 @@ def create_ai_job(
 def list_ai_jobs(
     status_text: str | None = Query(default=None, alias="status"),
     provider_hint: str | None = Query(default=None),
+    action: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> list[AIJobResponse]:
-    jobs = ai_jobs_service.list_jobs(db, status=status_text, provider_hint=provider_hint, limit=limit)
+    jobs = ai_jobs_service.list_jobs(db, status=status_text, provider_hint=provider_hint, action=action, limit=limit)
     return [AIJobResponse.model_validate(job) for job in jobs]
 
 

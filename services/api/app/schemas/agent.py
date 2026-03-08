@@ -50,6 +50,12 @@ class AgentCommandResponse(BaseModel):
     steps: list[AgentCommandStep] = Field(default_factory=list)
 
 
+class AgentCommandIntent(BaseModel):
+    name: str
+    description: str
+    examples: list[str] = Field(default_factory=list)
+
+
 class CaptureTextToolArgs(BaseModel):
     title: str | None = None
     text: str = Field(..., min_length=1)

@@ -6,8 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 from sqlite3 import Connection
 from typing import Any, Literal
 
-from app.schemas.agent import AgentCommandResponse, AgentCommandStep
-from app.services import agent_service, artifacts_service, integrations_service, tasks_service
+from app.schemas.agent import AgentCommandIntent, AgentCommandResponse, AgentCommandStep
+from app.services import agent_service, ai_jobs_service, artifacts_service, integrations_service, tasks_service
 
 COMMAND_DATE_PATTERN = r"(today|tomorrow|\d{4}-\d{2}-\d{2})"
 DATETIME_PATTERN = r"(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2})"
@@ -23,6 +23,54 @@ class PlannedToolCall:
     tool_name: str
     arguments: dict[str, Any]
     message: str
+
+
+COMMAND_INTENTS: list[AgentCommandIntent] = [
+    AgentCommandIntent(
+        name="capture",
+        description="Capture typed text into the Starlog inbox as a new artifact.",
+        examples=["capture Clip title: captured body text", "save This idea for later"],
+    ),
+    AgentCommandIntent(
+        name="artifact_actions",
+        description="Run summarize/cards/tasks/append-note on an artifact, usually the latest one.",
+        examples=["summarize latest artifact", "create cards for latest artifact", "append note on Nebula article"],
+    ),
+    AgentCommandIntent(
+        name="tasks",
+        description="Create, complete, or list tasks.",
+        examples=["create task Review notes due tomorrow priority 4", "complete task Review notes", "list todo tasks"],
+    ),
+    AgentCommandIntent(
+        name="notes",
+        description="Create notes or list recent notes.",
+        examples=["create note Daily plan: review queue first", "list notes"],
+    ),
+    AgentCommandIntent(
+        name="calendar",
+        description="Create calendar events, list events, or generate time blocks.",
+        examples=[
+            "create event Deep Work from 2026-03-07 09:00 to 2026-03-07 10:00",
+            "list calendar events",
+            "generate time blocks for tomorrow from 8 to 12",
+        ],
+    ),
+    AgentCommandIntent(
+        name="briefing_alarm",
+        description="Generate briefings or schedule morning alarms.",
+        examples=["generate briefing for tomorrow", "schedule alarm for tomorrow at 07:00"],
+    ),
+    AgentCommandIntent(
+        name="review_search",
+        description="Load due cards or search Starlog content.",
+        examples=["load due cards", "search for spaced repetition"],
+    ),
+    AgentCommandIntent(
+        name="execution_policy",
+        description="Inspect or update AI routing priority order.",
+        examples=["show execution policy", "set llm policy to batch_local_bridge, server_local, api_fallback"],
+    ),
+]
 
 
 def _today_utc() -> date:
@@ -57,6 +105,10 @@ def _clean_quotes(value: str) -> str:
     if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
         return text[1:-1].strip()
     return text
+
+
+def list_command_intents() -> list[AgentCommandIntent]:
+    return COMMAND_INTENTS
 
 
 def _latest_artifact(conn: Connection) -> dict[str, Any]:
@@ -152,9 +204,46 @@ def _strip_metadata_tokens(raw: str) -> tuple[str, dict[str, Any]]:
     return " ".join(text.split()).strip(), metadata
 
 
+def _parse_execution_targets(raw: str, family: str) -> list[str]:
+    allowed = set(integrations_service.AVAILABLE_EXECUTION_TARGETS[family])
+    parts = [item.strip().lower() for item in re.split(r"[,\s]+", raw) if item.strip()]
+    normalized: list[str] = []
+    aliases = {
+        "local": "server_local",
+        "server": "server_local",
+        "bridge": "batch_local_bridge",
+        "batch": "batch_local_bridge",
+        "codex": "codex_bridge",
+        "api": "api_fallback",
+    }
+    for part in parts:
+        candidate = aliases.get(part, part)
+        if candidate in allowed and candidate not in normalized:
+            normalized.append(candidate)
+    if not normalized:
+        raise ValueError(
+            f"No valid targets found for {family}. Allowed targets: {', '.join(integrations_service.AVAILABLE_EXECUTION_TARGETS[family])}"
+        )
+    return normalized
+
+
 def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[str, str, list[PlannedToolCall]]:
     text = " ".join(command.strip().split())
     lower = text.lower()
+
+    list_artifacts_match = re.match(r"^(?:show|list)\s+(?:artifacts|clips|inbox)$", text, re.IGNORECASE)
+    if list_artifacts_match:
+        return "list_artifacts", "List recent artifacts", [
+            PlannedToolCall("list_artifacts", {"limit": 10}, "List recent artifacts"),
+        ]
+
+    artifact_graph_match = re.match(r"^(?:show|inspect|open)\s+artifact\s+(.+)$", text, re.IGNORECASE)
+    if artifact_graph_match:
+        artifact = _resolve_artifact(conn, _clean_quotes(artifact_graph_match.group(1)))
+        title = str(artifact.get("title") or artifact["id"])
+        return "get_artifact_graph", f"Inspect artifact {title}", [
+            PlannedToolCall("get_artifact_graph", {"artifact_id": str(artifact["id"])}, f"Inspect artifact {title}"),
+        ]
 
     search_match = re.match(r"^(?:search|find)(?:\s+for)?\s+(.+)$", text, re.IGNORECASE)
     if search_match:
@@ -216,6 +305,12 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
             PlannedToolCall("create_note", {"title": title, "body_md": note_body}, f"Create note {title}"),
         ]
 
+    list_notes_match = re.match(r"^(?:show|list)\s+notes$", text, re.IGNORECASE)
+    if list_notes_match:
+        return "list_notes", "List recent notes", [
+            PlannedToolCall("list_notes", {"limit": 10}, "List recent notes"),
+        ]
+
     create_task_match = re.match(r"^(?:create|add)\s+task\s+(.+)$", text, re.IGNORECASE)
     if create_task_match:
         title_text, metadata = _strip_metadata_tokens(create_task_match.group(1))
@@ -226,6 +321,17 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
         arguments.update(metadata)
         return "create_task", f"Create task {title}", [
             PlannedToolCall("create_task", arguments, f"Create task {title}"),
+        ]
+
+    list_tasks_match = re.match(r"^(?:show|list)(?:\s+(todo|done|in_progress))?\s+tasks$", text, re.IGNORECASE)
+    if list_tasks_match:
+        status_filter = list_tasks_match.group(1)
+        summary = f"List {status_filter} tasks" if status_filter else "List tasks"
+        arguments = {"limit": 20}
+        if status_filter:
+            arguments["status"] = status_filter
+        return "list_tasks", summary, [
+            PlannedToolCall("list_tasks", arguments, summary),
         ]
 
     complete_task_match = re.match(
@@ -257,6 +363,33 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
                 "create_calendar_event",
                 {"title": title, "starts_at": starts_at, "ends_at": ends_at, "source": "internal"},
                 f"Create calendar event {title}",
+            ),
+        ]
+
+    list_events_match = re.match(r"^(?:show|list)\s+(?:calendar events|events|calendar)$", text, re.IGNORECASE)
+    if list_events_match:
+        return "list_calendar_events", "List calendar events", [
+            PlannedToolCall("list_calendar_events", {"limit": 20}, "List calendar events"),
+        ]
+
+    blocks_match = re.match(
+        rf"^(?:generate|plan)\s+(?:time blocks|blocks)(?:\s+for\s+{COMMAND_DATE_PATTERN})?(?:\s+from\s+(\d{{1,2}}))?(?:\s+to\s+(\d{{1,2}}))?$",
+        text,
+        re.IGNORECASE,
+    )
+    if blocks_match:
+        target_date = _resolve_date_token(blocks_match.group(1))
+        start_hour = int(blocks_match.group(2) or "8")
+        end_hour = int(blocks_match.group(3) or "18")
+        return "generate_time_blocks", f"Generate time blocks for {target_date}", [
+            PlannedToolCall(
+                "generate_time_blocks",
+                {
+                    "date": target_date,
+                    "day_start_hour": start_hour,
+                    "day_end_hour": end_hour,
+                },
+                f"Generate time blocks for {target_date}",
             ),
         ]
 
@@ -306,9 +439,29 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
             PlannedToolCall("list_due_cards", {"limit": 20}, "Load due cards"),
         ]
 
+    get_policy_match = re.match(r"^(?:show|view|get|list)\s+(?:execution\s+policy|policy)$", text, re.IGNORECASE)
+    if get_policy_match:
+        return "get_execution_policy", "Show execution policy", [
+            PlannedToolCall("get_execution_policy", {}, "Show execution policy"),
+        ]
+
+    set_policy_match = re.match(
+        r"^(?:set|update)\s+(llm|stt|tts|ocr)\s+(?:policy|priority|order)\s+to\s+(.+)$",
+        text,
+        re.IGNORECASE,
+    )
+    if set_policy_match:
+        family = set_policy_match.group(1).lower()
+        targets = _parse_execution_targets(set_policy_match.group(2), family)
+        return "set_execution_policy", f"Update {family} execution policy", [
+            PlannedToolCall("set_execution_policy", {family: targets}, f"Update {family} execution policy"),
+        ]
+
     raise ValueError(
         "Command not recognized. Try commands like 'summarize latest artifact', "
         "'create task Review notes due tomorrow priority 4', "
+        "'list tasks', "
+        "'show execution policy', "
         "'create event Deep Work from 2026-03-07 09:00 to 2026-03-07 10:00', "
         "or 'schedule alarm for tomorrow at 07:00'."
     )
@@ -362,4 +515,39 @@ def run_command(
         status=overall_status,
         summary=summary,
         steps=steps,
+    )
+
+
+def queue_voice_command(
+    conn: Connection,
+    *,
+    blob_ref: str,
+    content_type: str | None,
+    title: str | None,
+    duration_ms: int | None,
+    execute: bool,
+    device_target: str,
+    provider_hint: str | None = None,
+) -> dict[str, Any]:
+    resolved_provider_hint = (
+        provider_hint
+        or integrations_service.default_batch_provider_hint(conn, "stt")
+        or "whisper_local"
+    )
+    return ai_jobs_service.create_job(
+        conn,
+        capability="stt",
+        payload={
+            "blob_ref": blob_ref,
+            "content_type": content_type,
+            "title": title or "Voice command",
+            "duration_ms": duration_ms,
+            "assistant_command": {
+                "kind": "voice",
+                "execute": execute,
+                "device_target": device_target,
+            },
+        },
+        provider_hint=resolved_provider_hint,
+        action="assistant_command",
     )

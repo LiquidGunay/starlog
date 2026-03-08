@@ -41,6 +41,7 @@
 - Mobile companion can now jump directly from artifact triage into related PWA note/task targets.
 - Mobile companion now reads the shared execution policy, shows the resolved mobile route for LLM/STT/TTS, and routes artifact actions toward the batch bridge when that policy target is preferred.
 - Mobile companion now includes a typed assistant-command panel backed by `/v1/agent/command`, with example commands and recent result history on phone.
+- Mobile companion now supports queued voice commands using the same recording path, with Whisper-backed transcription jobs and assistant-command results visible in the phone UI.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
 - Calendar events now support sync-aware soft delete (`DELETE /v1/calendar/events/{id}`) with tombstone tracking.
@@ -78,12 +79,14 @@
 - Agent tools can now also read/update execution policy so future chat/voice shells can control routing preferences directly.
 - Agent tool coverage now spans artifacts, notes, tasks, calendar events, time-block generation, review, briefing/alarm flows, search, and execution-policy management.
 - Added `/v1/agent/command`, a deterministic command planner/executor that maps typed commands onto the same tool layer and can either dry-run or execute them.
-- Added `/assistant`, the first chat-style command shell in the PWA, with example commands, tool-step inspection, and recent command history.
+- Added `GET /v1/agent/intents`, a backend intent/examples catalog so assistant shells can load supported commands without hardcoding them.
+- Added `POST /v1/agent/command/voice`, which queues STT jobs with `action=assistant_command` and executes the command planner automatically when transcription completes.
+- Added `/assistant`, the first chat-style command shell in the PWA, with backend-loaded examples, in-browser voice recording, tool-step inspection, voice-job history, and recent command history.
 - Integrations workspace now includes editable execution-policy JSON so the same preference ordering can later be honored by phone-local runtimes too.
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
 - Mobile companion now exposes on-device TTS for selected artifact playback.
 - Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
-- API tests + lint + type checks passing via `uv` (`20 passed`).
+- API tests + lint + type checks passing via `uv` (`22 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
 
 ## Next implementation targets

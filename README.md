@@ -82,7 +82,7 @@ Use the phone setup guide for both PWA and Expo companion flows:
 
 Mobile companion currently supports SQLite-backed local state, queued text/voice capture retries,
 artifact inbox triage, quick SRS review sessions, daily alarm scheduling, local spoken playback,
-execution-policy-aware routing visibility, typed assistant commands, and deep-link capture prefill via `starlog://capture?...`.
+execution-policy-aware routing visibility, typed and voice assistant commands, and deep-link capture prefill via `starlog://capture?...`.
 
 PWA mutations now use a local browser outbox with replay on reconnect, plus a dedicated sync workspace
 at `/sync-center` that also surfaces recent server-recorded mutation activity and pull-by-cursor deltas.
@@ -152,7 +152,9 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - Ingest voice note + queue Whisper transcription: `POST /v1/capture/voice`
 - Upload/download protected media assets: `POST /v1/media/upload`, `GET /v1/media/{media_id}/content`
 - Discover/execute agent tool contracts: `GET /v1/agent/tools`, `POST /v1/agent/execute`
+- List assistant intents/examples: `GET /v1/agent/intents`
 - Plan/execute assistant commands: `POST /v1/agent/command`
+- Queue voice assistant commands for Whisper + command execution: `POST /v1/agent/command/voice`
 - Read/update execution policy: `GET /v1/integrations/execution-policy`, `POST /v1/integrations/execution-policy`
 - Inspect artifact graph links: `GET /v1/artifacts/{artifact_id}/graph`
 - Inspect summary/card/action version history: `GET /v1/artifacts/{artifact_id}/versions`
@@ -203,6 +205,8 @@ When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configure
 - Agent tools now also expose execution-policy read/update operations so future chat/voice layers can manage routing without going through the UI.
 - Agent tool coverage now includes artifact listing/graph inspection, note create/update/fetch, task listing, calendar listing, and time-block generation in addition to capture/review/briefing actions.
 - The `/assistant` workspace provides the first chat-style command surface on top of the same tool layer, using deterministic planning for now.
+- Voice commands now reuse the same assistant layer by queueing Whisper transcription jobs with `action=assistant_command`, then executing the parsed command when transcription completes.
+- The assistant now also exposes a machine-readable intent/examples catalog so PWA/mobile shells can stay aligned on supported commands.
 - Set `STARLOG_SECRETS_MASTER_KEY` in production to avoid fallback insecure key mode.
 
 ## Ops endpoints
