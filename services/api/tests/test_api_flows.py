@@ -247,10 +247,39 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
     tool_names = {item["name"] for item in tools.json()}
     assert "run_artifact_action" in tool_names
     assert "schedule_morning_brief_alarm" in tool_names
+    assert "get_execution_policy" in tool_names
+    assert "set_execution_policy" in tool_names
+    assert "create_note" in tool_names
+    assert "generate_time_blocks" in tool_names
 
     openai_tools = client.get("/v1/agent/tools?format=openai", headers=auth_headers)
     assert openai_tools.status_code == 200
     assert openai_tools.json()[0]["type"] == "function"
+
+    updated_policy = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "set_execution_policy",
+            "arguments": {
+                "llm": ["batch_local_bridge", "server_local", "api_fallback"],
+                "stt": ["batch_local_bridge", "server_local", "api_fallback"],
+            },
+        },
+        headers=auth_headers,
+    )
+    assert updated_policy.status_code == 200
+    assert updated_policy.json()["result"]["policy"]["llm"][0] == "batch_local_bridge"
+
+    fetched_policy = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "get_execution_policy",
+            "arguments": {},
+        },
+        headers=auth_headers,
+    )
+    assert fetched_policy.status_code == 200
+    assert fetched_policy.json()["result"]["policy"]["llm"][0] == "batch_local_bridge"
 
     captured = client.post(
         "/v1/agent/execute",
@@ -266,6 +295,28 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
     )
     assert captured.status_code == 200
     artifact_id = captured.json()["result"]["artifact"]["id"]
+
+    listed_artifacts = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "list_artifacts",
+            "arguments": {"limit": 10},
+        },
+        headers=auth_headers,
+    )
+    assert listed_artifacts.status_code == 200
+    assert any(item["id"] == artifact_id for item in listed_artifacts.json()["result"]["artifacts"])
+
+    artifact_graph = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "get_artifact_graph",
+            "arguments": {"artifact_id": artifact_id},
+        },
+        headers=auth_headers,
+    )
+    assert artifact_graph.status_code == 200
+    assert artifact_graph.json()["result"]["graph"]["artifact"]["id"] == artifact_id
 
     queued = client.post(
         "/v1/agent/execute",
@@ -298,6 +349,85 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
     assert scheduled.status_code == 200
     assert scheduled.json()["result"]["alarm"]["device_target"] == "android-phone"
 
+    note = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "create_note",
+            "arguments": {"title": "Agent note", "body_md": "Initial body"},
+        },
+        headers=auth_headers,
+    )
+    assert note.status_code == 200
+    note_id = note.json()["result"]["note"]["id"]
+
+    updated_note = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "update_note",
+            "arguments": {"note_id": note_id, "body_md": "Updated body from agent"},
+        },
+        headers=auth_headers,
+    )
+    assert updated_note.status_code == 200
+    assert updated_note.json()["result"]["note"]["version"] == 2
+
+    listed_notes = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "list_notes",
+            "arguments": {"limit": 10},
+        },
+        headers=auth_headers,
+    )
+    assert listed_notes.status_code == 200
+    assert any(item["id"] == note_id for item in listed_notes.json()["result"]["notes"])
+
+    created_task = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "create_task",
+            "arguments": {"title": "Agent scheduled task", "estimate_min": 30, "priority": 4},
+        },
+        headers=auth_headers,
+    )
+    assert created_task.status_code == 200
+
+    blocks = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "generate_time_blocks",
+            "arguments": {"date": "2026-03-07", "day_start_hour": 8, "day_end_hour": 12},
+        },
+        headers=auth_headers,
+    )
+    assert blocks.status_code == 200
+    assert len(blocks.json()["result"]["generated"]) >= 1
+
+    created_event = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "create_calendar_event",
+            "arguments": {
+                "title": "Agent meeting",
+                "starts_at": "2026-03-07T10:00:00+00:00",
+                "ends_at": "2026-03-07T10:30:00+00:00",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert created_event.status_code == 200
+
+    listed_events = client.post(
+        "/v1/agent/execute",
+        json={
+            "tool_name": "list_calendar_events",
+            "arguments": {"limit": 10},
+        },
+        headers=auth_headers,
+    )
+    assert listed_events.status_code == 200
+    assert any(item["title"] == "Agent meeting" for item in listed_events.json()["result"]["events"])
+
     search = client.post(
         "/v1/agent/execute",
         json={
@@ -308,6 +438,71 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
     )
     assert search.status_code == 200
     assert any(item["id"] == artifact_id for item in search.json()["result"])
+
+
+def test_agent_command_shell_plans_and_executes(client: TestClient, auth_headers: dict[str, str]) -> None:
+    artifact = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_browser",
+            "capture_source": "browser_ext",
+            "title": "Command artifact",
+            "normalized": {"text": "Turn commands into concrete Starlog actions."},
+        },
+        headers=auth_headers,
+    )
+    assert artifact.status_code == 201
+
+    planned = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "summarize latest artifact",
+            "execute": False,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert planned.status_code == 200
+    assert planned.json()["matched_intent"] == "summarize"
+    assert planned.json()["steps"][0]["tool_name"] == "run_artifact_action"
+    assert planned.json()["steps"][0]["status"] == "dry_run"
+
+    executed_task = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "create task Review command planner due tomorrow priority 4 estimate 20m",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert executed_task.status_code == 200
+    assert executed_task.json()["status"] == "executed"
+    assert executed_task.json()["steps"][0]["result"]["task"]["title"] == "Review command planner"
+
+    executed_event = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "create event Deep Work from 2026-03-07 09:00 to 2026-03-07 10:00",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert executed_event.status_code == 200
+    assert executed_event.json()["steps"][0]["result"]["event"]["title"] == "Deep Work"
+
+    executed_search = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "search for Command artifact",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert executed_search.status_code == 200
+    assert executed_search.json()["steps"][0]["result"]
 
 
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -815,6 +1010,37 @@ def test_provider_config_and_webhooks(
     webhooks = client.get("/v1/webhooks", headers=auth_headers)
     assert webhooks.status_code == 200
     assert len(webhooks.json()) >= 1
+
+
+def test_execution_policy_controls_ai_routing(client: TestClient, auth_headers: dict[str, str]) -> None:
+    saved = client.post(
+        "/v1/integrations/execution-policy",
+        json={
+            "llm": ["api_fallback", "codex_bridge", "server_local"],
+            "stt": ["batch_local_bridge", "server_local", "api_fallback"],
+            "tts": ["on_device", "server_local", "api_fallback"],
+            "ocr": ["on_device"],
+        },
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200
+    assert saved.json()["llm"][0] == "api_fallback"
+
+    fetched = client.get("/v1/integrations/execution-policy", headers=auth_headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["available_targets"]["llm"][0] == "on_device"
+
+    run = client.post(
+        "/v1/ai/run",
+        json={
+            "capability": "llm_summary",
+            "input": {"title": "Policy ordered clip", "text": "Use the configured priority order."},
+            "prefer_local": True,
+        },
+        headers=auth_headers,
+    )
+    assert run.status_code == 200
+    assert run.json()["provider_used"] == "api_fallback"
 
 
 def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict[str, str]) -> None:

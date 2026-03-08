@@ -5,8 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 
 from app.api.deps import get_db, require_user_id
-from app.schemas.agent import AgentToolCallRequest, AgentToolCallResponse, AgentToolDefinition
-from app.services import agent_service
+from app.schemas.agent import (
+    AgentCommandRequest,
+    AgentCommandResponse,
+    AgentToolCallRequest,
+    AgentToolCallResponse,
+    AgentToolDefinition,
+)
+from app.services import agent_command_service, agent_service
 
 router = APIRouter(prefix="/agent")
 
@@ -49,3 +55,22 @@ def execute_agent_tool(
         validated_arguments=normalized,
         result=result,
     )
+
+
+@router.post("/command", response_model=AgentCommandResponse)
+def run_agent_command(
+    payload: AgentCommandRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AgentCommandResponse:
+    try:
+        return agent_command_service.run_command(
+            db,
+            command=payload.command,
+            execute=payload.execute,
+            device_target=payload.device_target,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc

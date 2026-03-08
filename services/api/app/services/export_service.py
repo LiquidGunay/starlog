@@ -28,6 +28,7 @@ TABLES = [
     "domain_events",
     "webhook_subscriptions",
     "provider_configs",
+    "app_settings",
     "google_remote_events",
     "calendar_sync_meta",
     "calendar_sync_conflicts",

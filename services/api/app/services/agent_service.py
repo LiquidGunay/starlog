@@ -10,13 +10,24 @@ from app.schemas.agent import (
     AgentToolDefinition,
     CaptureTextToolArgs,
     CreateCalendarEventToolArgs,
+    CreateNoteToolArgs,
     CreateTaskToolArgs,
     GenerateBriefingToolArgs,
+    GenerateTimeBlocksToolArgs,
+    GetArtifactGraphToolArgs,
+    GetExecutionPolicyToolArgs,
+    GetNoteToolArgs,
+    ListArtifactsToolArgs,
+    ListCalendarEventsToolArgs,
     ListDueCardsToolArgs,
+    ListNotesToolArgs,
+    ListTasksToolArgs,
     RunArtifactActionToolArgs,
     ScheduleMorningBriefAlarmToolArgs,
     SearchStarlogToolArgs,
+    SetExecutionPolicyToolArgs,
     SubmitReviewToolArgs,
+    UpdateNoteToolArgs,
     UpdateTaskToolArgs,
 )
 from app.services import (
@@ -24,6 +35,9 @@ from app.services import (
     briefing_service,
     calendar_service,
     capture_service,
+    integrations_service,
+    notes_service,
+    planning_service,
     search_service,
     srs_service,
     tasks_service,
@@ -71,6 +85,46 @@ def _run_artifact_action(conn: Connection, args: RunArtifactActionToolArgs) -> d
     }
 
 
+def _list_artifacts(conn: Connection, args: ListArtifactsToolArgs) -> dict[str, Any]:
+    artifacts = artifacts_service.list_artifacts(conn)
+    return {"artifacts": artifacts[: args.limit]}
+
+
+def _get_artifact_graph(conn: Connection, args: GetArtifactGraphToolArgs) -> dict[str, Any]:
+    graph = artifacts_service.get_artifact_graph(conn, args.artifact_id)
+    if graph is None:
+        raise LookupError(f"Artifact not found: {args.artifact_id}")
+    return {"graph": graph}
+
+
+def _create_note(conn: Connection, args: CreateNoteToolArgs) -> dict[str, Any]:
+    note = notes_service.create_note(conn, title=args.title, body_md=args.body_md)
+    return {"note": note}
+
+
+def _update_note(conn: Connection, args: UpdateNoteToolArgs) -> dict[str, Any]:
+    updated = notes_service.update_note(
+        conn,
+        args.note_id,
+        args.model_dump(exclude={"note_id"}, exclude_none=True),
+    )
+    if updated is None:
+        raise LookupError(f"Note not found: {args.note_id}")
+    return {"note": updated}
+
+
+def _list_notes(conn: Connection, args: ListNotesToolArgs) -> dict[str, Any]:
+    notes = notes_service.list_notes(conn)
+    return {"notes": notes[: args.limit]}
+
+
+def _get_note(conn: Connection, args: GetNoteToolArgs) -> dict[str, Any]:
+    note = notes_service.get_note(conn, args.note_id)
+    if note is None:
+        raise LookupError(f"Note not found: {args.note_id}")
+    return {"note": note}
+
+
 def _create_task(conn: Connection, args: CreateTaskToolArgs) -> dict[str, Any]:
     task = tasks_service.create_task(
         conn,
@@ -96,6 +150,11 @@ def _update_task(conn: Connection, args: UpdateTaskToolArgs) -> dict[str, Any]:
     return {"task": updated}
 
 
+def _list_tasks(conn: Connection, args: ListTasksToolArgs) -> dict[str, Any]:
+    tasks = tasks_service.list_tasks(conn, status=args.status)
+    return {"tasks": tasks[: args.limit]}
+
+
 def _create_calendar_event(conn: Connection, args: CreateCalendarEventToolArgs) -> dict[str, Any]:
     event = calendar_service.create_event(
         conn,
@@ -107,6 +166,21 @@ def _create_calendar_event(conn: Connection, args: CreateCalendarEventToolArgs) 
         etag=None,
     )
     return {"event": event}
+
+
+def _list_calendar_events(conn: Connection, args: ListCalendarEventsToolArgs) -> dict[str, Any]:
+    events = calendar_service.list_events(conn)
+    return {"events": events[: args.limit]}
+
+
+def _generate_time_blocks(conn: Connection, args: GenerateTimeBlocksToolArgs) -> dict[str, Any]:
+    generated = planning_service.generate_time_blocks(
+        conn,
+        date=args.date,
+        day_start_hour=args.day_start_hour,
+        day_end_hour=args.day_end_hour,
+    )
+    return {"generated": generated}
 
 
 def _generate_briefing(conn: Connection, args: GenerateBriefingToolArgs) -> dict[str, Any]:
@@ -147,6 +221,24 @@ def _search_starlog(conn: Connection, args: SearchStarlogToolArgs) -> list[dict[
     return list(search_service.search(conn, query=args.query, limit=args.limit))
 
 
+def _get_execution_policy(conn: Connection, _args: GetExecutionPolicyToolArgs) -> dict[str, Any]:
+    return {"policy": integrations_service.get_execution_policy(conn)}
+
+
+def _set_execution_policy(conn: Connection, args: SetExecutionPolicyToolArgs) -> dict[str, Any]:
+    current = integrations_service.get_execution_policy(conn)
+    policy = integrations_service.upsert_execution_policy(
+        conn,
+        {
+            "llm": args.llm if args.llm is not None else current["llm"],
+            "stt": args.stt if args.stt is not None else current["stt"],
+            "tts": args.tts if args.tts is not None else current["tts"],
+            "ocr": args.ocr if args.ocr is not None else current["ocr"],
+        },
+    )
+    return {"policy": policy}
+
+
 TOOL_SPECS: dict[str, ToolSpec] = {
     "capture_text_as_artifact": ToolSpec(
         name="capture_text_as_artifact",
@@ -155,12 +247,54 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         backing_endpoint="/v1/capture",
         handler=_capture_text,
     ),
+    "list_artifacts": ToolSpec(
+        name="list_artifacts",
+        description="List recent Starlog artifacts for clip triage or follow-up actions.",
+        arg_model=ListArtifactsToolArgs,
+        backing_endpoint="/v1/artifacts",
+        handler=_list_artifacts,
+    ),
+    "get_artifact_graph": ToolSpec(
+        name="get_artifact_graph",
+        description="Load the full Starlog artifact graph including summaries, cards, tasks, notes, and provenance links.",
+        arg_model=GetArtifactGraphToolArgs,
+        backing_endpoint="/v1/artifacts/{artifact_id}/graph",
+        handler=_get_artifact_graph,
+    ),
     "run_artifact_action": ToolSpec(
         name="run_artifact_action",
         description="Run or queue a Starlog artifact action such as summarize, create cards, generate tasks, or append note.",
         arg_model=RunArtifactActionToolArgs,
         backing_endpoint="/v1/artifacts/{artifact_id}/actions",
         handler=_run_artifact_action,
+    ),
+    "create_note": ToolSpec(
+        name="create_note",
+        description="Create a Markdown note in Starlog.",
+        arg_model=CreateNoteToolArgs,
+        backing_endpoint="/v1/notes",
+        handler=_create_note,
+    ),
+    "update_note": ToolSpec(
+        name="update_note",
+        description="Update an existing Starlog note title or Markdown body.",
+        arg_model=UpdateNoteToolArgs,
+        backing_endpoint="/v1/notes/{note_id}",
+        handler=_update_note,
+    ),
+    "list_notes": ToolSpec(
+        name="list_notes",
+        description="List recent Starlog notes.",
+        arg_model=ListNotesToolArgs,
+        backing_endpoint="/v1/notes",
+        handler=_list_notes,
+    ),
+    "get_note": ToolSpec(
+        name="get_note",
+        description="Fetch a single Starlog note by ID.",
+        arg_model=GetNoteToolArgs,
+        backing_endpoint="/v1/notes/{note_id}",
+        handler=_get_note,
     ),
     "create_task": ToolSpec(
         name="create_task",
@@ -176,12 +310,33 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         backing_endpoint="/v1/tasks/{task_id}",
         handler=_update_task,
     ),
+    "list_tasks": ToolSpec(
+        name="list_tasks",
+        description="List Starlog tasks, optionally filtered by status.",
+        arg_model=ListTasksToolArgs,
+        backing_endpoint="/v1/tasks",
+        handler=_list_tasks,
+    ),
     "create_calendar_event": ToolSpec(
         name="create_calendar_event",
         description="Create an internal Starlog calendar event or time block anchor.",
         arg_model=CreateCalendarEventToolArgs,
         backing_endpoint="/v1/calendar/events",
         handler=_create_calendar_event,
+    ),
+    "list_calendar_events": ToolSpec(
+        name="list_calendar_events",
+        description="List Starlog calendar events and time anchors.",
+        arg_model=ListCalendarEventsToolArgs,
+        backing_endpoint="/v1/calendar/events",
+        handler=_list_calendar_events,
+    ),
+    "generate_time_blocks": ToolSpec(
+        name="generate_time_blocks",
+        description="Generate Starlog time blocks from the current task queue for a target day window.",
+        arg_model=GenerateTimeBlocksToolArgs,
+        backing_endpoint="/v1/planning/blocks/generate",
+        handler=_generate_time_blocks,
     ),
     "generate_briefing": ToolSpec(
         name="generate_briefing",
@@ -217,6 +372,20 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=SearchStarlogToolArgs,
         backing_endpoint="/v1/search",
         handler=_search_starlog,
+    ),
+    "get_execution_policy": ToolSpec(
+        name="get_execution_policy",
+        description="Read the shared Starlog execution priority policy for LLM, STT, TTS, and OCR routing.",
+        arg_model=GetExecutionPolicyToolArgs,
+        backing_endpoint="/v1/integrations/execution-policy",
+        handler=_get_execution_policy,
+    ),
+    "set_execution_policy": ToolSpec(
+        name="set_execution_policy",
+        description="Update the shared execution priority policy so Starlog knows when to prefer on-device, batch bridge, local server, Codex bridge, or API fallback routes.",
+        arg_model=SetExecutionPolicyToolArgs,
+        backing_endpoint="/v1/integrations/execution-policy",
+        handler=_set_execution_policy,
     ),
 }
 

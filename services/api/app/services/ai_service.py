@@ -262,19 +262,27 @@ def run(
     payload: dict,
     prefer_local: bool,
 ) -> tuple[str, Literal["ok", "fallback", "failed"], dict]:
-    if prefer_local:
+    execution_order = (
+        integrations_service.capability_execution_order(
+            conn,
+            capability,
+            executable_targets={"server_local", "codex_bridge", "api_fallback"},
+            prefer_local=prefer_local,
+        )
+        if conn is not None
+        else (["server_local", "codex_bridge", "api_fallback"] if prefer_local else ["codex_bridge", "api_fallback"])
+    )
+
+    for target in execution_order:
         try:
-            return "local", "ok", _local_provider(conn, capability, payload)
+            if target == "server_local":
+                return "local", "ok", _local_provider(conn, capability, payload)
+            if target == "codex_bridge":
+                return "codex_bridge", "ok", _codex_bridge_provider(conn, capability, payload)
+            if target == "api_fallback":
+                output = _api_provider(conn, capability, payload)
+                return "api_fallback", "fallback", output
         except ProviderError:
-            pass
+            continue
 
-    try:
-        return "codex_bridge", "ok", _codex_bridge_provider(conn, capability, payload)
-    except ProviderError:
-        pass
-
-    try:
-        output = _api_provider(conn, capability, payload)
-        return "api_fallback", "fallback", output
-    except ProviderError:
-        return "none", "failed", {}
+    return "none", "failed", {}

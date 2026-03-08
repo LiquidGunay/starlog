@@ -3,7 +3,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_db, require_user_id
-from app.schemas.integrations import ProviderConfigRequest, ProviderConfigResponse, ProviderHealthResponse
+from app.schemas.integrations import (
+    ExecutionPolicyRequest,
+    ExecutionPolicyResponse,
+    ProviderConfigRequest,
+    ProviderConfigResponse,
+    ProviderHealthResponse,
+)
 from app.services import integrations_service
 
 router = APIRouter(prefix="/integrations")
@@ -43,3 +49,22 @@ def provider_health(
 ) -> ProviderHealthResponse:
     health = integrations_service.provider_health(db, provider_name)
     return ProviderHealthResponse.model_validate(health)
+
+
+@router.get("/execution-policy", response_model=ExecutionPolicyResponse)
+def get_execution_policy(
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> ExecutionPolicyResponse:
+    policy = integrations_service.get_execution_policy(db)
+    return ExecutionPolicyResponse.model_validate(policy)
+
+
+@router.post("/execution-policy", response_model=ExecutionPolicyResponse)
+def save_execution_policy(
+    payload: ExecutionPolicyRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> ExecutionPolicyResponse:
+    policy = integrations_service.upsert_execution_policy(db, payload.model_dump())
+    return ExecutionPolicyResponse.model_validate(policy)

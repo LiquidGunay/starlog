@@ -40,6 +40,9 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-06: User now prefers longer stable implementation passes with fewer stage/push checkpoints.
 - 2026-03-06: User wants Android-first native app/build work before iOS.
 - 2026-03-06: User prefers queued laptop-local Codex/Whisper processing over always-on hosted AI compute.
+- 2026-03-06: User wants every major Starlog action exposed as LLM-usable tooling for future chat/voice control.
+- 2026-03-06: User wants phone-local AI capability parity where possible, with configurable priority across on-device, local batch/bridge, and API fallback paths.
+- 2026-03-06: User is fine with local AI models running as separate local commands/processes instead of being bundled into the app, and does not require real-time execution for most AI features.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.

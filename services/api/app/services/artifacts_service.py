@@ -3,7 +3,7 @@ from datetime import timedelta
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import ai_service, events_service
+from app.services import ai_service, events_service, integrations_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 DEFERRED_CAPABILITIES = {
@@ -467,7 +467,9 @@ def run_action(
                 "title": artifact.get("title") or artifact_id,
                 "text": _artifact_source_text(artifact),
             },
-            provider_hint=provider_hint or "codex_local",
+            provider_hint=provider_hint
+            or integrations_service.default_batch_provider_hint(conn, DEFERRED_CAPABILITIES[action])
+            or "codex_local",
             artifact_id=artifact_id,
             action=action,
         )

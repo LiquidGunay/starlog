@@ -24,6 +24,16 @@ type ProviderHealth = {
   auth_probe: Record<string, string>;
 };
 
+type ExecutionPolicy = {
+  version: number;
+  llm: string[];
+  stt: string[];
+  tts: string[];
+  ocr: string[];
+  available_targets: Record<string, string[]>;
+  updated_at?: string | null;
+};
+
 export default function IntegrationsPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [providerName, setProviderName] = useState("local_llm");
@@ -32,6 +42,19 @@ export default function IntegrationsPage() {
   const [configJson, setConfigJson] = useState('{"model":"qwen2.5"}');
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [healthByProvider, setHealthByProvider] = useState<Record<string, ProviderHealth>>({});
+  const [policyJson, setPolicyJson] = useState(
+    JSON.stringify(
+      {
+        llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+        stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
+        tts: ["on_device", "server_local", "api_fallback"],
+        ocr: ["on_device"],
+      },
+      null,
+      2,
+    ),
+  );
+  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(null);
   const [status, setStatus] = useState("Ready");
 
   async function loadProviders() {
@@ -50,6 +73,20 @@ export default function IntegrationsPage() {
         }),
       );
       setHealthByProvider(Object.fromEntries(healthPairs));
+      const policy = await apiRequest<ExecutionPolicy>(apiBase, token, "/v1/integrations/execution-policy");
+      setPolicyMeta(policy);
+      setPolicyJson(
+        JSON.stringify(
+          {
+            llm: policy.llm,
+            stt: policy.stt,
+            tts: policy.tts,
+            ocr: policy.ocr,
+          },
+          null,
+          2,
+        ),
+      );
       setStatus(`Loaded ${payload.length} provider config(s)`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load providers");
@@ -104,6 +141,41 @@ export default function IntegrationsPage() {
       setStatus(`Refreshed health for ${provider}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Health refresh failed");
+    }
+  }
+
+  async function saveExecutionPolicy() {
+    let parsedPolicy: Record<string, unknown>;
+    try {
+      parsedPolicy = JSON.parse(policyJson) as Record<string, unknown>;
+    } catch {
+      setStatus("Execution policy JSON is invalid");
+      return;
+    }
+
+    try {
+      const result = await mutateWithQueue<ExecutionPolicy>(
+        "/v1/integrations/execution-policy",
+        {
+          method: "POST",
+          body: JSON.stringify(parsedPolicy),
+        },
+        {
+          label: "Save execution policy",
+          entity: "execution_policy",
+          op: "upsert",
+        },
+      );
+      if (result.queued) {
+        setStatus("Queued execution policy update");
+        return;
+      }
+      if (result.data) {
+        setPolicyMeta(result.data);
+      }
+      setStatus("Saved execution policy");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to save execution policy");
     }
   }
 
@@ -194,6 +266,33 @@ export default function IntegrationsPage() {
               })}
             </ul>
           )}
+        </div>
+
+        <div className="panel glass">
+          <h2>Execution policy</h2>
+          <p className="console-copy">
+            Define priority order per capability. `on_device` is for phone/laptop-native execution, `batch_local_bridge` is for queued local workers, and the remaining targets are server-side fallbacks.
+          </p>
+          {policyMeta ? (
+            <p className="console-copy">
+              version: {policyMeta.version} | updated: {policyMeta.updated_at || "default"}
+            </p>
+          ) : null}
+          {policyMeta ? (
+            <p className="console-copy">Available targets: {JSON.stringify(policyMeta.available_targets)}</p>
+          ) : null}
+          <label className="label" htmlFor="execution-policy">Policy JSON</label>
+          <textarea
+            id="execution-policy"
+            className="textarea"
+            value={policyJson}
+            onChange={(event) => setPolicyJson(event.target.value)}
+          />
+          <div className="button-row">
+            <button className="button" type="button" onClick={() => saveExecutionPolicy()}>
+              Save Execution Policy
+            </button>
+          </div>
         </div>
       </section>
     </main>

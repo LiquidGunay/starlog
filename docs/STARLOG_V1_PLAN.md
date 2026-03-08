@@ -102,6 +102,13 @@ For each clip, store:
   1. local model (if configured),
   2. Codex bridge (best effort),
   3. API-key provider fallback.
+- All AI-capable features should share a **capability-level ordered execution policy** so phone, laptop, and backend can prefer:
+  1. on-device execution,
+  2. queued local batch bridge,
+  3. server-local runtime,
+  4. remote bridge,
+  5. API fallback.
+- The same policy object should be editable by the user and readable by future chat/voice interfaces.
 
 ### Codex subscription integration
 - Implement as **experimental provider adapter** behind feature flag.

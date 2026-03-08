@@ -69,7 +69,7 @@ type PendingVoiceCapture = {
 type PendingCapture = PendingTextCapture | PendingVoiceCapture;
 
 type PersistedState = {
-  version: 2;
+  version: 3;
   apiBase: string;
   pwaBase: string;
   token: string;
@@ -87,10 +87,20 @@ type PersistedState = {
   artifactGraph: ArtifactGraph | null;
   artifactVersions: ArtifactVersions | null;
   dueCards: DueCard[];
+  executionPolicy: ExecutionPolicy;
+  assistantCommand?: string;
+  assistantHistory?: AssistantCommandResponse[];
+};
+
+type PersistedStateV2 = Omit<
+  PersistedState,
+  "version" | "executionPolicy"
+> & {
+  version: 2;
 };
 
 type LegacyPersistedState = Omit<
-  PersistedState,
+  PersistedStateV2,
   "version" | "artifacts" | "selectedArtifactId" | "artifactGraph" | "artifactVersions" | "dueCards"
 > & {
   version: 1;
@@ -136,17 +146,69 @@ type ArtifactVersions = {
   actions: Array<{ id: string; action: string; status: string; output_ref?: string | null; created_at: string }>;
 };
 
+type ExecutionTarget = "on_device" | "server_local" | "batch_local_bridge" | "codex_bridge" | "api_fallback";
+type ExecutionPolicyFamily = "llm" | "stt" | "tts" | "ocr";
+
+type ExecutionPolicy = {
+  version: number;
+  llm: ExecutionTarget[];
+  stt: ExecutionTarget[];
+  tts: ExecutionTarget[];
+  ocr: ExecutionTarget[];
+  available_targets?: Partial<Record<ExecutionPolicyFamily, ExecutionTarget[]>>;
+  updated_at?: string | null;
+};
+
+type ExecutionResolution = {
+  requested: ExecutionTarget | "none";
+  active: ExecutionTarget | "none";
+  reason?: string;
+};
+
+type AssistantCommandStep = {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: "planned" | "ok" | "dry_run" | "failed";
+  message?: string | null;
+  result: unknown;
+};
+
+type AssistantCommandResponse = {
+  command: string;
+  planner: string;
+  matched_intent: string;
+  status: "planned" | "executed" | "failed";
+  summary: string;
+  steps: AssistantCommandStep[];
+};
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
 const DEFAULT_VOICE_MIME = "audio/x-m4a";
 const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
+const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
+  llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+  stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
+  tts: ["on_device", "server_local", "api_fallback"],
+  ocr: ["on_device"],
+};
+const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
+  llm: "codex_local",
+  stt: "whisper_local",
+  tts: "piper_local",
+};
 const artifactQuickActions: Array<{ label: string; action: ArtifactAction }> = [
   { label: "Summarize", action: "summarize" },
   { label: "Create Cards", action: "cards" },
   { label: "Generate Tasks", action: "tasks" },
   { label: "Append Note", action: "append_note" },
+];
+const assistantExampleCommands = [
+  "summarize latest artifact",
+  "create task Review latest summary due tomorrow priority 4",
+  "search for spaced repetition",
 ];
 
 let stateDbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -217,6 +279,73 @@ function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, "");
 }
 
+function defaultExecutionPolicy(): ExecutionPolicy {
+  return {
+    version: 1,
+    llm: [...DEFAULT_EXECUTION_TARGETS.llm],
+    stt: [...DEFAULT_EXECUTION_TARGETS.stt],
+    tts: [...DEFAULT_EXECUTION_TARGETS.tts],
+    ocr: [...DEFAULT_EXECUTION_TARGETS.ocr],
+    available_targets: {
+      llm: [...DEFAULT_EXECUTION_TARGETS.llm],
+      stt: [...DEFAULT_EXECUTION_TARGETS.stt],
+      tts: [...DEFAULT_EXECUTION_TARGETS.tts],
+      ocr: [...DEFAULT_EXECUTION_TARGETS.ocr],
+    },
+    updated_at: null,
+  };
+}
+
+function policyOrder(policy: ExecutionPolicy, family: ExecutionPolicyFamily): ExecutionTarget[] {
+  return policy[family].length > 0 ? policy[family] : DEFAULT_EXECUTION_TARGETS[family];
+}
+
+function resolveExecutionTarget(
+  policy: ExecutionPolicy,
+  family: ExecutionPolicyFamily,
+  executableTargets: ExecutionTarget[],
+  fallbackTarget?: ExecutionTarget,
+  fallbackReason?: string,
+): ExecutionResolution {
+  const requestedOrder = policyOrder(policy, family);
+  const requested = requestedOrder[0] ?? "none";
+  const active = requestedOrder.find((target) => executableTargets.includes(target)) ?? fallbackTarget ?? "none";
+  if (active === "none") {
+    return {
+      requested,
+      active,
+      reason: fallbackReason ?? "No executable mobile route is available for this capability yet.",
+    };
+  }
+  if (requested !== active) {
+    return {
+      requested,
+      active,
+      reason: fallbackReason ?? "Mobile is using the next executable target from the shared policy.",
+    };
+  }
+  return { requested, active };
+}
+
+function formatExecutionTarget(target: ExecutionTarget | "none"): string {
+  if (target === "on_device") {
+    return "On device";
+  }
+  if (target === "server_local") {
+    return "Server local";
+  }
+  if (target === "batch_local_bridge") {
+    return "Batch local bridge";
+  }
+  if (target === "codex_bridge") {
+    return "Codex bridge";
+  }
+  if (target === "api_fallback") {
+    return "API fallback";
+  }
+  return "Unavailable";
+}
+
 function toHourMinuteLabel(hour: number, minute: number): string {
   const hh = String(hour).padStart(2, "0");
   const mm = String(minute).padStart(2, "0");
@@ -235,9 +364,24 @@ async function readPersistedState(): Promise<PersistedState | null> {
       MOBILE_STATE_KEY,
     );
     if (row?.value) {
-      const parsed = JSON.parse(row.value) as PersistedState;
+      const parsed = JSON.parse(row.value) as PersistedState | PersistedStateV2;
       if (parsed.version === 2) {
-        return parsed;
+        const migrated: PersistedState = {
+          ...parsed,
+          version: 3,
+          executionPolicy: defaultExecutionPolicy(),
+          assistantCommand: "summarize latest artifact",
+          assistantHistory: [],
+        };
+        await writePersistedState(migrated);
+        return migrated;
+      }
+      if (parsed.version === 3) {
+        return {
+          assistantCommand: "summarize latest artifact",
+          assistantHistory: [],
+          ...parsed,
+        };
       }
     }
 
@@ -254,12 +398,15 @@ async function readPersistedState(): Promise<PersistedState | null> {
 
     const migrated: PersistedState = {
       ...legacy,
-      version: 2,
+      version: 3,
       artifacts: [],
       selectedArtifactId: "",
       artifactGraph: null,
       artifactVersions: null,
       dueCards: [],
+      executionPolicy: defaultExecutionPolicy(),
+      assistantCommand: "summarize latest artifact",
+      assistantHistory: [],
     };
     await writePersistedState(migrated);
     await FileSystem.deleteAsync(file, { idempotent: true });
@@ -373,6 +520,9 @@ export default function App() {
   const [artifactVersions, setArtifactVersions] = useState<ArtifactVersions | null>(null);
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
+  const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
+  const [assistantCommand, setAssistantCommand] = useState("summarize latest artifact");
+  const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
   const [status, setStatus] = useState("Ready");
@@ -380,16 +530,91 @@ export default function App() {
   const flushInFlight = useRef(false);
   const cardPromptStartedAt = useRef<number | null>(null);
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const llmResolution = useMemo(
+    () =>
+      resolveExecutionTarget(
+        executionPolicy,
+        "llm",
+        ["batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+        "batch_local_bridge",
+        "On-device LLM is not implemented in the mobile client yet, so Starlog uses the next executable target.",
+      ),
+    [executionPolicy],
+  );
+  const sttResolution = useMemo(
+    () =>
+      resolveExecutionTarget(
+        executionPolicy,
+        "stt",
+        ["batch_local_bridge"],
+        "batch_local_bridge",
+        "Mobile voice transcription currently runs through the queued Whisper bridge until native on-device STT ships.",
+      ),
+    [executionPolicy],
+  );
+  const ttsResolution = useMemo(
+    () =>
+      resolveExecutionTarget(
+        executionPolicy,
+        "tts",
+        ["on_device"],
+        "on_device",
+        "Mobile speech playback currently stays on-device.",
+      ),
+    [executionPolicy],
+  );
+
+  async function loadExecutionPolicy(origin: "auto" | "manual") {
+    if (!token) {
+      if (origin === "manual") {
+        setStatus("Add API token first");
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/integrations/execution-policy`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Execution policy fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as ExecutionPolicy;
+      setExecutionPolicy(payload);
+      if (origin === "manual") {
+        setStatus(
+          `Loaded execution policy: LLM ${formatExecutionTarget(
+            resolveExecutionTarget(
+              payload,
+              "llm",
+              ["batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+              "batch_local_bridge",
+            ).active,
+          )}, STT ${formatExecutionTarget(
+            resolveExecutionTarget(payload, "stt", ["batch_local_bridge"], "batch_local_bridge").active,
+          )}`,
+        );
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load execution policy");
+      }
+    }
+  }
 
   async function sendCapture(item: PendingCapture): Promise<string> {
     if (item.kind === "voice") {
+      const providerHint = BATCH_PROVIDER_HINT.stt ?? "whisper_local";
       const formData = new FormData();
       formData.append("title", item.title);
       if (item.sourceUrl) {
         formData.append("source_url", item.sourceUrl);
       }
       formData.append("duration_ms", String(item.durationMs));
-      formData.append("provider_hint", "whisper_local");
+      formData.append("provider_hint", providerHint);
       formData.append(
         "file",
         {
@@ -413,7 +638,11 @@ export default function App() {
       }
 
       const payload = (await response.json()) as { artifact: { id: string }; job_id: string };
-      setStatus(`Queued Whisper transcript job ${payload.job_id}`);
+      const routeNote =
+        sttResolution.requested !== sttResolution.active
+          ? ` (requested ${formatExecutionTarget(sttResolution.requested)}; using ${formatExecutionTarget(sttResolution.active)})`
+          : "";
+      setStatus(`Queued voice transcript job ${payload.job_id} via ${formatExecutionTarget(sttResolution.active)}${routeNote}`);
       return payload.artifact.id;
     }
 
@@ -532,6 +761,8 @@ export default function App() {
     }
 
     try {
+      const shouldDefer = action !== "append_note" && llmResolution.active === "batch_local_bridge";
+      const providerHint = shouldDefer ? BATCH_PROVIDER_HINT.llm : undefined;
       const response = await fetch(
         `${normalizeBaseUrl(apiBase)}/v1/artifacts/${selectedArtifactId}/actions`,
         {
@@ -540,7 +771,11 @@ export default function App() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ action }),
+          body: JSON.stringify({
+            action,
+            defer: shouldDefer,
+            provider_hint: providerHint,
+          }),
         },
       );
       if (!response.ok) {
@@ -548,7 +783,17 @@ export default function App() {
         throw new Error(`Artifact action failed: ${response.status} ${errorBody}`);
       }
       await loadArtifactDetail(selectedArtifactId);
-      setStatus(`Requested ${action} for ${selectedArtifactId}`);
+      if (shouldDefer) {
+        setStatus(`Queued ${action} for ${selectedArtifactId} via ${formatExecutionTarget(llmResolution.active)}`);
+      } else if (action === "append_note") {
+        setStatus(`Requested ${action} for ${selectedArtifactId}`);
+      } else {
+        const routeNote =
+          llmResolution.requested !== llmResolution.active
+            ? ` (requested ${formatExecutionTarget(llmResolution.requested)})`
+            : "";
+        setStatus(`Requested ${action} for ${selectedArtifactId} via ${formatExecutionTarget(llmResolution.active)}${routeNote}`);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Artifact action failed");
     }
@@ -564,7 +809,9 @@ export default function App() {
     }
     Speech.stop();
     Speech.speak(text);
-    setStatus("Speaking selected artifact locally");
+    const routeNote =
+      ttsResolution.requested !== ttsResolution.active ? ` (requested ${formatExecutionTarget(ttsResolution.requested)})` : "";
+    setStatus(`Speaking selected artifact via ${formatExecutionTarget(ttsResolution.active)}${routeNote}`);
   }
 
   async function openSelectedArtifactInPwa() {
@@ -950,6 +1197,65 @@ export default function App() {
     }
   }
 
+  async function openIntegrationsInPwa() {
+    try {
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/integrations`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to open integrations in PWA");
+    }
+  }
+
+  async function openAssistantInPwa() {
+    try {
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/assistant`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to open assistant in PWA");
+    }
+  }
+
+  async function runAssistantCommand(execute: boolean) {
+    const command = assistantCommand.trim();
+    if (!command) {
+      setStatus("Enter an assistant command first");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/agent/command`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          command,
+          execute,
+          device_target: "mobile-companion",
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Assistant command failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as AssistantCommandResponse;
+      setAssistantHistory((previous) => [payload, ...previous].slice(0, 6));
+      if (payload.matched_intent === "capture" || ["summarize", "cards", "tasks", "append_note"].includes(payload.matched_intent)) {
+        loadArtifacts().catch(() => undefined);
+      }
+      if (payload.matched_intent === "list_due_cards") {
+        loadDueCards().catch(() => undefined);
+      }
+      setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Assistant command failed");
+    }
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -986,6 +1292,9 @@ export default function App() {
         setArtifactGraph(persisted.artifactGraph);
         setArtifactVersions(persisted.artifactVersions);
         setDueCards(persisted.dueCards || []);
+        setExecutionPolicy(persisted.executionPolicy || defaultExecutionPolicy());
+        setAssistantCommand(persisted.assistantCommand || "summarize latest artifact");
+        setAssistantHistory(persisted.assistantHistory || []);
       }
 
       const initialUrl = await Linking.getInitialURL();
@@ -1072,7 +1381,7 @@ export default function App() {
     }
 
     writePersistedState({
-      version: 2,
+      version: 3,
       apiBase,
       pwaBase,
       token,
@@ -1090,18 +1399,24 @@ export default function App() {
       artifactGraph,
       artifactVersions,
       dueCards,
+      executionPolicy,
+      assistantCommand,
+      assistantHistory,
     }).catch(() => undefined);
   }, [
     alarmHour,
     alarmMinute,
     alarmNotificationId,
     apiBase,
+    assistantCommand,
+    assistantHistory,
     artifactGraph,
     artifactVersions,
     artifacts,
     briefingDate,
     cachedPath,
     dueCards,
+    executionPolicy,
     hydrated,
     pendingCaptures,
     pwaBase,
@@ -1127,6 +1442,13 @@ export default function App() {
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
+    if (!hydrated || !token) {
+      return;
+    }
+    loadExecutionPolicy("auto").catch(() => undefined);
+  }, [hydrated, token, apiBase]);
+
+  useEffect(() => {
     if (!hydrated || !token || !selectedArtifactId) {
       setArtifactGraph(null);
       setArtifactVersions(null);
@@ -1145,6 +1467,102 @@ export default function App() {
           <Text style={styles.body}>
             Mobile app handles share capture, queue retries, alarms, and offline brief playback while deep planning stays in the PWA.
           </Text>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Execution routing</Text>
+          <Text style={styles.subtle}>
+            Mobile reads the shared execution policy, then falls back to the nearest implemented route on phone when needed.
+          </Text>
+          <View style={styles.inlineCard}>
+            <Text style={styles.inlineCardTitle}>LLM actions</Text>
+            <Text style={styles.subtle}>
+              requested {formatExecutionTarget(llmResolution.requested)} {"->"} active {formatExecutionTarget(llmResolution.active)}
+            </Text>
+            {llmResolution.reason ? <Text style={styles.subtle}>{llmResolution.reason}</Text> : null}
+          </View>
+          <View style={styles.inlineCard}>
+            <Text style={styles.inlineCardTitle}>Voice STT</Text>
+            <Text style={styles.subtle}>
+              requested {formatExecutionTarget(sttResolution.requested)} {"->"} active {formatExecutionTarget(sttResolution.active)}
+            </Text>
+            {sttResolution.reason ? <Text style={styles.subtle}>{sttResolution.reason}</Text> : null}
+          </View>
+          <View style={styles.inlineCard}>
+            <Text style={styles.inlineCardTitle}>Speech playback</Text>
+            <Text style={styles.subtle}>
+              requested {formatExecutionTarget(ttsResolution.requested)} {"->"} active {formatExecutionTarget(ttsResolution.active)}
+            </Text>
+            {ttsResolution.reason ? <Text style={styles.subtle}>{ttsResolution.reason}</Text> : null}
+          </View>
+          <Text style={styles.subtle}>
+            Policy updated: {executionPolicy.updated_at ? new Date(executionPolicy.updated_at).toLocaleString() : "local default"}
+          </Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={() => loadExecutionPolicy("manual")}>
+              <Text style={styles.buttonText}>Refresh Policy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={openIntegrationsInPwa}>
+              <Text style={styles.buttonText}>Open Integrations</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Assistant command</Text>
+          <Text style={styles.subtle}>
+            Send typed commands through the same tool-backed assistant layer used by the PWA.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={assistantCommand}
+            onChangeText={setAssistantCommand}
+            placeholder="summarize latest artifact"
+            placeholderTextColor={palette.muted}
+            multiline
+          />
+          <View style={styles.chipRow}>
+            {assistantExampleCommands.map((example) => (
+              <TouchableOpacity
+                key={example}
+                style={styles.chip}
+                activeOpacity={0.8}
+                onPress={() => setAssistantCommand(example)}
+              >
+                <Text style={styles.chipText}>{example}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(false)}>
+              <Text style={styles.buttonText}>Plan Command</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(true)}>
+              <Text style={styles.buttonText}>Execute Command</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
+              <Text style={styles.buttonText}>Open PWA Assistant</Text>
+            </TouchableOpacity>
+          </View>
+          {assistantHistory[0] ? (
+            <View style={styles.detailCard}>
+              <Text style={styles.inlineCardTitle}>
+                Latest: {assistantHistory[0].matched_intent} [{assistantHistory[0].status}]
+              </Text>
+              <Text style={styles.subtle}>{assistantHistory[0].summary}</Text>
+              {assistantHistory[0].steps.map((step, index) => (
+                <View key={`${step.tool_name}-${index}`} style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>
+                    {step.tool_name} [{step.status}]
+                  </Text>
+                  {step.message ? <Text style={styles.subtle}>{step.message}</Text> : null}
+                  <Text style={styles.mono}>{JSON.stringify(step.arguments)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.subtle}>No mobile assistant command history yet.</Text>
+          )}
         </View>
 
         <View style={styles.panel}>

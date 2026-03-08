@@ -52,6 +52,7 @@ Use the non-empty IP (example: `192.168.1.42`).
    - API base: `http://<LAN_IP>:8000`
 4. Bootstrap/login from the web console and keep token in session controls.
 5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
+6. Open `/assistant` if you want to test typed commands such as `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
 
 ## 4) Install PWA to home screen
 
@@ -81,6 +82,8 @@ pnpm --filter mobile start
    - API base: `http://<LAN_IP>:8000`
    - Bearer token: paste token from PWA/web login
 3. Optional sanity checks in the mobile app:
+   - Open the `Execution routing` panel and tap `Refresh Policy` to confirm the phone sees the same policy order as the PWA.
+   - In `Assistant command`, try `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
    - Capture/Queue a quick text clip.
    - Record a voice note, then upload/queue it.
    - Refresh the artifact inbox, select a recent clip, and trigger `Summarize` or `Create Cards`.

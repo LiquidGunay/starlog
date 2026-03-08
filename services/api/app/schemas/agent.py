@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.artifacts import ArtifactAction
+from app.schemas.integrations import ExecutionTarget
 
 
 class AgentToolDefinition(BaseModel):
@@ -24,6 +25,29 @@ class AgentToolCallResponse(BaseModel):
     status: Literal["ok", "dry_run"]
     validated_arguments: dict[str, Any] = Field(default_factory=dict)
     result: dict[str, Any] | list[dict[str, Any]] = Field(default_factory=lambda: {})
+
+
+class AgentCommandRequest(BaseModel):
+    command: str = Field(..., min_length=1)
+    execute: bool = True
+    device_target: str = "primary-device"
+
+
+class AgentCommandStep(BaseModel):
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    status: Literal["planned", "ok", "dry_run", "failed"] = "planned"
+    message: str | None = None
+    result: dict[str, Any] | list[dict[str, Any]] = Field(default_factory=lambda: {})
+
+
+class AgentCommandResponse(BaseModel):
+    command: str
+    planner: str
+    matched_intent: str
+    status: Literal["planned", "executed", "failed"]
+    summary: str
+    steps: list[AgentCommandStep] = Field(default_factory=list)
 
 
 class CaptureTextToolArgs(BaseModel):
@@ -95,3 +119,56 @@ class SubmitReviewToolArgs(BaseModel):
 class SearchStarlogToolArgs(BaseModel):
     query: str = Field(..., min_length=1)
     limit: int = Field(default=10, ge=1, le=100)
+
+
+class ListArtifactsToolArgs(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class GetArtifactGraphToolArgs(BaseModel):
+    artifact_id: str = Field(..., min_length=1)
+
+
+class CreateNoteToolArgs(BaseModel):
+    title: str = Field(..., min_length=1)
+    body_md: str = ""
+
+
+class UpdateNoteToolArgs(BaseModel):
+    note_id: str = Field(..., min_length=1)
+    title: str | None = None
+    body_md: str | None = None
+
+
+class ListNotesToolArgs(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class GetNoteToolArgs(BaseModel):
+    note_id: str = Field(..., min_length=1)
+
+
+class ListTasksToolArgs(BaseModel):
+    status: str | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ListCalendarEventsToolArgs(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class GenerateTimeBlocksToolArgs(BaseModel):
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    day_start_hour: int = Field(default=8, ge=0, le=23)
+    day_end_hour: int = Field(default=18, ge=1, le=24)
+
+
+class GetExecutionPolicyToolArgs(BaseModel):
+    pass
+
+
+class SetExecutionPolicyToolArgs(BaseModel):
+    llm: list[ExecutionTarget] | None = None
+    stt: list[ExecutionTarget] | None = None
+    tts: list[ExecutionTarget] | None = None
+    ocr: list[ExecutionTarget] | None = None

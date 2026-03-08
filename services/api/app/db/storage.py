@@ -242,6 +242,12 @@ CREATE TABLE IF NOT EXISTS provider_configs (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ai_jobs (
   id TEXT PRIMARY KEY,
   capability TEXT NOT NULL,
@@ -315,6 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_time_blocks_start ON time_blocks(starts_at);
 CREATE INDEX IF NOT EXISTS idx_briefing_date ON briefing_packages(date);
 CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
 CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
+CREATE INDEX IF NOT EXISTS idx_app_settings_updated ON app_settings(updated_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_status_created ON ai_jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_provider_status ON ai_jobs(provider_hint, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_google_remote_updated ON google_remote_events(updated_at);

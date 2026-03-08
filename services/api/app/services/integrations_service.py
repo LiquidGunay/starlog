@@ -14,6 +14,36 @@ from app.core.time import utc_now
 from app.services import events_service, google_calendar_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
+DEFAULT_EXECUTION_POLICY = {
+    "version": 1,
+    "llm": ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+    "stt": ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
+    "tts": ["on_device", "server_local", "api_fallback"],
+    "ocr": ["on_device"],
+}
+
+AVAILABLE_EXECUTION_TARGETS = {
+    "llm": ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+    "stt": ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
+    "tts": ["on_device", "server_local", "api_fallback"],
+    "ocr": ["on_device"],
+}
+
+CAPABILITY_FAMILY = {
+    "llm_summary": "llm",
+    "llm_cards": "llm",
+    "llm_tasks": "llm",
+    "stt": "stt",
+    "tts": "tts",
+    "ocr": "ocr",
+}
+
+BATCH_PROVIDER_HINT = {
+    "llm": "codex_local",
+    "stt": "whisper_local",
+    "tts": "piper_local",
+}
+
 
 def _decoded_config(row: dict) -> dict:
     config = row.get("config_json")
@@ -24,6 +54,24 @@ def _decoded_config(row: dict) -> dict:
 
 def _response_config(row: dict) -> dict:
     return redact_sensitive_config(_decoded_config(row))
+
+
+def _normalized_execution_policy(raw_policy: dict | None) -> dict:
+    normalized = dict(DEFAULT_EXECUTION_POLICY)
+    if isinstance(raw_policy, dict):
+        if isinstance(raw_policy.get("version"), int):
+            normalized["version"] = int(raw_policy["version"])
+        for key, allowed in AVAILABLE_EXECUTION_TARGETS.items():
+            raw_targets = raw_policy.get(key)
+            if not isinstance(raw_targets, list):
+                continue
+            seen: list[str] = []
+            for item in raw_targets:
+                if item in allowed and item not in seen:
+                    seen.append(str(item))
+            if seen:
+                normalized[key] = seen
+    return normalized
 
 
 def _contains_any(config: dict, keys: set[str]) -> bool:
@@ -236,6 +284,73 @@ def _health_checks(
             problems.append("missing codex bridge URL")
 
     return len(problems) == 0, problems, checks, probe, auth_probe
+
+
+def get_execution_policy(conn: Connection) -> dict:
+    row = execute_fetchone(conn, "SELECT value_json, updated_at FROM app_settings WHERE key = ?", ("execution_policy",))
+    raw_policy = row.get("value_json") if row is not None else None
+    normalized = _normalized_execution_policy(raw_policy if isinstance(raw_policy, dict) else None)
+    return {
+        **normalized,
+        "available_targets": AVAILABLE_EXECUTION_TARGETS,
+        "updated_at": row.get("updated_at") if row is not None else None,
+    }
+
+
+def upsert_execution_policy(conn: Connection, policy: dict) -> dict:
+    normalized = _normalized_execution_policy(policy)
+    now = utc_now().isoformat()
+    conn.execute(
+        """
+        INSERT INTO app_settings (key, value_json, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value_json = excluded.value_json,
+          updated_at = excluded.updated_at
+        """,
+        ("execution_policy", json.dumps(normalized, sort_keys=True), now),
+    )
+    events_service.emit(
+        conn,
+        "execution_policy.updated",
+        {
+            "llm": normalized["llm"],
+            "stt": normalized["stt"],
+            "tts": normalized["tts"],
+            "ocr": normalized["ocr"],
+        },
+    )
+    conn.commit()
+    return get_execution_policy(conn)
+
+
+def capability_execution_order(
+    conn: Connection,
+    capability: str,
+    *,
+    executable_targets: set[str] | None = None,
+    prefer_local: bool = True,
+) -> list[str]:
+    policy = get_execution_policy(conn)
+    family = CAPABILITY_FAMILY.get(capability, "llm")
+    order = [str(item) for item in policy.get(family, DEFAULT_EXECUTION_POLICY[family])]
+
+    if not prefer_local:
+        order = [item for item in order if item not in {"on_device", "server_local"}]
+
+    if executable_targets is not None:
+        order = [item for item in order if item in executable_targets]
+    return order
+
+
+def default_batch_provider_hint(conn: Connection, capability: str) -> str | None:
+    family = CAPABILITY_FAMILY.get(capability)
+    if family is None:
+        return None
+    order = capability_execution_order(conn, capability, executable_targets={"batch_local_bridge"})
+    if "batch_local_bridge" not in order:
+        return None
+    return BATCH_PROVIDER_HINT.get(family)
 
 
 def upsert_provider_config(
