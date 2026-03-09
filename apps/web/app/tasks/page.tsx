@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { applyOptimisticTasks } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -23,11 +24,14 @@ type Task = {
   pendingLabel?: string;
 };
 
+const TASKS_SNAPSHOT = "tasks.items";
+const TASK_SELECTED_SNAPSHOT = "tasks.selected";
+
 function TasksPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [tasks, setTasks] = useState<Task[]>(() => readEntitySnapshot<Task[]>(TASKS_SNAPSHOT, []));
+  const [selectedId, setSelectedId] = useState(() => readEntitySnapshot<string>(TASK_SELECTED_SNAPSHOT, ""));
   const [title, setTitle] = useState("New task");
   const [taskStatus, setTaskStatus] = useState("todo");
   const [estimateMin, setEstimateMin] = useState("30");
@@ -41,16 +45,23 @@ function TasksPageContent() {
     filter === "all" ? optimisticTasks : optimisticTasks.filter((task) => task.status === filter);
   const selectedTask = optimisticTasks.find((task) => task.id === selectedId) ?? null;
 
+  useEffect(() => {
+    setTasks((previous) => previous.length > 0 ? previous : readEntitySnapshot<Task[]>(TASKS_SNAPSHOT, []));
+    setSelectedId((previous) => previous || readEntitySnapshot<string>(TASK_SELECTED_SNAPSHOT, ""));
+  }, []);
+
   const loadTasks = useCallback(async () => {
     try {
       const path = filter === "all" ? "/v1/tasks" : `/v1/tasks?status=${filter}`;
       const payload = await apiRequest<Task[]>(apiBase, token, path);
       setTasks(payload);
+      writeEntitySnapshot(TASKS_SNAPSHOT, payload);
       setStatus(`Loaded ${payload.length} tasks`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load tasks");
+      const detail = error instanceof Error ? error.message : "Failed to load tasks";
+      setStatus(tasks.length > 0 ? `Loaded cached tasks. ${detail}` : detail);
     }
-  }, [apiBase, filter, token]);
+  }, [apiBase, filter, tasks.length, token]);
 
   function selectTask(task: Task) {
     setSelectedId(task.id);
@@ -195,6 +206,10 @@ function TasksPageContent() {
       selectTask(requestedTask);
     }
   }, [optimisticTasks, searchParams]);
+
+  useEffect(() => {
+    writeEntitySnapshot(TASK_SELECTED_SNAPSHOT, selectedId);
+  }, [selectedId]);
 
   return (
     <main className="shell">

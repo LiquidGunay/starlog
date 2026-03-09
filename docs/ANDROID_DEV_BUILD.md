@@ -9,14 +9,13 @@ This is the active native-mobile path for Starlog. It keeps the Expo-managed app
 - Native modules already wired into the repo:
   - SQLite-backed mobile state
   - audio recording for voice-note capture
-- Next native modules to add:
-  - Android share-intent receive
+  - Android share-intent receive via `expo-share-intent`
 
 ## Files added for this path
 
 - `apps/mobile/app.config.js`
 - `apps/mobile/eas.json`
-- `apps/mobile/package.json` (`expo-dev-client`, `expo-sqlite`, `expo-av`, build scripts)
+- `apps/mobile/package.json` (`expo-dev-client`, `expo-sqlite`, `expo-av`, `expo-share-intent`, build scripts)
 
 ## Build profiles
 
@@ -93,6 +92,8 @@ or
 pnpm --filter mobile android:dev
 ```
 
+Important: Android share-sheet receive depends on the native dev build. It does not work in Expo Go.
+
 ## Point the app at the backend
 
 Inside the app:
@@ -106,8 +107,8 @@ The current mobile app stores this value locally, so you can switch between loca
 
 This path is working now, but it does **not** yet implement:
 
-- Android share-sheet receive
 - fully on-phone Whisper execution
+- iOS share-extension patching/hardening (Android is the active priority path)
 
 Current voice-note STT design:
 
@@ -117,4 +118,10 @@ Current voice-note STT design:
 
 That keeps the Android app simpler and lets the same local STT path also serve your laptop workflow.
 
-Those are the next native-mobile tasks to add on top of this path.
+Android share-sheet flow:
+
+- build/install the dev client
+- share text, URL, audio, image, or file to Starlog from Android
+- Starlog companion prefills quick capture and, for shared audio, preloads the voice-upload path
+
+The remaining native-mobile tasks now focus on on-device STT/LLM execution and iOS parity.

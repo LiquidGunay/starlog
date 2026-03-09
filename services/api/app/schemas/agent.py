@@ -33,6 +33,13 @@ class AgentCommandRequest(BaseModel):
     device_target: str = "primary-device"
 
 
+class AgentAssistCommandRequest(BaseModel):
+    command: str = Field(..., min_length=1)
+    execute: bool = True
+    device_target: str = "primary-device"
+    provider_hint: str | None = None
+
+
 class AgentCommandStep(BaseModel):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
@@ -103,6 +110,12 @@ class CreateCalendarEventToolArgs(BaseModel):
 class GenerateBriefingToolArgs(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     provider: str = "template"
+
+
+class RenderBriefingAudioToolArgs(BaseModel):
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    provider: str = "template"
+    provider_hint: str | None = None
 
 
 class ScheduleMorningBriefAlarmToolArgs(BaseModel):

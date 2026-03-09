@@ -33,6 +33,7 @@
 - Mobile companion capture path now supports retry queue + manual/auto flush for transient network failures.
 - Mobile companion now supports local voice-note recording, upload/queue, and Whisper-backed deferred transcription jobs.
 - Mobile companion now supports `starlog://capture?...` deep-link ingestion for share-to-app style capture prefill.
+- Mobile companion now supports Android native share-intent prefills for shared text/URLs/files/audio when running in the local dev build.
 - Android dev-build path is now configured with `expo-dev-client`, variant-aware app config, and EAS build profiles for installable APK builds.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
@@ -42,6 +43,7 @@
 - Mobile companion now reads the shared execution policy, shows the resolved mobile route for LLM/STT/TTS, and routes artifact actions toward the batch bridge when that policy target is preferred.
 - Mobile companion now includes a typed assistant-command panel backed by `/v1/agent/command`, with example commands and recent result history on phone.
 - Mobile companion now supports queued voice commands using the same recording path, with Whisper-backed transcription jobs and assistant-command results visible in the phone UI.
+- Mobile companion now also supports queued Codex-assisted command planning/execution jobs and can queue/download offline briefing audio renders from the local TTS worker path.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
 - Google sync can pull remote events from Google Calendar API into the local mirror when connected in real OAuth mode.
 - Calendar events now support sync-aware soft delete (`DELETE /v1/calendar/events/{id}`) with tombstone tracking.
@@ -73,28 +75,30 @@
 - Added installable PWA shell assets (`/manifest.webmanifest`, service worker, icons) plus `/share-target` for browser/PWA share ingress.
 - Added `/portability` workspace for export download, restore replay, and roundtrip-verification workflow visibility.
 - Added protected media storage/download endpoints plus media export/import payload support for voice-note portability.
-- Added queued local AI worker tooling for laptop-local `codex exec` and Whisper processing (`scripts/local_ai_worker.py`).
+- Added queued local AI worker tooling for laptop-local `codex exec`, Codex-assisted command planning, Whisper processing, and optional local TTS rendering (`scripts/local_ai_worker.py`).
 - Added `/ai-jobs` workspace for queued local Codex/Whisper job inspection.
 - Added an agent-control API/tool catalog (`/v1/agent/tools`, `/v1/agent/execute`) plus a web tester page at `/agent-tools` so future voice/chat surfaces can call Starlog actions without UI clicks.
 - Agent tools can now also read/update execution policy so future chat/voice shells can control routing preferences directly.
 - Agent tool coverage now spans artifacts, notes, tasks, calendar events, time-block generation, review, briefing/alarm flows, search, and execution-policy management.
 - Added `/v1/agent/command`, a deterministic command planner/executor that maps typed commands onto the same tool layer and can either dry-run or execute them.
 - Added `GET /v1/agent/intents`, a backend intent/examples catalog so assistant shells can load supported commands without hardcoding them.
+- Added `POST /v1/agent/command/assist`, which queues Codex-backed assistant planning/execution jobs against the same tool layer used by deterministic commands.
 - Added `POST /v1/agent/command/voice`, which queues STT jobs with `action=assistant_command` and executes the command planner automatically when transcription completes.
-- Added `/assistant`, the first chat-style command shell in the PWA, with backend-loaded examples, in-browser voice recording, tool-step inspection, voice-job history, and recent command history.
+- Added `/assistant`, the first chat-style command shell in the PWA, with backend-loaded examples, in-browser voice recording, queued Codex planning/execution jobs, local snapshot-backed history, and recent command/job inspection.
 - Integrations workspace now includes editable execution-policy JSON so the same preference ordering can later be honored by phone-local runtimes too.
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
 - Mobile companion now exposes on-device TTS for selected artifact playback.
+- Briefings can now queue local TTS audio rendering jobs through `/v1/briefings/{briefing_id}/audio/render`, attach rendered media back onto the package, and be cached/played from pre-rendered audio on phone.
+- Key PWA workspaces now keep best-effort local entity snapshots for artifacts, notes, tasks, calendar, and assistant history so recent state remains readable offline.
 - Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
-- API tests + lint + type checks passing via `uv` (`22 passed`).
+- API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
 
 ## Next implementation targets
 
-1. Add native share extension path (iOS/Android) to complement current deep-link capture ingress.
+1. Harden the native share path by validating Android share-intent behavior end to end on device and adding the matching iOS share-extension path.
 2. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
-3. Add an optional packaged Piper/local-TTS worker path for server-side audio generation parity with the existing on-device phone playback.
+3. Harden the local TTS worker path with provider-specific wrappers and richer job controls beyond the current queued-audio render flow.
 4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized.
-5. Deepen PWA local-first caches beyond the current outbox/replay/state persistence (IndexedDB entity snapshots + offline read paths).
-6. Add a user-facing chat/voice shell that sits on top of the new tool catalog and tool executor.
-7. Implement actual phone-local STT/LLM backends that honor the shared execution policy instead of routing those capabilities only through the queued/local-server paths.
+5. Deepen PWA local-first caches beyond the current local-snapshot reads (IndexedDB entity snapshots, offline detail/search reads, and cache invalidation rules).
+6. Implement actual phone-local STT/LLM backends that honor the shared execution policy instead of routing those capabilities only through the queued/local-server paths.

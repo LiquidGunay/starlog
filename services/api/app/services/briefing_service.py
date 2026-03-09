@@ -1,7 +1,7 @@
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import events_service
+from app.services import ai_jobs_service, events_service, integrations_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 
@@ -78,6 +78,62 @@ def get_latest_briefing_for_date(conn: Connection, date: str) -> dict | None:
         "SELECT * FROM briefing_packages WHERE date = ? ORDER BY created_at DESC LIMIT 1",
         (date,),
     )
+
+
+def queue_briefing_audio_render(
+    conn: Connection,
+    briefing_package_id: str,
+    provider_hint: str | None = None,
+) -> dict:
+    briefing = get_briefing_by_id(conn, briefing_package_id)
+    if briefing is None:
+        raise LookupError(f"Briefing not found: {briefing_package_id}")
+
+    resolved_provider_hint = (
+        provider_hint
+        or integrations_service.default_batch_provider_hint(conn, "tts")
+        or "piper_local"
+    )
+    return ai_jobs_service.create_job(
+        conn,
+        capability="tts",
+        payload={
+            "briefing_package_id": briefing_package_id,
+            "title": f"Morning briefing {briefing['date']}",
+            "text": str(briefing["text"]),
+        },
+        provider_hint=resolved_provider_hint,
+        action="briefing_audio",
+    )
+
+
+def attach_audio_ref(
+    conn: Connection,
+    briefing_package_id: str,
+    audio_ref: str,
+    provider_used: str,
+) -> dict | None:
+    now = utc_now().isoformat()
+    conn.execute(
+        """
+        UPDATE briefing_packages
+        SET audio_ref = ?, generated_by_provider = ?
+        WHERE id = ?
+        """,
+        (audio_ref, provider_used, briefing_package_id),
+    )
+    events_service.emit(
+        conn,
+        "briefing.audio_rendered",
+        {
+            "briefing_id": briefing_package_id,
+            "audio_ref": audio_ref,
+            "provider_used": provider_used,
+            "recorded_at": now,
+        },
+    )
+    conn.commit()
+    return get_briefing_by_id(conn, briefing_package_id)
 
 
 def create_alarm_plan(conn: Connection, trigger_at, briefing_package_id: str, device_target: str) -> dict:

@@ -33,6 +33,7 @@ CAPABILITY_FAMILY = {
     "llm_summary": "llm",
     "llm_cards": "llm",
     "llm_tasks": "llm",
+    "llm_agent_plan": "llm",
     "stt": "stt",
     "tts": "tts",
     "ocr": "ocr",

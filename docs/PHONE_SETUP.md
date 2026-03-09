@@ -25,6 +25,7 @@ In a third terminal, if you want queued Codex/Whisper work to complete locally:
 ```bash
 export STARLOG_TOKEN=YOUR_BEARER_TOKEN
 export STARLOG_WHISPER_COMMAND='whisper-cli -m /ABS/PATH/ggml-base.en.bin -f {input_path} -otxt -of {output_base}'
+export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
 
 PYTHONPATH=services/api uv run --project services/api \
   python scripts/local_ai_worker.py \
@@ -53,7 +54,7 @@ Use the non-empty IP (example: `192.168.1.42`).
 4. Bootstrap/login from the web console and keep token in session controls.
 5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
 6. Open `/assistant` if you want to test typed commands such as `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
-7. In `/assistant`, you can also use browser voice recording (`Start Voice Command` -> `Execute Voice`) to queue a Whisper-backed command without installing the native app.
+7. In `/assistant`, you can also use `Queue Codex Plan` / `Queue Codex Execute` for queued LLM-assisted command planning, or browser voice recording (`Start Voice Command` -> `Execute Voice`) to queue a Whisper-backed command without installing the native app.
 
 ## 4) Install PWA to home screen
 
@@ -85,16 +86,19 @@ pnpm --filter mobile start
 3. Optional sanity checks in the mobile app:
    - Open the `Execution routing` panel and tap `Refresh Policy` to confirm the phone sees the same policy order as the PWA.
    - In `Assistant command`, try `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
-   - In the same panel, record a short voice clip and use `Execute Voice` to queue a Whisper-backed voice command.
+   - In the same panel, use `Queue Codex Plan` / `Queue Codex Execute` to confirm queued Codex planner jobs reach the API.
+   - Record a short voice clip and use `Execute Voice` to queue a Whisper-backed voice command.
    - Capture/Queue a quick text clip.
    - Record a voice note, then upload/queue it.
    - Refresh the artifact inbox, select a recent clip, and trigger `Summarize` or `Create Cards`.
    - Inspect the selected artifact detail block to confirm summary/task/card/note context loads on phone.
    - Use `Speak Locally` in artifact triage to confirm on-device TTS.
    - Load due cards in "Quick review session" and submit a rating.
-   - Cache and play a briefing, then schedule the daily alarm.
+   - In `Offline Morning Brief Pipeline`, use `Queue Audio Render`, wait for the local worker to process it, then `Cache Briefing` and `Play Cached` to confirm pre-rendered briefing audio works offline.
+   - Schedule the daily alarm after caching the briefing package.
 4. If you queued a voice note, confirm the laptop worker is running so the transcript can complete.
-5. If you queued a voice command, tap `Refresh Voice Jobs` in the assistant panel to inspect the transcript and executed command result after the worker finishes.
+5. If you queued a voice command or Codex command, tap `Refresh Jobs` in the assistant panel to inspect the transcript/executed command result after the worker finishes.
+6. If you installed the Android dev build, share text, a URL, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
 
 Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 
@@ -122,6 +126,21 @@ Ways to trigger:
 - Android: `adb shell am start -a android.intent.action.VIEW -d "starlog://capture?title=Clip&text=Hello"` (when testing with emulator/device + debug tools).
 
 When opened, the app pre-fills the capture form so you can submit immediately or queue offline.
+
+## 6b) Test Android native share intent
+
+This requires the Android dev build from `docs/ANDROID_DEV_BUILD.md`; it does not work in Expo Go.
+
+1. Install the Android dev build.
+2. From another Android app, use the system Share action on:
+   - selected text
+   - a URL
+   - an audio file or recording
+3. Choose Starlog from the share sheet.
+4. Confirm the companion app opens with:
+   - quick capture title/text/source URL prefilled for text/URL shares
+   - `voiceClipUri` preloaded for shared audio so `Upload / Queue Voice` can send it to the API
+5. Submit or queue the capture normally inside Starlog.
 
 ## 7) Test installed PWA share target
 

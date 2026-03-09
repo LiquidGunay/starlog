@@ -17,6 +17,10 @@ class BriefingPackageResponse(BaseModel):
     created_at: datetime
 
 
+class BriefingAudioRenderRequest(BaseModel):
+    provider_hint: str | None = None
+
+
 class AlarmPlanCreateRequest(BaseModel):
     trigger_at: datetime
     briefing_package_id: str = Field(..., min_length=1)

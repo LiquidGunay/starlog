@@ -12,7 +12,7 @@ class ProviderError(Exception):
     pass
 
 
-LLM_CAPABILITIES = {"llm_summary", "llm_cards", "llm_tasks"}
+LLM_CAPABILITIES = {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}
 
 
 def _text_source(payload: dict) -> str:
@@ -128,6 +128,12 @@ def _request_spec(capability: str, payload: dict) -> tuple[str, str]:
         return (
             'Create concrete next-step tasks from the source. Return strict JSON with shape {"tasks":[{"title":"...","estimate_min":15,"priority":3}]}.',
             f"Title: {title}\n\nSource:\n{source_text}",
+        )
+
+    if capability == "llm_agent_plan":
+        return (
+            'Plan Starlog tool calls from the command. Return strict JSON with shape {"matched_intent":"...","summary":"...","tool_calls":[{"tool_name":"...","arguments":{},"message":"..."}]}.',
+            source_text,
         )
 
     return ("", source_text)

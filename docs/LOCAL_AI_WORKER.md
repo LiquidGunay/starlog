@@ -5,7 +5,7 @@ Starlog can now keep AI compute on your laptop while the phone/PWA use either yo
 The intended split is:
 
 - Railway or local API: stores artifacts, jobs, metadata, and media.
-- Laptop-local worker: runs `codex exec` for queued LLM jobs and `whisper.cpp` for queued voice-note / voice-command transcription.
+- Laptop-local worker: runs `codex exec` for queued LLM jobs and assistant-command planning, `whisper.cpp` for queued voice-note / voice-command transcription, and optional local TTS for rendered briefing audio.
 - Phone/PWA: records voice notes or voice commands, uploads them, and waits for the worker to process the queued jobs.
 
 This keeps Railway costs low because Codex/Whisper execution stays off Railway.
@@ -16,10 +16,15 @@ This keeps Railway costs low because Codex/Whisper execution stays off Railway.
   - `llm_summary`
   - `llm_cards`
   - `llm_tasks`
+  - `llm_agent_plan`
 - `provider_hint=whisper_local`
   - `stt`
+- `provider_hint=piper_local`
+  - `tts`
 
 For `stt` jobs with `action=assistant_command`, the transcript is fed back into Starlog's command planner automatically after Whisper finishes.
+For `llm_agent_plan` jobs with `action=assistant_command_ai`, Codex returns tool calls that Starlog validates and executes against the same tool layer used by deterministic commands.
+For `tts` jobs with `action=briefing_audio`, the worker uploads rendered audio back to Starlog and the briefing package stores that media reference for offline playback.
 
 ## Requirements on your laptop
 
@@ -32,6 +37,7 @@ For `stt` jobs with `action=assistant_command`, the transcript is fed back into 
 ```bash
 export STARLOG_TOKEN=YOUR_BEARER_TOKEN
 export STARLOG_WHISPER_COMMAND='whisper-cli -m /ABS/PATH/ggml-base.en.bin -f {input_path} -otxt -of {output_base}'
+export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
 
 PYTHONPATH=services/api uv run --project services/api \
   python scripts/local_ai_worker.py \
@@ -83,6 +89,21 @@ If the uploaded audio is not WAV, the worker first converts it with:
 ```bash
 ffmpeg -y -i INPUT -ar 16000 -ac 1 -c:a pcm_s16le OUTPUT.wav
 ```
+
+## TTS command contract
+
+The worker expects a TTS command template that can interpolate:
+
+- `{output_path}` - expected audio output file path
+- `{output_base}` - output prefix without extension
+
+The command receives the briefing text on stdin. A typical `piper` example is:
+
+```bash
+export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
+```
+
+After synthesis, the worker uploads the audio file to `/v1/media/upload` and completes the queued `tts` job with the resulting `media://...` blob ref.
 
 ## One-shot batch run
 

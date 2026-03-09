@@ -247,6 +247,7 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
     tool_names = {item["name"] for item in tools.json()}
     assert "run_artifact_action" in tool_names
     assert "schedule_morning_brief_alarm" in tool_names
+    assert "render_briefing_audio" in tool_names
     assert "get_execution_policy" in tool_names
     assert "set_execution_policy" in tool_names
     assert "create_note" in tool_names
@@ -558,6 +559,19 @@ def test_agent_command_shell_plans_and_executes(client: TestClient, auth_headers
     assert blocks.status_code == 200
     assert blocks.json()["matched_intent"] == "generate_time_blocks"
 
+    queued_brief_audio = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "render briefing audio for tomorrow",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert queued_brief_audio.status_code == 200
+    assert queued_brief_audio.json()["matched_intent"] == "render_briefing_audio"
+    assert queued_brief_audio.json()["steps"][0]["result"]["job"]["action"] == "briefing_audio"
+
 
 def test_voice_agent_command_queue_executes_after_transcription(
     client: TestClient,
@@ -608,6 +622,115 @@ def test_voice_agent_command_queue_executes_after_transcription(
     tasks = client.get("/v1/tasks", headers=auth_headers)
     assert tasks.status_code == 200
     assert any(task["title"] == "Voice command task" for task in tasks.json())
+
+
+def test_assist_agent_command_queue_executes_after_codex_plan(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    queued = client.post(
+        "/v1/agent/command/assist",
+        headers=auth_headers,
+        json={
+            "command": "please turn this into a concrete task",
+            "execute": True,
+            "device_target": "android-phone",
+            "provider_hint": "codex_local",
+        },
+    )
+    assert queued.status_code == 201
+    payload = queued.json()
+    job_id = payload["id"]
+    assert payload["action"] == "assistant_command_ai"
+    assert payload["capability"] == "llm_agent_plan"
+
+    listed = client.get("/v1/ai/jobs?status=pending&action=assistant_command_ai", headers=auth_headers)
+    assert listed.status_code == 200
+    assert job_id in {job["id"] for job in listed.json()}
+
+    claimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-codex-command-worker"},
+        headers=auth_headers,
+    )
+    assert claimed.status_code == 200
+
+    completed = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-codex-command-worker",
+            "provider_used": "codex_local",
+            "output": {
+                "matched_intent": "create_task",
+                "summary": "Create a follow-up task from the request.",
+                "tool_calls": [
+                    {
+                        "tool_name": "create_task",
+                        "arguments": {
+                            "title": "AI planned follow-up",
+                            "priority": 4,
+                            "estimate_min": 25,
+                        },
+                        "message": "Create task AI planned follow-up",
+                    }
+                ],
+            },
+        },
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+    completed_payload = completed.json()
+    assert completed_payload["output"]["assistant_command"]["status"] == "executed"
+    assert completed_payload["output"]["assistant_command"]["matched_intent"] == "create_task"
+    assert completed_payload["output"]["assistant_command"]["planner"] == "llm_assist"
+
+    tasks = client.get("/v1/tasks", headers=auth_headers)
+    assert tasks.status_code == 200
+    assert any(task["title"] == "AI planned follow-up" for task in tasks.json())
+
+
+def test_briefing_audio_queue_attaches_rendered_audio(client: TestClient, auth_headers: dict[str, str]) -> None:
+    briefing = client.post(
+        "/v1/briefings/generate",
+        headers=auth_headers,
+        json={"date": "2026-03-07", "provider": "test-suite"},
+    )
+    assert briefing.status_code == 201
+    briefing_id = briefing.json()["id"]
+
+    queued = client.post(
+        f"/v1/briefings/{briefing_id}/audio/render",
+        headers=auth_headers,
+        json={"provider_hint": "piper_local"},
+    )
+    assert queued.status_code == 201
+    payload = queued.json()
+    job_id = payload["id"]
+    assert payload["action"] == "briefing_audio"
+    assert payload["capability"] == "tts"
+
+    claimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-tts-worker"},
+        headers=auth_headers,
+    )
+    assert claimed.status_code == 200
+
+    completed = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-tts-worker",
+            "provider_used": "piper_local",
+            "output": {"audio_ref": "media://med_rendered_briefing"},
+        },
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+
+    fetched = client.get("/v1/briefings/2026-03-07", headers=auth_headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["audio_ref"] == "media://med_rendered_briefing"
+    assert fetched.json()["generated_by_provider"] == "piper_local"
 
 
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:

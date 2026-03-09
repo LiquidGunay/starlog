@@ -58,7 +58,11 @@ COMMAND_INTENTS: list[AgentCommandIntent] = [
     AgentCommandIntent(
         name="briefing_alarm",
         description="Generate briefings or schedule morning alarms.",
-        examples=["generate briefing for tomorrow", "schedule alarm for tomorrow at 07:00"],
+        examples=[
+            "generate briefing for tomorrow",
+            "render briefing audio for tomorrow",
+            "schedule alarm for tomorrow at 07:00",
+        ],
     ),
     AgentCommandIntent(
         name="review_search",
@@ -408,6 +412,21 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
             ),
         ]
 
+    briefing_audio_match = re.match(
+        rf"^(?:render|queue|generate|make)\s+(?:briefing audio|audio briefing|spoken briefing)(?:\s+for\s+{COMMAND_DATE_PATTERN})?$",
+        text,
+        re.IGNORECASE,
+    )
+    if briefing_audio_match:
+        target_date = _resolve_date_token(briefing_audio_match.group(1) if briefing_audio_match.lastindex else None)
+        return "render_briefing_audio", f"Queue briefing audio render for {target_date}", [
+            PlannedToolCall(
+                "render_briefing_audio",
+                {"date": target_date, "provider": "assistant-command"},
+                f"Queue briefing audio render for {target_date}",
+            ),
+        ]
+
     alarm_match = re.match(
         rf"^(?:set|schedule)\s+(?:alarm|morning alarm)(?:\s+for\s+{COMMAND_DATE_PATTERN})?(?:\s+at\s+(\d{{1,2}}:\d{{2}}))?(?:\s+on\s+(.+))?$",
         text,
@@ -467,14 +486,16 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
     )
 
 
-def run_command(
+def _execute_planned_calls(
     conn: Connection,
     command: str,
     *,
+    planner: str,
+    matched_intent: str,
+    summary: str,
     execute: bool,
-    device_target: str,
+    planned_calls: list[PlannedToolCall],
 ) -> AgentCommandResponse:
-    matched_intent, summary, planned_calls = _plan_command(conn, command, device_target)
     steps: list[AgentCommandStep] = []
     overall_status: Literal["planned", "executed", "failed"] = "executed" if execute else "planned"
 
@@ -510,11 +531,107 @@ def run_command(
 
     return AgentCommandResponse(
         command=command,
-        planner="deterministic",
+        planner=planner,
         matched_intent=matched_intent,
         status=overall_status,
         summary=summary,
         steps=steps,
+    )
+
+
+def run_command(
+    conn: Connection,
+    command: str,
+    *,
+    execute: bool,
+    device_target: str,
+) -> AgentCommandResponse:
+    matched_intent, summary, planned_calls = _plan_command(conn, command, device_target)
+    return _execute_planned_calls(
+        conn,
+        command,
+        planner="deterministic",
+        matched_intent=matched_intent,
+        summary=summary,
+        execute=execute,
+        planned_calls=planned_calls,
+    )
+
+
+def apply_ai_command_plan(
+    conn: Connection,
+    *,
+    command: str,
+    execute: bool,
+    output: dict[str, Any],
+) -> AgentCommandResponse:
+    raw_calls = output.get("tool_calls")
+    matched_intent = str(output.get("matched_intent") or "assistant_ai")
+    summary = str(output.get("summary") or "AI planned command")
+    planner = str(output.get("planner") or "llm_assist")
+
+    planned_calls: list[PlannedToolCall] = []
+    if isinstance(raw_calls, list):
+        for index, item in enumerate(raw_calls):
+            if not isinstance(item, dict):
+                continue
+            tool_name = str(item.get("tool_name") or "").strip()
+            arguments = item.get("arguments")
+            if not tool_name or not isinstance(arguments, dict):
+                continue
+            message = str(item.get("message") or f"Run tool {tool_name} ({index + 1})").strip()
+            planned_calls.append(PlannedToolCall(tool_name=tool_name, arguments=arguments, message=message))
+
+    if not planned_calls:
+        return AgentCommandResponse(
+            command=command,
+            planner=planner,
+            matched_intent=matched_intent,
+            status="failed",
+            summary=f"{summary} No valid tool calls were returned.",
+            steps=[],
+        )
+
+    return _execute_planned_calls(
+        conn,
+        command,
+        planner=planner,
+        matched_intent=matched_intent,
+        summary=summary,
+        execute=execute,
+        planned_calls=planned_calls,
+    )
+
+
+def queue_assist_command(
+    conn: Connection,
+    *,
+    command: str,
+    execute: bool,
+    device_target: str,
+    provider_hint: str | None = None,
+) -> dict[str, Any]:
+    resolved_provider_hint = (
+        provider_hint
+        or integrations_service.default_batch_provider_hint(conn, "llm_agent_plan")
+        or "codex_local"
+    )
+    return ai_jobs_service.create_job(
+        conn,
+        capability="llm_agent_plan",
+        payload={
+            "command": command,
+            "assistant_command": {
+                "kind": "typed_assist",
+                "execute": execute,
+                "device_target": device_target,
+            },
+            "intents": [intent.model_dump(mode="json") for intent in list_command_intents()],
+            "tool_catalog": [tool.model_dump(mode="json") for tool in agent_service.list_tool_definitions()],
+            "current_date": _today_utc().isoformat(),
+        },
+        provider_hint=resolved_provider_hint,
+        action="assistant_command_ai",
     )
 
 

@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Capability = Literal["llm_summary", "llm_cards", "llm_tasks", "stt", "tts", "ocr"]
+Capability = Literal["llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan", "stt", "tts", "ocr"]
 
 
 class AIRequest(BaseModel):

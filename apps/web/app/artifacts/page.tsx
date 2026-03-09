@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { applyOptimisticArtifacts } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -38,13 +39,18 @@ type ArtifactVersions = {
   actions: Array<{ id: string; action: string; status: string; output_ref?: string | null; created_at: string }>;
 };
 
+const ARTIFACT_ITEMS_SNAPSHOT = "artifacts.items";
+const ARTIFACT_SELECTED_SNAPSHOT = "artifacts.selected";
+const ARTIFACT_GRAPH_SNAPSHOT = "artifacts.graph";
+const ARTIFACT_VERSIONS_SNAPSHOT = "artifacts.versions";
+
 function ArtifactsPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
-  const [items, setItems] = useState<Artifact[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [graph, setGraph] = useState<ArtifactGraph | null>(null);
-  const [versions, setVersions] = useState<ArtifactVersions | null>(null);
+  const [items, setItems] = useState<Artifact[]>(() => readEntitySnapshot<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []));
+  const [selectedId, setSelectedId] = useState<string>(() => readEntitySnapshot<string>(ARTIFACT_SELECTED_SNAPSHOT, ""));
+  const [graph, setGraph] = useState<ArtifactGraph | null>(() => readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null));
+  const [versions, setVersions] = useState<ArtifactVersions | null>(() => readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null));
   const [status, setStatus] = useState("Ready");
   const [quickTitle, setQuickTitle] = useState("Workspace clip");
   const [quickUrl, setQuickUrl] = useState("");
@@ -52,18 +58,27 @@ function ArtifactsPageContent() {
   const [deferAi, setDeferAi] = useState(false);
   const visibleItems = useMemo(() => applyOptimisticArtifacts(items, outbox), [items, outbox]);
 
+  useEffect(() => {
+    setItems((previous) => previous.length > 0 ? previous : readEntitySnapshot<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []));
+    setSelectedId((previous) => previous || readEntitySnapshot<string>(ARTIFACT_SELECTED_SNAPSHOT, ""));
+    setGraph((previous) => previous ?? readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null));
+    setVersions((previous) => previous ?? readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null));
+  }, []);
+
   const loadArtifacts = useCallback(async () => {
     try {
       const data = await apiRequest<Artifact[]>(apiBase, token, "/v1/artifacts");
       setItems(data);
+      writeEntitySnapshot(ARTIFACT_ITEMS_SNAPSHOT, data);
       setStatus(`Loaded ${data.length} artifacts`);
       if (!selectedId && data.length > 0) {
         setSelectedId(data[0].id);
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load artifacts");
+      const detail = error instanceof Error ? error.message : "Failed to load artifacts";
+      setStatus(items.length > 0 ? `Loaded cached artifacts. ${detail}` : detail);
     }
-  }, [apiBase, token, selectedId]);
+  }, [apiBase, items.length, token, selectedId]);
 
   async function createArtifact() {
     try {
@@ -111,11 +126,14 @@ function ArtifactsPageContent() {
       ]);
       setGraph(graphPayload);
       setVersions(versionPayload);
+      writeEntitySnapshot(ARTIFACT_GRAPH_SNAPSHOT, graphPayload);
+      writeEntitySnapshot(ARTIFACT_VERSIONS_SNAPSHOT, versionPayload);
       setStatus(`Loaded graph for ${artifactId}`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load graph");
+      const detail = error instanceof Error ? error.message : "Failed to load graph";
+      setStatus(graph?.artifact.id === artifactId ? `Loaded cached graph. ${detail}` : detail);
     }
-  }, [apiBase, token]);
+  }, [apiBase, graph?.artifact.id, token]);
 
   async function runAction(action: "summarize" | "cards" | "tasks" | "append_note") {
     if (!selectedId) {
@@ -181,6 +199,10 @@ function ArtifactsPageContent() {
       setSelectedId(requestedArtifact.id);
     }
   }, [searchParams, selectedId, visibleItems]);
+
+  useEffect(() => {
+    writeEntitySnapshot(ARTIFACT_SELECTED_SNAPSHOT, selectedId);
+  }, [selectedId]);
 
   return (
     <main className="shell">

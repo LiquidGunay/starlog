@@ -11,6 +11,7 @@
     "android:local": "APP_VARIANT=development expo run:android --device",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "postinstall": "patch-package",
     "build:android:development": "eas build --platform android --profile development",
     "build:android:preview": "eas build --platform android --profile preview",
     "build:android:production": "eas build --platform android --profile production"
@@ -20,10 +21,13 @@
     "expo-av": "~14.0.7",
     "expo-dev-client": "~4.0.29",
     "expo-file-system": "~17.0.1",
+    "expo-linking": "^6.3.1",
     "expo-notifications": "~0.28.19",
+    "expo-share-intent": "^2.0.0",
     "expo-speech": "~12.0.2",
     "expo-sqlite": "~14.0.6",
     "expo-status-bar": "~1.12.1",
+    "patch-package": "^8.0.1",
     "react": "18.2.0",
     "react-native": "0.74.5"
   },

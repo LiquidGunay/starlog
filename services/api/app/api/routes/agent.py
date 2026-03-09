@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.api.deps import get_db, require_user_id
 from app.schemas.ai import AIJobResponse
 from app.schemas.agent import (
+    AgentAssistCommandRequest,
     AgentCommandRequest,
     AgentCommandResponse,
     AgentCommandIntent,
@@ -83,6 +84,22 @@ def run_agent_command(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
+
+
+@router.post("/command/assist", response_model=AIJobResponse, status_code=status.HTTP_201_CREATED)
+def queue_assist_agent_command(
+    payload: AgentAssistCommandRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    job = agent_command_service.queue_assist_command(
+        db,
+        command=payload.command,
+        execute=payload.execute,
+        device_target=payload.device_target,
+        provider_hint=payload.provider_hint,
+    )
+    return AIJobResponse.model_validate(job)
 
 
 @router.post("/command/voice", response_model=AIJobResponse, status_code=status.HTTP_201_CREATED)

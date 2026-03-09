@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { searchLocalSnapshots } from "../lib/local-search";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -21,6 +23,8 @@ type SearchResponse = {
   total: number;
   results: SearchResult[];
 };
+
+const SEARCH_RESULTS_SNAPSHOT = "search.results";
 
 function resultHref(result: SearchResult): string {
   if (result.kind === "artifact") {
@@ -44,6 +48,10 @@ export default function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState("Ready");
 
+  useEffect(() => {
+    setResults((previous) => previous.length > 0 ? previous : readEntitySnapshot<SearchResult[]>(SEARCH_RESULTS_SNAPSHOT, []));
+  }, []);
+
   async function runSearch() {
     if (!query.trim()) {
       setStatus("Enter a query first");
@@ -57,9 +65,18 @@ export default function SearchPage() {
         `/v1/search?q=${encodeURIComponent(query.trim())}&limit=30`,
       );
       setResults(payload.results);
+      writeEntitySnapshot(SEARCH_RESULTS_SNAPSHOT, payload.results);
       setStatus(`Found ${payload.total} result(s)`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Search failed");
+      const fallback = searchLocalSnapshots(query.trim(), 30);
+      setResults(fallback);
+      writeEntitySnapshot(SEARCH_RESULTS_SNAPSHOT, fallback);
+      const detail = error instanceof Error ? error.message : "Search failed";
+      setStatus(
+        fallback.length > 0
+          ? `Loaded ${fallback.length} cached result(s). ${detail}`
+          : detail,
+      );
     }
   }
 
@@ -71,7 +88,7 @@ export default function SearchPage() {
           <p className="eyebrow">Search</p>
           <h1>Cross-workspace retrieval</h1>
           <p className="console-copy">
-            Search notes, artifacts, tasks, and calendar events from one place.
+            Search notes, artifacts, tasks, and calendar events from one place. If the API is unavailable, Starlog falls back to recent local snapshots.
           </p>
           <label className="label" htmlFor="search-query">Query</label>
           <input

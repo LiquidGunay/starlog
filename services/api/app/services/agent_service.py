@@ -22,6 +22,7 @@ from app.schemas.agent import (
     ListDueCardsToolArgs,
     ListNotesToolArgs,
     ListTasksToolArgs,
+    RenderBriefingAudioToolArgs,
     RunArtifactActionToolArgs,
     ScheduleMorningBriefAlarmToolArgs,
     SearchStarlogToolArgs,
@@ -188,6 +189,18 @@ def _generate_briefing(conn: Connection, args: GenerateBriefingToolArgs) -> dict
     return {"briefing": briefing}
 
 
+def _render_briefing_audio(conn: Connection, args: RenderBriefingAudioToolArgs) -> dict[str, Any]:
+    briefing = briefing_service.get_latest_briefing_for_date(conn, args.date)
+    if briefing is None:
+        briefing = briefing_service.generate_briefing(conn, date=args.date, provider=args.provider)
+    job = briefing_service.queue_briefing_audio_render(
+        conn,
+        briefing_package_id=str(briefing["id"]),
+        provider_hint=args.provider_hint,
+    )
+    return {"briefing": briefing, "job": job}
+
+
 def _schedule_morning_brief_alarm(conn: Connection, args: ScheduleMorningBriefAlarmToolArgs) -> dict[str, Any]:
     briefing = briefing_service.get_latest_briefing_for_date(conn, args.date)
     if briefing is None:
@@ -344,6 +357,13 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=GenerateBriefingToolArgs,
         backing_endpoint="/v1/briefings/generate",
         handler=_generate_briefing,
+    ),
+    "render_briefing_audio": ToolSpec(
+        name="render_briefing_audio",
+        description="Generate or reuse a Starlog briefing package and queue local TTS audio rendering for it.",
+        arg_model=RenderBriefingAudioToolArgs,
+        backing_endpoint="/v1/briefings/{briefing_id}/audio/render",
+        handler=_render_briefing_audio,
     ),
     "schedule_morning_brief_alarm": ToolSpec(
         name="schedule_morning_brief_alarm",

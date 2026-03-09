@@ -130,7 +130,7 @@ def complete_job(
     provider_used: str,
     output: dict,
 ) -> dict | None:
-    from app.services import agent_command_service, artifacts_service
+    from app.services import agent_command_service, artifacts_service, briefing_service
 
     job = get_job(conn, job_id)
     if job is None:
@@ -156,7 +156,14 @@ def complete_job(
             )
 
     payload = dict(job.get("payload") or {})
-    if str(job.get("action") or "") == "assistant_command":
+    action = str(job.get("action") or "")
+    if action == "briefing_audio":
+        audio_ref = str(output.get("audio_ref") or output.get("blob_ref") or "").strip()
+        briefing_package_id = str(payload.get("briefing_package_id") or "").strip()
+        if audio_ref and briefing_package_id:
+            briefing_service.attach_audio_ref(conn, briefing_package_id, audio_ref, provider_used)
+            created_ref = audio_ref
+    elif action == "assistant_command":
         transcript = str(output.get("transcript") or "").strip()
         assistant_payload = dict(payload.get("assistant_command") or {})
         if transcript:
@@ -182,6 +189,18 @@ def complete_job(
                     "steps": [],
                 },
             }
+    elif action == "assistant_command_ai":
+        assistant_payload = dict(payload.get("assistant_command") or {})
+        command_result = agent_command_service.apply_ai_command_plan(
+            conn,
+            command=str(payload.get("command") or ""),
+            execute=bool(assistant_payload.get("execute", True)),
+            output=output,
+        )
+        output = {
+            **output,
+            "assistant_command": command_result.model_dump(mode="json"),
+        }
 
     finished_at = utc_now().isoformat()
     conn.execute(

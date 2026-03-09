@@ -58,3 +58,5 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-06: Mobile SQLite persistence blocker resolved after adding `expo-sqlite` and migrating state into a local SQLite store.
 - 2026-03-06: In-app native STT package work was intentionally dropped in favor of a queued Whisper sidecar pattern so phone and laptop can share the same local transcription path.
 - 2026-03-06: `whisper_local` processing depends on a working local `whisper.cpp` command template and `ffmpeg` for non-WAV audio conversion.
+- 2026-03-08: First-pass PWA offline entity snapshots are localStorage-backed; fuller IndexedDB cache invalidation/search support is still pending.
+- 2026-03-08: Android native share-intent path now depends on `expo-share-intent` and therefore requires a custom dev build; Expo Go remains fallback-only and iOS share-extension patching is still pending.

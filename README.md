@@ -55,6 +55,7 @@ Run Codex and Whisper locally on your laptop while Starlog queues jobs through t
 ```bash
 export STARLOG_TOKEN=YOUR_BEARER_TOKEN
 export STARLOG_WHISPER_COMMAND='whisper-cli -m /ABS/PATH/ggml-base.en.bin -f {input_path} -otxt -of {output_base}'
+export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
 
 PYTHONPATH=services/api uv run --project services/api \
   python scripts/local_ai_worker.py \
@@ -82,7 +83,8 @@ Use the phone setup guide for both PWA and Expo companion flows:
 
 Mobile companion currently supports SQLite-backed local state, queued text/voice capture retries,
 artifact inbox triage, quick SRS review sessions, daily alarm scheduling, local spoken playback,
-execution-policy-aware routing visibility, typed and voice assistant commands, and deep-link capture prefill via `starlog://capture?...`.
+execution-policy-aware routing visibility, typed commands, queued Codex command planning, queued voice assistant commands,
+briefing-audio render queueing, Android native share-intent prefills, and deep-link capture prefill via `starlog://capture?...`.
 
 PWA mutations now use a local browser outbox with replay on reconnect, plus a dedicated sync workspace
 at `/sync-center` that also surfaces recent server-recorded mutation activity and pull-by-cursor deltas.
@@ -90,6 +92,8 @@ at `/sync-center` that also surfaces recent server-recorded mutation activity an
 The PWA now also exposes an installable manifest/share-target flow so Android/browser shares can land
 in `/share-target`, plus a portability workspace for export/restore drills. Voice-note uploads now flow
 through `/v1/capture/voice` and queue `whisper_local` STT jobs for the local AI worker.
+Key PWA workspaces now also keep best-effort local entity snapshots so recent artifacts, notes, tasks,
+calendar state, and assistant history remain readable while the network is down.
 
 ### Tests
 
@@ -130,7 +134,7 @@ curl -X POST http://localhost:8000/v1/auth/login \
 ## Workspace pages
 
 - `/` - launch dashboard + API console
-- `/assistant` - command shell that plans/executes tool-backed Starlog commands
+- `/assistant` - command shell that plans/executes tool-backed Starlog commands, queues Codex planning jobs, and records browser voice commands
 - `/artifacts` - clip inbox viewer + artifact graph/version history
 - `/agent-tools` - tool catalog + executor surface for future voice/chat interfaces
 - `/notes` - primary note editor with optimistic queued updates
@@ -154,7 +158,9 @@ curl -X POST http://localhost:8000/v1/auth/login \
 - Discover/execute agent tool contracts: `GET /v1/agent/tools`, `POST /v1/agent/execute`
 - List assistant intents/examples: `GET /v1/agent/intents`
 - Plan/execute assistant commands: `POST /v1/agent/command`
+- Queue Codex-assisted assistant planning/execution: `POST /v1/agent/command/assist`
 - Queue voice assistant commands for Whisper + command execution: `POST /v1/agent/command/voice`
+- Queue briefing audio rendering for local TTS worker: `POST /v1/briefings/{briefing_id}/audio/render`
 - Read/update execution policy: `GET /v1/integrations/execution-policy`, `POST /v1/integrations/execution-policy`
 - Inspect artifact graph links: `GET /v1/artifacts/{artifact_id}/graph`
 - Inspect summary/card/action version history: `GET /v1/artifacts/{artifact_id}/versions`
@@ -200,13 +206,14 @@ When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configure
 - Local-mode providers with `endpoint`/`base_url` now run localhost runtime probes.
 - Remote/API providers can opt into auth probes with `auth_probe_url`, Google OAuth health now performs a real Calendar API auth probe, and Codex bridge health derives `/v1/models` probes from configured bridge URLs.
 - Artifact summarize/cards/tasks actions now use the provider chain (`local_llm` -> `codex_bridge` -> `api_llm`) when those providers are configured.
-- Queued local AI work now supports laptop-local `codex exec` and `whisper.cpp` processing through `scripts/local_ai_worker.py`.
+- Queued local AI work now supports laptop-local `codex exec`, Codex-assisted command planning, `whisper.cpp`, and optional local TTS audio rendering through `scripts/local_ai_worker.py`.
 - Capability-level execution policy now lets you prioritize `on_device`, `batch_local_bridge`, `server_local`, `codex_bridge`, and `api_fallback` per AI family.
 - Agent tools now also expose execution-policy read/update operations so future chat/voice layers can manage routing without going through the UI.
 - Agent tool coverage now includes artifact listing/graph inspection, note create/update/fetch, task listing, calendar listing, and time-block generation in addition to capture/review/briefing actions.
-- The `/assistant` workspace provides the first chat-style command surface on top of the same tool layer, using deterministic planning for now.
+- The `/assistant` workspace provides the first chat-style command surface on top of the same tool layer, with deterministic planning plus queued Codex-assisted fallback planning when you want broader command handling.
 - Voice commands now reuse the same assistant layer by queueing Whisper transcription jobs with `action=assistant_command`, then executing the parsed command when transcription completes.
 - The assistant now also exposes a machine-readable intent/examples catalog so PWA/mobile shells can stay aligned on supported commands.
+- Morning briefing packages can now queue local TTS audio rendering, attach the resulting media back onto the briefing, and let the mobile app cache/play pre-rendered audio offline.
 - Set `STARLOG_SECRETS_MASTER_KEY` in production to avoid fallback insecure key mode.
 
 ## Ops endpoints

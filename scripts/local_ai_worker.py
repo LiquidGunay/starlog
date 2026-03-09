@@ -55,7 +55,50 @@ def _download_bytes(url: str, token: str) -> tuple[bytes, str | None]:
         raise RuntimeError(f"GET {url} failed: {exc.reason}") from exc
 
 
-def _schema_for(capability: str) -> dict[str, Any]:
+def _upload_media(api_base: str, token: str, path: Path, content_type: str | None = None) -> dict[str, Any]:
+    boundary = f"starlog-upload-{os.urandom(8).hex()}"
+    detected_content_type = content_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    file_bytes = path.read_bytes()
+    body = b"".join(
+        [
+            f"--{boundary}\r\n".encode("utf-8"),
+            f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'.encode("utf-8"),
+            f"Content-Type: {detected_content_type}\r\n\r\n".encode("utf-8"),
+            file_bytes,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+    request = Request(
+        f"{api_base.rstrip('/')}/v1/media/upload",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(body)),
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=60.0) as response:  # noqa: S310
+            payload = response.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"POST /v1/media/upload failed with HTTP {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"POST /v1/media/upload failed: {exc.reason}") from exc
+
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Media upload returned invalid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise RuntimeError("Media upload returned unexpected response")
+    return decoded
+
+
+def _schema_for(job: dict) -> dict[str, Any]:
+    capability = str(job["capability"])
     if capability == "llm_summary":
         return {
             "type": "object",
@@ -107,6 +150,50 @@ def _schema_for(capability: str) -> dict[str, Any]:
             "required": ["tasks"],
             "additionalProperties": False,
         }
+    if capability == "llm_agent_plan":
+        payload = job.get("payload", {})
+        tool_catalog = payload.get("tool_catalog")
+        tool_names: list[str] = []
+        if isinstance(tool_catalog, list):
+            for item in tool_catalog:
+                if isinstance(item, dict) and isinstance(item.get("name"), str):
+                    name = str(item["name"]).strip()
+                    if name and name not in tool_names:
+                        tool_names.append(name)
+        tool_name_schema: dict[str, Any] = {"type": "string"}
+        if tool_names:
+            tool_name_schema["enum"] = tool_names
+        return {
+            "type": "object",
+            "properties": {
+                "matched_intent": {"type": "string"},
+                "summary": {"type": "string"},
+                "tool_calls": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tool_name": tool_name_schema,
+                            "arguments": {"type": "object"},
+                            "message": {"type": "string"},
+                        },
+                        "required": ["tool_name", "arguments"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["matched_intent", "summary", "tool_calls"],
+            "additionalProperties": False,
+        }
+    if capability == "tts":
+        return {
+            "type": "object",
+            "properties": {
+                "audio_ref": {"type": "string"},
+            },
+            "required": ["audio_ref"],
+            "additionalProperties": False,
+        }
     raise ValueError(f"Unsupported capability for Codex execution: {capability}")
 
 
@@ -130,6 +217,40 @@ def _prompt_for(job: dict) -> str:
             "Create concrete next-step tasks from the source. Return JSON only.\n\n"
             f"Title: {title}\n\nSource:\n{text}"
         )
+    if job["capability"] == "llm_agent_plan":
+        command = str(payload.get("command") or "").strip()
+        current_date = str(payload.get("current_date") or "").strip()
+        intent_lines: list[str] = []
+        for item in payload.get("intents", []) if isinstance(payload.get("intents"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            examples = item.get("examples")
+            examples_text = ", ".join(str(entry) for entry in examples) if isinstance(examples, list) else ""
+            intent_lines.append(
+                f"- {item.get('name', 'unknown')}: {item.get('description', '')} Examples: {examples_text}"
+            )
+        tool_lines: list[str] = []
+        for item in payload.get("tool_catalog", []) if isinstance(payload.get("tool_catalog"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            tool_lines.append(
+                f"- {item.get('name', 'unknown')}: {item.get('description', '')} Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+            )
+        return (
+            "You are planning Starlog assistant tool calls for a single-user personal knowledge system. "
+            "Return JSON only. Use only the provided tools. "
+            "Prefer the smallest set of tool calls that fully satisfies the command. "
+            "If a command is ambiguous, choose a safe read-only plan or an empty tool_calls array. "
+            "The returned arguments must match each tool schema.\n\n"
+            f"Current date: {current_date or 'unknown'}\n"
+            f"Command: {command}\n\n"
+            "Supported intents:\n"
+            + ("\n".join(intent_lines) if intent_lines else "- none provided")
+            + "\n\nAvailable tools:\n"
+            + ("\n".join(tool_lines) if tool_lines else "- none provided")
+        )
+    if job["capability"] == "tts":
+        return str(payload.get("text") or "").strip()
     raise ValueError(f"Unsupported capability for Codex execution: {job['capability']}")
 
 
@@ -138,7 +259,7 @@ def _run_codex(job: dict, model: str | None) -> dict:
         temp_path = Path(temp_dir)
         schema_path = temp_path / "schema.json"
         output_path = temp_path / "output.json"
-        schema_path.write_text(json.dumps(_schema_for(str(job["capability"])), indent=2), encoding="utf-8")
+        schema_path.write_text(json.dumps(_schema_for(job), indent=2), encoding="utf-8")
 
         command = [
             "codex",
@@ -240,6 +361,37 @@ def _run_whisper(job: dict, api_base: str, token: str, whisper_command: str | No
         return {"transcript": transcript}
 
 
+def _run_tts(job: dict, api_base: str, token: str, tts_command: str | None) -> dict:
+    command_template = tts_command or os.environ.get("STARLOG_TTS_COMMAND", "").strip()
+    if not command_template:
+        raise RuntimeError("Set --tts-command or STARLOG_TTS_COMMAND for tts jobs")
+
+    payload = job.get("payload", {})
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        raise RuntimeError("TTS job is missing text")
+
+    with tempfile.TemporaryDirectory(prefix="starlog-tts-job-") as temp_dir:
+        temp_path = Path(temp_dir)
+        output_path = temp_path / "tts-output.wav"
+        command = shlex.split(
+            command_template.format(
+                output_path=str(output_path),
+                output_base=str(output_path.with_suffix("")),
+            )
+        )
+        result = subprocess.run(command, input=text, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "TTS command failed")
+        if not output_path.exists():
+            raise RuntimeError("TTS command completed without writing an audio file")
+        uploaded = _upload_media(api_base, token, output_path, content_type="audio/wav")
+        return {
+            "audio_ref": uploaded.get("blob_ref", ""),
+            "audio_asset": uploaded,
+        }
+
+
 def _pending_jobs(api_base: str, token: str, provider_hint: str, limit: int) -> list[dict]:
     payload = _request_json(
         f"{api_base.rstrip('/')}/v1/ai/jobs?status=pending&provider_hint={provider_hint}&limit={limit}",
@@ -296,12 +448,15 @@ def _run_job(
     codex_model: str | None,
     whisper_command: str | None,
     ffmpeg_command: str,
+    tts_command: str | None,
 ) -> tuple[str, dict]:
     capability = str(job["capability"])
-    if capability in {"llm_summary", "llm_cards", "llm_tasks"}:
+    if capability in {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}:
         return "codex_local", _run_codex(job, model=codex_model)
     if capability == "stt":
         return "whisper_local", _run_whisper(job, api_base, token, whisper_command, ffmpeg_command)
+    if capability == "tts":
+        return "piper_local", _run_tts(job, api_base, token, tts_command)
     raise RuntimeError(f"Unsupported queued capability: {capability}")
 
 
@@ -315,6 +470,7 @@ def run_loop(
     codex_model: str | None,
     whisper_command: str | None,
     ffmpeg_command: str,
+    tts_command: str | None,
     once: bool,
 ) -> int:
     processed_any = False
@@ -349,6 +505,7 @@ def run_loop(
                     codex_model=codex_model,
                     whisper_command=whisper_command,
                     ffmpeg_command=ffmpeg_command,
+                    tts_command=tts_command,
                 )
                 _complete(api_base, token, str(claimed["id"]), worker_id, provider_used, output)
                 print(f"Completed {claimed['id']}")
@@ -371,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--codex-model", default=None)
     parser.add_argument("--whisper-command", default=None)
     parser.add_argument("--ffmpeg-command", default="ffmpeg")
+    parser.add_argument("--tts-command", default=None)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
 
@@ -389,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
             codex_model=args.codex_model,
             whisper_command=args.whisper_command,
             ffmpeg_command=args.ffmpeg_command,
+            tts_command=args.tts_command,
             once=args.once,
         )
     except Exception as exc:  # noqa: BLE001

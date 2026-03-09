@@ -77,6 +77,13 @@ module.exports = {
           color: "#1f315d",
         },
       ],
+      [
+        "expo-share-intent",
+        {
+          androidIntentFilters: ["text/*", "image/*", "audio/*", "video/*", "*/*"],
+          androidMultiIntentFilters: ["image/*", "audio/*", "video/*", "*/*"],
+        },
+      ],
     ],
     extra,
   },

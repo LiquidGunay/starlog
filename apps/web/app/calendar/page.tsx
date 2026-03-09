@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { applyOptimisticCalendarEvents } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -44,6 +45,11 @@ type ConflictReplayResult = {
   };
   conflict?: CalendarConflict | null;
 };
+
+const CALENDAR_EVENTS_SNAPSHOT = "calendar.events";
+const CALENDAR_CONFLICTS_SNAPSHOT = "calendar.conflicts";
+const CALENDAR_LAST_SYNC_SNAPSHOT = "calendar.last_sync";
+const CALENDAR_SELECTED_DAY_SNAPSHOT = "calendar.selected_day";
 
 function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -86,16 +92,23 @@ function formatTime(value: string): string {
 function CalendarPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
-  const initialDay = useMemo(() => isoDate(new Date()), []);
+  const initialDay = useMemo(() => readEntitySnapshot<string>(CALENDAR_SELECTED_DAY_SNAPSHOT, isoDate(new Date())), []);
   const [selectedDay, setSelectedDay] = useState(initialDay);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [conflicts, setConflicts] = useState<CalendarConflict[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>(() => readEntitySnapshot<CalendarEvent[]>(CALENDAR_EVENTS_SNAPSHOT, []));
+  const [conflicts, setConflicts] = useState<CalendarConflict[]>(() => readEntitySnapshot<CalendarConflict[]>(CALENDAR_CONFLICTS_SNAPSHOT, []));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("Focus block");
   const [startsAt, setStartsAt] = useState(`${initialDay}T08:00`);
   const [endsAt, setEndsAt] = useState(`${initialDay}T09:00`);
   const [status, setStatus] = useState("Ready");
-  const [lastSync, setLastSync] = useState<GoogleSyncResult | null>(null);
+  const [lastSync, setLastSync] = useState<GoogleSyncResult | null>(() => readEntitySnapshot<GoogleSyncResult | null>(CALENDAR_LAST_SYNC_SNAPSHOT, null));
+
+  useEffect(() => {
+    setEvents((previous) => previous.length > 0 ? previous : readEntitySnapshot<CalendarEvent[]>(CALENDAR_EVENTS_SNAPSHOT, []));
+    setConflicts((previous) => previous.length > 0 ? previous : readEntitySnapshot<CalendarConflict[]>(CALENDAR_CONFLICTS_SNAPSHOT, []));
+    setLastSync((previous) => previous ?? readEntitySnapshot<GoogleSyncResult | null>(CALENDAR_LAST_SYNC_SNAPSHOT, null));
+    setSelectedDay((previous) => previous || readEntitySnapshot<string>(CALENDAR_SELECTED_DAY_SNAPSHOT, isoDate(new Date())));
+  }, []);
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDay);
@@ -138,9 +151,12 @@ function CalendarPageContent() {
       ]);
       setEvents(eventPayload);
       setConflicts(conflictPayload);
+      writeEntitySnapshot(CALENDAR_EVENTS_SNAPSHOT, eventPayload);
+      writeEntitySnapshot(CALENDAR_CONFLICTS_SNAPSHOT, conflictPayload);
       setStatus(`Loaded ${eventPayload.length} events`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Calendar load failed");
+      const detail = error instanceof Error ? error.message : "Calendar load failed";
+      setStatus(events.length > 0 ? `Loaded cached calendar. ${detail}` : detail);
     }
   }
 
@@ -271,12 +287,17 @@ function CalendarPageContent() {
         method: "POST",
       });
       setLastSync(result);
+      writeEntitySnapshot(CALENDAR_LAST_SYNC_SNAPSHOT, result);
       await refresh();
       setStatus(`Sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Google sync failed");
     }
   }
+
+  useEffect(() => {
+    writeEntitySnapshot(CALENDAR_SELECTED_DAY_SNAPSHOT, selectedDay);
+  }, [selectedDay]);
 
   async function replayConflict(conflictId: string) {
     try {

@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import * as Notifications from "expo-notifications";
+import { useShareIntent } from "expo-share-intent";
 import * as Speech from "expo-speech";
 import * as SQLite from "expo-sqlite";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -38,8 +39,11 @@ type Palette = {
 };
 
 type BriefingPayload = {
+  id: string;
   date: string;
   text: string;
+  audioRef?: string | null;
+  audioPath?: string | null;
 };
 
 type PendingTextCapture = {
@@ -91,6 +95,7 @@ type PersistedState = {
   assistantCommand?: string;
   assistantHistory?: AssistantCommandResponse[];
   assistantVoiceJobs?: AssistantVoiceJob[];
+  assistantAiJobs?: AssistantQueuedJob[];
 };
 
 type PersistedStateV2 = Omit<
@@ -183,14 +188,17 @@ type AssistantCommandResponse = {
   steps: AssistantCommandStep[];
 };
 
-type AssistantVoiceJob = {
+type AssistantQueuedJob = {
   id: string;
-  capability: "stt";
+  capability: "stt" | "llm_agent_plan";
   status: "pending" | "running" | "completed" | "failed";
   provider_hint?: string | null;
   provider_used?: string | null;
   action?: string | null;
-  payload: Record<string, unknown>;
+  payload: Record<string, unknown> & {
+    command?: string;
+    title?: string;
+  };
   output: {
     transcript?: string;
     assistant_command?: AssistantCommandResponse;
@@ -199,6 +207,8 @@ type AssistantVoiceJob = {
   created_at: string;
   finished_at?: string | null;
 };
+
+type AssistantVoiceJob = AssistantQueuedJob;
 
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
@@ -391,6 +401,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
           assistantVoiceJobs: [],
+          assistantAiJobs: [],
         };
         await writePersistedState(migrated);
         return migrated;
@@ -400,6 +411,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
           assistantVoiceJobs: [],
+          assistantAiJobs: [],
           ...parsed,
         };
       }
@@ -428,6 +440,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
       assistantCommand: "summarize latest artifact",
       assistantHistory: [],
       assistantVoiceJobs: [],
+      assistantAiJobs: [],
     };
     await writePersistedState(migrated);
     await FileSystem.deleteAsync(file, { idempotent: true });
@@ -465,8 +478,8 @@ async function loadBriefingFromApi(
 
   const existing = await fetch(`${apiBase}/v1/briefings/${date}`, { headers });
   if (existing.ok) {
-    const payload = (await existing.json()) as { text: string };
-    return { date, text: payload.text };
+    const payload = (await existing.json()) as { id: string; text: string; audio_ref?: string | null };
+    return { id: payload.id, date, text: payload.text, audioRef: payload.audio_ref ?? null, audioPath: null };
   }
 
   const generated = await fetch(`${apiBase}/v1/briefings/generate`, {
@@ -480,13 +493,41 @@ async function loadBriefingFromApi(
     throw new Error(`Briefing fetch failed: ${generated.status} ${errorBody}`);
   }
 
-  const payload = (await generated.json()) as { text: string };
-  return { date, text: payload.text };
+  const payload = (await generated.json()) as { id: string; text: string; audio_ref?: string | null };
+  return { id: payload.id, date, text: payload.text, audioRef: payload.audio_ref ?? null, audioPath: null };
 }
 
-async function cacheBriefing(payload: BriefingPayload): Promise<string> {
+async function maybeCacheBriefingAudio(
+  apiBase: string,
+  token: string,
+  payload: BriefingPayload,
+): Promise<string | null> {
+  if (!payload.audioRef?.startsWith("media://")) {
+    return null;
+  }
+
+  const mediaId = payload.audioRef.slice("media://".length);
+  const targetPath = `${writableDir()}briefing-${payload.date}.wav`;
+  try {
+    await FileSystem.downloadAsync(
+      `${apiBase}/v1/media/${mediaId}/content`,
+      targetPath,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    return targetPath;
+  } catch {
+    return null;
+  }
+}
+
+async function cacheBriefing(apiBase: string, token: string, payload: BriefingPayload): Promise<string> {
+  const audioPath = await maybeCacheBriefingAudio(apiBase, token, payload);
   const path = `${writableDir()}briefing-${payload.date}.json`;
-  await FileSystem.writeAsStringAsync(path, JSON.stringify(payload));
+  await FileSystem.writeAsStringAsync(path, JSON.stringify({ ...payload, audioPath }));
   return path;
 }
 
@@ -545,12 +586,22 @@ export default function App() {
   const [assistantCommand, setAssistantCommand] = useState("summarize latest artifact");
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
+  const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
   const [status, setStatus] = useState("Ready");
   const [hydrated, setHydrated] = useState(false);
   const flushInFlight = useRef(false);
   const cardPromptStartedAt = useRef<number | null>(null);
+  const briefingSoundRef = useRef<Audio.Sound | null>(null);
+  const {
+    hasShareIntent,
+    shareIntent,
+    resetShareIntent,
+    error: shareIntentError,
+  } = useShareIntent({
+    resetOnBackground: false,
+  });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
   const llmResolution = useMemo(
     () =>
@@ -1133,8 +1184,7 @@ export default function App() {
         return;
       }
       const briefing = await readCachedBriefing(cachedPath);
-      Speech.speak(briefing.text);
-      setStatus("Playing cached briefing");
+      await playBriefingPayload(briefing, "cached");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to play cached briefing");
     }
@@ -1146,12 +1196,52 @@ export default function App() {
         setStatus("Add API token first");
         return;
       }
-      const briefing = await loadBriefingFromApi(normalizeBaseUrl(apiBase), token, briefingDate);
-      const path = await cacheBriefing(briefing);
+      const baseUrl = normalizeBaseUrl(apiBase);
+      const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
+      const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
-      setStatus(`Cached briefing for ${briefingDate}`);
+      setStatus(
+        briefing.audioRef
+          ? `Cached briefing package for ${briefingDate} with audio`
+          : `Cached briefing for ${briefingDate} (text only)`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to cache briefing");
+    }
+  }
+
+  async function queueBriefingAudio() {
+    try {
+      if (!token) {
+        setStatus("Add API token first");
+        return;
+      }
+      const baseUrl = normalizeBaseUrl(apiBase);
+      const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
+      if (briefing.audioRef) {
+        setStatus("Briefing audio already exists. Cache again to download it locally.");
+        return;
+      }
+
+      const response = await fetch(`${baseUrl}/v1/briefings/${briefing.id}/audio/render`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          provider_hint: BATCH_PROVIDER_HINT.tts ?? "piper_local",
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Briefing audio queue failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as { id: string };
+      setStatus(`Queued briefing audio job ${payload.id} via ${formatExecutionTarget(ttsResolution.active)}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to queue briefing audio");
     }
   }
 
@@ -1211,6 +1301,29 @@ export default function App() {
     }
   }
 
+  async function playBriefingPayload(briefing: BriefingPayload, mode: "cached" | "scheduled") {
+    try {
+      if (briefing.audioPath) {
+        const info = await FileSystem.getInfoAsync(briefing.audioPath);
+        if (info.exists) {
+          if (briefingSoundRef.current) {
+            await briefingSoundRef.current.unloadAsync();
+            briefingSoundRef.current = null;
+          }
+          const { sound } = await Audio.Sound.createAsync({ uri: briefing.audioPath }, { shouldPlay: true });
+          briefingSoundRef.current = sound;
+          setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing audio`);
+          return;
+        }
+      }
+
+      Speech.speak(briefing.text);
+      setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing text`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to play briefing");
+    }
+  }
+
   async function openPwa() {
     try {
       await Linking.openURL(pwaBase);
@@ -1265,7 +1378,7 @@ export default function App() {
       }
 
       const payload = (await response.json()) as AssistantCommandResponse;
-      setAssistantHistory((previous) => [payload, ...previous].slice(0, 6));
+      recordAssistantHistory(payload);
       if (payload.matched_intent === "capture" || ["summarize", "cards", "tasks", "append_note"].includes(payload.matched_intent)) {
         loadArtifacts().catch(() => undefined);
       }
@@ -1276,6 +1389,13 @@ export default function App() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Assistant command failed");
     }
+  }
+
+  function recordAssistantHistory(entry: AssistantCommandResponse | null | undefined) {
+    if (!entry) {
+      return;
+    }
+    setAssistantHistory((previous) => [entry, ...previous.filter((item) => item.command !== entry.command || item.planner !== entry.planner)].slice(0, 6));
   }
 
   async function loadAssistantVoiceJobs(origin: "auto" | "manual") {
@@ -1301,6 +1421,10 @@ export default function App() {
       }
       const payload = (await response.json()) as AssistantVoiceJob[];
       setAssistantVoiceJobs(payload);
+      const completed = payload.find((job) => job.output.assistant_command)?.output.assistant_command;
+      if (completed) {
+        recordAssistantHistory(completed);
+      }
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} voice command job(s)`);
       }
@@ -1308,6 +1432,80 @@ export default function App() {
       if (origin === "manual") {
         setStatus(error instanceof Error ? error.message : "Failed to load voice command jobs");
       }
+    }
+  }
+
+  async function loadAssistantAiJobs(origin: "auto" | "manual") {
+    if (!token) {
+      if (origin === "manual") {
+        setStatus("Add API token first");
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${normalizeBaseUrl(apiBase)}/v1/ai/jobs?limit=10&action=assistant_command_ai`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Queued Codex job fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as AssistantQueuedJob[];
+      setAssistantAiJobs(payload);
+      const completed = payload.find((job) => job.output.assistant_command)?.output.assistant_command;
+      if (completed) {
+        recordAssistantHistory(completed);
+      }
+      if (origin === "manual") {
+        setStatus(`Loaded ${payload.length} queued Codex job(s)`);
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load queued Codex jobs");
+      }
+    }
+  }
+
+  async function queueAssistantAiCommand(execute: boolean) {
+    const command = assistantCommand.trim();
+    if (!command) {
+      setStatus("Enter an assistant command first");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/agent/command/assist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          command,
+          execute,
+          device_target: "mobile-companion",
+          provider_hint: BATCH_PROVIDER_HINT.llm ?? "codex_local",
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Queued Codex command failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as AssistantQueuedJob;
+      setAssistantAiJobs((previous) => [payload, ...previous.filter((item) => item.id !== payload.id)].slice(0, 10));
+      setStatus(`Queued Codex ${execute ? "execute" : "plan"} job ${payload.id} via ${formatExecutionTarget(llmResolution.active)}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to queue Codex command");
     }
   }
 
@@ -1398,6 +1596,7 @@ export default function App() {
         setAssistantCommand(persisted.assistantCommand || "summarize latest artifact");
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
+        setAssistantAiJobs(persisted.assistantAiJobs || []);
       }
 
       const initialUrl = await Linking.getInitialURL();
@@ -1437,8 +1636,7 @@ export default function App() {
 
       readCachedBriefing(briefingPath)
         .then((briefing) => {
-          Speech.speak(briefing.text);
-          setStatus("Playing scheduled morning briefing");
+          return playBriefingPayload(briefing, "scheduled");
         })
         .catch(() => {
           if (fallbackText) {
@@ -1463,8 +1661,57 @@ export default function App() {
       active = false;
       notificationSubscription.remove();
       linkSubscription.remove();
+      if (briefingSoundRef.current) {
+        briefingSoundRef.current.unloadAsync().catch(() => undefined);
+        briefingSoundRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!shareIntentError) {
+      return;
+    }
+    setStatus(`Share intent error: ${shareIntentError}`);
+  }, [shareIntentError]);
+
+  useEffect(() => {
+    if (!hasShareIntent) {
+      return;
+    }
+
+    const sharedText = (shareIntent.text ?? "").trim();
+    const sharedUrl = (shareIntent.webUrl ?? "").trim();
+    const firstFile = shareIntent.files?.[0] ?? null;
+    const inferredTitle =
+      (shareIntent.meta?.title ?? "").trim() ||
+      firstFile?.fileName ||
+      sharedUrl ||
+      DEFAULT_CAPTURE_TITLE;
+
+    setQuickCaptureTitle(inferredTitle);
+    setQuickCaptureSourceUrl(sharedUrl);
+
+    if (firstFile?.mimeType?.startsWith("audio/")) {
+      setVoiceClipUri(firstFile.path);
+      setVoiceClipDurationMs(firstFile.duration ?? 0);
+      setQuickCaptureText(sharedText || `Shared audio file: ${firstFile.fileName}`);
+      setStatus("Loaded Android share audio into the companion app");
+      resetShareIntent();
+      return;
+    }
+
+    if (sharedText) {
+      setQuickCaptureText(sharedText);
+    } else if (firstFile) {
+      setQuickCaptureText(`Shared file: ${firstFile.fileName} (${firstFile.mimeType})`);
+    } else if (sharedUrl) {
+      setQuickCaptureText(sharedUrl);
+    }
+
+    setStatus(firstFile ? "Loaded Android share payload into quick capture" : "Loaded shared text/url into quick capture");
+    resetShareIntent();
+  }, [hasShareIntent, resetShareIntent, shareIntent]);
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
@@ -1473,6 +1720,7 @@ export default function App() {
           flushPendingCaptures("auto").catch(() => undefined);
         }
         loadAssistantVoiceJobs("auto").catch(() => undefined);
+        loadAssistantAiJobs("auto").catch(() => undefined);
       }
     });
 
@@ -1509,6 +1757,7 @@ export default function App() {
       assistantCommand,
       assistantHistory,
       assistantVoiceJobs,
+      assistantAiJobs,
     }).catch(() => undefined);
   }, [
     alarmHour,
@@ -1518,6 +1767,7 @@ export default function App() {
     assistantCommand,
     assistantHistory,
     assistantVoiceJobs,
+    assistantAiJobs,
     artifactGraph,
     artifactVersions,
     artifacts,
@@ -1561,6 +1811,7 @@ export default function App() {
       return;
     }
     loadAssistantVoiceJobs("auto").catch(() => undefined);
+    loadAssistantAiJobs("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -1655,6 +1906,12 @@ export default function App() {
             <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(true)}>
               <Text style={styles.buttonText}>Execute Command</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(false)}>
+              <Text style={styles.buttonText}>Queue Codex Plan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(true)}>
+              <Text style={styles.buttonText}>Queue Codex Execute</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
               <Text style={styles.buttonText}>Open PWA Assistant</Text>
             </TouchableOpacity>
@@ -1669,8 +1926,14 @@ export default function App() {
             <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
               <Text style={styles.buttonText}>Execute Voice</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => loadAssistantVoiceJobs("manual")}>
-              <Text style={styles.buttonText}>Refresh Voice Jobs</Text>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => {
+                loadAssistantVoiceJobs("manual").catch(() => undefined);
+                loadAssistantAiJobs("manual").catch(() => undefined);
+              }}
+            >
+              <Text style={styles.buttonText}>Refresh Jobs</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.subtle}>
@@ -1707,6 +1970,30 @@ export default function App() {
                     provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
                   </Text>
                   {job.output.transcript ? <Text style={styles.subtle}>Transcript: {job.output.transcript}</Text> : null}
+                  {job.output.assistant_command ? (
+                    <Text style={styles.subtle}>
+                      Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                    </Text>
+                  ) : null}
+                  {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {assistantAiJobs.length > 0 ? (
+            <View style={styles.detailCard}>
+              <Text style={styles.inlineCardTitle}>Queued Codex jobs</Text>
+              {assistantAiJobs.slice(0, 4).map((job) => (
+                <View key={job.id} style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>
+                    {job.id} [{job.status}]
+                  </Text>
+                  <Text style={styles.subtle}>
+                    provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
+                  </Text>
+                  {typeof job.payload.command === "string" && job.payload.command ? (
+                    <Text style={styles.subtle}>Command: {job.payload.command}</Text>
+                  ) : null}
                   {job.output.assistant_command ? (
                     <Text style={styles.subtle}>
                       Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
@@ -1986,6 +2273,9 @@ export default function App() {
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.button} onPress={generateAndCache}>
               <Text style={styles.buttonText}>Cache Briefing</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
+              <Text style={styles.buttonText}>Queue Audio Render</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={playCached}>
               <Text style={styles.buttonText}>Play Cached</Text>

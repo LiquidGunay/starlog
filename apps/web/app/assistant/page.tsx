@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -29,12 +30,17 @@ type AgentIntent = {
   examples: string[];
 };
 
-type AssistantVoiceJob = {
+type AssistantQueuedJob = {
   id: string;
+  capability: "stt" | "llm_agent_plan";
   status: "pending" | "running" | "completed" | "failed";
   provider_hint?: string | null;
   provider_used?: string | null;
   action?: string | null;
+  payload: {
+    command?: string;
+    title?: string;
+  };
   output: {
     transcript?: string;
     assistant_command?: AgentCommandResponse;
@@ -54,14 +60,23 @@ const FALLBACK_EXAMPLES = [
   "show execution policy",
 ];
 
+const ASSISTANT_HISTORY_SNAPSHOT = "assistant.history";
+const ASSISTANT_INTENTS_SNAPSHOT = "assistant.intents";
+const ASSISTANT_VOICE_JOBS_SNAPSHOT = "assistant.voice_jobs";
+const ASSISTANT_AI_JOBS_SNAPSHOT = "assistant.ai_jobs";
+
 export default function AssistantPage() {
   const { apiBase, token } = useSessionConfig();
   const [command, setCommand] = useState("summarize latest artifact");
   const [status, setStatus] = useState("Ready");
-  const [latest, setLatest] = useState<AgentCommandResponse | null>(null);
-  const [history, setHistory] = useState<AgentCommandResponse[]>([]);
-  const [intents, setIntents] = useState<AgentIntent[]>([]);
-  const [voiceJobs, setVoiceJobs] = useState<AssistantVoiceJob[]>([]);
+  const [latest, setLatest] = useState<AgentCommandResponse | null>(() => {
+    const cached = readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []);
+    return cached[0] ?? null;
+  });
+  const [history, setHistory] = useState<AgentCommandResponse[]>(() => readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
+  const [intents, setIntents] = useState<AgentIntent[]>(() => readEntitySnapshot<AgentIntent[]>(ASSISTANT_INTENTS_SNAPSHOT, []));
+  const [voiceJobs, setVoiceJobs] = useState<AssistantQueuedJob[]>(() => readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_VOICE_JOBS_SNAPSHOT, []));
+  const [assistJobs, setAssistJobs] = useState<AssistantQueuedJob[]>(() => readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []));
   const [recording, setRecording] = useState(false);
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -76,35 +91,46 @@ export default function AssistantPage() {
     return collected.length > 0 ? collected : FALLBACK_EXAMPLES;
   }, [intents]);
 
+  useEffect(() => {
+    setHistory((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
+    setLatest((previous) => previous ?? readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, [])[0] ?? null);
+    setIntents((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentIntent[]>(ASSISTANT_INTENTS_SNAPSHOT, []));
+    setVoiceJobs((previous) => previous.length > 0 ? previous : readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_VOICE_JOBS_SNAPSHOT, []));
+    setAssistJobs((previous) => previous.length > 0 ? previous : readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []));
+  }, []);
+
   const loadIntents = useCallback(async () => {
     try {
       const payload = await apiRequest<AgentIntent[]>(apiBase, token, "/v1/agent/intents");
       setIntents(payload);
+      writeEntitySnapshot(ASSISTANT_INTENTS_SNAPSHOT, payload);
     } catch {
       setIntents([]);
     }
   }, [apiBase, token]);
 
+  const recordCompletedCommand = useCallback((candidate: AgentCommandResponse | null | undefined) => {
+    if (!candidate) {
+      return;
+    }
+    setLatest(candidate);
+    setHistory((previous) => {
+      const next = [candidate, ...previous.filter((item) => item.command !== candidate.command || item.planner !== candidate.planner)].slice(0, 8);
+      writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, next);
+      return next;
+    });
+  }, []);
+
   const loadVoiceJobs = useCallback(async (origin: "auto" | "manual") => {
     try {
-      const payload = await apiRequest<AssistantVoiceJob[]>(
+      const payload = await apiRequest<AssistantQueuedJob[]>(
         apiBase,
         token,
         "/v1/ai/jobs?limit=12&action=assistant_command",
       );
       setVoiceJobs(payload);
-      const completedCommand = payload.find((job) => job.output.assistant_command);
-      if (completedCommand?.output.assistant_command) {
-        setLatest((current) => current ?? completedCommand.output.assistant_command ?? null);
-        setHistory((previous) => {
-          const candidate = completedCommand.output.assistant_command;
-          if (!candidate) {
-            return previous;
-          }
-          const next = [candidate, ...previous.filter((item) => item.command !== candidate.command)];
-          return next.slice(0, 8);
-        });
-      }
+      writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, payload);
+      recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} voice command job(s)`);
       }
@@ -113,7 +139,27 @@ export default function AssistantPage() {
         setStatus(error instanceof Error ? error.message : "Failed to load voice jobs");
       }
     }
-  }, [apiBase, token]);
+  }, [apiBase, recordCompletedCommand, token]);
+
+  const loadAssistJobs = useCallback(async (origin: "auto" | "manual") => {
+    try {
+      const payload = await apiRequest<AssistantQueuedJob[]>(
+        apiBase,
+        token,
+        "/v1/ai/jobs?limit=12&action=assistant_command_ai",
+      );
+      setAssistJobs(payload);
+      writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, payload);
+      recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
+      if (origin === "manual") {
+        setStatus(`Loaded ${payload.length} queued Codex planner job(s)`);
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load queued Codex jobs");
+      }
+    }
+  }, [apiBase, recordCompletedCommand, token]);
 
   async function runCommand(execute: boolean) {
     const trimmed = command.trim();
@@ -132,10 +178,42 @@ export default function AssistantPage() {
         }),
       });
       setLatest(payload);
-      setHistory((previous) => [payload, ...previous].slice(0, 8));
+      setHistory((previous) => {
+        const next = [payload, ...previous].slice(0, 8);
+        writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, next);
+        return next;
+      });
       setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Assistant command failed");
+    }
+  }
+
+  async function queueAssistCommand(execute: boolean) {
+    const trimmed = command.trim();
+    if (!trimmed) {
+      setStatus("Enter a command first");
+      return;
+    }
+
+    try {
+      const payload = await apiRequest<AssistantQueuedJob>(apiBase, token, "/v1/agent/command/assist", {
+        method: "POST",
+        body: JSON.stringify({
+          command: trimmed,
+          execute,
+          device_target: "web-pwa",
+          provider_hint: "codex_local",
+        }),
+      });
+      setAssistJobs((previous) => {
+        const next = [payload, ...previous.filter((item) => item.id !== payload.id)].slice(0, 12);
+        writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, next);
+        return next;
+      });
+      setStatus(`Queued Codex ${execute ? "execute" : "plan"} job ${payload.id}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to queue Codex planner job");
     }
   }
 
@@ -212,8 +290,12 @@ export default function AssistantPage() {
         const body = await response.text();
         throw new Error(`Voice command upload failed: ${response.status} ${body}`);
       }
-      const payload = (await response.json()) as AssistantVoiceJob;
-      setVoiceJobs((previous) => [payload, ...previous].slice(0, 12));
+      const payload = (await response.json()) as AssistantQueuedJob;
+      setVoiceJobs((previous) => {
+        const next = [payload, ...previous].slice(0, 12);
+        writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, next);
+        return next;
+      });
       setVoiceBlob(null);
       setStatus(`Queued voice command ${payload.id}`);
     } catch (error) {
@@ -227,7 +309,8 @@ export default function AssistantPage() {
     }
     loadIntents().catch(() => undefined);
     loadVoiceJobs("auto").catch(() => undefined);
-  }, [loadIntents, loadVoiceJobs, token]);
+    loadAssistJobs("auto").catch(() => undefined);
+  }, [loadAssistJobs, loadIntents, loadVoiceJobs, token]);
 
   return (
     <main className="shell">
@@ -250,7 +333,12 @@ export default function AssistantPage() {
           <div className="button-row">
             <button className="button" type="button" onClick={() => runCommand(false)}>Plan Command</button>
             <button className="button" type="button" onClick={() => runCommand(true)}>Execute Command</button>
-            <button className="button" type="button" onClick={() => loadVoiceJobs("manual")}>Refresh Voice Jobs</button>
+            <button className="button" type="button" onClick={() => queueAssistCommand(false)}>Queue Codex Plan</button>
+            <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex Execute</button>
+            <button className="button" type="button" onClick={() => {
+              loadVoiceJobs("manual").catch(() => undefined);
+              loadAssistJobs("manual").catch(() => undefined);
+            }}>Refresh Jobs</button>
           </div>
           <div className="button-row">
             <button className="button" type="button" onClick={recording ? stopVoiceRecording : startVoiceRecording}>
@@ -338,6 +426,34 @@ export default function AssistantPage() {
                     {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
                   </p>
                   {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
+                  {job.output.assistant_command ? (
+                    <p className="console-copy">
+                      command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                    </p>
+                  ) : null}
+                  {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="panel glass">
+          <h2>Queued Codex jobs</h2>
+          {assistJobs.length === 0 ? (
+            <p className="console-copy">No queued Codex planner jobs yet.</p>
+          ) : (
+            <ul>
+              {assistJobs.map((job) => (
+                <li key={job.id}>
+                  <p className="console-copy">
+                    <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                  </p>
+                  {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
+                  <p className="console-copy">
+                    created: {new Date(job.created_at).toLocaleString()}
+                    {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
+                  </p>
                   {job.output.assistant_command ? (
                     <p className="console-copy">
                       command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]

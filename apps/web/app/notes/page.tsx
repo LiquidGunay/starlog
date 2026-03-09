@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { applyOptimisticNotes } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -19,11 +20,14 @@ type Note = {
   pendingLabel?: string;
 };
 
+const NOTES_SNAPSHOT = "notes.items";
+const NOTE_SELECTED_SNAPSHOT = "notes.selected";
+
 function NotesPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [notes, setNotes] = useState<Note[]>(() => readEntitySnapshot<Note[]>(NOTES_SNAPSHOT, []));
+  const [selectedId, setSelectedId] = useState(() => readEntitySnapshot<string>(NOTE_SELECTED_SNAPSHOT, ""));
   const [title, setTitle] = useState("New note");
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("Ready");
@@ -31,15 +35,22 @@ function NotesPageContent() {
   const visibleNotes = useMemo(() => applyOptimisticNotes(notes, outbox), [notes, outbox]);
   const selectedNote = visibleNotes.find((note) => note.id === selectedId) ?? null;
 
+  useEffect(() => {
+    setNotes((previous) => previous.length > 0 ? previous : readEntitySnapshot<Note[]>(NOTES_SNAPSHOT, []));
+    setSelectedId((previous) => previous || readEntitySnapshot<string>(NOTE_SELECTED_SNAPSHOT, ""));
+  }, []);
+
   const loadNotes = useCallback(async () => {
     try {
       const payload = await apiRequest<Note[]>(apiBase, token, "/v1/notes");
       setNotes(payload);
+      writeEntitySnapshot(NOTES_SNAPSHOT, payload);
       setStatus(`Loaded ${payload.length} notes`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load notes");
+      const detail = error instanceof Error ? error.message : "Failed to load notes";
+      setStatus(notes.length > 0 ? `Loaded cached notes. ${detail}` : detail);
     }
-  }, [apiBase, token]);
+  }, [apiBase, notes.length, token]);
 
   function selectNote(note: Note) {
     setSelectedId(note.id);
@@ -144,6 +155,10 @@ function NotesPageContent() {
       selectNote(requestedNote);
     }
   }, [searchParams, selectedId, visibleNotes]);
+
+  useEffect(() => {
+    writeEntitySnapshot(NOTE_SELECTED_SNAPSHOT, selectedId);
+  }, [selectedId]);
 
   return (
     <main className="shell">
