@@ -5,7 +5,7 @@ Desktop helper for clipping content from non-browser apps.
 ## Current capabilities
 - Global OS shortcuts plus window-local fallback (`Cmd/Ctrl+Shift+C` and `Cmd/Ctrl+Shift+S`).
 - Persisted API base and bearer token between launches.
-- Runtime diagnostics card for clipboard, screenshot, OCR, active-window metadata, and shortcut wiring.
+- Runtime diagnostics card for clipboard, screenshot, OCR, active-window metadata, and shortcut wiring, with refresh/copy controls for bug reports.
 - Native clipboard capture in Tauri runtime, with focused-window browser clipboard fallback when native access is unavailable.
 - Best-effort active app/window metadata capture per clip.
 - Native screenshot capture via platform commands:
@@ -35,7 +35,7 @@ Desktop helper for clipping content from non-browser apps.
 
 ## Manual runtime checks
 
-1. Launch the helper and confirm the runtime diagnostics card shows the expected clipboard/screenshot backends for the current desktop session.
+1. Launch the helper and confirm the runtime diagnostics card shows the expected clipboard/screenshot backends for the current desktop session, then use Refresh Diagnostics after any local dependency change.
 2. Trigger `Cmd/Ctrl+Shift+C` while another app is focused, then again with the helper focused to verify both global and window-local shortcut paths.
 3. Trigger `Cmd/Ctrl+Shift+S` and confirm the status text clearly reports whether the helper used region capture, a full-screen fallback, or no backend at all.
-4. Inspect Recent captures and confirm metadata, OCR details, and screenshot preview thumbnails render after a successful upload.
+4. Use Copy Diagnostics to capture a redacted runtime snapshot for issue reporting, then inspect Recent captures and confirm metadata, OCR details, and screenshot preview thumbnails render after a successful upload.

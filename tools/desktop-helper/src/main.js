@@ -3,6 +3,8 @@ const apiBaseInput = document.getElementById("apiBase");
 const tokenInput = document.getElementById("token");
 const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
+const refreshDiagnosticsButton = document.getElementById("refreshDiagnostics");
+const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
 const runtimeDiagnosticsNode = document.getElementById("runtimeDiagnostics");
 const recentCapturesNode = document.getElementById("recentCaptures");
 const CONFIG_STORAGE_KEY = "starlog.desktop-helper.config.v1";
@@ -254,6 +256,44 @@ function renderRuntimeDiagnostics(diagnostics) {
     row.appendChild(detail);
 
     runtimeDiagnosticsNode.appendChild(row);
+  }
+}
+
+function buildRuntimeDiagnosticsSnapshot() {
+  return JSON.stringify({
+    capturedAt: new Date().toISOString(),
+    apiBase: readConfig().apiBase,
+    runtime: runtimeDiagnostics.runtime,
+    platform: runtimeDiagnostics.platform,
+    diagnostics: {
+      clipboard: runtimeDiagnostics.clipboard,
+      screenshot: runtimeDiagnostics.screenshot,
+      activeWindow: runtimeDiagnostics.activeWindow,
+      ocr: runtimeDiagnostics.ocr,
+      shortcuts: runtimeDiagnostics.shortcuts,
+    },
+  }, null, 2);
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  const copied = document.execCommand?.("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("Clipboard write API is unavailable in this runtime");
   }
 }
 
@@ -796,13 +836,17 @@ function wireWindowShortcuts() {
 
 async function loadRuntimeDiagnostics() {
   if (!window.__TAURI__) {
-    mergeRuntimeDiagnostics(createBrowserRuntimeDiagnostics());
+    mergeRuntimeDiagnostics({
+      ...createBrowserRuntimeDiagnostics(),
+      shortcuts: runtimeDiagnostics.shortcuts,
+    });
     return;
   }
 
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const diagnostics = normalizeRuntimeDiagnostics(await invoke("inspect_runtime_diagnostics"));
+    diagnostics.shortcuts = runtimeDiagnostics.shortcuts;
     if (diagnostics.clipboard.status !== "available" && navigator.clipboard?.readText) {
       const availableBackends = diagnostics.clipboard.availableBackends.includes("browser-clipboard")
         ? diagnostics.clipboard.availableBackends
@@ -831,6 +875,25 @@ async function loadRuntimeDiagnostics() {
   }
 }
 
+async function refreshRuntimeDiagnostics() {
+  setStatus("Refreshing diagnostics...");
+  try {
+    await loadRuntimeDiagnostics();
+    setStatus(window.__TAURI__ ? "Runtime diagnostics refreshed" : "Browser diagnostics refreshed");
+  } catch (error) {
+    setStatus(errorMessage(error, "Runtime diagnostics refresh failed"));
+  }
+}
+
+async function copyRuntimeDiagnostics() {
+  try {
+    await copyTextToClipboard(buildRuntimeDiagnosticsSnapshot());
+    setStatus("Diagnostics copied to clipboard");
+  } catch (error) {
+    setStatus(errorMessage(error, "Diagnostics copy failed"));
+  }
+}
+
 applyStoredConfig(readStoredConfig());
 renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
@@ -843,6 +906,14 @@ clipSelectionButton.addEventListener("click", () => {
 
 clipScreenshotButton.addEventListener("click", () => {
   clipScreenshot().catch(() => undefined);
+});
+
+refreshDiagnosticsButton.addEventListener("click", () => {
+  refreshRuntimeDiagnostics().catch(() => undefined);
+});
+
+copyDiagnosticsButton.addEventListener("click", () => {
+  copyRuntimeDiagnostics().catch(() => undefined);
 });
 
 wireWindowShortcuts();

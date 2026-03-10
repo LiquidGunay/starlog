@@ -26,6 +26,37 @@ test("browser runtime diagnostics show fallback capability state", async ({ page
   );
 });
 
+test("browser runtime diagnostics can refresh and copy a redacted snapshot", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__copiedDiagnostics = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: async () => "diagnostics clipboard text",
+        writeText: async (text) => {
+          window.__copiedDiagnostics = text;
+        },
+      },
+    });
+  });
+
+  await page.goto("/index.html");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Window-local shortcuts are active while the helper window is focused.",
+  );
+
+  await page.getByRole("button", { name: "Refresh Diagnostics" }).click();
+  await expect(page.locator("#status")).toHaveText("Browser diagnostics refreshed");
+
+  await page.getByRole("button", { name: "Copy Diagnostics" }).click();
+  await expect(page.locator("#status")).toHaveText("Diagnostics copied to clipboard");
+
+  const copiedDiagnostics = await page.evaluate(() => window.__copiedDiagnostics);
+  expect(copiedDiagnostics).toContain('"runtime": "browser"');
+  expect(copiedDiagnostics).toContain('"apiBase": "http://localhost:8000"');
+  expect(copiedDiagnostics).not.toContain("token-");
+});
+
 test("browser runtime diagnostics report clipboard unavailability clearly", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
