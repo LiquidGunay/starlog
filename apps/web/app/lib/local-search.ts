@@ -1,3 +1,4 @@
+import { listEntityCacheRecords, readEntityCacheScope } from "./entity-cache";
 import { listEntitySnapshotsByPrefix, readEntitySnapshotAsync } from "./entity-snapshot";
 import {
   applyOptimisticArtifacts,
@@ -61,6 +62,12 @@ type ArtifactGraphSnapshot = {
   notes: Array<{ id: string; title: string }>;
 };
 
+const ARTIFACT_ITEMS_ENTITY_SCOPE = "artifacts.items";
+const ARTIFACT_GRAPH_ENTITY_SCOPE = "artifacts.graph";
+const NOTES_ENTITY_SCOPE = "notes.items";
+const TASKS_ENTITY_SCOPE = "tasks.items";
+const CALENDAR_EVENTS_ENTITY_SCOPE = "calendar.events";
+
 function includesQuery(fields: Array<string | null | undefined>, query: string): boolean {
   return fields.some((field) => field?.toLowerCase().includes(query));
 }
@@ -100,13 +107,43 @@ export async function searchLocalSnapshots(
     return [];
   }
 
-  const [artifactItems, noteItems, taskItems, calendarItems, artifactGraphs] = await Promise.all([
-    readEntitySnapshotAsync<ArtifactSnapshot[]>("artifacts.items", []),
-    readEntitySnapshotAsync<NoteSnapshot[]>("notes.items", []),
-    readEntitySnapshotAsync<TaskSnapshot[]>("tasks.items", []),
-    readEntitySnapshotAsync<CalendarSnapshot[]>("calendar.events", []),
-    listEntitySnapshotsByPrefix<ArtifactGraphSnapshot>("artifacts.graph:"),
-  ]);
+  const [cachedArtifactItems, cachedNoteItems, cachedTaskItems, cachedCalendarItems, cachedArtifactGraphs] =
+    await Promise.all([
+      readEntityCacheScope<ArtifactSnapshot>(ARTIFACT_ITEMS_ENTITY_SCOPE),
+      readEntityCacheScope<NoteSnapshot>(NOTES_ENTITY_SCOPE),
+      readEntityCacheScope<TaskSnapshot>(TASKS_ENTITY_SCOPE),
+      readEntityCacheScope<CalendarSnapshot>(CALENDAR_EVENTS_ENTITY_SCOPE),
+      listEntityCacheRecords<ArtifactGraphSnapshot>(ARTIFACT_GRAPH_ENTITY_SCOPE),
+    ]);
+  const [bootstrapArtifactItems, bootstrapNoteItems, bootstrapTaskItems, bootstrapCalendarItems, bootstrapArtifactGraphs] =
+    await Promise.all([
+      cachedArtifactItems.length > 0
+        ? Promise.resolve<ArtifactSnapshot[]>([])
+        : readEntitySnapshotAsync<ArtifactSnapshot[]>("artifacts.items", []),
+      cachedNoteItems.length > 0
+        ? Promise.resolve<NoteSnapshot[]>([])
+        : readEntitySnapshotAsync<NoteSnapshot[]>("notes.items", []),
+      cachedTaskItems.length > 0
+        ? Promise.resolve<TaskSnapshot[]>([])
+        : readEntitySnapshotAsync<TaskSnapshot[]>("tasks.items", []),
+      cachedCalendarItems.length > 0
+        ? Promise.resolve<CalendarSnapshot[]>([])
+        : readEntitySnapshotAsync<CalendarSnapshot[]>("calendar.events", []),
+      cachedArtifactGraphs.length > 0
+        ? Promise.resolve<ArtifactGraphSnapshot[]>([])
+        : listEntitySnapshotsByPrefix<ArtifactGraphSnapshot>("artifacts.graph:"),
+    ]);
+
+  const artifactItems =
+    cachedArtifactItems.length > 0 ? cachedArtifactItems : bootstrapArtifactItems;
+  const noteItems = cachedNoteItems.length > 0 ? cachedNoteItems : bootstrapNoteItems;
+  const taskItems = cachedTaskItems.length > 0 ? cachedTaskItems : bootstrapTaskItems;
+  const calendarItems =
+    cachedCalendarItems.length > 0 ? cachedCalendarItems : bootstrapCalendarItems;
+  const artifactGraphs =
+    cachedArtifactGraphs.length > 0
+      ? cachedArtifactGraphs.map((record) => record.value)
+      : bootstrapArtifactGraphs;
 
   const results = new Map<string, SearchResult>();
   const artifacts = applyOptimisticArtifacts(artifactItems, outbox);

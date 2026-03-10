@@ -5,6 +5,11 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
 import {
+  mergeEntityCacheScope,
+  readEntityCacheScope,
+  replaceEntityCacheScope,
+} from "../lib/entity-cache";
+import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
   clearEntityCachesStale,
@@ -35,6 +40,23 @@ type Task = {
 const TASKS_SNAPSHOT = "tasks.items";
 const TASK_SELECTED_SNAPSHOT = "tasks.selected";
 const TASK_CACHE_PREFIXES = ["tasks."];
+const TASKS_ENTITY_SCOPE = "tasks.items";
+
+function cacheTasks(tasks: Task[], replaceScope: boolean): void {
+  const entries = tasks.map((task) => ({
+    id: task.id,
+    value: task,
+    updated_at: task.updated_at,
+    search_text: `${task.title} ${task.status} ${task.due_at ?? ""}`,
+  }));
+
+  if (replaceScope) {
+    void replaceEntityCacheScope(TASKS_ENTITY_SCOPE, entries);
+    return;
+  }
+
+  void mergeEntityCacheScope(TASKS_ENTITY_SCOPE, entries);
+}
 
 function TasksPageContent() {
   const searchParams = useSearchParams();
@@ -48,6 +70,7 @@ function TasksPageContent() {
   const [dueAt, setDueAt] = useState("");
   const [filter, setFilter] = useState("all");
   const [status, setStatus] = useState("Ready");
+  const [editorSeedId, setEditorSeedId] = useState("");
 
   const optimisticTasks = useMemo(() => applyOptimisticTasks(tasks, outbox), [tasks, outbox]);
   const visibleTasks =
@@ -63,7 +86,8 @@ function TasksPageContent() {
     let cancelled = false;
 
     void (async () => {
-      const [cachedTasks, cachedSelectedId] = await Promise.all([
+      const [entityTasks, bootstrapTasks, cachedSelectedId] = await Promise.all([
+        readEntityCacheScope<Task>(TASKS_ENTITY_SCOPE),
         readEntitySnapshotAsync<Task[]>(TASKS_SNAPSHOT, []),
         readEntitySnapshotAsync<string>(TASK_SELECTED_SNAPSHOT, ""),
       ]);
@@ -72,6 +96,7 @@ function TasksPageContent() {
         return;
       }
 
+      const cachedTasks = entityTasks.length > 0 ? entityTasks : bootstrapTasks;
       if (cachedTasks.length > 0) {
         setTasks(cachedTasks);
       }
@@ -105,8 +130,9 @@ function TasksPageContent() {
         snapshotPayload = [...merged.values()];
       }
 
-      setTasks(payload);
+      setTasks(snapshotPayload);
       writeEntitySnapshot(TASKS_SNAPSHOT, snapshotPayload);
+      cacheTasks(snapshotPayload, filter === "all");
       clearEntityCachesStale(TASK_CACHE_PREFIXES);
       setStatus(`Loaded ${payload.length} tasks`);
     } catch (error) {
@@ -122,6 +148,7 @@ function TasksPageContent() {
     setEstimateMin(task.estimate_min ? String(task.estimate_min) : "");
     setPriority(String(task.priority));
     setDueAt(task.due_at ? task.due_at.slice(0, 16) : "");
+    setEditorSeedId(task.id);
   }
 
   function clearEditor() {
@@ -131,6 +158,7 @@ function TasksPageContent() {
     setEstimateMin("30");
     setPriority("3");
     setDueAt("");
+    setEditorSeedId("");
   }
 
   async function createTask() {
@@ -274,6 +302,19 @@ function TasksPageContent() {
       window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
     };
   }, [loadTasks, token]);
+
+  useEffect(() => {
+    if (!selectedTask || selectedTask.id === editorSeedId) {
+      return;
+    }
+
+    setTitle(selectedTask.title);
+    setTaskStatus(selectedTask.status);
+    setEstimateMin(selectedTask.estimate_min ? String(selectedTask.estimate_min) : "");
+    setPriority(String(selectedTask.priority));
+    setDueAt(selectedTask.due_at ? selectedTask.due_at.slice(0, 16) : "");
+    setEditorSeedId(selectedTask.id);
+  }, [editorSeedId, selectedTask]);
 
   useEffect(() => {
     const requestedId = searchParams.get("task");

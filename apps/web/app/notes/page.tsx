@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
@@ -31,6 +32,19 @@ type Note = {
 const NOTES_SNAPSHOT = "notes.items";
 const NOTE_SELECTED_SNAPSHOT = "notes.selected";
 const NOTE_CACHE_PREFIXES = ["notes."];
+const NOTES_ENTITY_SCOPE = "notes.items";
+
+function cacheNotes(notes: Note[]): void {
+  void replaceEntityCacheScope(
+    NOTES_ENTITY_SCOPE,
+    notes.map((note) => ({
+      id: note.id,
+      value: note,
+      updated_at: note.updated_at,
+      search_text: `${note.title} ${note.body_md}`,
+    })),
+  );
+}
 
 function NotesPageContent() {
   const searchParams = useSearchParams();
@@ -40,6 +54,7 @@ function NotesPageContent() {
   const [title, setTitle] = useState("New note");
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("Ready");
+  const [editorSeedId, setEditorSeedId] = useState("");
 
   const visibleNotes = useMemo(() => applyOptimisticNotes(notes, outbox), [notes, outbox]);
   const selectedNote = visibleNotes.find((note) => note.id === selectedId) ?? null;
@@ -53,7 +68,8 @@ function NotesPageContent() {
     let cancelled = false;
 
     void (async () => {
-      const [cachedNotes, cachedSelectedId] = await Promise.all([
+      const [entityNotes, bootstrapNotes, cachedSelectedId] = await Promise.all([
+        readEntityCacheScope<Note>(NOTES_ENTITY_SCOPE),
         readEntitySnapshotAsync<Note[]>(NOTES_SNAPSHOT, []),
         readEntitySnapshotAsync<string>(NOTE_SELECTED_SNAPSHOT, ""),
       ]);
@@ -62,6 +78,7 @@ function NotesPageContent() {
         return;
       }
 
+      const cachedNotes = entityNotes.length > 0 ? entityNotes : bootstrapNotes;
       if (cachedNotes.length > 0) {
         setNotes(cachedNotes);
       }
@@ -80,6 +97,7 @@ function NotesPageContent() {
       const payload = await apiRequest<Note[]>(apiBase, token, "/v1/notes");
       setNotes(payload);
       writeEntitySnapshot(NOTES_SNAPSHOT, payload);
+      cacheNotes(payload);
       clearEntityCachesStale(NOTE_CACHE_PREFIXES);
       setStatus(`Loaded ${payload.length} notes`);
     } catch (error) {
@@ -92,12 +110,14 @@ function NotesPageContent() {
     setSelectedId(note.id);
     setTitle(note.title);
     setBody(note.body_md);
+    setEditorSeedId(note.id);
   }
 
   function clearEditor() {
     setSelectedId("");
     setTitle("New note");
     setBody("");
+    setEditorSeedId("");
   }
 
   async function createNote() {
@@ -203,6 +223,16 @@ function NotesPageContent() {
       window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
     };
   }, [loadNotes, token]);
+
+  useEffect(() => {
+    if (!selectedNote || selectedNote.id === editorSeedId) {
+      return;
+    }
+
+    setTitle(selectedNote.title);
+    setBody(selectedNote.body_md);
+    setEditorSeedId(selectedNote.id);
+  }, [editorSeedId, selectedNote]);
 
   useEffect(() => {
     const requestedId = searchParams.get("note");

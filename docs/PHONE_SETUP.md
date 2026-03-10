@@ -108,12 +108,15 @@ Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 
 1. Open the PWA.
 2. While online, open `/notes`, `/tasks`, `/calendar`, or `/artifacts` and load real data.
-3. For artifacts, open one item so the linked graph and version history are fetched into the local cache too.
-4. Disconnect from the network or point the API base at an unreachable host.
-5. Reload the same workspace and confirm the recent notes/tasks/calendar items or artifact detail panel still render from cache.
-6. Open `/search`, run a query that should match cached note/task text or an artifact summary, and confirm cached results appear even while offline.
-7. Create a clip, submit a review, or create a calendar event while offline to confirm the mutation enters the outbox.
-8. Reconnect, then use the session panel or `/sync-center` to replay the queued mutations and refresh the affected workspace caches.
+3. For notes/tasks, select one item so the editor can be restored from the cached entity record after a reload.
+4. For artifacts, open one item so the linked graph and version history are fetched into the local cache too.
+5. If you refresh `/tasks` under a filtered status, switch back to `All` once before going offline so you can confirm the canonical task cache still contains the broader list.
+6. Disconnect from the network or point the API base at an unreachable host.
+7. Reload the same workspace and confirm the recent notes/tasks/calendar items or artifact detail panel still render from cache.
+8. In `/tasks`, switch between `All` and a filtered status while offline to confirm the local cache, not only the last filtered response, drives the list.
+9. Open `/search`, run a query that should match cached note/task text or an artifact summary, and confirm cached results appear even while offline.
+10. Create a clip, submit a review, or create a calendar event while offline to confirm the mutation enters the outbox.
+11. Reconnect, then use the session panel or `/sync-center` to replay the queued mutations; the affected cache prefix should be marked stale until the workspace refresh clears it.
 
 ## 6) Test mobile share capture (deep-link path)
 

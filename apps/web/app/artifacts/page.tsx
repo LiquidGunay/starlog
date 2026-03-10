@@ -6,6 +6,12 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
 import {
+  readEntityCacheScope,
+  readEntityCacheValue,
+  replaceEntityCacheScope,
+  writeEntityCacheEntry,
+} from "../lib/entity-cache";
+import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
   clearEntityCachesStale,
@@ -52,6 +58,9 @@ const ARTIFACT_SELECTED_SNAPSHOT = "artifacts.selected";
 const ARTIFACT_GRAPH_SNAPSHOT = "artifacts.graph";
 const ARTIFACT_VERSIONS_SNAPSHOT = "artifacts.versions";
 const ARTIFACT_CACHE_PREFIXES = ["artifacts."];
+const ARTIFACT_ITEMS_ENTITY_SCOPE = "artifacts.items";
+const ARTIFACT_GRAPH_ENTITY_SCOPE = "artifacts.graph";
+const ARTIFACT_VERSIONS_ENTITY_SCOPE = "artifacts.versions";
 
 function artifactGraphCacheKey(artifactId: string): string {
   return `artifacts.graph:${artifactId}`;
@@ -59,6 +68,63 @@ function artifactGraphCacheKey(artifactId: string): string {
 
 function artifactVersionsCacheKey(artifactId: string): string {
   return `artifacts.versions:${artifactId}`;
+}
+
+function artifactGraphSearchText(graph: ArtifactGraph): string {
+  return [
+    graph.artifact.title,
+    graph.artifact.source_type,
+    ...graph.summaries.map((summary) => summary.content),
+    ...graph.cards.map((card) => card.prompt),
+    ...graph.tasks.map((task) => `${task.title} ${task.status}`),
+    ...graph.notes.map((note) => note.title),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function artifactVersionsSearchText(versions: ArtifactVersions): string {
+  return [
+    ...versions.actions.map((action) => `${action.action} ${action.status}`),
+    ...versions.summaries.map((summary) => `summary version ${summary.version}`),
+    ...versions.card_sets.map((cardSet) => `card set version ${cardSet.version}`),
+  ].join(" ");
+}
+
+function cacheArtifactItems(items: Artifact[]): void {
+  void replaceEntityCacheScope(
+    ARTIFACT_ITEMS_ENTITY_SCOPE,
+    items.map((artifact) => ({
+      id: artifact.id,
+      value: artifact,
+      updated_at: artifact.created_at,
+      search_text: [artifact.title, artifact.source_type].filter(Boolean).join(" "),
+    })),
+  );
+}
+
+function cacheArtifactContext(
+  artifactId: string,
+  graphPayload: ArtifactGraph,
+  versionPayload: ArtifactVersions,
+): void {
+  void Promise.all([
+    writeEntityCacheEntry(ARTIFACT_GRAPH_ENTITY_SCOPE, {
+      id: artifactId,
+      value: graphPayload,
+      updated_at: graphPayload.artifact.created_at,
+      search_text: artifactGraphSearchText(graphPayload),
+    }),
+    writeEntityCacheEntry(ARTIFACT_VERSIONS_ENTITY_SCOPE, {
+      id: artifactId,
+      value: versionPayload,
+      updated_at:
+        versionPayload.actions[0]?.created_at ??
+        versionPayload.summaries[0]?.created_at ??
+        graphPayload.artifact.created_at,
+      search_text: artifactVersionsSearchText(versionPayload),
+    }),
+  ]);
 }
 
 function ArtifactsPageContent() {
@@ -86,28 +152,47 @@ function ArtifactsPageContent() {
     let cancelled = false;
 
     void (async () => {
-      const [cachedItems, cachedSelectedId, cachedGraph, cachedVersions] = await Promise.all([
-        readEntitySnapshotAsync<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []),
-        readEntitySnapshotAsync<string>(ARTIFACT_SELECTED_SNAPSHOT, ""),
-        readEntitySnapshotAsync<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null),
-        readEntitySnapshotAsync<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null),
-      ]);
+      const cachedSelectedId = await readEntitySnapshotAsync<string>(ARTIFACT_SELECTED_SNAPSHOT, "");
+      const [entityItems, bootstrapItems, bootstrapGraph, bootstrapVersions, cachedGraph, cachedVersions] =
+        await Promise.all([
+          readEntityCacheScope<Artifact>(ARTIFACT_ITEMS_ENTITY_SCOPE),
+          readEntitySnapshotAsync<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []),
+          readEntitySnapshotAsync<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null),
+          readEntitySnapshotAsync<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null),
+          cachedSelectedId
+            ? readEntityCacheValue<ArtifactGraph | null>(ARTIFACT_GRAPH_ENTITY_SCOPE, cachedSelectedId, null)
+            : Promise.resolve(null),
+          cachedSelectedId
+            ? readEntityCacheValue<ArtifactVersions | null>(
+                ARTIFACT_VERSIONS_ENTITY_SCOPE,
+                cachedSelectedId,
+                null,
+              )
+            : Promise.resolve(null),
+        ]);
 
       if (cancelled) {
         return;
       }
 
+      const cachedItems = entityItems.length > 0 ? entityItems : bootstrapItems;
       if (cachedItems.length > 0) {
         setItems(cachedItems);
       }
       if (cachedSelectedId) {
         setSelectedId((previous) => previous || cachedSelectedId);
       }
-      if (cachedGraph) {
-        setGraph(cachedGraph);
+      const graphFallback =
+        cachedGraph ??
+        (!cachedSelectedId || bootstrapGraph?.artifact.id === cachedSelectedId ? bootstrapGraph : null);
+      const versionsFallback =
+        cachedVersions ??
+        (!cachedSelectedId || bootstrapGraph?.artifact.id === cachedSelectedId ? bootstrapVersions : null);
+      if (graphFallback) {
+        setGraph(graphFallback);
       }
-      if (cachedVersions) {
-        setVersions(cachedVersions);
+      if (versionsFallback) {
+        setVersions(versionsFallback);
       }
     })();
 
@@ -121,6 +206,7 @@ function ArtifactsPageContent() {
       const data = await apiRequest<Artifact[]>(apiBase, token, "/v1/artifacts");
       setItems(data);
       writeEntitySnapshot(ARTIFACT_ITEMS_SNAPSHOT, data);
+      cacheArtifactItems(data);
       clearEntityCachesStale(ARTIFACT_CACHE_PREFIXES);
       setStatus(`Loaded ${data.length} artifacts`);
       if (!selectedId && data.length > 0) {
@@ -182,19 +268,26 @@ function ArtifactsPageContent() {
       writeEntitySnapshot(ARTIFACT_VERSIONS_SNAPSHOT, versionPayload);
       writeEntitySnapshot(artifactGraphCacheKey(artifactId), graphPayload, { persistBootstrap: false });
       writeEntitySnapshot(artifactVersionsCacheKey(artifactId), versionPayload, { persistBootstrap: false });
+      cacheArtifactContext(artifactId, graphPayload, versionPayload);
       clearEntityCachesStale(ARTIFACT_CACHE_PREFIXES);
       setStatus(`Loaded graph for ${artifactId}`);
     } catch (error) {
-      const [cachedGraph, cachedVersions] = await Promise.all([
+      const sharedBootstrapGraph = readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null);
+      const sharedBootstrapVersions = readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null);
+      const [cachedGraph, cachedVersions, bootstrapGraph, bootstrapVersions] = await Promise.all([
+        readEntityCacheValue<ArtifactGraph | null>(ARTIFACT_GRAPH_ENTITY_SCOPE, artifactId, null),
+        readEntityCacheValue<ArtifactVersions | null>(ARTIFACT_VERSIONS_ENTITY_SCOPE, artifactId, null),
         readEntitySnapshotAsync<ArtifactGraph | null>(artifactGraphCacheKey(artifactId), null),
         readEntitySnapshotAsync<ArtifactVersions | null>(artifactVersionsCacheKey(artifactId), null),
       ]);
-      const bootstrapGraph = readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null);
-      const bootstrapVersions = readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null);
       const graphFallback =
-        cachedGraph ?? (bootstrapGraph?.artifact.id === artifactId ? bootstrapGraph : null);
+        cachedGraph ??
+        bootstrapGraph ??
+        (sharedBootstrapGraph?.artifact.id === artifactId ? sharedBootstrapGraph : null);
       const versionsFallback =
-        cachedVersions ?? (bootstrapGraph?.artifact.id === artifactId ? bootstrapVersions : null);
+        cachedVersions ??
+        bootstrapVersions ??
+        (sharedBootstrapGraph?.artifact.id === artifactId ? sharedBootstrapVersions : null);
 
       setGraph(graphFallback);
       setVersions(versionsFallback);
@@ -258,8 +351,8 @@ function ArtifactsPageContent() {
       const bootstrapGraph = readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null);
       const bootstrapVersions = readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null);
       const [cachedGraph, cachedVersions] = await Promise.all([
-        readEntitySnapshotAsync<ArtifactGraph | null>(artifactGraphCacheKey(selectedId), null),
-        readEntitySnapshotAsync<ArtifactVersions | null>(artifactVersionsCacheKey(selectedId), null),
+        readEntityCacheValue<ArtifactGraph | null>(ARTIFACT_GRAPH_ENTITY_SCOPE, selectedId, null),
+        readEntityCacheValue<ArtifactVersions | null>(ARTIFACT_VERSIONS_ENTITY_SCOPE, selectedId, null),
       ]);
 
       if (cancelled) {
@@ -270,9 +363,13 @@ function ArtifactsPageContent() {
       setVersions(
         cachedVersions ?? (bootstrapGraph?.artifact.id === selectedId ? bootstrapVersions : null),
       );
-    })();
 
-    loadArtifactContext(selectedId).catch(() => undefined);
+      if (cancelled) {
+        return;
+      }
+
+      void loadArtifactContext(selectedId);
+    })();
 
     return () => {
       cancelled = true;

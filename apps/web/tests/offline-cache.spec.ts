@@ -72,13 +72,79 @@ test("keeps cached notes readable after an offline reload", async ({ context, pa
   await waitForOfflineShell(page);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("button", { name: "Nebula Checklist" })).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue("Nebula Checklist");
+  await expect(page.getByLabel("Body")).toHaveValue("Pack telescope, battery, and journal.");
 
   allowNotesApi = false;
   await context.setOffline(true);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("button", { name: "Nebula Checklist" })).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue("Nebula Checklist");
+  await expect(page.getByLabel("Body")).toHaveValue("Pack telescope, battery, and journal.");
   await expect(page.locator(".status")).toContainText("Loaded cached notes");
+});
+
+test("keeps the canonical task cache available after a filtered refresh goes offline", async ({
+  context,
+  page,
+}) => {
+  await seedSession(page);
+  let allowTasksApi = true;
+
+  await page.route(`${API_BASE}/v1/tasks*`, async (route) => {
+    if (!allowTasksApi) {
+      await route.abort();
+      return;
+    }
+
+    const url = new URL(route.request().url());
+    const status = url.searchParams.get("status");
+    const tasks = [
+      {
+        id: "task-1",
+        title: "Pack tripod",
+        status: "todo",
+        estimate_min: 20,
+        priority: 4,
+        due_at: "2026-03-11T08:00:00.000Z",
+        created_at: "2026-03-10T08:00:00.000Z",
+        updated_at: "2026-03-10T08:30:00.000Z",
+      },
+      {
+        id: "task-2",
+        title: "Calibrate mount",
+        status: "done",
+        estimate_min: 45,
+        priority: 3,
+        due_at: null,
+        created_at: "2026-03-09T18:00:00.000Z",
+        updated_at: "2026-03-10T07:00:00.000Z",
+      },
+    ];
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(status ? tasks.filter((task) => task.status === status) : tasks),
+    });
+  });
+
+  await page.goto("/tasks");
+  await expect(page.getByRole("button", { name: "Pack tripod" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Calibrate mount" })).toBeVisible();
+
+  await page.locator(".panel .button-row").first().getByRole("button", { name: "Done" }).click();
+  await expect(page.locator(".status")).toContainText("Loaded 1 tasks");
+  await expect(page.getByRole("button", { name: "Calibrate mount" })).toBeVisible();
+
+  allowTasksApi = false;
+  await context.setOffline(true);
+
+  await page.locator(".panel .button-row").first().getByRole("button", { name: "All" }).click();
+  await expect(page.getByRole("button", { name: "Pack tripod" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Calibrate mount" })).toBeVisible();
+  await expect(page.locator(".status")).toContainText("Loaded cached tasks");
 });
 
 test("keeps artifact detail and offline search available from the local cache", async ({
