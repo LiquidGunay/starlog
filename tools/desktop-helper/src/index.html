@@ -108,6 +108,11 @@
       .diagnostic-detail {
         color: #dfe9ff;
       }
+      .diagnostic-note {
+        margin: 4px 0 0;
+        color: #c5d6ff;
+        font-size: 12px;
+      }
       .recent-card {
         border-top: 1px solid rgba(126, 168, 255, 0.2);
         padding-top: 10px;
@@ -168,6 +173,11 @@
 
       <div class="card">
         <p class="label">Runtime diagnostics</p>
+        <div class="row">
+          <button id="refreshDiagnostics" type="button">Refresh Diagnostics</button>
+          <button id="copyDiagnostics" type="button">Copy Diagnostics</button>
+        </div>
+        <p class="help">Copy a redacted diagnostics snapshot after refresh when you need to report a runtime issue.</p>
         <div id="runtimeDiagnostics">
           <p class="help">Checking runtime capabilities.</p>
         </div>

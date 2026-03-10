@@ -3,6 +3,8 @@ const apiBaseInput = document.getElementById("apiBase");
 const tokenInput = document.getElementById("token");
 const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
+const refreshDiagnosticsButton = document.getElementById("refreshDiagnostics");
+const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
 const runtimeDiagnosticsNode = document.getElementById("runtimeDiagnostics");
 const recentCapturesNode = document.getElementById("recentCaptures");
 const CONFIG_STORAGE_KEY = "starlog.desktop-helper.config.v1";
@@ -142,6 +144,7 @@ function normalizeCapability(source, fallbackDetail) {
       : typeof source?.preferred_backend === "string"
         ? source.preferred_backend
         : null,
+    note: typeof source?.note === "string" && source.note.trim() ? source.note.trim() : "",
     availableBackends,
     registrations,
   };
@@ -253,7 +256,133 @@ function renderRuntimeDiagnostics(diagnostics) {
     detail.textContent = item.detail;
     row.appendChild(detail);
 
+    if (item.note) {
+      const note = document.createElement("p");
+      note.className = "diagnostic-note";
+      note.textContent = item.note;
+      row.appendChild(note);
+    }
+
     runtimeDiagnosticsNode.appendChild(row);
+  }
+}
+
+function degradedStatusForCapability(key) {
+  return runtimeDiagnostics[key]?.status === "unavailable" ? "unavailable" : "degraded";
+}
+
+function updateCapabilityNote(key, note, patch = {}) {
+  mergeRuntimeDiagnostics({
+    [key]: {
+      ...patch,
+      note,
+    },
+  });
+}
+
+function appendFixHint(message, hint) {
+  if (!hint) {
+    return message;
+  }
+  return message.endsWith(".") ? `${message} ${hint}` : `${message}. ${hint}`;
+}
+
+function clipboardFailureHint(message) {
+  if (/permission denied|notallowederror|browser clipboard capture failed/i.test(message)) {
+    return "Focus the helper window and allow clipboard access, or use the native Tauri runtime.";
+  }
+  if (message.includes("wl-paste") || message.includes("xclip") || message.includes("xsel")) {
+    return "Install wl-paste, xclip, or xsel as indicated by the diagnostics card.";
+  }
+  if (message.includes("pbpaste")) {
+    return "Confirm pbpaste is available on PATH.";
+  }
+  if (message.includes("PowerShell")) {
+    return "Keep PowerShell available on PATH.";
+  }
+  return "";
+}
+
+function screenshotFailureHint(result, message) {
+  const backend = typeof result?.backend === "string" ? result.backend : "";
+  const status = typeof result?.status === "string" ? result.status : "";
+
+  if (backend === "screencapture") {
+    return status === "cancelled"
+      ? "Complete the macOS selection to capture a screenshot, or press Escape intentionally to cancel."
+      : "Confirm Screen Recording permission for the helper and that screencapture is available.";
+  }
+  if (backend === "powershell") {
+    return "Run the helper in a logged-in Windows desktop session and keep PowerShell available on PATH.";
+  }
+  if (backend === "grim+slurp") {
+    return status === "cancelled"
+      ? "Complete the slurp region selection instead of dismissing it."
+      : "Confirm grim and slurp are installed and that the Wayland session allows screenshot capture.";
+  }
+  if (backend === "gnome-screenshot") {
+    return status === "cancelled"
+      ? "Complete the GNOME area selection instead of dismissing it."
+      : "Confirm gnome-screenshot is installed and the desktop session allows screenshot capture.";
+  }
+  if (backend === "imagemagick-import") {
+    return status === "cancelled"
+      ? "Complete the ImageMagick region selection instead of dismissing it."
+      : "Confirm ImageMagick import is installed and the X11 session allows screenshot capture.";
+  }
+  if (backend === "grim") {
+    return "Install slurp to restore region picking, or keep using the full-screen grim fallback.";
+  }
+  if (backend === "scrot") {
+    return "Install gnome-screenshot or ImageMagick import for region picking, or keep using the full-screen scrot fallback.";
+  }
+  if (message.includes("requires") && message.includes("Linux")) {
+    return "Install one of grim/slurp, gnome-screenshot, ImageMagick import, grim, or scrot.";
+  }
+  if (message.includes("requires") && message.includes("Windows")) {
+    return "Install PowerShell and run the helper from a Windows desktop session.";
+  }
+  if (message.includes("requires") && message.includes("macOS")) {
+    return "Confirm the built-in screencapture tool is available.";
+  }
+  return "";
+}
+
+function buildRuntimeDiagnosticsSnapshot() {
+  return JSON.stringify({
+    capturedAt: new Date().toISOString(),
+    apiBase: readConfig().apiBase,
+    runtime: runtimeDiagnostics.runtime,
+    platform: runtimeDiagnostics.platform,
+    diagnostics: {
+      clipboard: runtimeDiagnostics.clipboard,
+      screenshot: runtimeDiagnostics.screenshot,
+      activeWindow: runtimeDiagnostics.activeWindow,
+      ocr: runtimeDiagnostics.ocr,
+      shortcuts: runtimeDiagnostics.shortcuts,
+    },
+  }, null, 2);
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  const copied = document.execCommand?.("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("Clipboard write API is unavailable in this runtime");
   }
 }
 
@@ -347,6 +476,13 @@ function renderRecentCaptures(entries) {
       ocr.className = "recent-meta";
       ocr.textContent = `OCR: ${entry.ocrEngine}`;
       card.appendChild(ocr);
+    }
+
+    if (entry.captureBackend) {
+      const backend = document.createElement("p");
+      backend.className = "recent-meta";
+      backend.textContent = `Capture backend: ${entry.captureBackend}`;
+      card.appendChild(backend);
     }
 
     if (entry.summary) {
@@ -604,6 +740,7 @@ async function clipClipboard() {
     const [clipboardResult, captureContext] = await Promise.all([readClipboardText(), readCaptureContext()]);
     const text = clipboardResult.text;
     if (!text) {
+      updateCapabilityNote("clipboard", "Last clipboard capture found no text.");
       setStatus("Clipboard is empty");
       return;
     }
@@ -624,11 +761,24 @@ async function clipClipboard() {
       windowTitle: captureContext.display.windowTitle,
       contextBackend: captureContext.display.contextBackend,
       platform: captureContext.display.platform,
+      captureBackend: clipboardResult.backend,
       summary: clipSummary(text),
     });
+    updateCapabilityNote(
+      "clipboard",
+      `Last clipboard capture succeeded via ${clipboardResult.backend}.`,
+      { status: "available" },
+    );
     setStatus(`Clip saved: ${artifactId}`);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Clipboard clip failed");
+    const message = error instanceof Error ? error.message : "Clipboard clip failed";
+    updateCapabilityNote("clipboard", appendFixHint(
+      `Last clipboard capture failed. ${message}`,
+      clipboardFailureHint(message),
+    ), {
+      status: degradedStatusForCapability("clipboard"),
+    });
+    setStatus(message);
   }
 }
 
@@ -637,6 +787,11 @@ async function clipScreenshot() {
   try {
     const tauriGlobal = window.__TAURI__;
     if (!tauriGlobal) {
+      updateCapabilityNote(
+        "screenshot",
+        "Last screenshot attempt failed because the helper is not running in the Tauri runtime.",
+        { status: "unavailable" },
+      );
       setStatus("Screenshot clip requires Tauri runtime");
       return;
     }
@@ -678,15 +833,37 @@ async function clipScreenshot() {
         contextBackend: captureContext.display.contextBackend,
         platform: captureContext.display.platform,
         ocrEngine: result.ocr_engine || "",
+        captureBackend: result.backend || "",
         summary: clipSummary(extractedText || result.message || fileName),
         previewDataUrl,
       });
+      updateCapabilityNote(
+        "screenshot",
+        `Last screenshot capture succeeded via ${result.backend || "native"}${result.ocr_engine ? ` with ${result.ocr_engine} OCR` : ""}.`,
+        { status: "available" },
+      );
       setStatus(`Clip saved: ${artifactId}`);
       return;
     }
-    setStatus(typeof result?.message === "string" ? result.message : String(result));
+    const message = typeof result?.message === "string" ? result.message : String(result);
+    const backendLabel = typeof result?.backend === "string" && result.backend ? ` via ${result.backend}` : "";
+    const attemptState = result?.status === "cancelled" ? "was cancelled" : "failed";
+    updateCapabilityNote("screenshot", appendFixHint(
+      `Last screenshot attempt ${attemptState}${backendLabel}. ${message}`,
+      screenshotFailureHint(result, message),
+    ), {
+      status: result?.status === "failed" ? degradedStatusForCapability("screenshot") : runtimeDiagnostics.screenshot.status,
+    });
+    setStatus(message);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Screenshot capture failed");
+    const message = error instanceof Error ? error.message : "Screenshot capture failed";
+    updateCapabilityNote("screenshot", appendFixHint(
+      `Last screenshot attempt failed. ${message}`,
+      screenshotFailureHint(null, message),
+    ), {
+      status: degradedStatusForCapability("screenshot"),
+    });
+    setStatus(message);
   } finally {
     await deleteCaptureFile(screenshotPath);
   }
@@ -784,11 +961,13 @@ function wireWindowShortcuts() {
     const key = event.key.toLowerCase();
     if (key === "c") {
       event.preventDefault();
+      updateCapabilityNote("shortcuts", "Last window-local shortcut: CommandOrControl+Shift+C via window-keydown.");
       clipClipboard().catch(() => undefined);
       return;
     }
     if (key === "s") {
       event.preventDefault();
+      updateCapabilityNote("shortcuts", "Last window-local shortcut: CommandOrControl+Shift+S via window-keydown.");
       clipScreenshot().catch(() => undefined);
     }
   });
@@ -796,13 +975,17 @@ function wireWindowShortcuts() {
 
 async function loadRuntimeDiagnostics() {
   if (!window.__TAURI__) {
-    mergeRuntimeDiagnostics(createBrowserRuntimeDiagnostics());
+    mergeRuntimeDiagnostics({
+      ...createBrowserRuntimeDiagnostics(),
+      shortcuts: runtimeDiagnostics.shortcuts,
+    });
     return;
   }
 
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const diagnostics = normalizeRuntimeDiagnostics(await invoke("inspect_runtime_diagnostics"));
+    diagnostics.shortcuts = runtimeDiagnostics.shortcuts;
     if (diagnostics.clipboard.status !== "available" && navigator.clipboard?.readText) {
       const availableBackends = diagnostics.clipboard.availableBackends.includes("browser-clipboard")
         ? diagnostics.clipboard.availableBackends
@@ -831,6 +1014,25 @@ async function loadRuntimeDiagnostics() {
   }
 }
 
+async function refreshRuntimeDiagnostics() {
+  setStatus("Refreshing diagnostics...");
+  try {
+    await loadRuntimeDiagnostics();
+    setStatus(window.__TAURI__ ? "Runtime diagnostics refreshed" : "Browser diagnostics refreshed");
+  } catch (error) {
+    setStatus(errorMessage(error, "Runtime diagnostics refresh failed"));
+  }
+}
+
+async function copyRuntimeDiagnostics() {
+  try {
+    await copyTextToClipboard(buildRuntimeDiagnosticsSnapshot());
+    setStatus("Diagnostics copied to clipboard");
+  } catch (error) {
+    setStatus(errorMessage(error, "Diagnostics copy failed"));
+  }
+}
+
 applyStoredConfig(readStoredConfig());
 renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
@@ -843,6 +1045,14 @@ clipSelectionButton.addEventListener("click", () => {
 
 clipScreenshotButton.addEventListener("click", () => {
   clipScreenshot().catch(() => undefined);
+});
+
+refreshDiagnosticsButton.addEventListener("click", () => {
+  refreshRuntimeDiagnostics().catch(() => undefined);
+});
+
+copyDiagnosticsButton.addEventListener("click", () => {
+  copyRuntimeDiagnostics().catch(() => undefined);
 });
 
 wireWindowShortcuts();
