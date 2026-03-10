@@ -15,6 +15,7 @@
     "android:emulator": "./scripts/android_emulator_boot.sh",
     "android:emulator:aosp": "AVD_NAME=starlog-api34-aosp ./scripts/android_emulator_boot.sh",
     "lint:web": "pnpm --filter web lint",
+    "test:web:offline-cache": "playwright test --config=playwright.web.config.ts",
     "test:desktop-helper": "playwright test",
     "test:android:smoke": "./scripts/android_native_smoke.sh"
   },

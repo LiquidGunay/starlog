@@ -1,10 +1,19 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { applyOptimisticCalendarEvents } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -50,6 +59,8 @@ const CALENDAR_EVENTS_SNAPSHOT = "calendar.events";
 const CALENDAR_CONFLICTS_SNAPSHOT = "calendar.conflicts";
 const CALENDAR_LAST_SYNC_SNAPSHOT = "calendar.last_sync";
 const CALENDAR_SELECTED_DAY_SNAPSHOT = "calendar.selected_day";
+const CALENDAR_CACHE_PREFIXES = ["calendar."];
+const CALENDAR_EVENTS_ENTITY_SCOPE = "calendar.events";
 
 function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -89,6 +100,18 @@ function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function cacheCalendarEvents(events: CalendarEvent[]): void {
+  void replaceEntityCacheScope(
+    CALENDAR_EVENTS_ENTITY_SCOPE,
+    events.map((event) => ({
+      id: event.id,
+      value: event,
+      updated_at: event.starts_at,
+      search_text: `${event.title} ${event.source} ${event.starts_at} ${event.ends_at}`,
+    })),
+  );
+}
+
 function CalendarPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
@@ -108,6 +131,43 @@ function CalendarPageContent() {
     setConflicts((previous) => previous.length > 0 ? previous : readEntitySnapshot<CalendarConflict[]>(CALENDAR_CONFLICTS_SNAPSHOT, []));
     setLastSync((previous) => previous ?? readEntitySnapshot<GoogleSyncResult | null>(CALENDAR_LAST_SYNC_SNAPSHOT, null));
     setSelectedDay((previous) => previous || readEntitySnapshot<string>(CALENDAR_SELECTED_DAY_SNAPSHOT, isoDate(new Date())));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [entityEvents, bootstrapEvents, cachedConflicts, cachedLastSync, cachedSelectedDay] =
+        await Promise.all([
+          readEntityCacheScope<CalendarEvent>(CALENDAR_EVENTS_ENTITY_SCOPE),
+          readEntitySnapshotAsync<CalendarEvent[]>(CALENDAR_EVENTS_SNAPSHOT, []),
+          readEntitySnapshotAsync<CalendarConflict[]>(CALENDAR_CONFLICTS_SNAPSHOT, []),
+          readEntitySnapshotAsync<GoogleSyncResult | null>(CALENDAR_LAST_SYNC_SNAPSHOT, null),
+          readEntitySnapshotAsync<string>(CALENDAR_SELECTED_DAY_SNAPSHOT, isoDate(new Date())),
+        ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const cachedEvents = entityEvents.length > 0 ? entityEvents : bootstrapEvents;
+      if (cachedEvents.length > 0) {
+        setEvents(cachedEvents);
+      }
+      if (cachedConflicts.length > 0) {
+        setConflicts(cachedConflicts);
+      }
+      if (cachedLastSync) {
+        setLastSync(cachedLastSync);
+      }
+      if (cachedSelectedDay) {
+        setSelectedDay((previous) => previous || cachedSelectedDay);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const weekDays = useMemo(() => {
@@ -143,7 +203,7 @@ function CalendarPageContent() {
     return buckets;
   }, [visibleEvents, weekDays]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       const [eventPayload, conflictPayload] = await Promise.all([
         apiRequest<CalendarEvent[]>(apiBase, token, "/v1/calendar/events"),
@@ -153,12 +213,14 @@ function CalendarPageContent() {
       setConflicts(conflictPayload);
       writeEntitySnapshot(CALENDAR_EVENTS_SNAPSHOT, eventPayload);
       writeEntitySnapshot(CALENDAR_CONFLICTS_SNAPSHOT, conflictPayload);
+      cacheCalendarEvents(eventPayload);
+      clearEntityCachesStale(CALENDAR_CACHE_PREFIXES);
       setStatus(`Loaded ${eventPayload.length} events`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Calendar load failed";
       setStatus(events.length > 0 ? `Loaded cached calendar. ${detail}` : detail);
     }
-  }
+  }, [apiBase, events.length, token]);
 
   async function submitEvent() {
     if (!title.trim()) {
@@ -298,6 +360,40 @@ function CalendarPageContent() {
   useEffect(() => {
     writeEntitySnapshot(CALENDAR_SELECTED_DAY_SNAPSHOT, selectedDay);
   }, [selectedDay]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    refresh().catch(() => undefined);
+  }, [refresh, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(CALENDAR_CACHE_PREFIXES)) {
+        return;
+      }
+      refresh().catch(() => undefined);
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, CALENDAR_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
+  }, [refresh, token]);
 
   async function replayConflict(conflictId: string) {
     try {

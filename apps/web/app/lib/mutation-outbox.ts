@@ -149,3 +149,35 @@ export function createActivityId(
 export function appendReplayEntry(entries: ReplayEntry[], entry: ReplayEntry): ReplayEntry[] {
   return [entry, ...entries].slice(0, MAX_REPLAY_ENTRIES);
 }
+
+export function cachePrefixesForMutation(
+  mutation: Pick<QueuedMutation, "entity" | "path" | "method">,
+): string[] {
+  if (mutation.entity === "artifact" || mutation.entity === "artifact_action") {
+    return ["artifacts."];
+  }
+  if (mutation.entity === "note") {
+    return ["notes."];
+  }
+  if (mutation.entity === "task") {
+    return ["tasks."];
+  }
+  if (mutation.entity === "calendar_event") {
+    return ["calendar."];
+  }
+
+  if (mutation.path.startsWith("/v1/artifacts/") || mutation.path === "/v1/capture") {
+    return ["artifacts."];
+  }
+  if (mutation.path.startsWith("/v1/notes")) {
+    return ["notes."];
+  }
+  if (mutation.path.startsWith("/v1/tasks")) {
+    return ["tasks."];
+  }
+  if (mutation.path.startsWith("/v1/calendar/events")) {
+    return ["calendar."];
+  }
+
+  return [];
+}

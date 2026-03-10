@@ -4,7 +4,16 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { applyOptimisticNotes } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -22,6 +31,20 @@ type Note = {
 
 const NOTES_SNAPSHOT = "notes.items";
 const NOTE_SELECTED_SNAPSHOT = "notes.selected";
+const NOTE_CACHE_PREFIXES = ["notes."];
+const NOTES_ENTITY_SCOPE = "notes.items";
+
+function cacheNotes(notes: Note[]): void {
+  void replaceEntityCacheScope(
+    NOTES_ENTITY_SCOPE,
+    notes.map((note) => ({
+      id: note.id,
+      value: note,
+      updated_at: note.updated_at,
+      search_text: `${note.title} ${note.body_md}`,
+    })),
+  );
+}
 
 function NotesPageContent() {
   const searchParams = useSearchParams();
@@ -31,6 +54,7 @@ function NotesPageContent() {
   const [title, setTitle] = useState("New note");
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("Ready");
+  const [editorSeedId, setEditorSeedId] = useState("");
 
   const visibleNotes = useMemo(() => applyOptimisticNotes(notes, outbox), [notes, outbox]);
   const selectedNote = visibleNotes.find((note) => note.id === selectedId) ?? null;
@@ -40,11 +64,41 @@ function NotesPageContent() {
     setSelectedId((previous) => previous || readEntitySnapshot<string>(NOTE_SELECTED_SNAPSHOT, ""));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [entityNotes, bootstrapNotes, cachedSelectedId] = await Promise.all([
+        readEntityCacheScope<Note>(NOTES_ENTITY_SCOPE),
+        readEntitySnapshotAsync<Note[]>(NOTES_SNAPSHOT, []),
+        readEntitySnapshotAsync<string>(NOTE_SELECTED_SNAPSHOT, ""),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const cachedNotes = entityNotes.length > 0 ? entityNotes : bootstrapNotes;
+      if (cachedNotes.length > 0) {
+        setNotes(cachedNotes);
+      }
+      if (cachedSelectedId) {
+        setSelectedId((previous) => previous || cachedSelectedId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadNotes = useCallback(async () => {
     try {
       const payload = await apiRequest<Note[]>(apiBase, token, "/v1/notes");
       setNotes(payload);
       writeEntitySnapshot(NOTES_SNAPSHOT, payload);
+      cacheNotes(payload);
+      clearEntityCachesStale(NOTE_CACHE_PREFIXES);
       setStatus(`Loaded ${payload.length} notes`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load notes";
@@ -56,12 +110,14 @@ function NotesPageContent() {
     setSelectedId(note.id);
     setTitle(note.title);
     setBody(note.body_md);
+    setEditorSeedId(note.id);
   }
 
   function clearEditor() {
     setSelectedId("");
     setTitle("New note");
     setBody("");
+    setEditorSeedId("");
   }
 
   async function createNote() {
@@ -140,6 +196,43 @@ function NotesPageContent() {
     }
     loadNotes().catch(() => undefined);
   }, [loadNotes, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(NOTE_CACHE_PREFIXES)) {
+        return;
+      }
+      loadNotes().catch(() => undefined);
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, NOTE_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
+  }, [loadNotes, token]);
+
+  useEffect(() => {
+    if (!selectedNote || selectedNote.id === editorSeedId) {
+      return;
+    }
+
+    setTitle(selectedNote.title);
+    setBody(selectedNote.body_md);
+    setEditorSeedId(selectedNote.id);
+  }, [editorSeedId, selectedNote]);
 
   useEffect(() => {
     const requestedId = searchParams.get("note");

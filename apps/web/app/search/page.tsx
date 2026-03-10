@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { searchLocalSnapshots } from "../lib/local-search";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -43,13 +43,28 @@ function resultHref(result: SearchResult): string {
 }
 
 export default function SearchPage() {
-  const { apiBase, token } = useSessionConfig();
+  const { apiBase, token, outbox } = useSessionConfig();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState("Ready");
 
   useEffect(() => {
     setResults((previous) => previous.length > 0 ? previous : readEntitySnapshot<SearchResult[]>(SEARCH_RESULTS_SNAPSHOT, []));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const cachedResults = await readEntitySnapshotAsync<SearchResult[]>(SEARCH_RESULTS_SNAPSHOT, []);
+      if (!cancelled && cachedResults.length > 0) {
+        setResults(cachedResults);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function runSearch() {
@@ -68,7 +83,7 @@ export default function SearchPage() {
       writeEntitySnapshot(SEARCH_RESULTS_SNAPSHOT, payload.results);
       setStatus(`Found ${payload.total} result(s)`);
     } catch (error) {
-      const fallback = searchLocalSnapshots(query.trim(), 30);
+      const fallback = await searchLocalSnapshots(query.trim(), outbox, 30);
       setResults(fallback);
       writeEntitySnapshot(SEARCH_RESULTS_SNAPSHOT, fallback);
       const detail = error instanceof Error ? error.message : "Search failed";

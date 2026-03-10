@@ -102,10 +102,20 @@
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
 - Mobile companion now exposes on-device TTS for selected artifact playback.
 - Briefings can now queue local TTS audio rendering jobs through `/v1/briefings/{briefing_id}/audio/render`, attach rendered media back onto the package, and be cached/played from pre-rendered audio on phone.
-- Key PWA workspaces now keep best-effort local entity snapshots for artifacts, notes, tasks, calendar, and assistant history so recent state remains readable offline.
+- Key PWA workspaces now persist IndexedDB-backed local caches for artifacts, per-artifact graph/version detail, notes, tasks, calendar, search results, and assistant history, with localStorage retained only as a bootstrap fallback.
+- Key PWA workspaces now also keep per-entity IndexedDB records for notes, tasks, calendar events, artifact lists, and artifact detail, so offline reloads can restore selected editors/details from a real entity cache instead of only coarse snapshot blobs.
+- PWA offline search now reads the IndexedDB cache, reuses cached artifact graph detail, and overlays queued note/task/calendar/artifact mutations so offline retrieval stays useful after local edits.
+- Filtered task refreshes now merge back into the canonical local task cache, so switching filters or reloading offline does not collapse the offline task/search view down to only the most recently fetched subset.
+- PWA mutation replay now marks affected cache scopes stale, key workspaces auto-refresh those scopes on reconnect, and the service worker now caches core app-shell routes/assets so offline reloads can reach the cached entity data.
 - Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
+
+## Validation run for this pass
+
+- `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/tsc --noEmit`
+- `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/next lint`
+- `cd /home/ubuntu/starlog && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
 
 ## Next implementation targets
 
@@ -113,5 +123,5 @@
 2. Finish real macOS/Windows/Linux desktop validation against the helper's runtime diagnostics matrix now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, browser clipboard fallback, and release builds are in place.
 3. Harden the local TTS worker path further with deeper provider validation and richer job orchestration beyond the current local wrapper set plus cancel/retry controls.
 4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized.
-5. Deepen PWA local-first caches beyond the current local-snapshot reads (IndexedDB entity snapshots, offline detail/search reads, and cache invalidation rules).
+5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
 6. Implement actual phone-local STT/LLM backends that honor the shared execution policy instead of routing those capabilities only through the queued/local-server paths.
