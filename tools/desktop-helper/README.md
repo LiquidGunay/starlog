@@ -21,9 +21,9 @@ Desktop helper for clipping content from non-browser apps.
 
 | Surface | Linux | macOS | Windows | Notes |
 | --- | --- | --- | --- | --- |
-| Clipboard capture | `wl-paste`, `xclip`, or `xsel`; browser fallback while focused | `pbpaste` | PowerShell `Get-Clipboard` | Diagnostics card reports the preferred backend. |
-| Screenshot capture | `grim+slurp`, `gnome-screenshot`, `import`, `grim`, or `scrot` | `screencapture -i` | PowerShell full-screen capture | Linux falls back to full-screen capture when only `grim` or `scrot` is present. |
-| Active window metadata | `xdotool` or `hyprctl` | `osascript` | PowerShell user32 bridge | Missing metadata does not block capture. |
+| Clipboard capture | Validated via local helper build; requires `wl-paste`, `xclip`, or `xsel`; browser fallback while focused | Expected via `pbpaste`; real-host validation still pending | Validated on 2026-03-10 via `powershell.exe` `Get-Clipboard -Raw` from the host | Diagnostics card reports the preferred backend and now points at PowerShell/host-session fixes on Windows. |
+| Screenshot capture | Validated via local helper build; requires `grim+slurp`, `gnome-screenshot`, `import`, `grim`, or `scrot` | Expected via `screencapture -i`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell full-screen capture into `%TEMP%` | Linux falls back to full-screen capture when only `grim` or `scrot` is present. Windows errors now mention the interactive desktop-session requirement. |
+| Active window metadata | Validated via local helper build; uses `xdotool` or `hyprctl` | Expected via `osascript`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell user32 bridge after fixing the `$PID` variable collision in the probe script | Missing metadata does not block capture, but diagnostics now degrade with actionable host guidance instead of silently implying success. |
 | OCR | `tesseract` | `tesseract` | `tesseract` | OCR is intentionally local-only. |
 | Shortcut wiring | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Window-local key handling remains the last-resort fallback. |
 
@@ -32,7 +32,7 @@ Desktop helper for clipping content from non-browser apps.
 | Host path | Date | Checks | Result |
 | --- | --- | --- | --- |
 | Linux helper workspace in this repo | 2026-03-10 | Playwright helper UI tests, `cargo check`, Linux Tauri release build | Passed. Browser fallback logic, runtime note rendering, Rust backend checks, and the Linux release artifact stayed green. |
-| Windows host backend from WSL via `powershell.exe` | 2026-03-10 | `Get-Clipboard -Raw`, PowerShell full-screen screenshot capture | Passed. Clipboard returned `STATUS=ok` with `LENGTH=141`, and screenshot capture wrote `C:\Users\bossg\AppData\Local\Temp\starlog-host-matrix-test.png` with `SIZE=192937`. |
+| Windows host backend from WSL via `powershell.exe` | 2026-03-10 | PowerShell version probe, `Get-Clipboard -Raw`, foreground-window probe, full-screen screenshot capture | Passed. PowerShell reported `5.1.26100.7705`; clipboard returned `STATUS=ok` with `LENGTH=141`; the foreground-window probe returned `APP:Codex` / `TITLE:Codex`; screenshot capture wrote `C:\Users\bossg\AppData\Local\Temp\starlog-host-matrix-test.png` with `SIZE=192937`. |
 | Windows OCR/tooling probe from WSL via `cmd.exe` | 2026-03-10 | `where tesseract` | Not installed on the Windows `PATH` in this host check, so OCR remains a setup dependency even though screenshot capture itself worked. |
 | Windows shortcut path | 2026-03-10 | Manual-only check | Not directly automatable from WSL. The helper still exposes the same Tauri global-shortcut plus window-keydown fallback matrix documented below. |
 
@@ -43,6 +43,7 @@ Desktop helper for clipping content from non-browser apps.
 | Linux | Screenshot diagnostics prefer `grim` or `scrot` only | Region capture is not fully available. Install `slurp`, `gnome-screenshot`, or ImageMagick `import` to restore an area-selection backend. |
 | macOS | Screenshot note says the `screencapture` attempt was cancelled | Dismissing the selection is expected to report a cancellation. Re-run the capture and complete the selection, and grant Screen Recording permission if every attempt fails. |
 | Windows | Screenshot note says the `powershell` attempt failed | Run the helper in a logged-in Windows desktop session and keep `powershell.exe` on `PATH`. When running probe scripts from WSL, use `-ExecutionPolicy Bypass` because unsigned `\\wsl$` scripts are blocked by default. |
+| Windows | Active window diagnostics degrade or recent captures show `powershell-user32-error` | Keep a normal Windows app focused, then refresh diagnostics or retry the clip. If the problem persists, confirm PowerShell can still load `user32.dll` from the interactive session. |
 | Windows | OCR is marked degraded or unavailable | Install `tesseract` on the Windows `PATH`. Screenshot capture still works without OCR, but extracted text will stay empty until `tesseract` is present. |
 | Browser fallback | Clipboard note mentions permission denial | Focus the helper window and allow clipboard access, or switch back to the native Tauri runtime for the preferred clipboard path. |
 
@@ -51,6 +52,11 @@ Desktop helper for clipping content from non-browser apps.
 - Browser-style validation: `./node_modules/.bin/playwright test`
 - Rust backend validation: `cd tools/desktop-helper/src-tauri && cargo check`
 - Native helper build: `cd tools/desktop-helper && ./node_modules/.bin/tauri build`
+- Windows host probes used in this branch:
+  - `powershell.exe -NoProfile -Command 'Write-Output $PSVersionTable.PSVersion.ToString()'`
+  - `powershell.exe -NoProfile -Command 'Get-Clipboard -Raw'`
+  - PowerShell user32 foreground-window probe matching the helper script
+  - PowerShell full-screen screenshot probe matching the helper script
 
 ## Manual runtime checks
 
