@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_db, require_user_id
 from app.schemas.integrations import (
+    CodexBridgeContractResponse,
     ExecutionPolicyRequest,
     ExecutionPolicyResponse,
     ProviderConfigRequest,
@@ -39,6 +40,15 @@ def configure_provider(
         config=payload.config,
     )
     return ProviderConfigResponse.model_validate(config)
+
+
+@router.get("/providers/codex_bridge/contract", response_model=CodexBridgeContractResponse)
+def codex_bridge_contract(
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> CodexBridgeContractResponse:
+    contract = integrations_service.codex_bridge_contract(db)
+    return CodexBridgeContractResponse.model_validate(contract)
 
 
 @router.get("/providers/{provider_name}/health", response_model=ProviderHealthResponse)

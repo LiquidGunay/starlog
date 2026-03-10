@@ -228,11 +228,15 @@ def _codex_bridge_provider(conn: Connection | None, capability: str, payload: di
     if capability not in LLM_CAPABILITIES:
         raise ProviderError(f"Codex bridge unavailable for capability {capability}")
 
-    provider = _provider_record(conn, "codex_bridge")
-    if provider is None:
-        raise ProviderError("Codex bridge not configured")
+    if conn is None:
+        raise ProviderError("Codex bridge requires an active provider configuration")
 
-    config = dict(provider["config"])
+    config, missing_requirements = integrations_service.codex_bridge_runtime_config(conn)
+    if config is None:
+        detail = missing_requirements[0] if missing_requirements else "Codex bridge is unavailable"
+        raise ProviderError(detail)
+
+    config = dict(config)
     config.setdefault("model", payload.get("model") or "gpt-4.1-mini")
     return _invoke_openai_compatible("codex_bridge", config, capability, payload)
 

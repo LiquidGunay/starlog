@@ -66,6 +66,7 @@
 - Provider health now includes localhost runtime endpoint probes for local-mode providers.
 - Provider health now supports auth-level probes for Google OAuth and opt-in remote/API providers via `auth_probe_url`.
 - Codex bridge health now derives authenticated model-list probes from the configured bridge URL when explicit probe URLs are not supplied.
+- Codex bridge now also exposes an explicit contract endpoint in the API/UI, requires `experimental_enabled=true` plus `adapter_kind=openai_compatible` before execution, and falls back safely when the bridge is not explicitly opted in.
 - Artifact summarize/cards/tasks actions now flow through the AI provider chain (local -> codex bridge -> API fallback) instead of template-only stubs.
 - Google sync run responses now include `run_id`, and conflict details now carry sync run/phase metadata for replay diagnostics.
 - Google sync conflicts can now trigger replay runs from the API and planner/calendar UI surfaces.
@@ -114,6 +115,7 @@
 
 ## Validation run for this pass
 
+- `cd /home/ubuntu/starlog/services/api && uv run --project services/api --extra dev pytest tests/test_api_flows.py -k 'provider_config_and_webhooks or execution_policy_controls_ai_routing or codex_bridge_requires_explicit_opt_in_for_execution' -s`
 - `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/tsc --noEmit`
 - `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/next lint`
 - `cd /home/ubuntu/starlog && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
@@ -123,7 +125,7 @@
 1. Add the missing iOS share-extension path and re-run share-parity checks against the current Android native-share flow.
 2. Finish real macOS/Windows/Linux desktop validation against the helper's runtime diagnostics matrix now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, browser clipboard fallback, and release builds are in place.
 3. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
-4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized, or land a crisp adapter boundary if it is not.
+4. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
 5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, sync-center, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
 6. Implement an actual phone-local STT backend that honors the shared execution policy instead of routing that capability only through the queued/local-server paths.
 7. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.

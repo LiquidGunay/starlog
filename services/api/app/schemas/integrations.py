@@ -28,6 +28,26 @@ class ProviderHealthResponse(BaseModel):
     auth_probe: dict[str, str] = Field(default_factory=dict)
 
 
+class CodexBridgeContractResponse(BaseModel):
+    provider_name: str
+    summary: str
+    feature_flag_key: str
+    supported_adapter_kinds: list[str] = Field(default_factory=list)
+    configured_adapter_kind: str | None = None
+    supported_auth: list[str] = Field(default_factory=list)
+    supported_capabilities: list[str] = Field(default_factory=list)
+    unsupported_capabilities: list[str] = Field(default_factory=list)
+    required_config: list[str] = Field(default_factory=list)
+    optional_config: list[str] = Field(default_factory=list)
+    native_oauth_supported: bool = False
+    safe_fallback: str
+    configured: bool = False
+    enabled: bool = False
+    execute_enabled: bool = False
+    missing_requirements: list[str] = Field(default_factory=list)
+    derived_endpoints: dict[str, str] = Field(default_factory=dict)
+
+
 ExecutionTarget = Literal["on_device", "server_local", "batch_local_bridge", "codex_bridge", "api_fallback"]
 
 

@@ -134,7 +134,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 4. Native Codex bridge adapter
 
 - Branch: `codex/native-codex-bridge`
-- Lock: `UNCLAIMED`
+- Lock: `Agent 2 claimed 2026-03-10 11:44 UTC`
 - Goal: add the real Codex-subscription/OAuth bridge path if the contract is ready, or crisply define the boundary if it is not.
 - Scope:
   - inspect the current bridge assumptions,
