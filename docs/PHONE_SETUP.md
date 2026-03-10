@@ -101,6 +101,14 @@ pnpm --filter mobile start
 5. If you queued a voice command or Codex command, tap `Refresh Jobs` in the assistant panel to inspect the transcript/executed command result after the worker finishes.
 6. If you installed the Android dev build, share text, a URL, an image/file, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
 7. If you have `adb` access to the device/emulator, you can also run `pnpm test:android:smoke` from repo root to install the current debug APK and trigger both a deep-link capture and a plain-text Android share intent automatically.
+8. On this host, if WSL `adb shell` is flaky but Windows `adb.exe` can still see the phone, use the Windows-host fallback instead:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 -ReversePorts "8081,8000"
+```
+
+9. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before Android validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
+10. If you validate the native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.
 
 Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 
@@ -146,6 +154,11 @@ This requires the Android dev build from `docs/ANDROID_DEV_BUILD.md`; it does no
    - `voiceClipUri` preloaded for shared audio so `Upload / Queue Voice` can send it to the API
    - shared media still present if the app backgrounds/restarts before you submit
 5. Submit or queue the capture normally inside Starlog.
+6. Expected validation outcomes:
+   - text/URL shares prefill quick capture fields,
+   - file/image shares show one or more shared drafts and later upload as media-backed artifacts,
+   - audio shares populate the `Voice clip` slot without re-recording,
+   - drafts survive brief app backgrounding/restart before submit.
 
 ## 7) Test installed PWA share target
 

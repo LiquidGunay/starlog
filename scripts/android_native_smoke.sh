@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.local/android}}"
 ADB="${ADB:-$ANDROID_SDK_ROOT/platform-tools/adb}"
+ADB_SERIAL="${ADB_SERIAL:-}"
 APK_PATH="${APK_PATH:-$ROOT_DIR/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk}"
 APP_PACKAGE="${APP_PACKAGE:-com.starlog.app.dev}"
 APP_ACTIVITY="${APP_ACTIVITY:-$APP_PACKAGE/.MainActivity}"
@@ -12,6 +13,11 @@ SHARE_TITLE="${SHARE_TITLE:-Starlog native share}"
 SHARE_TEXT="${SHARE_TEXT:-Hello from the Starlog Android smoke script}"
 WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-180}"
 INSTALL_TIMEOUT_SECONDS="${INSTALL_TIMEOUT_SECONDS:-180}"
+REVERSE_PORTS="${REVERSE_PORTS:-}"
+SKIP_INSTALL="${SKIP_INSTALL:-0}"
+SKIP_LAUNCH="${SKIP_LAUNCH:-0}"
+SKIP_DEEP_LINK="${SKIP_DEEP_LINK:-0}"
+SKIP_TEXT_SHARE="${SKIP_TEXT_SHARE:-0}"
 
 usage() {
   cat <<EOF
@@ -23,6 +29,7 @@ launches the app, sends a deep-link capture, and sends a text share intent.
 Environment overrides:
   ANDROID_SDK_ROOT       Android SDK root (default: \$HOME/.local/android)
   ADB                    Explicit adb path
+  ADB_SERIAL             Explicit adb serial/device id
   APK_PATH               APK to install
   APP_PACKAGE            Android package name (default: com.starlog.app.dev)
   APP_ACTIVITY           Fully qualified launch activity (default: com.starlog.app.dev/.MainActivity)
@@ -31,6 +38,11 @@ Environment overrides:
   SHARE_TEXT             android.intent.extra.TEXT for the text share
   WAIT_TIMEOUT_SECONDS   Boot/package-manager wait timeout (default: 180)
   INSTALL_TIMEOUT_SECONDS  APK install retry timeout (default: 180)
+  REVERSE_PORTS          Comma-separated ports to adb reverse before launch (example: 8081,8000)
+  SKIP_INSTALL           Set to 1 to skip adb install
+  SKIP_LAUNCH            Set to 1 to skip the initial app launch
+  SKIP_DEEP_LINK         Set to 1 to skip the deep-link capture
+  SKIP_TEXT_SHARE        Set to 1 to skip the plain-text share intent
 EOF
 }
 
@@ -47,8 +59,43 @@ require_file() {
   fi
 }
 
+require_command_or_file() {
+  local value="$1"
+  local label="$2"
+  if [[ -f "$value" ]] || command -v "$value" >/dev/null 2>&1; then
+    return
+  fi
+  printf '%s not found: %s\n' "$label" "$value" >&2
+  exit 1
+}
+
 adb_cmd() {
+  if [[ -n "$ADB_SERIAL" ]]; then
+    "$ADB" -s "$ADB_SERIAL" "$@"
+    return
+  fi
   "$ADB" "$@"
+}
+
+is_enabled() {
+  [[ "$1" != "1" ]]
+}
+
+maybe_reverse_ports() {
+  if [[ -z "$REVERSE_PORTS" ]]; then
+    return
+  fi
+
+  local raw_ports="$REVERSE_PORTS"
+  IFS=',' read -ra ports <<<"$raw_ports"
+  for port in "${ports[@]}"; do
+    port="${port//[[:space:]]/}"
+    if [[ -z "$port" ]]; then
+      continue
+    fi
+    log "Reversing tcp:$port"
+    adb_cmd reverse "tcp:$port" "tcp:$port" >/dev/null
+  done
 }
 
 wait_for_runtime() {
@@ -122,18 +169,38 @@ if [[ "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-require_file "$ADB" "adb"
-require_file "$APK_PATH" "APK"
+require_command_or_file "$ADB" "adb"
+if is_enabled "$SKIP_INSTALL"; then
+  require_file "$APK_PATH" "APK"
+fi
 
 wait_for_runtime
+maybe_reverse_ports
 
-log "Installing debug APK"
-install_apk
+if is_enabled "$SKIP_INSTALL"; then
+  log "Installing debug APK"
+  install_apk
+else
+  log "Skipping APK install"
+fi
 
-log "Launching app"
-adb_cmd shell am start -W -n "$APP_ACTIVITY" >/dev/null
+if is_enabled "$SKIP_LAUNCH"; then
+  log "Launching app"
+  adb_cmd shell am start -W -n "$APP_ACTIVITY" >/dev/null
+else
+  log "Skipping initial app launch"
+fi
 
-send_deep_link
-send_text_share
+if is_enabled "$SKIP_DEEP_LINK"; then
+  send_deep_link
+else
+  log "Skipping deep-link capture"
+fi
+
+if is_enabled "$SKIP_TEXT_SHARE"; then
+  send_text_share
+else
+  log "Skipping text share intent"
+fi
 
 log "Smoke flow completed. Inspect the device/emulator UI to confirm the Starlog quick-capture state."
