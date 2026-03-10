@@ -46,6 +46,7 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-09: User wants Playwright used for browser-style testing when validating changes.
 - 2026-03-09: User wants to be asked before any Railway deployment is made.
 - 2026-03-10: User wants pending work broken into concrete workitems and run in parallel across separate `codex/*` branches / Codex instances.
+- 2026-03-10: User wants parallel agents to claim work items by writing an explicit lock in `docs/CODEX_PARALLEL_WORK_ITEMS.md` before starting implementation.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
