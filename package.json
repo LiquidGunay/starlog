@@ -12,6 +12,14 @@
     "dev:web": "pnpm --filter web dev",
     "dev:mobile": "pnpm --filter mobile start",
     "dev:desktop-helper": "pnpm --filter starlog-desktop-helper dev",
-    "lint:web": "pnpm --filter web lint"
+    "android:emulator": "./scripts/android_emulator_boot.sh",
+    "android:emulator:aosp": "AVD_NAME=starlog-api34-aosp ./scripts/android_emulator_boot.sh",
+    "lint:web": "pnpm --filter web lint",
+    "test:desktop-helper": "playwright test",
+    "test:android:smoke": "./scripts/android_native_smoke.sh"
+  },
+  "devDependencies": {
+    "@expo/ngrok": "^4.1.0",
+    "@playwright/test": "^1.58.2"
   }
 }

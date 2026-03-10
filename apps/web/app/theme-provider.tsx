@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type Theme = "dark" | "light";
 
@@ -25,7 +25,7 @@ function resolveInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
-export function ThemeProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
   useEffect(() => {

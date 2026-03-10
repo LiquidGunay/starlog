@@ -19,7 +19,7 @@ class AIResponse(BaseModel):
     output: dict = Field(default_factory=dict)
 
 
-AIJobStatus = Literal["pending", "running", "completed", "failed"]
+AIJobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
 class AIJobCreateRequest(BaseModel):
@@ -61,3 +61,11 @@ class AIJobFailRequest(BaseModel):
     worker_id: str = Field(..., min_length=1)
     error_text: str = Field(..., min_length=1)
     provider_used: str | None = None
+
+
+class AIJobCancelRequest(BaseModel):
+    reason: str | None = None
+
+
+class AIJobRetryRequest(BaseModel):
+    provider_hint: str | None = None

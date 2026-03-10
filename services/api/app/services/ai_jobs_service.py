@@ -81,6 +81,7 @@ def list_jobs(
     status: str | None = None,
     provider_hint: str | None = None,
     action: str | None = None,
+    capability: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     clauses: list[str] = []
@@ -94,6 +95,9 @@ def list_jobs(
     if action:
         clauses.append("action = ?")
         params.append(action)
+    if capability:
+        clauses.append("capability = ?")
+        params.append(capability)
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     rows = execute_fetchall(
@@ -123,6 +127,43 @@ def claim_job(conn: Connection, job_id: str, worker_id: str) -> dict | None:
     return get_job(conn, job_id)
 
 
+def cancel_job(conn: Connection, job_id: str, reason: str | None = None) -> dict | None:
+    job = get_job(conn, job_id)
+    if job is None:
+        return None
+    if job["status"] not in {"pending", "running"}:
+        raise ValueError("Job is not pending or running")
+
+    finished_at = utc_now().isoformat()
+    reason_text = (reason or "").strip() or "Cancelled by user."
+    conn.execute(
+        """
+        UPDATE ai_jobs
+        SET status = ?, error_text = ?, finished_at = ?
+        WHERE id = ?
+        """,
+        ("cancelled", reason_text, finished_at, job_id),
+    )
+
+    if job.get("artifact_id") and job.get("action"):
+        conn.execute(
+            """
+            UPDATE action_runs
+            SET status = ?
+            WHERE artifact_id = ? AND action = ? AND output_ref = ?
+            """,
+            ("cancelled", job["artifact_id"], job["action"], job_id),
+        )
+
+    events_service.emit(
+        conn,
+        "ai.job_cancelled",
+        {"job_id": job_id, "reason": reason_text, "worker_id": job.get("worker_id")},
+    )
+    conn.commit()
+    return get_job(conn, job_id)
+
+
 def complete_job(
     conn: Connection,
     job_id: str,
@@ -135,6 +176,10 @@ def complete_job(
     job = get_job(conn, job_id)
     if job is None:
         return None
+    if job["status"] != "running":
+        raise ValueError("Job is not running")
+    if job.get("worker_id") and job["worker_id"] != worker_id:
+        raise ValueError("Job is claimed by a different worker")
 
     created_ref: str | None = None
     if job.get("artifact_id") and job.get("action"):
@@ -238,6 +283,10 @@ def fail_job(
     job = get_job(conn, job_id)
     if job is None:
         return None
+    if job["status"] != "running":
+        raise ValueError("Job is not running")
+    if job.get("worker_id") and job["worker_id"] != worker_id:
+        raise ValueError("Job is claimed by a different worker")
 
     if job.get("artifact_id") and job.get("action"):
         conn.execute(
@@ -262,6 +311,53 @@ def fail_job(
         conn,
         "ai.job_failed",
         {"job_id": job_id, "worker_id": worker_id, "provider_used": provider_used, "error_text": error_text},
+    )
+    conn.commit()
+    return get_job(conn, job_id)
+
+
+def retry_job(conn: Connection, job_id: str, provider_hint: str | None = None) -> dict | None:
+    job = get_job(conn, job_id)
+    if job is None:
+        return None
+    if job["status"] not in {"failed", "cancelled"}:
+        raise ValueError("Job is not failed or cancelled")
+
+    next_provider_hint = provider_hint.strip() if isinstance(provider_hint, str) else None
+    resolved_provider_hint = next_provider_hint or job.get("provider_hint")
+    conn.execute(
+        """
+        UPDATE ai_jobs
+        SET status = ?, provider_hint = ?, provider_used = ?, output_json = ?, error_text = ?, worker_id = ?, claimed_at = ?, finished_at = ?
+        WHERE id = ?
+        """,
+        (
+            "pending",
+            resolved_provider_hint,
+            None,
+            json.dumps({}, sort_keys=True),
+            None,
+            None,
+            None,
+            None,
+            job_id,
+        ),
+    )
+
+    if job.get("artifact_id") and job.get("action"):
+        conn.execute(
+            """
+            UPDATE action_runs
+            SET status = ?, output_ref = ?
+            WHERE artifact_id = ? AND action = ? AND output_ref = ?
+            """,
+            ("queued", job_id, job["artifact_id"], job["action"], job_id),
+        )
+
+    events_service.emit(
+        conn,
+        "ai.job_retried",
+        {"job_id": job_id, "provider_hint": resolved_provider_hint},
     )
     conn.commit()
     return get_job(conn, job_id)

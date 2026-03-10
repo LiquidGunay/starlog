@@ -733,6 +733,89 @@ def test_briefing_audio_queue_attaches_rendered_audio(client: TestClient, auth_h
     assert fetched.json()["generated_by_provider"] == "piper_local"
 
 
+def test_ai_job_cancel_retry_and_stale_worker_guard(client: TestClient, auth_headers: dict[str, str]) -> None:
+    artifact = client.post(
+        "/v1/artifacts",
+        json={"source_type": "text", "raw_content": "Queue and retry me."},
+        headers=auth_headers,
+    )
+    assert artifact.status_code == 201
+    artifact_id = artifact.json()["id"]
+
+    queued = client.post(
+        f"/v1/artifacts/{artifact_id}/actions",
+        json={"action": "summarize", "defer": True, "provider_hint": "codex_local"},
+        headers=auth_headers,
+    )
+    assert queued.status_code == 200
+    job_id = queued.json()["output_ref"]
+    assert job_id
+
+    claimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-cancel-worker"},
+        headers=auth_headers,
+    )
+    assert claimed.status_code == 200
+    assert claimed.json()["status"] == "running"
+
+    cancelled = client.post(
+        f"/v1/ai/jobs/{job_id}/cancel",
+        json={"reason": "Manual stop"},
+        headers=auth_headers,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["error_text"] == "Manual stop"
+
+    stale_complete = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-cancel-worker",
+            "provider_used": "codex_local",
+            "output": {"summary": "This should not win."},
+        },
+        headers=auth_headers,
+    )
+    assert stale_complete.status_code == 409
+
+    retried = client.post(
+        f"/v1/ai/jobs/{job_id}/retry",
+        json={"provider_hint": "codex_local"},
+        headers=auth_headers,
+    )
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "pending"
+    assert retried.json()["provider_hint"] == "codex_local"
+
+    filtered = client.get("/v1/ai/jobs?status=pending&capability=llm_summary", headers=auth_headers)
+    assert filtered.status_code == 200
+    assert job_id in {job["id"] for job in filtered.json()}
+
+    reclaimed = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-retry-worker"},
+        headers=auth_headers,
+    )
+    assert reclaimed.status_code == 200
+
+    completed = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-retry-worker",
+            "provider_used": "codex_local",
+            "output": {"summary": "Retried queued summary."},
+        },
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+
+    graph = client.get(f"/v1/artifacts/{artifact_id}/graph", headers=auth_headers)
+    assert graph.status_code == 200
+    assert graph.json()["summaries"][0]["content"] == "Retried queued summary."
+
+
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:
     artifact = client.post(
         "/v1/artifacts",

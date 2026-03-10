@@ -62,6 +62,34 @@
         font-size: 12px;
         margin: 0;
       }
+      .recent-card {
+        border-top: 1px solid rgba(126, 168, 255, 0.2);
+        padding-top: 10px;
+        margin-top: 10px;
+      }
+      .recent-title {
+        margin: 0;
+        font-size: 14px;
+      }
+      .recent-meta {
+        margin: 4px 0 0;
+        color: #9db4dd;
+        font-size: 12px;
+      }
+      .recent-summary {
+        margin: 6px 0 0;
+        color: #dfe9ff;
+        font-size: 13px;
+      }
+      .recent-preview-image {
+        display: block;
+        width: 100%;
+        margin-top: 8px;
+        border-radius: 10px;
+        border: 1px solid rgba(126, 168, 255, 0.25);
+        background: rgba(5, 9, 20, 0.9);
+        object-fit: cover;
+      }
       code {
         background: rgba(126, 168, 255, 0.15);
         padding: 2px 4px;
@@ -87,9 +115,16 @@
 
         <div class="row">
           <button id="clipSelection">Clip Clipboard</button>
-          <button id="clipScreenshot">Clip Screenshot (stub)</button>
+          <button id="clipScreenshot">Clip Screenshot</button>
         </div>
         <p id="status">Waiting for action</p>
+      </div>
+
+      <div class="card">
+        <p class="label">Recent captures</p>
+        <div id="recentCaptures">
+          <p class="help">No captures yet.</p>
+        </div>
       </div>
     </main>
     <script type="module" src="./main.js"></script>

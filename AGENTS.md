@@ -43,6 +43,8 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-06: User wants every major Starlog action exposed as LLM-usable tooling for future chat/voice control.
 - 2026-03-06: User wants phone-local AI capability parity where possible, with configurable priority across on-device, local batch/bridge, and API fallback paths.
 - 2026-03-06: User is fine with local AI models running as separate local commands/processes instead of being bundled into the app, and does not require real-time execution for most AI features.
+- 2026-03-09: User wants Playwright used for browser-style testing when validating changes.
+- 2026-03-09: User wants to be asked before any Railway deployment is made.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -60,3 +62,22 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-06: `whisper_local` processing depends on a working local `whisper.cpp` command template and `ffmpeg` for non-WAV audio conversion.
 - 2026-03-08: First-pass PWA offline entity snapshots are localStorage-backed; fuller IndexedDB cache invalidation/search support is still pending.
 - 2026-03-08: Android native share-intent path now depends on `expo-share-intent` and therefore requires a custom dev build; Expo Go remains fallback-only and iOS share-extension patching is still pending.
+- 2026-03-09: `expo-share-intent` needed to be constrained to Android-only mode because the repo does not yet include the pending iOS share-extension patch flow, and the mobile workspace had drifted from Expo 51's recommended `@types/react`/`typescript` versions.
+- 2026-03-09: Android shared images/files were previously reduced to placeholder text in quick capture until the mobile app was updated to upload them as media-backed artifacts.
+- 2026-03-09: Desktop helper now has native global shortcut and platform capture wiring in code, and local Rust/GTK/WebKit setup now allows native Linux Tauri release builds in this environment.
+- 2026-03-09: Mobile asset placeholders in `apps/mobile/assets` had broken PNG CRCs, which blocked Expo Android prebuild and icon generation until valid tracked PNGs replaced them.
+- 2026-03-09: Expo Android prebuild under pnpm needed a direct `@react-native/gradle-plugin` dependency in `apps/mobile` because the generated Gradle settings file assumes direct Node resolution from the mobile workspace.
+- 2026-03-09: Root `.gitignore` had been ignoring every `android/` directory, which would have hidden the now-active `apps/mobile/android` native project until an explicit unignore was added.
+- 2026-03-09: Android share-intent handling in the mobile companion originally consumed only the first shared file; the app now keeps multiple shared files together in quick capture so a single Android share action is not partially dropped.
+- 2026-03-09: Desktop helper capture metadata was previously limited to timestamps/source tags; it now attempts active app/window metadata per clip and keeps recent capture history in the helper UI.
+- 2026-03-09: Android share-intent drafts originally depended on transient incoming URIs and in-memory state; the app now copies shared files/audio into app-owned storage and persists those drafts so routine restarts are less likely to drop native-share intake.
+- 2026-03-09: Desktop helper screenshot history was previously text-only; it now stores thumbnail previews alongside OCR/context metadata for recent screenshot clips.
+- 2026-03-09: Local Android SDK tools in this environment live under `~/.local/android`, and `adb` is not on the default shell `PATH` unless that SDK location is wired explicitly.
+- 2026-03-09: Local AI jobs previously had no cancel/retry lifecycle controls, and the laptop worker's default provider-hint list skipped queued TTS jobs until the worker/API/UI were updated.
+- 2026-03-10: Web typechecking in `apps/web/app` hit mixed React type identities when files used `React.ReactNode`; importing `type ReactNode` from `react` resolved the remaining provider/layout drift.
+- 2026-03-10: Android emulator launch in this environment fails early if it tries to write gRPC/JWK runtime state under `/run/user/1000/avd`; redirecting `XDG_RUNTIME_DIR` to a writable path like `/tmp/runtime-$USER` avoids that host-side crash.
+- 2026-03-10: Android SDK CLI calls in this environment choke on malformed proxy env vars; the repo now sanitizes those before invoking local emulator/SDK tooling.
+- 2026-03-10: The Google APIs API 34 x86_64 emulator can spend a very long first boot on stub decompression/dexopt under software emulation; a local AOSP API 34 x86_64 fallback AVD is a more practical validation target here.
+- 2026-03-10: On the local software-emulated Android runtime, `pm path android` and package services can become usable before `sys.boot_completed`, and first APK installs may transiently fail inside `PackageInstallerSession` until package/storage services finish stabilizing; the smoke script now treats those as retryable startup-state errors.
+- 2026-03-10: Physical-device testing against a connected Android 14 phone exposed a missing direct `@babel/runtime` dependency in `apps/mobile`; Metro now bundles the custom `index.js` entry cleanly under pnpm once that dependency is present.
+- 2026-03-10: On this host, the newer Windows `adb` platform-tools can see the phone and set `adb reverse`, but WSL-driven `adb shell`/dev-client streaming is still flaky; the most promising local path is a Windows-side TCP relay to Metro plus `adb reverse`, or running the final device commands from a native Windows shell instead of WSL.

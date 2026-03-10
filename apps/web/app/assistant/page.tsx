@@ -33,7 +33,7 @@ type AgentIntent = {
 type AssistantQueuedJob = {
   id: string;
   capability: "stt" | "llm_agent_plan";
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   provider_hint?: string | null;
   provider_used?: string | null;
   action?: string | null;

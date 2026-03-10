@@ -57,6 +57,21 @@ type PendingTextCapture = {
   lastError?: string;
 };
 
+type PendingFileCapture = {
+  id: string;
+  kind: "file";
+  title: string;
+  sourceUrl: string;
+  createdAt: string;
+  attempts: number;
+  localUri: string;
+  mimeType: string;
+  fileName: string;
+  bytesSize: number | null;
+  noteText: string;
+  lastError?: string;
+};
+
 type PendingVoiceCapture = {
   id: string;
   kind: "voice";
@@ -70,7 +85,14 @@ type PendingVoiceCapture = {
   lastError?: string;
 };
 
-type PendingCapture = PendingTextCapture | PendingVoiceCapture;
+type PendingCapture = PendingTextCapture | PendingFileCapture | PendingVoiceCapture;
+
+type SharedFileDraft = {
+  localUri: string;
+  mimeType: string;
+  fileName: string;
+  bytesSize: number | null;
+};
 
 type PersistedState = {
   version: 3;
@@ -80,6 +102,9 @@ type PersistedState = {
   quickCaptureTitle: string;
   quickCaptureText: string;
   quickCaptureSourceUrl: string;
+  sharedFileDrafts?: SharedFileDraft[];
+  voiceClipUri?: string | null;
+  voiceClipDurationMs?: number;
   briefingDate: string;
   cachedPath: string | null;
   alarmHour: number;
@@ -191,7 +216,7 @@ type AssistantCommandResponse = {
 type AssistantQueuedJob = {
   id: string;
   capability: "stt" | "llm_agent_plan";
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   provider_hint?: string | null;
   provider_used?: string | null;
   action?: string | null;
@@ -214,6 +239,7 @@ const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
 const DEFAULT_VOICE_MIME = "audio/x-m4a";
+const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
 const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
@@ -279,6 +305,52 @@ function stateFilePath(): string {
   return `${writableDir()}mobile-state-v1.json`;
 }
 
+function sharedCaptureDir(): string {
+  return `${writableDir()}shared-intents/`;
+}
+
+function safeSharedFileName(fileName: string, fallbackName: string): string {
+  const normalized = (fileName || fallbackName)
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-");
+  return normalized || fallbackName;
+}
+
+async function materializeSharedFileDrafts(drafts: SharedFileDraft[]): Promise<SharedFileDraft[]> {
+  if (drafts.length === 0) {
+    return [];
+  }
+
+  const targetDir = sharedCaptureDir();
+  await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true }).catch(() => undefined);
+  const timestamp = Date.now();
+
+  return Promise.all(
+    drafts.map(async (draft, index) => {
+      const fallbackName = `shared-file-${index + 1}`;
+      const fileName = safeSharedFileName(draft.fileName, fallbackName);
+      const targetUri = `${targetDir}${timestamp}-${index}-${fileName}`;
+      try {
+        await FileSystem.copyAsync({
+          from: draft.localUri,
+          to: targetUri,
+        });
+        return {
+          ...draft,
+          localUri: targetUri,
+          fileName,
+        };
+      } catch {
+        return {
+          ...draft,
+          fileName,
+        };
+      }
+    }),
+  );
+}
+
 async function stateDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!stateDbPromise) {
     stateDbPromise = (async () => {
@@ -305,6 +377,41 @@ function tomorrowDateString(): string {
 
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, "");
+}
+
+function captureLabel(kind: PendingCapture["kind"]): string {
+  if (kind === "voice") {
+    return "Voice note";
+  }
+  if (kind === "file") {
+    return "Shared file";
+  }
+  return "Capture";
+}
+
+function captureSourceTypeForMime(mimeType: string): string {
+  if (mimeType.startsWith("image/")) {
+    return "clip_mobile_image";
+  }
+  if (mimeType.startsWith("video/")) {
+    return "clip_mobile_video";
+  }
+  return "clip_mobile_file";
+}
+
+function describeSharedFile(fileName: string, mimeType: string, bytesSize: number | null): string {
+  const sizeLabel = bytesSize && bytesSize > 0 ? `, ${Math.round(bytesSize / 1024)} KB` : "";
+  return `${fileName} (${mimeType}${sizeLabel})`;
+}
+
+function describeSharedDrafts(drafts: SharedFileDraft[]): string {
+  if (drafts.length === 0) {
+    return "none";
+  }
+  if (drafts.length === 1) {
+    return describeSharedFile(drafts[0].fileName, drafts[0].mimeType, drafts[0].bytesSize);
+  }
+  return `${drafts.length} files ready`;
 }
 
 function defaultExecutionPolicy(): ExecutionPolicy {
@@ -397,6 +504,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
         const migrated: PersistedState = {
           ...parsed,
           version: 3,
+          sharedFileDrafts: [],
+          voiceClipUri: null,
+          voiceClipDurationMs: 0,
           executionPolicy: defaultExecutionPolicy(),
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
@@ -408,6 +518,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
       }
       if (parsed.version === 3) {
         return {
+          sharedFileDrafts: [],
+          voiceClipUri: null,
+          voiceClipDurationMs: 0,
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
           assistantVoiceJobs: [],
@@ -431,6 +544,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
     const migrated: PersistedState = {
       ...legacy,
       version: 3,
+      sharedFileDrafts: [],
+      voiceClipUri: null,
+      voiceClipDurationMs: 0,
       artifacts: [],
       selectedArtifactId: "",
       artifactGraph: null,
@@ -567,6 +683,7 @@ export default function App() {
   const [quickCaptureTitle, setQuickCaptureTitle] = useState(DEFAULT_CAPTURE_TITLE);
   const [quickCaptureText, setQuickCaptureText] = useState("");
   const [quickCaptureSourceUrl, setQuickCaptureSourceUrl] = useState("");
+  const [sharedFileDrafts, setSharedFileDrafts] = useState<SharedFileDraft[]>([]);
   const [voiceRecording, setVoiceRecording] = useState<Audio.Recording | null>(null);
   const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
   const [voiceClipDurationMs, setVoiceClipDurationMs] = useState(0);
@@ -600,6 +717,7 @@ export default function App() {
     resetShareIntent,
     error: shareIntentError,
   } = useShareIntent({
+    disabled: Platform.OS !== "android",
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
@@ -716,6 +834,83 @@ export default function App() {
           ? ` (requested ${formatExecutionTarget(sttResolution.requested)}; using ${formatExecutionTarget(sttResolution.active)})`
           : "";
       setStatus(`Queued voice transcript job ${payload.job_id} via ${formatExecutionTarget(sttResolution.active)}${routeNote}`);
+      return payload.artifact.id;
+    }
+
+    if (item.kind === "file") {
+      const formData = new FormData();
+      formData.append(
+        "file",
+        {
+          uri: item.localUri,
+          name: item.fileName,
+          type: item.mimeType,
+        } as unknown as Blob,
+      );
+
+      const uploadResponse = await fetch(`${normalizeBaseUrl(apiBase)}/v1/media/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorBody = await uploadResponse.text();
+        throw new Error(`Shared file upload failed: ${uploadResponse.status} ${errorBody}`);
+      }
+
+      const uploaded = (await uploadResponse.json()) as {
+        id: string;
+        blob_ref: string;
+        checksum_sha256: string;
+        content_type?: string | null;
+        content_url: string;
+      };
+      const noteText = item.noteText.trim();
+      const fallbackText = noteText || `Shared file: ${describeSharedFile(item.fileName, item.mimeType, item.bytesSize)}`;
+
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/capture`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          source_type: captureSourceTypeForMime(item.mimeType),
+          capture_source: "mobile_share",
+          title: item.title,
+          source_url: item.sourceUrl || undefined,
+          raw: {
+            blob_ref: uploaded.blob_ref,
+            mime_type: uploaded.content_type ?? item.mimeType,
+            checksum_sha256: uploaded.checksum_sha256,
+          },
+          normalized: { text: fallbackText, mime_type: "text/plain" },
+          extracted: noteText ? { text: noteText, mime_type: "text/plain" } : undefined,
+          metadata: {
+            source: "mobile_share",
+            captured_at: item.createdAt,
+            queued_capture_id: item.id,
+            attempts: item.attempts,
+            shared_file: {
+              media_id: uploaded.id,
+              content_url: uploaded.content_url,
+              file_name: item.fileName,
+              mime_type: item.mimeType,
+              bytes_size: item.bytesSize,
+            },
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Shared file capture failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as { artifact: { id: string } };
       return payload.artifact.id;
     }
 
@@ -965,13 +1160,83 @@ export default function App() {
 
   function queueCapture(item: PendingCapture, reason: string) {
     setPendingCaptures((previous) => [item, ...previous]);
-    setStatus(`${item.kind === "voice" ? "Voice note" : "Capture"} queued (${reason}). Pending: ${pendingCaptures.length + 1}`);
+    setStatus(`${captureLabel(item.kind)} queued (${reason}). Pending: ${pendingCaptures.length + 1}`);
   }
 
   async function submitQuickCapture() {
     const text = quickCaptureText.trim();
-    if (!text) {
+    if (!text && sharedFileDrafts.length === 0) {
       setStatus("Enter capture text first");
+      return;
+    }
+
+    if (sharedFileDrafts.length > 0) {
+      const timestamp = Date.now();
+      const titleSeed = quickCaptureTitle.trim();
+      const captureSourceUrl = quickCaptureSourceUrl.trim();
+      const sharedCaptures: PendingFileCapture[] = sharedFileDrafts.map((draft, index) => ({
+        id: `mobfile_${timestamp}_${index}`,
+        kind: "file",
+        title:
+          sharedFileDrafts.length > 1
+            ? `${titleSeed || DEFAULT_CAPTURE_TITLE} (${index + 1}/${sharedFileDrafts.length})`
+            : titleSeed || draft.fileName || DEFAULT_CAPTURE_TITLE,
+        sourceUrl: captureSourceUrl,
+        createdAt: new Date().toISOString(),
+        attempts: 0,
+        localUri: draft.localUri,
+        mimeType: draft.mimeType,
+        fileName: draft.fileName,
+        bytesSize: draft.bytesSize,
+        noteText: text,
+      }));
+
+      if (!token) {
+        setPendingCaptures((previous) => [...sharedCaptures, ...previous]);
+        setQuickCaptureText("");
+        setSharedFileDrafts([]);
+        setStatus(`Shared files queued (missing token). Pending: ${pendingCaptures.length + sharedCaptures.length}`);
+        return;
+      }
+
+      let firstArtifactId = "";
+      let successCount = 0;
+      const failedCaptures: PendingFileCapture[] = [];
+
+      for (const capture of sharedCaptures) {
+        try {
+          const artifactId = await sendCapture(capture);
+          if (!firstArtifactId) {
+            firstArtifactId = artifactId;
+          }
+          successCount += 1;
+        } catch (error) {
+          failedCaptures.push({
+            ...capture,
+            attempts: capture.attempts + 1,
+            lastError: error instanceof Error ? error.message : "shared file upload failed",
+          });
+        }
+      }
+
+      setQuickCaptureText("");
+      setSharedFileDrafts([]);
+      if (failedCaptures.length > 0) {
+        setPendingCaptures((previous) => [...failedCaptures, ...previous]);
+      }
+      if (firstArtifactId) {
+        setSelectedArtifactId(firstArtifactId);
+        loadArtifacts().catch(() => undefined);
+      }
+      if (failedCaptures.length === 0) {
+        setStatus(
+          successCount === 1
+            ? `Captured shared file artifact ${firstArtifactId}`
+            : `Captured ${successCount} shared file artifacts`,
+        );
+      } else {
+        setStatus(`Captured ${successCount}; queued ${failedCaptures.length} shared file(s) for retry`);
+      }
       return;
     }
 
@@ -1022,6 +1287,7 @@ export default function App() {
       });
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setVoiceRecording(recording);
+      setSharedFileDrafts([]);
       setVoiceClipUri(null);
       setVoiceClipDurationMs(0);
       setStatus("Recording voice note...");
@@ -1581,6 +1847,9 @@ export default function App() {
         setQuickCaptureTitle(persisted.quickCaptureTitle);
         setQuickCaptureText(persisted.quickCaptureText);
         setQuickCaptureSourceUrl(persisted.quickCaptureSourceUrl);
+        setSharedFileDrafts(persisted.sharedFileDrafts || []);
+        setVoiceClipUri(persisted.voiceClipUri ?? null);
+        setVoiceClipDurationMs(persisted.voiceClipDurationMs ?? 0);
         setBriefingDate(persisted.briefingDate);
         setCachedPath(persisted.cachedPath);
         setAlarmHour(boundedInt(persisted.alarmHour, 0, 23));
@@ -1606,6 +1875,9 @@ export default function App() {
           setQuickCaptureTitle(deepCapture.title);
           setQuickCaptureText(deepCapture.text);
           setQuickCaptureSourceUrl(deepCapture.sourceUrl);
+          setSharedFileDrafts([]);
+          setVoiceClipUri(null);
+          setVoiceClipDurationMs(0);
           setStatus("Loaded capture from share deep link");
         }
       }
@@ -1654,6 +1926,9 @@ export default function App() {
       setQuickCaptureTitle(deepCapture.title);
       setQuickCaptureText(deepCapture.text);
       setQuickCaptureSourceUrl(deepCapture.sourceUrl);
+      setSharedFileDrafts([]);
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
       setStatus("Loaded capture from share deep link");
     });
 
@@ -1679,38 +1954,77 @@ export default function App() {
     if (!hasShareIntent) {
       return;
     }
+    let cancelled = false;
 
-    const sharedText = (shareIntent.text ?? "").trim();
-    const sharedUrl = (shareIntent.webUrl ?? "").trim();
-    const firstFile = shareIntent.files?.[0] ?? null;
-    const inferredTitle =
-      (shareIntent.meta?.title ?? "").trim() ||
-      firstFile?.fileName ||
-      sharedUrl ||
-      DEFAULT_CAPTURE_TITLE;
+    async function applyIncomingShareIntent() {
+      const sharedText = (shareIntent.text ?? "").trim();
+      const sharedUrl = (shareIntent.webUrl ?? "").trim();
+      const shareFiles = shareIntent.files ?? [];
+      const firstFile = shareFiles[0] ?? null;
+      const audioOnlyShare = shareFiles.length === 1 && firstFile?.mimeType?.startsWith("audio/");
+      const incomingDrafts: SharedFileDraft[] = shareFiles.map((file, index) => ({
+        localUri: file.path,
+        mimeType: file.mimeType || DEFAULT_FILE_MIME,
+        fileName: file.fileName || `shared-file-${index + 1}`,
+        bytesSize: file.size ?? null,
+      }));
+      const sharedDrafts = await materializeSharedFileDrafts(incomingDrafts);
+      if (cancelled) {
+        return;
+      }
 
-    setQuickCaptureTitle(inferredTitle);
-    setQuickCaptureSourceUrl(sharedUrl);
+      const inferredTitle =
+        (shareIntent.meta?.title ?? "").trim() ||
+        (shareFiles.length > 1 ? `${shareFiles.length} shared files` : "") ||
+        firstFile?.fileName ||
+        sharedUrl ||
+        DEFAULT_CAPTURE_TITLE;
 
-    if (firstFile?.mimeType?.startsWith("audio/")) {
-      setVoiceClipUri(firstFile.path);
-      setVoiceClipDurationMs(firstFile.duration ?? 0);
-      setQuickCaptureText(sharedText || `Shared audio file: ${firstFile.fileName}`);
-      setStatus("Loaded Android share audio into the companion app");
+      setQuickCaptureTitle(inferredTitle);
+      setQuickCaptureSourceUrl(sharedUrl);
+
+      if (audioOnlyShare) {
+        const audioDraft = sharedDrafts[0];
+        setSharedFileDrafts([]);
+        setVoiceClipUri(audioDraft?.localUri ?? firstFile?.path ?? null);
+        setVoiceClipDurationMs(firstFile?.duration ?? 0);
+        setQuickCaptureText(sharedText || `Shared audio file: ${audioDraft?.fileName || firstFile?.fileName}`);
+        setStatus("Loaded Android share audio into the companion app");
+        resetShareIntent();
+        return;
+      }
+
+      setSharedFileDrafts(sharedDrafts);
+      setVoiceClipUri(null);
+      setVoiceClipDurationMs(0);
+
+      if (sharedText) {
+        setQuickCaptureText(sharedText);
+      } else if (shareFiles.length > 0) {
+        setQuickCaptureText("");
+      } else if (sharedUrl) {
+        setQuickCaptureText(sharedUrl);
+      }
+
+      if (shareFiles.length > 1) {
+        setStatus(`Loaded ${shareFiles.length} Android shared files into quick capture`);
+      } else {
+        setStatus(firstFile ? "Loaded Android shared file into quick capture" : "Loaded shared text/url into quick capture");
+      }
       resetShareIntent();
-      return;
     }
 
-    if (sharedText) {
-      setQuickCaptureText(sharedText);
-    } else if (firstFile) {
-      setQuickCaptureText(`Shared file: ${firstFile.fileName} (${firstFile.mimeType})`);
-    } else if (sharedUrl) {
-      setQuickCaptureText(sharedUrl);
-    }
+    applyIncomingShareIntent().catch((error) => {
+      if (cancelled) {
+        return;
+      }
+      setStatus(error instanceof Error ? error.message : "Android share intent load failed");
+      resetShareIntent();
+    });
 
-    setStatus(firstFile ? "Loaded Android share payload into quick capture" : "Loaded shared text/url into quick capture");
-    resetShareIntent();
+    return () => {
+      cancelled = true;
+    };
   }, [hasShareIntent, resetShareIntent, shareIntent]);
 
   useEffect(() => {
@@ -1742,6 +2056,9 @@ export default function App() {
       quickCaptureTitle,
       quickCaptureText,
       quickCaptureSourceUrl,
+      sharedFileDrafts,
+      voiceClipUri,
+      voiceClipDurationMs,
       briefingDate,
       cachedPath,
       alarmHour: boundedInt(alarmHour, 0, 23),
@@ -1779,10 +2096,13 @@ export default function App() {
     pendingCaptures,
     pwaBase,
     quickCaptureSourceUrl,
+    sharedFileDrafts,
     quickCaptureText,
     quickCaptureTitle,
     selectedArtifactId,
     token,
+    voiceClipDurationMs,
+    voiceClipUri,
   ]);
 
   useEffect(() => {
@@ -2047,6 +2367,32 @@ export default function App() {
           <Text style={styles.subtle}>
             Voice clip: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
           </Text>
+          <Text style={styles.subtle}>
+            Shared file{sharedFileDrafts.length === 1 ? "" : "s"}: {describeSharedDrafts(sharedFileDrafts)}
+          </Text>
+          {sharedFileDrafts.length > 0 ? (
+            <>
+              {sharedFileDrafts.slice(0, 3).map((draft) => (
+                <View key={`${draft.localUri}:${draft.fileName}`} style={styles.inlineCard}>
+                  <Text style={styles.subtle}>{describeSharedFile(draft.fileName, draft.mimeType, draft.bytesSize)}</Text>
+                </View>
+              ))}
+              {sharedFileDrafts.length > 3 ? (
+                <Text style={styles.subtle}>+{sharedFileDrafts.length - 3} more shared file(s)</Text>
+              ) : null}
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={styles.button}
+                  onPress={() => {
+                    setSharedFileDrafts([]);
+                    setStatus("Cleared shared file drafts");
+                  }}
+                >
+                  <Text style={styles.buttonText}>Clear Shared Files</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : null}
           <Text style={styles.subtle}>Pending captures: {pendingCaptures.length}</Text>
           {pendingCaptures[0]?.lastError ? (
             <Text style={styles.subtle}>Last queue error: {pendingCaptures[0].lastError}</Text>

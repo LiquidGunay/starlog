@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   appendReplayEntry,
@@ -94,7 +94,7 @@ function toSyncActivity(
   };
 }
 
-export function SessionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+export function SessionProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [apiBase, setApiBaseState] = useState("http://localhost:8000");
   const [token, setTokenState] = useState("");
   const [clientId, setClientId] = useState("web_local");

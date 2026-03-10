@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/capabilities/2",
+  "identifier": "default",
+  "description": "Default capability set for the Starlog desktop helper",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister"
+  ]
+}

@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_db, require_user_id
 from app.schemas.ai import (
+    AIJobCancelRequest,
     AIJobClaimRequest,
     AIJobCompleteRequest,
     AIJobCreateRequest,
     AIJobFailRequest,
+    AIJobRetryRequest,
     AIJobResponse,
     AIRequest,
     AIResponse,
@@ -59,11 +61,19 @@ def list_ai_jobs(
     status_text: str | None = Query(default=None, alias="status"),
     provider_hint: str | None = Query(default=None),
     action: str | None = Query(default=None),
+    capability: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> list[AIJobResponse]:
-    jobs = ai_jobs_service.list_jobs(db, status=status_text, provider_hint=provider_hint, action=action, limit=limit)
+    jobs = ai_jobs_service.list_jobs(
+        db,
+        status=status_text,
+        provider_hint=provider_hint,
+        action=action,
+        capability=capability,
+        limit=limit,
+    )
     return [AIJobResponse.model_validate(job) for job in jobs]
 
 
@@ -87,13 +97,16 @@ def complete_ai_job(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> AIJobResponse:
-    completed = ai_jobs_service.complete_job(
-        db,
-        job_id,
-        worker_id=payload.worker_id,
-        provider_used=payload.provider_used,
-        output=payload.output,
-    )
+    try:
+        completed = ai_jobs_service.complete_job(
+            db,
+            job_id,
+            worker_id=payload.worker_id,
+            provider_used=payload.provider_used,
+            output=payload.output,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if completed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return AIJobResponse.model_validate(completed)
@@ -106,13 +119,48 @@ def fail_ai_job(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> AIJobResponse:
-    failed = ai_jobs_service.fail_job(
-        db,
-        job_id,
-        worker_id=payload.worker_id,
-        error_text=payload.error_text,
-        provider_used=payload.provider_used,
-    )
+    try:
+        failed = ai_jobs_service.fail_job(
+            db,
+            job_id,
+            worker_id=payload.worker_id,
+            error_text=payload.error_text,
+            provider_used=payload.provider_used,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if failed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return AIJobResponse.model_validate(failed)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=AIJobResponse)
+def cancel_ai_job(
+    job_id: str,
+    payload: AIJobCancelRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    try:
+        cancelled = ai_jobs_service.cancel_job(db, job_id, reason=payload.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if cancelled is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return AIJobResponse.model_validate(cancelled)
+
+
+@router.post("/jobs/{job_id}/retry", response_model=AIJobResponse)
+def retry_ai_job(
+    job_id: str,
+    payload: AIJobRetryRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    try:
+        retried = ai_jobs_service.retry_job(db, job_id, provider_hint=payload.provider_hint)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if retried is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return AIJobResponse.model_validate(retried)

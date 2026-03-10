@@ -55,6 +55,7 @@ Use the non-empty IP (example: `192.168.1.42`).
 5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
 6. Open `/assistant` if you want to test typed commands such as `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
 7. In `/assistant`, you can also use `Queue Codex Plan` / `Queue Codex Execute` for queued LLM-assisted command planning, or browser voice recording (`Start Voice Command` -> `Execute Voice`) to queue a Whisper-backed command without installing the native app.
+8. Open `/ai-jobs` if you want to inspect queued local Codex/Whisper/TTS work, retry failed jobs, or cancel work that should not keep running.
 
 ## 4) Install PWA to home screen
 
@@ -98,7 +99,8 @@ pnpm --filter mobile start
    - Schedule the daily alarm after caching the briefing package.
 4. If you queued a voice note, confirm the laptop worker is running so the transcript can complete.
 5. If you queued a voice command or Codex command, tap `Refresh Jobs` in the assistant panel to inspect the transcript/executed command result after the worker finishes.
-6. If you installed the Android dev build, share text, a URL, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
+6. If you installed the Android dev build, share text, a URL, an image/file, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
+7. If you have `adb` access to the device/emulator, you can also run `pnpm test:android:smoke` from repo root to install the current debug APK and trigger both a deep-link capture and a plain-text Android share intent automatically.
 
 Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 
@@ -135,11 +137,14 @@ This requires the Android dev build from `docs/ANDROID_DEV_BUILD.md`; it does no
 2. From another Android app, use the system Share action on:
    - selected text
    - a URL
+   - one or more images/files
    - an audio file or recording
 3. Choose Starlog from the share sheet.
 4. Confirm the companion app opens with:
    - quick capture title/text/source URL prefilled for text/URL shares
+   - shared images/files listed in quick capture, including multi-file shares
    - `voiceClipUri` preloaded for shared audio so `Upload / Queue Voice` can send it to the API
+   - shared media still present if the app backgrounds/restarts before you submit
 5. Submit or queue the capture normally inside Starlog.
 
 ## 7) Test installed PWA share target

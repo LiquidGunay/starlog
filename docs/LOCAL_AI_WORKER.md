@@ -21,10 +21,17 @@ This keeps Railway costs low because Codex/Whisper execution stays off Railway.
   - `stt`
 - `provider_hint=piper_local`
   - `tts`
+- `provider_hint=say_local`
+  - `tts`
+- `provider_hint=espeak_local`
+  - `tts`
+- `provider_hint=espeak_ng_local`
+  - `tts`
 
 For `stt` jobs with `action=assistant_command`, the transcript is fed back into Starlog's command planner automatically after Whisper finishes.
 For `llm_agent_plan` jobs with `action=assistant_command_ai`, Codex returns tool calls that Starlog validates and executes against the same tool layer used by deterministic commands.
 For `tts` jobs with `action=briefing_audio`, the worker uploads rendered audio back to Starlog and the briefing package stores that media reference for offline playback.
+Queued AI jobs can now also be cancelled or retried from `/ai-jobs` or through the `/v1/ai/jobs/{job_id}/cancel` and `/v1/ai/jobs/{job_id}/retry` APIs.
 
 ## Requirements on your laptop
 
@@ -104,6 +111,39 @@ export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --o
 ```
 
 After synthesis, the worker uploads the audio file to `/v1/media/upload` and completes the queued `tts` job with the resulting `media://...` blob ref.
+
+The default worker provider hints now include TTS providers as well:
+
+```text
+codex_local,whisper_local,piper_local,say_local,espeak_local,espeak_ng_local
+```
+
+Built-in local TTS wrappers:
+
+- `piper_local`
+  - uses `--tts-command` or `STARLOG_TTS_COMMAND`
+  - exposes `{output_path}`, `{output_base}`, `{voice}`, `{rate}`, and `{text}` placeholders to the command template
+- `say_local`
+  - uses the native macOS `say` command directly
+  - supports optional `voice` / `voice_name` and `rate_wpm` payload fields
+  - uploads AIFF output directly, or WAV if `ffmpeg` is available for conversion
+- `espeak_local`
+  - uses `espeak -w ...`
+  - supports optional `voice` / `voice_name` and `rate_wpm`
+- `espeak_ng_local`
+  - uses `espeak-ng -w ...`
+  - supports optional `voice` / `voice_name` and `rate_wpm`
+
+Example one-shot worker focused on macOS `say` jobs:
+
+```bash
+PYTHONPATH=services/api uv run --project services/api \
+  python scripts/local_ai_worker.py \
+  --api-base http://localhost:8000 \
+  --token "$STARLOG_TOKEN" \
+  --provider-hints say_local \
+  --once
+```
 
 ## One-shot batch run
 

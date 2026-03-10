@@ -8,7 +8,8 @@
     "build": "tauri build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.1"
+    "@tauri-apps/api": "^2.0.1",
+    "@tauri-apps/plugin-global-shortcut": "^2.3.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

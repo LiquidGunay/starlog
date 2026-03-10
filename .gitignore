@@ -31,6 +31,8 @@ target/
 .expo-shared/
 android/
 ios/
+!apps/mobile/android/
+!apps/mobile/android/**
 
 # Local data
 *.db

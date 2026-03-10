@@ -361,15 +361,75 @@ def _run_whisper(job: dict, api_base: str, token: str, whisper_command: str | No
         return {"transcript": transcript}
 
 
-def _run_tts(job: dict, api_base: str, token: str, tts_command: str | None) -> dict:
-    command_template = tts_command or os.environ.get("STARLOG_TTS_COMMAND", "").strip()
-    if not command_template:
-        raise RuntimeError("Set --tts-command or STARLOG_TTS_COMMAND for tts jobs")
-
+def _tts_payload(job: dict) -> tuple[dict[str, Any], str, str | None, int | None]:
     payload = job.get("payload", {})
     text = str(payload.get("text") or "").strip()
     if not text:
         raise RuntimeError("TTS job is missing text")
+
+    voice = str(payload.get("voice") or payload.get("voice_name") or "").strip() or None
+    raw_rate = payload.get("rate_wpm", payload.get("rate", payload.get("speaking_rate")))
+    rate: int | None = None
+    if isinstance(raw_rate, str) and raw_rate.strip():
+        try:
+            rate = int(float(raw_rate.strip()))
+        except ValueError:
+            rate = None
+    elif isinstance(raw_rate, (int, float)):
+        rate = int(raw_rate)
+    if rate is not None:
+        rate = max(80, min(rate, 360))
+
+    return payload, text, voice, rate
+
+
+def _maybe_convert_audio_for_upload(input_path: Path, ffmpeg_command: str | None) -> Path | None:
+    if not ffmpeg_command:
+        return None
+
+    output_path = input_path.with_suffix(".wav")
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg_command,
+                "-y",
+                "-i",
+                str(input_path),
+                "-ar",
+                "22050",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0 or not output_path.exists():
+        return None
+    return output_path
+
+
+def _upload_tts_output(api_base: str, token: str, path: Path) -> dict[str, Any]:
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    uploaded = _upload_media(api_base, token, path, content_type=content_type)
+    return {
+        "audio_ref": uploaded.get("blob_ref", ""),
+        "audio_asset": uploaded,
+        "content_type": content_type,
+    }
+
+
+def _run_tts_piper(job: dict, api_base: str, token: str, tts_command: str | None) -> dict:
+    command_template = tts_command or os.environ.get("STARLOG_TTS_COMMAND", "").strip()
+    if not command_template:
+        raise RuntimeError("Set --tts-command or STARLOG_TTS_COMMAND for piper_local tts jobs")
+
+    _, text, voice, rate = _tts_payload(job)
 
     with tempfile.TemporaryDirectory(prefix="starlog-tts-job-") as temp_dir:
         temp_path = Path(temp_dir)
@@ -378,6 +438,9 @@ def _run_tts(job: dict, api_base: str, token: str, tts_command: str | None) -> d
             command_template.format(
                 output_path=str(output_path),
                 output_base=str(output_path.with_suffix("")),
+                voice=voice or "",
+                rate=str(rate or ""),
+                text=text,
             )
         )
         result = subprocess.run(command, input=text, capture_output=True, text=True, check=False)
@@ -385,11 +448,79 @@ def _run_tts(job: dict, api_base: str, token: str, tts_command: str | None) -> d
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "TTS command failed")
         if not output_path.exists():
             raise RuntimeError("TTS command completed without writing an audio file")
-        uploaded = _upload_media(api_base, token, output_path, content_type="audio/wav")
-        return {
-            "audio_ref": uploaded.get("blob_ref", ""),
-            "audio_asset": uploaded,
-        }
+        response = _upload_tts_output(api_base, token, output_path)
+        if voice:
+            response["voice"] = voice
+        if rate is not None:
+            response["rate_wpm"] = rate
+        return response
+
+
+def _run_tts_say(job: dict, api_base: str, token: str, ffmpeg_command: str) -> dict:
+    _, text, voice, rate = _tts_payload(job)
+
+    with tempfile.TemporaryDirectory(prefix="starlog-tts-job-") as temp_dir:
+        temp_path = Path(temp_dir)
+        output_path = temp_path / "tts-output.aiff"
+        command = ["say", "-o", str(output_path)]
+        if voice:
+            command.extend(["-v", voice])
+        if rate is not None:
+            command.extend(["-r", str(rate)])
+        command.append(text)
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "say command failed")
+        if not output_path.exists():
+            raise RuntimeError("say completed without writing an audio file")
+
+        upload_path = _maybe_convert_audio_for_upload(output_path, ffmpeg_command) or output_path
+        response = _upload_tts_output(api_base, token, upload_path)
+        response["source_format"] = "aiff"
+        if voice:
+            response["voice"] = voice
+        if rate is not None:
+            response["rate_wpm"] = rate
+        return response
+
+
+def _run_tts_espeak(job: dict, api_base: str, token: str, program: str) -> dict:
+    _, text, voice, rate = _tts_payload(job)
+
+    with tempfile.TemporaryDirectory(prefix="starlog-tts-job-") as temp_dir:
+        temp_path = Path(temp_dir)
+        output_path = temp_path / "tts-output.wav"
+        command = [program, "-w", str(output_path)]
+        if voice:
+            command.extend(["-v", voice])
+        if rate is not None:
+            command.extend(["-s", str(rate)])
+        command.append(text)
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"{program} command failed")
+        if not output_path.exists():
+            raise RuntimeError(f"{program} completed without writing an audio file")
+
+        response = _upload_tts_output(api_base, token, output_path)
+        if voice:
+            response["voice"] = voice
+        if rate is not None:
+            response["rate_wpm"] = rate
+        return response
+
+
+def _run_tts(job: dict, api_base: str, token: str, tts_command: str | None, ffmpeg_command: str) -> tuple[str, dict]:
+    provider_hint = str(job.get("provider_hint") or "").strip() or "piper_local"
+    if provider_hint == "piper_local":
+        return provider_hint, _run_tts_piper(job, api_base, token, tts_command)
+    if provider_hint == "say_local":
+        return provider_hint, _run_tts_say(job, api_base, token, ffmpeg_command)
+    if provider_hint == "espeak_local":
+        return provider_hint, _run_tts_espeak(job, api_base, token, "espeak")
+    if provider_hint == "espeak_ng_local":
+        return provider_hint, _run_tts_espeak(job, api_base, token, "espeak-ng")
+    raise RuntimeError(f"Unsupported local TTS provider_hint: {provider_hint}")
 
 
 def _pending_jobs(api_base: str, token: str, provider_hint: str, limit: int) -> list[dict]:
@@ -456,7 +587,7 @@ def _run_job(
     if capability == "stt":
         return "whisper_local", _run_whisper(job, api_base, token, whisper_command, ffmpeg_command)
     if capability == "tts":
-        return "piper_local", _run_tts(job, api_base, token, tts_command)
+        return _run_tts(job, api_base, token, tts_command, ffmpeg_command)
     raise RuntimeError(f"Unsupported queued capability: {capability}")
 
 
@@ -521,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api-base", default="http://localhost:8000")
     parser.add_argument("--token", required=True)
-    parser.add_argument("--provider-hints", default="codex_local,whisper_local")
+    parser.add_argument("--provider-hints", default="codex_local,whisper_local,piper_local,say_local,espeak_local,espeak_ng_local")
     parser.add_argument("--worker-id", default=f"local-ai-{socket.gethostname()}")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--poll-seconds", type=float, default=30.0)

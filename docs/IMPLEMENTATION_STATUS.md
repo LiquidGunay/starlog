@@ -23,10 +23,14 @@
   - AI provider routing (`/v1/ai/run`)
   - export (`/v1/export`)
 - Browser extension scaffold for clipping.
-- Desktop Tauri helper scaffold for non-browser clipping.
+- Desktop Tauri helper for non-browser clipping.
 - Artifact graph now persists explicit relation edges and exposes version history (`/v1/artifacts/{id}/versions`).
 - Browser extension now posts raw/normalized/extracted capture layers to `/v1/capture`.
 - Desktop helper now posts captures to `/v1/capture` and attempts strict on-device OCR (`tesseract`) for screenshots.
+- Desktop helper now persists API/token config, registers native global shortcuts in Tauri runtime, uses native clipboard reads, and attempts platform screenshot capture beyond the earlier placeholder path.
+- Desktop helper now captures best-effort active app/window metadata and keeps recent clip history in the helper UI.
+- Desktop helper recent screenshot history now also keeps thumbnail previews so screenshot clips are visually inspectable in-app instead of being text-only.
+- Desktop helper now builds successfully as a native Tauri release app on Linux (`tools/desktop-helper/src-tauri/target/release/starlog_desktop_helper`).
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
 - Mobile companion local state is now backed by Expo SQLite with migration from the earlier JSON-file store.
@@ -34,7 +38,13 @@
 - Mobile companion now supports local voice-note recording, upload/queue, and Whisper-backed deferred transcription jobs.
 - Mobile companion now supports `starlog://capture?...` deep-link ingestion for share-to-app style capture prefill.
 - Mobile companion now supports Android native share-intent prefills for shared text/URLs/files/audio when running in the local dev build.
+- Mobile companion now uploads shared Android images/files as media-backed artifacts instead of reducing them to placeholder text.
+- Mobile companion now keeps multiple shared Android files together in the quick-capture screen instead of dropping everything after the first file.
+- Mobile companion now materializes shared Android files/audio into app-owned storage and persists shared draft state so native share intake survives routine app/background restarts more reliably.
 - Android dev-build path is now configured with `expo-dev-client`, variant-aware app config, and EAS build profiles for installable APK builds.
+- Native Android project now lives under `apps/mobile/android`, and the local debug build path validates with `./gradlew assembleDebug`.
+- Repo now includes an `adb`-driven Android smoke script (`pnpm test:android:smoke`) to install the debug APK and trigger deep-link plus plain-text share-intent checks on attached devices/emulators.
+- `expo-share-intent` is currently wired in Android-only mode while the separate iOS extension patch flow remains pending.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
 - Mobile companion now supports lightweight artifact inbox triage, manual artifact actions, and open-in-PWA handoff.
@@ -76,7 +86,9 @@
 - Added `/portability` workspace for export download, restore replay, and roundtrip-verification workflow visibility.
 - Added protected media storage/download endpoints plus media export/import payload support for voice-note portability.
 - Added queued local AI worker tooling for laptop-local `codex exec`, Codex-assisted command planning, Whisper processing, and optional local TTS rendering (`scripts/local_ai_worker.py`).
+- Local AI worker now defaults to picking up queued TTS jobs too, supports provider-specific local TTS wrappers (`piper_local`, `say_local`, `espeak_local`, `espeak_ng_local`), and carries voice/rate metadata through the render result.
 - Added `/ai-jobs` workspace for queued local Codex/Whisper job inspection.
+- `/ai-jobs` now supports filtering by status/capability/provider/action plus manual cancel/retry controls for queued or failed local AI jobs.
 - Added an agent-control API/tool catalog (`/v1/agent/tools`, `/v1/agent/execute`) plus a web tester page at `/agent-tools` so future voice/chat surfaces can call Starlog actions without UI clicks.
 - Agent tools can now also read/update execution policy so future chat/voice shells can control routing preferences directly.
 - Agent tool coverage now spans artifacts, notes, tasks, calendar events, time-block generation, review, briefing/alarm flows, search, and execution-policy management.
@@ -96,9 +108,9 @@
 
 ## Next implementation targets
 
-1. Harden the native share path by validating Android share-intent behavior end to end on device and adding the matching iOS share-extension path.
-2. Replace desktop helper local hotkey wiring with true global OS shortcuts and complete cross-platform screenshot pipeline (deprioritized for now).
-3. Harden the local TTS worker path with provider-specific wrappers and richer job controls beyond the current queued-audio render flow.
+1. Harden the native share path by validating Android share-intent behavior end to end on a booted device/emulator and adding the matching iOS share-extension path.
+2. Harden desktop helper screenshot/runtime validation across real macOS/Windows/Linux desktops now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, and release builds are in place.
+3. Harden the local TTS worker path further with deeper provider validation and richer job orchestration beyond the current local wrapper set plus cancel/retry controls.
 4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized.
 5. Deepen PWA local-first caches beyond the current local-snapshot reads (IndexedDB entity snapshots, offline detail/search reads, and cache invalidation rules).
 6. Implement actual phone-local STT/LLM backends that honor the shared execution policy instead of routing those capabilities only through the queued/local-server paths.
