@@ -40,7 +40,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 1. iOS share extension
 
 - Branch: `codex/ios-share-extension`
-- Lock: `UNCLAIMED`
+- Lock: `Agent 4 claimed 2026-03-10 11:38 UTC`
 - Goal: add the missing iOS native share-target path for the companion app.
 - Scope:
   - implement the iOS share-extension/config-plugin/native plumbing,
