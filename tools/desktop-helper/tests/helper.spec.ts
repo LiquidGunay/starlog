@@ -11,6 +11,39 @@ test("persists helper config across reloads", async ({ page }) => {
   await expect(page.getByLabel("Bearer token")).toHaveValue("token-123");
 });
 
+test("browser runtime diagnostics show fallback capability state", async ({ page }) => {
+  await page.goto("/index.html");
+
+  await expect(page.locator("#runtimeDiagnostics")).toContainText("Browser fallback");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Browser clipboard capture is available while the helper window is focused.",
+  );
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Screenshot capture requires the native Tauri desktop runtime.",
+  );
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Window-local shortcuts are active while the helper window is focused.",
+  );
+});
+
+test("browser runtime diagnostics report clipboard unavailability clearly", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+
+  await page.goto("/index.html");
+
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Clipboard capture is unavailable in this browser runtime.",
+  );
+  await expect(page.locator("#runtimeDiagnostics .diagnostic-badge.unavailable").first()).toHaveText(
+    "Unavailable",
+  );
+});
+
 test("window shortcut clips clipboard text", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {

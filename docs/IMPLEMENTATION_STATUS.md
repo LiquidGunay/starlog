@@ -31,6 +31,7 @@
 - Desktop helper now captures best-effort active app/window metadata and keeps recent clip history in the helper UI.
 - Desktop helper recent screenshot history now also keeps thumbnail previews so screenshot clips are visually inspectable in-app instead of being text-only.
 - Desktop helper now builds successfully as a native Tauri release app on Linux (`tools/desktop-helper/src-tauri/target/release/starlog_desktop_helper`).
+- Desktop helper now exposes runtime diagnostics for clipboard/screenshot/OCR/shortcut state, falls back to browser clipboard reads when native access is unavailable, and cleans up temporary screenshot files after upload attempts.
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
 - Mobile companion local state is now backed by Expo SQLite with migration from the earlier JSON-file store.
@@ -109,7 +110,7 @@
 ## Next implementation targets
 
 1. Harden the native share path by validating Android share-intent behavior end to end on a booted device/emulator and adding the matching iOS share-extension path.
-2. Harden desktop helper screenshot/runtime validation across real macOS/Windows/Linux desktops now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, and release builds are in place.
+2. Finish real macOS/Windows/Linux desktop validation against the helper's runtime diagnostics matrix now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, browser clipboard fallback, and release builds are in place.
 3. Harden the local TTS worker path further with deeper provider validation and richer job orchestration beyond the current local wrapper set plus cancel/retry controls.
 4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized.
 5. Deepen PWA local-first caches beyond the current local-snapshot reads (IndexedDB entity snapshots, offline detail/search reads, and cache invalidation rules).
