@@ -3,12 +3,20 @@ const apiBaseInput = document.getElementById("apiBase");
 const tokenInput = document.getElementById("token");
 const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
+const runtimeDiagnosticsNode = document.getElementById("runtimeDiagnostics");
 const recentCapturesNode = document.getElementById("recentCaptures");
 const CONFIG_STORAGE_KEY = "starlog.desktop-helper.config.v1";
 const RECENT_CAPTURE_STORAGE_KEY = "starlog.desktop-helper.recent-captures.v1";
 const DEFAULT_API_BASE = "http://localhost:8000";
 const MAX_RECENT_CAPTURES = 6;
 const SCREENSHOT_PREVIEW_MAX_DIMENSION = 320;
+const RUNTIME_DIAGNOSTIC_ITEMS = [
+  ["clipboard", "Clipboard"],
+  ["screenshot", "Screenshot"],
+  ["activeWindow", "Active window"],
+  ["ocr", "OCR"],
+  ["shortcuts", "Shortcuts"],
+];
 const GLOBAL_SHORTCUTS = [
   {
     accelerator: "CommandOrControl+Shift+C",
@@ -22,6 +30,10 @@ const GLOBAL_SHORTCUTS = [
 
 function setStatus(message) {
   statusNode.textContent = message;
+}
+
+function errorMessage(error, fallbackMessage) {
+  return error instanceof Error ? error.message : fallbackMessage;
 }
 
 function clipSummary(text) {
@@ -66,6 +78,183 @@ async function createScreenshotPreviewDataUrl(base64, mimeType) {
 
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+function createBrowserRuntimeDiagnostics() {
+  return {
+    runtime: "browser",
+    platform: navigator.platform || "unknown",
+    clipboard: navigator.clipboard?.readText
+      ? {
+          status: "available",
+          detail: "Browser clipboard capture is available while the helper window is focused.",
+          preferredBackend: "browser-clipboard",
+          availableBackends: ["browser-clipboard"],
+        }
+      : {
+          status: "unavailable",
+          detail: "Clipboard capture is unavailable in this browser runtime.",
+          preferredBackend: null,
+          availableBackends: [],
+        },
+    screenshot: {
+      status: "unavailable",
+      detail: "Screenshot capture requires the native Tauri desktop runtime.",
+      preferredBackend: null,
+      availableBackends: [],
+    },
+    activeWindow: {
+      status: "degraded",
+      detail: "Active window metadata falls back to the helper page title in browser mode.",
+      preferredBackend: "browser",
+      availableBackends: ["browser"],
+    },
+    ocr: {
+      status: "unavailable",
+      detail: "OCR runs only after native screenshot capture in the Tauri runtime.",
+      preferredBackend: null,
+      availableBackends: [],
+    },
+    shortcuts: {
+      status: "pending",
+      detail: "Checking shortcut wiring.",
+      preferredBackend: "window-keydown",
+      availableBackends: ["window-keydown"],
+      registrations: [],
+    },
+  };
+}
+
+function normalizeCapability(source, fallbackDetail) {
+  const availableBackends = Array.isArray(source?.availableBackends)
+    ? source.availableBackends
+    : Array.isArray(source?.available_backends)
+      ? source.available_backends
+      : [];
+  const registrations = Array.isArray(source?.registrations) ? source.registrations : [];
+  return {
+    status: typeof source?.status === "string" ? source.status : "unavailable",
+    detail: typeof source?.detail === "string" && source.detail.trim()
+      ? source.detail
+      : fallbackDetail,
+    preferredBackend: typeof source?.preferredBackend === "string"
+      ? source.preferredBackend
+      : typeof source?.preferred_backend === "string"
+        ? source.preferred_backend
+        : null,
+    availableBackends,
+    registrations,
+  };
+}
+
+function normalizeRuntimeDiagnostics(source) {
+  const fallback = createBrowserRuntimeDiagnostics();
+  return {
+    runtime: typeof source?.runtime === "string" ? source.runtime : fallback.runtime,
+    platform: typeof source?.platform === "string" ? source.platform : fallback.platform,
+    clipboard: normalizeCapability(
+      source?.clipboard,
+      fallback.clipboard.detail,
+    ),
+    screenshot: normalizeCapability(
+      source?.screenshot,
+      fallback.screenshot.detail,
+    ),
+    activeWindow: normalizeCapability(
+      source?.activeWindow ?? source?.active_window,
+      fallback.activeWindow.detail,
+    ),
+    ocr: normalizeCapability(
+      source?.ocr,
+      fallback.ocr.detail,
+    ),
+    shortcuts: normalizeCapability(
+      source?.shortcuts,
+      fallback.shortcuts.detail,
+    ),
+  };
+}
+
+let runtimeDiagnostics = normalizeRuntimeDiagnostics(createBrowserRuntimeDiagnostics());
+
+function mergeRuntimeDiagnostics(patch) {
+  const base = runtimeDiagnostics;
+  runtimeDiagnostics = normalizeRuntimeDiagnostics({
+    ...base,
+    ...patch,
+    clipboard: patch?.clipboard ? { ...base.clipboard, ...patch.clipboard } : base.clipboard,
+    screenshot: patch?.screenshot ? { ...base.screenshot, ...patch.screenshot } : base.screenshot,
+    activeWindow: patch?.activeWindow ? { ...base.activeWindow, ...patch.activeWindow } : base.activeWindow,
+    ocr: patch?.ocr ? { ...base.ocr, ...patch.ocr } : base.ocr,
+    shortcuts: patch?.shortcuts ? { ...base.shortcuts, ...patch.shortcuts } : base.shortcuts,
+  });
+  renderRuntimeDiagnostics(runtimeDiagnostics);
+}
+
+function diagnosticStatusLabel(status) {
+  if (status === "available") {
+    return "Ready";
+  }
+  if (status === "degraded") {
+    return "Partial";
+  }
+  if (status === "pending") {
+    return "Checking";
+  }
+  return "Unavailable";
+}
+
+function renderRuntimeDiagnostics(diagnostics) {
+  runtimeDiagnosticsNode.replaceChildren();
+
+  const summary = document.createElement("p");
+  summary.className = "help";
+  summary.textContent = `${diagnostics.runtime === "tauri" ? "Native Tauri runtime" : "Browser fallback"} · ${diagnostics.platform}`;
+  runtimeDiagnosticsNode.appendChild(summary);
+
+  for (const [key, label] of RUNTIME_DIAGNOSTIC_ITEMS) {
+    const item = diagnostics[key];
+    const row = document.createElement("article");
+    row.className = "diagnostic-row";
+
+    const heading = document.createElement("div");
+    heading.className = "diagnostic-heading";
+
+    const title = document.createElement("p");
+    title.className = "diagnostic-title";
+    title.textContent = label;
+    heading.appendChild(title);
+
+    const badge = document.createElement("span");
+    badge.className = `diagnostic-badge ${item.status}`;
+    badge.textContent = diagnosticStatusLabel(item.status);
+    heading.appendChild(badge);
+    row.appendChild(heading);
+
+    if (item.preferredBackend || item.availableBackends.length > 0 || item.registrations.length > 0) {
+      const meta = document.createElement("p");
+      meta.className = "diagnostic-meta";
+      const fragments = [];
+      if (item.preferredBackend) {
+        fragments.push(`prefers ${item.preferredBackend}`);
+      }
+      if (item.availableBackends.length > 0) {
+        fragments.push(`backends: ${item.availableBackends.join(", ")}`);
+      }
+      if (item.registrations.length > 0) {
+        fragments.push(`shortcuts: ${item.registrations.join(", ")}`);
+      }
+      meta.textContent = fragments.join(" · ");
+      row.appendChild(meta);
+    }
+
+    const detail = document.createElement("p");
+    detail.className = "diagnostic-detail";
+    detail.textContent = item.detail;
+    row.appendChild(detail);
+
+    runtimeDiagnosticsNode.appendChild(row);
+  }
 }
 
 function readStoredConfig() {
@@ -308,16 +497,34 @@ async function sendMediaCapture({ fileBlob, fileName, mimeType, metadata, title,
 
 async function readClipboardText() {
   const tauriGlobal = window.__TAURI__;
+  const errors = [];
+
   if (tauriGlobal) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return invoke("clip_clipboard_text");
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const text = await invoke("clip_clipboard_text");
+      return {
+        text,
+        backend: "tauri-native",
+      };
+    } catch (error) {
+      errors.push(errorMessage(error, "Native clipboard capture failed"));
+    }
   }
 
-  if (!navigator.clipboard?.readText) {
-    throw new Error("Clipboard API is unavailable in this runtime");
+  if (navigator.clipboard?.readText) {
+    try {
+      const text = await navigator.clipboard.readText();
+      return {
+        text,
+        backend: "browser-clipboard",
+      };
+    } catch (error) {
+      errors.push(errorMessage(error, "Browser clipboard capture failed"));
+    }
   }
 
-  return navigator.clipboard.readText();
+  throw new Error(errors.join(" | ") || "Clipboard API is unavailable in this runtime");
 }
 
 async function readCaptureContext() {
@@ -379,15 +586,32 @@ async function readCaptureContext() {
   }
 }
 
+async function deleteCaptureFile(path) {
+  if (!window.__TAURI__ || typeof path !== "string" || !path) {
+    return;
+  }
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("delete_file_if_exists", { path });
+  } catch {
+    // Temp-file cleanup is best effort and should not hide the capture result.
+  }
+}
+
 async function clipClipboard() {
   try {
-    const [text, captureContext] = await Promise.all([readClipboardText(), readCaptureContext()]);
+    const [clipboardResult, captureContext] = await Promise.all([readClipboardText(), readCaptureContext()]);
+    const text = clipboardResult.text;
     if (!text) {
       setStatus("Clipboard is empty");
       return;
     }
 
-    const artifactId = await sendCapture(text, captureContext.metadata);
+    const artifactId = await sendCapture(text, {
+      ...captureContext.metadata,
+      clipboard_backend: clipboardResult.backend,
+    });
     if (!artifactId) {
       return;
     }
@@ -409,6 +633,7 @@ async function clipClipboard() {
 }
 
 async function clipScreenshot() {
+  let screenshotPath = "";
   try {
     const tauriGlobal = window.__TAURI__;
     if (!tauriGlobal) {
@@ -419,6 +644,7 @@ async function clipScreenshot() {
     const captureContext = await readCaptureContext();
     const { invoke } = await import("@tauri-apps/api/core");
     const result = await invoke("clip_screenshot_stub");
+    screenshotPath = typeof result?.path === "string" ? result.path : "";
     if (result?.status === "captured" && typeof result.path === "string" && result.path) {
       const base64Image = await invoke("read_file_base64", { path: result.path });
       const previewDataUrl = await createScreenshotPreviewDataUrl(base64Image, "image/png");
@@ -461,23 +687,81 @@ async function clipScreenshot() {
     setStatus(typeof result?.message === "string" ? result.message : String(result));
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Screenshot capture failed");
+  } finally {
+    await deleteCaptureFile(screenshotPath);
   }
 }
 
 async function wireGlobalShortcuts() {
   const tauriGlobal = window.__TAURI__;
   if (!tauriGlobal) {
-    setStatus("Window shortcuts ready");
+    mergeRuntimeDiagnostics({
+      shortcuts: {
+        status: "available",
+        detail: "Window-local shortcuts are active while the helper window is focused.",
+        preferredBackend: "window-keydown",
+        availableBackends: ["window-keydown"],
+        registrations: GLOBAL_SHORTCUTS.map((shortcut) => shortcut.accelerator),
+      },
+    });
+    setStatus("Window shortcuts ready (focused window only)");
     return;
   }
 
-  const { isRegistered, register } = await import("@tauri-apps/plugin-global-shortcut");
-  for (const shortcut of GLOBAL_SHORTCUTS) {
-    if (!(await isRegistered(shortcut.accelerator))) {
-      await register(shortcut.accelerator, shortcut.handler);
+  try {
+    const { isRegistered, register } = await import("@tauri-apps/plugin-global-shortcut");
+    const registrations = [];
+    const failures = [];
+
+    for (const shortcut of GLOBAL_SHORTCUTS) {
+      try {
+        if (!(await isRegistered(shortcut.accelerator))) {
+          await register(shortcut.accelerator, shortcut.handler);
+        }
+        registrations.push(shortcut.accelerator);
+      } catch (error) {
+        failures.push(`${shortcut.accelerator}: ${errorMessage(error, "registration failed")}`);
+      }
     }
+
+    if (failures.length > 0) {
+      mergeRuntimeDiagnostics({
+        shortcuts: {
+          status: "degraded",
+          detail: `Global shortcut registration is partial. Window-local shortcuts still work while focused. ${failures.join("; ")}`,
+          preferredBackend: registrations.length > 0 ? "tauri-global-shortcut" : "window-keydown",
+          availableBackends: registrations.length > 0
+            ? ["tauri-global-shortcut", "window-keydown"]
+            : ["window-keydown"],
+          registrations,
+        },
+      });
+      setStatus("Global shortcuts degraded; window shortcuts still work while focused");
+      return;
+    }
+
+    mergeRuntimeDiagnostics({
+      shortcuts: {
+        status: "available",
+        detail: "Global shortcuts are wired and window-local shortcuts remain available as fallback.",
+        preferredBackend: "tauri-global-shortcut",
+        availableBackends: ["tauri-global-shortcut", "window-keydown"],
+        registrations,
+      },
+    });
+    setStatus("Global shortcuts wired");
+  } catch (error) {
+    mergeRuntimeDiagnostics({
+      shortcuts: {
+        status: "degraded",
+        detail: `Global shortcut registration failed. Window-local shortcuts still work while focused. ${errorMessage(error, "registration failed")}`,
+        preferredBackend: "window-keydown",
+        availableBackends: ["window-keydown"],
+        registrations: [],
+      },
+    });
+    setStatus("Global shortcuts unavailable; window shortcuts still work while focused");
   }
-  setStatus("Global shortcuts wired");
 }
 
 function isShortcutTarget(target) {
@@ -510,8 +794,46 @@ function wireWindowShortcuts() {
   });
 }
 
+async function loadRuntimeDiagnostics() {
+  if (!window.__TAURI__) {
+    mergeRuntimeDiagnostics(createBrowserRuntimeDiagnostics());
+    return;
+  }
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const diagnostics = normalizeRuntimeDiagnostics(await invoke("inspect_runtime_diagnostics"));
+    if (diagnostics.clipboard.status !== "available" && navigator.clipboard?.readText) {
+      const availableBackends = diagnostics.clipboard.availableBackends.includes("browser-clipboard")
+        ? diagnostics.clipboard.availableBackends
+        : [...diagnostics.clipboard.availableBackends, "browser-clipboard"];
+      diagnostics.clipboard = {
+        ...diagnostics.clipboard,
+        status: "degraded",
+        detail: `${diagnostics.clipboard.detail} A focused-window browser clipboard fallback is also available.`,
+        availableBackends,
+      };
+    }
+    mergeRuntimeDiagnostics(diagnostics);
+  } catch (error) {
+    mergeRuntimeDiagnostics({
+      ...createBrowserRuntimeDiagnostics(),
+      runtime: "tauri",
+      platform: navigator.platform || "unknown",
+      shortcuts: {
+        status: "degraded",
+        detail: `Runtime diagnostics could not be loaded from Tauri. Window-local shortcuts still work while focused. ${errorMessage(error, "diagnostics unavailable")}`,
+        preferredBackend: "window-keydown",
+        availableBackends: ["window-keydown"],
+        registrations: [],
+      },
+    });
+  }
+}
+
 applyStoredConfig(readStoredConfig());
 renderRecentCaptures(readStoredRecentCaptures());
+renderRuntimeDiagnostics(runtimeDiagnostics);
 apiBaseInput.addEventListener("input", persistConfig);
 tokenInput.addEventListener("input", persistConfig);
 
@@ -524,4 +846,5 @@ clipScreenshotButton.addEventListener("click", () => {
 });
 
 wireWindowShortcuts();
+loadRuntimeDiagnostics().catch(() => undefined);
 wireGlobalShortcuts().catch(() => undefined);
