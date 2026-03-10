@@ -180,6 +180,96 @@ fn ocr_runtime_capability() -> RuntimeCapability {
     }
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn actionable_windows_error(operation: &str, detail: &str) -> String {
+    let normalized = detail.trim();
+    if normalized.is_empty() {
+        return format!("{operation} failed on Windows.");
+    }
+
+    if normalized.contains("failed to run powershell") {
+        return format!(
+            "{operation} requires PowerShell on Windows and the helper could not launch it. Detail: {normalized}"
+        );
+    }
+
+    if normalized.contains("CopyFromScreen")
+        || normalized.contains("The handle is invalid")
+        || normalized.contains("The parameter is not valid")
+        || normalized.contains("A generic error occurred in GDI+")
+    {
+        return format!(
+            "{operation} requires an unlocked interactive Windows desktop session. Detail: {normalized}"
+        );
+    }
+
+    if normalized.contains("GetForegroundWindow")
+        || normalized.contains("GetWindowThreadProcessId")
+        || normalized.contains("GetWindowText")
+        || normalized.contains("Cannot overwrite variable PID")
+    {
+        return format!(
+            "{operation} requires an unlocked interactive Windows desktop session with a focused foreground window. Detail: {normalized}"
+        );
+    }
+
+    format!("{operation} failed on Windows. Detail: {normalized}")
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_active_window_script() -> &'static str {
+    r#"
+$signature = @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class Win32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+'@;
+Add-Type $signature;
+$hwnd = [Win32]::GetForegroundWindow();
+$builder = New-Object System.Text.StringBuilder 1024;
+[void][Win32]::GetWindowText($hwnd, $builder, $builder.Capacity);
+$processIdValue = 0;
+[void][Win32]::GetWindowThreadProcessId($hwnd, [ref]$processIdValue);
+$app = (Get-Process -Id $processIdValue -ErrorAction SilentlyContinue).ProcessName;
+Write-Output $app;
+Write-Output $builder.ToString();
+"#
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_screenshot_script(target: &str) -> String {
+    let escaped_target = target.replace('\'', "''");
+    format!(
+        "Add-Type -AssemblyName System.Windows.Forms; \
+         Add-Type -AssemblyName System.Drawing; \
+         $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen; \
+         $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height; \
+         $graphics = [System.Drawing.Graphics]::FromImage($bitmap); \
+         $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); \
+         $bitmap.Save('{escaped_target}', [System.Drawing.Imaging.ImageFormat]::Png); \
+         $graphics.Dispose(); \
+         $bitmap.Dispose();"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn windows_active_window_probe() -> Result<(Option<String>, Option<String>), String> {
+    let output = run_command(
+        "powershell",
+        &["-NoProfile", "-Command", windows_active_window_script()],
+    )
+    .map_err(|error| actionable_windows_error("Active window metadata", &error))?;
+    let mut lines = output.lines();
+    let app_name = lines.next().map(str::to_string).and_then(non_empty);
+    let window_title = non_empty(lines.collect::<Vec<_>>().join("\n"));
+    Ok((app_name, window_title))
+}
+
 #[cfg(target_os = "linux")]
 fn linux_wayland_session() -> bool {
     matches!(
@@ -433,7 +523,7 @@ fn runtime_diagnostics() -> RuntimeDiagnostics {
         clipboard: if command_exists("powershell") {
             capability(
                 "available",
-                "Clipboard capture is ready via PowerShell Get-Clipboard.",
+                "Clipboard capture is ready via PowerShell Get-Clipboard on the Windows host.",
                 Some("powershell"),
                 vec!["powershell".to_string()],
             )
@@ -448,25 +538,39 @@ fn runtime_diagnostics() -> RuntimeDiagnostics {
         screenshot: if command_exists("powershell") {
             capability(
                 "available",
-                "Full-screen screenshot capture is ready via PowerShell.",
+                "Full-screen screenshot capture is ready via PowerShell when the helper runs in an interactive Windows desktop session.",
                 Some("powershell"),
                 vec!["powershell".to_string()],
             )
         } else {
             capability(
                 "unavailable",
-                "Screenshot capture requires PowerShell on Windows.",
+                "Screenshot capture requires PowerShell and an interactive desktop session on Windows.",
                 None,
                 Vec::new(),
             )
         },
         active_window: if command_exists("powershell") {
-            capability(
-                "available",
-                "Active window metadata is ready via the PowerShell user32 bridge.",
-                Some("powershell-user32"),
-                vec!["powershell-user32".to_string()],
-            )
+            match windows_active_window_probe() {
+                Ok((app_name, window_title)) if app_name.is_some() || window_title.is_some() => capability(
+                    "available",
+                    "Active window metadata is ready via the PowerShell user32 bridge.",
+                    Some("powershell-user32"),
+                    vec!["powershell-user32".to_string()],
+                ),
+                Ok(_) => capability(
+                    "degraded",
+                    "Active window metadata probe ran but did not return a focused app/window. Keep an unlocked Windows window focused when validating.",
+                    Some("powershell-user32"),
+                    vec!["powershell-user32".to_string()],
+                ),
+                Err(error) => capability(
+                    "degraded",
+                    error,
+                    Some("powershell-user32"),
+                    vec!["powershell-user32".to_string()],
+                ),
+            }
         } else {
             capability(
                 "degraded",
@@ -571,43 +675,20 @@ fn active_window_context() -> ActiveWindowContext {
 
 #[cfg(target_os = "windows")]
 fn active_window_context() -> ActiveWindowContext {
-    let script = r#"
-$signature = @'
-using System;
-using System.Text;
-using System.Runtime.InteropServices;
-public static class Win32 {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-}
-'@;
-Add-Type $signature;
-$hwnd = [Win32]::GetForegroundWindow();
-$builder = New-Object System.Text.StringBuilder 1024;
-[void][Win32]::GetWindowText($hwnd, $builder, $builder.Capacity);
-$pid = 0;
-[void][Win32]::GetWindowThreadProcessId($hwnd, [ref]$pid);
-$app = (Get-Process -Id $pid -ErrorAction SilentlyContinue).ProcessName;
-Write-Output $app;
-Write-Output $builder.ToString();
-"#;
-
-    let output = run_command("powershell", &["-NoProfile", "-Command", script]).ok();
-    let (app_name, window_title) = if let Some(output) = output {
-        let mut lines = output.lines();
-        let app_name = lines.next().map(str::to_string).and_then(non_empty);
-        let window_title = non_empty(lines.collect::<Vec<_>>().join("\n"));
-        (app_name, window_title)
-    } else {
-        (None, None)
+    let (app_name, window_title, backend) = match windows_active_window_probe() {
+        Ok((app_name, window_title)) => (
+            app_name,
+            window_title,
+            Some("powershell-user32".to_string()),
+        ),
+        Err(_) => (None, None, Some("powershell-user32-error".to_string())),
     };
 
     ActiveWindowContext {
         app_name,
         window_title,
         platform: "windows".to_string(),
-        backend: Some("powershell-user32".to_string()),
+        backend,
     }
 }
 
@@ -694,7 +775,8 @@ fn clip_clipboard_text() -> Result<String, String> {
         return run_command(
             "powershell",
             &["-NoProfile", "-Command", "Get-Clipboard -Raw"],
-        );
+        )
+        .map_err(|error| actionable_windows_error("Clipboard capture", &error));
     }
 
     #[cfg(target_os = "linux")]
@@ -770,26 +852,10 @@ fn capture_screenshot(path: &Path) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let escaped_target = target.replace('\'', "''");
-        let script = format!(
-            "Add-Type -AssemblyName System.Windows.Forms; \
-             Add-Type -AssemblyName System.Drawing; \
-             $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen; \
-             $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height; \
-             $graphics = [System.Drawing.Graphics]::FromImage($bitmap); \
-             $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); \
-             $bitmap.Save('{escaped_target}', [System.Drawing.Imaging.ImageFormat]::Png); \
-             $graphics.Dispose(); \
-             $bitmap.Dispose();"
-        );
-        let status = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &script])
-            .status()
-            .map_err(|error| format!("failed to run PowerShell screenshot capture: {error}"))?;
-        if status.success() {
-            return Ok(format!("Full-screen screenshot captured: {target}"));
-        }
-        return Err("PowerShell screenshot capture failed".to_string());
+        let script = windows_screenshot_script(&target);
+        return run_command("powershell", &["-NoProfile", "-Command", &script])
+            .map(|_| format!("Full-screen screenshot captured: {target}"))
+            .map_err(|error| actionable_windows_error("Screenshot capture", &error));
     }
 
     #[cfg(target_os = "linux")]
@@ -976,5 +1042,41 @@ mod tests {
         assert_eq!(capability.status, "unavailable");
         assert_eq!(capability.preferred_backend, None);
         assert!(capability.detail.contains("gnome-screenshot"));
+    }
+
+    #[test]
+    fn windows_active_window_script_uses_process_id_variable() {
+        let script = windows_active_window_script();
+
+        assert!(script.contains("$processIdValue = 0;"));
+        assert!(!script.contains("$pid = 0;"));
+    }
+
+    #[test]
+    fn actionable_windows_error_flags_interactive_session_requirement() {
+        let detail = actionable_windows_error(
+            "Screenshot capture",
+            "Exception calling \"CopyFromScreen\" with \"3\" argument(s): \"The handle is invalid.\"",
+        );
+
+        assert!(detail.contains("interactive Windows desktop session"));
+    }
+
+    #[test]
+    fn actionable_windows_error_flags_foreground_window_requirement() {
+        let detail = actionable_windows_error(
+            "Active window metadata",
+            "Cannot overwrite variable PID because it is read-only or constant.",
+        );
+
+        assert!(detail.contains("focused foreground window"));
+    }
+
+    #[test]
+    fn windows_screenshot_script_escapes_single_quotes() {
+        let script =
+            windows_screenshot_script("C:\\Users\\bossg\\AppData\\Local\\Temp\\starlog'shot.png");
+
+        assert!(script.contains("starlog''shot.png"));
     }
 }
