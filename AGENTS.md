@@ -45,6 +45,7 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-06: User is fine with local AI models running as separate local commands/processes instead of being bundled into the app, and does not require real-time execution for most AI features.
 - 2026-03-09: User wants Playwright used for browser-style testing when validating changes.
 - 2026-03-09: User wants to be asked before any Railway deployment is made.
+- 2026-03-10: User wants pending work broken into concrete workitems and run in parallel across separate `codex/*` branches / Codex instances.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
