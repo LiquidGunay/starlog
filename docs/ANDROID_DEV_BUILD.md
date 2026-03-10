@@ -79,6 +79,9 @@ That compiles and installs the development build locally using your machine's An
 The native Android project can also be validated directly:
 
 ```bash
+export JAVA_HOME="$HOME/.local/jdks/temurin-17"
+export ANDROID_HOME="$HOME/.local/android"
+export ANDROID_SDK_ROOT="$HOME/.local/android"
 cd apps/mobile
 APP_VARIANT=development npx expo prebuild --platform android --no-install
 cd android
@@ -98,6 +101,60 @@ pnpm test:android:smoke
 ```
 
 That script installs the debug APK, launches Starlog, sends a `starlog://capture?...` deep link, and sends a plain-text Android share intent into the dev build.
+
+Useful overrides for the shell smoke helper:
+
+```bash
+ADB_SERIAL=<device-serial> pnpm test:android:smoke
+REVERSE_PORTS=8081,8000 pnpm test:android:smoke
+SKIP_INSTALL=1 SKIP_DEEP_LINK=1 pnpm test:android:smoke
+```
+
+This is useful when:
+
+- more than one Android device/emulator is attached,
+- Metro/API need `adb reverse`,
+- the app is already installed and you only want to resend share/deep-link intents.
+
+For fresh Codex worktrees in this environment, also run:
+
+```bash
+npx pnpm@9.15.0 install
+```
+
+before `tsc`, `expo prebuild`, or direct Gradle validation.
+
+### Windows-host physical-device smoke flow
+
+On this host, physical-device validation has been more reliable through a native Windows `adb.exe` than through WSL-driven `adb shell`.
+
+From repo root in PowerShell:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 -ReversePorts "8081,8000"
+```
+
+Equivalent from the repo root in WSL:
+
+```bash
+pnpm test:android:smoke:windows
+```
+
+Optional Windows overrides:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 `
+  -Serial 9dd62e84 `
+  -ReversePorts "8081,8000" `
+  -SkipInstall `
+  -SkipDeepLink
+```
+
+Use the Windows-host script when:
+
+- WSL `adb shell` hangs or streams truncate,
+- the connected phone only appears in Windows `adb`,
+- you need a reproducible physical-device flow for this repo's current host setup.
 
 If you prefer running the native compile directly from the app folder:
 
@@ -167,6 +224,21 @@ Android share-sheet flow:
 - build/install the dev client
 - share text, URL, audio, image, or file to Starlog from Android
 - Starlog companion prefills quick capture, copies shared files/audio into app-owned storage for more durable drafts, shared images/files upload as media-backed artifacts, multiple shared files stay grouped in the companion queue, and shared audio preloads the voice-upload path
+
+Manual validation matrix for Android native share:
+
+- text share:
+  - quick capture title/text populate
+- URL share:
+  - quick capture source URL populates
+- image/file share:
+  - shared file list is visible in quick capture before submit
+  - submit uploads media-backed artifact instead of placeholder text
+- audio share:
+  - `Voice clip` becomes ready without recording in-app
+  - `Upload / Queue Voice` sends the shared file into `/v1/capture/voice`
+- restart/background:
+  - shared files/audio survive routine app backgrounding or restart before submit
 
 Validation status in this repo:
 

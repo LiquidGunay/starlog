@@ -45,6 +45,7 @@
 - Android dev-build path is now configured with `expo-dev-client`, variant-aware app config, and EAS build profiles for installable APK builds.
 - Native Android project now lives under `apps/mobile/android`, and the local debug build path validates with `./gradlew assembleDebug`.
 - Repo now includes an `adb`-driven Android smoke script (`pnpm test:android:smoke`) to install the debug APK and trigger deep-link plus plain-text share-intent checks on attached devices/emulators.
+- Repo now also includes a Windows-host Android smoke helper (`scripts/android_native_smoke_windows.ps1` / `pnpm test:android:smoke:windows`) because this host's WSL `adb shell` path can be flaky even when Windows `adb.exe` still sees the connected phone.
 - `expo-share-intent` is currently wired in Android-only mode while the separate iOS extension patch flow remains pending.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
