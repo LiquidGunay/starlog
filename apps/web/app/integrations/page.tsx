@@ -34,6 +34,26 @@ type ExecutionPolicy = {
   updated_at?: string | null;
 };
 
+type CodexBridgeContract = {
+  provider_name: string;
+  summary: string;
+  feature_flag_key: string;
+  supported_adapter_kinds: string[];
+  configured_adapter_kind?: string | null;
+  supported_auth: string[];
+  supported_capabilities: string[];
+  unsupported_capabilities: string[];
+  required_config: string[];
+  optional_config: string[];
+  native_oauth_supported: boolean;
+  safe_fallback: string;
+  configured: boolean;
+  enabled: boolean;
+  execute_enabled: boolean;
+  missing_requirements: string[];
+  derived_endpoints: Record<string, string>;
+};
+
 export default function IntegrationsPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [providerName, setProviderName] = useState("local_llm");
@@ -55,12 +75,18 @@ export default function IntegrationsPage() {
     ),
   );
   const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(null);
+  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(null);
   const [status, setStatus] = useState("Ready");
 
   async function loadProviders() {
     try {
-      const payload = await apiRequest<ProviderConfig[]>(apiBase, token, "/v1/integrations/providers");
+      const [payload, policy, contract] = await Promise.all([
+        apiRequest<ProviderConfig[]>(apiBase, token, "/v1/integrations/providers"),
+        apiRequest<ExecutionPolicy>(apiBase, token, "/v1/integrations/execution-policy"),
+        apiRequest<CodexBridgeContract>(apiBase, token, "/v1/integrations/providers/codex_bridge/contract"),
+      ]);
       setProviders(payload);
+      setCodexContract(contract);
 
       const healthPairs = await Promise.all(
         payload.map(async (provider) => {
@@ -73,7 +99,6 @@ export default function IntegrationsPage() {
         }),
       );
       setHealthByProvider(Object.fromEntries(healthPairs));
-      const policy = await apiRequest<ExecutionPolicy>(apiBase, token, "/v1/integrations/execution-policy");
       setPolicyMeta(policy);
       setPolicyJson(
         JSON.stringify(
@@ -87,7 +112,7 @@ export default function IntegrationsPage() {
           2,
         ),
       );
-      setStatus(`Loaded ${payload.length} provider config(s)`);
+      setStatus(`Loaded ${payload.length} provider config(s) and Codex bridge contract`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load providers");
     }
@@ -265,6 +290,60 @@ export default function IntegrationsPage() {
                 );
               })}
             </ul>
+          )}
+        </div>
+
+        <div className="panel glass">
+          <h2>Codex bridge contract</h2>
+          {!codexContract ? (
+            <p className="console-copy">Refresh the provider list to load the current Codex bridge contract.</p>
+          ) : (
+            <div>
+              <p className="console-copy">{codexContract.summary}</p>
+              <p className="console-copy">
+                configured: {codexContract.configured ? "yes" : "no"} | enabled:{" "}
+                {codexContract.enabled ? "yes" : "no"} | execute enabled:{" "}
+                {codexContract.execute_enabled ? "yes" : "no"}
+              </p>
+              <p className="console-copy">
+                feature flag: {codexContract.feature_flag_key} | adapter:{" "}
+                {codexContract.configured_adapter_kind || codexContract.supported_adapter_kinds[0]}
+              </p>
+              <p className="console-copy">
+                native OAuth supported: {codexContract.native_oauth_supported ? "yes" : "no"}
+              </p>
+              <p className="console-copy">
+                supported capabilities: {codexContract.supported_capabilities.join(", ")}
+              </p>
+              <p className="console-copy">
+                unsupported capabilities: {codexContract.unsupported_capabilities.join(", ")}
+              </p>
+              <p className="console-copy">
+                required config: {codexContract.required_config.join(" | ")}
+              </p>
+              <p className="console-copy">
+                optional config: {codexContract.optional_config.join(" | ")}
+              </p>
+              <p className="console-copy">
+                auth modes: {codexContract.supported_auth.join(", ")}
+              </p>
+              <p className="console-copy">{codexContract.safe_fallback}</p>
+              {Object.keys(codexContract.derived_endpoints).length > 0 ? (
+                <p className="console-copy">
+                  derived endpoints: {JSON.stringify(codexContract.derived_endpoints)}
+                </p>
+              ) : null}
+              {codexContract.missing_requirements.length > 0 ? (
+                <div>
+                  <p className="console-copy">missing requirements:</p>
+                  <ul>
+                    {codexContract.missing_requirements.map((item) => (
+                      <li key={item} className="console-copy">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
 
