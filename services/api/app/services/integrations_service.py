@@ -45,6 +45,12 @@ BATCH_PROVIDER_HINT = {
     "tts": "piper_local",
 }
 
+CODEX_BRIDGE_FEATURE_FLAG_KEY = "experimental_enabled"
+CODEX_BRIDGE_SUPPORTED_ADAPTERS = ["openai_compatible"]
+CODEX_BRIDGE_SUPPORTED_AUTH = ["api_key", "access_token", "token"]
+CODEX_BRIDGE_SUPPORTED_CAPABILITIES = ["llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"]
+CODEX_BRIDGE_UNSUPPORTED_CAPABILITIES = ["stt", "tts", "ocr"]
+
 
 def _decoded_config(row: dict) -> dict:
     config = row.get("config_json")
@@ -80,6 +86,16 @@ def _contains_any(config: dict, keys: set[str]) -> bool:
         value = config.get(key)
         if isinstance(value, str) and value.strip():
             return True
+    return False
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if isinstance(value, (int, float)):
+        return value != 0
     return False
 
 
@@ -126,6 +142,23 @@ def _default_codex_bridge_probe_url(config: dict) -> str | None:
     if parsed.path in {"", "/"}:
         return f"{candidate.rstrip('/')}/v1/models"
     return f"{candidate.rstrip('/')}/models"
+
+
+def _default_codex_bridge_execute_url(config: dict) -> str | None:
+    explicit = str(config.get("chat_completions_url") or "").strip()
+    if _valid_url(explicit):
+        return explicit
+
+    base = str(config.get("bridge_url") or config.get("endpoint") or config.get("base_url") or "").strip()
+    if not _valid_url(base):
+        return None
+    if base.endswith("/chat/completions"):
+        return base
+    if base.endswith("/v1"):
+        return f"{base.rstrip('/')}/chat/completions"
+    if urlparse(base).path in {"", "/"}:
+        return f"{base.rstrip('/')}/v1/chat/completions"
+    return f"{base.rstrip('/')}/chat/completions"
 
 
 def _probe_endpoint(
@@ -176,6 +209,111 @@ def _auth_probe_header(config: dict) -> tuple[dict[str, str], str | None]:
 def build_auth_headers(config: dict) -> dict[str, str]:
     headers, _ = _auth_probe_header(config)
     return headers
+
+
+def _codex_bridge_state(provider: dict | None) -> dict:
+    configured = provider is not None
+    enabled = bool(provider["enabled"]) if provider is not None else False
+    config = dict(provider["config"]) if provider is not None else {}
+    configured_adapter_kind = (
+        str(config.get("adapter_kind") or CODEX_BRIDGE_SUPPORTED_ADAPTERS[0]).strip()
+        if configured
+        else None
+    )
+    experimental_enabled = _truthy(config.get(CODEX_BRIDGE_FEATURE_FLAG_KEY))
+    execute_endpoint = _default_codex_bridge_execute_url(config) or ""
+    model_list_endpoint = _default_codex_bridge_probe_url(config) or ""
+    auth_headers_buildable = bool(build_auth_headers(config))
+
+    missing_requirements: list[str] = []
+    if not configured:
+        missing_requirements.append("Configure the codex_bridge provider first.")
+    elif not enabled:
+        missing_requirements.append("Enable the codex_bridge provider before using it.")
+
+    if not experimental_enabled:
+        missing_requirements.append(
+            f"Set config.{CODEX_BRIDGE_FEATURE_FLAG_KEY}=true to opt into the experimental bridge."
+        )
+    if configured_adapter_kind not in CODEX_BRIDGE_SUPPORTED_ADAPTERS:
+        missing_requirements.append("Only adapter_kind=openai_compatible is supported right now.")
+    if configured and not execute_endpoint:
+        missing_requirements.append("Configure bridge_url or chat_completions_url for request execution.")
+    if configured and not auth_headers_buildable:
+        missing_requirements.append("Configure api_key, access_token, or token for bridge auth.")
+
+    return {
+        "configured": configured,
+        "enabled": enabled,
+        "experimental_enabled": experimental_enabled,
+        "configured_adapter_kind": configured_adapter_kind,
+        "execute_endpoint": execute_endpoint,
+        "model_list_endpoint": model_list_endpoint,
+        "auth_headers_buildable": auth_headers_buildable,
+        "missing_requirements": missing_requirements,
+        "execute_enabled": configured and enabled and not missing_requirements,
+    }
+
+
+def codex_bridge_contract(conn: Connection) -> dict:
+    provider = get_provider_config(conn, "codex_bridge", redact=False)
+    state = _codex_bridge_state(provider)
+
+    derived_endpoints = {}
+    if state["execute_endpoint"]:
+        derived_endpoints["execute"] = state["execute_endpoint"]
+    if state["model_list_endpoint"]:
+        derived_endpoints["model_list"] = state["model_list_endpoint"]
+
+    return {
+        "provider_name": "codex_bridge",
+        "summary": (
+            "Starlog currently supports Codex only through an explicit experimental "
+            "OpenAI-compatible bridge adapter. A first-party native Codex OAuth handshake "
+            "is not implemented in this repo yet, so bridge misses fall back to the next "
+            "execution-policy target."
+        ),
+        "feature_flag_key": CODEX_BRIDGE_FEATURE_FLAG_KEY,
+        "supported_adapter_kinds": CODEX_BRIDGE_SUPPORTED_ADAPTERS,
+        "configured_adapter_kind": state["configured_adapter_kind"],
+        "supported_auth": CODEX_BRIDGE_SUPPORTED_AUTH,
+        "supported_capabilities": CODEX_BRIDGE_SUPPORTED_CAPABILITIES,
+        "unsupported_capabilities": CODEX_BRIDGE_UNSUPPORTED_CAPABILITIES,
+        "required_config": [
+            "enabled=true",
+            f"config.{CODEX_BRIDGE_FEATURE_FLAG_KEY}=true",
+            "config.adapter_kind=openai_compatible",
+            "config.bridge_url or config.chat_completions_url",
+            "one auth credential: api_key, access_token, or token",
+        ],
+        "optional_config": [
+            "config.model",
+            "config.temperature",
+            "config.model_list_url",
+            "config.auth_probe_url",
+            "config.auth_probe_header",
+            "config.auth_probe_prefix",
+            "config.chat_completions_url",
+        ],
+        "native_oauth_supported": False,
+        "safe_fallback": (
+            "If the bridge is missing required config or a request fails, Starlog keeps "
+            "walking the execution policy toward local/server/API fallbacks."
+        ),
+        "configured": state["configured"],
+        "enabled": state["enabled"],
+        "execute_enabled": state["execute_enabled"],
+        "missing_requirements": state["missing_requirements"],
+        "derived_endpoints": derived_endpoints,
+    }
+
+
+def codex_bridge_runtime_config(conn: Connection) -> tuple[dict | None, list[str]]:
+    provider = get_provider_config(conn, "codex_bridge", redact=False)
+    state = _codex_bridge_state(provider)
+    if provider is None or not state["execute_enabled"]:
+        return None, list(state["missing_requirements"])
+    return dict(provider["config"]), []
 
 
 def _probe_authenticated_endpoint(
@@ -279,10 +417,22 @@ def _health_checks(
                 problems.append(auth_detail)
 
     if provider_name == "codex_bridge":
-        has_bridge = _valid_url(config.get("bridge_url") or config.get("endpoint"))
-        checks["bridge_url_valid"] = has_bridge
-        if not has_bridge:
-            problems.append("missing codex bridge URL")
+        codex_state = _codex_bridge_state(
+            {
+                "enabled": True,
+                "config": config,
+            }
+        )
+        checks["bridge_url_valid"] = bool(codex_state["execute_endpoint"])
+        checks["experimental_enabled"] = bool(codex_state["experimental_enabled"])
+        checks["adapter_kind_supported"] = (
+            codex_state["configured_adapter_kind"] in CODEX_BRIDGE_SUPPORTED_ADAPTERS
+        )
+        checks["execute_endpoint_configured"] = bool(codex_state["execute_endpoint"])
+        checks["auth_headers_buildable"] = bool(codex_state["auth_headers_buildable"])
+        for requirement in codex_state["missing_requirements"]:
+            if requirement not in problems:
+                problems.append(requirement)
 
     return len(problems) == 0, problems, checks, probe, auth_probe
 

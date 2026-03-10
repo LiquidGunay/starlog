@@ -1255,6 +1255,12 @@ def test_provider_config_and_webhooks(
     assert api_probe_health.json()["checks"]["auth_probe_ok"] is True
     assert api_probe_health.json()["auth_probe"]["status"] == "ok"
 
+    codex_contract = client.get("/v1/integrations/providers/codex_bridge/contract", headers=auth_headers)
+    assert codex_contract.status_code == 200
+    assert codex_contract.json()["execute_enabled"] is False
+    assert codex_contract.json()["native_oauth_supported"] is False
+    assert codex_contract.json()["feature_flag_key"] == "experimental_enabled"
+
     codex_provider = client.post(
         "/v1/integrations/providers/codex_bridge",
         json={
@@ -1264,6 +1270,8 @@ def test_provider_config_and_webhooks(
                 "bridge_url": "https://codex.example.com",
                 "api_key": "sk-codex-bridge",
                 "model": "gpt-4.1-mini",
+                "adapter_kind": "openai_compatible",
+                "experimental_enabled": True,
             },
         },
         headers=auth_headers,
@@ -1273,8 +1281,16 @@ def test_provider_config_and_webhooks(
     assert codex_health.status_code == 200
     assert codex_health.json()["healthy"] is True
     assert codex_health.json()["checks"]["auth_probe_ok"] is True
+    assert codex_health.json()["checks"]["experimental_enabled"] is True
     assert codex_health.json()["auth_probe"]["target"] == "https://codex.example.com/v1/models"
     assert codex_health.json()["auth_probe"]["status"] == "ok"
+
+    codex_contract = client.get("/v1/integrations/providers/codex_bridge/contract", headers=auth_headers)
+    assert codex_contract.status_code == 200
+    assert codex_contract.json()["configured"] is True
+    assert codex_contract.json()["execute_enabled"] is True
+    assert codex_contract.json()["configured_adapter_kind"] == "openai_compatible"
+    assert codex_contract.json()["derived_endpoints"]["execute"] == "https://codex.example.com/v1/chat/completions"
 
     def fake_google_probe(_conn) -> tuple[bool, str, dict[str, str]]:
         return True, "Google auth probe succeeded", {
@@ -1352,6 +1368,101 @@ def test_execution_policy_controls_ai_routing(client: TestClient, auth_headers: 
     )
     assert run.status_code == 200
     assert run.json()["provider_used"] == "api_fallback"
+
+
+def test_codex_bridge_requires_explicit_opt_in_for_execution(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import ai_service
+
+    saved = client.post(
+        "/v1/integrations/execution-policy",
+        json={
+            "llm": ["codex_bridge", "api_fallback"],
+            "stt": ["batch_local_bridge", "server_local", "api_fallback"],
+            "tts": ["on_device", "server_local", "api_fallback"],
+            "ocr": ["on_device"],
+        },
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200
+
+    configured = client.post(
+        "/v1/integrations/providers/codex_bridge",
+        json={
+            "enabled": True,
+            "mode": "bridge",
+            "config": {
+                "bridge_url": "https://codex.example.com",
+                "api_key": "sk-codex-bridge",
+                "model": "gpt-4.1-mini",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert configured.status_code == 200
+
+    def fail_invoke(*_args, **_kwargs):
+        raise AssertionError("codex_bridge should not execute without explicit experimental opt-in")
+
+    monkeypatch.setattr(ai_service, "_invoke_openai_compatible", fail_invoke)
+
+    guarded = client.post(
+        "/v1/ai/run",
+        json={
+            "capability": "llm_summary",
+            "input": {"title": "Guarded bridge clip", "text": "Only run when explicitly enabled."},
+            "prefer_local": True,
+        },
+        headers=auth_headers,
+    )
+    assert guarded.status_code == 200
+    assert guarded.json()["provider_used"] == "api_fallback"
+
+    def fake_invoke(_provider_name: str, config: dict, capability: str, payload: dict) -> dict:
+        assert capability == "llm_summary"
+        assert payload["title"] == "Guarded bridge clip"
+        assert config["bridge_url"] == "https://codex.example.com"
+        return {
+            "provider": "codex_bridge",
+            "model": config["model"],
+            "summary": "Codex bridge summary",
+            "text": "Codex bridge summary",
+        }
+
+    monkeypatch.setattr(ai_service, "_invoke_openai_compatible", fake_invoke)
+
+    opted_in = client.post(
+        "/v1/integrations/providers/codex_bridge",
+        json={
+            "enabled": True,
+            "mode": "bridge",
+            "config": {
+                "bridge_url": "https://codex.example.com",
+                "api_key": "sk-codex-bridge",
+                "model": "gpt-4.1-mini",
+                "adapter_kind": "openai_compatible",
+                "experimental_enabled": True,
+            },
+        },
+        headers=auth_headers,
+    )
+    assert opted_in.status_code == 200
+
+    live = client.post(
+        "/v1/ai/run",
+        json={
+            "capability": "llm_summary",
+            "input": {"title": "Guarded bridge clip", "text": "Only run when explicitly enabled."},
+            "prefer_local": True,
+        },
+        headers=auth_headers,
+    )
+    assert live.status_code == 200
+    assert live.json()["provider_used"] == "codex_bridge"
+    assert live.json()["output"]["summary"] == "Codex bridge summary"
 
 
 def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict[str, str]) -> None:
