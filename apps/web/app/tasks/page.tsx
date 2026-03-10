@@ -4,7 +4,15 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { applyOptimisticTasks } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -26,6 +34,7 @@ type Task = {
 
 const TASKS_SNAPSHOT = "tasks.items";
 const TASK_SELECTED_SNAPSHOT = "tasks.selected";
+const TASK_CACHE_PREFIXES = ["tasks."];
 
 function TasksPageContent() {
   const searchParams = useSearchParams();
@@ -50,12 +59,55 @@ function TasksPageContent() {
     setSelectedId((previous) => previous || readEntitySnapshot<string>(TASK_SELECTED_SNAPSHOT, ""));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [cachedTasks, cachedSelectedId] = await Promise.all([
+        readEntitySnapshotAsync<Task[]>(TASKS_SNAPSHOT, []),
+        readEntitySnapshotAsync<string>(TASK_SELECTED_SNAPSHOT, ""),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (cachedTasks.length > 0) {
+        setTasks(cachedTasks);
+      }
+      if (cachedSelectedId) {
+        setSelectedId((previous) => previous || cachedSelectedId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadTasks = useCallback(async () => {
     try {
       const path = filter === "all" ? "/v1/tasks" : `/v1/tasks?status=${filter}`;
       const payload = await apiRequest<Task[]>(apiBase, token, path);
+      let snapshotPayload = payload;
+
+      if (filter !== "all") {
+        const cachedTasks = await readEntitySnapshotAsync<Task[]>(TASKS_SNAPSHOT, []);
+        const merged = new Map<string, Task>();
+        for (const task of cachedTasks) {
+          if (task.status !== filter) {
+            merged.set(task.id, task);
+          }
+        }
+        for (const task of payload) {
+          merged.set(task.id, task);
+        }
+        snapshotPayload = [...merged.values()];
+      }
+
       setTasks(payload);
-      writeEntitySnapshot(TASKS_SNAPSHOT, payload);
+      writeEntitySnapshot(TASKS_SNAPSHOT, snapshotPayload);
+      clearEntityCachesStale(TASK_CACHE_PREFIXES);
       setStatus(`Loaded ${payload.length} tasks`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load tasks";
@@ -197,6 +249,33 @@ function TasksPageContent() {
   }, [loadTasks, token]);
 
   useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(TASK_CACHE_PREFIXES)) {
+        return;
+      }
+      loadTasks().catch(() => undefined);
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, TASK_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
+  }, [loadTasks, token]);
+
+  useEffect(() => {
     const requestedId = searchParams.get("task");
     if (!requestedId) {
       return;
@@ -270,7 +349,7 @@ function TasksPageContent() {
           <div className="button-row">
             <button className="button" type="button" onClick={() => setFilter("all")}>All</button>
             <button className="button" type="button" onClick={() => setFilter("todo")}>Todo</button>
-            <button className="button" type="button" onClick={() => setFilter("doing")}>Doing</button>
+            <button className="button" type="button" onClick={() => setFilter("in_progress")}>In Progress</button>
             <button className="button" type="button" onClick={() => setFilter("done")}>Done</button>
             <button className="button" type="button" onClick={() => loadTasks()}>Refresh</button>
           </div>
@@ -295,7 +374,7 @@ function TasksPageContent() {
                   ) : null}
                   <div className="button-row">
                     <button className="button" type="button" onClick={() => quickStatus(task, "todo")}>Todo</button>
-                    <button className="button" type="button" onClick={() => quickStatus(task, "doing")}>Doing</button>
+                    <button className="button" type="button" onClick={() => quickStatus(task, "in_progress")}>In Progress</button>
                     <button className="button" type="button" onClick={() => quickStatus(task, "done")}>Done</button>
                   </div>
                 </li>

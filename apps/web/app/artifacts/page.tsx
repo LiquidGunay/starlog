@@ -5,7 +5,15 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { applyOptimisticArtifacts } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -43,6 +51,15 @@ const ARTIFACT_ITEMS_SNAPSHOT = "artifacts.items";
 const ARTIFACT_SELECTED_SNAPSHOT = "artifacts.selected";
 const ARTIFACT_GRAPH_SNAPSHOT = "artifacts.graph";
 const ARTIFACT_VERSIONS_SNAPSHOT = "artifacts.versions";
+const ARTIFACT_CACHE_PREFIXES = ["artifacts."];
+
+function artifactGraphCacheKey(artifactId: string): string {
+  return `artifacts.graph:${artifactId}`;
+}
+
+function artifactVersionsCacheKey(artifactId: string): string {
+  return `artifacts.versions:${artifactId}`;
+}
 
 function ArtifactsPageContent() {
   const searchParams = useSearchParams();
@@ -65,11 +82,46 @@ function ArtifactsPageContent() {
     setVersions((previous) => previous ?? readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [cachedItems, cachedSelectedId, cachedGraph, cachedVersions] = await Promise.all([
+        readEntitySnapshotAsync<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []),
+        readEntitySnapshotAsync<string>(ARTIFACT_SELECTED_SNAPSHOT, ""),
+        readEntitySnapshotAsync<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null),
+        readEntitySnapshotAsync<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (cachedItems.length > 0) {
+        setItems(cachedItems);
+      }
+      if (cachedSelectedId) {
+        setSelectedId((previous) => previous || cachedSelectedId);
+      }
+      if (cachedGraph) {
+        setGraph(cachedGraph);
+      }
+      if (cachedVersions) {
+        setVersions(cachedVersions);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadArtifacts = useCallback(async () => {
     try {
       const data = await apiRequest<Artifact[]>(apiBase, token, "/v1/artifacts");
       setItems(data);
       writeEntitySnapshot(ARTIFACT_ITEMS_SNAPSHOT, data);
+      clearEntityCachesStale(ARTIFACT_CACHE_PREFIXES);
       setStatus(`Loaded ${data.length} artifacts`);
       if (!selectedId && data.length > 0) {
         setSelectedId(data[0].id);
@@ -128,12 +180,29 @@ function ArtifactsPageContent() {
       setVersions(versionPayload);
       writeEntitySnapshot(ARTIFACT_GRAPH_SNAPSHOT, graphPayload);
       writeEntitySnapshot(ARTIFACT_VERSIONS_SNAPSHOT, versionPayload);
+      writeEntitySnapshot(artifactGraphCacheKey(artifactId), graphPayload, { persistBootstrap: false });
+      writeEntitySnapshot(artifactVersionsCacheKey(artifactId), versionPayload, { persistBootstrap: false });
+      clearEntityCachesStale(ARTIFACT_CACHE_PREFIXES);
       setStatus(`Loaded graph for ${artifactId}`);
     } catch (error) {
+      const [cachedGraph, cachedVersions] = await Promise.all([
+        readEntitySnapshotAsync<ArtifactGraph | null>(artifactGraphCacheKey(artifactId), null),
+        readEntitySnapshotAsync<ArtifactVersions | null>(artifactVersionsCacheKey(artifactId), null),
+      ]);
+      const bootstrapGraph = readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null);
+      const bootstrapVersions = readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null);
+      const graphFallback =
+        cachedGraph ?? (bootstrapGraph?.artifact.id === artifactId ? bootstrapGraph : null);
+      const versionsFallback =
+        cachedVersions ?? (bootstrapGraph?.artifact.id === artifactId ? bootstrapVersions : null);
+
+      setGraph(graphFallback);
+      setVersions(versionsFallback);
+
       const detail = error instanceof Error ? error.message : "Failed to load graph";
-      setStatus(graph?.artifact.id === artifactId ? `Loaded cached graph. ${detail}` : detail);
+      setStatus(graphFallback || versionsFallback ? `Loaded cached graph. ${detail}` : detail);
     }
-  }, [apiBase, graph?.artifact.id, token]);
+  }, [apiBase, token]);
 
   async function runAction(action: "summarize" | "cards" | "tasks" | "append_note") {
     if (!selectedId) {
@@ -177,13 +246,68 @@ function ArtifactsPageContent() {
   }, [token, loadArtifacts]);
 
   useEffect(() => {
-    if (selectedId && !selectedId.startsWith("pending:")) {
-      loadArtifactContext(selectedId).catch(() => undefined);
-    } else {
+    if (!selectedId || selectedId.startsWith("pending:")) {
       setGraph(null);
       setVersions(null);
+      return;
     }
+
+    let cancelled = false;
+
+    void (async () => {
+      const bootstrapGraph = readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null);
+      const bootstrapVersions = readEntitySnapshot<ArtifactVersions | null>(ARTIFACT_VERSIONS_SNAPSHOT, null);
+      const [cachedGraph, cachedVersions] = await Promise.all([
+        readEntitySnapshotAsync<ArtifactGraph | null>(artifactGraphCacheKey(selectedId), null),
+        readEntitySnapshotAsync<ArtifactVersions | null>(artifactVersionsCacheKey(selectedId), null),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      setGraph(cachedGraph ?? (bootstrapGraph?.artifact.id === selectedId ? bootstrapGraph : null));
+      setVersions(
+        cachedVersions ?? (bootstrapGraph?.artifact.id === selectedId ? bootstrapVersions : null),
+      );
+    })();
+
+    loadArtifactContext(selectedId).catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId, loadArtifactContext]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(ARTIFACT_CACHE_PREFIXES)) {
+        return;
+      }
+      loadArtifacts().catch(() => undefined);
+      if (selectedId && !selectedId.startsWith("pending:")) {
+        loadArtifactContext(selectedId).catch(() => undefined);
+      }
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, ARTIFACT_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
+  }, [loadArtifactContext, loadArtifacts, selectedId, token]);
 
   useEffect(() => {
     const requestedId = searchParams.get("artifact");

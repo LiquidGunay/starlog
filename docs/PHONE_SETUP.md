@@ -104,12 +104,16 @@ pnpm --filter mobile start
 
 Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 
-## 5b) Test PWA offline queue
+## 5b) Test PWA offline queue and cache
 
 1. Open the PWA.
-2. Disconnect from the network or point the API base at an unreachable host.
-3. Create a clip, submit a review, or create a calendar event.
-4. Reconnect, then use the session panel or `/sync-center` to replay the queued mutations.
+2. While online, open `/notes`, `/tasks`, `/calendar`, or `/artifacts` and load real data.
+3. For artifacts, open one item so the linked graph and version history are fetched into the local cache too.
+4. Disconnect from the network or point the API base at an unreachable host.
+5. Reload the same workspace and confirm the recent notes/tasks/calendar items or artifact detail panel still render from cache.
+6. Open `/search`, run a query that should match cached note/task text or an artifact summary, and confirm cached results appear even while offline.
+7. Create a clip, submit a review, or create a calendar event while offline to confirm the mutation enters the outbox.
+8. Reconnect, then use the session panel or `/sync-center` to replay the queued mutations and refresh the affected workspace caches.
 
 ## 6) Test mobile share capture (deep-link path)
 

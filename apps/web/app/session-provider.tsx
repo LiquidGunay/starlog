@@ -2,8 +2,10 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { markEntityCachesStale } from "./lib/entity-snapshot";
 import {
   appendReplayEntry,
+  cachePrefixesForMutation,
   createActivityId,
   createQueuedMutation,
   createReplayEntry,
@@ -223,6 +225,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
         );
         setFlushSummary(`Sent mutation: ${options.label}`);
         void reportSyncActivity([toSyncActivity(sentMutation, "flushed")]);
+        markEntityCachesStale(cachePrefixesForMutation(sentMutation), `Mutation sent: ${options.label}`);
         return { queued: false, data };
       } catch (error) {
         if (error instanceof ApiError && error.status < 500) {
@@ -265,6 +268,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
     let remaining: QueuedMutation[] = [];
     let replayEntries: ReplayEntry[] = [];
     let activityEntries: SyncActivityWrite[] = [];
+    const stalePrefixes = new Set<string>();
 
     for (const mutation of outbox) {
       const attempted = {
@@ -279,6 +283,9 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
           body: mutation.body,
         });
         flushed += 1;
+        for (const prefix of cachePrefixesForMutation(attempted)) {
+          stalePrefixes.add(prefix);
+        }
         replayEntries = [...replayEntries, createReplayEntry(attempted, "flushed")];
         activityEntries = [
           ...activityEntries,
@@ -321,6 +328,12 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
         : `Replayed ${flushed}; ${remaining.length} queued mutation(s) remain`,
     );
     setFlushInFlight(false);
+    if (stalePrefixes.size > 0) {
+      markEntityCachesStale(
+        [...stalePrefixes],
+        `Mutation replay completed: ${flushed} flushed`,
+      );
+    }
     void reportSyncActivity(activityEntries);
   }, [apiBase, flushInFlight, isOnline, outbox, reportSyncActivity, token]);
 
