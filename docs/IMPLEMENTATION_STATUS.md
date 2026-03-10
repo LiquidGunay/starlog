@@ -56,6 +56,7 @@
 - Mobile companion can now jump directly from artifact triage into related PWA note/task targets.
 - Mobile companion now reads the shared execution policy, shows the resolved mobile route for LLM/STT/TTS, and routes artifact actions toward the batch bridge when that policy target is preferred.
 - Mobile companion now includes a typed assistant-command panel backed by `/v1/agent/command`, with example commands and recent result history on phone.
+- Mobile companion now supports Android on-device STT for assistant voice commands via the platform speech recognizer when the shared policy resolves STT to `on_device`; queued Whisper upload remains the fallback path.
 - Mobile companion now supports queued voice commands using the same recording path, with Whisper-backed transcription jobs and assistant-command results visible in the phone UI.
 - Mobile companion now also supports queued Codex-assisted command planning/execution jobs and can queue/download offline briefing audio renders from the local TTS worker path.
 - Google OAuth now supports real token exchange when credentials are configured and exposes OAuth status endpoint (`/v1/calendar/sync/google/oauth/status`).
@@ -129,5 +130,4 @@
 3. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
 4. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
 5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, sync-center, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
-6. Implement an actual phone-local STT backend that honors the shared execution policy instead of routing that capability only through the queued/local-server paths.
-7. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.
+6. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.

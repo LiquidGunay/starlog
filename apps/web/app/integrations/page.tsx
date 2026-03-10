@@ -352,6 +352,9 @@ export default function IntegrationsPage() {
           <p className="console-copy">
             Define priority order per capability. `on_device` is for phone/laptop-native execution, `batch_local_bridge` is for queued local workers, and the remaining targets are server-side fallbacks.
           </p>
+          <p className="console-copy">
+            Android companion builds can now honor <code>{"stt: [\"on_device\", ...]"}</code> for assistant voice commands when the phone exposes a working speech-recognition service. If that probe fails on-device, the mobile app falls back to the queued Whisper bridge.
+          </p>
           {policyMeta ? (
             <p className="console-copy">
               version: {policyMeta.version} | updated: {policyMeta.updated_at || "default"}

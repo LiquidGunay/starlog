@@ -200,7 +200,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 6. Phone-local STT
 
 - Branch: `codex/phone-local-stt`
-- Lock: `UNCLAIMED`
+- Lock: `Agent 1 claimed 2026-03-10 11:44 UTC`
 - Goal: land a real phone-local STT execution path that honors the shared execution policy.
 - Scope:
   - pick a viable Android-first local STT path,
