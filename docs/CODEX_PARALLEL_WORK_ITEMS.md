@@ -1,6 +1,6 @@
 # Codex Parallel Work Items
 
-Base code baseline after landing the currently open PRs: `9dadf10` on `master`.
+Base code baseline after landing the current PR set: `6df50d7` on `master`.
 
 Purpose: break the remaining implementation targets into independent workstreams so multiple Codex runs can keep making progress without stepping on each other.
 
@@ -12,10 +12,16 @@ Purpose: break the remaining implementation targets into independent workstreams
   - Landed IndexedDB-backed entity caches, offline detail/search improvements, service-worker shell caching, and Playwright offline coverage.
 - `codex/android-native-validation`
   - Hardened Android smoke tooling/docs, added a Windows-host fallback runner, and documented fresh-worktree env setup for native validation.
+- `codex/native-codex-bridge`
+  - Added the guarded experimental Codex bridge adapter contract, explicit opt-in/health handling, fallback behavior, and API/UI coverage around that boundary.
+- `codex/desktop-helper-host-matrix`
+  - Extended the helper validation matrix with real Windows PowerShell host checks, fixed the Windows active-window probe, and tightened host-specific diagnostics/docs.
+- `codex/phone-local-stt`
+  - Added an Android `SpeechRecognizer` local STT route with capability probing, mobile integration, and queued Whisper fallback when on-device STT is unavailable.
 
 ## Working rules
 
-- Create each new workstream from `master` at `9dadf10` or a newer fast-forward of it.
+- Create each new workstream from `master` at `6df50d7` or a newer fast-forward of it.
 - Keep branch names under the required `codex/` prefix.
 - Prefer rebasing onto `master` instead of merging other Codex branches together.
 - Do not stack Codex branches unless the dependency is explicit and recorded in this file first.
@@ -48,7 +54,7 @@ Purpose: break the remaining implementation targets into independent workstreams
   - keep the existing Android native-share path working.
 - Out of scope:
   - new Android-native validation tooling,
-  - phone-local STT/LLM execution work.
+  - phone-local LLM execution work.
 - Likely files:
   - `apps/mobile/app.config.js`
   - `apps/mobile/App.tsx`
@@ -68,15 +74,15 @@ Purpose: break the remaining implementation targets into independent workstreams
   - `pnpm --filter mobile exec tsc --noEmit`
   - `pnpm --filter mobile ios` or equivalent Xcode/dev-build flow
 
-### 2. Desktop helper host matrix
+### 2. Desktop helper macOS validation
 
-- Branch: `codex/desktop-helper-host-matrix`
-- Lock: `Agent 4 claimed 2026-03-10 11:38 UTC`
-- Goal: use the new diagnostics to validate and tighten the helper across real host environments.
+- Branch: `codex/desktop-helper-macos-validation`
+- Lock: `UNCLAIMED`
+- Goal: finish the remaining real macOS validation path for the desktop helper now that Linux and Windows host paths are covered.
 - Scope:
-  - confirm clipboard, screenshot, OCR, and shortcut behavior on at least one non-Linux host path,
-  - tighten platform-specific error messages and docs where macOS/Windows diverge,
-  - keep the current Linux path green.
+  - validate clipboard, screenshot, active-window, OCR, and shortcut behavior on a real macOS host,
+  - tighten macOS-specific diagnostics and permission guidance where Screen Recording/Accessibility checks are still assumed,
+  - keep the current Linux and Windows paths green.
 - Out of scope:
   - turning the helper into a full desktop workspace,
   - major UI redesign.
@@ -86,14 +92,13 @@ Purpose: break the remaining implementation targets into independent workstreams
   - `tools/desktop-helper/tests/helper.spec.ts`
   - `tools/desktop-helper/README.md`
 - Concrete work items:
-  - define the expected clipboard/screenshot/OCR/shortcut behavior matrix for Linux, macOS, and Windows,
-  - validate at least one real non-Linux host path and capture the missing setup or runtime failures,
-  - tighten diagnostics and guard rails so unsupported/misconfigured host states point to actionable fixes,
-  - add or update automated tests for the fallback logic that changed,
-  - expand the README with a host-by-host validation and troubleshooting table.
+  - validate the current `pbpaste`, `screencapture -i`, and `osascript` paths on a real macOS desktop session,
+  - capture missing Screen Recording / Accessibility / clipboard permission failure modes and turn them into actionable diagnostics,
+  - add or update tests for any fallback or error messaging that changes while fixing the macOS path,
+  - expand the README with the validated macOS matrix and troubleshooting steps.
 - Acceptance:
-  - docs include a real validation matrix,
-  - at least one additional host path is validated end to end,
+  - macOS is validated end to end,
+  - docs include a full Linux/macOS/Windows validation matrix,
   - diagnostics map failures to actionable setup fixes.
 - Validation:
   - `pnpm test:desktop-helper`
@@ -131,15 +136,15 @@ Purpose: break the remaining implementation targets into independent workstreams
   - `uv run --project services/api --extra dev pytest tests/test_local_ai_worker.py -s`
   - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -s`
 
-### 4. Native Codex bridge adapter
+### 4. Native Codex first-party bridge follow-up
 
-- Branch: `codex/native-codex-bridge`
-- Lock: `Agent 2 claimed 2026-03-10 11:44 UTC`
-- Goal: add the real Codex-subscription/OAuth bridge path if the contract is ready, or crisply define the boundary if it is not.
+- Branch: `codex/native-codex-first-party-bridge`
+- Lock: `UNCLAIMED`
+- Goal: replace the guarded experimental OpenAI-compatible bridge adapter with a first-party native Codex-subscription/OAuth path if the upstream contract becomes real.
 - Scope:
-  - inspect the current bridge assumptions,
-  - implement auth, health, and execute flow behind a feature flag if viable,
-  - otherwise leave a documented adapter contract and safe fallback behavior.
+  - inspect whether an official Codex subscription/OAuth contract exists yet,
+  - keep the current experimental adapter as the safe fallback until a first-party contract is proven,
+  - implement the native auth/health/execute path only if that contract is stable enough to support.
 - Out of scope:
   - rewriting the AI provider model,
   - making Codex the only required provider.
@@ -150,14 +155,14 @@ Purpose: break the remaining implementation targets into independent workstreams
   - `apps/web/app/integrations/page.tsx`
   - `docs/IMPLEMENTATION_STATUS.md`
 - Concrete work items:
-  - audit the current Codex bridge assumptions and write down the minimum contract the repo expects,
-  - decide whether a real auth/health/execute path is viable now or whether the repo should expose an explicit stub boundary,
-  - implement the guarded adapter or boundary behavior in API routing and provider selection,
-  - surface the resulting status and fallback behavior in the integrations UI/docs,
-  - add tests around both the success path and the configured-fallback path.
+  - verify whether a first-party native Codex contract now exists beyond the current experimental adapter boundary,
+  - design the migration path so existing OpenAI-compatible bridge configs still fall back safely,
+  - implement the native auth/health/execute flow behind explicit feature gating if viable,
+  - surface first-party-vs-experimental status clearly in the integrations UI/docs,
+  - add tests around the native path and the preserved fallback path.
 - Acceptance:
-  - either a real guarded bridge path exists,
-  - or the repo contains an explicit integration contract and no ambiguous half-state.
+  - either a real guarded first-party bridge path exists,
+  - or the repo keeps the current experimental boundary and documents why the native contract is still unavailable.
 - Validation:
   - relevant API tests
   - web lint/typecheck for changed surfaces
@@ -197,37 +202,7 @@ Purpose: break the remaining implementation targets into independent workstreams
   - `pnpm --filter web lint`
   - `pnpm test:web:offline-cache`
 
-### 6. Phone-local STT
-
-- Branch: `codex/phone-local-stt`
-- Lock: `Agent 1 claimed 2026-03-10 11:44 UTC`
-- Goal: land a real phone-local STT execution path that honors the shared execution policy.
-- Scope:
-  - pick a viable Android-first local STT path,
-  - wire it into the mobile app and policy routing,
-  - keep the queued Whisper path as fallback.
-- Out of scope:
-  - phone-local LLM execution,
-  - removing the existing queued worker path.
-- Likely files:
-  - `apps/mobile/App.tsx`
-  - `services/api/app/api/routes/integrations.py`
-  - `apps/web/app/integrations/page.tsx`
-  - `docs/PHONE_SETUP.md`
-- Concrete work items:
-  - choose a realistic Android-first on-device STT engine/runtime and record its constraints,
-  - add policy routing and capability probing so the app can prefer local STT when configured,
-  - wire local STT into at least one real user flow such as voice note intake or assistant command capture,
-  - preserve the queued Whisper fallback with clear user-facing route/status messaging,
-  - document install/setup/manual-test steps for the selected STT path.
-- Acceptance:
-  - one real mobile-local STT route exists behind policy resolution,
-  - fallback to queued/local-worker still works.
-- Validation:
-  - `pnpm --filter mobile exec tsc --noEmit`
-  - Android device validation for the selected STT path
-
-### 7. Phone-local LLM
+### 6. Phone-local LLM
 
 - Branch: `codex/phone-local-llm`
 - Lock: `UNCLAIMED`
@@ -260,11 +235,10 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 - Start immediately:
   - iOS share extension
-  - desktop helper host matrix
+  - desktop helper macOS validation
   - local TTS worker hardening
   - PWA offline cache follow-ups
 - Start in parallel if the necessary mobile/runtime tooling is available:
-  - phone-local STT
   - phone-local LLM
 - Run as a research-heavy branch:
-  - native Codex bridge adapter
+  - native Codex first-party bridge follow-up
