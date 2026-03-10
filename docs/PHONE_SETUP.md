@@ -87,6 +87,7 @@ pnpm --filter mobile start
 3. Optional sanity checks in the mobile app:
    - Open the `Execution routing` panel and tap `Refresh Policy` to confirm the phone sees the same policy order as the PWA.
    - In `Assistant command`, try `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
+   - If STT policy resolves to `on_device` and the phone reports Android speech recognition available, use `Listen & Plan` / `Listen & Execute` to run an assistant command without uploading audio to Whisper first.
    - In the same panel, use `Queue Codex Plan` / `Queue Codex Execute` to confirm queued Codex planner jobs reach the API.
    - Record a short voice clip and use `Execute Voice` to queue a Whisper-backed voice command.
    - Capture/Queue a quick text clip.
@@ -107,8 +108,16 @@ pnpm --filter mobile start
 .\scripts\android_native_smoke_windows.ps1 -ReversePorts "8081,8000"
 ```
 
+   If Windows already shows both the phone and an `ADB Interface` but `adb devices` is still empty, the remaining blocker is usually phone-side authorization: unlock the handset, confirm `USB debugging` is enabled, and accept the `Allow USB debugging` prompt.
+
 9. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before Android validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
 10. If you validate the native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.
+
+Android on-device STT notes:
+
+- This path is Android-only in the native dev build right now.
+- It depends on a working system speech-recognition service on the phone; if the probe says it is unavailable, the assistant voice flow falls back to queued Whisper.
+- `Listen & Plan` / `Listen & Execute` only appear as the active path when execution policy keeps `stt` on `on_device` and the phone probe succeeds.
 
 Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 

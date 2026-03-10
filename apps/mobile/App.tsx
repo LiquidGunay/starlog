@@ -20,6 +20,8 @@ import {
   View,
 } from "react-native";
 
+import { probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -253,6 +255,27 @@ const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
   stt: "whisper_local",
   tts: "piper_local",
 };
+
+function supportedSttTargets(localSttAvailable: boolean): ExecutionTarget[] {
+  return localSttAvailable ? ["on_device", "batch_local_bridge"] : ["batch_local_bridge"];
+}
+
+function sttFallbackReason(localSttAvailable: boolean): string {
+  if (localSttAvailable) {
+    return "Mobile is using the next executable target from the shared policy.";
+  }
+  return "On-device STT is unavailable on this phone right now, so Starlog falls back to the queued Whisper bridge.";
+}
+
+function localSttProbeLabel(localSttAvailable: boolean): string {
+  if (Platform.OS !== "android") {
+    return "On-device STT is Android-only in the native companion.";
+  }
+  return localSttAvailable
+    ? "Android speech recognition is available on this device."
+    : "Android speech recognition is unavailable or not yet authorized on this device.";
+}
+
 const artifactQuickActions: Array<{ label: string; action: ArtifactAction }> = [
   { label: "Summarize", action: "summarize" },
   { label: "Create Cards", action: "cards" },
@@ -687,6 +710,8 @@ export default function App() {
   const [voiceRecording, setVoiceRecording] = useState<Audio.Recording | null>(null);
   const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
   const [voiceClipDurationMs, setVoiceClipDurationMs] = useState(0);
+  const [localSttAvailable, setLocalSttAvailable] = useState(false);
+  const [localSttListening, setLocalSttListening] = useState(false);
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
   const [cachedPath, setCachedPath] = useState<string | null>(null);
   const [alarmHour, setAlarmHour] = useState(7);
@@ -721,6 +746,7 @@ export default function App() {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
   const llmResolution = useMemo(
     () =>
       resolveExecutionTarget(
@@ -737,11 +763,11 @@ export default function App() {
       resolveExecutionTarget(
         executionPolicy,
         "stt",
-        ["batch_local_bridge"],
-        "batch_local_bridge",
-        "Mobile voice transcription currently runs through the queued Whisper bridge until native on-device STT ships.",
+        sttTargets,
+        sttTargets[0] ?? "batch_local_bridge",
+        sttFallbackReason(localSttAvailable),
       ),
-    [executionPolicy],
+    [executionPolicy, localSttAvailable, sttTargets],
   );
   const ttsResolution = useMemo(
     () =>
@@ -754,6 +780,15 @@ export default function App() {
       ),
     [executionPolicy],
   );
+
+  async function refreshLocalSttAvailability(origin: "auto" | "manual") {
+    const available = await probeLocalSttAvailability();
+    setLocalSttAvailable(available);
+    if (origin === "manual") {
+      setStatus(localSttProbeLabel(available));
+    }
+    return available;
+  }
 
   async function loadExecutionPolicy(origin: "auto" | "manual") {
     if (!token) {
@@ -776,6 +811,7 @@ export default function App() {
       const payload = (await response.json()) as ExecutionPolicy;
       setExecutionPolicy(payload);
       if (origin === "manual") {
+        const policySttTargets = supportedSttTargets(localSttAvailable);
         setStatus(
           `Loaded execution policy: LLM ${formatExecutionTarget(
             resolveExecutionTarget(
@@ -785,7 +821,13 @@ export default function App() {
               "batch_local_bridge",
             ).active,
           )}, STT ${formatExecutionTarget(
-            resolveExecutionTarget(payload, "stt", ["batch_local_bridge"], "batch_local_bridge").active,
+            resolveExecutionTarget(
+              payload,
+              "stt",
+              policySttTargets,
+              policySttTargets[0] ?? "batch_local_bridge",
+              sttFallbackReason(localSttAvailable),
+            ).active,
           )}`,
         );
       }
@@ -1614,8 +1656,7 @@ export default function App() {
     }
   }
 
-  async function runAssistantCommand(execute: boolean) {
-    const command = assistantCommand.trim();
+  async function submitAssistantCommand(command: string, execute: boolean, sourceLabel?: string) {
     if (!command) {
       setStatus("Enter an assistant command first");
       return;
@@ -1651,10 +1692,16 @@ export default function App() {
       if (payload.matched_intent === "list_due_cards") {
         loadDueCards().catch(() => undefined);
       }
-      setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}`);
+      const sourceNote = sourceLabel ? ` from ${sourceLabel}` : "";
+      setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}${sourceNote}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Assistant command failed");
     }
+  }
+
+  async function runAssistantCommand(execute: boolean) {
+    const command = assistantCommand.trim();
+    await submitAssistantCommand(command, execute);
   }
 
   function recordAssistantHistory(entry: AssistantCommandResponse | null | undefined) {
@@ -1775,7 +1822,55 @@ export default function App() {
     }
   }
 
+  async function submitLocalVoiceAssistantCommand(execute: boolean) {
+    if (localSttListening) {
+      setStatus("On-device STT is already listening");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+    if (!localSttAvailable || sttResolution.active !== "on_device") {
+      setStatus("On-device STT is unavailable; use the queued Whisper voice path instead.");
+      return;
+    }
+    if (voiceRecording) {
+      setStatus("Stop the current voice recording before starting on-device STT");
+      return;
+    }
+
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setStatus("Microphone permission denied");
+        return;
+      }
+
+      setLocalSttListening(true);
+      setStatus("Listening for an on-device voice command...");
+      const transcriptPayload = await recognizeSpeechOnce({
+        prompt: execute ? "Speak the command to execute" : "Speak the command to plan",
+      });
+      const transcript = transcriptPayload.transcript.trim();
+      if (!transcript) {
+        throw new Error("On-device STT returned no transcript");
+      }
+
+      setAssistantCommand(transcript);
+      await submitAssistantCommand(transcript, execute, "on-device STT");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "On-device STT failed");
+    } finally {
+      setLocalSttListening(false);
+    }
+  }
+
   async function submitVoiceAssistantCommand(execute: boolean) {
+    if (sttResolution.active === "on_device") {
+      await submitLocalVoiceAssistantCommand(execute);
+      return;
+    }
     if (!voiceClipUri) {
       setStatus("Record a voice clip first");
       return;
@@ -1838,6 +1933,8 @@ export default function App() {
       if (active) {
         setNotificationPermission(permission.status);
       }
+
+      await refreshLocalSttAvailability("auto");
 
       const persisted = await readPersistedState();
       if (active && persisted) {
@@ -2029,6 +2126,9 @@ export default function App() {
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        refreshLocalSttAvailability("auto").catch(() => undefined);
+      }
       if (nextState === "active" && token) {
         if (pendingCaptures.length > 0) {
           flushPendingCaptures("auto").catch(() => undefined);
@@ -2237,15 +2337,31 @@ export default function App() {
             </TouchableOpacity>
           </View>
           <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
-              <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Command" : "Start Voice Command"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(false)}>
-              <Text style={styles.buttonText}>Plan Voice Command</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
-              <Text style={styles.buttonText}>Execute Voice</Text>
-            </TouchableOpacity>
+            {sttResolution.active === "on_device" ? (
+              <>
+                <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(false)}>
+                  <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Plan"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(true)}>
+                  <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Execute"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={() => refreshLocalSttAvailability("manual")}>
+                  <Text style={styles.buttonText}>Refresh STT</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+                  <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Command" : "Start Voice Command"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(false)}>
+                  <Text style={styles.buttonText}>Plan Voice Command</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
+                  <Text style={styles.buttonText}>Execute Voice</Text>
+                </TouchableOpacity>
+              </>
+            )}
             <TouchableOpacity
               style={styles.button}
               onPress={() => {
@@ -2257,8 +2373,17 @@ export default function App() {
             </TouchableOpacity>
           </View>
           <Text style={styles.subtle}>
-            Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
+            On-device STT: {localSttProbeLabel(localSttAvailable)}
           </Text>
+          {sttResolution.active === "on_device" ? (
+            <Text style={styles.subtle}>
+              Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint.
+            </Text>
+          ) : (
+            <Text style={styles.subtle}>
+              Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
+            </Text>
+          )}
           {assistantHistory[0] ? (
             <View style={styles.detailCard}>
               <Text style={styles.inlineCardTitle}>
