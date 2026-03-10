@@ -113,6 +113,39 @@ pnpm --filter mobile start
 9. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before Android validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
 10. If you validate the native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.
 
+### WSL physical-device Metro path
+
+For this specific host, the most reliable dev-client path has been LAN Metro through a Windows relay instead of `adb reverse tcp:8081`:
+
+1. Start the Windows-side relay from WSL:
+
+```bash
+pnpm android:metro:relay:windows
+```
+
+2. Start Expo in LAN mode from `apps/mobile`:
+
+```bash
+REACT_NATIVE_PACKAGER_HOSTNAME=<WINDOWS_LAN_IP> pnpm start:dev-client:lan
+```
+
+3. Keep `adb reverse` for API port `8000`. Do not keep `tcp:8081` reversed once you are using the explicit dev-client URL below; on this host that mixed `localhost` and LAN transport paths and caused misleading `Cannot connect to Metro...` warnings.
+
+4. Launch the dev client with the repo helper:
+
+```bash
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=192.168.0.104:5555 \
+METRO_HOST=<WINDOWS_LAN_IP> \
+pnpm android:open:dev-client
+```
+
+Equivalent explicit URL:
+
+```text
+exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081
+```
+
 Android on-device STT notes:
 
 - This path is Android-only in the native dev build right now.
@@ -150,6 +183,7 @@ starlog://capture?title=Clip&text=Remember%20this&source_url=https%3A%2F%2Fexamp
 Ways to trigger:
 - iOS: open the URL from Notes/Safari/Shortcuts.
 - Android: `adb shell am start -a android.intent.action.VIEW -d "starlog://capture?title=Clip&text=Hello"` (when testing with emulator/device + debug tools).
+- Android shell note: if the URI includes `&source_url=...`, use the repo smoke helpers or quote/escape the remote shell command so Android does not split the deep link at `&`.
 
 When opened, the app pre-fills the capture form so you can submit immediately or queue offline.
 

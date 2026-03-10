@@ -48,6 +48,9 @@
 - Native Android project now lives under `apps/mobile/android`, and the local debug build path validates with `./gradlew assembleDebug`.
 - Repo now includes an `adb`-driven Android smoke script (`pnpm test:android:smoke`) to install the debug APK and trigger deep-link plus plain-text share-intent checks on attached devices/emulators.
 - Repo now also includes a Windows-host Android smoke helper (`scripts/android_native_smoke_windows.ps1` / `pnpm test:android:smoke:windows`) because this host's WSL `adb shell` path can be flaky even when Windows `adb.exe` still sees the connected phone.
+- Repo now includes a WSL-to-Windows Metro relay helper (`scripts/android_windows_metro_relay.sh` plus `scripts/tcp_relay.py`) so a physical Android phone can reach the WSL Metro server over the Windows LAN IP instead of relying only on `adb reverse tcp:8081`.
+- Repo now includes an Android dev-client opener helper (`scripts/android_open_dev_client.sh` / `pnpm android:open:dev-client`) so a physical phone can jump straight into the Expo dev build over the LAN relay without depending on the Dev Launcher home screen.
+- Physical Android validation now confirms two live-device fixes on the connected Android 14 phone: deep-link smoke payloads with `&source_url=...` survive remote-shell quoting correctly, and the cleanest Metro path on this host is LAN Metro plus the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` open flow with only API port `8000` reversed.
 - `expo-share-intent` is currently wired in Android-only mode while the separate iOS extension patch flow remains pending.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
@@ -115,6 +118,7 @@
 - Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
+- Physical Android validation on the attached phone now confirms: the dev client can render the companion UI through the Windows LAN relay path, the previous `unexpected end of stream on http://127.0.0.1:8081/...` failure is avoidable with Expo LAN mode plus relay, and the remaining toast-level Metro warning is tied to mixed `localhost`/LAN Dev Launcher endpoints rather than a blank-screen app failure.
 
 ## Validation run for this pass
 

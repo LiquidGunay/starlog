@@ -6,6 +6,7 @@
   "scripts": {
     "start": "expo start",
     "start:dev-client": "APP_VARIANT=development expo start --dev-client",
+    "start:dev-client:lan": "APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=${REACT_NATIVE_PACKAGER_HOSTNAME:-192.168.0.102} expo start --dev-client --host lan --port 8081",
     "android": "expo run:android",
     "android:dev": "APP_VARIANT=development expo start --dev-client --android",
     "android:local": "APP_VARIANT=development expo run:android --device",

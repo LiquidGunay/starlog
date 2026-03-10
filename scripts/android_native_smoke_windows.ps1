@@ -4,6 +4,7 @@ param(
   [string]$ApkPath = (Join-Path (Split-Path -Parent $PSScriptRoot) "apps\mobile\android\app\build\outputs\apk\debug\app-debug.apk"),
   [string]$AppPackage = "com.starlog.app.dev",
   [string]$AppActivity = "com.starlog.app.dev/.MainActivity",
+  [string]$DevClientUrl = "",
   [string]$DeepLink = "starlog://capture?title=Smoke%20Clip&text=Hello%20from%20adb",
   [string]$ShareTitle = "Starlog native share",
   [string]$ShareText = "Hello from the Starlog Android smoke script",
@@ -61,7 +62,8 @@ function Invoke-Adb {
   $fullArgs += $Arguments
 
   $output = & $AdbPath @fullArgs 2>&1
-  $exitCode = $LASTEXITCODE
+  $exitCodeVar = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+  $exitCode = if ($exitCodeVar) { [int]$exitCodeVar.Value } else { 0 }
   [pscustomobject]@{
     Output = (($output | ForEach-Object { "$_" }) -join "`n").Trim()
     ExitCode = $exitCode
@@ -75,6 +77,11 @@ function Invoke-AdbChecked {
     throw "adb failed ($($result.ExitCode)): $($result.Output)"
   }
   return $result
+}
+
+function ConvertTo-AndroidShellLiteral {
+  param([string]$Value)
+  return "'" + ($Value -replace "'", "'\\''") + "'"
 }
 
 function Wait-ForRuntime {
@@ -136,6 +143,17 @@ function Install-Apk {
   throw "Timed out installing APK after ${InstallTimeoutSeconds}s"
 }
 
+function Open-DevClient {
+  if (-not $DevClientUrl) {
+    return
+  }
+
+  Write-Log "Opening dev client URL"
+  $command = "am start -W -a android.intent.action.VIEW -d $(ConvertTo-AndroidShellLiteral $DevClientUrl)"
+  Invoke-AdbChecked -Arguments @("shell", $command) | Out-Null
+  Start-Sleep -Seconds 8
+}
+
 Require-CommandOrFile -Value $AdbPath -Label "adb"
 if (-not $SkipInstall) {
   Require-File -Path $ApkPath -Label "APK"
@@ -143,6 +161,7 @@ if (-not $SkipInstall) {
 
 Wait-ForRuntime
 Maybe-ReversePorts
+Open-DevClient
 
 if (-not $SkipInstall) {
   Install-Apk
@@ -151,39 +170,33 @@ if (-not $SkipInstall) {
 }
 
 if (-not $SkipLaunch) {
-  Write-Log "Launching app"
-  Invoke-AdbChecked -Arguments @("shell", "am", "start", "-W", "-n", $AppActivity) | Out-Null
+  if ($DevClientUrl) {
+    Write-Log "Skipping initial app launch because DevClientUrl already bootstrapped the dev client"
+  } else {
+    Write-Log "Launching app"
+    Invoke-AdbChecked -Arguments @("shell", "am", "start", "-W", "-n", $AppActivity) | Out-Null
+  }
 } else {
   Write-Log "Skipping initial app launch"
 }
 
 if (-not $SkipDeepLink) {
   Write-Log "Sending deep-link capture"
-  Invoke-AdbChecked -Arguments @("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", $DeepLink, "-n", $AppActivity) | Out-Null
+  $command = "am start -W -a android.intent.action.VIEW -d $(ConvertTo-AndroidShellLiteral $DeepLink) -n $(ConvertTo-AndroidShellLiteral $AppActivity)"
+  Invoke-AdbChecked -Arguments @("shell", $command) | Out-Null
 } else {
   Write-Log "Skipping deep-link capture"
 }
 
 if (-not $SkipTextShare) {
   Write-Log "Sending text share intent"
-  Invoke-AdbChecked -Arguments @(
-    "shell",
-    "am",
-    "start",
-    "-W",
-    "-a",
-    "android.intent.action.SEND",
-    "-t",
-    "text/plain",
-    "--es",
-    "android.intent.extra.SUBJECT",
-    $ShareTitle,
-    "--es",
-    "android.intent.extra.TEXT",
-    $ShareText,
-    "-n",
-    $AppActivity
-  ) | Out-Null
+  $command = @(
+    "am start -W -a android.intent.action.SEND -t text/plain",
+    "--es android.intent.extra.SUBJECT $(ConvertTo-AndroidShellLiteral $ShareTitle)",
+    "--es android.intent.extra.TEXT $(ConvertTo-AndroidShellLiteral $ShareText)",
+    "-n $(ConvertTo-AndroidShellLiteral $AppActivity)"
+  ) -join " "
+  Invoke-AdbChecked -Arguments @("shell", $command) | Out-Null
 } else {
   Write-Log "Skipping text share intent"
 }

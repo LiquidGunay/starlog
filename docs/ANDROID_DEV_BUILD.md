@@ -110,6 +110,10 @@ REVERSE_PORTS=8081,8000 pnpm test:android:smoke
 SKIP_INSTALL=1 SKIP_DEEP_LINK=1 pnpm test:android:smoke
 ```
 
+If your deep-link payload includes `source_url=` or other query params, the repo smoke
+helpers now quote the remote Android shell command so `adb shell` does not split the URI
+at `&`.
+
 This is useful when:
 
 - more than one Android device/emulator is attached,
@@ -131,7 +135,7 @@ On this host, physical-device validation has been more reliable through a native
 From repo root in PowerShell:
 
 ```powershell
-.\scripts\android_native_smoke_windows.ps1 -ReversePorts "8081,8000"
+.\scripts\android_native_smoke_windows.ps1 -ReversePorts "8000"
 ```
 
 Equivalent from the repo root in WSL:
@@ -145,7 +149,7 @@ Optional Windows overrides:
 ```powershell
 .\scripts\android_native_smoke_windows.ps1 `
   -Serial 9dd62e84 `
-  -ReversePorts "8081,8000" `
+  -ReversePorts "8000" `
   -SkipInstall `
   -SkipDeepLink
 ```
@@ -155,6 +159,62 @@ Use the Windows-host script when:
 - WSL `adb shell` hangs or streams truncate,
 - the connected phone only appears in Windows `adb`,
 - you need a reproducible physical-device flow for this repo's current host setup.
+
+Both smoke helpers also accept an explicit dev-client URL now. That lets the script bootstrap the Expo dev build before it launches Starlog actions:
+
+```bash
+DEV_CLIENT_URL='exp+starlog://expo-development-client/?url=http%3A%2F%2F<WINDOWS_LAN_IP>%3A8081' \
+REVERSE_PORTS=8000 \
+./scripts/android_native_smoke.sh
+```
+
+When `DEV_CLIENT_URL` / `-DevClientUrl` is provided, the smoke helpers now skip the extra direct `MainActivity` launch because the Expo development client URL already opens the app.
+
+### WSL physical-device Metro relay
+
+On this host, the most reliable dev-client path has been:
+
+1. start Expo in LAN mode,
+2. expose WSL Metro through a Windows-side TCP relay,
+3. only keep `adb reverse` for the API port instead of also reversing Metro.
+
+Start the relay from WSL:
+
+```bash
+pnpm android:metro:relay:windows
+```
+
+This binds Windows `0.0.0.0:8081` and forwards it to the current WSL Metro server. The phone can then use your Windows LAN IP directly.
+
+Start Expo with a stable LAN host identity:
+
+```bash
+cd apps/mobile
+REACT_NATIVE_PACKAGER_HOSTNAME=<WINDOWS_LAN_IP> pnpm start:dev-client:lan
+```
+
+Validated host pattern here:
+
+- Windows LAN IP: `192.168.0.102`
+- WSL Metro target: current WSL interface IP on port `8081`
+- `adb reverse`: keep `8000` for the API and avoid `8081` entirely on this host once the dev client is opened through its explicit LAN URL
+
+Open the dev client with the repo helper instead of relying on the launcher home screen:
+
+```bash
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=192.168.0.104:5555 \
+METRO_HOST=<WINDOWS_LAN_IP> \
+pnpm android:open:dev-client
+```
+
+Equivalent explicit URL form:
+
+```text
+exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081
+```
+
+This is the physical-phone path that validated cleanly here. When `tcp:8081` was still reversed, the phone could render the app but often showed a misleading `Cannot connect to Metro...` toast. Opening the explicit dev-client URL with only `tcp:8000` reversed removed that warning.
 
 If you prefer running the native compile directly from the app folder:
 
@@ -190,6 +250,13 @@ or
 
 ```bash
 pnpm --filter mobile android:dev
+```
+
+For this WSL + physical-phone setup, prefer the LAN form:
+
+```bash
+cd apps/mobile
+REACT_NATIVE_PACKAGER_HOSTNAME=<WINDOWS_LAN_IP> pnpm start:dev-client:lan
 ```
 
 Important: Android share-sheet receive depends on the native dev build. It does not work in Expo Go.

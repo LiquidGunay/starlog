@@ -8,6 +8,7 @@ ADB_SERIAL="${ADB_SERIAL:-}"
 APK_PATH="${APK_PATH:-$ROOT_DIR/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk}"
 APP_PACKAGE="${APP_PACKAGE:-com.starlog.app.dev}"
 APP_ACTIVITY="${APP_ACTIVITY:-$APP_PACKAGE/.MainActivity}"
+DEV_CLIENT_URL="${DEV_CLIENT_URL:-}"
 DEEP_LINK="${DEEP_LINK:-starlog://capture?title=Smoke%20Clip&text=Hello%20from%20adb}"
 SHARE_TITLE="${SHARE_TITLE:-Starlog native share}"
 SHARE_TEXT="${SHARE_TEXT:-Hello from the Starlog Android smoke script}"
@@ -33,6 +34,7 @@ Environment overrides:
   APK_PATH               APK to install
   APP_PACKAGE            Android package name (default: com.starlog.app.dev)
   APP_ACTIVITY           Fully qualified launch activity (default: com.starlog.app.dev/.MainActivity)
+  DEV_CLIENT_URL         Optional exp+starlog://... URL to open before app launch
   DEEP_LINK              Deep-link payload to open after launch
   SHARE_TITLE            android.intent.extra.SUBJECT for the text share
   SHARE_TEXT             android.intent.extra.TEXT for the text share
@@ -48,6 +50,12 @@ EOF
 
 log() {
   printf '[android-smoke] %s\n' "$1"
+}
+
+android_shell_escape() {
+  local value="$1"
+  value="${value//\'/\'\"\'\"\'}"
+  printf "'%s'" "$value"
 }
 
 require_file() {
@@ -125,20 +133,32 @@ wait_for_runtime() {
 
 send_deep_link() {
   log "Sending deep-link capture"
-  adb_cmd shell am start -W \
-    -a android.intent.action.VIEW \
-    -d "$DEEP_LINK" \
-    -n "$APP_ACTIVITY" >/dev/null
+  local command
+  command="am start -W -a android.intent.action.VIEW -d $(android_shell_escape "$DEEP_LINK") -n $(android_shell_escape "$APP_ACTIVITY")"
+  adb_cmd shell "$command" >/dev/null
+}
+
+open_dev_client() {
+  if [[ -z "$DEV_CLIENT_URL" ]]; then
+    return
+  fi
+
+  log "Opening dev client URL"
+  local command
+  command="am start -W -a android.intent.action.VIEW -d $(android_shell_escape "$DEV_CLIENT_URL")"
+  adb_cmd shell "$command" >/dev/null
+  sleep 8
 }
 
 send_text_share() {
   log "Sending text share intent"
-  adb_cmd shell am start -W \
-    -a android.intent.action.SEND \
-    -t text/plain \
-    --es android.intent.extra.SUBJECT "$SHARE_TITLE" \
-    --es android.intent.extra.TEXT "$SHARE_TEXT" \
-    -n "$APP_ACTIVITY" >/dev/null
+  local command
+  command=$(
+    cat <<EOF
+am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.SUBJECT $(android_shell_escape "$SHARE_TITLE") --es android.intent.extra.TEXT $(android_shell_escape "$SHARE_TEXT") -n $(android_shell_escape "$APP_ACTIVITY")
+EOF
+  )
+  adb_cmd shell "$command" >/dev/null
 }
 
 install_apk() {
@@ -176,6 +196,7 @@ fi
 
 wait_for_runtime
 maybe_reverse_ports
+open_dev_client
 
 if is_enabled "$SKIP_INSTALL"; then
   log "Installing debug APK"
@@ -185,8 +206,12 @@ else
 fi
 
 if is_enabled "$SKIP_LAUNCH"; then
-  log "Launching app"
-  adb_cmd shell am start -W -n "$APP_ACTIVITY" >/dev/null
+  if [[ -n "$DEV_CLIENT_URL" ]]; then
+    log "Skipping initial app launch because DEV_CLIENT_URL already bootstrapped the dev client"
+  else
+    log "Launching app"
+    adb_cmd shell am start -W -n "$APP_ACTIVITY" >/dev/null
+  fi
 else
   log "Skipping initial app launch"
 fi
