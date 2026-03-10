@@ -16,6 +16,7 @@ struct ScreenshotClipResult {
     path: Option<String>,
     text: Option<String>,
     ocr_engine: Option<String>,
+    backend: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -42,6 +43,40 @@ struct RuntimeDiagnostics {
     screenshot: RuntimeCapability,
     active_window: RuntimeCapability,
     ocr: RuntimeCapability,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ScreenshotCaptureAttempt {
+    status: &'static str,
+    message: String,
+    backend: Option<&'static str>,
+}
+
+fn captured_screenshot_attempt(message: impl Into<String>, backend: &'static str) -> ScreenshotCaptureAttempt {
+    ScreenshotCaptureAttempt {
+        status: "captured",
+        message: message.into(),
+        backend: Some(backend),
+    }
+}
+
+fn cancelled_screenshot_attempt(message: impl Into<String>, backend: &'static str) -> ScreenshotCaptureAttempt {
+    ScreenshotCaptureAttempt {
+        status: "cancelled",
+        message: message.into(),
+        backend: Some(backend),
+    }
+}
+
+fn failed_screenshot_attempt(
+    message: impl Into<String>,
+    backend: Option<&'static str>,
+) -> ScreenshotCaptureAttempt {
+    ScreenshotCaptureAttempt {
+        status: "failed",
+        message: message.into(),
+        backend,
+    }
 }
 
 fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
@@ -753,7 +788,7 @@ fn delete_file_if_exists(path: String) -> Result<(), String> {
     }
 }
 
-fn capture_screenshot(path: &Path) -> Result<String, String> {
+fn capture_screenshot(path: &Path) -> ScreenshotCaptureAttempt {
     let target = path.to_string_lossy().to_string();
 
     #[cfg(target_os = "macos")]
@@ -761,11 +796,17 @@ fn capture_screenshot(path: &Path) -> Result<String, String> {
         let status = Command::new("screencapture")
             .args(["-i", &target])
             .status()
-            .map_err(|error| format!("failed to run screencapture: {error}"))?;
-        if status.success() {
-            return Ok(format!("Screenshot captured: {target}"));
-        }
-        return Err("Screenshot capture was cancelled or failed".to_string());
+            .map_err(|error| format!("failed to run screencapture: {error}"));
+        return match status {
+            Ok(status) if status.success() => {
+                captured_screenshot_attempt(format!("Screenshot captured: {target}"), "screencapture")
+            }
+            Ok(_) => cancelled_screenshot_attempt(
+                "Screenshot capture was cancelled or failed",
+                "screencapture",
+            ),
+            Err(error) => failed_screenshot_attempt(error, Some("screencapture")),
+        };
     }
 
     #[cfg(target_os = "windows")]
@@ -785,11 +826,15 @@ fn capture_screenshot(path: &Path) -> Result<String, String> {
         let status = Command::new("powershell")
             .args(["-NoProfile", "-Command", &script])
             .status()
-            .map_err(|error| format!("failed to run PowerShell screenshot capture: {error}"))?;
-        if status.success() {
-            return Ok(format!("Full-screen screenshot captured: {target}"));
-        }
-        return Err("PowerShell screenshot capture failed".to_string());
+            .map_err(|error| format!("failed to run PowerShell screenshot capture: {error}"));
+        return match status {
+            Ok(status) if status.success() => captured_screenshot_attempt(
+                format!("Full-screen screenshot captured: {target}"),
+                "powershell",
+            ),
+            Ok(_) => failed_screenshot_attempt("PowerShell screenshot capture failed", Some("powershell")),
+            Err(error) => failed_screenshot_attempt(error, Some("powershell")),
+        };
     }
 
     #[cfg(target_os = "linux")]
@@ -801,72 +846,99 @@ fn capture_screenshot(path: &Path) -> Result<String, String> {
                     &format!("grim -g \"$(slurp)\" {}", shell_quote(&target)),
                 ])
                 .status()
-                .map_err(|error| format!("failed to run grim/slurp: {error}"))?;
-            if status.success() {
-                return Ok(format!("Screenshot captured with grim/slurp: {target}"));
-            }
-            return Err("grim/slurp screenshot capture was cancelled or failed".to_string());
+                .map_err(|error| format!("failed to run grim/slurp: {error}"));
+            return match status {
+                Ok(status) if status.success() => captured_screenshot_attempt(
+                    format!("Screenshot captured with grim/slurp: {target}"),
+                    "grim+slurp",
+                ),
+                Ok(_) => cancelled_screenshot_attempt(
+                    "grim/slurp screenshot capture was cancelled or failed",
+                    "grim+slurp",
+                ),
+                Err(error) => failed_screenshot_attempt(error, Some("grim+slurp")),
+            };
         }
 
         if command_exists("gnome-screenshot") {
             let status = Command::new("gnome-screenshot")
                 .args(["-a", "-f", &target])
                 .status()
-                .map_err(|error| format!("failed to run gnome-screenshot: {error}"))?;
-            if status.success() {
-                return Ok(format!(
-                    "Screenshot captured with gnome-screenshot: {target}"
-                ));
-            }
-            return Err("gnome-screenshot capture was cancelled or failed".to_string());
+                .map_err(|error| format!("failed to run gnome-screenshot: {error}"));
+            return match status {
+                Ok(status) if status.success() => captured_screenshot_attempt(
+                    format!("Screenshot captured with gnome-screenshot: {target}"),
+                    "gnome-screenshot",
+                ),
+                Ok(_) => cancelled_screenshot_attempt(
+                    "gnome-screenshot capture was cancelled or failed",
+                    "gnome-screenshot",
+                ),
+                Err(error) => failed_screenshot_attempt(error, Some("gnome-screenshot")),
+            };
         }
 
         if command_exists("import") {
             let status = Command::new("import")
                 .arg(&target)
                 .status()
-                .map_err(|error| format!("failed to run import: {error}"))?;
-            if status.success() {
-                return Ok(format!("Screenshot captured with import: {target}"));
-            }
-            return Err("ImageMagick import capture was cancelled or failed".to_string());
+                .map_err(|error| format!("failed to run import: {error}"));
+            return match status {
+                Ok(status) if status.success() => captured_screenshot_attempt(
+                    format!("Screenshot captured with import: {target}"),
+                    "imagemagick-import",
+                ),
+                Ok(_) => cancelled_screenshot_attempt(
+                    "ImageMagick import capture was cancelled or failed",
+                    "imagemagick-import",
+                ),
+                Err(error) => failed_screenshot_attempt(error, Some("imagemagick-import")),
+            };
         }
 
         if command_exists("grim") {
             let status = Command::new("grim")
                 .arg(&target)
                 .status()
-                .map_err(|error| format!("failed to run grim: {error}"))?;
-            if status.success() {
-                return Ok(format!(
-                    "Full-screen screenshot captured with grim: {target}"
-                ));
-            }
-            return Err("grim full-screen screenshot failed".to_string());
+                .map_err(|error| format!("failed to run grim: {error}"));
+            return match status {
+                Ok(status) if status.success() => captured_screenshot_attempt(
+                    format!("Full-screen screenshot captured with grim: {target}"),
+                    "grim",
+                ),
+                Ok(_) => failed_screenshot_attempt("grim full-screen screenshot failed", Some("grim")),
+                Err(error) => failed_screenshot_attempt(error, Some("grim")),
+            };
         }
 
         if command_exists("scrot") {
             let status = Command::new("scrot")
                 .arg(&target)
                 .status()
-                .map_err(|error| format!("failed to run scrot: {error}"))?;
-            if status.success() {
-                return Ok(format!(
-                    "Full-screen screenshot captured with scrot: {target}"
-                ));
-            }
-            return Err("scrot screenshot capture failed".to_string());
+                .map_err(|error| format!("failed to run scrot: {error}"));
+            return match status {
+                Ok(status) if status.success() => captured_screenshot_attempt(
+                    format!("Full-screen screenshot captured with scrot: {target}"),
+                    "scrot",
+                ),
+                Ok(_) => failed_screenshot_attempt("scrot screenshot capture failed", Some("scrot")),
+                Err(error) => failed_screenshot_attempt(error, Some("scrot")),
+            };
         }
 
-        return Err(
+        return failed_screenshot_attempt(
             "Screenshot capture requires grim/slurp, gnome-screenshot, ImageMagick import, grim, or scrot on Linux"
                 .to_string(),
+            None,
         );
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
-        Err("Screenshot capture is not implemented for this platform".to_string())
+        failed_screenshot_attempt(
+            "Screenshot capture is not implemented for this platform",
+            None,
+        )
     }
 }
 
@@ -879,47 +951,50 @@ fn clip_screenshot_stub() -> Result<ScreenshotClipResult, String> {
     let path = temp_screenshot_path(now);
     let path_label = path.to_string_lossy().to_string();
 
-    match capture_screenshot(&path) {
-        Ok(base_message) => {
-            if !path.exists() {
-                return Ok(ScreenshotClipResult {
-                    status: "cancelled".to_string(),
-                    message: "Screenshot capture was cancelled or failed".to_string(),
-                    path: None,
-                    text: None,
-                    ocr_engine: None,
-                });
-            }
-
-            let ocr_attempt = run_tesseract(&path_label);
-            let mut message = base_message;
-            let mut text = None;
-            let mut ocr_engine = None;
-
-            if let Ok(extracted) = ocr_attempt {
-                if !extracted.is_empty() {
-                    message = format!("{} + OCR extracted {} chars", message, extracted.len());
-                    text = Some(extracted);
-                    ocr_engine = Some("tesseract".to_string());
-                }
-            }
-
-            Ok(ScreenshotClipResult {
-                status: "captured".to_string(),
-                message,
-                path: Some(path_label),
-                text,
-                ocr_engine,
-            })
+    let capture = capture_screenshot(&path);
+    if capture.status == "captured" {
+        if !path.exists() {
+            return Ok(ScreenshotClipResult {
+                status: "failed".to_string(),
+                message: "Screenshot capture did not produce a file".to_string(),
+                path: None,
+                text: None,
+                ocr_engine: None,
+                backend: capture.backend.map(str::to_string),
+            });
         }
-        Err(message) => Ok(ScreenshotClipResult {
-            status: "cancelled".to_string(),
+
+        let ocr_attempt = run_tesseract(&path_label);
+        let mut message = capture.message;
+        let mut text = None;
+        let mut ocr_engine = None;
+
+        if let Ok(extracted) = ocr_attempt {
+            if !extracted.is_empty() {
+                message = format!("{} + OCR extracted {} chars", message, extracted.len());
+                text = Some(extracted);
+                ocr_engine = Some("tesseract".to_string());
+            }
+        }
+
+        return Ok(ScreenshotClipResult {
+            status: "captured".to_string(),
             message,
             path: Some(path_label),
-            text: None,
-            ocr_engine: None,
-        }),
+            text,
+            ocr_engine,
+            backend: capture.backend.map(str::to_string),
+        });
     }
+
+    Ok(ScreenshotClipResult {
+        status: capture.status.to_string(),
+        message: capture.message,
+        path: Some(path_label),
+        text: None,
+        ocr_engine: None,
+        backend: capture.backend.map(str::to_string),
+    })
 }
 
 fn main() {

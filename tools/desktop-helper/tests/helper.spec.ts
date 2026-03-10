@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+declare global {
+  interface Window {
+    __copiedDiagnostics?: string;
+  }
+}
+
 test("persists helper config across reloads", async ({ page }) => {
   await page.goto("/index.html");
 
@@ -123,6 +129,75 @@ test("window shortcut clips clipboard text", async ({ page }) => {
   await expect(page.locator("#recentCaptures")).toContainText("Desktop clip");
   await expect(page.locator("#recentCaptures")).toContainText("Browser runtime");
   await expect(page.locator("#recentCaptures")).toContainText("Playwright clipboard text");
+  await expect(page.locator("#recentCaptures")).toContainText("Capture backend: browser-clipboard");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Last window-local shortcut: CommandOrControl+Shift+C via window-keydown.",
+  );
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Last clipboard capture succeeded via browser-clipboard.",
+  );
+});
+
+test("clipboard failure updates runtime diagnostics note", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: async () => {
+          throw new Error("Permission denied");
+        },
+      },
+    });
+  });
+
+  await page.goto("/index.html");
+  await page.getByRole("button", { name: "Clip Clipboard" }).click();
+
+  await expect(page.locator("#status")).toContainText("Permission denied");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Last clipboard capture failed. Permission denied",
+  );
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Focus the helper window and allow clipboard access, or use the native Tauri runtime.",
+  );
+});
+
+test("browser screenshot attempt records the fallback note", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.getByRole("button", { name: "Clip Screenshot" }).click();
+
+  await expect(page.locator("#status")).toHaveText("Screenshot clip requires Tauri runtime");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText(
+    "Last screenshot attempt failed because the helper is not running in the Tauri runtime.",
+  );
+});
+
+test("copy diagnostics includes the latest runtime note without the token", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__copiedDiagnostics = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value) => {
+          window.__copiedDiagnostics = String(value);
+        },
+      },
+    });
+  });
+
+  await page.goto("/index.html");
+  await page.getByLabel("Bearer token").fill("token-123");
+  await page.getByRole("button", { name: "Clip Screenshot" }).click();
+  await page.getByRole("button", { name: "Copy Diagnostics" }).click();
+
+  await expect(page.locator("#status")).toHaveText("Diagnostics copied to clipboard");
+
+  const copiedDiagnostics = await page.evaluate(() => window.__copiedDiagnostics || "");
+  expect(copiedDiagnostics).toContain("\"runtime\"");
+  expect(copiedDiagnostics).toContain(
+    "Last screenshot attempt failed because the helper is not running in the Tauri runtime.",
+  );
+  expect(copiedDiagnostics).not.toContain("token-123");
 });
 
 test("recent helper captures persist across reloads", async ({ page }) => {

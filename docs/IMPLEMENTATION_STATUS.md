@@ -32,6 +32,7 @@
 - Desktop helper recent screenshot history now also keeps thumbnail previews so screenshot clips are visually inspectable in-app instead of being text-only.
 - Desktop helper now builds successfully as a native Tauri release app on Linux (`tools/desktop-helper/src-tauri/target/release/starlog_desktop_helper`).
 - Desktop helper now exposes runtime diagnostics for clipboard/screenshot/OCR/shortcut state, includes refresh/copy controls for redacted bug-report snapshots, falls back to browser clipboard reads when native access is unavailable, and cleans up temporary screenshot files after upload attempts.
+- Desktop helper diagnostics now keep latest-attempt notes with actionable fix hints, recent captures now show the backend that produced them, and the helper docs now include a real Linux/Windows host validation matrix with Windows PowerShell probe results and troubleshooting guidance.
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
 - Mobile companion local state is now backed by Expo SQLite with migration from the earlier JSON-file store.
@@ -117,7 +118,7 @@
 ## Next implementation targets
 
 1. Harden the native share path by validating Android share-intent behavior end to end on a booted device/emulator and adding the matching iOS share-extension path.
-2. Finish real macOS/Windows/Linux desktop validation against the helper's runtime diagnostics matrix now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, browser clipboard fallback, and release builds are in place.
+2. Extend the desktop-helper validation pass from the current Linux build/test coverage plus Windows host backend probes into native macOS and full Windows Tauri shortcut/OCR checks.
 3. Harden the local TTS worker path further with deeper provider validation and richer job orchestration beyond the current local wrapper set plus cancel/retry controls.
 4. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
 5. Deepen PWA local-first caches beyond the current local-snapshot reads (IndexedDB entity snapshots, offline detail/search reads, and cache invalidation rules).
