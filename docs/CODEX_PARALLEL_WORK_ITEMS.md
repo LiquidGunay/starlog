@@ -40,7 +40,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 1. iOS share extension
 
 - Branch: `codex/ios-share-extension`
-- Lock: `Agent 4 claimed 2026-03-10 11:38 UTC`
+- Lock: `UNCLAIMED`
 - Goal: add the missing iOS native share-target path for the companion app.
 - Scope:
   - implement the iOS share-extension/config-plugin/native plumbing,
@@ -71,7 +71,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 2. Desktop helper host matrix
 
 - Branch: `codex/desktop-helper-host-matrix`
-- Lock: `UNCLAIMED`
+- Lock: `Agent 4 claimed 2026-03-10 11:38 UTC`
 - Goal: use the new diagnostics to validate and tighten the helper across real host environments.
 - Scope:
   - confirm clipboard, screenshot, OCR, and shortcut behavior on at least one non-Linux host path,
