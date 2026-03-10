@@ -120,9 +120,10 @@
 
 ## Next implementation targets
 
-1. Harden the native share path by validating Android share-intent behavior end to end on a booted device/emulator and adding the matching iOS share-extension path.
+1. Add the missing iOS share-extension path and re-run share-parity checks against the current Android native-share flow.
 2. Finish real macOS/Windows/Linux desktop validation against the helper's runtime diagnostics matrix now that preview thumbnails, metadata capture, recent history, native shortcuts/clipboard/screenshot wiring, browser clipboard fallback, and release builds are in place.
-3. Harden the local TTS worker path further with deeper provider validation and richer job orchestration beyond the current local wrapper set plus cancel/retry controls.
-4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized.
-5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
-6. Implement actual phone-local STT/LLM backends that honor the shared execution policy instead of routing those capabilities only through the queued/local-server paths.
+3. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
+4. Add a real native Codex-subscription/OAuth bridge path if/when the bridge contract is finalized, or land a crisp adapter boundary if it is not.
+5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, sync-center, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
+6. Implement an actual phone-local STT backend that honors the shared execution policy instead of routing that capability only through the queued/local-server paths.
+7. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.
