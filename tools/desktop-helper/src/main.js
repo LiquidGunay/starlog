@@ -34,6 +34,10 @@ function setStatus(message) {
   statusNode.textContent = message;
 }
 
+function hasTauriRuntime() {
+  return Boolean(window.__TAURI__);
+}
+
 function errorMessage(error, fallbackMessage) {
   return error instanceof Error ? error.message : fallbackMessage;
 }
@@ -419,7 +423,9 @@ function applyStoredConfig(config) {
   apiBaseInput.value = typeof config?.apiBase === "string" && config.apiBase.trim()
     ? config.apiBase
     : DEFAULT_API_BASE;
-  tokenInput.value = typeof config?.token === "string" ? config.token : "";
+  tokenInput.value = hasTauriRuntime()
+    ? ""
+    : (typeof config?.token === "string" ? config.token : "");
 }
 
 function readConfig() {
@@ -430,7 +436,75 @@ function readConfig() {
 }
 
 function persistConfig() {
-  window.localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(readConfig()));
+  const nextConfig = {
+    apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
+  };
+  if (!hasTauriRuntime()) {
+    nextConfig.token = tokenInput.value.trim();
+  }
+  window.localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(nextConfig));
+}
+
+async function readSecureToken() {
+  if (!hasTauriRuntime()) {
+    return "";
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke("get_secure_token")) || "";
+  } catch {
+    return "";
+  }
+}
+
+async function writeSecureToken(token) {
+  const normalized = String(token || "").trim();
+  if (!hasTauriRuntime()) {
+    return false;
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("set_secure_token", { token: normalized });
+    return true;
+  } catch (error) {
+    setStatus(errorMessage(error, "Failed to update secure token storage"));
+    return false;
+  }
+}
+
+async function persistToken() {
+  if (!hasTauriRuntime()) {
+    persistConfig();
+    return;
+  }
+  await writeSecureToken(tokenInput.value);
+  persistConfig();
+}
+
+async function hydrateSecureTokenFromStorage() {
+  if (!hasTauriRuntime()) {
+    persistConfig();
+    return;
+  }
+
+  const storedConfig = readStoredConfig();
+  const legacyToken = typeof storedConfig?.token === "string" ? storedConfig.token.trim() : "";
+  const secureToken = await readSecureToken();
+
+  if (secureToken) {
+    tokenInput.value = secureToken;
+    persistConfig();
+    return;
+  }
+
+  if (legacyToken) {
+    tokenInput.value = legacyToken;
+    await persistToken();
+    return;
+  }
+
+  tokenInput.value = "";
+  persistConfig();
 }
 
 function formatCapturedAt(value) {
@@ -1050,7 +1124,9 @@ applyStoredConfig(readStoredConfig());
 renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
 apiBaseInput.addEventListener("input", persistConfig);
-tokenInput.addEventListener("input", persistConfig);
+tokenInput.addEventListener("input", () => {
+  persistToken().catch(() => undefined);
+});
 
 clipSelectionButton.addEventListener("click", () => {
   clipClipboard().catch(() => undefined);
@@ -1071,3 +1147,4 @@ copyDiagnosticsButton.addEventListener("click", () => {
 wireWindowShortcuts();
 loadRuntimeDiagnostics().catch(() => undefined);
 wireGlobalShortcuts().catch(() => undefined);
+hydrateSecureTokenFromStorage().catch(() => undefined);

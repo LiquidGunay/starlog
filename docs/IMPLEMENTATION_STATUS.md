@@ -27,7 +27,7 @@
 - Artifact graph now persists explicit relation edges and exposes version history (`/v1/artifacts/{id}/versions`).
 - Browser extension now posts raw/normalized/extracted capture layers to `/v1/capture`.
 - Desktop helper now posts captures to `/v1/capture` and attempts strict on-device OCR (`tesseract`) for screenshots.
-- Desktop helper now persists API/token config, registers native global shortcuts in Tauri runtime, uses native clipboard reads, and attempts platform screenshot capture beyond the earlier placeholder path.
+- Desktop helper now persists API-base config while storing bearer tokens in OS secure storage on Tauri hosts, registers native global shortcuts in Tauri runtime, uses native clipboard reads, and attempts platform screenshot capture beyond the earlier placeholder path.
 - Desktop helper now captures best-effort active app/window metadata and keeps recent clip history in the helper UI.
 - Desktop helper recent screenshot history now also keeps thumbnail previews so screenshot clips are visually inspectable in-app instead of being text-only.
 - Desktop helper now builds successfully as a native Tauri release app on Linux (`tools/desktop-helper/src-tauri/target/release/starlog_desktop_helper`).
