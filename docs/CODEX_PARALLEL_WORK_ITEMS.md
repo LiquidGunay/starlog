@@ -33,7 +33,9 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
 - Stale-lock recovery:
   - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --force-steal --reason "<reason>"`
-- Keep each `Lock:` line below updated as a readable mirror after claim/heartbeat/release.
+- Keep the `Lock:` lines in this file updated as a readable mirror for humans after claim/heartbeat/release operations.
+- Mirror helper (recommended after lock operations):
+  - `python3 scripts/sync_workitem_mirror.py`
 
 ## Active workstreams (new-plan aligned)
 
@@ -45,7 +47,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/ios-share-extension`
 - Workitem ID: `WI-101`
-- Lock: `UNCLAIMED | Workitem: WI-101 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-101 | Owner: N/A | Claimed: 2026-03-14T17:51:33Z | Last heartbeat: 2026-03-14T17:54:40Z`
 - Goal: add the missing iOS native share-target path for the companion app.
 - Scope:
   - enforce `llm/stt/tts` target sets as `mobile_bridge -> desktop_bridge -> api`,
@@ -67,7 +69,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/desktop-helper-macos-validation`
 - Workitem ID: `WI-102`
-- Lock: `UNCLAIMED | Workitem: WI-102 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-102 | Owner: N/A | Claimed: 2026-03-14T17:56:52Z | Last heartbeat: 2026-03-14T18:06:21Z`
 - Goal: finish the remaining real macOS validation path for the desktop helper now that Linux and Windows host paths are covered.
 - Scope:
   - tighten short-lived access token behavior and refresh rotation,
@@ -88,7 +90,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/local-tts-worker-hardening`
 - Workitem ID: `WI-103`
-- Lock: `UNCLAIMED | Workitem: WI-103 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-103 | Owner: N/A | Claimed: 2026-03-14T18:07:45Z | Last heartbeat: 2026-03-14T18:13:13Z`
 - Goal: make the queued TTS path more reliable and easier to operate.
 - Scope:
   - mobile token/secret storage via secure platform storage,
@@ -137,7 +139,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/native-codex-first-party-bridge`
 - Workitem ID: `WI-104`
-- Lock: `UNCLAIMED | Workitem: WI-104 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-104 | Owner: N/A | Claimed: 2026-03-14T17:33:49Z | Last heartbeat: 2026-03-14T17:42:08Z`
 - Goal: replace the guarded experimental OpenAI-compatible bridge adapter with a first-party native Codex-subscription/OAuth path if the upstream contract becomes real.
 - Scope:
   - inspect whether an official Codex subscription/OAuth contract exists yet,
@@ -158,10 +160,10 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 ### 5. PWA offline warmup pack
 
-- Branch: `codex/pwa-offline-warmup-pack`
-- Workitem ID: `WI-205`
-- Lock: `UNCLAIMED | Workitem: WI-205 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: add an explicit offline warmup flow that preloads critical route bundles and snapshots.
+- Branch: `codex/pwa-offline-cache-followups`
+- Workitem ID: `WI-105`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-105 | Owner: N/A | Claimed: 2026-03-14T17:20:56Z | Last heartbeat: 2026-03-14T18:15:14Z`
+- Goal: extend the new IndexedDB cache layer to the remaining PWA workspaces and add cache-management controls.
 - Scope:
   - offline warmup action for main PWA tabs,
   - preload route data snapshots into IndexedDB caches,
@@ -181,7 +183,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/phone-local-llm`
 - Workitem ID: `WI-106`
-- Lock: `UNCLAIMED | Workitem: WI-106 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-106 | Owner: N/A | Claimed: 2026-03-14T17:44:31Z | Last heartbeat: 2026-03-14T17:50:16Z`
 - Goal: explore and land the first viable phone-local LLM execution path behind the shared policy model.
 - Scope:
   - persist recorded media blobs locally,
@@ -480,6 +482,32 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `pnpm --filter web lint`
   - `pnpm test:web:offline-cache`
 
+### 7. Lock mirror automation
+
+- Branch: `codex/workitem-mirror-sync-b`
+- Workitem ID: `WI-110`
+- Lock: `IN_PROGRESS | Workitem: WI-110 | Owner: Agent Implementer-B | Claimed: 2026-03-14T18:55:13Z | Last heartbeat: 2026-03-14T18:56:52Z`
+- Goal: keep this doc's `Lock:` mirror lines aligned with shared `.git` registry state automatically.
+- Scope:
+  - add a script that reads shared registry lock/workitem state and rewrites `Lock:` lines in this doc,
+  - keep formatting deterministic so repeated runs are idempotent,
+  - document the helper command in the lock workflow section.
+- Out of scope:
+  - replacing the authoritative `.git` lock registry,
+  - changing lock claim/release semantics.
+- Likely files:
+  - `scripts/sync_workitem_mirror.py`
+  - `docs/CODEX_PARALLEL_WORK_ITEMS.md`
+- Concrete work items:
+  - parse lock lines by workitem id and update state/owner/timestamps from registry,
+  - support active lock, handoff, completed, open, and unclaimed states,
+  - run the helper once so existing mirror lines are refreshed in this branch.
+- Acceptance:
+  - one command updates all `Lock:` lines from shared registry truth,
+  - command is safe to rerun and produces stable output.
+- Validation:
+  - `python3 scripts/sync_workitem_mirror.py`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -509,4 +537,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-109` (`codex/pwa-cache-retention-policy-b`): add automatic per-prefix/per-scope retention and pressure-aware cache pruning controls.
+- `WI-110` (`codex/workitem-mirror-sync-b`): automate lock-line mirror updates in `docs/CODEX_PARALLEL_WORK_ITEMS.md` from shared registry state.
