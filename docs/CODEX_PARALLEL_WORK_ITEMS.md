@@ -253,7 +253,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 - Branch: `codex/worker-transport-https-enforcement`
 - Workitem ID: `WI-108`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-108.lock); this document is a mirror only`
+- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
 - Goal: enforce worker endpoint transport security in production while keeping Railway/proxy deployments functional.
 - Scope:
   - make secure transport checks proxy-aware for HTTPS-terminated deployments,
