@@ -452,7 +452,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-cache-retention-policy-b`
 - Workitem ID: `WI-109`
-- Lock: `IN_PROGRESS | Workitem: WI-109 | Owner: Agent Implementer-B | Claimed: 2026-03-14T18:36:40Z | Last heartbeat: 2026-03-14T18:53:43Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-109 | Owner: N/A | Claimed: 2026-03-14T18:36:40Z | Last heartbeat: 2026-03-14T18:54:25Z`
 - Goal: proactively prune cache records by prefix/scope retention rules instead of relying only on manual clears.
 - Scope:
   - add per-scope IndexedDB entity retention caps with pressure-aware tightening,
