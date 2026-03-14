@@ -86,10 +86,10 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 ### 3. Mobile + desktop secure credential storage migration
 
-- Branch: `codex/client-secure-storage-migration`
-- Workitem ID: `WI-203`
-- Lock: `UNCLAIMED | Workitem: WI-203 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: move client-side tokens/secrets out of plain persisted state into OS secure storage.
+- Branch: `codex/local-tts-worker-hardening`
+- Workitem ID: `WI-103`
+- Lock: `HELD | Workitem: WI-103 | Owner: Agent Implementer-A | Claimed: 2026-03-14 18:07 UTC | Last heartbeat: 2026-03-14 18:13 UTC`
+- Goal: make the queued TTS path more reliable and easier to operate.
 - Scope:
   - mobile token/secret storage via secure platform storage,
   - desktop helper token/secret storage via OS credential mechanism,
