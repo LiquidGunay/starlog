@@ -611,7 +611,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-offline-voice-queue`
 - Workitem ID: `WI-113`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-113.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #29 opened`
 - Goal: persist captured assistant voice clips locally and replay uploads after reconnect.
 - Scope:
   - store assistant voice upload queue entries with media blobs in IndexedDB-backed snapshots,
