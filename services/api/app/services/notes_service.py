@@ -1,7 +1,7 @@
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import events_service
+from app.services import conflict_service, events_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 
@@ -40,8 +40,34 @@ def update_note(conn: Connection, note_id: str, changes: dict) -> dict | None:
     if current is None:
         return None
 
+    local_payload = {
+        key: value
+        for key, value in changes.items()
+        if key in {"title", "body_md"} and value is not None
+    }
+    base_revision = changes.get("base_revision")
+    current_revision = int(current["version"])
+    if base_revision is not None and int(base_revision) != current_revision:
+        conflict = conflict_service.create_conflict(
+            conn,
+            entity_type="note",
+            entity_id=note_id,
+            operation="update",
+            base_revision=int(base_revision),
+            current_revision=current_revision,
+            local_payload=local_payload,
+            server_payload={
+                "id": current["id"],
+                "title": current["title"],
+                "body_md": current["body_md"],
+                "version": current_revision,
+                "updated_at": current["updated_at"],
+            },
+        )
+        raise conflict_service.RevisionConflictError(conflict)
+
     merged = dict(current)
-    merged.update({key: value for key, value in changes.items() if value is not None})
+    merged.update(local_payload)
     merged["version"] = int(current["version"]) + 1
     merged["updated_at"] = utc_now().isoformat()
 

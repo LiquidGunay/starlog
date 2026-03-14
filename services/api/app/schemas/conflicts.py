@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 ConflictStatus = Literal["open", "resolved"]
@@ -28,7 +28,14 @@ class ConflictResolveRequest(BaseModel):
     strategy: ConflictResolutionStrategy
     merged_payload: dict | None = None
 
+    @model_validator(mode="after")
+    def validate_resolution_payload(self) -> "ConflictResolveRequest":
+        if self.strategy == "merged_patch" and self.merged_payload is None:
+            raise ValueError("merged_payload is required when strategy is merged_patch")
+        if self.strategy != "merged_patch" and self.merged_payload is not None:
+            raise ValueError("merged_payload is only allowed with strategy=merged_patch")
+        return self
+
 
 class ConflictResolveResponse(BaseModel):
     conflict: ConflictResponse
-

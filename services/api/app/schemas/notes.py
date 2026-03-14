@@ -11,6 +11,7 @@ class NoteCreateRequest(BaseModel):
 class NoteUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1)
     body_md: str | None = None
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class NoteResponse(BaseModel):

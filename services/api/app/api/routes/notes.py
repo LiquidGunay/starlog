@@ -45,7 +45,16 @@ def update_note(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> NoteResponse:
-    updated = notes_service.update_note(db, note_id, payload.model_dump())
+    try:
+        updated = notes_service.update_note(db, note_id, payload.model_dump())
+    except notes_service.conflict_service.RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "revision_conflict",
+                "conflict": exc.conflict,
+            },
+        ) from exc
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
     return NoteResponse.model_validate(updated)
