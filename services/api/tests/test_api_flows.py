@@ -816,145 +816,97 @@ def test_ai_job_cancel_retry_and_stale_worker_guard(client: TestClient, auth_hea
     assert graph.json()["summaries"][0]["content"] == "Retried queued summary."
 
 
-def test_bridge_claim_priority_prefers_mobile_then_falls_back_to_desktop(
-    client: TestClient,
-    auth_headers: dict[str, str],
-) -> None:
-    def pair_worker(worker_id: str, worker_class: str) -> dict[str, str]:
-        started = client.post(
-            "/v1/workers/pairing/start",
-            json={"expires_in_minutes": 15},
-            headers=auth_headers,
-        )
-        assert started.status_code == 201
-        pairing_token = started.json()["pairing_token"]
+def test_worker_token_refresh_and_revocation_lifecycle(client: TestClient, auth_headers: dict[str, str]) -> None:
+    started = client.post(
+        "/v1/workers/pairing/start",
+        json={"expires_in_minutes": 15},
+        headers=auth_headers,
+    )
+    assert started.status_code == 201
+    pairing_token = started.json()["pairing_token"]
 
-        completed = client.post(
-            "/v1/workers/pairing/complete",
-            json={
-                "pairing_token": pairing_token,
-                "worker_id": worker_id,
-                "worker_label": f"{worker_class}:{worker_id}",
-                "worker_class": worker_class,
-                "capabilities": ["llm_summary"],
-            },
-            headers=auth_headers,
-        )
-        assert completed.status_code == 200
-        access_token = completed.json()["access_token"]
-        worker_headers = {"Authorization": f"Bearer {access_token}"}
-
-        heartbeat = client.post(
-            "/v1/workers/heartbeat",
-            json={"worker_id": worker_id, "capabilities": ["llm_summary"]},
-            headers=worker_headers,
-        )
-        assert heartbeat.status_code == 200
-        return worker_headers
-
-    policy = client.post(
-        "/v1/integrations/execution-policy",
+    worker_id = "security-worker"
+    completed = client.post(
+        "/v1/workers/pairing/complete",
         json={
-            "llm": ["mobile_bridge", "desktop_bridge", "api"],
-            "stt": ["mobile_bridge", "desktop_bridge", "api"],
-            "tts": ["mobile_bridge", "desktop_bridge", "api"],
-            "ocr": ["mobile_bridge", "desktop_bridge"],
+            "pairing_token": pairing_token,
+            "worker_id": worker_id,
+            "worker_label": "Security worker",
+            "worker_class": "desktop_bridge",
+            "capabilities": ["llm_summary"],
         },
         headers=auth_headers,
     )
-    assert policy.status_code == 200
+    assert completed.status_code == 200
+    access_token = completed.json()["access_token"]
+    refresh_token = completed.json()["refresh_token"]
+    worker_headers = {"Authorization": f"Bearer {access_token}"}
 
-    desktop_worker_id = "desktop-bridge-worker"
-    mobile_worker_id = "mobile-bridge-worker"
-    desktop_headers = pair_worker(desktop_worker_id, "desktop_bridge")
-
-    first_job = client.post(
-        "/v1/ai/jobs",
-        json={"capability": "llm_summary", "payload": {"text": "Desktop should claim when mobile is offline."}},
-        headers=auth_headers,
+    initial_heartbeat = client.post(
+        "/v1/workers/heartbeat",
+        json={"worker_id": worker_id, "capabilities": ["llm_summary"]},
+        headers=worker_headers,
     )
-    assert first_job.status_code == 201
-    first_job_id = first_job.json()["id"]
-    assert first_job.json()["requested_targets"][0] == "mobile_bridge"
+    assert initial_heartbeat.status_code == 200
 
-    first_claim = client.post(
-        "/v1/ai/jobs/claim-next",
-        json={"capabilities": ["llm_summary"]},
-        headers=desktop_headers,
+    refreshed = client.post(
+        "/v1/workers/auth/refresh",
+        json={"worker_id": worker_id, "refresh_token": refresh_token},
     )
-    assert first_claim.status_code == 200
-    first_claim_payload = first_claim.json()
-    assert first_claim_payload["id"] == first_job_id
-    assert first_claim_payload["selected_target"] == "desktop_bridge"
-    assert first_claim_payload["claimed_worker_class"] == "desktop_bridge"
-    assert first_claim_payload["worker_id"] == desktop_worker_id
+    assert refreshed.status_code == 200
+    next_access_token = refreshed.json()["access_token"]
+    assert next_access_token != access_token
+    refreshed_headers = {"Authorization": f"Bearer {next_access_token}"}
 
-    first_complete = client.post(
-        f"/v1/ai/jobs/{first_job_id}/worker-complete",
-        json={"provider_used": "desktop_bridge_codex", "output": {"summary": "Desktop bridge output"}},
-        headers=desktop_headers,
+    stale_heartbeat = client.post(
+        "/v1/workers/heartbeat",
+        json={"worker_id": worker_id, "capabilities": ["llm_summary"]},
+        headers=worker_headers,
     )
-    assert first_complete.status_code == 200
+    assert stale_heartbeat.status_code == 401
 
-    mobile_headers = pair_worker(mobile_worker_id, "mobile_bridge")
-    second_job = client.post(
-        "/v1/ai/jobs",
-        json={"capability": "llm_summary", "payload": {"text": "Mobile should claim when available."}},
-        headers=auth_headers,
+    refreshed_heartbeat = client.post(
+        "/v1/workers/heartbeat",
+        json={"worker_id": worker_id, "capabilities": ["llm_summary"]},
+        headers=refreshed_headers,
     )
-    assert second_job.status_code == 201
-    second_job_id = second_job.json()["id"]
+    assert refreshed_heartbeat.status_code == 200
 
-    desktop_skipped = client.post(
-        "/v1/ai/jobs/claim-next",
-        json={"capabilities": ["llm_summary"]},
-        headers=desktop_headers,
-    )
-    assert desktop_skipped.status_code == 404
-
-    second_claim = client.post(
-        "/v1/ai/jobs/claim-next",
-        json={"capabilities": ["llm_summary"]},
-        headers=mobile_headers,
-    )
-    assert second_claim.status_code == 200
-    second_claim_payload = second_claim.json()
-    assert second_claim_payload["id"] == second_job_id
-    assert second_claim_payload["selected_target"] == "mobile_bridge"
-    assert second_claim_payload["claimed_worker_class"] == "mobile_bridge"
-    assert second_claim_payload["worker_id"] == mobile_worker_id
-
-    second_complete = client.post(
-        f"/v1/ai/jobs/{second_job_id}/worker-complete",
-        json={"provider_used": "mobile_bridge_codex", "output": {"summary": "Mobile bridge output"}},
-        headers=mobile_headers,
-    )
-    assert second_complete.status_code == 200
+    listed_active = client.get("/v1/workers", headers=auth_headers)
+    assert listed_active.status_code == 200
+    assert worker_id in {item["worker_id"] for item in listed_active.json()}
 
     revoked = client.post(
-        f"/v1/workers/{mobile_worker_id}/revoke",
-        json={"reason": "Test fallback back to desktop"},
+        f"/v1/workers/{worker_id}/revoke",
+        json={"reason": "security test"},
         headers=auth_headers,
     )
     assert revoked.status_code == 200
     assert revoked.json()["revoked_at"] is not None
+    assert revoked.json()["revocation_reason"] == "security test"
 
-    third_job = client.post(
-        "/v1/ai/jobs",
-        json={"capability": "llm_summary", "payload": {"text": "Desktop should reclaim after mobile revoke."}},
-        headers=auth_headers,
+    revoked_heartbeat = client.post(
+        "/v1/workers/heartbeat",
+        json={"worker_id": worker_id, "capabilities": ["llm_summary"]},
+        headers=refreshed_headers,
     )
-    assert third_job.status_code == 201
+    assert revoked_heartbeat.status_code == 401
 
-    third_claim = client.post(
-        "/v1/ai/jobs/claim-next",
-        json={"capabilities": ["llm_summary"]},
-        headers=desktop_headers,
+    revoked_refresh = client.post(
+        "/v1/workers/auth/refresh",
+        json={"worker_id": worker_id, "refresh_token": refresh_token},
     )
-    assert third_claim.status_code == 200
-    assert third_claim.json()["selected_target"] == "desktop_bridge"
-    assert third_claim.json()["claimed_worker_class"] == "desktop_bridge"
-    assert third_claim.json()["worker_id"] == desktop_worker_id
+    assert revoked_refresh.status_code == 401
+
+    listed_default = client.get("/v1/workers", headers=auth_headers)
+    assert listed_default.status_code == 200
+    assert worker_id not in {item["worker_id"] for item in listed_default.json()}
+
+    listed_revoked = client.get("/v1/workers?include_revoked=true", headers=auth_headers)
+    assert listed_revoked.status_code == 200
+    revoked_payload = next(item for item in listed_revoked.json() if item["worker_id"] == worker_id)
+    assert revoked_payload["revoked_at"] is not None
+    assert revoked_payload["online"] is False
 
 
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:

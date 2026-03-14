@@ -692,6 +692,32 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `pnpm --filter web exec tsc --noEmit`
   - `pnpm --filter web lint`
 
+### 7. Worker token lifecycle security tests
+
+- Branch: `codex/worker-token-lifecycle-tests`
+- Workitem ID: `WI-122`
+- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-122.lock); this document is a mirror only`
+- Goal: add regression coverage for worker pairing/token refresh/revocation behavior so secure worker auth flows remain enforceable.
+- Scope:
+  - test worker pairing + initial heartbeat success,
+  - verify refresh rotates access token and invalidates the previous access token,
+  - verify revoked workers cannot heartbeat or refresh, and only appear in `include_revoked=true` listing.
+- Out of scope:
+  - changes to worker token TTLs or transport policy enforcement logic,
+  - UI updates for worker session management.
+- Likely files:
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Concrete work items:
+  - add an end-to-end API test for `/v1/workers/pairing/start`, `/pairing/complete`, `/auth/refresh`, `/heartbeat`, and `/{worker_id}/revoke`,
+  - assert stale access-token rejection after refresh,
+  - assert revoked worker removal from default list and presence in include-revoked list.
+- Acceptance:
+  - worker token rotation/revocation semantics are covered by executable API tests,
+  - regressions in stale-token or revoked-session handling are caught by CI.
+- Validation:
+  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "worker_token_refresh_and_revocation_lifecycle" -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -721,4 +747,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-117` (`codex/pwa-cache-ai-jobs-portability-b`): add offline snapshot restore/persist coverage for AI jobs and portability pages.
+- `WI-122` (`codex/worker-token-lifecycle-tests`): cover worker token refresh/revoke lifecycle and revoked-session visibility in API tests.
