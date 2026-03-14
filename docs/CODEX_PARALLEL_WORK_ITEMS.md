@@ -578,7 +578,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-cache-synccenter-followup-b`
 - Workitem ID: `WI-114`
-- Lock: `IN_PROGRESS | Workitem: WI-114 | Owner: Agent implementer-b | Claimed: 2026-03-14T19:05:52Z | Last heartbeat: 2026-03-14T19:21:05Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-114 | Owner: N/A | Claimed: 2026-03-14T19:05:52Z | Last heartbeat: 2026-03-14T19:21:05Z`
 - Goal: extend IndexedDB/local snapshot coverage to planner, integrations, and sync-center views so these pages remain useful after offline reload.
 - Scope:
   - add snapshot keys and local bootstrap for planner timelines, integration/provider state, and sync-center history/cursor,
