@@ -14,6 +14,8 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Create each workstream from `master` at `de2e08d` or a newer fast-forward of it.
 - Keep branch names under the required `codex/` prefix.
 - Prefer rebasing onto `master` instead of merging other Codex branches together.
+- Every claimed workitem must ship through a PR targeting `master` (no direct pushes to `master`).
+- Rebase onto latest `origin/master` whenever your branch is behind before requesting final review/merge, then rerun relevant validation.
 - Do not stack Codex branches unless the dependency is explicit and recorded here.
 - Do not add commits to a branch/PR that is already merged; create a new branch and a new PR.
 - Do not deploy from these branches without explicit user approval.
@@ -225,36 +227,131 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - visual/manual regression pass against `screen_design` references
 
-### 7. Worker transport HTTPS enforcement
+### 10. HTTPS-only worker transport enforcement
 
-- Branch: `codex/worker-transport-https-enforcement`
-- Workitem ID: `WI-108`
-- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
-- Goal: enforce worker endpoint transport security in production while keeping Railway/proxy deployments functional.
+- Branch: `codex/worker-https-enforcement`
+- Workitem ID: `WI-210`
+- Lock: `UNCLAIMED | Workitem: WI-210 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: enforce HTTPS-only worker/API transport in non-local modes with explicit localhost dev exceptions.
 - Scope:
-  - make secure transport checks proxy-aware for HTTPS-terminated deployments,
-  - keep localhost HTTP allowed for local development workflows,
-  - add focused tests for worker transport behavior in production mode.
-- Out of scope:
-  - changing non-worker endpoint auth model,
-  - infrastructure/network policy changes outside app logic.
+  - harden secure transport checks for worker auth/pairing/heartbeat paths,
+  - block insecure worker traffic outside local development contexts,
+  - add clear API error messages for rejected insecure transport.
 - Likely files:
   - `services/api/app/api/deps.py`
-  - `services/api/tests/test_api_flows.py` or a dedicated API test module
-  - `AGENTS.md`
-- Concrete work items:
-  - normalize transport checks to consider proxy-forwarded scheme metadata where appropriate,
-  - ensure production rejects non-HTTPS worker calls outside localhost,
-  - add regression tests for blocked insecure requests and allowed proxied-HTTPS requests,
-  - document any discovered proxy/security caveats in `AGENTS.md`.
+  - `services/api/app/api/routes/workers.py`
+  - `services/api/tests/test_api_flows.py`
 - Acceptance:
-  - production-mode worker endpoints enforce HTTPS semantics correctly,
-  - proxied HTTPS requests are not falsely rejected,
-  - test coverage verifies both reject and allow paths.
+  - production-like mode rejects non-HTTPS worker auth flows,
+  - localhost dev loop remains functional with explicit exception handling.
 - Validation:
-  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -s`
-  - `uv run --project services/api ruff check services/api`
-  - `uv run --project services/api mypy services/api/app`
+  - API tests covering HTTPS-required and localhost-allowed cases
+
+### 11. Secrets redaction and at-rest protection sweep
+
+- Branch: `codex/secrets-redaction-sweep`
+- Workitem ID: `WI-211`
+- Lock: `UNCLAIMED | Workitem: WI-211 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: ensure provider keys and worker/session secrets stay encrypted at rest and redacted in all responses/logs.
+- Scope:
+  - verify and tighten encryption/redaction paths for integration/provider configs,
+  - audit worker/session artifacts for accidental sensitive-field leakage,
+  - extend tests for log/response redaction boundaries.
+- Likely files:
+  - `services/api/app/services/integrations_service.py`
+  - `services/api/app/services/worker_service.py`
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Acceptance:
+  - no sensitive tokens/keys appear unredacted in API/UI-facing payloads or diagnostics,
+  - at-rest storage for sensitive config remains encrypted/hashed consistently.
+- Validation:
+  - targeted API tests and log/response redaction checks
+
+### 12. Worker control plane UI and operations
+
+- Branch: `codex/worker-control-plane-ui`
+- Workitem ID: `WI-212`
+- Lock: `UNCLAIMED | Workitem: WI-212 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: expose pairing/session/revocation operations and worker heartbeat health in a first-class PWA surface.
+- Scope:
+  - add worker list/status/revocation workflows to integrations or sync-center surfaces,
+  - expose pairing token lifecycle controls with safe display/expiry behavior,
+  - show worker heartbeat recency and capability-class visibility for routing ops.
+- Likely files:
+  - `apps/web/app/integrations/page.tsx`
+  - `apps/web/app/sync-center/page.tsx`
+  - `services/api/app/api/routes/workers.py`
+  - `services/api/app/schemas/workers.py`
+- Acceptance:
+  - operators can inspect and revoke worker sessions without direct API calls,
+  - worker availability state is visible where routing/triage decisions are made.
+- Validation:
+  - web lint/typecheck + API integration checks for worker UI flows
+
+### 13. Offline review queue reliability
+
+- Branch: `codex/offline-review-queue-reliability`
+- Workitem ID: `WI-213`
+- Lock: `UNCLAIMED | Workitem: WI-213 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: harden offline review-submission queueing and replay semantics (beyond current generic mutation outbox behavior).
+- Scope:
+  - persist and replay review submissions with explicit duplicate/idempotency protections,
+  - surface per-review replay outcomes in sync/review UI,
+  - verify queue integrity across reloads and offline/online flaps.
+- Likely files:
+  - `apps/web/app/review/page.tsx`
+  - `apps/web/app/session-provider.tsx`
+  - `apps/web/app/lib/mutation-outbox.ts`
+  - `services/api/app/api/routes/reviews.py`
+- Acceptance:
+  - offline review events replay correctly and once,
+  - users can see replay success/failure per queued review.
+- Validation:
+  - Playwright offline review queue + reconnect tests
+
+### 14. Conflict audit timeline and merged-patch tooling
+
+- Branch: `codex/conflict-audit-timeline`
+- Workitem ID: `WI-214`
+- Lock: `UNCLAIMED | Workitem: WI-214 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: expose conflict mutation history and a practical merged-patch authoring/resolution flow.
+- Scope:
+  - add conflict history/audit timeline view with mutation context,
+  - add merged-patch authoring support in UI and API payload handling,
+  - keep resolution outcomes traceable for later sync diagnostics.
+- Likely files:
+  - `services/api/app/services/conflict_service.py`
+  - `services/api/app/schemas/conflicts.py`
+  - `apps/web/app/planner/page.tsx`
+  - `apps/web/app/calendar/page.tsx`
+- Acceptance:
+  - conflicts show actionable history and support merged-patch resolution,
+  - resolution audit data is queryable and human-readable.
+- Validation:
+  - API conflict tests + planner/calendar conflict-UX regression checks
+
+### 15. Architecture regression harness
+
+- Branch: `codex/architecture-regression-harness`
+- Workitem ID: `WI-215`
+- Lock: `UNCLAIMED | Workitem: WI-215 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: codify the architecture plan test matrix into repeatable automated checks.
+- Scope:
+  - add coverage slices for security, routing priority, offline warmup/queues, conflict lifecycle, and lock tooling,
+  - provide a single documented command matrix for supervisor validation,
+  - include deterministic pass/fail reporting for handoff and merge gating.
+- Likely files:
+  - `services/api/tests/test_api_flows.py`
+  - `apps/web/tests/offline-cache.spec.ts`
+  - `scripts/workitem_lock.py`
+  - `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Acceptance:
+  - architecture-critical regressions are covered by repeatable checks,
+  - validation commands are documented and usable by parallel agents.
+- Validation:
+  - API + Playwright + lock-tooling checks wired into a documented runbook
 
 ## Suggested execution order
 
@@ -267,9 +364,15 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `WI-203` client secure storage migration
   - `WI-204` bridge claim arbitration and routing telemetry
   - `WI-206` PWA offline voice queue
+  - `WI-210` HTTPS-only worker transport enforcement
+  - `WI-211` secrets redaction and at-rest protection sweep
+  - `WI-212` worker control plane UI and operations
+  - `WI-213` offline review queue reliability
+  - `WI-214` conflict audit timeline and merged-patch tooling
 - Run as platform-governance follow-ups:
   - `WI-208` shared lock registry hardening
   - `WI-209` screen-design contract conformance
+  - `WI-215` architecture regression harness
 
 ## Supervisor dispatch list (2026-03-14)
 
@@ -282,3 +385,9 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-207` (`codex/revision-conflict-lifecycle`)
 - `WI-208` (`codex/shared-lock-registry-hardening`)
 - `WI-209` (`codex/screen-design-contract-conformance`)
+- `WI-210` (`codex/worker-https-enforcement`)
+- `WI-211` (`codex/secrets-redaction-sweep`)
+- `WI-212` (`codex/worker-control-plane-ui`)
+- `WI-213` (`codex/offline-review-queue-reliability`)
+- `WI-214` (`codex/conflict-audit-timeline`)
+- `WI-215` (`codex/architecture-regression-harness`)
