@@ -133,7 +133,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/native-codex-first-party-bridge`
 - Workitem ID: `WI-104`
-- Lock: `HELD | Workitem: WI-104 | Owner: Agent Implementer-A | Claimed: 2026-03-14 17:33 UTC | Last heartbeat: 2026-03-14 17:42 UTC`
+- Lock: `UNCLAIMED | Workitem: WI-104 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: replace the guarded experimental OpenAI-compatible bridge adapter with a first-party native Codex-subscription/OAuth path if the upstream contract becomes real.
 - Scope:
   - inspect whether an official Codex subscription/OAuth contract exists yet,
