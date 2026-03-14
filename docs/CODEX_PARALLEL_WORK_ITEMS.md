@@ -34,12 +34,47 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Stale-lock recovery:
   - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --force-steal --reason "<reason>"`
 - Keep the `Lock:` lines in this file updated as a readable mirror for humans after claim/heartbeat/release operations.
-- Mirror helper (recommended after lock operations):
-  - `python3 scripts/sync_workitem_mirror.py`
+- Mirror helper:
+  - Write/sync lock lines: `python3 scripts/sync_workitem_mirror.py`
+  - Check-only drift detection: `python3 scripts/sync_workitem_mirror.py --check`
+- Optional make targets:
+  - `make sync-workitem-mirror`
+  - `make check-workitem-mirror`
+  - `make test-workitem-mirror`
 
 ## Active workstreams (new-plan aligned)
 
 ### 1. Execution policy convergence
+
+### 7. Lock mirror helper hardening
+
+- Branch: `codex/workitem-mirror-checks-b`
+- Workitem ID: `WI-112`
+- Lock: `IN_PROGRESS | Workitem: WI-112 | Owner: Agent Implementer-B | Claimed: 2026-03-14T19:00:00Z | Last heartbeat: 2026-03-14T19:02:11Z`
+- Goal: make lock-mirror sync verifiable and testable in automation.
+- Scope:
+  - add `--check` mode to the lock mirror sync helper so CI/agents can fail on drift without rewriting,
+  - add focused tests for update mode and check mode behavior,
+  - add Makefile convenience targets for sync/check/test commands.
+- Out of scope:
+  - replacing the shared registry authority model,
+  - changing lock claim/release semantics.
+- Likely files:
+  - `scripts/sync_workitem_mirror.py`
+  - `scripts/tests/test_sync_workitem_mirror.py`
+  - `Makefile`
+  - `docs/CODEX_PARALLEL_WORK_ITEMS.md`
+- Concrete work items:
+  - implement a non-mutating check path with non-zero exit on lock-line drift,
+  - support registry-root override to simplify test harnesses,
+  - cover update/check behavior with deterministic temp-dir tests.
+- Acceptance:
+  - `--check` exits non-zero when mirror drift exists and zero when in sync,
+  - tests run locally and pass.
+- Validation:
+  - `python3 scripts/sync_workitem_mirror.py`
+  - `python3 scripts/sync_workitem_mirror.py --check`
+  - `make test-workitem-mirror`
 
 ## Remaining workstreams
 
@@ -423,10 +458,10 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 ### 7. Mobile secure token storage
 
-- Branch: `codex/mobile-token-secure-storage`
-- Workitem ID: `WI-110`
-- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
-- Goal: move mobile bearer-token persistence from plaintext app state to OS secure storage.
+- Branch: `codex/phone-local-llm`
+- Workitem ID: `WI-106`
+- Lock: `COMPLETED | Workitem: WI-106 | Owner: N/A | Claimed: 2026-03-14T17:44:31Z | Last heartbeat: 2026-03-14T17:50:16Z`
+- Goal: explore and land the first viable phone-local LLM execution path behind the shared policy model.
 - Scope:
   - add a secure token storage abstraction in the mobile companion,
   - migrate legacy persisted tokens into secure storage on startup,
@@ -568,4 +603,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-111` (`codex/desktop-helper-secure-token`): migrate desktop-helper bearer-token persistence to OS secure storage in Tauri runtime.
+- `WI-112` (`codex/workitem-mirror-checks-b`): add check-mode drift detection and tests for lock-mirror sync tooling.

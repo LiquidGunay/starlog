@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Sync human-readable Lock lines in docs/CODEX_PARALLEL_WORK_ITEMS.md from
-the shared .git/codex-workitems registry.
+the shared `.git/codex-workitems` registry.
 """
 
 from __future__ import annotations
@@ -42,9 +42,7 @@ def read_json(path: Path, default: Any) -> Any:
         return default
 
 
-def load_registry(repo_root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
-    common_dir = git_common_dir(repo_root)
-    registry_root = common_dir / "codex-workitems"
+def load_registry(registry_root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     workitems_payload = read_json(registry_root / "workitems.json", {"items": []})
     items_raw = workitems_payload.get("items", [])
     items: dict[str, dict[str, Any]] = {}
@@ -130,7 +128,13 @@ def build_lock_value(workitem_id: str, item: dict[str, Any] | None, lock: dict[s
     )
 
 
-def sync_lock_lines(doc_path: Path, items: dict[str, dict[str, Any]], locks: dict[str, dict[str, Any]]) -> int:
+def sync_lock_lines(
+    doc_path: Path,
+    items: dict[str, dict[str, Any]],
+    locks: dict[str, dict[str, Any]],
+    *,
+    check: bool = False,
+) -> int:
     original = doc_path.read_text(encoding="utf-8")
     updated_lines: list[str] = []
     changed = 0
@@ -154,12 +158,12 @@ def sync_lock_lines(doc_path: Path, items: dict[str, dict[str, Any]], locks: dic
             changed += 1
         updated_lines.append(next_line)
 
-    if changed > 0:
+    if changed > 0 and not check:
         doc_path.write_text("".join(updated_lines), encoding="utf-8")
     return changed
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Sync workitem Lock lines in docs from shared registry.")
     parser.add_argument("--repo-root", default=".", help="Path inside repository (default: current directory).")
     parser.add_argument(
@@ -167,6 +171,20 @@ def main() -> int:
         default="docs/CODEX_PARALLEL_WORK_ITEMS.md",
         help="Path to markdown file with Lock lines.",
     )
+    parser.add_argument(
+        "--registry-root",
+        help="Override registry root path (default: <git-common-dir>/codex-workitems).",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check mode: do not write file; exit with code 1 if lock lines would change.",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
@@ -174,9 +192,26 @@ def main() -> int:
     if not doc_path.exists():
         raise SystemExit(f"doc file not found: {doc_path}")
 
-    items, locks = load_registry(repo_root)
-    changed = sync_lock_lines(doc_path, items, locks)
-    print(json.dumps({"doc": str(doc_path), "changed_lock_lines": changed}, sort_keys=True))
+    if args.registry_root:
+        registry_root = Path(args.registry_root).resolve()
+    else:
+        registry_root = git_common_dir(repo_root) / "codex-workitems"
+
+    items, locks = load_registry(registry_root)
+    changed = sync_lock_lines(doc_path, items, locks, check=bool(args.check))
+    print(
+        json.dumps(
+            {
+                "doc": str(doc_path),
+                "registry_root": str(registry_root),
+                "changed_lock_lines": changed,
+                "check": bool(args.check),
+            },
+            sort_keys=True,
+        ),
+    )
+    if args.check and changed > 0:
+        return 1
     return 0
 
 
