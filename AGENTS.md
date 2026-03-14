@@ -27,6 +27,115 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 ## Repo process rule
 When an issue is discovered or a clear user preference appears, append it to this file in logs below.
 
+## Shared workitem locking (`.git` common dir)
+
+Use a shared live lock registry under the common git dir so all worktrees/agents coordinate against the same source of truth.
+
+- Registry root: `$(git rev-parse --git-common-dir)/codex-workitems/`
+- Authoritative files:
+  - `workitems.json`
+  - `locks/<workitem_id>.lock`
+  - `audit.jsonl`
+  - `.registry.lock` (used for atomic lock operations)
+- Lock protocol:
+  - claim lock before implementation starts
+  - heartbeat every 2 minutes while actively working
+  - stale lock timeout is 10 minutes
+  - release lock on completion or handoff
+  - forced lock steal requires an explicit reason and must be appended to `audit.jsonl`
+- Required usage flow for every agent:
+  1) Identify the `workitem_id` in `workitems.json`, then acquire `.registry.lock` before reading/updating lock state.
+  2) On claim, verify `locks/<workitem_id>.lock` is absent or stale (`last_heartbeat_at` older than 10 minutes). If active and not stale, do not proceed.
+  3) Write/update `locks/<workitem_id>.lock` with owner metadata (`agent_id`, `worktree`, `branch`, `claimed_at`, `last_heartbeat_at`), set workitem status/owner in `workitems.json`, and append a `claim` event to `audit.jsonl`.
+  4) While working, refresh `last_heartbeat_at` at least every 2 minutes (under `.registry.lock`), and keep `workitems.json` ownership/status aligned.
+  5) On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
+  6) Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
+- `docs/CODEX_PARALLEL_WORK_ITEMS.md` is human-readable planning context only; live lock authority is the shared `.git` registry.
+- Any merge-conflict resolution insight discovered while working must be appended to this file's **Issue log**.
+
+## Phone testing runbook (Android, this host)
+
+Use this sequence when validating the native mobile app on the connected Android phone from WSL. The phone must remain unlocked for the full run.
+
+0) Keep the device unlocked for the entire run:
+
+- Do not let the phone lock/sleep during relay setup, deep-link open, smoke flow, or screenshot capture.
+- Re-unlock immediately if the device locks; rerun failing step(s) after unlock.
+
+1) Use the newer Windows ADB binary, not `C:\adb\adb.exe`:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" devices -l
+```
+
+2) Keep the phone awake and prepare API reverse:
+
+```bash
+"$ADB_WIN" -s <SERIAL> shell svc power stayon usb
+"$ADB_WIN" -s <SERIAL> reverse tcp:8000 tcp:8000
+```
+
+3) Start the Windows relay in a dedicated terminal and keep it running:
+
+```bash
+bash -x /home/ubuntu/starlog/scripts/android_windows_metro_relay.sh
+```
+
+Expected relay checkpoint:
+
+```text
+[android-metro-relay] listening 0.0.0.0:8081 -> <WSL_IP>:8081
+```
+
+4) Validate relay reachability from Windows before opening the app:
+
+```bash
+powershell.exe -NoProfile -Command 'try { (Invoke-WebRequest -Uri "http://127.0.0.1:8081" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $_.Exception.Message; exit 1 }'
+```
+
+Expected output: `200`
+
+5) Start Metro in LAN mode from `apps/mobile`:
+
+```bash
+cd /home/ubuntu/starlog/apps/mobile
+APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
+```
+
+6) Open the dev client using the explicit LAN URL:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> reverse --remove tcp:8081 || true
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+```
+
+7) Run the Android smoke flow after the app loads:
+
+```bash
+cd /home/ubuntu/starlog
+DEV_CLIENT_URL='exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=<SERIAL> \
+REVERSE_PORTS=8000 \
+SKIP_INSTALL=1 \
+./scripts/android_native_smoke.sh
+```
+
+8) Capture a screenshot from the phone:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> exec-out screencap -p > /tmp/starlog-phone.png
+```
+
+Troubleshooting checklist:
+- `failed to connect to /192.168.0.102 (port 8081)`: relay is not reachable; re-check step 3 and step 4.
+- `unexpected end of stream on http://127.0.0.1:8081/...`: avoid the localhost reverse path for Metro on this host; use LAN URL flow above.
+- `adb devices` empty but phone appears in Device Manager: unlock phone, enable USB debugging, accept authorization prompt.
+- `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying wireless flow.
+
 ## Preference log
 - 2026-03-04: User prefers clip-first workflow with strong provenance/versioning.
 - 2026-03-04: User prefers manual AI action buttons over automatic pipelines.
@@ -47,6 +156,10 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-09: User wants to be asked before any Railway deployment is made.
 - 2026-03-10: User wants pending work broken into concrete workitems and run in parallel across separate `codex/*` branches / Codex instances.
 - 2026-03-10: User wants parallel agents to claim work items by writing an explicit lock in `docs/CODEX_PARALLEL_WORK_ITEMS.md` before starting implementation.
+- 2026-03-14: User wants shared multi-worktree lock coordination under the common `.git` directory instead of repo-tracked lock state.
+- 2026-03-14: User wants merge-conflict resolution insights logged in `AGENTS.md` Issue log whenever discovered.
+- 2026-03-14: User wants Android mobile testing runs performed with the physical device kept unlocked throughout execution.
+- 2026-03-14: User wants explicit lock claim/heartbeat/release/force-steal usage instructions documented in `AGENTS.md`.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -99,3 +212,4 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-10: Android `adb shell am start` deep links that include `&source_url=...` need remote-shell quoting; the repo smoke helpers now escape those payloads so Android does not split the URI at `&`.
 - 2026-03-10: This Windows host still had an obsolete `C:\adb\adb.exe` (ADB `1.0.31`) ahead of the newer platform-tools build; reliable Android phone validation here needs the newer `C:\Temp\android-platform-tools\platform-tools\adb.exe` to avoid daemon/version conflicts.
 - 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
+- 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
