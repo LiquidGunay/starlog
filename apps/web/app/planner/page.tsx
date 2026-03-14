@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
@@ -147,15 +146,23 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+const PLANNER_DATE_SNAPSHOT = "planner.date";
+const PLANNER_BLOCKS_SNAPSHOT = "planner.blocks";
+const PLANNER_EVENTS_SNAPSHOT = "planner.events";
+const PLANNER_CONFLICTS_SNAPSHOT = "planner.conflicts";
+const PLANNER_OAUTH_STATUS_SNAPSHOT = "planner.oauth_status";
+const PLANNER_CACHE_PREFIXES = ["planner."];
+
 export default function PlannerPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [date, setDate] = useState(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today));
+  const initialDate = useMemo(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today), [today]);
+  const [date, setDate] = useState(initialDate);
   const [blocks, setBlocks] = useState<Block[]>(() => readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []));
   const [events, setEvents] = useState<EventItem[]>(() => readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []));
   const [conflicts, setConflicts] = useState<Conflict[]>(() => readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []));
   const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(
-    () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_SNAPSHOT, null),
+    () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
   );
   const [status, setStatus] = useState("Ready");
   const timeline = useMemo<TimelineItem[]>(() => {
@@ -187,69 +194,42 @@ export default function PlannerPage() {
 
   useEffect(() => {
     setDate((previous) => previous || readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today));
-    setBlocks((previous) =>
-      previous.length > 0 ? previous : readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []),
-    );
-    setEvents((previous) =>
-      previous.length > 0 ? previous : readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []),
-    );
-    setConflicts((previous) =>
-      previous.length > 0 ? previous : readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []),
-    );
-    setOauthStatus((previous) =>
-      previous ?? readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_SNAPSHOT, null),
-    );
+    setBlocks((previous) => previous.length > 0 ? previous : readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []));
+    setEvents((previous) => previous.length > 0 ? previous : readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []));
+    setConflicts((previous) => previous.length > 0 ? previous : readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []));
+    setOauthStatus((previous) => previous ?? readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null));
   }, [today]);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
-      const [
-        cachedBlocks,
-        cachedEvents,
-        cachedConflicts,
-        cachedOauthEntries,
-        bootstrapBlocks,
-        bootstrapEvents,
-        bootstrapConflicts,
-        bootstrapOauth,
-        bootstrapDate,
-      ] = await Promise.all([
-        readEntityCacheScope<Block>(PLANNER_BLOCKS_ENTITY_SCOPE),
-        readEntityCacheScope<EventItem>(PLANNER_EVENTS_ENTITY_SCOPE),
-        readEntityCacheScope<Conflict>(PLANNER_CONFLICTS_ENTITY_SCOPE),
-        readEntityCacheScope<OAuthStatus>(PLANNER_OAUTH_ENTITY_SCOPE),
+      const [cachedDate, cachedBlocks, cachedEvents, cachedConflicts, cachedOauth] = await Promise.all([
+        readEntitySnapshotAsync<string>(PLANNER_DATE_SNAPSHOT, today),
         readEntitySnapshotAsync<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []),
         readEntitySnapshotAsync<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []),
         readEntitySnapshotAsync<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []),
-        readEntitySnapshotAsync<OAuthStatus | null>(PLANNER_OAUTH_SNAPSHOT, null),
-        readEntitySnapshotAsync<string>(PLANNER_DATE_SNAPSHOT, today),
+        readEntitySnapshotAsync<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
       ]);
 
       if (cancelled) {
         return;
       }
 
-      const nextBlocks = cachedBlocks.length > 0 ? cachedBlocks : bootstrapBlocks;
-      const nextEvents = cachedEvents.length > 0 ? cachedEvents : bootstrapEvents;
-      const nextConflicts = cachedConflicts.length > 0 ? cachedConflicts : bootstrapConflicts;
-      const nextOauth = cachedOauthEntries[0] ?? bootstrapOauth;
-
-      if (nextBlocks.length > 0) {
-        setBlocks(nextBlocks);
+      if (cachedDate) {
+        setDate(cachedDate);
       }
-      if (nextEvents.length > 0) {
-        setEvents(nextEvents);
+      if (cachedBlocks.length > 0) {
+        setBlocks(cachedBlocks);
       }
-      if (nextConflicts.length > 0) {
-        setConflicts(nextConflicts);
+      if (cachedEvents.length > 0) {
+        setEvents(cachedEvents);
       }
-      if (nextOauth) {
-        setOauthStatus(nextOauth);
+      if (cachedConflicts.length > 0) {
+        setConflicts(cachedConflicts);
       }
-      if (bootstrapDate) {
-        setDate((previous) => previous || bootstrapDate);
+      if (cachedOauth) {
+        setOauthStatus(cachedOauth);
       }
     })();
 
@@ -257,45 +237,6 @@ export default function PlannerPage() {
       cancelled = true;
     };
   }, [today]);
-
-  const loadOauthStatus = useCallback(async () => {
-    try {
-      const payload = await apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status");
-      setOauthStatus(payload);
-      writeEntitySnapshot(PLANNER_OAUTH_SNAPSHOT, payload);
-      cachePlannerOauthStatus(payload);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "OAuth status load failed");
-    }
-  }, [apiBase, token]);
-
-  const load = useCallback(async () => {
-    try {
-      const [blockPayload, eventPayload, oauthPayload] = await Promise.all([
-        apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
-        apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
-        apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
-      ]);
-      setBlocks(blockPayload);
-      setEvents(eventPayload);
-      setOauthStatus(oauthPayload);
-      writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, blockPayload);
-      writeEntitySnapshot(PLANNER_EVENTS_SNAPSHOT, eventPayload);
-      writeEntitySnapshot(PLANNER_OAUTH_SNAPSHOT, oauthPayload);
-      cachePlannerBlocks(blockPayload);
-      cachePlannerEvents(eventPayload);
-      cachePlannerOauthStatus(oauthPayload);
-      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
-      setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Load failed";
-      setStatus(
-        blocks.length > 0 || events.length > 0 || conflicts.length > 0 || Boolean(oauthStatus)
-          ? `Loaded cached planner data. ${detail}`
-          : detail,
-      );
-    }
-  }, [apiBase, blocks.length, conflicts.length, date, events.length, oauthStatus, token]);
 
   async function generate() {
     try {
@@ -310,13 +251,42 @@ export default function PlannerPage() {
       );
       setBlocks(payload.blocks);
       writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, payload.blocks);
-      cachePlannerBlocks(payload.blocks);
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(`Generated ${payload.generated} blocks for ${date}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Generation failed");
     }
   }
+
+  async function loadOauthStatus() {
+    try {
+      const payload = await apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status");
+      setOauthStatus(payload);
+      writeEntitySnapshot(PLANNER_OAUTH_STATUS_SNAPSHOT, payload);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "OAuth status load failed");
+    }
+  }
+
+  const load = useCallback(async () => {
+    try {
+      const [blockPayload, eventPayload, oauthPayload] = await Promise.all([
+        apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
+        apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
+        apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
+      ]);
+      setBlocks(blockPayload);
+      setEvents(eventPayload);
+      setOauthStatus(oauthPayload);
+      writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, blockPayload);
+      writeEntitySnapshot(PLANNER_EVENTS_SNAPSHOT, eventPayload);
+      writeEntitySnapshot(PLANNER_OAUTH_STATUS_SNAPSHOT, oauthPayload);
+      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
+      setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Load failed");
+    }
+  }, [apiBase, date, token]);
 
   async function addSampleEvent() {
     try {
@@ -362,7 +332,6 @@ export default function PlannerPage() {
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
-      cachePlannerConflicts(conflictPayload);
       await Promise.all([load(), loadOauthStatus()]);
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
     } catch (error) {
@@ -383,7 +352,6 @@ export default function PlannerPage() {
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
-      cachePlannerConflicts(conflictPayload);
       await load();
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
     } catch (error) {
@@ -402,7 +370,6 @@ export default function PlannerPage() {
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
-      cachePlannerConflicts(conflictPayload);
       await load();
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(
@@ -416,11 +383,12 @@ export default function PlannerPage() {
   }
 
   useEffect(() => {
-    if (!token) {
-      return;
-    }
-    load().catch(() => undefined);
-  }, [load, token]);
+    writeEntitySnapshot(PLANNER_DATE_SNAPSHOT, date);
+  }, [date]);
+
+  useEffect(() => {
+    writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflicts);
+  }, [conflicts]);
 
   useEffect(() => {
     if (!token) {
@@ -448,10 +416,6 @@ export default function PlannerPage() {
       window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
     };
   }, [load, token]);
-
-  useEffect(() => {
-    writeEntitySnapshot(PLANNER_DATE_SNAPSHOT, date);
-  }, [date]);
 
   return (
     <main className="shell">
