@@ -512,7 +512,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/desktop-helper-secure-token`
 - Workitem ID: `WI-111`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-111.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #26 opened`
 - Goal: move desktop helper bearer-token persistence from plaintext localStorage to OS secure storage in Tauri runtime.
 - Scope:
   - add Tauri secure-token commands backed by OS keyring/credential store,
