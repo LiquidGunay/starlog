@@ -703,7 +703,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/task-revision-conflict-api`
 - Workitem ID: `WI-118`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-118.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #34 opened`
 - Goal: enforce structured revision-conflict handling for task updates using the existing `tasks.revision` column.
 - Scope:
   - allow task update requests to carry `base_revision`,
