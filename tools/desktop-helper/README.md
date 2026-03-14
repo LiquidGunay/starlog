@@ -21,9 +21,9 @@ Desktop helper for clipping content from non-browser apps.
 
 | Surface | Linux | macOS | Windows | Notes |
 | --- | --- | --- | --- | --- |
-| Clipboard capture | Validated via local helper build; requires `wl-paste`, `xclip`, or `xsel`; browser fallback while focused | Expected via `pbpaste`; real-host validation still pending | Validated on 2026-03-10 via `powershell.exe` `Get-Clipboard -Raw` from the host | Diagnostics card reports the preferred backend and now points at PowerShell/host-session fixes on Windows. |
-| Screenshot capture | Validated via local helper build; requires `grim+slurp`, `gnome-screenshot`, `import`, `grim`, or `scrot` | Expected via `screencapture -i`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell full-screen capture into `%TEMP%` | Linux falls back to full-screen capture when only `grim` or `scrot` is present. Windows errors now mention the interactive desktop-session requirement. |
-| Active window metadata | Validated via local helper build; uses `xdotool` or `hyprctl` | Expected via `osascript`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell user32 bridge after fixing the `$PID` variable collision in the probe script | Missing metadata does not block capture, but diagnostics now degrade with actionable host guidance instead of silently implying success. |
+| Clipboard capture | Validated via local helper build; requires `wl-paste`, `xclip`, or `xsel`; browser fallback while focused | Expected via `pbpaste`; real-host validation still pending | Validated on 2026-03-10 via `powershell.exe` `Get-Clipboard -Raw` from the host | Diagnostics card reports the preferred backend and now points at host-specific fixes when capture fails. |
+| Screenshot capture | Validated via local helper build; requires `grim+slurp`, `gnome-screenshot`, `import`, `grim`, or `scrot` | Expected via `screencapture -i`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell full-screen capture into `%TEMP%` | Linux falls back to full-screen capture when only `grim` or `scrot` is present. macOS/Windows failures now map to explicit permission guidance. |
+| Active window metadata | Validated via local helper build; uses `xdotool` or `hyprctl` | Expected via `osascript`/System Events; real-host validation still pending | Validated on 2026-03-10 via host PowerShell user32 bridge after fixing the `$PID` variable collision in the probe script | Missing metadata does not block capture; diagnostics now degrade with actionable host guidance instead of silently implying success. |
 | OCR | `tesseract` | `tesseract` | `tesseract` | OCR is intentionally local-only. |
 | Shortcut wiring | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Window-local key handling remains the last-resort fallback. |
 
@@ -42,6 +42,7 @@ Desktop helper for clipping content from non-browser apps.
 | --- | --- | --- |
 | Linux | Screenshot diagnostics prefer `grim` or `scrot` only | Region capture is not fully available. Install `slurp`, `gnome-screenshot`, or ImageMagick `import` to restore an area-selection backend. |
 | macOS | Screenshot note says the `screencapture` attempt was cancelled | Dismissing the selection is expected to report a cancellation. Re-run the capture and complete the selection, and grant Screen Recording permission if every attempt fails. |
+| macOS | Active window diagnostics degrade or notes mention `osascript` failure | Grant Automation permission (System Events) and Accessibility permission for the helper, keep a normal app window focused, then refresh diagnostics. |
 | Windows | Screenshot note says the `powershell` attempt failed | Run the helper in a logged-in Windows desktop session and keep `powershell.exe` on `PATH`. When running probe scripts from WSL, use `-ExecutionPolicy Bypass` because unsigned `\\wsl$` scripts are blocked by default. |
 | Windows | Active window diagnostics degrade or recent captures show `powershell-user32-error` | Keep a normal Windows app focused, then refresh diagnostics or retry the clip. If the problem persists, confirm PowerShell can still load `user32.dll` from the interactive session. |
 | Windows | OCR is marked degraded or unavailable | Install `tesseract` on the Windows `PATH`. Screenshot capture still works without OCR, but extracted text will stay empty until `tesseract` is present. |
@@ -65,3 +66,14 @@ Desktop helper for clipping content from non-browser apps.
 3. Trigger `Cmd/Ctrl+Shift+S` and confirm the status text clearly reports whether the helper used region capture, a full-screen fallback, or no backend at all.
 4. Use Copy Diagnostics to capture a redacted runtime snapshot for issue reporting, then inspect Recent captures and confirm metadata, capture-backend labels, OCR details, and screenshot preview thumbnails render after a successful upload.
 5. Intentionally reproduce one clipboard or screenshot failure path and confirm the copied diagnostics snapshot includes the latest failure note without exposing the bearer token.
+
+## macOS validation checklist
+
+1. Build and run the helper on a real macOS host (`cargo check` + Tauri build/run).
+2. In System Settings -> Privacy & Security, confirm the helper has:
+   - Screen Recording permission for screenshot capture.
+   - Automation permission for System Events (active-window probe).
+   - Accessibility permission if active-window metadata remains degraded.
+3. Run `Cmd+Shift+S` and complete a region selection; verify Recent captures shows `Capture backend: screencapture`.
+4. Run `Cmd+Shift+C`; verify clipboard capture succeeds via `pbpaste`.
+5. Refresh diagnostics and confirm Active window status is `Ready` and probe detail includes the currently focused app/window.
