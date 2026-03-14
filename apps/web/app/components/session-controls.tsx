@@ -1,19 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  clearAllEntityCacheRecords,
-  clearEntityCacheScopeRecords,
-  listEntityCacheScopeSummaries,
+  listEntityCacheRetentionPolicies,
+  runEntityCacheRetentionSweep,
 } from "../lib/entity-cache";
 import {
-  ENTITY_CACHE_INVALIDATION_EVENT,
-  clearAllEntitySnapshots,
-  clearEntityCachesStale,
-  clearEntitySnapshotsByPrefix,
-  listStaleEntityCaches,
-  summarizeEntitySnapshotStorage,
+  listEntitySnapshotRetentionPolicies,
+  runEntitySnapshotRetentionSweep,
 } from "../lib/entity-snapshot";
 import { useSessionConfig } from "../session-provider";
 
@@ -62,231 +57,53 @@ export function SessionControls() {
     setToken,
     flushOutbox,
   } = useSessionConfig();
-  const [cacheStatus, setCacheStatus] = useState<CacheStatus>({
-    stalePrefixes: [],
-    entityScopes: [],
-    entityRecordCount: 0,
-    snapshotCount: 0,
-    storageUsageBytes: null,
-    storageQuotaBytes: null,
-    refreshedAt: null,
-  });
-  const [cacheStatusText, setCacheStatusText] = useState("Cache status idle");
-  const [cacheBusy, setCacheBusy] = useState(false);
+  const [retentionStatus, setRetentionStatus] = useState("Auto retention idle");
+  const [retentionBusy, setRetentionBusy] = useState(false);
+  const sweepInFlightRef = useRef(false);
 
-  const loadCacheStatus = useCallback(async () => {
-    const [scopeSummaries, snapshotSummary] = await Promise.all([
-      listEntityCacheScopeSummaries(),
-      summarizeEntitySnapshotStorage(),
-    ]);
-    const storageEstimate =
-      typeof navigator !== "undefined" && navigator.storage?.estimate
-        ? await navigator.storage.estimate().catch(() => null)
-        : null;
-
-    setCacheStatus({
-      stalePrefixes: listStaleEntityCaches().map((entry) => entry.prefix),
-      entityScopes: scopeSummaries.map((entry) => entry.scope),
-      entityRecordCount: scopeSummaries.reduce((total, entry) => total + entry.records, 0),
-      snapshotCount: snapshotSummary.total_records,
-      storageUsageBytes: storageEstimate?.usage ?? null,
-      storageQuotaBytes: storageEstimate?.quota ?? null,
-      refreshedAt: new Date().toISOString(),
-    });
+  const entityPolicySummary = useMemo(() => {
+    const policies = listEntityCacheRetentionPolicies();
+    const defaultPolicy = policies.find((policy) => policy.scope_prefix === "default");
+    const customCount = policies.length - (defaultPolicy ? 1 : 0);
+    return defaultPolicy
+      ? `Entity cache: ${customCount} scoped rules + default ${defaultPolicy.max_records} records`
+      : `Entity cache: ${customCount} scoped rules`;
   }, []);
 
-  const clearStaleFlags = useCallback(async () => {
-    if (cacheStatus.stalePrefixes.length === 0) {
-      setCacheStatusText("No stale cache prefixes are currently marked");
+  const snapshotPolicySummary = useMemo(() => {
+    const policies = listEntitySnapshotRetentionPolicies();
+    const defaultPolicy = policies.find((policy) => policy.prefix === "default");
+    const customCount = policies.length - (defaultPolicy ? 1 : 0);
+    return defaultPolicy
+      ? `Snapshot cache: ${customCount} prefix rules + default ${defaultPolicy.max_records} records / ${defaultPolicy.max_age_days}d`
+      : `Snapshot cache: ${customCount} prefix rules`;
+  }, []);
+
+  const runRetentionSweep = useCallback(async () => {
+    if (sweepInFlightRef.current) {
       return;
     }
-
-    clearEntityCachesStale(cacheStatus.stalePrefixes);
-    setCacheStatusText(`Cleared ${cacheStatus.stalePrefixes.length} stale cache prefix marker(s)`);
-    await loadCacheStatus();
-  }, [cacheStatus.stalePrefixes, loadCacheStatus]);
-
-  const clearAllCaches = useCallback(async () => {
-    setCacheBusy(true);
+    sweepInFlightRef.current = true;
+    setRetentionBusy(true);
     try {
-      const [entityRecordCount, snapshotCount] = await Promise.all([
-        clearAllEntityCacheRecords(),
-        clearAllEntitySnapshots(),
+      const [entityResult, snapshotResult] = await Promise.all([
+        runEntityCacheRetentionSweep(),
+        runEntitySnapshotRetentionSweep(),
       ]);
-      setCacheStatusText(
-        `Cleared ${entityRecordCount} entity record(s) and ${snapshotCount} snapshot record(s) from local cache storage`,
+      setRetentionStatus(
+        `Retention sweep pruned ${entityResult.pruned_records} entity + ${snapshotResult.pruned_records} snapshot records (pressure: entity=${entityResult.storage_pressure}, snapshot=${snapshotResult.storage_pressure})`,
       );
-      await loadCacheStatus();
     } catch (error) {
-      setCacheStatusText(error instanceof Error ? error.message : "Cache clear failed");
+      setRetentionStatus(error instanceof Error ? error.message : "Retention sweep failed");
     } finally {
-      setCacheBusy(false);
+      setRetentionBusy(false);
+      sweepInFlightRef.current = false;
     }
-  }, [loadCacheStatus]);
-
-  useEffect(() => {
-    loadCacheStatus().catch(() => undefined);
-  }, [loadCacheStatus]);
-
-  useEffect(() => {
-    const onInvalidation = () => {
-      loadCacheStatus().catch(() => undefined);
-    };
-
-    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
-    return () => {
-      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
-    };
-  }, [loadCacheStatus]);
-
-  const [cacheTelemetry, setCacheTelemetry] = useState<CacheTelemetry>({
-    entityScopes: [],
-    entityRecords: 0,
-    snapshotPrefixes: [],
-    snapshotRecords: 0,
-    stalePrefixes: [],
-    usageBytes: null,
-    quotaBytes: null,
-    refreshedAt: null,
-  });
-  const [selectedPrefix, setSelectedPrefix] = useState("");
-  const [cacheStatus, setCacheStatus] = useState("Cache controls idle");
-  const [cacheBusy, setCacheBusy] = useState(false);
-
-  const loadCacheTelemetry = useCallback(async () => {
-    const [scopeSummaries, snapshotSummary] = await Promise.all([
-      listEntityCacheScopeSummaries(),
-      summarizeEntitySnapshotStorage(),
-    ]);
-    const stalePrefixes = listStaleEntityCaches().map((entry) => entry.prefix);
-    const storageEstimate =
-      typeof navigator !== "undefined" && navigator.storage?.estimate
-        ? await navigator.storage.estimate().catch(() => null)
-        : null;
-
-    const snapshotPrefixes = [...new Set(snapshotSummary.keys.map((key) => prefixFromKey(key)))].sort(
-      (left, right) => left.localeCompare(right),
-    );
-
-    setCacheTelemetry({
-      entityScopes: scopeSummaries.map((entry) => entry.scope),
-      entityRecords: scopeSummaries.reduce((sum, entry) => sum + entry.records, 0),
-      snapshotPrefixes,
-      snapshotRecords: snapshotSummary.total_records,
-      stalePrefixes,
-      usageBytes: storageEstimate?.usage ?? null,
-      quotaBytes: storageEstimate?.quota ?? null,
-      refreshedAt: new Date().toISOString(),
-    });
   }, []);
 
   useEffect(() => {
-    loadCacheTelemetry().catch(() => undefined);
-  }, [loadCacheTelemetry]);
-
-  useEffect(() => {
-    const allPrefixes = [...cacheTelemetry.snapshotPrefixes, ...cacheTelemetry.stalePrefixes];
-    const uniquePrefixes = [...new Set(allPrefixes)];
-    if (selectedPrefix || uniquePrefixes.length === 0) {
-      return;
-    }
-    setSelectedPrefix(uniquePrefixes[0]);
-  }, [cacheTelemetry.snapshotPrefixes, cacheTelemetry.stalePrefixes, selectedPrefix]);
-
-  useEffect(() => {
-    const onInvalidation = () => {
-      loadCacheTelemetry().catch(() => undefined);
-    };
-
-    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
-    return () => {
-      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
-    };
-  }, [loadCacheTelemetry]);
-
-  const usageRatio = useMemo(() => {
-    if (!cacheTelemetry.usageBytes || !cacheTelemetry.quotaBytes || cacheTelemetry.quotaBytes <= 0) {
-      return null;
-    }
-    return cacheTelemetry.usageBytes / cacheTelemetry.quotaBytes;
-  }, [cacheTelemetry.quotaBytes, cacheTelemetry.usageBytes]);
-
-  const quotaGuidance = useMemo(() => {
-    if (usageRatio == null) {
-      return "Storage pressure unknown (browser does not expose storage estimate)";
-    }
-    if (usageRatio >= 0.9) {
-      return "Storage pressure critical: clear high-volume prefixes now to prevent cache write failures";
-    }
-    if (usageRatio >= 0.75) {
-      return "Storage pressure elevated: consider clearing older prefixes to avoid quota pressure";
-    }
-    return "Storage pressure healthy";
-  }, [usageRatio]);
-
-  async function clearSelectedPrefix() {
-    if (!selectedPrefix) {
-      setCacheStatus("Select a cache prefix first");
-      return;
-    }
-
-    setCacheBusy(true);
-    try {
-      const scopes = cacheTelemetry.entityScopes.filter((scope) => scope.startsWith(selectedPrefix));
-      let entityDeleted = 0;
-      for (const scope of scopes) {
-        // Sequential by design to keep operation deterministic per scope.
-        // eslint-disable-next-line no-await-in-loop
-        entityDeleted += await clearEntityCacheScopeRecords(scope);
-      }
-      const snapshotDeleted = await clearEntitySnapshotsByPrefix(selectedPrefix);
-      clearEntityCachesStale([selectedPrefix]);
-
-      setCacheStatus(
-        `Cleared prefix ${selectedPrefix}: ${entityDeleted} entity record(s), ${snapshotDeleted} snapshot record(s)`,
-      );
-      await loadCacheTelemetry();
-    } catch (error) {
-      setCacheStatus(error instanceof Error ? error.message : "Cache prefix clear failed");
-    } finally {
-      setCacheBusy(false);
-    }
-  }
-
-  async function clearStaleOnly() {
-    if (cacheTelemetry.stalePrefixes.length === 0) {
-      setCacheStatus("No stale cache prefixes are marked");
-      return;
-    }
-
-    clearEntityCachesStale(cacheTelemetry.stalePrefixes);
-    setCacheStatus(`Cleared ${cacheTelemetry.stalePrefixes.length} stale cache marker(s)`);
-    await loadCacheTelemetry();
-  }
-
-  async function clearAllCaches() {
-    setCacheBusy(true);
-    try {
-      const [entityDeleted, snapshotDeleted] = await Promise.all([
-        clearAllEntityCacheRecords(),
-        clearAllEntitySnapshots(),
-      ]);
-      if (cacheTelemetry.stalePrefixes.length > 0) {
-        clearEntityCachesStale(cacheTelemetry.stalePrefixes);
-      }
-      setCacheStatus(
-        `Cleared all local caches: ${entityDeleted} entity record(s), ${snapshotDeleted} snapshot record(s)`,
-      );
-      await loadCacheTelemetry();
-    } catch (error) {
-      setCacheStatus(error instanceof Error ? error.message : "Failed to clear all caches");
-    } finally {
-      setCacheBusy(false);
-    }
-  }
-
-  const prefixOptions = [...new Set([...cacheTelemetry.snapshotPrefixes, ...cacheTelemetry.stalePrefixes])]
-    .sort((left, right) => left.localeCompare(right));
+    runRetentionSweep().catch(() => undefined);
+  }, [runRetentionSweep]);
 
   return (
     <div className="session-controls glass">
@@ -325,100 +142,20 @@ export function SessionControls() {
           </button>
         </div>
         <p className="console-copy">{flushSummary}</p>
-        <p className="label">Cache status</p>
-        <p className="console-copy">
-          entity scopes: {cacheStatus.entityScopes.length} | records: {cacheStatus.entityRecordCount}
-        </p>
-        <p className="console-copy">
-          snapshots: {cacheStatus.snapshotCount} | stale prefixes: {cacheStatus.stalePrefixes.length}
-        </p>
-        <p className="console-copy">
-          storage estimate: {formatBytes(cacheStatus.storageUsageBytes)} / {formatBytes(cacheStatus.storageQuotaBytes)}
-        </p>
-        {cacheStatus.stalePrefixes.length > 0 ? (
-          <p className="console-copy">stale: {cacheStatus.stalePrefixes.join(", ")}</p>
-        ) : null}
-        {cacheStatus.entityScopes.length > 0 ? (
-          <p className="console-copy">scopes: {cacheStatus.entityScopes.slice(0, 4).join(", ")}</p>
-        ) : null}
-        {cacheStatus.refreshedAt ? (
-          <p className="console-copy">cache refreshed: {new Date(cacheStatus.refreshedAt).toLocaleString()}</p>
-        ) : null}
+        <p className="label">Cache retention</p>
+        <p className="console-copy">{entityPolicySummary}</p>
+        <p className="console-copy">{snapshotPolicySummary}</p>
         <div className="button-row">
-          <button className="button" type="button" onClick={() => loadCacheStatus()}>
-            Refresh Cache Status
-          </button>
-          <button className="button" type="button" onClick={() => clearStaleFlags()} disabled={cacheBusy}>
-            Clear Stale Flags
-          </button>
-          <button className="button" type="button" onClick={() => clearAllCaches()} disabled={cacheBusy}>
-            {cacheBusy ? "Clearing..." : "Clear Local Caches"}
+          <button
+            className="button"
+            type="button"
+            onClick={() => runRetentionSweep()}
+            disabled={retentionBusy}
+          >
+            {retentionBusy ? "Sweeping..." : "Run Retention Sweep"}
           </button>
         </div>
-        <p className="console-copy">{cacheStatusText}</p>
-      </div>
-      <div>
-        <p className="label">Cache policy</p>
-        <p className="console-copy">
-          entity: {cacheTelemetry.entityRecords} records across {cacheTelemetry.entityScopes.length} scopes
-        </p>
-        <p className="console-copy">
-          snapshots: {cacheTelemetry.snapshotRecords} records across {cacheTelemetry.snapshotPrefixes.length} prefixes
-        </p>
-        <p className="console-copy">
-          stale markers: {cacheTelemetry.stalePrefixes.length}
-        </p>
-        <p className="console-copy">
-          storage: {formatBytes(cacheTelemetry.usageBytes)} / {formatBytes(cacheTelemetry.quotaBytes)}
-        </p>
-        <p className="console-copy">{quotaGuidance}</p>
-        <label className="label" htmlFor="cache-prefix-target">Evict prefix</label>
-        <select
-          id="cache-prefix-target"
-          className="input"
-          value={selectedPrefix}
-          onChange={(event) => setSelectedPrefix(event.target.value)}
-        >
-          {prefixOptions.length === 0 ? (
-            <option value="">No prefixes cached</option>
-          ) : null}
-          {prefixOptions.map((prefix) => (
-            <option key={prefix} value={prefix}>{prefix}</option>
-          ))}
-        </select>
-        <div className="button-row">
-          <button className="button" type="button" onClick={() => loadCacheTelemetry()}>
-            Refresh Cache Status
-          </button>
-          <button
-            className="button"
-            type="button"
-            onClick={() => clearSelectedPrefix()}
-            disabled={cacheBusy || !selectedPrefix}
-          >
-            {cacheBusy ? "Working..." : "Clear Selected Prefix"}
-          </button>
-          <button
-            className="button"
-            type="button"
-            onClick={() => clearStaleOnly()}
-            disabled={cacheBusy || cacheTelemetry.stalePrefixes.length === 0}
-          >
-            Clear Stale Flags
-          </button>
-          <button
-            className="button"
-            type="button"
-            onClick={() => clearAllCaches()}
-            disabled={cacheBusy}
-          >
-            {cacheBusy ? "Working..." : "Clear All Local Caches"}
-          </button>
-        </div>
-        {cacheTelemetry.refreshedAt ? (
-          <p className="console-copy">cache refreshed: {new Date(cacheTelemetry.refreshedAt).toLocaleString()}</p>
-        ) : null}
-        <p className="console-copy">{cacheStatus}</p>
+        <p className="console-copy">{retentionStatus}</p>
       </div>
     </div>
   );
