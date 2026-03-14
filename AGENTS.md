@@ -27,6 +27,84 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 ## Repo process rule
 When an issue is discovered or a clear user preference appears, append it to this file in logs below.
 
+## Phone testing runbook (Android, this host)
+
+Use this sequence when validating the native mobile app on the connected Android phone from WSL.
+
+1) Use the newer Windows ADB binary, not `C:\adb\adb.exe`:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" devices -l
+```
+
+2) Keep the phone awake and prepare API reverse:
+
+```bash
+"$ADB_WIN" -s <SERIAL> shell svc power stayon usb
+"$ADB_WIN" -s <SERIAL> reverse tcp:8000 tcp:8000
+```
+
+3) Start the Windows relay in a dedicated terminal and keep it running:
+
+```bash
+bash -x /home/ubuntu/starlog/scripts/android_windows_metro_relay.sh
+```
+
+Expected relay checkpoint:
+
+```text
+[android-metro-relay] listening 0.0.0.0:8081 -> <WSL_IP>:8081
+```
+
+4) Validate relay reachability from Windows before opening the app:
+
+```bash
+powershell.exe -NoProfile -Command 'try { (Invoke-WebRequest -Uri "http://127.0.0.1:8081" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $_.Exception.Message; exit 1 }'
+```
+
+Expected output: `200`
+
+5) Start Metro in LAN mode from `apps/mobile`:
+
+```bash
+cd /home/ubuntu/starlog/apps/mobile
+APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
+```
+
+6) Open the dev client using the explicit LAN URL:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> reverse --remove tcp:8081 || true
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+```
+
+7) Run the Android smoke flow after the app loads:
+
+```bash
+cd /home/ubuntu/starlog
+DEV_CLIENT_URL='exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=<SERIAL> \
+REVERSE_PORTS=8000 \
+SKIP_INSTALL=1 \
+./scripts/android_native_smoke.sh
+```
+
+8) Capture a screenshot from the phone:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> exec-out screencap -p > /tmp/starlog-phone.png
+```
+
+Troubleshooting checklist:
+- `failed to connect to /192.168.0.102 (port 8081)`: relay is not reachable; re-check step 3 and step 4.
+- `unexpected end of stream on http://127.0.0.1:8081/...`: avoid the localhost reverse path for Metro on this host; use LAN URL flow above.
+- `adb devices` empty but phone appears in Device Manager: unlock phone, enable USB debugging, accept authorization prompt.
+- `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying wireless flow.
+
 ## Preference log
 - 2026-03-04: User prefers clip-first workflow with strong provenance/versioning.
 - 2026-03-04: User prefers manual AI action buttons over automatic pipelines.
@@ -99,3 +177,4 @@ When an issue is discovered or a clear user preference appears, append it to thi
 - 2026-03-10: Android `adb shell am start` deep links that include `&source_url=...` need remote-shell quoting; the repo smoke helpers now escape those payloads so Android does not split the URI at `&`.
 - 2026-03-10: This Windows host still had an obsolete `C:\adb\adb.exe` (ADB `1.0.31`) ahead of the newer platform-tools build; reliable Android phone validation here needs the newer `C:\Temp\android-platform-tools\platform-tools\adb.exe` to avoid daemon/version conflicts.
 - 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
+- 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
