@@ -797,7 +797,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/bridge-routing-priority-tests`
 - Workitem ID: `WI-121`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-121.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #37 opened`
 - Goal: cover mobile/desktop bridge claim arbitration behavior from the architecture plan so routing priority remains verifiable.
 - Scope:
   - add API-flow coverage for worker pairing/auth and `/v1/ai/jobs/claim-next`,
