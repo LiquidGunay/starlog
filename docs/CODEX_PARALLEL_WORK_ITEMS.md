@@ -187,7 +187,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 - Branch: `codex/pwa-offline-cache-followups`
 - Workitem ID: `WI-105`
-- Lock: `UNCLAIMED | Workitem: WI-105 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `IN_PROGRESS | Workitem: WI-105 | Owner: Agent Implementer-B | Claimed: 2026-03-14T17:20:56Z | Last heartbeat: 2026-03-14T18:15:14Z`
 - Goal: extend the new IndexedDB cache layer to the remaining PWA workspaces and add cache-management controls.
 - Scope:
   - cache planner, sync-center, integrations, and richer assistant surfaces,

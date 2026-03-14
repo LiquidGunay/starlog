@@ -31,6 +31,12 @@ type CacheInvalidationEventDetail = {
   recorded_at: string;
 };
 
+export type EntitySnapshotStorageSummary = {
+  keys: string[];
+  total_records: number;
+  newest_updated_at: string | null;
+};
+
 let snapshotDbPromise: Promise<IDBDatabase | null> | null = null;
 
 function snapshotStorageKey(key: string): string {
@@ -193,6 +199,47 @@ function writeInvalidationMap(value: CacheInvalidationMap): void {
   }
 }
 
+function listBootstrapSnapshotStorageKeys(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith(SNAPSHOT_PREFIX)) {
+        keys.push(key);
+      }
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
+
+async function listIndexedDbSnapshots(): Promise<SnapshotRecord[]> {
+  const records = await withSnapshotStore("readonly", async (store) => {
+    return new Promise<SnapshotRecord[]>((resolve, reject) => {
+      const values: SnapshotRecord[] = [];
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(values);
+          return;
+        }
+
+        values.push(cursor.value as SnapshotRecord);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  });
+
+  return records ?? [];
+}
+
 export function cachePrefixesIntersect(prefixes: string[], targets: string[]): boolean {
   return prefixes.some((prefix) =>
     targets.some((target) => prefix.startsWith(target) || target.startsWith(prefix)),
@@ -353,4 +400,75 @@ export function clearEntityCachesStale(prefixes: string[]): void {
 export function hasStaleEntityCache(prefixes: string[]): boolean {
   const invalidationMap = readInvalidationMap();
   return prefixes.some((prefix) => Boolean(invalidationMap[prefix]));
+}
+
+export function listStaleEntityCaches(): CacheInvalidationRecord[] {
+  return Object.values(readInvalidationMap()).sort((left, right) =>
+    right.recorded_at.localeCompare(left.recorded_at),
+  );
+}
+
+export async function summarizeEntitySnapshotStorage(): Promise<EntitySnapshotStorageSummary> {
+  const records = await listIndexedDbSnapshots();
+  if (records.length > 0) {
+    return {
+      keys: records.map((record) => record.key).sort(),
+      total_records: records.length,
+      newest_updated_at: records
+        .map((record) => record.updated_at)
+        .sort((left, right) => right.localeCompare(left))[0] ?? null,
+    };
+  }
+
+  const bootstrapKeys = listBootstrapSnapshotStorageKeys().map((key) =>
+    key.slice(SNAPSHOT_PREFIX.length),
+  );
+  return {
+    keys: bootstrapKeys.sort(),
+    total_records: bootstrapKeys.length,
+    newest_updated_at: null,
+  };
+}
+
+export async function clearAllEntitySnapshots(): Promise<number> {
+  const snapshotCount = await withSnapshotStore("readwrite", async (store) => {
+    const count = await new Promise<number>((resolve, reject) => {
+      const request = store.count();
+      request.onsuccess = () => resolve(request.result ?? 0);
+      request.onerror = () => reject(request.error);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    return count;
+  });
+
+  let bootstrapCount = 0;
+  if (typeof window !== "undefined") {
+    try {
+      const bootstrapKeys = listBootstrapSnapshotStorageKeys();
+      bootstrapCount = bootstrapKeys.length;
+      for (const key of bootstrapKeys) {
+        window.localStorage.removeItem(key);
+      }
+
+      const stalePrefixes = Object.keys(readInvalidationMap());
+      window.localStorage.removeItem(CACHE_INVALIDATION_KEY);
+      if (stalePrefixes.length > 0) {
+        dispatchInvalidationEvent({
+          action: "clear",
+          prefixes: stalePrefixes,
+          recorded_at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
+
+  return (snapshotCount ?? 0) + bootstrapCount;
 }

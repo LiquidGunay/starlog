@@ -1,8 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -54,14 +64,64 @@ type CodexBridgeContract = {
   derived_endpoints: Record<string, string>;
 };
 
+const INTEGRATIONS_PROVIDERS_SNAPSHOT = "integrations.providers";
+const INTEGRATIONS_HEALTH_SNAPSHOT = "integrations.health";
+const INTEGRATIONS_POLICY_SNAPSHOT = "integrations.policy";
+const INTEGRATIONS_CONTRACT_SNAPSHOT = "integrations.contract";
+const INTEGRATIONS_CACHE_PREFIXES = ["integrations."];
+const INTEGRATIONS_PROVIDERS_ENTITY_SCOPE = "integrations.providers";
+const INTEGRATIONS_HEALTH_ENTITY_SCOPE = "integrations.health";
+
+function cacheProviders(providers: ProviderConfig[]): void {
+  void replaceEntityCacheScope(
+    INTEGRATIONS_PROVIDERS_ENTITY_SCOPE,
+    providers.map((provider) => ({
+      id: provider.provider_name,
+      value: provider,
+      updated_at: provider.updated_at,
+      search_text: `${provider.provider_name} ${provider.mode} ${provider.enabled ? "enabled" : "disabled"}`,
+    })),
+  );
+}
+
+function cacheProviderHealth(healthByProvider: Record<string, ProviderHealth>): void {
+  const recordedAt = new Date().toISOString();
+  void replaceEntityCacheScope(
+    INTEGRATIONS_HEALTH_ENTITY_SCOPE,
+    Object.entries(healthByProvider).map(([providerName, health]) => ({
+      id: providerName,
+      value: health,
+      updated_at: recordedAt,
+      search_text: `${providerName} ${health.healthy ? "healthy" : "unhealthy"} ${health.detail}`,
+    })),
+  );
+}
+
+function parsePolicyFields(policy: ExecutionPolicy): string {
+  return JSON.stringify(
+    {
+      llm: policy.llm,
+      stt: policy.stt,
+      tts: policy.tts,
+      ocr: policy.ocr,
+    },
+    null,
+    2,
+  );
+}
+
 export default function IntegrationsPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [providerName, setProviderName] = useState("local_llm");
   const [enabled, setEnabled] = useState(true);
   const [mode, setMode] = useState("local_first");
   const [configJson, setConfigJson] = useState('{"model":"qwen2.5"}');
-  const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [healthByProvider, setHealthByProvider] = useState<Record<string, ProviderHealth>>({});
+  const [providers, setProviders] = useState<ProviderConfig[]>(
+    () => readEntitySnapshot<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []),
+  );
+  const [healthByProvider, setHealthByProvider] = useState<Record<string, ProviderHealth>>(
+    () => readEntitySnapshot<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {}),
+  );
   const [policyJson, setPolicyJson] = useState(
     JSON.stringify(
       {
@@ -74,11 +134,84 @@ export default function IntegrationsPage() {
       2,
     ),
   );
-  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(null);
-  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(null);
+  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(
+    () => readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_SNAPSHOT, null),
+  );
+  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(
+    () => readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CONTRACT_SNAPSHOT, null),
+  );
   const [status, setStatus] = useState("Ready");
 
-  async function loadProviders() {
+  useEffect(() => {
+    setProviders((previous) =>
+      previous.length > 0 ? previous : readEntitySnapshot<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []),
+    );
+    setHealthByProvider((previous) => {
+      if (Object.keys(previous).length > 0) {
+        return previous;
+      }
+      return readEntitySnapshot<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {});
+    });
+    setPolicyMeta((previous) =>
+      previous ?? readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_SNAPSHOT, null),
+    );
+    setCodexContract((previous) =>
+      previous ?? readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CONTRACT_SNAPSHOT, null),
+    );
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [
+        cachedProviders,
+        cachedHealth,
+        bootstrapProviders,
+        bootstrapHealth,
+        bootstrapPolicy,
+        bootstrapContract,
+      ] = await Promise.all([
+        readEntityCacheScope<ProviderConfig>(INTEGRATIONS_PROVIDERS_ENTITY_SCOPE),
+        readEntityCacheScope<ProviderHealth>(INTEGRATIONS_HEALTH_ENTITY_SCOPE),
+        readEntitySnapshotAsync<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []),
+        readEntitySnapshotAsync<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {}),
+        readEntitySnapshotAsync<ExecutionPolicy | null>(INTEGRATIONS_POLICY_SNAPSHOT, null),
+        readEntitySnapshotAsync<CodexBridgeContract | null>(INTEGRATIONS_CONTRACT_SNAPSHOT, null),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextProviders = cachedProviders.length > 0 ? cachedProviders : bootstrapProviders;
+      if (nextProviders.length > 0) {
+        setProviders(nextProviders);
+      }
+
+      const nextHealth =
+        cachedHealth.length > 0
+          ? Object.fromEntries(cachedHealth.map((entry) => [entry.provider_name, entry]))
+          : bootstrapHealth;
+      if (Object.keys(nextHealth).length > 0) {
+        setHealthByProvider(nextHealth);
+      }
+
+      if (bootstrapPolicy) {
+        setPolicyMeta(bootstrapPolicy);
+        setPolicyJson(parsePolicyFields(bootstrapPolicy));
+      }
+      if (bootstrapContract) {
+        setCodexContract(bootstrapContract);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadProviders = useCallback(async () => {
     try {
       const [payload, policy, contract] = await Promise.all([
         apiRequest<ProviderConfig[]>(apiBase, token, "/v1/integrations/providers"),
@@ -98,25 +231,29 @@ export default function IntegrationsPage() {
           return [provider.provider_name, health] as const;
         }),
       );
-      setHealthByProvider(Object.fromEntries(healthPairs));
+      const healthMap = Object.fromEntries(healthPairs);
+      setHealthByProvider(healthMap);
       setPolicyMeta(policy);
-      setPolicyJson(
-        JSON.stringify(
-          {
-            llm: policy.llm,
-            stt: policy.stt,
-            tts: policy.tts,
-            ocr: policy.ocr,
-          },
-          null,
-          2,
-        ),
-      );
+      setPolicyJson(parsePolicyFields(policy));
+
+      writeEntitySnapshot(INTEGRATIONS_PROVIDERS_SNAPSHOT, payload);
+      writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, healthMap);
+      writeEntitySnapshot(INTEGRATIONS_POLICY_SNAPSHOT, policy);
+      writeEntitySnapshot(INTEGRATIONS_CONTRACT_SNAPSHOT, contract);
+      cacheProviders(payload);
+      cacheProviderHealth(healthMap);
+      clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
+
       setStatus(`Loaded ${payload.length} provider config(s) and Codex bridge contract`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load providers");
+      const detail = error instanceof Error ? error.message : "Failed to load providers";
+      setStatus(
+        providers.length > 0 || Object.keys(healthByProvider).length > 0 || Boolean(policyMeta) || Boolean(codexContract)
+          ? `Loaded cached integration state. ${detail}`
+          : detail,
+      );
     }
-  }
+  }, [apiBase, codexContract, healthByProvider, policyMeta, providers.length, token]);
 
   async function upsertProvider() {
     let parsedConfig: Record<string, unknown>;
@@ -162,7 +299,11 @@ export default function IntegrationsPage() {
         token,
         `/v1/integrations/providers/${provider}/health`,
       );
-      setHealthByProvider((previous) => ({ ...previous, [provider]: health }));
+      const nextMap = { ...healthByProvider, [provider]: health };
+      setHealthByProvider(nextMap);
+      writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, nextMap);
+      cacheProviderHealth(nextMap);
+      clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
       setStatus(`Refreshed health for ${provider}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Health refresh failed");
@@ -197,12 +338,48 @@ export default function IntegrationsPage() {
       }
       if (result.data) {
         setPolicyMeta(result.data);
+        writeEntitySnapshot(INTEGRATIONS_POLICY_SNAPSHOT, result.data);
+        clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
       }
       setStatus("Saved execution policy");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to save execution policy");
     }
   }
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    loadProviders().catch(() => undefined);
+  }, [loadProviders, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(INTEGRATIONS_CACHE_PREFIXES)) {
+        return;
+      }
+      loadProviders().catch(() => undefined);
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, INTEGRATIONS_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
+  }, [loadProviders, token]);
 
   return (
     <main className="shell">
@@ -214,14 +391,18 @@ export default function IntegrationsPage() {
           <p className="console-copy">
             Configure local/API providers, keep secrets redacted, and inspect runtime probe status.
           </p>
-          <label className="label" htmlFor="provider-name">Provider name</label>
+          <label className="label" htmlFor="provider-name">
+            Provider name
+          </label>
           <input
             id="provider-name"
             className="input"
             value={providerName}
             onChange={(event) => setProviderName(event.target.value)}
           />
-          <label className="label" htmlFor="provider-mode">Mode</label>
+          <label className="label" htmlFor="provider-mode">
+            Mode
+          </label>
           <input
             id="provider-mode"
             className="input"
@@ -237,7 +418,9 @@ export default function IntegrationsPage() {
             />{" "}
             Enabled
           </label>
-          <label className="label" htmlFor="provider-config">Config JSON</label>
+          <label className="label" htmlFor="provider-config">
+            Config JSON
+          </label>
           <textarea
             id="provider-config"
             className="textarea"
@@ -245,8 +428,12 @@ export default function IntegrationsPage() {
             onChange={(event) => setConfigJson(event.target.value)}
           />
           <div className="button-row">
-            <button className="button" type="button" onClick={() => upsertProvider()}>Save Provider</button>
-            <button className="button" type="button" onClick={() => loadProviders()}>Refresh List</button>
+            <button className="button" type="button" onClick={() => upsertProvider()}>
+              Save Provider
+            </button>
+            <button className="button" type="button" onClick={() => loadProviders()}>
+              Refresh List
+            </button>
           </div>
           <p className="status">{status}</p>
         </div>
@@ -271,9 +458,7 @@ export default function IntegrationsPage() {
                         <p className="console-copy">
                           Health: {health.healthy ? "ok" : "failed"} ({health.detail})
                         </p>
-                        <p className="console-copy">
-                          Secure storage: {health.secure_storage}
-                        </p>
+                        <p className="console-copy">Secure storage: {health.secure_storage}</p>
                         <p className="console-copy">Checks: {JSON.stringify(health.checks)}</p>
                         <p className="console-copy">Probe: {JSON.stringify(health.probe)}</p>
                         <p className="console-copy">Auth probe: {JSON.stringify(health.auth_probe)}</p>
@@ -282,7 +467,11 @@ export default function IntegrationsPage() {
                       <p className="console-copy">Health not loaded.</p>
                     )}
                     <div className="button-row">
-                      <button className="button" type="button" onClick={() => refreshHealth(provider.provider_name)}>
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => refreshHealth(provider.provider_name)}
+                      >
                         Refresh Health
                       </button>
                     </div>
@@ -318,15 +507,9 @@ export default function IntegrationsPage() {
               <p className="console-copy">
                 unsupported capabilities: {codexContract.unsupported_capabilities.join(", ")}
               </p>
-              <p className="console-copy">
-                required config: {codexContract.required_config.join(" | ")}
-              </p>
-              <p className="console-copy">
-                optional config: {codexContract.optional_config.join(" | ")}
-              </p>
-              <p className="console-copy">
-                auth modes: {codexContract.supported_auth.join(", ")}
-              </p>
+              <p className="console-copy">required config: {codexContract.required_config.join(" | ")}</p>
+              <p className="console-copy">optional config: {codexContract.optional_config.join(" | ")}</p>
+              <p className="console-copy">auth modes: {codexContract.supported_auth.join(", ")}</p>
               <p className="console-copy">{codexContract.safe_fallback}</p>
               {Object.keys(codexContract.derived_endpoints).length > 0 ? (
                 <p className="console-copy">
@@ -338,7 +521,9 @@ export default function IntegrationsPage() {
                   <p className="console-copy">missing requirements:</p>
                   <ul>
                     {codexContract.missing_requirements.map((item) => (
-                      <li key={item} className="console-copy">{item}</li>
+                      <li key={item} className="console-copy">
+                        {item}
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -350,10 +535,14 @@ export default function IntegrationsPage() {
         <div className="panel glass">
           <h2>Execution policy</h2>
           <p className="console-copy">
-            Define priority order per capability. `on_device` is for phone/laptop-native execution, `batch_local_bridge` is for queued local workers, and the remaining targets are server-side fallbacks.
+            Define priority order per capability. `on_device` is for phone/laptop-native execution,
+            `batch_local_bridge` is for queued local workers, and the remaining targets are server-side
+            fallbacks.
           </p>
           <p className="console-copy">
-            Android companion builds can now honor <code>{"stt: [\"on_device\", ...]"}</code> for assistant voice commands when the phone exposes a working speech-recognition service. If that probe fails on-device, the mobile app falls back to the queued Whisper bridge.
+            Android companion builds can now honor <code>{"stt: [\"on_device\", ...]"}</code> for
+            assistant voice commands when the phone exposes a working speech-recognition service. If
+            that probe fails on-device, the mobile app falls back to the queued Whisper bridge.
           </p>
           {policyMeta ? (
             <p className="console-copy">
@@ -363,7 +552,9 @@ export default function IntegrationsPage() {
           {policyMeta ? (
             <p className="console-copy">Available targets: {JSON.stringify(policyMeta.available_targets)}</p>
           ) : null}
-          <label className="label" htmlFor="execution-policy">Policy JSON</label>
+          <label className="label" htmlFor="execution-policy">
+            Policy JSON
+          </label>
           <textarea
             id="execution-policy"
             className="textarea"
