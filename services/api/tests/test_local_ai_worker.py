@@ -40,18 +40,20 @@ def test_run_tts_piper_local_expands_voice_and_rate(monkeypatch) -> None:
         },
     )
 
-    provider_used, output = worker._run_tts(
+    output = worker._run_tts(
         {
             "provider_hint": "piper_local",
             "payload": {"text": "Hello from Piper", "voice": "en_US-lessac-medium", "rate_wpm": 175},
         },
         "http://localhost:8000",
         "token",
-        None,
-        "ffmpeg",
+        provider_used="piper_local",
+        tts_command=None,
+        ffmpeg_command="ffmpeg",
+        tts_timeout_seconds=120.0,
+        ffmpeg_timeout_seconds=60.0,
     )
 
-    assert provider_used == "piper_local"
     assert command_log[0][0][:3] == ["piper", "--out", command_log[0][0][2]]
     assert "--voice" in command_log[0][0]
     assert "en_US-lessac-medium" in command_log[0][0]
@@ -84,18 +86,20 @@ def test_run_tts_say_local_uses_native_wrapper(monkeypatch) -> None:
         },
     )
 
-    provider_used, output = worker._run_tts(
+    output = worker._run_tts(
         {
             "provider_hint": "say_local",
             "payload": {"text": "Hello from say", "voice": "Samantha", "rate_wpm": 190},
         },
         "http://localhost:8000",
         "token",
-        None,
-        "",
+        provider_used="say_local",
+        tts_command=None,
+        ffmpeg_command="",
+        tts_timeout_seconds=120.0,
+        ffmpeg_timeout_seconds=60.0,
     )
 
-    assert provider_used == "say_local"
     assert command_log[0][0] == "say"
     assert "-v" in command_log[0]
     assert "Samantha" in command_log[0]
@@ -106,3 +110,49 @@ def test_run_tts_say_local_uses_native_wrapper(monkeypatch) -> None:
     assert output["source_format"] == "aiff"
     assert output["voice"] == "Samantha"
     assert output["rate_wpm"] == 190
+
+
+def test_resolve_provider_maps_bridge_tts_to_template_runtime(monkeypatch) -> None:
+    worker = _load_worker_module()
+    monkeypatch.setenv("STARLOG_TTS_COMMAND", "piper --out {output_path}")
+
+    provider, metadata = worker._resolve_provider(
+        {"capability": "tts", "provider_hint": "desktop_bridge_tts"},
+        tts_command=None,
+    )
+
+    assert provider == "piper_local"
+    assert metadata["provider_resolution_reason"] == "tts_command_template"
+
+
+def test_resolve_provider_maps_bridge_tts_to_native_say(monkeypatch) -> None:
+    worker = _load_worker_module()
+    monkeypatch.delenv("STARLOG_TTS_COMMAND", raising=False)
+    monkeypatch.setattr(worker.sys, "platform", "darwin")
+    monkeypatch.setattr(worker, "_command_available", lambda command: command == "say")
+
+    provider, metadata = worker._resolve_provider(
+        {"capability": "tts", "provider_hint": "desktop_bridge_tts"},
+        tts_command=None,
+    )
+
+    assert provider == "say_local"
+    assert metadata["provider_resolution_reason"] == "native_say_available"
+
+
+def test_classify_failure_timeout_is_retryable() -> None:
+    worker = _load_worker_module()
+    category, retryable = worker._classify_failure(
+        subprocess.TimeoutExpired(cmd=["codex"], timeout=5.0),
+    )
+    assert category == "timeout"
+    assert retryable is True
+
+
+def test_classify_failure_unsupported_provider_is_not_retryable() -> None:
+    worker = _load_worker_module()
+    category, retryable = worker._classify_failure(
+        RuntimeError("Unsupported local TTS provider_hint: desktop_bridge_tts"),
+    )
+    assert category == "unsupported_provider"
+    assert retryable is False

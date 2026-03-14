@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -17,6 +18,34 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+LLM_PROVIDER_HINTS = {
+    "",
+    "codex_local",
+    "desktop_bridge_codex",
+    "mobile_bridge_codex",
+    "desktop_bridge",
+    "mobile_bridge",
+}
+STT_PROVIDER_HINTS = {
+    "",
+    "whisper_local",
+    "desktop_bridge_stt",
+    "mobile_bridge_stt",
+    "desktop_bridge",
+    "mobile_bridge",
+}
+TTS_PROVIDER_HINTS = {
+    "",
+    "desktop_bridge_tts",
+    "mobile_bridge_tts",
+    "desktop_bridge",
+    "mobile_bridge",
+    "piper_local",
+    "say_local",
+    "espeak_local",
+    "espeak_ng_local",
+}
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -95,6 +124,101 @@ def _upload_media(api_base: str, token: str, path: Path, content_type: str | Non
     if not isinstance(decoded, dict):
         raise RuntimeError("Media upload returned unexpected response")
     return decoded
+
+
+def _command_available(command: str) -> bool:
+    return bool(shutil.which(command))
+
+
+def _detect_tts_provider(tts_command: str | None) -> tuple[str | None, str]:
+    if tts_command or os.environ.get("STARLOG_TTS_COMMAND", "").strip():
+        return "piper_local", "tts_command_template"
+    if sys.platform == "darwin" and _command_available("say"):
+        return "say_local", "native_say_available"
+    if _command_available("espeak-ng"):
+        return "espeak_ng_local", "espeak_ng_available"
+    if _command_available("espeak"):
+        return "espeak_local", "espeak_available"
+    return None, "no_local_tts_runtime_detected"
+
+
+def _resolve_provider(job: dict, *, tts_command: str | None) -> tuple[str, dict[str, Any]]:
+    capability = str(job.get("capability") or "")
+    requested = str(job.get("provider_hint") or "").strip()
+    requested_norm = requested.lower()
+    metadata: dict[str, Any] = {
+        "requested_provider_hint": requested or None,
+        "capability": capability,
+    }
+
+    if capability in {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}:
+        if requested_norm in LLM_PROVIDER_HINTS:
+            metadata["provider_resolution_reason"] = "llm_bridge_or_local"
+            return "codex_local", metadata
+        raise RuntimeError(f"Unsupported local LLM provider_hint: {requested or '(empty)'}")
+
+    if capability == "stt":
+        if requested_norm in STT_PROVIDER_HINTS:
+            metadata["provider_resolution_reason"] = "stt_bridge_or_local"
+            return "whisper_local", metadata
+        raise RuntimeError(f"Unsupported local STT provider_hint: {requested or '(empty)'}")
+
+    if capability == "tts":
+        if requested_norm in {"piper_local", "say_local", "espeak_local", "espeak_ng_local"}:
+            metadata["provider_resolution_reason"] = "explicit_local_tts_provider"
+            return requested_norm, metadata
+        if requested_norm in TTS_PROVIDER_HINTS:
+            detected_provider, reason = _detect_tts_provider(tts_command)
+            if detected_provider is None:
+                raise RuntimeError(
+                    "No local TTS runtime available. Configure STARLOG_TTS_COMMAND/--tts-command, "
+                    "or install a supported local provider (say/espeak/espeak-ng)."
+                )
+            metadata["provider_resolution_reason"] = reason
+            return detected_provider, metadata
+        raise RuntimeError(f"Unsupported local TTS provider_hint: {requested or '(empty)'}")
+
+    raise RuntimeError(f"Unsupported queued capability: {capability}")
+
+
+def _with_worker_metadata(output: dict, provider_used: str, provider_meta: dict[str, Any]) -> dict:
+    return {
+        **output,
+        "_worker": {
+            "provider_used": provider_used,
+            **provider_meta,
+        },
+    }
+
+
+def _classify_failure(exc: Exception) -> tuple[str, bool]:
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return "timeout", True
+
+    message = str(exc).lower()
+    if "timed out" in message:
+        return "timeout", True
+    if "failed with http 5" in message:
+        return "upstream_5xx", True
+    if "failed:" in message and any(token in message for token in ("tempor", "refused", "reset", "timeout", "timed out")):
+        return "network", True
+    if "unsupported local" in message:
+        return "unsupported_provider", False
+    if "missing" in message or "no local tts runtime available" in message:
+        return "invalid_payload", False
+    if "no such file or directory" in message or "not found" in message:
+        return "dependency_missing", False
+    return "execution_error", False
+
+
+def _format_failure_message(exc: Exception, *, category: str, retryable: bool, attempt: int, max_attempts: int) -> str:
+    message = str(exc).strip() or exc.__class__.__name__
+    if len(message) > 1500:
+        message = message[:1500] + "..."
+    return (
+        f"[category={category};retryable={'true' if retryable else 'false'};attempt={attempt}/{max_attempts}] "
+        f"{message}"
+    )
 
 
 def _schema_for(job: dict) -> dict[str, Any]:
@@ -254,7 +378,7 @@ def _prompt_for(job: dict) -> str:
     raise ValueError(f"Unsupported capability for Codex execution: {job['capability']}")
 
 
-def _run_codex(job: dict, model: str | None) -> dict:
+def _run_codex(job: dict, model: str | None, timeout_seconds: float) -> dict:
     with tempfile.TemporaryDirectory(prefix="starlog-codex-job-") as temp_dir:
         temp_path = Path(temp_dir)
         schema_path = temp_path / "schema.json"
@@ -275,7 +399,7 @@ def _run_codex(job: dict, model: str | None) -> dict:
         if model:
             command[2:2] = ["-m", model]
 
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout_seconds)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Codex exec failed")
         if not output_path.exists():
@@ -304,7 +428,7 @@ def _download_blob(api_base: str, token: str, blob_ref: str, temp_path: Path) ->
     return destination
 
 
-def _prepare_audio_for_whisper(input_path: Path, ffmpeg_command: str) -> Path:
+def _prepare_audio_for_whisper(input_path: Path, ffmpeg_command: str, ffmpeg_timeout_seconds: float) -> Path:
     if input_path.suffix.lower() == ".wav":
         return input_path
 
@@ -314,6 +438,7 @@ def _prepare_audio_for_whisper(input_path: Path, ffmpeg_command: str) -> Path:
         capture_output=True,
         text=True,
         check=False,
+        timeout=ffmpeg_timeout_seconds,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -323,7 +448,15 @@ def _prepare_audio_for_whisper(input_path: Path, ffmpeg_command: str) -> Path:
     return output_path
 
 
-def _run_whisper(job: dict, api_base: str, token: str, whisper_command: str | None, ffmpeg_command: str) -> dict:
+def _run_whisper(
+    job: dict,
+    api_base: str,
+    token: str,
+    whisper_command: str | None,
+    ffmpeg_command: str,
+    whisper_timeout_seconds: float,
+    ffmpeg_timeout_seconds: float,
+) -> dict:
     command_template = whisper_command or os.environ.get("STARLOG_WHISPER_COMMAND", "").strip()
     if not command_template:
         raise RuntimeError("Set --whisper-command or STARLOG_WHISPER_COMMAND for whisper_local jobs")
@@ -336,7 +469,7 @@ def _run_whisper(job: dict, api_base: str, token: str, whisper_command: str | No
     with tempfile.TemporaryDirectory(prefix="starlog-whisper-job-") as temp_dir:
         temp_path = Path(temp_dir)
         source_path = _download_blob(api_base, token, blob_ref, temp_path)
-        input_path = _prepare_audio_for_whisper(source_path, ffmpeg_command)
+        input_path = _prepare_audio_for_whisper(source_path, ffmpeg_command, ffmpeg_timeout_seconds)
         output_base = temp_path / "transcript"
         output_path = Path(f"{output_base}.txt")
 
@@ -347,7 +480,13 @@ def _run_whisper(job: dict, api_base: str, token: str, whisper_command: str | No
                 output_path=str(output_path),
             )
         )
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=whisper_timeout_seconds,
+        )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Whisper command failed")
 
@@ -383,7 +522,11 @@ def _tts_payload(job: dict) -> tuple[dict[str, Any], str, str | None, int | None
     return payload, text, voice, rate
 
 
-def _maybe_convert_audio_for_upload(input_path: Path, ffmpeg_command: str | None) -> Path | None:
+def _maybe_convert_audio_for_upload(
+    input_path: Path,
+    ffmpeg_command: str | None,
+    ffmpeg_timeout_seconds: float,
+) -> Path | None:
     if not ffmpeg_command:
         return None
 
@@ -406,6 +549,7 @@ def _maybe_convert_audio_for_upload(input_path: Path, ffmpeg_command: str | None
             capture_output=True,
             text=True,
             check=False,
+            timeout=ffmpeg_timeout_seconds,
         )
     except OSError:
         return None
@@ -424,7 +568,13 @@ def _upload_tts_output(api_base: str, token: str, path: Path) -> dict[str, Any]:
     }
 
 
-def _run_tts_piper(job: dict, api_base: str, token: str, tts_command: str | None) -> dict:
+def _run_tts_piper(
+    job: dict,
+    api_base: str,
+    token: str,
+    tts_command: str | None,
+    tts_timeout_seconds: float,
+) -> dict:
     command_template = tts_command or os.environ.get("STARLOG_TTS_COMMAND", "").strip()
     if not command_template:
         raise RuntimeError("Set --tts-command or STARLOG_TTS_COMMAND for piper_local tts jobs")
@@ -443,7 +593,14 @@ def _run_tts_piper(job: dict, api_base: str, token: str, tts_command: str | None
                 text=text,
             )
         )
-        result = subprocess.run(command, input=text, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command,
+            input=text,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=tts_timeout_seconds,
+        )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "TTS command failed")
         if not output_path.exists():
@@ -456,7 +613,14 @@ def _run_tts_piper(job: dict, api_base: str, token: str, tts_command: str | None
         return response
 
 
-def _run_tts_say(job: dict, api_base: str, token: str, ffmpeg_command: str) -> dict:
+def _run_tts_say(
+    job: dict,
+    api_base: str,
+    token: str,
+    ffmpeg_command: str,
+    tts_timeout_seconds: float,
+    ffmpeg_timeout_seconds: float,
+) -> dict:
     _, text, voice, rate = _tts_payload(job)
 
     with tempfile.TemporaryDirectory(prefix="starlog-tts-job-") as temp_dir:
@@ -468,13 +632,19 @@ def _run_tts_say(job: dict, api_base: str, token: str, ffmpeg_command: str) -> d
         if rate is not None:
             command.extend(["-r", str(rate)])
         command.append(text)
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=tts_timeout_seconds,
+        )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "say command failed")
         if not output_path.exists():
             raise RuntimeError("say completed without writing an audio file")
 
-        upload_path = _maybe_convert_audio_for_upload(output_path, ffmpeg_command) or output_path
+        upload_path = _maybe_convert_audio_for_upload(output_path, ffmpeg_command, ffmpeg_timeout_seconds) or output_path
         response = _upload_tts_output(api_base, token, upload_path)
         response["source_format"] = "aiff"
         if voice:
@@ -484,7 +654,13 @@ def _run_tts_say(job: dict, api_base: str, token: str, ffmpeg_command: str) -> d
         return response
 
 
-def _run_tts_espeak(job: dict, api_base: str, token: str, program: str) -> dict:
+def _run_tts_espeak(
+    job: dict,
+    api_base: str,
+    token: str,
+    program: str,
+    tts_timeout_seconds: float,
+) -> dict:
     _, text, voice, rate = _tts_payload(job)
 
     with tempfile.TemporaryDirectory(prefix="starlog-tts-job-") as temp_dir:
@@ -496,7 +672,13 @@ def _run_tts_espeak(job: dict, api_base: str, token: str, program: str) -> dict:
         if rate is not None:
             command.extend(["-s", str(rate)])
         command.append(text)
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=tts_timeout_seconds,
+        )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"{program} command failed")
         if not output_path.exists():
@@ -510,17 +692,26 @@ def _run_tts_espeak(job: dict, api_base: str, token: str, program: str) -> dict:
         return response
 
 
-def _run_tts(job: dict, api_base: str, token: str, tts_command: str | None, ffmpeg_command: str) -> tuple[str, dict]:
-    provider_hint = str(job.get("provider_hint") or "").strip() or "piper_local"
-    if provider_hint == "piper_local":
-        return provider_hint, _run_tts_piper(job, api_base, token, tts_command)
-    if provider_hint == "say_local":
-        return provider_hint, _run_tts_say(job, api_base, token, ffmpeg_command)
-    if provider_hint == "espeak_local":
-        return provider_hint, _run_tts_espeak(job, api_base, token, "espeak")
-    if provider_hint == "espeak_ng_local":
-        return provider_hint, _run_tts_espeak(job, api_base, token, "espeak-ng")
-    raise RuntimeError(f"Unsupported local TTS provider_hint: {provider_hint}")
+def _run_tts(
+    job: dict,
+    api_base: str,
+    token: str,
+    *,
+    provider_used: str,
+    tts_command: str | None,
+    ffmpeg_command: str,
+    tts_timeout_seconds: float,
+    ffmpeg_timeout_seconds: float,
+) -> dict:
+    if provider_used == "piper_local":
+        return _run_tts_piper(job, api_base, token, tts_command, tts_timeout_seconds)
+    if provider_used == "say_local":
+        return _run_tts_say(job, api_base, token, ffmpeg_command, tts_timeout_seconds, ffmpeg_timeout_seconds)
+    if provider_used == "espeak_local":
+        return _run_tts_espeak(job, api_base, token, "espeak", tts_timeout_seconds)
+    if provider_used == "espeak_ng_local":
+        return _run_tts_espeak(job, api_base, token, "espeak-ng", tts_timeout_seconds)
+    raise RuntimeError(f"Unsupported local TTS provider_used: {provider_used}")
 
 
 def _pending_jobs(api_base: str, token: str, provider_hint: str, limit: int) -> list[dict]:
@@ -580,14 +771,39 @@ def _run_job(
     whisper_command: str | None,
     ffmpeg_command: str,
     tts_command: str | None,
+    codex_timeout_seconds: float,
+    whisper_timeout_seconds: float,
+    tts_timeout_seconds: float,
+    ffmpeg_timeout_seconds: float,
 ) -> tuple[str, dict]:
     capability = str(job["capability"])
+    provider_used, provider_meta = _resolve_provider(job, tts_command=tts_command)
     if capability in {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}:
-        return "codex_local", _run_codex(job, model=codex_model)
+        output = _run_codex(job, model=codex_model, timeout_seconds=codex_timeout_seconds)
+        return provider_used, _with_worker_metadata(output, provider_used, provider_meta)
     if capability == "stt":
-        return "whisper_local", _run_whisper(job, api_base, token, whisper_command, ffmpeg_command)
+        output = _run_whisper(
+            job,
+            api_base,
+            token,
+            whisper_command,
+            ffmpeg_command,
+            whisper_timeout_seconds,
+            ffmpeg_timeout_seconds,
+        )
+        return provider_used, _with_worker_metadata(output, provider_used, provider_meta)
     if capability == "tts":
-        return _run_tts(job, api_base, token, tts_command, ffmpeg_command)
+        output = _run_tts(
+            job,
+            api_base,
+            token,
+            provider_used=provider_used,
+            tts_command=tts_command,
+            ffmpeg_command=ffmpeg_command,
+            tts_timeout_seconds=tts_timeout_seconds,
+            ffmpeg_timeout_seconds=ffmpeg_timeout_seconds,
+        )
+        return provider_used, _with_worker_metadata(output, provider_used, provider_meta)
     raise RuntimeError(f"Unsupported queued capability: {capability}")
 
 
@@ -602,14 +818,22 @@ def run_loop(
     whisper_command: str | None,
     ffmpeg_command: str,
     tts_command: str | None,
+    retryable_attempts: int,
+    codex_timeout_seconds: float,
+    whisper_timeout_seconds: float,
+    tts_timeout_seconds: float,
+    ffmpeg_timeout_seconds: float,
     once: bool,
 ) -> int:
     processed_any = False
+    max_attempts = max(1, retryable_attempts)
 
     while True:
-        jobs: list[dict] = []
+        jobs_by_id: dict[str, dict] = {}
         for provider_hint in provider_hints:
-            jobs.extend(_pending_jobs(api_base, token, provider_hint=provider_hint, limit=limit))
+            for job in _pending_jobs(api_base, token, provider_hint=provider_hint, limit=limit):
+                jobs_by_id[str(job.get("id") or "")] = job
+        jobs = [item for item in jobs_by_id.values() if str(item.get("id") or "").strip()]
 
         if not jobs:
             if once:
@@ -628,21 +852,59 @@ def run_loop(
                 continue
 
             print(f"Claimed {claimed['id']} ({claimed['capability']})")
-            try:
-                provider_used, output = _run_job(
-                    claimed,
-                    api_base=api_base,
-                    token=token,
-                    codex_model=codex_model,
-                    whisper_command=whisper_command,
-                    ffmpeg_command=ffmpeg_command,
-                    tts_command=tts_command,
-                )
-                _complete(api_base, token, str(claimed["id"]), worker_id, provider_used, output)
-                print(f"Completed {claimed['id']}")
-            except Exception as exc:  # noqa: BLE001
-                _fail(api_base, token, str(claimed["id"]), worker_id, str(exc), str(claimed.get("provider_hint") or "local"))
-                print(f"Failed {claimed['id']}: {exc}", file=sys.stderr)
+            attempt = 1
+            while True:
+                try:
+                    provider_used, output = _run_job(
+                        claimed,
+                        api_base=api_base,
+                        token=token,
+                        codex_model=codex_model,
+                        whisper_command=whisper_command,
+                        ffmpeg_command=ffmpeg_command,
+                        tts_command=tts_command,
+                        codex_timeout_seconds=codex_timeout_seconds,
+                        whisper_timeout_seconds=whisper_timeout_seconds,
+                        tts_timeout_seconds=tts_timeout_seconds,
+                        ffmpeg_timeout_seconds=ffmpeg_timeout_seconds,
+                    )
+                    _complete(api_base, token, str(claimed["id"]), worker_id, provider_used, output)
+                    print(f"Completed {claimed['id']} via {provider_used}")
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    category, retryable = _classify_failure(exc)
+                    should_retry = retryable and attempt < max_attempts
+                    if should_retry:
+                        print(
+                            f"Retrying {claimed['id']} after {category} failure "
+                            f"(attempt {attempt}/{max_attempts}): {exc}",
+                            file=sys.stderr,
+                        )
+                        attempt += 1
+                        time.sleep(min(3.0, poll_seconds))
+                        continue
+
+                    try:
+                        provider_used, _meta = _resolve_provider(claimed, tts_command=tts_command)
+                    except Exception:  # noqa: BLE001
+                        provider_used = str(claimed.get("provider_hint") or "local")
+                    error_text = _format_failure_message(
+                        exc,
+                        category=category,
+                        retryable=retryable,
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                    )
+                    _fail(
+                        api_base,
+                        token,
+                        str(claimed["id"]),
+                        worker_id,
+                        error_text,
+                        provider_used,
+                    )
+                    print(f"Failed {claimed['id']}: {error_text}", file=sys.stderr)
+                    break
 
         if once:
             return 0
@@ -652,14 +914,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api-base", default="http://localhost:8000")
     parser.add_argument("--token", required=True)
-    parser.add_argument("--provider-hints", default="codex_local,whisper_local,piper_local,say_local,espeak_local,espeak_ng_local")
+    parser.add_argument(
+        "--provider-hints",
+        default=(
+            "desktop_bridge_codex,mobile_bridge_codex,"
+            "desktop_bridge_stt,mobile_bridge_stt,"
+            "desktop_bridge_tts,mobile_bridge_tts,"
+            "codex_local,whisper_local,piper_local,say_local,espeak_local,espeak_ng_local"
+        ),
+    )
     parser.add_argument("--worker-id", default=f"local-ai-{socket.gethostname()}")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--poll-seconds", type=float, default=30.0)
+    parser.add_argument("--retryable-attempts", type=int, default=2)
     parser.add_argument("--codex-model", default=None)
+    parser.add_argument("--codex-timeout-seconds", type=float, default=600.0)
     parser.add_argument("--whisper-command", default=None)
+    parser.add_argument("--whisper-timeout-seconds", type=float, default=600.0)
     parser.add_argument("--ffmpeg-command", default="ffmpeg")
+    parser.add_argument("--ffmpeg-timeout-seconds", type=float, default=120.0)
     parser.add_argument("--tts-command", default=None)
+    parser.add_argument("--tts-timeout-seconds", type=float, default=240.0)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
 
@@ -679,6 +954,11 @@ def main(argv: list[str] | None = None) -> int:
             whisper_command=args.whisper_command,
             ffmpeg_command=args.ffmpeg_command,
             tts_command=args.tts_command,
+            retryable_attempts=args.retryable_attempts,
+            codex_timeout_seconds=args.codex_timeout_seconds,
+            whisper_timeout_seconds=args.whisper_timeout_seconds,
+            tts_timeout_seconds=args.tts_timeout_seconds,
+            ffmpeg_timeout_seconds=args.ffmpeg_timeout_seconds,
             once=args.once,
         )
     except Exception as exc:  # noqa: BLE001
