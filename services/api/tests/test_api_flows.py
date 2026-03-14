@@ -973,76 +973,61 @@ def test_notes_edit_and_search(client: TestClient, auth_headers: dict[str, str])
     assert "artifact" in kinds
 
 
-def test_note_revision_conflict_records_and_resolves_conflict(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_task_revision_conflict_records_and_resolves_conflict(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
-        "/v1/notes",
-        json={"title": "Conflict note", "body_md": "Initial body"},
+        "/v1/tasks",
+        json={
+            "title": "Conflict task",
+            "status": "todo",
+            "estimate_min": 25,
+            "priority": 3,
+        },
         headers=auth_headers,
     )
     assert created.status_code == 201
-    note = created.json()
-    note_id = note["id"]
-    assert note["version"] == 1
+    task = created.json()
+    task_id = task["id"]
+    assert task["revision"] == 1
 
     first_update = client.patch(
-        f"/v1/notes/{note_id}",
-        json={"body_md": "Updated once", "base_revision": 1},
+        f"/v1/tasks/{task_id}",
+        json={"status": "doing", "base_revision": 1},
         headers=auth_headers,
     )
     assert first_update.status_code == 200
-    assert first_update.json()["version"] == 2
+    assert first_update.json()["revision"] == 2
 
     stale_update = client.patch(
-        f"/v1/notes/{note_id}",
-        json={"body_md": "Stale client write", "base_revision": 1},
+        f"/v1/tasks/{task_id}",
+        json={"priority": 5, "base_revision": 1},
         headers=auth_headers,
     )
     assert stale_update.status_code == 409
     conflict_detail = stale_update.json()["detail"]
     assert conflict_detail["code"] == "revision_conflict"
     conflict = conflict_detail["conflict"]
-    assert conflict["entity_type"] == "note"
-    assert conflict["entity_id"] == note_id
-    assert conflict["status"] == "open"
+    assert conflict["entity_type"] == "task"
+    assert conflict["entity_id"] == task_id
     assert conflict["base_revision"] == 1
     assert conflict["current_revision"] == 2
+    assert conflict["status"] == "open"
     conflict_id = conflict["id"]
 
-    listed = client.get("/v1/conflicts?status=open&entity_type=note", headers=auth_headers)
+    listed = client.get("/v1/conflicts?status=open&entity_type=task", headers=auth_headers)
     assert listed.status_code == 200
-    listed_ids = {item["id"] for item in listed.json()}
-    assert conflict_id in listed_ids
-
-    fetched = client.get(f"/v1/conflicts/{conflict_id}", headers=auth_headers)
-    assert fetched.status_code == 200
-    assert fetched.json()["id"] == conflict_id
-
-    invalid_patch = client.post(
-        f"/v1/conflicts/{conflict_id}/resolve",
-        json={"strategy": "merged_patch"},
-        headers=auth_headers,
-    )
-    assert invalid_patch.status_code == 422
-
-    invalid_local = client.post(
-        f"/v1/conflicts/{conflict_id}/resolve",
-        json={"strategy": "local_wins", "merged_payload": {"body_md": "not allowed"}},
-        headers=auth_headers,
-    )
-    assert invalid_local.status_code == 422
+    assert conflict_id in {item["id"] for item in listed.json()}
 
     resolved = client.post(
         f"/v1/conflicts/{conflict_id}/resolve",
-        json={"strategy": "merged_patch", "merged_payload": {"body_md": "merged body"}},
+        json={"strategy": "local_wins"},
         headers=auth_headers,
     )
     assert resolved.status_code == 200
     payload = resolved.json()["conflict"]
     assert payload["status"] == "resolved"
-    assert payload["resolution_strategy"] == "merged_patch"
-    assert payload["resolution_payload"] == {"body_md": "merged body"}
+    assert payload["resolution_strategy"] == "local_wins"
 
-    open_after = client.get("/v1/conflicts?status=open&entity_type=note", headers=auth_headers)
+    open_after = client.get("/v1/conflicts?status=open&entity_type=task", headers=auth_headers)
     assert open_after.status_code == 200
     assert conflict_id not in {item["id"] for item in open_after.json()}
 

@@ -699,6 +699,39 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"revision_conflict\" -s`
 
+### 7. Task revision-conflict enforcement
+
+- Branch: `codex/task-revision-conflict-api`
+- Workitem ID: `WI-118`
+- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-118.lock); this document is a mirror only`
+- Goal: enforce structured revision-conflict handling for task updates using the existing `tasks.revision` column.
+- Scope:
+  - allow task update requests to carry `base_revision`,
+  - reject stale task writes with structured `409 revision_conflict` payloads,
+  - persist task conflicts into `entity_conflicts`,
+  - add API tests for stale write and explicit resolution flow.
+- Out of scope:
+  - UI conflict tooling,
+  - full conflict rollout for all entity types.
+- Likely files:
+  - `services/api/app/schemas/tasks.py`
+  - `services/api/app/services/tasks_service.py`
+  - `services/api/app/api/routes/tasks.py`
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - add `base_revision` in task update schema and expose `revision` in task responses,
+  - compare `base_revision` against current task revision in service layer,
+  - create conflict row and return structured `409` on mismatch,
+  - verify conflict list + resolve path in tests.
+- Acceptance:
+  - stale task updates are rejected with conflict metadata (no silent overwrite),
+  - resolution flow remains explicit via `/v1/conflicts`.
+- Validation:
+  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"task_revision_conflict\" -s`
+  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"notes_edit_and_search or task_revision_conflict\" -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -728,4 +761,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-117` (`codex/note-revision-conflict-api`): enforce structured note revision conflicts and conflict-resolution payload validation.
+- `WI-118` (`codex/task-revision-conflict-api`): enforce task stale-write conflicts with `base_revision` + explicit `/v1/conflicts` resolution.
