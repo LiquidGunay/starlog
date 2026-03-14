@@ -668,7 +668,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-cache-ai-jobs-portability-b`
 - Workitem ID: `WI-117`
-- Lock: `IN_PROGRESS | Workitem: WI-117 | Owner: Agent implementer-b | Claimed: 2026-03-14T19:32:20Z | Last heartbeat: 2026-03-14T19:37:15Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-117 | Owner: N/A | Claimed: 2026-03-14T19:32:20Z | Last heartbeat: 2026-03-14T19:37:15Z`
 - Goal: add snapshot restore/persistence for AI jobs and portability pages so queued job context and latest export snapshot survive offline reload.
 - Scope:
   - persist AI jobs list + filter state + retry provider state,
