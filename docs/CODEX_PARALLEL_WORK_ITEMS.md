@@ -67,7 +67,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/desktop-helper-macos-validation`
 - Workitem ID: `WI-102`
-- Lock: `HELD | Workitem: WI-102 | Owner: Agent Implementer-A | Claimed: 2026-03-14 17:56 UTC | Last heartbeat: 2026-03-14 18:06 UTC`
+- Lock: `UNCLAIMED | Workitem: WI-102 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: finish the remaining real macOS validation path for the desktop helper now that Linux and Windows host paths are covered.
 - Scope:
   - tighten short-lived access token behavior and refresh rotation,
