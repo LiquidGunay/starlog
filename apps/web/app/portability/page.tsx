@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -21,10 +22,17 @@ type RestoreResponse = {
   restored_at: string;
 };
 
+const PORTABILITY_EXPORT_SNAPSHOT = "portability.export_payload";
+const PORTABILITY_IMPORT_TEXT_SNAPSHOT = "portability.import_text";
+
 export default function PortabilityPage() {
   const { apiBase, token } = useSessionConfig();
-  const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null);
-  const [importText, setImportText] = useState("");
+  const [exportPayload, setExportPayload] = useState<ExportPayload | null>(
+    () => readEntitySnapshot<ExportPayload | null>(PORTABILITY_EXPORT_SNAPSHOT, null),
+  );
+  const [importText, setImportText] = useState(
+    () => readEntitySnapshot<string>(PORTABILITY_IMPORT_TEXT_SNAPSHOT, ""),
+  );
   const [status, setStatus] = useState("Ready");
 
   const tableCounts = useMemo(
@@ -32,11 +40,44 @@ export default function PortabilityPage() {
     [exportPayload],
   );
 
+  useEffect(() => {
+    setExportPayload((previous) => previous ?? readEntitySnapshot<ExportPayload | null>(PORTABILITY_EXPORT_SNAPSHOT, null));
+    setImportText((previous) => previous || readEntitySnapshot<string>(PORTABILITY_IMPORT_TEXT_SNAPSHOT, ""));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [cachedExportPayload, cachedImportText] = await Promise.all([
+        readEntitySnapshotAsync<ExportPayload | null>(PORTABILITY_EXPORT_SNAPSHOT, null),
+        readEntitySnapshotAsync<string>(PORTABILITY_IMPORT_TEXT_SNAPSHOT, ""),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (cachedExportPayload) {
+        setExportPayload(cachedExportPayload);
+      }
+      if (cachedImportText) {
+        setImportText(cachedImportText);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function loadExport() {
     try {
       const payload = await apiRequest<ExportPayload>(apiBase, token, "/v1/export");
       setExportPayload(payload);
       setImportText(JSON.stringify(payload, null, 2));
+      writeEntitySnapshot(PORTABILITY_EXPORT_SNAPSHOT, payload);
+      writeEntitySnapshot(PORTABILITY_IMPORT_TEXT_SNAPSHOT, JSON.stringify(payload, null, 2));
       setStatus(`Loaded export snapshot from ${new Date(payload.exported_at).toLocaleString()}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load export");
@@ -82,6 +123,14 @@ export default function PortabilityPage() {
       setStatus(error instanceof Error ? error.message : "Failed to restore export");
     }
   }
+
+  useEffect(() => {
+    writeEntitySnapshot(PORTABILITY_EXPORT_SNAPSHOT, exportPayload);
+  }, [exportPayload]);
+
+  useEffect(() => {
+    writeEntitySnapshot(PORTABILITY_IMPORT_TEXT_SNAPSHOT, importText);
+  }, [importText]);
 
   return (
     <main className="shell">
