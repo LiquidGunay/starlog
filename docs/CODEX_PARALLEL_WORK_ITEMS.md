@@ -88,7 +88,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/local-tts-worker-hardening`
 - Workitem ID: `WI-103`
-- Lock: `HELD | Workitem: WI-103 | Owner: Agent Implementer-A | Claimed: 2026-03-14 18:07 UTC | Last heartbeat: 2026-03-14 18:13 UTC`
+- Lock: `UNCLAIMED | Workitem: WI-103 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: make the queued TTS path more reliable and easier to operate.
 - Scope:
   - mobile token/secret storage via secure platform storage,
