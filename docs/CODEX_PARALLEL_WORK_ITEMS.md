@@ -636,6 +636,36 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - `pnpm test:web:offline-cache --grep "assistant voice uploads"`
 
+### 7. PWA offline warmup flow
+
+- Branch: `codex/pwa-offline-warmup-flow`
+- Workitem ID: `WI-116`
+- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-116.lock); this document is a mirror only`
+- Goal: add an explicit “Offline Warmup” action that preloads route snapshots before the user goes offline.
+- Scope:
+  - add a warmup action in Sync Center,
+  - preload key route snapshots (artifacts, notes, tasks, calendar, assistant jobs/intents),
+  - expose per-step warmup status and failure visibility.
+- Out of scope:
+  - replacing service-worker shell caching,
+  - redesigning sync-center layout.
+- Likely files:
+  - `apps/web/app/lib/offline-warmup.ts`
+  - `apps/web/app/sync-center/page.tsx`
+  - `apps/web/tests/offline-cache.spec.ts`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - implement reusable warmup runner that writes snapshot keys used by offline-first tabs,
+  - add Sync Center “Offline Warmup” CTA + report panel,
+  - add browser coverage proving warmup allows opening Notes offline without loading Notes online first.
+- Acceptance:
+  - users can run a single warmup action before losing connectivity,
+  - warmup updates snapshots and reports which step(s) succeeded/failed.
+- Validation:
+  - `./node_modules/.bin/playwright test --config=/tmp/playwright.web.noserver.config.ts apps/web/tests/offline-cache.spec.ts --grep "offline warmup"`
+  - `cd apps/web && ./node_modules/.bin/tsc --noEmit`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -665,4 +695,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-113` (`codex/pwa-offline-voice-queue`): add persisted assistant voice upload queue with offline replay controls.
+- `WI-116` (`codex/pwa-offline-warmup-flow`): add explicit Sync Center offline warmup to preload route snapshots before disconnect.
