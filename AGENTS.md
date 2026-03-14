@@ -27,9 +27,40 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 ## Repo process rule
 When an issue is discovered or a clear user preference appears, append it to this file in logs below.
 
+## Shared workitem locking (`.git` common dir)
+
+Use a shared live lock registry under the common git dir so all worktrees/agents coordinate against the same source of truth.
+
+- Registry root: `$(git rev-parse --git-common-dir)/codex-workitems/`
+- Authoritative files:
+  - `workitems.json`
+  - `locks/<workitem_id>.lock`
+  - `audit.jsonl`
+  - `.registry.lock` (used for atomic lock operations)
+- Lock protocol:
+  - claim lock before implementation starts
+  - heartbeat every 2 minutes while actively working
+  - stale lock timeout is 10 minutes
+  - release lock on completion or handoff
+  - forced lock steal requires an explicit reason and must be appended to `audit.jsonl`
+- Required usage flow for every agent:
+  1) Identify the `workitem_id` in `workitems.json`, then acquire `.registry.lock` before reading/updating lock state.
+  2) On claim, verify `locks/<workitem_id>.lock` is absent or stale (`last_heartbeat_at` older than 10 minutes). If active and not stale, do not proceed.
+  3) Write/update `locks/<workitem_id>.lock` with owner metadata (`agent_id`, `worktree`, `branch`, `claimed_at`, `last_heartbeat_at`), set workitem status/owner in `workitems.json`, and append a `claim` event to `audit.jsonl`.
+  4) While working, refresh `last_heartbeat_at` at least every 2 minutes (under `.registry.lock`), and keep `workitems.json` ownership/status aligned.
+  5) On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
+  6) Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
+- `docs/CODEX_PARALLEL_WORK_ITEMS.md` is human-readable planning context only; live lock authority is the shared `.git` registry.
+- Any merge-conflict resolution insight discovered while working must be appended to this file's **Issue log**.
+
 ## Phone testing runbook (Android, this host)
 
-Use this sequence when validating the native mobile app on the connected Android phone from WSL.
+Use this sequence when validating the native mobile app on the connected Android phone from WSL. The phone must remain unlocked for the full run.
+
+0) Keep the device unlocked for the entire run:
+
+- Do not let the phone lock/sleep during relay setup, deep-link open, smoke flow, or screenshot capture.
+- Re-unlock immediately if the device locks; rerun failing step(s) after unlock.
 
 1) Use the newer Windows ADB binary, not `C:\adb\adb.exe`:
 
@@ -125,6 +156,10 @@ Troubleshooting checklist:
 - 2026-03-09: User wants to be asked before any Railway deployment is made.
 - 2026-03-10: User wants pending work broken into concrete workitems and run in parallel across separate `codex/*` branches / Codex instances.
 - 2026-03-10: User wants parallel agents to claim work items by writing an explicit lock in `docs/CODEX_PARALLEL_WORK_ITEMS.md` before starting implementation.
+- 2026-03-14: User wants shared multi-worktree lock coordination under the common `.git` directory instead of repo-tracked lock state.
+- 2026-03-14: User wants merge-conflict resolution insights logged in `AGENTS.md` Issue log whenever discovered.
+- 2026-03-14: User wants Android mobile testing runs performed with the physical device kept unlocked throughout execution.
+- 2026-03-14: User wants explicit lock claim/heartbeat/release/force-steal usage instructions documented in `AGENTS.md`.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
