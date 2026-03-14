@@ -276,6 +276,10 @@ def _codex_bridge_state(provider: dict | None) -> dict:
 def codex_bridge_contract(conn: Connection) -> dict:
     provider = get_provider_config(conn, "codex_bridge", redact=False)
     state = _codex_bridge_state(provider)
+    verified_at = utc_now().isoformat()
+    recommended_runtime_mode = (
+        "experimental_openai_compatible_bridge" if state["execute_enabled"] else "api_fallback"
+    )
 
     derived_endpoints = {}
     if state["execute_endpoint"]:
@@ -284,12 +288,18 @@ def codex_bridge_contract(conn: Connection) -> dict:
         derived_endpoints["model_list"] = state["model_list_endpoint"]
 
     return {
+        "contract_version": 2,
         "provider_name": "codex_bridge",
         "summary": (
             "Starlog currently supports Codex only through an explicit experimental "
             "OpenAI-compatible bridge adapter. A first-party native Codex OAuth handshake "
             "is not implemented in this repo yet, so bridge misses fall back to the next "
             "execution-policy target."
+        ),
+        "native_contract_state": "unavailable",
+        "native_contract_detail": (
+            "No first-party Codex subscription/OAuth handshake contract is implemented in Starlog yet. "
+            "Use the experimental OpenAI-compatible bridge adapter with explicit opt-in, or fall back to API providers."
         ),
         "feature_flag_key": CODEX_BRIDGE_FEATURE_FLAG_KEY,
         "supported_adapter_kinds": CODEX_BRIDGE_SUPPORTED_ADAPTERS,
@@ -318,11 +328,18 @@ def codex_bridge_contract(conn: Connection) -> dict:
             "If the bridge is missing required config or a request fails, Starlog keeps "
             "walking the execution policy toward mobile/desktop bridge and API fallbacks."
         ),
+        "recommended_runtime_mode": recommended_runtime_mode,
+        "first_party_blockers": [
+            "No first-party Codex OAuth token exchange flow is implemented in this repository.",
+            "No stable upstream native Codex subscription handshake contract is wired into Starlog yet.",
+            "Bridge execution currently depends on explicit openai_compatible adapter configuration.",
+        ],
         "configured": state["configured"],
         "enabled": state["enabled"],
         "execute_enabled": state["execute_enabled"],
         "missing_requirements": state["missing_requirements"],
         "derived_endpoints": derived_endpoints,
+        "verified_at": verified_at,
     }
 
 

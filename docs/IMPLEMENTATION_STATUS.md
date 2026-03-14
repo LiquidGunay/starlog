@@ -73,6 +73,7 @@
 - Provider health now supports auth-level probes for Google OAuth and opt-in remote/API providers via `auth_probe_url`.
 - Codex bridge health now derives authenticated model-list probes from the configured bridge URL when explicit probe URLs are not supplied.
 - Codex bridge now also exposes an explicit contract endpoint in the API/UI, requires `experimental_enabled=true` plus `adapter_kind=openai_compatible` before execution, and falls back safely when the bridge is not explicitly opted in.
+- Codex bridge contract now also reports explicit first-party-native status (`unavailable`), blocker list, verified timestamp, and recommended runtime mode (`experimental_openai_compatible_bridge` vs `api_fallback`) so the UI can clearly explain why native OAuth remains blocked.
 - Artifact summarize/cards/tasks actions now flow through the AI provider chain (local -> codex bridge -> API fallback) instead of template-only stubs.
 - Google sync run responses now include `run_id`, and conflict details now carry sync run/phase metadata for replay diagnostics.
 - Google sync conflicts can now trigger replay runs from the API and planner/calendar UI surfaces.

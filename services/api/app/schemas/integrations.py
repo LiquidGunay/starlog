@@ -29,8 +29,11 @@ class ProviderHealthResponse(BaseModel):
 
 
 class CodexBridgeContractResponse(BaseModel):
+    contract_version: int = 1
     provider_name: str
     summary: str
+    native_contract_state: Literal["unavailable", "available"] = "unavailable"
+    native_contract_detail: str
     feature_flag_key: str
     supported_adapter_kinds: list[str] = Field(default_factory=list)
     configured_adapter_kind: str | None = None
@@ -41,11 +44,14 @@ class CodexBridgeContractResponse(BaseModel):
     optional_config: list[str] = Field(default_factory=list)
     native_oauth_supported: bool = False
     safe_fallback: str
+    recommended_runtime_mode: Literal["experimental_openai_compatible_bridge", "api_fallback"] = "api_fallback"
+    first_party_blockers: list[str] = Field(default_factory=list)
     configured: bool = False
     enabled: bool = False
     execute_enabled: bool = False
     missing_requirements: list[str] = Field(default_factory=list)
     derived_endpoints: dict[str, str] = Field(default_factory=dict)
+    verified_at: datetime
 
 
 # Canonical v2 targets:
