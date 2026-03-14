@@ -614,7 +614,7 @@ def queue_assist_command(
     resolved_provider_hint = (
         provider_hint
         or integrations_service.default_batch_provider_hint(conn, "llm_agent_plan")
-        or "codex_local"
+        or "desktop_bridge_codex"
     )
     return ai_jobs_service.create_job(
         conn,
@@ -631,6 +631,12 @@ def queue_assist_command(
             "current_date": _today_utc().isoformat(),
         },
         provider_hint=resolved_provider_hint,
+        requested_targets=integrations_service.capability_execution_order(
+            conn,
+            "llm_agent_plan",
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        ),
         action="assistant_command_ai",
     )
 
@@ -649,7 +655,7 @@ def queue_voice_command(
     resolved_provider_hint = (
         provider_hint
         or integrations_service.default_batch_provider_hint(conn, "stt")
-        or "whisper_local"
+        or "desktop_bridge_stt"
     )
     return ai_jobs_service.create_job(
         conn,
@@ -666,5 +672,11 @@ def queue_voice_command(
             },
         },
         provider_hint=resolved_provider_hint,
+        requested_targets=integrations_service.capability_execution_order(
+            conn,
+            "stt",
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        ),
         action="assistant_command",
     )

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Starlog - Command Center</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;family=Rajdhani:wght@500;600;700&amp;family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#9C89FF",
+                        "primary-light": "#B8ACFF",
+                        "primary-glow": "rgba(156, 137, 255, 0.4)",
+                        "background-light": "#0F0A1F", 
+                        "background-dark": "#0A0614",  
+                        "surface": "rgba(25, 18, 45, 0.7)",
+                        "surface-border": "rgba(156, 137, 255, 0.2)",
+                        "text-main": "#F0EEFF",
+                        "muted": "#94A3B8",
+                        "amber": "#F59E0B",
+                        "success": "#22C55E"
+                    },
+                    fontFamily: {
+                        "display": ["Rajdhani", "sans-serif"],
+                        "body": ["Exo 2", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                        "grotesk": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "10px",
+                        "sm": "8px",
+                        "md": "10px",
+                        "lg": "12px",
+                        "xl": "16px",
+                        "full": "9999px"
+                    },
+                    boxShadow: {
+                        'glow': '0 0 15px rgba(156, 137, 255, 0.3)',
+                        'glow-intense': '0 0 20px rgba(156, 137, 255, 0.5)',
+                        'amber-glow': '0 0 15px rgba(245, 158, 11, 0.3)'
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'progress': 'progress 2s linear infinite',
+                        'waveform': 'waveform 1.2s ease-in-out infinite'
+                    },
+                    keyframes: {
+                        progress: {
+                            '0%': { transform: 'translateX(-100%)' },
+                            '100%': { transform: 'translateX(100%)' }
+                        },
+                        waveform: {
+                            '0%, 100%': { height: '8px' },
+                            '50%': { height: '20px' }
+                        }
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-panel {
+            background-color: rgba(25, 18, 45, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(156, 137, 255, 0.2);
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(10, 6, 20, 0.8); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 137, 255, 0.2); 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 137, 255, 0.5); 
+        }
+
+        .bg-grid {
+            background-size: 50px 50px;
+            background-image: 
+                linear-gradient(to right, rgba(156, 137, 255, 0.04) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(156, 137, 255, 0.04) 1px, transparent 1px);
+        }
+
+        .waveform-bar {
+            width: 3px;
+            background-color: #9C89FF;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background-dark text-text-main font-body h-screen w-screen overflow-hidden flex flex-col bg-grid">
+<!-- Header / Nav -->
+<header class="h-16 border-b border-primary/20 bg-background-dark/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-20">
+<div class="flex items-center gap-4">
+<!-- Insignia -->
+<div class="size-7 text-primary drop-shadow-[0_0_10px_rgba(156,137,255,0.6)]">
+<svg fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 42.4379C4 42.4379 14.0962 36.0744 24 41.1692C35.0664 46.8624 44 42.2078 44 42.2078L44 7.01134C44 7.01134 35.068 11.6577 24.0031 5.96913C14.0971 0.876274 4 7.27094 4 7.27094L4 42.4379Z"></path>
+</svg>
+</div>
+<h1 class="font-display text-2xl font-bold tracking-[0.05em] text-white uppercase">Starlog <span class="text-primary opacity-70 text-sm ml-2 font-mono">v2.5.0</span></h1>
+</div>
+<nav class="flex gap-8 font-display text-sm tracking-widest text-muted">
+<a class="text-primary drop-shadow-[0_0_8px_rgba(156,137,255,0.5)] flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">inbox</span>
+                COMMAND CENTER
+            </a>
+<a class="hover:text-text-main transition-all flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">hub</span>
+                ARTIFACT NEXUS
+            </a>
+<a class="hover:text-text-main transition-all flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">psychology</span>
+                NEURAL SYNC
+            </a>
+<a class="hover:text-text-main transition-all flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">calendar_month</span>
+                CHRONOS MATRIX
+            </a>
+</nav>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 text-xs font-mono text-success">
+<span class="size-2 rounded-full bg-success drop-shadow-[0_0_6px_rgba(34,197,94,0.8)] animate-pulse"></span>
+                SYS.READY
+            </div>
+<div class="w-10 h-10 rounded-lg border border-primary/30 bg-primary/10 flex items-center justify-center text-primary cursor-pointer hover:bg-primary/20 transition-all">
+<span class="material-symbols-outlined text-[22px]">person</span>
+</div>
+</div>
+</header>
+<!-- Main Workspace -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Left Panel: Clip List (320px) -->
+<aside class="w-[320px] flex-shrink-0 border-r border-primary/20 flex flex-col bg-surface/40 backdrop-blur-xl z-10 relative">
+<div class="p-5 border-b border-primary/10 flex justify-between items-center">
+<h2 class="font-display text-sm tracking-[0.15em] text-muted">INBOX QUEUE</h2>
+<div class="flex gap-3">
+<button class="text-muted hover:text-primary transition-colors"><span class="material-symbols-outlined text-[20px]">filter_list</span></button>
+<button class="text-muted hover:text-primary transition-colors"><span class="material-symbols-outlined text-[20px]">sort</span></button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-3 space-y-3">
+<!-- Unread Clip Item (Active/Selected) -->
+<div class="group relative bg-[#241B3D] border border-primary/40 rounded-lg p-4 cursor-pointer transition-all shadow-glow">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-mono text-primary-light flex items-center gap-1.5 font-bold uppercase">
+<span class="material-symbols-outlined text-[14px]">description</span> TEXT
+                        </span>
+<span class="text-[10px] font-mono text-muted">10:42 AM</span>
+</div>
+<h3 class="font-display font-bold text-white text-base truncate mb-1">Project Orion Specs</h3>
+<p class="font-body text-sm text-muted line-clamp-2">Initial requirements for the orbital tether system. Needs structural analysis before next quarter review...</p>
+</div>
+<!-- Unread Clip Item -->
+<div class="group relative bg-surface/60 hover:bg-[#241B3D]/50 border border-primary/10 hover:border-primary/30 rounded-lg p-4 cursor-pointer transition-all">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-mono text-primary flex items-center gap-1.5 uppercase">
+<span class="material-symbols-outlined text-[14px]">language</span> WEB
+                        </span>
+<span class="text-[10px] font-mono text-muted">09:15 AM</span>
+</div>
+<h3 class="font-display font-semibold text-text-main text-base truncate mb-1">Research: Quantum Entanglement</h3>
+<p class="font-body text-sm text-muted/80 line-clamp-2">New paper published regarding stable state entanglement over distances exceeding 500km...</p>
+</div>
+<!-- Read Clip Item -->
+<div class="group relative bg-surface/30 hover:bg-surface/50 border border-transparent hover:border-primary/20 rounded-lg p-4 cursor-pointer transition-all opacity-80">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[10px] font-mono text-muted flex items-center gap-1.5 uppercase">
+<span class="material-symbols-outlined text-[14px]">mic</span> AUDIO
+                        </span>
+<span class="text-[10px] font-mono text-muted">YESTERDAY</span>
+</div>
+<h3 class="font-display font-semibold text-muted text-base truncate mb-1">Captain's Log: Stardate 452.1</h3>
+<p class="font-body text-sm text-muted/60 line-clamp-2">Transcript generated. Minor anomalies detected in sector 4. Investigating plasma vent irregularities...</p>
+</div>
+</div>
+<div class="p-4 border-t border-primary/10 text-center">
+<span class="text-[10px] font-mono text-muted tracking-widest">4 UNPROCESSED / 142 TOTAL</span>
+</div>
+</aside>
+<!-- Center Panel: Reading Pane -->
+<section class="flex-1 flex flex-col relative z-0">
+<!-- Global Search Bar -->
+<div class="h-[72px] border-b border-primary/20 flex items-center justify-center px-10 bg-surface/10 backdrop-blur-sm">
+<div class="relative w-full max-w-2xl flex items-center">
+<span class="material-symbols-outlined absolute left-5 text-primary opacity-60">search</span>
+<input class="w-full h-12 bg-[#120B24] border border-primary/20 text-text-main font-body text-sm pl-14 pr-5 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/40 rounded-xl transition-all placeholder:text-muted/40" placeholder="Search archive, artifacts, or tasks..." type="text" value=""/>
+</div>
+</div>
+<!-- Reading Area -->
+<div class="flex-1 overflow-y-auto p-12 relative">
+<!-- Metadata Header -->
+<div class="max-w-3xl mx-auto mb-10">
+<div class="flex items-center gap-3 mb-4">
+<span class="px-3 py-1 border border-primary/30 bg-primary/10 text-primary-light font-mono text-[10px] rounded-full uppercase font-bold tracking-wider">RAW_TEXT</span>
+<span class="text-[12px] font-mono text-muted/60">ID: CL-992-84A</span>
+<span class="text-[12px] font-mono text-muted/60 ml-auto flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 2024-10-27
+                        </span>
+</div>
+<h1 class="font-display text-4xl font-bold tracking-tight text-white mb-2">Project Orion Specs</h1>
+<div class="h-1 w-24 bg-gradient-to-r from-primary to-transparent rounded-full"></div>
+</div>
+<!-- Text Content -->
+<div class="max-w-3xl mx-auto font-body text-lg leading-relaxed text-text-main/80 space-y-8">
+<p>Initial requirements for the orbital tether system. Needs structural analysis before next quarter review. Key materials include <span class="text-primary-light">carbon nanotubes</span> and <span class="text-primary-light">synthesized diamond filaments</span>.</p>
+<p>The primary concern raised by Dr. Vance during the last symposium was the tensile strength degradation when exposed to upper-atmospheric radiation over a 5-year period. We need to run simulations modeling a 15% increase in solar flare activity.</p>
+<div class="p-6 bg-surface/40 border border-primary/10 rounded-xl space-y-4">
+<h4 class="font-display font-bold text-primary tracking-wide uppercase text-sm">Action Items identified:</h4>
+<ul class="space-y-3 text-muted">
+<li class="flex gap-3 items-start">
+<span class="material-symbols-outlined text-primary text-[20px]">check_circle</span>
+<span>Schedule structural analysis w/ Engineering Team B (Due: Friday).</span>
+</li>
+<li class="flex gap-3 items-start">
+<span class="material-symbols-outlined text-primary text-[20px]">check_circle</span>
+<span>Source updated radiation shielding polymers from Vendor X7.</span>
+</li>
+<li class="flex gap-3 items-start">
+<span class="material-symbols-outlined text-primary text-[20px]">check_circle</span>
+<span>Draft budget variance report for the nanotube procurement.</span>
+</li>
+</ul>
+</div>
+<p class="italic text-muted/70 text-base border-l-2 border-primary/20 pl-6">Note: Keep this confidential until the Q3 earnings call. If the tether fails the simulated stress test at 40,000km, we will need to pivot back to the localized lift model.</p>
+</div>
+</div>
+</section>
+<!-- Right Panel: Combined AI Command & Chat (360px) -->
+<aside class="w-[360px] flex-shrink-0 border-l border-primary/20 bg-surface/80 backdrop-blur-2xl z-20 flex flex-col shadow-2xl">
+<!-- Header Tabs -->
+<div class="flex border-b border-primary/10 bg-background-dark/40">
+<button class="flex-1 p-4 text-[11px] font-display font-bold tracking-[0.2em] text-primary border-b-2 border-primary flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">bolt</span>
+                    AI AGENT
+                </button>
+<button class="flex-1 p-4 text-[11px] font-display font-bold tracking-[0.2em] text-muted hover:text-text-main transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">analytics</span>
+                    INSIGHTS
+                </button>
+</div>
+<!-- Agent Chat Interface -->
+<div class="flex-1 flex flex-col overflow-hidden">
+<!-- Chat History -->
+<div class="flex-1 overflow-y-auto p-5 space-y-6">
+<!-- AI Message -->
+<div class="flex gap-3 items-start">
+<div class="w-8 h-8 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-[18px]">smart_toy</span>
+</div>
+<div class="space-y-2 max-w-[85%]">
+<div class="bg-primary/10 border border-primary/10 p-3 rounded-lg rounded-tl-none text-sm text-text-main/90 leading-relaxed shadow-sm">
+                                Analyzing Project Orion document... I've identified 3 tasks and 5 key entities. Should I initialize the procurement workflow for Vendor X7?
+                            </div>
+<span class="text-[10px] font-mono text-muted">Aether Agent • Just now</span>
+</div>
+</div>
+<!-- User Message -->
+<div class="flex gap-3 items-start flex-row-reverse">
+<div class="w-8 h-8 rounded-lg bg-surface border border-primary/20 flex items-center justify-center text-muted shrink-0">
+<span class="material-symbols-outlined text-[18px]">person</span>
+</div>
+<div class="space-y-2 max-w-[85%] text-right">
+<div class="bg-background-dark/60 border border-primary/20 p-3 rounded-lg rounded-tr-none text-sm text-text-main/80">
+                                Yes, prepare the draft for the polymer order.
+                            </div>
+</div>
+</div>
+<!-- Agent Action Status -->
+<div class="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-center gap-3">
+<div class="relative w-5 h-5">
+<div class="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
+<div class="absolute inset-0 border-2 border-t-primary rounded-full animate-spin"></div>
+</div>
+<div class="flex-1">
+<div class="text-[11px] font-bold text-primary-light uppercase tracking-wider">Agent Performing Action</div>
+<div class="text-[10px] text-muted">Generating Purchase Request PR-772...</div>
+</div>
+</div>
+</div>
+<!-- Chat Input Area -->
+<div class="p-4 bg-background-dark/40 border-t border-primary/10">
+<div class="relative mb-3">
+<textarea class="w-full bg-surface/50 border border-primary/20 rounded-xl p-3 pb-12 text-sm text-text-main placeholder:text-muted/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 resize-none h-24 font-body" placeholder="Command the AI agent..."></textarea>
+<!-- Voice Input & Send -->
+<div class="absolute bottom-3 left-3 flex items-center gap-2">
+<button class="h-8 px-3 rounded-lg bg-primary/10 border border-primary/30 text-primary flex items-center gap-2 hover:bg-primary/20 transition-all group">
+<div class="flex items-center gap-1">
+<div class="waveform-bar animate-waveform" style="animation-delay: 0.1s"></div>
+<div class="waveform-bar animate-waveform" style="animation-delay: 0.3s; height: 16px"></div>
+<div class="waveform-bar animate-waveform" style="animation-delay: 0.2s"></div>
+<div class="waveform-bar animate-waveform" style="animation-delay: 0.4s; height: 12px"></div>
+</div>
+<span class="text-[10px] font-bold tracking-tighter group-hover:text-white transition-colors">VOICE</span>
+</button>
+</div>
+<button class="absolute bottom-3 right-3 w-8 h-8 rounded-lg bg-primary text-background-dark flex items-center justify-center hover:shadow-glow transition-all">
+<span class="material-symbols-outlined text-[20px]">send</span>
+</button>
+</div>
+<div class="text-[9px] font-mono text-muted/50 text-center uppercase tracking-widest">
+                        Aether AI can take actions in external modules
+                    </div>
+</div>
+</div>
+<!-- Terminal Output decorative -->
+<div class="h-16 bg-[#080512] border-t border-primary/20 p-3 overflow-hidden">
+<div class="font-mono text-[9px] text-primary/40 leading-tight">
+                    &gt; neural_sync_established: true<br/>
+                    &gt; agent_auth_token: valid<br/>
+                    &gt; monitoring_stream: <span class="text-primary/60 animate-pulse">ACTIVE</span>
+</div>
+</div>
+</aside>
+</main>
+<!-- Floating Action Bar -->
+<div class="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-1.5 bg-surface/80 backdrop-blur-xl border border-primary/20 rounded-full shadow-2xl z-30">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-primary/10 transition-all"><span class="material-symbols-outlined text-[20px]">add</span></button>
+<div class="w-px h-4 bg-primary/20"></div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-primary/10 transition-all"><span class="material-symbols-outlined text-[20px]">share</span></button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-primary/10 transition-all"><span class="material-symbols-outlined text-[20px]">archive</span></button>
+<div class="w-px h-4 bg-primary/20"></div>
+<button class="px-4 h-10 rounded-full flex items-center gap-2 text-primary font-display font-bold text-xs tracking-widest hover:bg-primary/10 transition-all">
+<span class="material-symbols-outlined text-[18px]">rocket_launch</span>
+            EXECUTE FLOW
+        </button>
+</div>
+</body></html>

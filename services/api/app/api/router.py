@@ -8,6 +8,7 @@ from app.api.routes import (
     briefings,
     calendar,
     capture,
+    conflicts,
     events,
     export,
     health,
@@ -22,6 +23,7 @@ from app.api.routes import (
     srs,
     sync,
     tasks,
+    workers,
 )
 
 api_router = APIRouter(prefix="/v1")
@@ -46,3 +48,5 @@ api_router.include_router(plugins.router, tags=["plugins"])
 api_router.include_router(importing.router, tags=["import"])
 api_router.include_router(ops.router, tags=["ops"])
 api_router.include_router(export.router, tags=["export"])
+api_router.include_router(workers.router, tags=["workers"])
+api_router.include_router(conflicts.router, tags=["conflicts"])

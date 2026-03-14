@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Starlog - Chronos Matrix</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Rajdhani:wght@500;600;700&amp;family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#9C89FF",
+                        "primary-soft": "#B8ACFF",
+                        "background-light": "#0F0A1F",
+                        "background-dark": "#0A0614",
+                        "surface": "rgba(25, 18, 45, 0.7)",
+                        "surface-border": "rgba(156, 137, 255, 0.2)",
+                        "amber": "#F59E0B",
+                        "lavender": "#F0EEFF",
+                        "muted": "#94A3B8",
+                        "text-main": "#F0EEFF"
+                    },
+                    fontFamily: {
+                        "display": ["Rajdhani", "sans-serif"],
+                        "body": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                        "grotesk": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "8px",
+                        "sm": "8px",
+                        "md": "8px",
+                        "lg": "8px",
+                        "xl": "12px",
+                        "full": "9999px"
+                    },
+                    boxShadow: {
+                        'neon': '0 0 15px rgba(156, 137, 255, 0.3)',
+                        'neon-soft': '0 0 15px rgba(184, 172, 255, 0.3)',
+                        'neon-amber': '0 0 15px rgba(245, 158, 11, 0.3)'
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #0A0614;
+            color: #F0EEFF;
+            background-image: 
+                linear-gradient(rgba(156, 137, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(156, 137, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+        .glass-panel {
+            background-color: rgba(25, 18, 45, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(156, 137, 255, 0.2);
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(10, 6, 20, 0.8);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 137, 255, 0.2);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 137, 255, 0.4);
+        }
+        .time-slot {
+            height: 20px; /* 15 minutes */
+            border-bottom: 1px solid rgba(156, 137, 255, 0.08);
+        }
+        .time-slot-hour {
+            border-bottom: 1px solid rgba(156, 137, 255, 0.15);
+        }
+    </style>
+</head>
+<body class="font-body h-screen w-full flex flex-col overflow-hidden">
+<!-- TopNav -->
+<div class="relative flex w-full flex-col z-50">
+<header class="h-16 flex items-center justify-between whitespace-nowrap border-b border-primary/20 bg-background-dark/80 backdrop-blur-md px-6">
+<div class="flex items-center gap-4">
+<div class="size-8 text-primary drop-shadow-[0_0_10px_rgba(156,137,255,0.6)]">
+<svg fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 42.4379C4 42.4379 14.0962 36.0744 24 41.1692C35.0664 46.8624 44 42.2078 44 42.2078L44 7.01134C44 7.01134 35.068 11.6577 24.0031 5.96913C14.0971 0.876274 4 7.27094 4 7.27094L4 42.4379Z"></path>
+</svg>
+</div>
+<h2 class="font-display text-2xl font-bold tracking-[0.05em] uppercase text-white">Starlog</h2>
+</div>
+<div class="flex flex-1 justify-end">
+<nav class="flex items-center gap-8 font-display uppercase tracking-widest text-sm font-semibold">
+<a class="text-muted hover:text-primary transition-all flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[18px]">inbox</span>
+                    COMMAND CENTER
+                </a>
+<a class="text-muted hover:text-primary transition-all flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[18px]">hub</span>
+                    ARTIFACT NEXUS
+                </a>
+<a class="text-muted hover:text-primary transition-all flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+                    NEURAL SYNC
+                </a>
+<a class="text-primary flex items-center gap-2 drop-shadow-[0_0_8px_rgba(156,137,255,0.5)] border-b-2 border-primary pb-1" href="#">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+                    CHRONOS MATRIX
+                </a>
+</nav>
+</div>
+</header>
+</div>
+<!-- Main Content -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Sidebar: Unscheduled Task Pool -->
+<aside class="w-[320px] flex-shrink-0 border-r border-primary/20 bg-surface/40 backdrop-blur-xl flex flex-col z-10 m-3 rounded-lg">
+<div class="p-5 border-b border-primary/20 flex flex-col gap-2">
+<h1 class="font-display text-sm tracking-[0.15em] text-muted uppercase">Tactical Timeline</h1>
+<div class="flex h-10 mt-4 items-center justify-center border border-primary/20 bg-background-dark/50 p-1 rounded-lg">
+<label class="flex cursor-pointer h-full grow items-center justify-center px-2 has-[:checked]:bg-primary/20 has-[:checked]:text-primary-soft has-[:checked]:border has-[:checked]:border-primary/30 text-muted font-display text-[11px] font-bold uppercase tracking-wider transition-all rounded-md">
+<span class="truncate">3-Day Cycle</span>
+<input checked="" class="invisible w-0" name="view-cycle" type="radio" value="3-Day"/>
+</label>
+<label class="flex cursor-pointer h-full grow items-center justify-center px-2 has-[:checked]:bg-primary/20 has-[:checked]:text-primary-soft has-[:checked]:border has-[:checked]:border-primary/30 text-muted font-display text-[11px] font-bold uppercase tracking-wider transition-all rounded-md">
+<span class="truncate">7-Day Cycle</span>
+<input class="invisible w-0" name="view-cycle" type="radio" value="7-Day"/>
+</label>
+</div>
+</div>
+<div class="p-4 flex-1 overflow-y-auto">
+<h3 class="font-display text-[11px] font-bold uppercase tracking-[0.2em] text-muted mb-4 border-b border-primary/10 pb-2">Unscheduled Task Pool</h3>
+<div class="flex flex-col gap-3">
+<!-- Task Card 1 (Urgent) -->
+<div class="group flex items-center bg-[#241B3D]/40 border border-amber/30 hover:border-amber hover:shadow-amber-glow p-3 cursor-grab transition-all rounded-lg">
+<div class="text-muted group-hover:text-amber cursor-grab pr-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">drag_indicator</span>
+</div>
+<div class="flex flex-col justify-center flex-1">
+<p class="text-text-main font-grotesk text-sm font-medium leading-tight truncate">Extract coordinates from Delta-9 transmission</p>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-1.5 h-1.5 bg-amber rounded-full animate-pulse"></span>
+<p class="text-amber font-mono text-[10px] uppercase">Urgent • 30m</p>
+</div>
+</div>
+</div>
+<!-- Task Card 2 (Deep Work) -->
+<div class="group flex items-center bg-[#241B3D]/40 border border-primary/30 hover:border-primary hover:shadow-neon p-3 cursor-grab transition-all rounded-lg">
+<div class="text-muted group-hover:text-primary cursor-grab pr-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">drag_indicator</span>
+</div>
+<div class="flex flex-col justify-center flex-1">
+<p class="text-text-main font-grotesk text-sm font-medium leading-tight truncate">Compile sector anomalous readings report</p>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-1.5 h-1.5 bg-primary rounded-full"></span>
+<p class="text-primary font-mono text-[10px] uppercase">Deep Work • 120m</p>
+</div>
+</div>
+</div>
+<!-- Task Card 3 (Standard) -->
+<div class="group flex items-center bg-surface/30 border border-primary/10 hover:border-primary/40 p-3 cursor-grab transition-all opacity-80 hover:opacity-100 rounded-lg">
+<div class="text-muted group-hover:text-primary-soft cursor-grab pr-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">drag_indicator</span>
+</div>
+<div class="flex flex-col justify-center flex-1">
+<p class="text-text-main font-grotesk text-sm font-medium leading-tight truncate">Review incoming manifest logs</p>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-1.5 h-1.5 bg-muted/40 rounded-full"></span>
+<p class="text-muted font-mono text-[10px] uppercase">Standard • 45m</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Time Grid -->
+<div class="flex-1 flex flex-col relative bg-background-dark/40 overflow-hidden mt-3 mr-3 mb-3 rounded-lg border border-primary/20">
+<!-- Days Header -->
+<div class="sticky top-0 z-20 flex bg-background-dark/95 backdrop-blur-md border-b border-primary/20 ml-16">
+<div class="flex-1 py-4 text-center border-r border-primary/10">
+<h4 class="font-display font-bold text-primary-soft uppercase tracking-widest text-sm">Cycle 1</h4>
+<p class="font-mono text-muted text-[10px] mt-0.5">T-0</p>
+</div>
+<div class="flex-1 py-4 text-center border-r border-primary/10 bg-primary/5">
+<h4 class="font-display font-bold text-white uppercase tracking-widest text-sm drop-shadow-[0_0_8px_rgba(156,137,255,0.4)]">Cycle 2</h4>
+<p class="font-mono text-muted text-[10px] mt-0.5">T+1</p>
+</div>
+<div class="flex-1 py-4 text-center">
+<h4 class="font-display font-bold text-muted uppercase tracking-widest text-sm">Cycle 3</h4>
+<p class="font-mono text-muted text-[10px] mt-0.5">T+2</p>
+</div>
+</div>
+<!-- Grid Scroll Container -->
+<div class="flex-1 overflow-y-auto relative">
+<div class="flex relative min-h-[1200px]">
+<!-- Time Column -->
+<div class="w-16 flex-shrink-0 bg-background-dark/60 border-r border-primary/20 flex flex-col z-10 absolute left-0 top-0 bottom-0">
+<!-- Hours 08:00 to 14:00+ -->
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-muted">08:00</span></div>
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-primary">09:00</span></div>
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-muted">10:00</span></div>
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-muted">11:00</span></div>
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-muted">12:00</span></div>
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-muted">13:00</span></div>
+<div class="h-20 border-b border-primary/10 flex justify-end pr-2 pt-1"><span class="font-mono text-[11px] text-muted">14:00</span></div>
+</div>
+<!-- Days Columns -->
+<div class="flex-1 flex ml-16 relative">
+<!-- Current Time Indicator -->
+<div class="absolute w-full h-px bg-primary z-20 top-[120px] pointer-events-none shadow-neon">
+<div class="absolute -left-1.5 -top-1.5 w-3 h-3 bg-primary rounded-full shadow-neon"></div>
+</div>
+<!-- Day 1 Grid -->
+<div class="flex-1 border-r border-primary/10 relative">
+<!-- 15m granularity blocks -->
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<!-- Scheduled Task Block (Primary Violet) -->
+<div class="absolute top-[20px] left-1 right-1 h-[60px] bg-[#241B3D] border border-primary/50 backdrop-blur-md p-3 group cursor-pointer hover:border-primary transition-all z-10 rounded-lg shadow-glow">
+<div class="flex justify-between items-start">
+<p class="font-grotesk text-xs font-bold text-white truncate">Calibrate sensor array</p>
+<span class="material-symbols-outlined text-[16px] text-primary opacity-50 group-hover:opacity-100">more_vert</span>
+</div>
+<p class="font-mono text-[10px] text-primary-soft mt-1.5 font-bold uppercase">08:15 - 09:00</p>
+</div>
+</div>
+<!-- Day 2 Grid -->
+<div class="flex-1 border-r border-primary/10 bg-primary/[0.02] relative">
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<!-- Scheduled Task Block (Amber Alert) -->
+<div class="absolute top-[80px] left-1 right-1 h-[40px] bg-amber/10 border border-amber/40 backdrop-blur-md p-2 group cursor-pointer hover:bg-amber/20 hover:border-amber transition-all z-10 rounded-lg">
+<div class="flex justify-between items-start">
+<p class="font-grotesk text-xs font-bold text-amber truncate">Comm. relay emergency patch</p>
+</div>
+<p class="font-mono text-[10px] text-amber/80 mt-1 font-bold uppercase">09:00 - 09:30</p>
+</div>
+</div>
+<!-- Day 3 Grid -->
+<div class="flex-1 relative">
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+<div class="time-slot"></div><div class="time-slot"></div><div class="time-slot"></div><div class="time-slot time-slot-hour"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

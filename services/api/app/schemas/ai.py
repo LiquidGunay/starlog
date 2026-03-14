@@ -38,6 +38,9 @@ class AIJobResponse(BaseModel):
     provider_used: str | None = None
     artifact_id: str | None = None
     action: str | None = None
+    requested_targets: list[str] = Field(default_factory=list)
+    selected_target: str | None = None
+    claimed_worker_class: str | None = None
     payload: dict = Field(default_factory=dict)
     output: dict = Field(default_factory=dict)
     error_text: str | None = None
@@ -49,6 +52,10 @@ class AIJobResponse(BaseModel):
 
 class AIJobClaimRequest(BaseModel):
     worker_id: str = Field(..., min_length=1)
+
+
+class AIJobClaimNextRequest(BaseModel):
+    capabilities: list[Capability] = Field(default_factory=list)
 
 
 class AIJobCompleteRequest(BaseModel):
@@ -69,3 +76,13 @@ class AIJobCancelRequest(BaseModel):
 
 class AIJobRetryRequest(BaseModel):
     provider_hint: str | None = None
+
+
+class WorkerAIJobCompleteRequest(BaseModel):
+    provider_used: str = Field(..., min_length=1)
+    output: dict = Field(default_factory=dict)
+
+
+class WorkerAIJobFailRequest(BaseModel):
+    error_text: str = Field(..., min_length=1)
+    provider_used: str | None = None

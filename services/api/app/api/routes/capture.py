@@ -37,7 +37,7 @@ def capture_voice(
     title: str | None = Form(default=None),
     source_url: str | None = Form(default=None),
     duration_ms: int | None = Form(default=None),
-    provider_hint: str = Form(default="whisper_local"),
+    provider_hint: str | None = Form(default=None),
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> VoiceCaptureResponse:

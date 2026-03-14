@@ -2,10 +2,11 @@ from sqlite3 import Connection
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import get_db, require_user_id
+from app.api.deps import get_db, require_user_id, require_worker_session
 from app.schemas.ai import (
     AIJobCancelRequest,
     AIJobClaimRequest,
+    AIJobClaimNextRequest,
     AIJobCompleteRequest,
     AIJobCreateRequest,
     AIJobFailRequest,
@@ -13,6 +14,8 @@ from app.schemas.ai import (
     AIJobResponse,
     AIRequest,
     AIResponse,
+    WorkerAIJobCompleteRequest,
+    WorkerAIJobFailRequest,
 )
 from app.services import ai_jobs_service, ai_service
 
@@ -164,3 +167,65 @@ def retry_ai_job(
     if retried is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return AIJobResponse.model_validate(retried)
+
+
+@router.post("/jobs/claim-next", response_model=AIJobResponse)
+def claim_next_ai_job(
+    payload: AIJobClaimNextRequest,
+    worker_session: dict = Depends(require_worker_session),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    capabilities = payload.capabilities or list(worker_session.get("capabilities") or [])
+    claimed = ai_jobs_service.claim_next_job_for_worker(
+        db,
+        worker_id=str(worker_session["worker_id"]),
+        worker_class=str(worker_session["worker_class"]),
+        capabilities=capabilities,
+    )
+    if claimed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No pending job available")
+    return AIJobResponse.model_validate(claimed)
+
+
+@router.post("/jobs/{job_id}/worker-complete", response_model=AIJobResponse)
+def worker_complete_ai_job(
+    job_id: str,
+    payload: WorkerAIJobCompleteRequest,
+    worker_session: dict = Depends(require_worker_session),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    try:
+        completed = ai_jobs_service.complete_job(
+            db,
+            job_id,
+            worker_id=str(worker_session["worker_id"]),
+            provider_used=payload.provider_used,
+            output=payload.output,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if completed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return AIJobResponse.model_validate(completed)
+
+
+@router.post("/jobs/{job_id}/worker-fail", response_model=AIJobResponse)
+def worker_fail_ai_job(
+    job_id: str,
+    payload: WorkerAIJobFailRequest,
+    worker_session: dict = Depends(require_worker_session),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    try:
+        failed = ai_jobs_service.fail_job(
+            db,
+            job_id,
+            worker_id=str(worker_session["worker_id"]),
+            error_text=payload.error_text,
+            provider_used=payload.provider_used,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if failed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return AIJobResponse.model_validate(failed)

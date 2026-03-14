@@ -44,6 +44,12 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
   - stale lock timeout is 10 minutes
   - release lock on completion or handoff
   - forced lock steal requires an explicit reason and must be appended to `audit.jsonl`
+- Preferred command helper:
+  - Initialize registry: `python3 scripts/workitem_lock.py init`
+  - Claim: `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --force-steal --reason "<reason>"` (omit `--force-steal` for normal claim)
+  - Heartbeat: `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent>`
+  - Release: `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
+  - Inspect status: `python3 scripts/workitem_lock.py status [--workitem-id <id>]`
 - Required usage flow for every agent:
   1) Identify the `workitem_id` in `workitems.json`, then acquire `.registry.lock` before reading/updating lock state.
   2) On claim, verify `locks/<workitem_id>.lock` is absent or stale (`last_heartbeat_at` older than 10 minutes). If active and not stale, do not proceed.
@@ -168,6 +174,7 @@ Troubleshooting checklist:
 - 2026-03-14: User wants merge-conflict resolution insights logged in `AGENTS.md` Issue log whenever discovered.
 - 2026-03-14: User wants Android mobile testing runs performed with the physical device kept unlocked throughout execution.
 - 2026-03-14: User wants explicit lock claim/heartbeat/release/force-steal usage instructions documented in `AGENTS.md`.
+- 2026-03-14: User wants the current architecture/workflow plan kept in a dedicated markdown file under `docs/`.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.

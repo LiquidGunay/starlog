@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_at TEXT,
   linked_note_id TEXT,
   source_artifact_id TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (linked_note_id) REFERENCES notes(id),
@@ -185,6 +186,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   etag TEXT,
   deleted INTEGER NOT NULL DEFAULT 0,
   deleted_at TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -196,6 +198,7 @@ CREATE TABLE IF NOT EXISTS time_blocks (
   starts_at TEXT NOT NULL,
   ends_at TEXT NOT NULL,
   locked INTEGER NOT NULL DEFAULT 0,
+  revision INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id)
 );
@@ -256,6 +259,9 @@ CREATE TABLE IF NOT EXISTS ai_jobs (
   provider_used TEXT,
   artifact_id TEXT,
   action TEXT,
+  requested_targets_json TEXT,
+  selected_target TEXT,
+  claimed_worker_class TEXT,
   payload_json TEXT NOT NULL,
   output_json TEXT,
   error_text TEXT,
@@ -307,6 +313,49 @@ CREATE TABLE IF NOT EXISTS plugins (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS worker_pairings (
+  id TEXT PRIMARY KEY,
+  pairing_token_hash TEXT NOT NULL UNIQUE,
+  created_by_user_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  worker_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS worker_sessions (
+  id TEXT PRIMARY KEY,
+  worker_id TEXT NOT NULL UNIQUE,
+  worker_label TEXT NOT NULL,
+  worker_class TEXT NOT NULL,
+  capabilities_json TEXT NOT NULL,
+  access_token_hash TEXT NOT NULL UNIQUE,
+  refresh_token_hash TEXT NOT NULL UNIQUE,
+  access_expires_at TEXT NOT NULL,
+  refresh_expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  revocation_reason TEXT,
+  last_seen_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS entity_conflicts (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  current_revision INTEGER NOT NULL,
+  local_payload_json TEXT NOT NULL,
+  server_payload_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  resolution_strategy TEXT,
+  resolution_payload_json TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_sync_events_id ON sync_events(id);
 CREATE INDEX IF NOT EXISTS idx_sync_activity_recorded ON sync_activity(recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_activity_client ON sync_activity(client_id, recorded_at DESC);
@@ -324,10 +373,14 @@ CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
 CREATE INDEX IF NOT EXISTS idx_app_settings_updated ON app_settings(updated_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_status_created ON ai_jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_provider_status ON ai_jobs(provider_hint, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_jobs_selected_target ON ai_jobs(selected_target, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_google_remote_updated ON google_remote_events(updated_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_created ON calendar_sync_conflicts(created_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_conflicts_resolved ON calendar_sync_conflicts(resolved, created_at);
 CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
+CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expires_at);
+CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
 """
 
 
@@ -361,11 +414,65 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     # Keep local dev DBs forward-compatible when columns are added after initial bootstrap.
     _ensure_column(conn, "calendar_events", "deleted", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "calendar_events", "deleted_at", "TEXT")
+    _ensure_column(conn, "calendar_events", "revision", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(conn, "google_remote_events", "deleted", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "google_remote_events", "deleted_at", "TEXT")
     _ensure_column(conn, "calendar_sync_conflicts", "resolved", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "calendar_sync_conflicts", "resolved_at", "TEXT")
     _ensure_column(conn, "calendar_sync_conflicts", "resolution_strategy", "TEXT")
+    _ensure_column(conn, "tasks", "revision", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "time_blocks", "revision", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "ai_jobs", "requested_targets_json", "TEXT")
+    _ensure_column(conn, "ai_jobs", "selected_target", "TEXT")
+    _ensure_column(conn, "ai_jobs", "claimed_worker_class", "TEXT")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS worker_pairings (
+          id TEXT PRIMARY KEY,
+          pairing_token_hash TEXT NOT NULL UNIQUE,
+          created_by_user_id TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          used_at TEXT,
+          worker_id TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS worker_sessions (
+          id TEXT PRIMARY KEY,
+          worker_id TEXT NOT NULL UNIQUE,
+          worker_label TEXT NOT NULL,
+          worker_class TEXT NOT NULL,
+          capabilities_json TEXT NOT NULL,
+          access_token_hash TEXT NOT NULL UNIQUE,
+          refresh_token_hash TEXT NOT NULL UNIQUE,
+          access_expires_at TEXT NOT NULL,
+          refresh_expires_at TEXT NOT NULL,
+          revoked_at TEXT,
+          revocation_reason TEXT,
+          last_seen_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS entity_conflicts (
+          id TEXT PRIMARY KEY,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          base_revision INTEGER NOT NULL,
+          current_revision INTEGER NOT NULL,
+          local_payload_json TEXT NOT NULL,
+          server_payload_json TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TEXT NOT NULL,
+          resolved_at TEXT,
+          resolution_strategy TEXT,
+          resolution_payload_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_jobs_selected_target ON ai_jobs(selected_target, status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
+        CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
+        """
+    )
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:

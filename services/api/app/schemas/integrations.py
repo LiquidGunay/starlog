@@ -48,7 +48,21 @@ class CodexBridgeContractResponse(BaseModel):
     derived_endpoints: dict[str, str] = Field(default_factory=dict)
 
 
-ExecutionTarget = Literal["on_device", "server_local", "batch_local_bridge", "codex_bridge", "api_fallback"]
+# Canonical v2 targets:
+# - mobile_bridge
+# - desktop_bridge
+# - api
+# Legacy values remain accepted for backward compatibility and are normalized server-side.
+ExecutionTarget = Literal[
+    "mobile_bridge",
+    "desktop_bridge",
+    "api",
+    "on_device",
+    "server_local",
+    "batch_local_bridge",
+    "codex_bridge",
+    "api_fallback",
+]
 
 
 class ExecutionPolicyRequest(BaseModel):
@@ -61,4 +75,5 @@ class ExecutionPolicyRequest(BaseModel):
 class ExecutionPolicyResponse(ExecutionPolicyRequest):
     version: int = 1
     available_targets: dict[str, list[ExecutionTarget]] = Field(default_factory=dict)
+    resolved_routes: dict[str, dict] = Field(default_factory=dict)
     updated_at: datetime | None = None
