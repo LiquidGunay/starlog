@@ -108,6 +108,7 @@
 - Added `POST /v1/agent/command/voice`, which queues STT jobs with `action=assistant_command` and executes the command planner automatically when transcription completes.
 - Added `/assistant`, the first chat-style command shell in the PWA, with backend-loaded examples, in-browser voice recording, queued Codex planning/execution jobs, local snapshot-backed history, and recent command/job inspection.
 - Integrations workspace now includes editable execution-policy JSON so the same preference ordering can later be honored by phone-local runtimes too.
+- Added a guarded phone-local LLM contract endpoint (`/v1/integrations/providers/mobile_llm/contract`) plus Integrations UI visibility for runtime state, capability checks, blockers, and explicit fallback guidance (`mobile_bridge -> desktop_bridge -> api`).
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
 - Mobile companion now exposes on-device TTS for selected artifact playback.
 - Briefings can now queue local TTS audio rendering jobs through `/v1/briefings/{briefing_id}/audio/render`, attach rendered media back onto the package, and be cached/played from pre-rendered audio on phone.
@@ -137,5 +138,5 @@
 2. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
 3. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
 4. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
-5. Add per-scope cache eviction policies and clearer quota-pressure recovery guidance on top of the current IndexedDB cache controls.
-6. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.
+5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, sync-center, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
+6. Move from the new phone-local LLM contract/feasibility guardrails to a real mobile worker runtime path once Android-side local model runtime integration is proven practical.

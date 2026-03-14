@@ -59,6 +59,14 @@ CODEX_BRIDGE_SUPPORTED_AUTH = ["api_key", "access_token", "token"]
 CODEX_BRIDGE_SUPPORTED_CAPABILITIES = ["llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"]
 CODEX_BRIDGE_UNSUPPORTED_CAPABILITIES = ["stt", "tts", "ocr"]
 
+PHONE_LOCAL_LLM_FEATURE_FLAG_KEY = "phone_local_llm_enabled"
+PHONE_LOCAL_LLM_REQUIRED_CAPABILITIES = ["llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"]
+PHONE_LOCAL_LLM_REQUIRED_RUNTIME = [
+    "mobile worker session registered as worker_class=mobile_bridge",
+    "worker capability list includes llm_summary, llm_cards, llm_tasks, llm_agent_plan",
+    f"provider config mobile_llm enabled with config.{PHONE_LOCAL_LLM_FEATURE_FLAG_KEY}=true",
+]
+
 
 def _decoded_config(row: dict) -> dict:
     config = row.get("config_json")
@@ -349,6 +357,72 @@ def codex_bridge_runtime_config(conn: Connection) -> tuple[dict | None, list[str
     if provider is None or not state["execute_enabled"]:
         return None, list(state["missing_requirements"])
     return dict(provider["config"]), []
+
+
+def mobile_llm_contract(conn: Connection) -> dict:
+    from app.services import worker_service
+
+    provider = get_provider_config(conn, "mobile_llm", redact=False)
+    provider_enabled = bool(provider["enabled"]) if provider is not None else False
+    provider_config = dict(provider["config"]) if provider is not None else {}
+    phone_local_runtime_supported = provider_enabled and _truthy(provider_config.get(PHONE_LOCAL_LLM_FEATURE_FLAG_KEY))
+
+    capability_checks: dict[str, bool] = {}
+    for capability in PHONE_LOCAL_LLM_REQUIRED_CAPABILITIES:
+        online_classes = worker_service.online_worker_classes_for_capability(conn, capability)
+        capability_checks[capability] = "mobile_bridge" in online_classes
+
+    mobile_bridge_worker_online = any(capability_checks.values())
+    all_capabilities_online = all(capability_checks.values()) if capability_checks else False
+
+    blockers: list[str] = []
+    if not mobile_bridge_worker_online:
+        blockers.append("No online mobile_bridge worker session is available.")
+    elif not all_capabilities_online:
+        missing = [name for name, ok in capability_checks.items() if not ok]
+        blockers.append(
+            "Mobile bridge worker is online but missing LLM capabilities: " + ", ".join(missing)
+        )
+
+    if provider is None:
+        blockers.append("mobile_llm provider config is missing.")
+    elif not provider_enabled:
+        blockers.append("mobile_llm provider is disabled.")
+    elif not phone_local_runtime_supported:
+        blockers.append(
+            f"Set mobile_llm config.{PHONE_LOCAL_LLM_FEATURE_FLAG_KEY}=true to enable experimental phone-local routing."
+        )
+
+    runtime_state = (
+        "experimental_available"
+        if phone_local_runtime_supported and all_capabilities_online
+        else "unavailable"
+    )
+
+    return {
+        "contract_version": 1,
+        "provider_name": "mobile_llm",
+        "summary": (
+            "Phone-local LLM routing is currently guarded and considered experimental. "
+            "Starlog can only route to mobile_bridge when a mobile worker advertises all "
+            "required LLM capabilities and the mobile_llm provider is explicitly enabled."
+        ),
+        "runtime_state": runtime_state,
+        "feature_flag_key": PHONE_LOCAL_LLM_FEATURE_FLAG_KEY,
+        "route_target": "mobile_bridge",
+        "required_capabilities": PHONE_LOCAL_LLM_REQUIRED_CAPABILITIES,
+        "capability_checks": capability_checks,
+        "required_runtime": PHONE_LOCAL_LLM_REQUIRED_RUNTIME,
+        "mobile_bridge_worker_online": mobile_bridge_worker_online,
+        "phone_local_runtime_supported": phone_local_runtime_supported,
+        "blockers": blockers,
+        "recommended_policy_order": ["mobile_bridge", "desktop_bridge", "api"],
+        "safe_fallback": (
+            "If phone-local routing is unavailable, keep policy order mobile_bridge -> "
+            "desktop_bridge -> api so queued jobs still complete through laptop or API fallback."
+        ),
+        "checked_at": utc_now().isoformat(),
+    }
 
 
 def _probe_authenticated_endpoint(

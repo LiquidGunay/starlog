@@ -175,10 +175,10 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 ### 6. PWA offline voice capture queue
 
-- Branch: `codex/pwa-offline-voice-queue`
-- Workitem ID: `WI-206`
-- Lock: `UNCLAIMED | Workitem: WI-206 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: add browser-side offline voice capture queueing with reconnect upload/transcription replay.
+- Branch: `codex/phone-local-llm`
+- Workitem ID: `WI-106`
+- Lock: `HELD | Workitem: WI-106 | Owner: Agent Implementer-A | Claimed: 2026-03-14 17:44 UTC | Last heartbeat: 2026-03-14 17:50 UTC`
+- Goal: explore and land the first viable phone-local LLM execution path behind the shared policy model.
 - Scope:
   - persist recorded media blobs locally,
   - queue upload/transcribe jobs when offline,

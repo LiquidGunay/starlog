@@ -71,51 +71,23 @@ type CodexBridgeContract = {
   verified_at: string;
 };
 
-const INTEGRATIONS_PROVIDERS_SNAPSHOT = "integrations.providers";
-const INTEGRATIONS_HEALTH_SNAPSHOT = "integrations.health";
-const INTEGRATIONS_POLICY_SNAPSHOT = "integrations.policy";
-const INTEGRATIONS_CONTRACT_SNAPSHOT = "integrations.contract";
-const INTEGRATIONS_CACHE_PREFIXES = ["integrations."];
-const INTEGRATIONS_PROVIDERS_ENTITY_SCOPE = "integrations.providers";
-const INTEGRATIONS_HEALTH_ENTITY_SCOPE = "integrations.health";
-
-function cacheProviders(providers: ProviderConfig[]): void {
-  void replaceEntityCacheScope(
-    INTEGRATIONS_PROVIDERS_ENTITY_SCOPE,
-    providers.map((provider) => ({
-      id: provider.provider_name,
-      value: provider,
-      updated_at: provider.updated_at,
-      search_text: `${provider.provider_name} ${provider.mode} ${provider.enabled ? "enabled" : "disabled"}`,
-    })),
-  );
-}
-
-function cacheProviderHealth(healthByProvider: Record<string, ProviderHealth>): void {
-  const recordedAt = new Date().toISOString();
-  void replaceEntityCacheScope(
-    INTEGRATIONS_HEALTH_ENTITY_SCOPE,
-    Object.entries(healthByProvider).map(([providerName, health]) => ({
-      id: providerName,
-      value: health,
-      updated_at: recordedAt,
-      search_text: `${providerName} ${health.healthy ? "healthy" : "unhealthy"} ${health.detail}`,
-    })),
-  );
-}
-
-function parsePolicyFields(policy: ExecutionPolicy): string {
-  return JSON.stringify(
-    {
-      llm: policy.llm,
-      stt: policy.stt,
-      tts: policy.tts,
-      ocr: policy.ocr,
-    },
-    null,
-    2,
-  );
-}
+type MobileLLMContract = {
+  contract_version: number;
+  provider_name: string;
+  summary: string;
+  runtime_state: "unavailable" | "experimental_available";
+  feature_flag_key: string;
+  route_target: "mobile_bridge";
+  required_capabilities: string[];
+  capability_checks: Record<string, boolean>;
+  required_runtime: string[];
+  mobile_bridge_worker_online: boolean;
+  phone_local_runtime_supported: boolean;
+  blockers: string[];
+  recommended_policy_order: Array<"mobile_bridge" | "desktop_bridge" | "api">;
+  safe_fallback: string;
+  checked_at: string;
+};
 
 export default function IntegrationsPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
@@ -141,12 +113,9 @@ export default function IntegrationsPage() {
       2,
     ),
   );
-  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(
-    () => readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_SNAPSHOT, null),
-  );
-  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(
-    () => readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CONTRACT_SNAPSHOT, null),
-  );
+  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(null);
+  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(null);
+  const [mobileLlmContract, setMobileLlmContract] = useState<MobileLLMContract | null>(null);
   const [status, setStatus] = useState("Ready");
 
   useEffect(() => {
@@ -220,13 +189,15 @@ export default function IntegrationsPage() {
 
   const loadProviders = useCallback(async () => {
     try {
-      const [payload, policy, contract] = await Promise.all([
+      const [payload, policy, codex, mobileLlm] = await Promise.all([
         apiRequest<ProviderConfig[]>(apiBase, token, "/v1/integrations/providers"),
         apiRequest<ExecutionPolicy>(apiBase, token, "/v1/integrations/execution-policy"),
         apiRequest<CodexBridgeContract>(apiBase, token, "/v1/integrations/providers/codex_bridge/contract"),
+        apiRequest<MobileLLMContract>(apiBase, token, "/v1/integrations/providers/mobile_llm/contract"),
       ]);
       setProviders(payload);
-      setCodexContract(contract);
+      setCodexContract(codex);
+      setMobileLlmContract(mobileLlm);
 
       const healthPairs = await Promise.all(
         payload.map(async (provider) => {
@@ -241,17 +212,19 @@ export default function IntegrationsPage() {
       const healthMap = Object.fromEntries(healthPairs);
       setHealthByProvider(healthMap);
       setPolicyMeta(policy);
-      setPolicyJson(parsePolicyFields(policy));
-
-      writeEntitySnapshot(INTEGRATIONS_PROVIDERS_SNAPSHOT, payload);
-      writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, healthMap);
-      writeEntitySnapshot(INTEGRATIONS_POLICY_SNAPSHOT, policy);
-      writeEntitySnapshot(INTEGRATIONS_CONTRACT_SNAPSHOT, contract);
-      cacheProviders(payload);
-      cacheProviderHealth(healthMap);
-      clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
-
-      setStatus(`Loaded ${payload.length} provider config(s) and Codex bridge contract`);
+      setPolicyJson(
+        JSON.stringify(
+          {
+            llm: policy.llm,
+            stt: policy.stt,
+            tts: policy.tts,
+            ocr: policy.ocr,
+          },
+          null,
+          2,
+        ),
+      );
+      setStatus(`Loaded ${payload.length} provider config(s), Codex bridge contract, and phone-local LLM contract`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load providers";
       setStatus(
@@ -565,7 +538,7 @@ export default function IntegrationsPage() {
             Define priority order per capability using canonical targets: `mobile_bridge`, `desktop_bridge`, and `api`.
           </p>
           <p className="console-copy">
-            Android companion builds can honor <code>{"stt: [\"mobile_bridge\", ...]"}</code> for on-device-first command capture; if local probing fails, routing falls back through desktop bridge then API according to policy order.
+            Keep LLM order as <code>{"[\"mobile_bridge\", \"desktop_bridge\", \"api\"]"}</code> to prefer phone-local worker routing first while preserving desktop/API fallback.
           </p>
           {policyMeta ? (
             <p className="console-copy">
@@ -590,6 +563,51 @@ export default function IntegrationsPage() {
               Save Execution Policy
             </button>
           </div>
+        </div>
+
+        <div className="panel glass">
+          <h2>Phone-local LLM contract</h2>
+          {!mobileLlmContract ? (
+            <p className="console-copy">Refresh the provider list to load phone-local LLM feasibility and routing state.</p>
+          ) : (
+            <div>
+              <p className="console-copy">{mobileLlmContract.summary}</p>
+              <p className="console-copy">
+                contract version: {mobileLlmContract.contract_version} | checked: {mobileLlmContract.checked_at}
+              </p>
+              <p className="console-copy">
+                runtime state: {mobileLlmContract.runtime_state} | route target: {mobileLlmContract.route_target}
+              </p>
+              <p className="console-copy">
+                feature flag: {mobileLlmContract.feature_flag_key} | mobile worker online:{" "}
+                {mobileLlmContract.mobile_bridge_worker_online ? "yes" : "no"} | runtime enabled:{" "}
+                {mobileLlmContract.phone_local_runtime_supported ? "yes" : "no"}
+              </p>
+              <p className="console-copy">
+                required capabilities: {mobileLlmContract.required_capabilities.join(", ")}
+              </p>
+              <p className="console-copy">
+                capability checks: {JSON.stringify(mobileLlmContract.capability_checks)}
+              </p>
+              <p className="console-copy">
+                required runtime: {mobileLlmContract.required_runtime.join(" | ")}
+              </p>
+              <p className="console-copy">
+                recommended policy order: {mobileLlmContract.recommended_policy_order.join(" -> ")}
+              </p>
+              <p className="console-copy">{mobileLlmContract.safe_fallback}</p>
+              {mobileLlmContract.blockers.length > 0 ? (
+                <div>
+                  <p className="console-copy">current blockers:</p>
+                  <ul>
+                    {mobileLlmContract.blockers.map((item) => (
+                      <li key={item} className="console-copy">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       </section>
     </main>
