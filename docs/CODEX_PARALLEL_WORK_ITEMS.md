@@ -260,3 +260,12 @@ Purpose: break the remaining implementation targets into independent workstreams
   - phone-local LLM
 - Run as a research-heavy branch:
   - native Codex first-party bridge follow-up
+
+## Supervisor dispatch list (2026-03-14)
+
+- `WI-101` (`codex/ios-share-extension`): ship iOS share-extension capture into quick-capture drafts with Android regression safety.
+- `WI-102` (`codex/desktop-helper-macos-validation`): validate macOS clipboard/screenshot/window paths and tighten permission diagnostics.
+- `WI-103` (`codex/local-tts-worker-hardening`): harden queued TTS timeout/retry/cancel lifecycle plus worker/API tests.
+- `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
+- `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
+- `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
