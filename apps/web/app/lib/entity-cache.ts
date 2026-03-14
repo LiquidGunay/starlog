@@ -263,8 +263,8 @@ export async function listEntityCacheScopeSummaries(): Promise<EntityCacheScopeS
 
   const summaries = new Map<string, EntityCacheScopeSummary>();
   for (const record of records ?? []) {
-    const current = summaries.get(record.scope);
-    if (!current) {
+    const existing = summaries.get(record.scope);
+    if (!existing) {
       summaries.set(record.scope, {
         scope: record.scope,
         records: 1,
@@ -274,12 +274,12 @@ export async function listEntityCacheScopeSummaries(): Promise<EntityCacheScopeS
       continue;
     }
 
-    current.records += 1;
-    if (record.updated_at > (current.newest_updated_at ?? "")) {
-      current.newest_updated_at = record.updated_at;
+    existing.records += 1;
+    if (record.updated_at > (existing.newest_updated_at ?? "")) {
+      existing.newest_updated_at = record.updated_at;
     }
-    if (record.cached_at > (current.newest_cached_at ?? "")) {
-      current.newest_cached_at = record.cached_at;
+    if (record.cached_at > (existing.newest_cached_at ?? "")) {
+      existing.newest_cached_at = record.cached_at;
     }
   }
 
@@ -287,11 +287,10 @@ export async function listEntityCacheScopeSummaries(): Promise<EntityCacheScopeS
 }
 
 export async function clearEntityCacheScopeRecords(scope: string): Promise<number> {
-  const deletedCount = await withEntityStore("readwrite", async (store) => {
-    const index = store.index(ENTITY_SCOPE_INDEX);
+  const deleted = await withEntityStore("readwrite", async (store) => {
     const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
       const values: IDBValidKey[] = [];
-      const request = index.openCursor(IDBKeyRange.only(scope));
+      const request = store.index(ENTITY_SCOPE_INDEX).openCursor(IDBKeyRange.only(scope));
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
@@ -312,11 +311,11 @@ export async function clearEntityCacheScopeRecords(scope: string): Promise<numbe
     return keys.length;
   });
 
-  return deletedCount ?? 0;
+  return deleted ?? 0;
 }
 
 export async function clearAllEntityCacheRecords(): Promise<number> {
-  const deletedCount = await withEntityStore("readwrite", async (store) => {
+  const deleted = await withEntityStore("readwrite", async (store) => {
     const count = await new Promise<number>((resolve, reject) => {
       const request = store.count();
       request.onsuccess = () => resolve(request.result ?? 0);
@@ -326,5 +325,5 @@ export async function clearAllEntityCacheRecords(): Promise<number> {
     return count;
   });
 
-  return deletedCount ?? 0;
+  return deleted ?? 0;
 }

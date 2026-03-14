@@ -387,6 +387,38 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - API + Playwright + lock-tooling checks wired into a documented runbook
 
+### 7. PWA cache eviction policy follow-up
+
+- Branch: `codex/pwa-cache-eviction-policy-b`
+- Workitem ID: `WI-107`
+- Lock: `IN_PROGRESS | Workitem: WI-107 | Owner: Agent Implementer-B | Claimed: 2026-03-14T18:20:57Z | Last heartbeat: 2026-03-14T18:34:51Z`
+- Goal: add per-prefix cache eviction actions and quota-pressure guidance on top of the existing local cache model.
+- Scope:
+  - add utility APIs for cache scope summaries and targeted/all-record eviction,
+  - expose cache policy controls in the shared session controls UI,
+  - provide user-visible quota-pressure guidance from browser storage estimates.
+- Out of scope:
+  - redesigning PWA workspace layouts,
+  - replacing IndexedDB with a different cache backend.
+- Likely files:
+  - `apps/web/app/lib/entity-cache.ts`
+  - `apps/web/app/lib/entity-snapshot.ts`
+  - `apps/web/app/components/session-controls.tsx`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Concrete work items:
+  - add entity cache scope summary and scope/all clear APIs,
+  - add snapshot summary, prefix clear, and full clear APIs,
+  - add UI controls for evicting a selected prefix, clearing stale markers, and clearing all cache data,
+  - add quota-pressure status text (`healthy`/`elevated`/`critical`) from `navigator.storage.estimate`.
+- Acceptance:
+  - selected cache prefixes can be cleared without full cache reset,
+  - users can inspect storage pressure and stale markers before evicting,
+  - existing PWA offline cache tests remain green.
+- Validation:
+  - `pnpm --filter web exec tsc --noEmit`
+  - `pnpm --filter web lint`
+  - `pnpm test:web:offline-cache`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -410,18 +442,10 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 ## Supervisor dispatch list (2026-03-14)
 
-- `WI-201` (`codex/execution-policy-bridge-convergence`)
-- `WI-202` (`codex/worker-auth-lifecycle-hardening`)
-- `WI-203` (`codex/client-secure-storage-migration`)
-- `WI-204` (`codex/bridge-claim-arbitration-telemetry`)
-- `WI-205` (`codex/pwa-offline-warmup-pack`)
-- `WI-206` (`codex/pwa-offline-voice-queue`)
-- `WI-207` (`codex/revision-conflict-lifecycle`)
-- `WI-208` (`codex/shared-lock-registry-hardening`)
-- `WI-209` (`codex/screen-design-contract-conformance`)
-- `WI-210` (`codex/worker-https-enforcement`)
-- `WI-211` (`codex/secrets-redaction-sweep`)
-- `WI-212` (`codex/worker-control-plane-ui`)
-- `WI-213` (`codex/offline-review-queue-reliability`)
-- `WI-214` (`codex/conflict-audit-timeline`)
-- `WI-215` (`codex/architecture-regression-harness`)
+- `WI-101` (`codex/ios-share-extension`): ship iOS share-extension capture into quick-capture drafts with Android regression safety.
+- `WI-102` (`codex/desktop-helper-macos-validation`): validate macOS clipboard/screenshot/window paths and tighten permission diagnostics.
+- `WI-103` (`codex/local-tts-worker-hardening`): harden queued TTS timeout/retry/cancel lifecycle plus worker/API tests.
+- `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
+- `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
+- `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
+- `WI-107` (`codex/pwa-cache-eviction-policy-b`): add per-prefix cache eviction policy controls and storage-quota guidance in shared PWA session controls.
