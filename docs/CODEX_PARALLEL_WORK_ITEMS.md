@@ -486,7 +486,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/workitem-mirror-sync-b`
 - Workitem ID: `WI-110`
-- Lock: `IN_PROGRESS | Workitem: WI-110 | Owner: Agent Implementer-B | Claimed: 2026-03-14T18:55:13Z | Last heartbeat: 2026-03-14T18:56:52Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-110 | Owner: N/A | Claimed: 2026-03-14T18:55:13Z | Last heartbeat: 2026-03-14T18:56:52Z`
 - Goal: keep this doc's `Lock:` mirror lines aligned with shared `.git` registry state automatically.
 - Scope:
   - add a script that reads shared registry lock/workitem state and rewrites `Lock:` lines in this doc,
