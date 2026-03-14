@@ -640,7 +640,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-offline-warmup-flow`
 - Workitem ID: `WI-116`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-116.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #32 opened`
 - Goal: add an explicit “Offline Warmup” action that preloads route snapshots before the user goes offline.
 - Scope:
   - add a warmup action in Sync Center,
