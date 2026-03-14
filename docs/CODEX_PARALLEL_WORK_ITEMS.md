@@ -123,7 +123,7 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 - Branch: `codex/local-tts-worker-hardening`
 - Workitem ID: `WI-103`
-- Lock: `HELD | Workitem: WI-103 | Owner: Agent Implementer-A | Claimed: 2026-03-14 17:17 UTC | Last heartbeat: 2026-03-14 17:29 UTC`
+- Lock: `RELEASED | Workitem: WI-103 | Owner: Agent Implementer-A | Released: 2026-03-14 17:32 UTC | Reason: PR #14 opened (handoff to review)`
 - Goal: make the queued TTS path more reliable and easier to operate.
 - Scope:
   - improve provider detection, timeouts, retries, and job metadata,
