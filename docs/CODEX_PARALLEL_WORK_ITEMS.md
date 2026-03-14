@@ -50,7 +50,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/workitem-mirror-checks-b`
 - Workitem ID: `WI-112`
-- Lock: `IN_PROGRESS | Workitem: WI-112 | Owner: Agent Implementer-B | Claimed: 2026-03-14T19:00:00Z | Last heartbeat: 2026-03-14T19:02:11Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-112 | Owner: N/A | Claimed: 2026-03-14T19:00:00Z | Last heartbeat: 2026-03-14T19:02:11Z`
 - Goal: make lock-mirror sync verifiable and testable in automation.
 - Scope:
   - add `--check` mode to the lock mirror sync helper so CI/agents can fail on drift without rewriting,
