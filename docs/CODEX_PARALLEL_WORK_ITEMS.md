@@ -732,6 +732,39 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"task_revision_conflict\" -s`
   - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"notes_edit_and_search or task_revision_conflict\" -s`
 
+### 7. Calendar event revision-conflict enforcement
+
+- Branch: `codex/calendar-revision-conflict-api`
+- Workitem ID: `WI-119`
+- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-119.lock); this document is a mirror only`
+- Goal: enforce structured revision-conflict handling for calendar event updates using the existing `calendar_events.revision` column.
+- Scope:
+  - allow calendar event update requests to carry `base_revision`,
+  - reject stale calendar writes with structured `409 revision_conflict` payloads,
+  - persist calendar conflicts into `entity_conflicts`,
+  - add API tests for stale write and explicit resolution flow.
+- Out of scope:
+  - UI conflict tooling,
+  - full conflict rollout for all entity types.
+- Likely files:
+  - `services/api/app/schemas/calendar.py`
+  - `services/api/app/services/calendar_service.py`
+  - `services/api/app/api/routes/calendar.py`
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - add `base_revision` in calendar update schema and expose `revision` in calendar responses,
+  - compare `base_revision` against current calendar revision in service layer,
+  - create conflict row and return structured `409` on mismatch,
+  - verify conflict list + resolve path in tests.
+- Acceptance:
+  - stale calendar event updates are rejected with conflict metadata (no silent overwrite),
+  - resolution flow remains explicit via `/v1/conflicts`.
+- Validation:
+  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "calendar_event_revision_conflict" -s`
+  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "review_calendar_briefing_export or calendar_event_revision_conflict" -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -761,4 +794,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-118` (`codex/task-revision-conflict-api`): enforce task stale-write conflicts with `base_revision` + explicit `/v1/conflicts` resolution.
+- `WI-119` (`codex/calendar-revision-conflict-api`): enforce calendar stale-write conflicts with `base_revision` + explicit `/v1/conflicts` resolution.
