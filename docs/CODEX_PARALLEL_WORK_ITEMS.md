@@ -177,7 +177,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/phone-local-llm`
 - Workitem ID: `WI-106`
-- Lock: `HELD | Workitem: WI-106 | Owner: Agent Implementer-A | Claimed: 2026-03-14 17:44 UTC | Last heartbeat: 2026-03-14 17:50 UTC`
+- Lock: `UNCLAIMED | Workitem: WI-106 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: explore and land the first viable phone-local LLM execution path behind the shared policy model.
 - Scope:
   - persist recorded media blobs locally,
