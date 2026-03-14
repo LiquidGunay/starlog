@@ -765,6 +765,34 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "calendar_event_revision_conflict" -s`
   - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "review_calendar_briefing_export or calendar_event_revision_conflict" -s`
 
+### 7. Agent execution-policy target normalization
+
+- Branch: `codex/agent-policy-target-normalization`
+- Workitem ID: `WI-120`
+- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-120.lock); this document is a mirror only`
+- Goal: align agent command execution-policy parsing and related tests with the canonical bridge target model (`mobile_bridge`, `desktop_bridge`, `api`).
+- Scope:
+  - update execution-policy command examples and target parsing aliases in `agent_command_service`,
+  - ensure artifact action planning defers correctly when the resolved route is either bridge class,
+  - refresh API tests to expect normalized canonical targets.
+- Out of scope:
+  - changing core integrations execution-policy storage semantics,
+  - rewriting Codex bridge execution behavior for synchronous `/v1/ai/run`.
+- Likely files:
+  - `services/api/app/services/agent_command_service.py`
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - normalize legacy aliases (`batch_local_bridge`, `server_local`, `api_fallback`, `on_device`) to canonical targets while accepting canonical inputs directly,
+  - switch agent capability routing checks to canonical executable target sets,
+  - update stale test assertions to normalized canonical responses.
+- Acceptance:
+  - `set ... policy` agent commands no longer fail due legacy target tokens,
+  - agent tool/command flows reflect canonical bridge-target responses.
+- Validation:
+  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "agent_tool_catalog_and_execution or agent_command_shell_plans_and_executes or execution_policy_controls_ai_routing" -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -794,4 +822,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-119` (`codex/calendar-revision-conflict-api`): enforce calendar stale-write conflicts with `base_revision` + explicit `/v1/conflicts` resolution.
+- `WI-120` (`codex/agent-policy-target-normalization`): normalize agent execution-policy command parsing and tests to canonical bridge targets.
