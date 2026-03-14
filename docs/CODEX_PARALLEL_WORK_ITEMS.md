@@ -423,7 +423,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/mobile-token-secure-storage`
 - Workitem ID: `WI-110`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-110.lock); this document is a mirror only`
+- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
 - Goal: move mobile bearer-token persistence from plaintext app state to OS secure storage.
 - Scope:
   - add a secure token storage abstraction in the mobile companion,
