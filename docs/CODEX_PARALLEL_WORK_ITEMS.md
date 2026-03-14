@@ -391,7 +391,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-cache-eviction-policy-b`
 - Workitem ID: `WI-107`
-- Lock: `IN_PROGRESS | Workitem: WI-107 | Owner: Agent Implementer-B | Claimed: 2026-03-14T18:20:57Z | Last heartbeat: 2026-03-14T18:34:51Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-107 | Owner: N/A | Claimed: 2026-03-14T18:20:57Z | Last heartbeat: 2026-03-14T18:35:37Z`
 - Goal: add per-prefix cache eviction actions and quota-pressure guidance on top of the existing local cache model.
 - Scope:
   - add utility APIs for cache scope summaries and targeted/all-record eviction,
