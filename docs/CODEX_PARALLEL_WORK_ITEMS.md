@@ -45,7 +45,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/ios-share-extension`
 - Workitem ID: `WI-101`
-- Lock: `HELD | Workitem: WI-101 | Owner: Agent Implementer-A | Claimed: 2026-03-14 17:51 UTC | Last heartbeat: 2026-03-14 17:54 UTC`
+- Lock: `UNCLAIMED | Workitem: WI-101 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: add the missing iOS native share-target path for the companion app.
 - Scope:
   - enforce `llm/stt/tts` target sets as `mobile_bridge -> desktop_bridge -> api`,
