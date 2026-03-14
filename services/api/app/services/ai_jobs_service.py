@@ -1,5 +1,6 @@
 import json
 from sqlite3 import Connection
+from typing import Sequence
 
 from app.core.time import utc_now
 from app.services import events_service
@@ -173,7 +174,7 @@ def claim_next_job_for_worker(
     *,
     worker_id: str,
     worker_class: str,
-    capabilities: list[str],
+    capabilities: Sequence[str],
 ) -> dict | None:
     from app.services import integrations_service, worker_service
 
