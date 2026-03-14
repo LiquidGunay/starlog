@@ -670,7 +670,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/note-revision-conflict-api`
 - Workitem ID: `WI-117`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-117.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #33 opened`
 - Goal: enforce structured revision-conflict handling for note updates and harden conflict-resolution payload validation.
 - Scope:
   - allow note update requests to carry `base_revision`,
