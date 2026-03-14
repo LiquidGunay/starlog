@@ -1,6 +1,6 @@
 # Codex Parallel Work Items
 
-Base code baseline after landing the current PR set: `6df50d7` on `master`.
+Base code baseline after landing the current PR set: `0adba3a` on `master`.
 
 Purpose: break the remaining implementation targets into independent workstreams so multiple Codex runs can keep making progress without stepping on each other.
 
@@ -21,10 +21,11 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 ## Working rules
 
-- Create each new workstream from `master` at `6df50d7` or a newer fast-forward of it.
+- Create each new workstream from `master` at `0adba3a` or a newer fast-forward of it.
 - Keep branch names under the required `codex/` prefix.
 - Prefer rebasing onto `master` instead of merging other Codex branches together.
 - Do not stack Codex branches unless the dependency is explicit and recorded in this file first.
+- Do not add commits to a branch/PR that is already merged; create a new `codex/*` branch from current `master` and open a new PR.
 - Do not deploy from these branches without explicit user approval.
 - Update `AGENTS.md` with any new blocker or user preference discovered in the branch.
 - Every branch should leave behind:
@@ -34,19 +35,31 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 ## Claiming and locks
 
-- Before starting work, pick exactly one workstream whose `Lock:` value is `UNCLAIMED`.
-- Immediately edit this file and change that line to `Lock: Agent <name/number> claimed YYYY-MM-DD HH:MM UTC`.
-- Commit and push the lock change before starting implementation so other agents can see the claim.
-- Do not start a workstream that already has a non-`UNCLAIMED` lock unless the user explicitly tells you to pair or take it over.
-- If you stop, hand off, or abandon the branch, update the same line to `Lock: RELEASED by Agent <name/number> YYYY-MM-DD HH:MM UTC (<short reason>)`.
-- When the work lands on `master`, clear the lock or move the item into the landed section in the next planning update.
+- Before starting work, pick exactly one workstream whose `Lock:` line starts with `UNCLAIMED`.
+- Each workstream has a required `Workitem ID`; every lock entry must include both `Workitem ID` and `Owner: Agent <name-or-id>`.
+- Use this lock format:
+  - `Lock: HELD | Workitem: WI-### | Owner: Agent <name-or-id> | Claimed: YYYY-MM-DD HH:MM UTC | Last heartbeat: YYYY-MM-DD HH:MM UTC`
+- Commit and push the lock change before implementation so other agents can see the claim.
+- Update `Last heartbeat` every `2 minutes` while actively working.
+- Lock timeout is `10 minutes` from the latest heartbeat timestamp.
+- Check lock freshness before claiming or taking over work, using the same `2 minute` heartbeat cadence.
+- If a lock is expired and unchanged by the next check window, reclaim it by updating owner/timestamps and noting takeover context in the commit message.
+- If you stop, hand off, or abandon work, change the line to:
+  - `Lock: RELEASED | Workitem: WI-### | Owner: Agent <name-or-id> | Released: YYYY-MM-DD HH:MM UTC | Reason: <short reason>`
+- When work lands on `master`, clear the lock or move the item into the landed section in the next planning update.
+
+### Timeout/check rationale
+
+- A `2 minute` heartbeat gives fast visibility into active ownership without heavy coordination overhead.
+- A `10 minute` timeout tolerates short test/build pauses while quickly recovering from crashed or abandoned agent sessions.
 
 ## Remaining workstreams
 
 ### 1. iOS share extension
 
 - Branch: `codex/ios-share-extension`
-- Lock: `UNCLAIMED`
+- Workitem ID: `WI-101`
+- Lock: `UNCLAIMED | Workitem: WI-101 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: add the missing iOS native share-target path for the companion app.
 - Scope:
   - implement the iOS share-extension/config-plugin/native plumbing,
@@ -77,7 +90,8 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 2. Desktop helper macOS validation
 
 - Branch: `codex/desktop-helper-macos-validation`
-- Lock: `UNCLAIMED`
+- Workitem ID: `WI-102`
+- Lock: `UNCLAIMED | Workitem: WI-102 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: finish the remaining real macOS validation path for the desktop helper now that Linux and Windows host paths are covered.
 - Scope:
   - validate clipboard, screenshot, active-window, OCR, and shortcut behavior on a real macOS host,
@@ -108,7 +122,8 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 3. Local TTS worker hardening
 
 - Branch: `codex/local-tts-worker-hardening`
-- Lock: `UNCLAIMED`
+- Workitem ID: `WI-103`
+- Lock: `UNCLAIMED | Workitem: WI-103 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: make the queued TTS path more reliable and easier to operate.
 - Scope:
   - improve provider detection, timeouts, retries, and job metadata,
@@ -139,7 +154,8 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 4. Native Codex first-party bridge follow-up
 
 - Branch: `codex/native-codex-first-party-bridge`
-- Lock: `UNCLAIMED`
+- Workitem ID: `WI-104`
+- Lock: `UNCLAIMED | Workitem: WI-104 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: replace the guarded experimental OpenAI-compatible bridge adapter with a first-party native Codex-subscription/OAuth path if the upstream contract becomes real.
 - Scope:
   - inspect whether an official Codex subscription/OAuth contract exists yet,
@@ -170,7 +186,8 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 5. PWA offline cache follow-ups
 
 - Branch: `codex/pwa-offline-cache-followups`
-- Lock: `UNCLAIMED`
+- Workitem ID: `WI-105`
+- Lock: `UNCLAIMED | Workitem: WI-105 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: extend the new IndexedDB cache layer to the remaining PWA workspaces and add cache-management controls.
 - Scope:
   - cache planner, sync-center, integrations, and richer assistant surfaces,
@@ -205,7 +222,8 @@ Purpose: break the remaining implementation targets into independent workstreams
 ### 6. Phone-local LLM
 
 - Branch: `codex/phone-local-llm`
-- Lock: `UNCLAIMED`
+- Workitem ID: `WI-106`
+- Lock: `UNCLAIMED | Workitem: WI-106 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
 - Goal: explore and land the first viable phone-local LLM execution path behind the shared policy model.
 - Scope:
   - choose a realistic constrained local-LLM strategy,
