@@ -11,7 +11,7 @@ This is the active native-mobile path for Starlog. It keeps the Expo-managed app
   - SQLite-backed mobile state
   - audio recording for voice-note capture
   - Android share-intent receive via `expo-share-intent`
-  - Android-only share-intent plugin path while iOS extension patching remains deferred
+  - iOS share-extension path is now enabled in app config, but this document covers Android validation only
 
 ## Files added for this path
 

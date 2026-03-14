@@ -74,13 +74,20 @@ pnpm --filter mobile android:local
 pnpm --filter mobile start:dev-client
 ```
 
+Native iOS path (macOS host + Xcode required):
+
+```bash
+pnpm --filter mobile ios
+pnpm --filter mobile start:dev-client
+```
+
 Fallback JS-only path:
 
 ```bash
 pnpm --filter mobile start
 ```
 
-1. Install the Android dev build on your phone, or use Expo Go for the fallback path.
+1. Install the native dev build on your phone (Android or iOS), or use Expo Go for the fallback path.
 2. In app settings fields:
    - API base: `http://<LAN_IP>:8000`
    - Bearer token: paste token from PWA/web login
@@ -100,9 +107,10 @@ pnpm --filter mobile start
    - Schedule the daily alarm after caching the briefing package.
 4. If you queued a voice note, confirm the laptop worker is running so the transcript can complete.
 5. If you queued a voice command or Codex command, tap `Refresh Jobs` in the assistant panel to inspect the transcript/executed command result after the worker finishes.
-6. If you installed the Android dev build, share text, a URL, an image/file, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
-7. If you have `adb` access to the device/emulator, you can also run `pnpm test:android:smoke` from repo root to install the current debug APK and trigger both a deep-link capture and a plain-text Android share intent automatically.
-8. On this host, if WSL `adb shell` is flaky but Windows `adb.exe` can still see the phone, use the Windows-host fallback instead:
+6. If you installed a native dev build, share text, a URL, an image/file, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
+7. For iOS share-extension validation, run the iOS dev build from Xcode/`expo run:ios`, then use the iOS Share sheet into Starlog and confirm the same quick-capture draft behavior as Android.
+8. If you have `adb` access to the Android device/emulator, you can also run `pnpm test:android:smoke` from repo root to install the current debug APK and trigger both a deep-link capture and a plain-text Android share intent automatically.
+9. On this host, if WSL `adb shell` is flaky but Windows `adb.exe` can still see the Android phone, use the Windows-host fallback instead:
 
 ```powershell
 .\scripts\android_native_smoke_windows.ps1 -ReversePorts "8081,8000"
@@ -110,8 +118,8 @@ pnpm --filter mobile start
 
    If Windows already shows both the phone and an `ADB Interface` but `adb devices` is still empty, the remaining blocker is usually phone-side authorization: unlock the handset, confirm `USB debugging` is enabled, and accept the `Allow USB debugging` prompt.
 
-9. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before Android validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
-10. If you validate the native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.
+10. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before native validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
+11. If you validate the Android native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.
 
 ### WSL physical-device Metro path
 

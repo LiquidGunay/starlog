@@ -96,6 +96,21 @@ type SharedFileDraft = {
   bytesSize: number | null;
 };
 
+type IncomingShareIntentFile = {
+  path: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  size?: number | null;
+  duration?: number | null;
+};
+
+type IncomingShareIntent = {
+  text?: string | null;
+  webUrl?: string | null;
+  meta?: { title?: string | null };
+  files?: IncomingShareIntentFile[];
+};
+
 type PersistedState = {
   version: 3;
   apiBase: string;
@@ -437,6 +452,29 @@ function describeSharedDrafts(drafts: SharedFileDraft[]): string {
   return `${drafts.length} files ready`;
 }
 
+function incomingShareIntentFingerprint(intent: IncomingShareIntent): string {
+  const fileSignature = (intent.files ?? []).map((file) =>
+    [
+      file.path || "",
+      file.fileName || "",
+      file.mimeType || "",
+      String(file.size ?? ""),
+      String(file.duration ?? ""),
+    ].join("|"),
+  );
+
+  return JSON.stringify({
+    text: (intent.text ?? "").trim(),
+    webUrl: (intent.webUrl ?? "").trim(),
+    title: (intent.meta?.title ?? "").trim(),
+    files: fileSignature,
+  });
+}
+
+function shareSourcePlatformLabel(): string {
+  return Platform.OS === "ios" ? "iOS" : "Android";
+}
+
 function defaultExecutionPolicy(): ExecutionPolicy {
   return {
     version: 1,
@@ -734,6 +772,7 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [hydrated, setHydrated] = useState(false);
   const flushInFlight = useRef(false);
+  const lastShareFingerprint = useRef<{ value: string; processedAt: number } | null>(null);
   const cardPromptStartedAt = useRef<number | null>(null);
   const briefingSoundRef = useRef<Audio.Sound | null>(null);
   const {
@@ -742,7 +781,7 @@ export default function App() {
     resetShareIntent,
     error: shareIntentError,
   } = useShareIntent({
-    disabled: Platform.OS !== "android",
+    disabled: false,
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
@@ -2051,12 +2090,23 @@ export default function App() {
     if (!hasShareIntent) {
       return;
     }
+    const fingerprint = incomingShareIntentFingerprint(shareIntent as IncomingShareIntent);
+    const previous = lastShareFingerprint.current;
+    const now = Date.now();
+    if (previous && previous.value === fingerprint && now - previous.processedAt < 15000) {
+      // Some share-extension callbacks can fire more than once while the app resumes.
+      resetShareIntent();
+      return;
+    }
+    lastShareFingerprint.current = { value: fingerprint, processedAt: now };
+
     let cancelled = false;
 
     async function applyIncomingShareIntent() {
-      const sharedText = (shareIntent.text ?? "").trim();
-      const sharedUrl = (shareIntent.webUrl ?? "").trim();
-      const shareFiles = shareIntent.files ?? [];
+      const payload = shareIntent as IncomingShareIntent;
+      const sharedText = (payload.text ?? "").trim();
+      const sharedUrl = (payload.webUrl ?? "").trim();
+      const shareFiles = payload.files ?? [];
       const firstFile = shareFiles[0] ?? null;
       const audioOnlyShare = shareFiles.length === 1 && firstFile?.mimeType?.startsWith("audio/");
       const incomingDrafts: SharedFileDraft[] = shareFiles.map((file, index) => ({
@@ -2071,7 +2121,7 @@ export default function App() {
       }
 
       const inferredTitle =
-        (shareIntent.meta?.title ?? "").trim() ||
+        (payload.meta?.title ?? "").trim() ||
         (shareFiles.length > 1 ? `${shareFiles.length} shared files` : "") ||
         firstFile?.fileName ||
         sharedUrl ||
@@ -2086,7 +2136,7 @@ export default function App() {
         setVoiceClipUri(audioDraft?.localUri ?? firstFile?.path ?? null);
         setVoiceClipDurationMs(firstFile?.duration ?? 0);
         setQuickCaptureText(sharedText || `Shared audio file: ${audioDraft?.fileName || firstFile?.fileName}`);
-        setStatus("Loaded Android share audio into the companion app");
+        setStatus(`Loaded ${shareSourcePlatformLabel()} shared audio into the companion app`);
         resetShareIntent();
         return;
       }
@@ -2104,9 +2154,13 @@ export default function App() {
       }
 
       if (shareFiles.length > 1) {
-        setStatus(`Loaded ${shareFiles.length} Android shared files into quick capture`);
+        setStatus(`Loaded ${shareFiles.length} ${shareSourcePlatformLabel()} shared files into quick capture`);
       } else {
-        setStatus(firstFile ? "Loaded Android shared file into quick capture" : "Loaded shared text/url into quick capture");
+        setStatus(
+          firstFile
+            ? `Loaded ${shareSourcePlatformLabel()} shared file into quick capture`
+            : "Loaded shared text/url into quick capture",
+        );
       }
       resetShareIntent();
     }
@@ -2115,7 +2169,8 @@ export default function App() {
       if (cancelled) {
         return;
       }
-      setStatus(error instanceof Error ? error.message : "Android share intent load failed");
+      lastShareFingerprint.current = null;
+      setStatus(error instanceof Error ? error.message : "Share intent load failed");
       resetShareIntent();
     });
 

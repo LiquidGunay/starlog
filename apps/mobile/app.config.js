@@ -80,8 +80,14 @@ module.exports = {
       [
         "expo-share-intent",
         {
-          // iOS share extension remains deferred until the required native patch path is added.
-          disableIOS: true,
+          disableIOS: false,
+          iosActivationRules: {
+            NSExtensionActivationSupportsText: true,
+            NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+            NSExtensionActivationSupportsImageWithMaxCount: 8,
+            NSExtensionActivationSupportsMovieWithMaxCount: 8,
+            NSExtensionActivationSupportsFileWithMaxCount: 8,
+          },
           androidIntentFilters: ["text/*", "image/*", "video/*", "*/*"],
           androidMultiIntentFilters: ["image/*", "audio/*", "video/*", "*/*"],
         },
