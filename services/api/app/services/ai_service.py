@@ -276,22 +276,21 @@ def run(
         integrations_service.capability_execution_order(
             conn,
             capability,
-            executable_targets={"server_local", "codex_bridge", "api_fallback"},
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
             prefer_local=prefer_local,
         )
         if conn is not None
-        else (["server_local", "codex_bridge", "api_fallback"] if prefer_local else ["codex_bridge", "api_fallback"])
+        else (["mobile_bridge", "desktop_bridge", "api"] if prefer_local else ["api"])
     )
 
     for target in execution_order:
         try:
-            if target == "server_local":
-                return "local", "ok", _local_provider(conn, capability, payload)
-            if target == "codex_bridge":
-                return "codex_bridge", "ok", _codex_bridge_provider(conn, capability, payload)
-            if target == "api_fallback":
+            if target in {"mobile_bridge", "desktop_bridge"}:
+                # Bridge targets run via queued workers; synchronous API execution keeps walking.
+                continue
+            if target == "api":
                 output = _api_provider(conn, capability, payload)
-                return "api_fallback", "fallback", output
+                return "api", "fallback", output
         except ProviderError:
             continue
 

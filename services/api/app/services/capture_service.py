@@ -2,7 +2,7 @@ from copy import deepcopy
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import ai_jobs_service, artifacts_service, events_service
+from app.services import ai_jobs_service, artifacts_service, events_service, integrations_service
 from app.services.common import new_id
 
 
@@ -83,12 +83,13 @@ def ingest_voice_capture(
     mime_type: str | None,
     checksum_sha256: str,
     duration_ms: int | None,
-    provider_hint: str,
+    provider_hint: str | None,
 ) -> tuple[dict, str]:
+    resolved_provider_hint = provider_hint or integrations_service.default_batch_provider_hint(conn, "stt") or "desktop_bridge_stt"
     metadata = {
         "voice_note": {
             "duration_ms": duration_ms,
-            "provider_hint": provider_hint,
+            "provider_hint": resolved_provider_hint,
         }
     }
     artifact = ingest_capture(
@@ -116,7 +117,13 @@ def ingest_voice_capture(
             "content_type": mime_type,
             "title": title or artifact["id"],
         },
-        provider_hint=provider_hint,
+        provider_hint=resolved_provider_hint,
+        requested_targets=integrations_service.capability_execution_order(
+            conn,
+            "stt",
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        ),
         artifact_id=artifact["id"],
         action="transcribe",
     )

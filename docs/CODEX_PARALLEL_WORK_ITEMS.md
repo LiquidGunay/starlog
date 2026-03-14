@@ -35,18 +35,18 @@ Purpose: break the remaining implementation targets into independent workstreams
 
 ## Claiming and locks
 
+- Live lock authority is the shared `.git` registry under `$(git rev-parse --git-common-dir)/codex-workitems/`; this file is a human-readable mirror only.
 - Before starting work, pick exactly one workstream whose `Lock:` line starts with `UNCLAIMED`.
 - Each workstream has a required `Workitem ID`; every lock entry must include both `Workitem ID` and `Owner: Agent <name-or-id>`.
-- Use this lock format:
-  - `Lock: HELD | Workitem: WI-### | Owner: Agent <name-or-id> | Claimed: YYYY-MM-DD HH:MM UTC | Last heartbeat: YYYY-MM-DD HH:MM UTC`
-- Commit and push the lock change before implementation so other agents can see the claim.
-- Update `Last heartbeat` every `2 minutes` while actively working.
-- Lock timeout is `10 minutes` from the latest heartbeat timestamp.
-- Check lock freshness before claiming or taking over work, using the same `2 minute` heartbeat cadence.
-- If a lock is expired and unchanged by the next check window, reclaim it by updating owner/timestamps and noting takeover context in the commit message.
-- If you stop, hand off, or abandon work, change the line to:
-  - `Lock: RELEASED | Workitem: WI-### | Owner: Agent <name-or-id> | Released: YYYY-MM-DD HH:MM UTC | Reason: <short reason>`
-- When work lands on `master`, clear the lock or move the item into the landed section in the next planning update.
+- Claim the workitem in the shared registry (not in this file) using:
+  - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent>`
+- While actively working, heartbeat every 2 minutes:
+  - `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent>`
+- On completion or handoff, release the shared lock:
+  - `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
+- Forced steal is allowed only for stale locks and must include explicit reason:
+  - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --force-steal --reason "<reason>"`
+- Keep the `Lock:` lines in this file updated as a readable mirror for humans after claim/heartbeat/release operations.
 
 ### Timeout/check rationale
 

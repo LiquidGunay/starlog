@@ -469,7 +469,13 @@ def run_action(
             },
             provider_hint=provider_hint
             or integrations_service.default_batch_provider_hint(conn, DEFERRED_CAPABILITIES[action])
-            or "codex_local",
+            or "desktop_bridge_codex",
+            requested_targets=integrations_service.capability_execution_order(
+                conn,
+                DEFERRED_CAPABILITIES[action],
+                executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+                prefer_local=True,
+            ),
             artifact_id=artifact_id,
             action=action,
         )

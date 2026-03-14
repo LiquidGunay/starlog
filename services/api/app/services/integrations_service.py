@@ -16,17 +16,17 @@ from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 DEFAULT_EXECUTION_POLICY = {
     "version": 1,
-    "llm": ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
-    "stt": ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
-    "tts": ["on_device", "server_local", "api_fallback"],
-    "ocr": ["on_device"],
+    "llm": ["mobile_bridge", "desktop_bridge", "api"],
+    "stt": ["mobile_bridge", "desktop_bridge", "api"],
+    "tts": ["mobile_bridge", "desktop_bridge", "api"],
+    "ocr": ["mobile_bridge", "desktop_bridge"],
 }
 
 AVAILABLE_EXECUTION_TARGETS = {
-    "llm": ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
-    "stt": ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
-    "tts": ["on_device", "server_local", "api_fallback"],
-    "ocr": ["on_device"],
+    "llm": ["mobile_bridge", "desktop_bridge", "api"],
+    "stt": ["mobile_bridge", "desktop_bridge", "api"],
+    "tts": ["mobile_bridge", "desktop_bridge", "api"],
+    "ocr": ["mobile_bridge", "desktop_bridge"],
 }
 
 CAPABILITY_FAMILY = {
@@ -40,9 +40,17 @@ CAPABILITY_FAMILY = {
 }
 
 BATCH_PROVIDER_HINT = {
-    "llm": "codex_local",
-    "stt": "whisper_local",
-    "tts": "piper_local",
+    "llm": "desktop_bridge_codex",
+    "stt": "desktop_bridge_stt",
+    "tts": "desktop_bridge_tts",
+}
+
+LEGACY_TARGET_MAP = {
+    "on_device": "mobile_bridge",
+    "batch_local_bridge": "desktop_bridge",
+    "server_local": "desktop_bridge",
+    "codex_bridge": "desktop_bridge",
+    "api_fallback": "api",
 }
 
 CODEX_BRIDGE_FEATURE_FLAG_KEY = "experimental_enabled"
@@ -74,10 +82,20 @@ def _normalized_execution_policy(raw_policy: dict | None) -> dict:
                 continue
             seen: list[str] = []
             for item in raw_targets:
-                if item in allowed and item not in seen:
-                    seen.append(str(item))
+                if not isinstance(item, str):
+                    continue
+                normalized_item = _normalize_execution_target(item, key)
+                if normalized_item in allowed and normalized_item not in seen:
+                    seen.append(normalized_item)
             if seen:
                 normalized[key] = seen
+    return normalized
+
+
+def _normalize_execution_target(target: str, family: str) -> str:
+    normalized = LEGACY_TARGET_MAP.get(target, target)
+    if family == "ocr" and normalized == "api":
+        return "mobile_bridge"
     return normalized
 
 
@@ -298,7 +316,7 @@ def codex_bridge_contract(conn: Connection) -> dict:
         "native_oauth_supported": False,
         "safe_fallback": (
             "If the bridge is missing required config or a request fails, Starlog keeps "
-            "walking the execution policy toward local/server/API fallbacks."
+            "walking the execution policy toward mobile/desktop bridge and API fallbacks."
         ),
         "configured": state["configured"],
         "enabled": state["enabled"],
@@ -441,9 +459,11 @@ def get_execution_policy(conn: Connection) -> dict:
     row = execute_fetchone(conn, "SELECT value_json, updated_at FROM app_settings WHERE key = ?", ("execution_policy",))
     raw_policy = row.get("value_json") if row is not None else None
     normalized = _normalized_execution_policy(raw_policy if isinstance(raw_policy, dict) else None)
+    resolved_routes = _resolved_execution_routes(conn, normalized)
     return {
         **normalized,
         "available_targets": AVAILABLE_EXECUTION_TARGETS,
+        "resolved_routes": resolved_routes,
         "updated_at": row.get("updated_at") if row is not None else None,
     }
 
@@ -487,7 +507,7 @@ def capability_execution_order(
     order = [str(item) for item in policy.get(family, DEFAULT_EXECUTION_POLICY[family])]
 
     if not prefer_local:
-        order = [item for item in order if item not in {"on_device", "server_local"}]
+        order = [item for item in order if item == "api"]
 
     if executable_targets is not None:
         order = [item for item in order if item in executable_targets]
@@ -498,10 +518,67 @@ def default_batch_provider_hint(conn: Connection, capability: str) -> str | None
     family = CAPABILITY_FAMILY.get(capability)
     if family is None:
         return None
-    order = capability_execution_order(conn, capability, executable_targets={"batch_local_bridge"})
-    if "batch_local_bridge" not in order:
+    order = capability_execution_order(conn, capability, executable_targets={"mobile_bridge", "desktop_bridge"})
+    if "desktop_bridge" not in order and "mobile_bridge" not in order:
         return None
+    if "mobile_bridge" in order:
+        return {
+            "llm": "mobile_bridge_codex",
+            "stt": "mobile_bridge_stt",
+            "tts": "mobile_bridge_tts",
+        }.get(family)
     return BATCH_PROVIDER_HINT.get(family)
+
+
+def _capability_probe_for_family(family: str) -> str:
+    if family == "stt":
+        return "stt"
+    if family == "tts":
+        return "tts"
+    if family == "ocr":
+        return "ocr"
+    return "llm_summary"
+
+
+def _resolved_execution_routes(conn: Connection, normalized_policy: dict) -> dict:
+    from app.services import worker_service
+
+    resolved: dict[str, dict] = {}
+    for family, order in AVAILABLE_EXECUTION_TARGETS.items():
+        family_order = normalized_policy.get(family, DEFAULT_EXECUTION_POLICY[family])
+        requested = family_order[0] if family_order else "none"
+        active = requested
+        reason = ""
+
+        capability_probe = _capability_probe_for_family(family)
+        online_classes = worker_service.online_worker_classes_for_capability(conn, capability_probe)
+
+        if requested in {"mobile_bridge", "desktop_bridge"} and requested not in online_classes:
+            fallback = next(
+                (
+                    item
+                    for item in family_order
+                    if item == "api" or (item in {"mobile_bridge", "desktop_bridge"} and item in online_classes)
+                ),
+                None,
+            )
+            if fallback:
+                active = fallback
+                reason = "Requested bridge is unavailable; using next available target."
+            else:
+                active = "none"
+                reason = "No currently available execution target."
+        elif requested == "api":
+            reason = "Using API fallback path."
+
+        resolved[family] = {
+            "requested": requested,
+            "active": active,
+            "order": family_order,
+            "online_workers": sorted(online_classes),
+            "reason": reason,
+        }
+    return resolved
 
 
 def upsert_provider_config(

@@ -92,7 +92,7 @@ def queue_briefing_audio_render(
     resolved_provider_hint = (
         provider_hint
         or integrations_service.default_batch_provider_hint(conn, "tts")
-        or "piper_local"
+        or "desktop_bridge_tts"
     )
     return ai_jobs_service.create_job(
         conn,
@@ -103,6 +103,12 @@ def queue_briefing_audio_render(
             "text": str(briefing["text"]),
         },
         provider_hint=resolved_provider_hint,
+        requested_targets=integrations_service.capability_execution_order(
+            conn,
+            "tts",
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        ),
         action="briefing_audio",
     )
 

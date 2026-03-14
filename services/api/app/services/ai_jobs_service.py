@@ -15,6 +15,9 @@ def _job_payload(row: dict) -> dict:
         "provider_used": row.get("provider_used"),
         "artifact_id": row.get("artifact_id"),
         "action": row.get("action"),
+        "requested_targets": row.get("requested_targets_json", []),
+        "selected_target": row.get("selected_target"),
+        "claimed_worker_class": row.get("claimed_worker_class"),
         "payload": row.get("payload_json", {}),
         "output": row.get("output_json", {}),
         "error_text": row.get("error_text"),
@@ -32,15 +35,29 @@ def create_job(
     provider_hint: str | None = None,
     artifact_id: str | None = None,
     action: str | None = None,
+    requested_targets: list[str] | None = None,
+    selected_target: str | None = None,
 ) -> dict:
+    from app.services import integrations_service
+
     job_id = new_id("job")
     now = utc_now().isoformat()
+    if requested_targets is None:
+        requested_targets = integrations_service.capability_execution_order(
+            conn,
+            capability,
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        )
+    if selected_target is None:
+        selected_target = requested_targets[0] if requested_targets else None
     conn.execute(
         """
         INSERT INTO ai_jobs (
           id, capability, status, provider_hint, provider_used, artifact_id, action,
+          requested_targets_json, selected_target, claimed_worker_class,
           payload_json, output_json, error_text, worker_id, created_at, claimed_at, finished_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
@@ -50,6 +67,9 @@ def create_job(
             None,
             artifact_id,
             action,
+            json.dumps(requested_targets or [], sort_keys=True),
+            selected_target,
+            None,
             json.dumps(payload, sort_keys=True),
             json.dumps({}, sort_keys=True),
             None,
@@ -109,22 +129,101 @@ def list_jobs(
 
 
 def claim_job(conn: Connection, job_id: str, worker_id: str) -> dict | None:
+    return _claim_job(conn, job_id=job_id, worker_id=worker_id, worker_class=None, selected_target=None)
+
+
+def _claim_job(
+    conn: Connection,
+    *,
+    job_id: str,
+    worker_id: str,
+    worker_class: str | None,
+    selected_target: str | None,
+) -> dict | None:
     claimed_at = utc_now().isoformat()
     cursor = conn.execute(
         """
         UPDATE ai_jobs
-        SET status = ?, worker_id = ?, claimed_at = ?
+        SET status = ?, worker_id = ?, claimed_at = ?, claimed_worker_class = COALESCE(?, claimed_worker_class),
+            selected_target = COALESCE(?, selected_target)
         WHERE id = ? AND status = 'pending'
         """,
-        ("running", worker_id, claimed_at, job_id),
+        ("running", worker_id, claimed_at, worker_class, selected_target, job_id),
     )
     conn.commit()
     if cursor.rowcount == 0:
         return None
 
-    events_service.emit(conn, "ai.job_claimed", {"job_id": job_id, "worker_id": worker_id})
+    events_service.emit(
+        conn,
+        "ai.job_claimed",
+        {
+            "job_id": job_id,
+            "worker_id": worker_id,
+            "worker_class": worker_class,
+            "selected_target": selected_target,
+        },
+    )
     conn.commit()
     return get_job(conn, job_id)
+
+
+def claim_next_job_for_worker(
+    conn: Connection,
+    *,
+    worker_id: str,
+    worker_class: str,
+    capabilities: list[str],
+) -> dict | None:
+    from app.services import integrations_service, worker_service
+
+    capability_set = {item for item in capabilities if item}
+    if not capability_set:
+        return None
+
+    pending_rows = execute_fetchall(
+        conn,
+        "SELECT * FROM ai_jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 200",
+    )
+    for row in pending_rows:
+        capability = str(row.get("capability") or "")
+        if capability not in capability_set:
+            continue
+
+        requested_targets = row.get("requested_targets_json")
+        if not isinstance(requested_targets, list) or not requested_targets:
+            requested_targets = integrations_service.capability_execution_order(
+                conn,
+                capability,
+                executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+                prefer_local=True,
+            )
+
+        online_classes = worker_service.online_worker_classes_for_capability(conn, capability)
+        selected_target: str | None = None
+        for target in requested_targets:
+            if not isinstance(target, str):
+                continue
+            if target == "api":
+                selected_target = "api"
+                break
+            if target in {"mobile_bridge", "desktop_bridge"} and target in online_classes:
+                selected_target = target
+                break
+
+        if selected_target != worker_class:
+            continue
+
+        claimed = _claim_job(
+            conn,
+            job_id=str(row["id"]),
+            worker_id=worker_id,
+            worker_class=worker_class,
+            selected_target=selected_target,
+        )
+        if claimed is not None:
+            return claimed
+    return None
 
 
 def cancel_job(conn: Connection, job_id: str, reason: str | None = None) -> dict | None:
@@ -328,7 +427,7 @@ def retry_job(conn: Connection, job_id: str, provider_hint: str | None = None) -
     conn.execute(
         """
         UPDATE ai_jobs
-        SET status = ?, provider_hint = ?, provider_used = ?, output_json = ?, error_text = ?, worker_id = ?, claimed_at = ?, finished_at = ?
+        SET status = ?, provider_hint = ?, provider_used = ?, output_json = ?, error_text = ?, worker_id = ?, claimed_at = ?, finished_at = ?, claimed_worker_class = ?
         WHERE id = ?
         """,
         (
@@ -336,6 +435,7 @@ def retry_job(conn: Connection, job_id: str, provider_hint: str | None = None) -
             resolved_provider_hint,
             None,
             json.dumps({}, sort_keys=True),
+            None,
             None,
             None,
             None,
