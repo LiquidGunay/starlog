@@ -769,7 +769,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/agent-policy-target-normalization`
 - Workitem ID: `WI-120`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-120.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #36 opened`
 - Goal: align agent command execution-policy parsing and related tests with the canonical bridge target model (`mobile_bridge`, `desktop_bridge`, `api`).
 - Scope:
   - update execution-policy command examples and target parsing aliases in `agent_command_service`,
