@@ -640,7 +640,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/pwa-cache-review-agenttools-b`
 - Workitem ID: `WI-115`
-- Lock: `IN_PROGRESS | Workitem: WI-115 | Owner: Agent implementer-b | Claimed: 2026-03-14T19:23:48Z | Last heartbeat: 2026-03-14T19:28:54Z`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-115 | Owner: N/A | Claimed: 2026-03-14T19:23:48Z | Last heartbeat: 2026-03-14T19:28:54Z`
 - Goal: add snapshot restore/persistence for review and agent-tools pages so they recover useful state after offline reload.
 - Scope:
   - persist tool catalog/selection/arguments/result snapshots on `agent-tools`,
