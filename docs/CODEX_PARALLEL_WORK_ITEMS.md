@@ -696,7 +696,7 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 - Branch: `codex/worker-token-lifecycle-tests`
 - Workitem ID: `WI-122`
-- Lock: `HELD in shared registry (.git/codex-workitems/locks/WI-122.lock); this document is a mirror only`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #38 opened`
 - Goal: add regression coverage for worker pairing/token refresh/revocation behavior so secure worker auth flows remain enforceable.
 - Scope:
   - test worker pairing + initial heartbeat success,
