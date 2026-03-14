@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -20,15 +21,65 @@ type SessionStats = {
   easy: number;
 };
 
+const REVIEW_CARDS_SNAPSHOT = "review.cards";
+const REVIEW_SHOW_ANSWER_SNAPSHOT = "review.show_answer";
+const REVIEW_CURRENT_INDEX_SNAPSHOT = "review.current_index";
+const REVIEW_STATS_SNAPSHOT = "review.stats";
+
 export default function ReviewPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
-  const [cards, setCards] = useState<Card[]>([]);
-  const [showAnswer, setShowAnswer] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [stats, setStats] = useState<SessionStats>({ reviewed: 0, again: 0, good: 0, easy: 0 });
+  const [cards, setCards] = useState<Card[]>(() => readEntitySnapshot<Card[]>(REVIEW_CARDS_SNAPSHOT, []));
+  const [showAnswer, setShowAnswer] = useState(
+    () => readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
+  );
+  const [currentIndex, setCurrentIndex] = useState(
+    () => readEntitySnapshot<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0),
+  );
+  const [stats, setStats] = useState<SessionStats>(
+    () => readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 }),
+  );
   const [status, setStatus] = useState("Ready");
   const currentCard = cards[currentIndex] ?? null;
   const duePreview = useMemo(() => cards.slice(0, 6), [cards]);
+
+  useEffect(() => {
+    setCards((previous) => previous.length > 0 ? previous : readEntitySnapshot<Card[]>(REVIEW_CARDS_SNAPSHOT, []));
+    setShowAnswer((previous) => previous || readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false));
+    setCurrentIndex((previous) => previous || readEntitySnapshot<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0));
+    setStats((previous) => (
+      previous.reviewed > 0 || previous.again > 0 || previous.good > 0 || previous.easy > 0
+        ? previous
+        : readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 })
+    ));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [cachedCards, cachedShowAnswer, cachedCurrentIndex, cachedStats] = await Promise.all([
+        readEntitySnapshotAsync<Card[]>(REVIEW_CARDS_SNAPSHOT, []),
+        readEntitySnapshotAsync<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
+        readEntitySnapshotAsync<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0),
+        readEntitySnapshotAsync<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 }),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (cachedCards.length > 0) {
+        setCards(cachedCards);
+      }
+      setShowAnswer(cachedShowAnswer);
+      setCurrentIndex(cachedCurrentIndex);
+      setStats(cachedStats);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function loadDue() {
     try {
@@ -36,7 +87,12 @@ export default function ReviewPage() {
       setCards(payload);
       setCurrentIndex(0);
       setShowAnswer(false);
-      setStats({ reviewed: 0, again: 0, good: 0, easy: 0 });
+      const nextStats = { reviewed: 0, again: 0, good: 0, easy: 0 };
+      setStats(nextStats);
+      writeEntitySnapshot(REVIEW_CARDS_SNAPSHOT, payload);
+      writeEntitySnapshot(REVIEW_CURRENT_INDEX_SNAPSHOT, 0);
+      writeEntitySnapshot(REVIEW_SHOW_ANSWER_SNAPSHOT, false);
+      writeEntitySnapshot(REVIEW_STATS_SNAPSHOT, nextStats);
       setStatus(`Loaded ${payload.length} due cards`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load due cards");
@@ -80,6 +136,28 @@ export default function ReviewPage() {
       setStatus(error instanceof Error ? error.message : "Review failed");
     }
   }
+
+  useEffect(() => {
+    if (cards.length > 0 && currentIndex >= cards.length) {
+      setCurrentIndex(0);
+    }
+  }, [cards.length, currentIndex]);
+
+  useEffect(() => {
+    writeEntitySnapshot(REVIEW_CARDS_SNAPSHOT, cards);
+  }, [cards]);
+
+  useEffect(() => {
+    writeEntitySnapshot(REVIEW_SHOW_ANSWER_SNAPSHOT, showAnswer);
+  }, [showAnswer]);
+
+  useEffect(() => {
+    writeEntitySnapshot(REVIEW_CURRENT_INDEX_SNAPSHOT, currentIndex);
+  }, [currentIndex]);
+
+  useEffect(() => {
+    writeEntitySnapshot(REVIEW_STATS_SNAPSHOT, stats);
+  }, [stats]);
 
   return (
     <main className="shell">

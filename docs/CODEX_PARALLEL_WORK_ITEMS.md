@@ -636,188 +636,33 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - `pnpm test:web:offline-cache --grep "assistant voice uploads"`
 
-### 7. PWA offline warmup flow
+### 7. PWA cache snapshots for review + agent tools
 
-- Branch: `codex/pwa-offline-warmup-flow`
-- Workitem ID: `WI-116`
-- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #32 opened`
-- Goal: add an explicit “Offline Warmup” action that preloads route snapshots before the user goes offline.
+- Branch: `codex/pwa-cache-review-agenttools-b`
+- Workitem ID: `WI-115`
+- Lock: `IN_PROGRESS | Workitem: WI-115 | Owner: Agent implementer-b | Claimed: 2026-03-14T19:23:48Z | Last heartbeat: 2026-03-14T19:28:54Z`
+- Goal: add snapshot restore/persistence for review and agent-tools pages so they recover useful state after offline reload.
 - Scope:
-  - add a warmup action in Sync Center,
-  - preload key route snapshots (artifacts, notes, tasks, calendar, assistant jobs/intents),
-  - expose per-step warmup status and failure visibility.
+  - persist tool catalog/selection/arguments/result snapshots on `agent-tools`,
+  - persist due-card queue/session state snapshots on `review`,
+  - keep existing online behavior and command/review semantics unchanged.
 - Out of scope:
-  - replacing service-worker shell caching,
-  - redesigning sync-center layout.
+  - changing review scheduling/scoring logic,
+  - redesigning agent tool schema or backend API behavior.
 - Likely files:
-  - `apps/web/app/lib/offline-warmup.ts`
-  - `apps/web/app/sync-center/page.tsx`
-  - `apps/web/tests/offline-cache.spec.ts`
+  - `apps/web/app/agent-tools/page.tsx`
+  - `apps/web/app/review/page.tsx`
   - `docs/IMPLEMENTATION_STATUS.md`
-  - `AGENTS.md`
 - Concrete work items:
-  - implement reusable warmup runner that writes snapshot keys used by offline-first tabs,
-  - add Sync Center “Offline Warmup” CTA + report panel,
-  - add browser coverage proving warmup allows opening Notes offline without loading Notes online first.
+  - hydrate page state from bootstrap snapshots,
+  - async-restore from IndexedDB snapshots when available,
+  - write snapshots after successful fetches and local state transitions.
 - Acceptance:
-  - users can run a single warmup action before losing connectivity,
-  - warmup updates snapshots and reports which step(s) succeeded/failed.
+  - review and agent-tools pages show prior cached state after reload while offline,
+  - pages still refresh and execute against live API when online.
 - Validation:
-  - `./node_modules/.bin/playwright test --config=/tmp/playwright.web.noserver.config.ts apps/web/tests/offline-cache.spec.ts --grep "offline warmup"`
-  - `cd apps/web && ./node_modules/.bin/tsc --noEmit`
-
-### 7. Note revision-conflict enforcement
-
-- Branch: `codex/note-revision-conflict-api`
-- Workitem ID: `WI-117`
-- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #33 opened`
-- Goal: enforce structured revision-conflict handling for note updates and harden conflict-resolution payload validation.
-- Scope:
-  - allow note update requests to carry `base_revision`,
-  - emit structured `409` revision conflict responses when stale revisions are submitted,
-  - enforce `merged_patch` payload requirements on conflict resolution endpoint,
-  - add API tests for conflict create/list/get/resolve flow.
-- Out of scope:
-  - full optimistic-concurrency rollout across every entity type,
-  - UI conflict resolution tooling.
-- Likely files:
-  - `services/api/app/schemas/notes.py`
-  - `services/api/app/services/notes_service.py`
-  - `services/api/app/api/routes/notes.py`
-  - `services/api/app/schemas/conflicts.py`
-  - `services/api/tests/test_api_flows.py`
-  - `docs/IMPLEMENTATION_STATUS.md`
-  - `AGENTS.md`
-- Concrete work items:
-  - add `base_revision` to note updates,
-  - create and return `entity_conflicts` records on mismatch,
-  - validate `merged_patch` requires `merged_payload`, and other strategies reject it,
-  - test stale write -> conflict -> resolution path.
-- Acceptance:
-  - stale note write is rejected with structured conflict payload,
-  - conflict APIs enforce explicit resolution payload semantics.
-- Validation:
-  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"revision_conflict\" -s`
-
-### 7. Task revision-conflict enforcement
-
-- Branch: `codex/task-revision-conflict-api`
-- Workitem ID: `WI-118`
-- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #34 opened`
-- Goal: enforce structured revision-conflict handling for task updates using the existing `tasks.revision` column.
-- Scope:
-  - allow task update requests to carry `base_revision`,
-  - reject stale task writes with structured `409 revision_conflict` payloads,
-  - persist task conflicts into `entity_conflicts`,
-  - add API tests for stale write and explicit resolution flow.
-- Out of scope:
-  - UI conflict tooling,
-  - full conflict rollout for all entity types.
-- Likely files:
-  - `services/api/app/schemas/tasks.py`
-  - `services/api/app/services/tasks_service.py`
-  - `services/api/app/api/routes/tasks.py`
-  - `services/api/tests/test_api_flows.py`
-  - `docs/IMPLEMENTATION_STATUS.md`
-  - `AGENTS.md`
-- Concrete work items:
-  - add `base_revision` in task update schema and expose `revision` in task responses,
-  - compare `base_revision` against current task revision in service layer,
-  - create conflict row and return structured `409` on mismatch,
-  - verify conflict list + resolve path in tests.
-- Acceptance:
-  - stale task updates are rejected with conflict metadata (no silent overwrite),
-  - resolution flow remains explicit via `/v1/conflicts`.
-- Validation:
-  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"task_revision_conflict\" -s`
-  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"notes_edit_and_search or task_revision_conflict\" -s`
-
-### 7. Calendar event revision-conflict enforcement
-
-- Branch: `codex/calendar-revision-conflict-api`
-- Workitem ID: `WI-119`
-- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #35 opened`
-- Goal: enforce structured revision-conflict handling for calendar event updates using the existing `calendar_events.revision` column.
-- Scope:
-  - allow calendar event update requests to carry `base_revision`,
-  - reject stale calendar writes with structured `409 revision_conflict` payloads,
-  - persist calendar conflicts into `entity_conflicts`,
-  - add API tests for stale write and explicit resolution flow.
-- Out of scope:
-  - UI conflict tooling,
-  - full conflict rollout for all entity types.
-- Likely files:
-  - `services/api/app/schemas/calendar.py`
-  - `services/api/app/services/calendar_service.py`
-  - `services/api/app/api/routes/calendar.py`
-  - `services/api/tests/test_api_flows.py`
-  - `docs/IMPLEMENTATION_STATUS.md`
-  - `AGENTS.md`
-- Concrete work items:
-  - add `base_revision` in calendar update schema and expose `revision` in calendar responses,
-  - compare `base_revision` against current calendar revision in service layer,
-  - create conflict row and return structured `409` on mismatch,
-  - verify conflict list + resolve path in tests.
-- Acceptance:
-  - stale calendar event updates are rejected with conflict metadata (no silent overwrite),
-  - resolution flow remains explicit via `/v1/conflicts`.
-- Validation:
-  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "calendar_event_revision_conflict" -s`
-  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "review_calendar_briefing_export or calendar_event_revision_conflict" -s`
-
-### 7. Agent execution-policy target normalization
-
-- Branch: `codex/agent-policy-target-normalization`
-- Workitem ID: `WI-120`
-- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #36 opened`
-- Goal: align agent command execution-policy parsing and related tests with the canonical bridge target model (`mobile_bridge`, `desktop_bridge`, `api`).
-- Scope:
-  - update execution-policy command examples and target parsing aliases in `agent_command_service`,
-  - ensure artifact action planning defers correctly when the resolved route is either bridge class,
-  - refresh API tests to expect normalized canonical targets.
-- Out of scope:
-  - changing core integrations execution-policy storage semantics,
-  - rewriting Codex bridge execution behavior for synchronous `/v1/ai/run`.
-- Likely files:
-  - `services/api/app/services/agent_command_service.py`
-  - `services/api/tests/test_api_flows.py`
-  - `docs/IMPLEMENTATION_STATUS.md`
-  - `AGENTS.md`
-- Concrete work items:
-  - normalize legacy aliases (`batch_local_bridge`, `server_local`, `api_fallback`, `on_device`) to canonical targets while accepting canonical inputs directly,
-  - switch agent capability routing checks to canonical executable target sets,
-  - update stale test assertions to normalized canonical responses.
-- Acceptance:
-  - `set ... policy` agent commands no longer fail due legacy target tokens,
-  - agent tool/command flows reflect canonical bridge-target responses.
-- Validation:
-  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "agent_tool_catalog_and_execution or agent_command_shell_plans_and_executes or execution_policy_controls_ai_routing" -s`
-
-### 7. Bridge routing priority tests
-
-- Branch: `codex/bridge-routing-priority-tests`
-- Workitem ID: `WI-121`
-- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #37 opened`
-- Goal: cover mobile/desktop bridge claim arbitration behavior from the architecture plan so routing priority remains verifiable.
-- Scope:
-  - add API-flow coverage for worker pairing/auth and `/v1/ai/jobs/claim-next`,
-  - validate `mobile_bridge -> desktop_bridge` preference when worker availability changes.
-- Out of scope:
-  - changing queue storage semantics,
-  - changing worker scheduling behavior in services.
-- Likely files:
-  - `services/api/tests/test_api_flows.py`
-  - `docs/IMPLEMENTATION_STATUS.md`
-  - `AGENTS.md`
-- Concrete work items:
-  - create a desktop worker session and verify it can claim when mobile is unavailable,
-  - add mobile worker session and verify mobile claims first while desktop gets no claim,
-  - revoke mobile worker and verify desktop fallback claims resume.
-- Acceptance:
-  - bridge claim priority is covered with an executable test,
-  - fallback behavior is explicit and regression-resistant.
-- Validation:
-  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "bridge_claim_priority_prefers_mobile_then_falls_back_to_desktop" -s`
+  - `pnpm --filter web exec tsc --noEmit`
+  - `pnpm --filter web lint`
 
 ## Suggested execution order
 
@@ -848,4 +693,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-121` (`codex/bridge-routing-priority-tests`): add mobile/desktop bridge claim-priority and fallback coverage to API flow tests.
+- `WI-115` (`codex/pwa-cache-review-agenttools-b`): add offline snapshot restore/persist coverage for review and agent-tools pages.
