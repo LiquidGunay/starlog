@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Starlog - Spoken Briefing Pipeline</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "surface-dim": "#10141a",
+                "surface-container-highest": "#31353c",
+                "on-surface-variant": "#c9c4d5",
+                "on-surface": "#dfe2eb",
+                "primary": "#c9beff",
+                "on-tertiary-container": "#003938",
+                "surface-variant": "#31353c",
+                "tertiary": "#83d4d3",
+                "secondary-fixed": "#ffdcc0",
+                "on-secondary-fixed": "#2d1600",
+                "primary-container": "#9c89ff",
+                "inverse-primary": "#5f4bbe",
+                "tertiary-fixed": "#9ff1ef",
+                "background": "#10141a",
+                "on-primary-container": "#32148f",
+                "inverse-on-surface": "#2d3137",
+                "on-secondary-fixed-variant": "#633f1b",
+                "primary-fixed-dim": "#c9beff",
+                "surface-container-lowest": "#0a0e14",
+                "surface-container-high": "#262a31",
+                "secondary-container": "#633f1b",
+                "surface-container-low": "#181c22",
+                "on-tertiary": "#003737",
+                "tertiary-container": "#55a7a6",
+                "outline-variant": "#484553",
+                "on-error": "#690005",
+                "surface-container": "#1c2026",
+                "on-tertiary-fixed": "#002020",
+                "surface-tint": "#c9beff",
+                "primary-fixed": "#e6deff",
+                "on-tertiary-fixed-variant": "#00504f",
+                "on-primary-fixed-variant": "#4731a4",
+                "on-error-container": "#ffdad6",
+                "on-secondary-container": "#deab7e",
+                "tertiary-fixed-dim": "#83d4d3",
+                "error": "#ffb4ab",
+                "on-primary-fixed": "#1b0062",
+                "secondary-fixed-dim": "#f1bc8e",
+                "surface-bright": "#353940",
+                "on-secondary": "#492907",
+                "secondary": "#f1bc8e",
+                "outline": "#938e9e",
+                "on-background": "#dfe2eb",
+                "surface": "#10141a",
+                "inverse-surface": "#dfe2eb",
+                "error-container": "#93000a",
+                "on-primary": "#30118e"
+              },
+              fontFamily: {
+                "headline": ["Space Grotesk"],
+                "body": ["Manrope"],
+                "label": ["Space Grotesk"]
+              },
+              borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+            },
+          },
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(201, 190, 255, 0.05);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(201, 190, 255, 0.15);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #10141a;
+            color: #dfe2eb;
+            font-family: 'Manrope', sans-serif;
+        }
+        .glow-soft {
+            box-shadow: 0 0 32px rgba(201, 190, 255, 0.08);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="min-h-screen flex flex-col bg-background">
+<!-- TopAppBar -->
+<header class="sticky top-0 z-50 px-6 py-4 flex items-center justify-between bg-background/80 backdrop-blur-md">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-primary/20 bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Neural Profile Avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBzkad2OsV4aVdLEIG4utvAWEGqUp4Kxt4l3V0u6n4zoCkpW8AwVn-Kx9jv1XpsYkve3VwQqFDjAZNTWMn75hG5w8DXe8CKRPD2-12jbe6311gxcsR5z6t4QJrRNcBVl3FEMbwlM9GdoirsujWo6NVOE0pMD3OH2hWHzYo1B9HO0WQ-Oe_twUgBnh_nhCn-uoWjYVHjT1tVEXW00Y7-S8TyI2cOL2KYYMrXXyc80NeLuWJYaREA77eUHQKx459ocHW5ViYOCDQbqnw"/>
+</div>
+<h1 class="font-headline text-xl font-medium tracking-tight">Starlog</h1>
+</div>
+<button class="p-2 rounded-full hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-primary">sync</span>
+</button>
+</header>
+<main class="flex-1 px-6 pb-32 max-w-2xl mx-auto w-full">
+<!-- Hero Section -->
+<section class="mt-8 mb-10">
+<div class="relative rounded-xl overflow-hidden glass-panel p-8 glow-soft">
+<div class="absolute top-0 right-0 p-4 opacity-20">
+<span class="material-symbols-outlined text-6xl" style="font-variation-settings: 'FILL' 1;">graphic_eq</span>
+</div>
+<div class="relative z-10">
+<span class="font-label text-xs uppercase tracking-widest text-primary opacity-80 mb-2 block">System Configuration</span>
+<h2 class="font-headline text-3xl font-light mb-4">Offline Morning Brief Pipeline</h2>
+<div class="flex items-center gap-3 bg-tertiary-container/20 px-4 py-2 rounded-full w-fit">
+<span class="material-symbols-outlined text-tertiary text-sm">notifications_active</span>
+<span class="font-label text-xs text-tertiary">Notifications: ACTIVE • Priority One</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Configuration Grid -->
+<div class="space-y-6">
+<!-- API Settings Card -->
+<div class="glass-panel rounded-xl p-6">
+<h3 class="font-headline text-sm font-medium text-on-surface-variant mb-6 uppercase tracking-wider">Access Credentials</h3>
+<div class="space-y-4">
+<div class="group">
+<label class="font-label text-xs text-primary mb-2 block opacity-70">API Base</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg p-4 text-on-surface focus:ring-1 focus:ring-primary/50 transition-all font-body text-sm" type="text" value="https://api.starfleet.nexus/v1"/>
+</div>
+<div class="group">
+<label class="font-label text-xs text-primary mb-2 block opacity-70">Bearer Token</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg p-4 text-on-surface focus:ring-1 focus:ring-primary/50 transition-all font-body text-sm" type="password" value="••••••••••••••••"/>
+</div>
+</div>
+</div>
+<!-- Schedule Card -->
+<div class="glass-panel rounded-xl p-6">
+<h3 class="font-headline text-sm font-medium text-on-surface-variant mb-6 uppercase tracking-wider">Temporal parameters</h3>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="font-label text-xs text-primary mb-2 block opacity-70">Briefing Date</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg p-4 text-on-surface focus:ring-1 focus:ring-primary/50 transition-all font-body text-sm" type="date" value="2387-05-12"/>
+</div>
+<div>
+<label class="font-label text-xs text-primary mb-2 block opacity-70">Alarm Time</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg p-4 text-on-surface focus:ring-1 focus:ring-primary/50 transition-all font-body text-sm" type="time" value="06:30"/>
+</div>
+</div>
+</div>
+<!-- Control Suite -->
+<div class="grid grid-cols-2 gap-4">
+<button class="flex items-center justify-center gap-2 bg-primary text-on-primary font-label font-medium py-4 rounded-xl hover:bg-primary-container transition-all">
+<span class="material-symbols-outlined text-sm">cloud_download</span>
+                    Cache Briefing
+                </button>
+<button class="flex items-center justify-center gap-2 border border-primary/30 text-primary font-label font-medium py-4 rounded-xl hover:bg-primary/5 transition-all">
+<span class="material-symbols-outlined text-sm">settings_voice</span>
+                    Queue Audio Render
+                </button>
+<button class="flex items-center justify-center gap-2 bg-surface-container-high text-on-surface font-label font-medium py-4 rounded-xl hover:bg-surface-container-highest transition-all col-span-2">
+<span class="material-symbols-outlined text-sm">play_circle</span>
+                    Play Cached
+                </button>
+</div>
+<!-- Alarm Management -->
+<div class="flex flex-col gap-3 mt-4">
+<button class="flex items-center justify-between px-6 py-4 bg-secondary-container/20 text-secondary border border-secondary/20 rounded-xl hover:bg-secondary-container/30 transition-all">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined">alarm_add</span>
+<span class="font-label">Schedule Daily Alarm</span>
+</div>
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+</button>
+<button class="flex items-center justify-between px-6 py-4 bg-error-container/10 text-error border border-error/20 rounded-xl hover:bg-error-container/20 transition-all">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined">alarm_off</span>
+<span class="font-label">Clear Alarm</span>
+</div>
+<span class="material-symbols-outlined text-sm">close</span>
+</button>
+</div>
+</div>
+</main>
+<!-- FAB -->
+<div class="fixed bottom-24 right-6 z-50">
+<button class="w-14 h-14 bg-primary text-on-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-3xl">graphic_eq</span>
+</button>
+</div>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 right-0 h-20 bg-surface-container-lowest/80 backdrop-blur-xl border-t border-outline-variant/10 flex items-center justify-around px-6 z-40">
+<button class="flex flex-col items-center gap-1 text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">mic</span>
+<span class="font-label text-[10px] uppercase tracking-tighter">Capture</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-on-surface-variant opacity-60">
+<span class="material-symbols-outlined">alarm</span>
+<span class="font-label text-[10px] uppercase tracking-tighter">Alarms</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-on-surface-variant opacity-60">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label text-[10px] uppercase tracking-tighter">Review</span>
+</button>
+</nav>
+</body></html>
