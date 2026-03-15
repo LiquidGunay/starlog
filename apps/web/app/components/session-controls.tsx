@@ -12,7 +12,19 @@ import {
 } from "../lib/entity-snapshot";
 import { useSessionConfig } from "../session-provider";
 
-export function SessionControls() {
+type SessionControlsProps = {
+  variant?: "full";
+};
+
+export function SessionControls({ variant }: SessionControlsProps) {
+  if (variant !== "full") {
+    return null;
+  }
+
+  return <SessionControlsPanel />;
+}
+
+function SessionControlsPanel() {
   const {
     apiBase,
     token,

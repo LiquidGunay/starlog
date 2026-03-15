@@ -4,7 +4,6 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import {
   readEntityCacheScope,
   readEntityCacheValue,
@@ -715,11 +714,6 @@ function ArtifactsPageContent() {
                 <button className="button" type="button" onClick={() => createArtifact()}>Create Clip</button>
                 <button className="button" type="button" onClick={() => loadArtifacts()}>Refresh</button>
               </div>
-            </details>
-
-            <details className="artifact-quick-capture">
-              <summary>PWA session controls</summary>
-              <SessionControls />
             </details>
           </div>
         </aside>

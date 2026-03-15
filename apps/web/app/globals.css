@@ -183,6 +183,49 @@ a {
   letter-spacing: 0.08em;
 }
 
+.runtime-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 62%);
+  background: color-mix(in srgb, var(--chip), transparent 16%);
+  color: var(--text);
+  font-size: 0.72rem;
+  padding: 0.28rem 0.62rem;
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  transition: all 140ms ease;
+}
+
+.runtime-chip:hover,
+.runtime-chip.active {
+  border-color: color-mix(in srgb, var(--primary), transparent 30%);
+  color: var(--primary-soft);
+}
+
+.runtime-chip-dot {
+  width: 0.46rem;
+  height: 0.46rem;
+  border-radius: 999px;
+}
+
+.runtime-chip-dot.online {
+  background: var(--success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--success), transparent 40%);
+}
+
+.runtime-chip-dot.offline {
+  background: var(--danger);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--danger), transparent 40%);
+}
+
+.runtime-chip-meta {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .system-dot {
   width: 0.46rem;
   height: 0.46rem;
@@ -444,6 +487,46 @@ a {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 0.78rem;
   margin-bottom: 1rem;
+}
+
+.runtime-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.runtime-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.9fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.runtime-hero-meta {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 14%);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: color-mix(in srgb, var(--chip), transparent 20%);
+}
+
+.runtime-hero-meta .console-copy:first-child {
+  margin-top: 0;
+}
+
+.runtime-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.9rem;
+}
+
+.runtime-shortcut-card {
+  padding: 1rem;
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+}
+
+.runtime-shortcut-card h2 {
+  margin: 0;
 }
 
 .timeline-list {
@@ -1545,6 +1628,10 @@ a {
     grid-template-columns: 280px 1fr;
   }
 
+  .runtime-chip-meta {
+    display: none;
+  }
+
   .command-agent-panel {
     grid-column: 1 / span 2;
     border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 30%);
@@ -1567,6 +1654,10 @@ a {
   }
 
   .command-center-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-hero {
     grid-template-columns: 1fr;
   }
 

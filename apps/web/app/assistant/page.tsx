@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { ApiError } from "../lib/starlog-client";
@@ -739,10 +738,6 @@ export default function AssistantPage() {
               )}
             </article>
 
-            <article className="command-rich-card command-session">
-              <h2>PWA session controls</h2>
-              <SessionControls />
-            </article>
           </div>
         </section>
 
