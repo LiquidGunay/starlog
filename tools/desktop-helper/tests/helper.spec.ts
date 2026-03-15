@@ -158,7 +158,7 @@ test("clipboard failure updates runtime diagnostics note", async ({ page }) => {
     });
   });
 
-  await page.goto("/index.html");
+  await page.goto("/index.html?mode=quick");
   await page.getByRole("button", { name: "Clip Clipboard" }).click();
 
   await expect(page.locator("#status")).toContainText("Permission denied");
@@ -171,7 +171,7 @@ test("clipboard failure updates runtime diagnostics note", async ({ page }) => {
 });
 
 test("browser screenshot attempt records the fallback note", async ({ page }) => {
-  await page.goto("/index.html");
+  await page.goto("/index.html?mode=quick");
   await page.getByRole("button", { name: "Clip Screenshot" }).click();
 
   await expect(page.locator("#status")).toHaveText("Screenshot clip requires Tauri runtime");
@@ -193,9 +193,10 @@ test("copy diagnostics includes the latest runtime note without the token", asyn
     });
   });
 
-  await page.goto("/index.html");
-  await page.getByLabel("Bearer token").fill("token-123");
+  await page.goto("/index.html?mode=quick");
   await page.getByRole("button", { name: "Clip Screenshot" }).click();
+  await page.getByRole("button", { name: "Open Workspace" }).click();
+  await page.getByLabel("Bearer token").fill("token-123");
   await page.getByRole("button", { name: "Copy Diagnostics" }).click();
 
   await expect(page.locator("#status")).toHaveText("Diagnostics copied to clipboard");
