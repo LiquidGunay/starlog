@@ -163,7 +163,10 @@ export function cachePrefixesForMutation(
     return ["tasks."];
   }
   if (mutation.entity === "calendar_event") {
-    return ["calendar."];
+    return ["calendar.", "planner."];
+  }
+  if (mutation.entity === "provider_config" || mutation.entity === "execution_policy") {
+    return ["integrations."];
   }
   if (mutation.entity === "planner_block") {
     return ["planner."];
@@ -188,7 +191,13 @@ export function cachePrefixesForMutation(
     return ["tasks."];
   }
   if (mutation.path.startsWith("/v1/calendar/events")) {
-    return ["calendar."];
+    return ["calendar.", "planner."];
+  }
+  if (mutation.path.startsWith("/v1/planning/blocks")) {
+    return ["planner."];
+  }
+  if (mutation.path.startsWith("/v1/integrations/")) {
+    return ["integrations."];
   }
   if (mutation.path.startsWith("/v1/planning/")) {
     return ["planner."];

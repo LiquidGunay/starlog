@@ -574,6 +574,39 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts`
   - `cd tools/desktop-helper/src-tauri && cargo check`
 
+### 7. PWA cache snapshots for planner/integrations/sync center
+
+- Branch: `codex/pwa-cache-synccenter-followup-b`
+- Workitem ID: `WI-114`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-114 | Owner: N/A | Claimed: 2026-03-14T19:05:52Z | Last heartbeat: 2026-03-14T19:21:05Z`
+- Goal: extend IndexedDB/local snapshot coverage to planner, integrations, and sync-center views so these pages remain useful after offline reload.
+- Scope:
+  - add snapshot keys and local bootstrap for planner timelines, integration/provider state, and sync-center history/cursor,
+  - persist successful refresh results and restore from cache before network loads,
+  - keep stale marking aligned with existing replay/invalidation behavior.
+- Out of scope:
+  - replacing existing cache primitives,
+  - redesigning these pages.
+- Likely files:
+  - `apps/web/app/planner/page.tsx`
+  - `apps/web/app/integrations/page.tsx`
+  - `apps/web/app/sync-center/page.tsx`
+  - `apps/web/app/lib/entity-cache.ts`
+  - `apps/web/app/lib/entity-snapshot.ts`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Concrete work items:
+  - define stable snapshot keys for planner/integrations/sync-center state,
+  - hydrate state from snapshots on boot and async restore,
+  - write snapshots on successful loads/mutations,
+  - ensure sync-center pull cursor/history are retained across reloads.
+- Acceptance:
+  - planner, integrations, and sync-center show cached data on offline reload when prior data exists,
+  - pages continue to refresh correctly when back online.
+- Validation:
+  - `pnpm --filter web exec tsc --noEmit`
+  - `pnpm --filter web lint`
+  - `pnpm test:web:offline-cache`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -603,4 +636,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-112` (`codex/workitem-mirror-checks-b`): add check-mode drift detection and tests for lock-mirror sync tooling.
+- `WI-114` (`codex/pwa-cache-synccenter-followup-b`): extend cache snapshot hydration/persistence for planner, integrations, and sync-center.

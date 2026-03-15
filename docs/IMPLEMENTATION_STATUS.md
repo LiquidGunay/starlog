@@ -118,8 +118,7 @@
 - PWA offline search now reads the IndexedDB cache, reuses cached artifact graph detail, and overlays queued note/task/calendar/artifact mutations so offline retrieval stays useful after local edits.
 - Filtered task refreshes now merge back into the canonical local task cache, so switching filters or reloading offline does not collapse the offline task/search view down to only the most recently fetched subset.
 - PWA mutation replay now marks affected cache scopes stale, key workspaces auto-refresh those scopes on reconnect, and the service worker now caches core app-shell routes/assets so offline reloads can reach the cached entity data.
-- Added `scripts/sync_workitem_mirror.py` to sync lock-mirror lines in `docs/CODEX_PARALLEL_WORK_ITEMS.md`, including a `--check` mode for non-mutating drift detection in automation.
-- Added lock-mirror helper tests and Makefile targets (`sync-workitem-mirror`, `check-workitem-mirror`, `test-workitem-mirror`) so mirror workflows are repeatable and testable.
+- Planner, integrations, and sync-center workspaces now restore cached snapshot data on reload (including offline), persist refresh/mutation results back to snapshots, and wire stale-prefix invalidation for planner/integrations follow-up refreshes.
 - Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
@@ -131,9 +130,9 @@
 - `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/tsc --noEmit`
 - `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/next lint`
 - `cd /home/ubuntu/starlog && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
-- `cd /home/ubuntu/starlog && python3 scripts/sync_workitem_mirror.py`
-- `cd /home/ubuntu/starlog && python3 scripts/sync_workitem_mirror.py --check`
-- `cd /home/ubuntu/starlog && make test-workitem-mirror`
+- `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web exec tsc --noEmit`
+- `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web lint`
+- `cd /home/ubuntu/starlog && npx pnpm@9.15.0 test:web:offline-cache`
 
 ## Next implementation targets
 

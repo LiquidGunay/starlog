@@ -3,16 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
-import {
-  ENTITY_CACHE_INVALIDATION_EVENT,
-  cachePrefixesIntersect,
-  clearEntityCachesStale,
-  hasStaleEntityCache,
-  readEntitySnapshot,
-  readEntitySnapshotAsync,
-  writeEntitySnapshot,
-} from "../lib/entity-snapshot";
+import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -52,37 +43,11 @@ type SyncPullResponse = {
   events: SyncEvent[];
 };
 
-const SYNC_SERVER_ENTRIES_SNAPSHOT = "sync.server_entries";
-const SYNC_PULL_EVENTS_SNAPSHOT = "sync.pulled_events";
-const SYNC_PULL_CURSOR_SNAPSHOT = "sync.pull_cursor";
-const SYNC_SCOPE_SNAPSHOT = "sync.scope";
-const SYNC_CACHE_PREFIXES = ["sync."];
-const SYNC_SERVER_ENTRIES_ENTITY_SCOPE = "sync.server_entries";
-const SYNC_PULL_EVENTS_ENTITY_SCOPE = "sync.pulled_events";
-
-function cacheServerEntries(entries: SyncActivityEntry[]): void {
-  void replaceEntityCacheScope(
-    SYNC_SERVER_ENTRIES_ENTITY_SCOPE,
-    entries.map((entry) => ({
-      id: entry.id,
-      value: entry,
-      updated_at: entry.recorded_at,
-      search_text: `${entry.label} ${entry.entity} ${entry.status} ${entry.method} ${entry.path}`,
-    })),
-  );
-}
-
-function cachePulledEvents(events: SyncEvent[]): void {
-  void replaceEntityCacheScope(
-    SYNC_PULL_EVENTS_ENTITY_SCOPE,
-    events.map((event) => ({
-      id: `${event.cursor}:${event.mutation_id}`,
-      value: event,
-      updated_at: event.server_received_at,
-      search_text: `${event.entity} ${event.op} ${event.client_id} ${event.mutation_id}`,
-    })),
-  );
-}
+const SYNC_CENTER_SCOPE_SNAPSHOT = "sync_center.scope";
+const SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT = "sync_center.server_entries";
+const SYNC_CENTER_PULL_CURSOR_SNAPSHOT = "sync_center.pull_cursor";
+const SYNC_CENTER_PULLED_EVENTS_SNAPSHOT = "sync_center.pulled_events";
+const LEGACY_SYNC_CURSOR_KEY = "starlog-sync-cursor";
 
 export default function SyncCenterPage() {
   const {
@@ -98,71 +63,72 @@ export default function SyncCenterPage() {
     dropQueuedMutation,
   } = useSessionConfig();
   const [serverEntries, setServerEntries] = useState<SyncActivityEntry[]>(
-    () => readEntitySnapshot<SyncActivityEntry[]>(SYNC_SERVER_ENTRIES_SNAPSHOT, []),
+    () => readEntitySnapshot<SyncActivityEntry[]>(SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT, []),
   );
   const [serverScope, setServerScope] = useState<"client" | "all">(
-    () => readEntitySnapshot<"client" | "all">(SYNC_SCOPE_SNAPSHOT, "client"),
+    () => readEntitySnapshot<"client" | "all">(SYNC_CENTER_SCOPE_SNAPSHOT, "client"),
   );
   const [serverStatus, setServerStatus] = useState("Server sync history idle");
   const [pullCursor, setPullCursor] = useState(
-    () => readEntitySnapshot<number>(SYNC_PULL_CURSOR_SNAPSHOT, 0),
+    () => readEntitySnapshot<number>(SYNC_CENTER_PULL_CURSOR_SNAPSHOT, 0),
   );
   const [pulledEvents, setPulledEvents] = useState<SyncEvent[]>(
-    () => readEntitySnapshot<SyncEvent[]>(SYNC_PULL_EVENTS_SNAPSHOT, []),
+    () => readEntitySnapshot<SyncEvent[]>(SYNC_CENTER_PULLED_EVENTS_SNAPSHOT, []),
   );
   const [pullStatus, setPullStatus] = useState("Server delta pull idle");
 
   useEffect(() => {
+    setServerScope((previous) => previous || readEntitySnapshot<"client" | "all">(SYNC_CENTER_SCOPE_SNAPSHOT, "client"));
     setServerEntries((previous) =>
-      previous.length > 0 ? previous : readEntitySnapshot<SyncActivityEntry[]>(SYNC_SERVER_ENTRIES_SNAPSHOT, []),
+      previous.length > 0 ? previous : readEntitySnapshot<SyncActivityEntry[]>(SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT, []),
     );
     setPulledEvents((previous) =>
-      previous.length > 0 ? previous : readEntitySnapshot<SyncEvent[]>(SYNC_PULL_EVENTS_SNAPSHOT, []),
+      previous.length > 0 ? previous : readEntitySnapshot<SyncEvent[]>(SYNC_CENTER_PULLED_EVENTS_SNAPSHOT, []),
     );
-    setPullCursor((previous) => previous || readEntitySnapshot<number>(SYNC_PULL_CURSOR_SNAPSHOT, 0));
-    setServerScope((previous) => previous || readEntitySnapshot<"client" | "all">(SYNC_SCOPE_SNAPSHOT, "client"));
+
+    const bootstrapCursor = readEntitySnapshot<number>(SYNC_CENTER_PULL_CURSOR_SNAPSHOT, 0);
+    if (bootstrapCursor > 0) {
+      setPullCursor(bootstrapCursor);
+      return;
+    }
+
+    const legacyCursor = window.localStorage.getItem(LEGACY_SYNC_CURSOR_KEY);
+    if (!legacyCursor) {
+      return;
+    }
+    const parsed = Number(legacyCursor);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      setPullCursor(parsed);
+      writeEntitySnapshot(SYNC_CENTER_PULL_CURSOR_SNAPSHOT, parsed);
+    }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
-      const [
-        cachedServerEntries,
-        cachedPullEvents,
-        bootstrapServerEntries,
-        bootstrapPullEvents,
-        bootstrapCursor,
-        bootstrapScope,
-      ] = await Promise.all([
-        readEntityCacheScope<SyncActivityEntry>(SYNC_SERVER_ENTRIES_ENTITY_SCOPE),
-        readEntityCacheScope<SyncEvent>(SYNC_PULL_EVENTS_ENTITY_SCOPE),
-        readEntitySnapshotAsync<SyncActivityEntry[]>(SYNC_SERVER_ENTRIES_SNAPSHOT, []),
-        readEntitySnapshotAsync<SyncEvent[]>(SYNC_PULL_EVENTS_SNAPSHOT, []),
-        readEntitySnapshotAsync<number>(SYNC_PULL_CURSOR_SNAPSHOT, 0),
-        readEntitySnapshotAsync<"client" | "all">(SYNC_SCOPE_SNAPSHOT, "client"),
+      const [cachedScope, cachedEntries, cachedCursor, cachedEvents] = await Promise.all([
+        readEntitySnapshotAsync<"client" | "all">(SYNC_CENTER_SCOPE_SNAPSHOT, "client"),
+        readEntitySnapshotAsync<SyncActivityEntry[]>(SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT, []),
+        readEntitySnapshotAsync<number>(SYNC_CENTER_PULL_CURSOR_SNAPSHOT, 0),
+        readEntitySnapshotAsync<SyncEvent[]>(SYNC_CENTER_PULLED_EVENTS_SNAPSHOT, []),
       ]);
 
       if (cancelled) {
         return;
       }
 
-      const nextServerEntries =
-        cachedServerEntries.length > 0 ? cachedServerEntries : bootstrapServerEntries;
-      if (nextServerEntries.length > 0) {
-        setServerEntries(nextServerEntries);
+      if (cachedScope) {
+        setServerScope(cachedScope);
       }
-
-      const nextPullEvents = cachedPullEvents.length > 0 ? cachedPullEvents : bootstrapPullEvents;
-      if (nextPullEvents.length > 0) {
-        setPulledEvents(nextPullEvents);
+      if (cachedEntries.length > 0) {
+        setServerEntries(cachedEntries);
       }
-
-      if (bootstrapCursor > 0) {
-        setPullCursor(bootstrapCursor);
+      if (cachedCursor > 0) {
+        setPullCursor(cachedCursor);
       }
-      if (bootstrapScope) {
-        setServerScope(bootstrapScope);
+      if (cachedEvents.length > 0) {
+        setPulledEvents(cachedEvents);
       }
     })();
 
@@ -172,43 +138,33 @@ export default function SyncCenterPage() {
   }, []);
 
   useEffect(() => {
-    writeEntitySnapshot(SYNC_PULL_CURSOR_SNAPSHOT, pullCursor);
+    writeEntitySnapshot(SYNC_CENTER_SCOPE_SNAPSHOT, serverScope);
+  }, [serverScope]);
+
+  useEffect(() => {
+    writeEntitySnapshot(SYNC_CENTER_PULL_CURSOR_SNAPSHOT, pullCursor);
+    window.localStorage.setItem(LEGACY_SYNC_CURSOR_KEY, String(pullCursor));
   }, [pullCursor]);
 
   useEffect(() => {
     writeEntitySnapshot(SYNC_SCOPE_SNAPSHOT, serverScope);
   }, [serverScope]);
 
-  const loadServerHistory = useCallback(
-    async (scope: "client" | "all" = serverScope) => {
-      if (!token) {
-        setServerStatus("Add bearer token to load server sync history");
-        return;
-      }
-
-      const query =
-        scope === "client"
-          ? `/v1/sync/activity?limit=30&client_id=${encodeURIComponent(clientId)}`
-          : "/v1/sync/activity?limit=30";
-      try {
-        const payload = await apiRequest<SyncActivityListResponse>(apiBase, token, query);
-        setServerEntries(payload.entries);
-        writeEntitySnapshot(SYNC_SERVER_ENTRIES_SNAPSHOT, payload.entries);
-        cacheServerEntries(payload.entries);
-        clearEntityCachesStale(SYNC_CACHE_PREFIXES);
-        setServerStatus(
-          `Loaded ${payload.entries.length} server log entr${payload.entries.length === 1 ? "y" : "ies"}`,
-        );
-      } catch (error) {
-        const detail =
-          error instanceof Error ? error.message : "Failed to load server sync history";
-        setServerStatus(
-          serverEntries.length > 0 ? `Loaded cached server sync history. ${detail}` : detail,
-        );
-      }
-    },
-    [apiBase, clientId, serverEntries.length, serverScope, token],
-  );
+    const query =
+      scope === "client"
+        ? `/v1/sync/activity?limit=30&client_id=${encodeURIComponent(clientId)}`
+        : "/v1/sync/activity?limit=30";
+    try {
+      const payload = await apiRequest<SyncActivityListResponse>(apiBase, token, query);
+      setServerEntries(payload.entries);
+      setServerScope(scope);
+      writeEntitySnapshot(SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT, payload.entries);
+      writeEntitySnapshot(SYNC_CENTER_SCOPE_SNAPSHOT, scope);
+      setServerStatus(`Loaded ${payload.entries.length} server log entr${payload.entries.length === 1 ? "y" : "ies"}`);
+    } catch (error) {
+      setServerStatus(error instanceof Error ? error.message : "Failed to load server sync history");
+    }
+  }, [apiBase, clientId, serverScope, token]);
 
   useEffect(() => {
     loadServerHistory().catch(() => undefined);
@@ -223,14 +179,13 @@ export default function SyncCenterPage() {
     const cursor = resetCursor ? 0 : pullCursor;
     try {
       const payload = await apiRequest<SyncPullResponse>(apiBase, token, `/v1/sync/pull?cursor=${cursor}`);
-      const nextEvents = resetCursor
-        ? payload.events
-        : [...payload.events, ...pulledEvents].slice(0, 40);
-      setPulledEvents(nextEvents);
+      setPulledEvents((previous) => {
+        const next = (resetCursor ? payload.events : [...payload.events, ...previous]).slice(0, 40);
+        writeEntitySnapshot(SYNC_CENTER_PULLED_EVENTS_SNAPSHOT, next);
+        return next;
+      });
       setPullCursor(payload.next_cursor);
-      writeEntitySnapshot(SYNC_PULL_EVENTS_SNAPSHOT, nextEvents);
-      cachePulledEvents(nextEvents);
-      clearEntityCachesStale(SYNC_CACHE_PREFIXES);
+      writeEntitySnapshot(SYNC_CENTER_PULL_CURSOR_SNAPSHOT, payload.next_cursor);
       setPullStatus(
         payload.events.length === 0
           ? `No new deltas after cursor ${cursor}`
@@ -238,7 +193,7 @@ export default function SyncCenterPage() {
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to pull sync deltas";
-      setPullStatus(pulledEvents.length > 0 ? `Loaded cached delta events. ${detail}` : detail);
+      setPullStatus(pulledEvents.length > 0 ? `Loaded cached pulled deltas. ${detail}` : detail);
     }
   }
 

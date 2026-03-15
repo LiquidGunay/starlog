@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
@@ -89,6 +88,20 @@ type MobileLLMContract = {
   checked_at: string;
 };
 
+const INTEGRATIONS_PROVIDERS_SNAPSHOT = "integrations.providers";
+const INTEGRATIONS_HEALTH_SNAPSHOT = "integrations.health";
+const INTEGRATIONS_POLICY_JSON_SNAPSHOT = "integrations.policy_json";
+const INTEGRATIONS_POLICY_META_SNAPSHOT = "integrations.policy_meta";
+const INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT = "integrations.codex_contract";
+const INTEGRATIONS_CACHE_PREFIXES = ["integrations."];
+const DEFAULT_POLICY_DRAFT = {
+  llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
+  stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
+  tts: ["on_device", "server_local", "api_fallback"],
+  ocr: ["on_device"],
+};
+const DEFAULT_POLICY_JSON = JSON.stringify(DEFAULT_POLICY_DRAFT, null, 2);
+
 export default function IntegrationsPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const [providerName, setProviderName] = useState("local_llm");
@@ -102,83 +115,58 @@ export default function IntegrationsPage() {
     () => readEntitySnapshot<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {}),
   );
   const [policyJson, setPolicyJson] = useState(
-    JSON.stringify(
-      {
-        llm: ["mobile_bridge", "desktop_bridge", "api"],
-        stt: ["mobile_bridge", "desktop_bridge", "api"],
-        tts: ["mobile_bridge", "desktop_bridge", "api"],
-        ocr: ["mobile_bridge", "desktop_bridge"],
-      },
-      null,
-      2,
-    ),
+    () => readEntitySnapshot<string>(INTEGRATIONS_POLICY_JSON_SNAPSHOT, DEFAULT_POLICY_JSON),
   );
-  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(null);
-  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(null);
-  const [mobileLlmContract, setMobileLlmContract] = useState<MobileLLMContract | null>(null);
+  const [policyMeta, setPolicyMeta] = useState<ExecutionPolicy | null>(
+    () => readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_META_SNAPSHOT, null),
+  );
+  const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(
+    () => readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, null),
+  );
   const [status, setStatus] = useState("Ready");
 
   useEffect(() => {
-    setProviders((previous) =>
-      previous.length > 0 ? previous : readEntitySnapshot<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []),
+    setProviders((previous) => previous.length > 0 ? previous : readEntitySnapshot<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []));
+    setHealthByProvider((previous) =>
+      Object.keys(previous).length > 0
+        ? previous
+        : readEntitySnapshot<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {}),
     );
-    setHealthByProvider((previous) => {
-      if (Object.keys(previous).length > 0) {
-        return previous;
-      }
-      return readEntitySnapshot<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {});
-    });
-    setPolicyMeta((previous) =>
-      previous ?? readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_SNAPSHOT, null),
-    );
-    setCodexContract((previous) =>
-      previous ?? readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CONTRACT_SNAPSHOT, null),
-    );
+    setPolicyMeta((previous) => previous ?? readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_META_SNAPSHOT, null));
+    setCodexContract((previous) => previous ?? readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, null));
+    setPolicyJson((previous) => previous || readEntitySnapshot<string>(INTEGRATIONS_POLICY_JSON_SNAPSHOT, DEFAULT_POLICY_JSON));
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
-      const [
-        cachedProviders,
-        cachedHealth,
-        bootstrapProviders,
-        bootstrapHealth,
-        bootstrapPolicy,
-        bootstrapContract,
-      ] = await Promise.all([
-        readEntityCacheScope<ProviderConfig>(INTEGRATIONS_PROVIDERS_ENTITY_SCOPE),
-        readEntityCacheScope<ProviderHealth>(INTEGRATIONS_HEALTH_ENTITY_SCOPE),
+      const [cachedProviders, cachedHealth, cachedPolicyMeta, cachedPolicyJson, cachedContract] = await Promise.all([
         readEntitySnapshotAsync<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []),
         readEntitySnapshotAsync<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {}),
-        readEntitySnapshotAsync<ExecutionPolicy | null>(INTEGRATIONS_POLICY_SNAPSHOT, null),
-        readEntitySnapshotAsync<CodexBridgeContract | null>(INTEGRATIONS_CONTRACT_SNAPSHOT, null),
+        readEntitySnapshotAsync<ExecutionPolicy | null>(INTEGRATIONS_POLICY_META_SNAPSHOT, null),
+        readEntitySnapshotAsync<string>(INTEGRATIONS_POLICY_JSON_SNAPSHOT, DEFAULT_POLICY_JSON),
+        readEntitySnapshotAsync<CodexBridgeContract | null>(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, null),
       ]);
 
       if (cancelled) {
         return;
       }
 
-      const nextProviders = cachedProviders.length > 0 ? cachedProviders : bootstrapProviders;
-      if (nextProviders.length > 0) {
-        setProviders(nextProviders);
+      if (cachedProviders.length > 0) {
+        setProviders(cachedProviders);
       }
-
-      const nextHealth =
-        cachedHealth.length > 0
-          ? Object.fromEntries(cachedHealth.map((entry) => [entry.provider_name, entry]))
-          : bootstrapHealth;
-      if (Object.keys(nextHealth).length > 0) {
-        setHealthByProvider(nextHealth);
+      if (Object.keys(cachedHealth).length > 0) {
+        setHealthByProvider(cachedHealth);
       }
-
-      if (bootstrapPolicy) {
-        setPolicyMeta(bootstrapPolicy);
-        setPolicyJson(parsePolicyFields(bootstrapPolicy));
+      if (cachedPolicyMeta) {
+        setPolicyMeta(cachedPolicyMeta);
       }
-      if (bootstrapContract) {
-        setCodexContract(bootstrapContract);
+      if (cachedPolicyJson) {
+        setPolicyJson(cachedPolicyJson);
+      }
+      if (cachedContract) {
+        setCodexContract(cachedContract);
       }
     })();
 
@@ -212,19 +200,24 @@ export default function IntegrationsPage() {
       const healthMap = Object.fromEntries(healthPairs);
       setHealthByProvider(healthMap);
       setPolicyMeta(policy);
-      setPolicyJson(
-        JSON.stringify(
-          {
-            llm: policy.llm,
-            stt: policy.stt,
-            tts: policy.tts,
-            ocr: policy.ocr,
-          },
-          null,
-          2,
-        ),
+      const nextPolicyJson = JSON.stringify(
+        {
+          llm: policy.llm,
+          stt: policy.stt,
+          tts: policy.tts,
+          ocr: policy.ocr,
+        },
+        null,
+        2,
       );
-      setStatus(`Loaded ${payload.length} provider config(s), Codex bridge contract, and phone-local LLM contract`);
+      setPolicyJson(nextPolicyJson);
+      writeEntitySnapshot(INTEGRATIONS_PROVIDERS_SNAPSHOT, payload);
+      writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, healthMap);
+      writeEntitySnapshot(INTEGRATIONS_POLICY_META_SNAPSHOT, policy);
+      writeEntitySnapshot(INTEGRATIONS_POLICY_JSON_SNAPSHOT, nextPolicyJson);
+      writeEntitySnapshot(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, contract);
+      clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
+      setStatus(`Loaded ${payload.length} provider config(s) and Codex bridge contract`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load providers";
       setStatus(
@@ -233,7 +226,7 @@ export default function IntegrationsPage() {
           : detail,
       );
     }
-  }, [apiBase, codexContract, healthByProvider, policyMeta, providers.length, token]);
+  }, [apiBase, token]);
 
   async function upsertProvider() {
     let parsedConfig: Record<string, unknown>;
@@ -279,11 +272,11 @@ export default function IntegrationsPage() {
         token,
         `/v1/integrations/providers/${provider}/health`,
       );
-      const nextMap = { ...healthByProvider, [provider]: health };
-      setHealthByProvider(nextMap);
-      writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, nextMap);
-      cacheProviderHealth(nextMap);
-      clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
+      setHealthByProvider((previous) => {
+        const next = { ...previous, [provider]: health };
+        writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, next);
+        return next;
+      });
       setStatus(`Refreshed health for ${provider}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Health refresh failed");
@@ -318,9 +311,21 @@ export default function IntegrationsPage() {
       }
       if (result.data) {
         setPolicyMeta(result.data);
-        writeEntitySnapshot(INTEGRATIONS_POLICY_SNAPSHOT, result.data);
-        clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
+        writeEntitySnapshot(INTEGRATIONS_POLICY_META_SNAPSHOT, result.data);
+        const nextPolicyJson = JSON.stringify(
+          {
+            llm: result.data.llm,
+            stt: result.data.stt,
+            tts: result.data.tts,
+            ocr: result.data.ocr,
+          },
+          null,
+          2,
+        );
+        setPolicyJson(nextPolicyJson);
+        writeEntitySnapshot(INTEGRATIONS_POLICY_JSON_SNAPSHOT, nextPolicyJson);
       }
+      clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
       setStatus("Saved execution policy");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to save execution policy");
@@ -333,6 +338,10 @@ export default function IntegrationsPage() {
     }
     loadProviders().catch(() => undefined);
   }, [loadProviders, token]);
+
+  useEffect(() => {
+    writeEntitySnapshot(INTEGRATIONS_POLICY_JSON_SNAPSHOT, policyJson);
+  }, [policyJson]);
 
   useEffect(() => {
     if (!token) {
