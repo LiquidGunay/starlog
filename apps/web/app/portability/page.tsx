@@ -137,7 +137,7 @@ export default function PortabilityPage() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Portability</p>
+          <p className="eyebrow">Artifact Nexus</p>
           <h1>Export, restore, and verification</h1>
           <p className="console-copy">
             Use the API snapshot directly, restore it into the local Starlog database, and validate with `make verify-export`.

@@ -93,6 +93,7 @@ const INTEGRATIONS_HEALTH_SNAPSHOT = "integrations.health";
 const INTEGRATIONS_POLICY_JSON_SNAPSHOT = "integrations.policy_json";
 const INTEGRATIONS_POLICY_META_SNAPSHOT = "integrations.policy_meta";
 const INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT = "integrations.codex_contract";
+const INTEGRATIONS_MOBILE_LLM_CONTRACT_SNAPSHOT = "integrations.mobile_llm_contract";
 const INTEGRATIONS_CACHE_PREFIXES = ["integrations."];
 const DEFAULT_POLICY_DRAFT = {
   llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
@@ -123,6 +124,9 @@ export default function IntegrationsPage() {
   const [codexContract, setCodexContract] = useState<CodexBridgeContract | null>(
     () => readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, null),
   );
+  const [mobileLlmContract, setMobileLlmContract] = useState<MobileLLMContract | null>(
+    () => readEntitySnapshot<MobileLLMContract | null>(INTEGRATIONS_MOBILE_LLM_CONTRACT_SNAPSHOT, null),
+  );
   const [status, setStatus] = useState("Ready");
 
   useEffect(() => {
@@ -134,6 +138,9 @@ export default function IntegrationsPage() {
     );
     setPolicyMeta((previous) => previous ?? readEntitySnapshot<ExecutionPolicy | null>(INTEGRATIONS_POLICY_META_SNAPSHOT, null));
     setCodexContract((previous) => previous ?? readEntitySnapshot<CodexBridgeContract | null>(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, null));
+    setMobileLlmContract((previous) =>
+      previous ?? readEntitySnapshot<MobileLLMContract | null>(INTEGRATIONS_MOBILE_LLM_CONTRACT_SNAPSHOT, null),
+    );
     setPolicyJson((previous) => previous || readEntitySnapshot<string>(INTEGRATIONS_POLICY_JSON_SNAPSHOT, DEFAULT_POLICY_JSON));
   }, []);
 
@@ -141,12 +148,13 @@ export default function IntegrationsPage() {
     let cancelled = false;
 
     void (async () => {
-      const [cachedProviders, cachedHealth, cachedPolicyMeta, cachedPolicyJson, cachedContract] = await Promise.all([
+      const [cachedProviders, cachedHealth, cachedPolicyMeta, cachedPolicyJson, cachedContract, cachedMobileContract] = await Promise.all([
         readEntitySnapshotAsync<ProviderConfig[]>(INTEGRATIONS_PROVIDERS_SNAPSHOT, []),
         readEntitySnapshotAsync<Record<string, ProviderHealth>>(INTEGRATIONS_HEALTH_SNAPSHOT, {}),
         readEntitySnapshotAsync<ExecutionPolicy | null>(INTEGRATIONS_POLICY_META_SNAPSHOT, null),
         readEntitySnapshotAsync<string>(INTEGRATIONS_POLICY_JSON_SNAPSHOT, DEFAULT_POLICY_JSON),
         readEntitySnapshotAsync<CodexBridgeContract | null>(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, null),
+        readEntitySnapshotAsync<MobileLLMContract | null>(INTEGRATIONS_MOBILE_LLM_CONTRACT_SNAPSHOT, null),
       ]);
 
       if (cancelled) {
@@ -167,6 +175,9 @@ export default function IntegrationsPage() {
       }
       if (cachedContract) {
         setCodexContract(cachedContract);
+      }
+      if (cachedMobileContract) {
+        setMobileLlmContract(cachedMobileContract);
       }
     })();
 
@@ -215,18 +226,23 @@ export default function IntegrationsPage() {
       writeEntitySnapshot(INTEGRATIONS_HEALTH_SNAPSHOT, healthMap);
       writeEntitySnapshot(INTEGRATIONS_POLICY_META_SNAPSHOT, policy);
       writeEntitySnapshot(INTEGRATIONS_POLICY_JSON_SNAPSHOT, nextPolicyJson);
-      writeEntitySnapshot(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, contract);
+      writeEntitySnapshot(INTEGRATIONS_CODEX_CONTRACT_SNAPSHOT, codex);
+      writeEntitySnapshot(INTEGRATIONS_MOBILE_LLM_CONTRACT_SNAPSHOT, mobileLlm);
       clearEntityCachesStale(INTEGRATIONS_CACHE_PREFIXES);
-      setStatus(`Loaded ${payload.length} provider config(s) and Codex bridge contract`);
+      setStatus(`Loaded ${payload.length} provider config(s), Codex bridge contract, and phone-local contract`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load providers";
       setStatus(
-        providers.length > 0 || Object.keys(healthByProvider).length > 0 || Boolean(policyMeta) || Boolean(codexContract)
+        providers.length > 0
+          || Object.keys(healthByProvider).length > 0
+          || Boolean(policyMeta)
+          || Boolean(codexContract)
+          || Boolean(mobileLlmContract)
           ? `Loaded cached integration state. ${detail}`
           : detail,
       );
     }
-  }, [apiBase, token]);
+  }, [apiBase, codexContract, healthByProvider, mobileLlmContract, policyMeta, providers.length, token]);
 
   async function upsertProvider() {
     let parsedConfig: Record<string, unknown>;
@@ -375,7 +391,7 @@ export default function IntegrationsPage() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Integrations</p>
+          <p className="eyebrow">Chronos Matrix</p>
           <h1>Provider configs and runtime health</h1>
           <p className="console-copy">
             Configure local/API providers, keep secrets redacted, and inspect runtime probe status.

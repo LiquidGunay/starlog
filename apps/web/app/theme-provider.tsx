@@ -22,7 +22,7 @@ function resolveInitialTheme(): Theme {
     return saved;
   }
 
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return "dark";
 }
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {

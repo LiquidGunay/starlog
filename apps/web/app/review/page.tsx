@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
@@ -159,13 +160,93 @@ export default function ReviewPage() {
     writeEntitySnapshot(REVIEW_STATS_SNAPSHOT, stats);
   }, [stats]);
 
+  const reviewedTotal = stats.reviewed + cards.length;
+  const progressSegments = 5;
+  const progressActive = reviewedTotal === 0 ? 0 : Math.min(progressSegments, Math.round((stats.reviewed / reviewedTotal) * progressSegments));
+
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <SessionControls />
-        <div>
-          <p className="eyebrow">Review</p>
-          <h1>Focused review session</h1>
+    <main className="neural-sync-shell">
+      <header className="neural-sync-header">
+        <Link className="neural-sync-back" href="/assistant">
+          ← Command Center
+        </Link>
+        <div className="neural-sync-progress">
+          <span>Sync Progress</span>
+          <span className="sync-bars">
+            {Array.from({ length: progressSegments }).map((_, index) => (
+              <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
+            ))}
+          </span>
+          <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
+        </div>
+      </header>
+
+      <section className="neural-sync-main">
+        <div className="sync-card">
+          {currentCard ? (
+            <>
+              <span className="sync-tag">Tag: active_queue</span>
+              <div className="sync-prompt">
+                <span>
+                  {currentCard.prompt.split(" ").map((word, index) => (
+                    <span key={`${word}-${index}`} className={index % 7 === 0 ? "sync-highlight" : ""}>
+                      {word}
+                      {" "}
+                    </span>
+                  ))}
+                </span>
+              </div>
+              <button
+                className="button sync-reveal"
+                type="button"
+                onClick={() => setShowAnswer((previous) => !previous)}
+              >
+                {showAnswer ? "Hide Answer" : "Tap to Reveal"}
+              </button>
+              {showAnswer ? (
+                <div className="sync-answer">
+                  <p className="console-copy">Due: {new Date(currentCard.due_at).toLocaleString()}</p>
+                  <p>{currentCard.answer}</p>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <span className="sync-tag">Tag: queue_empty</span>
+              <div className="sync-prompt">No due cards.</div>
+              <p className="sync-reveal">Load due cards to resume review.</p>
+            </>
+          )}
+        </div>
+
+        <div className="sync-rating-row">
+          <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+            <span>Again</span>
+            <small>{"< 1m"}</small>
+          </button>
+          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+            <span>Hard</span>
+            <small>1d</small>
+          </button>
+          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
+            <span>Good</span>
+            <small>3d</small>
+          </button>
+          <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
+            <span>Easy</span>
+            <small>5d</small>
+          </button>
+        </div>
+
+        <div className="sync-status-bar">
+          <span>Queue remaining: {cards.length}</span>
+          <span>Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</span>
+          <span>{status}</span>
+        </div>
+
+        <div className="sync-sidecar glass panel">
+          <p className="eyebrow">Neural Sync</p>
+          <h2>Focused review session</h2>
           <div className="button-row">
             <button className="button" type="button" onClick={() => loadDue()}>Refresh Due Cards</button>
             <button
@@ -177,41 +258,21 @@ export default function ReviewPage() {
               {showAnswer ? "Hide Answer" : "Reveal Answer"}
             </button>
           </div>
-          <p className="console-copy">Queue remaining: {cards.length}</p>
           <p className="status">{status}</p>
-        </div>
-        <div className="panel glass">
-          {!currentCard ? (
-            <p className="console-copy">No due cards.</p>
-          ) : (
-            <div>
-              <p><strong>{currentCard.prompt}</strong></p>
-              <p className="console-copy">Due: {new Date(currentCard.due_at).toLocaleString()}</p>
-              {showAnswer ? <p className="console-copy">Answer: {currentCard.answer}</p> : null}
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => reviewCurrent(2)}>Again</button>
-                <button className="button" type="button" onClick={() => reviewCurrent(4)}>Good</button>
-                <button className="button" type="button" onClick={() => reviewCurrent(5)}>Easy</button>
-              </div>
-            </div>
-          )}
-
-          <h2>Session metrics</h2>
-          <p className="console-copy">Reviewed: {stats.reviewed}</p>
-          <p className="console-copy">Again: {stats.again} / Good: {stats.good} / Easy: {stats.easy}</p>
-
           <h2>Queue preview</h2>
           {duePreview.length === 0 ? (
             <p className="console-copy">No queued cards.</p>
           ) : (
-            <ul>
+            <div className="scroll-panel">
               {duePreview.map((card) => (
-                <li key={card.id}>
-                  <p className="console-copy">{card.prompt}</p>
-                </li>
+                <p key={card.id} className="console-copy">{card.prompt}</p>
               ))}
-            </ul>
+            </div>
           )}
+          <details>
+            <summary className="label">PWA session controls</summary>
+            <SessionControls />
+          </details>
         </div>
       </section>
     </main>

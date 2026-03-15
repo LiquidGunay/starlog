@@ -444,7 +444,7 @@ function CalendarPageContent() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Calendar</p>
+          <p className="eyebrow">Chronos Matrix</p>
           <h1>Weekly board and event lifecycle</h1>
           <p className="console-copy">
             Create, update, delete, and sync events while keeping conflict visibility in one workspace.

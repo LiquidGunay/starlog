@@ -12,39 +12,6 @@ import {
 } from "../lib/entity-snapshot";
 import { useSessionConfig } from "../session-provider";
 
-type CacheTelemetry = {
-  entityScopes: string[];
-  entityRecords: number;
-  snapshotPrefixes: string[];
-  snapshotRecords: number;
-  stalePrefixes: string[];
-  usageBytes: number | null;
-  quotaBytes: number | null;
-  refreshedAt: string | null;
-};
-
-function formatBytes(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) {
-    return "n/a";
-  }
-  if (value < 1024) {
-    return `${value} B`;
-  }
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`;
-  }
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function prefixFromKey(key: string): string {
-  const base = key.split(":")[0] ?? key;
-  const stem = base.split(".")[0] ?? base;
-  if (!stem) {
-    return key;
-  }
-  return `${stem}.`;
-}
-
 export function SessionControls() {
   const {
     apiBase,

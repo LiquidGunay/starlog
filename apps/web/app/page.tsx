@@ -33,7 +33,7 @@ export default function HomePage() {
       <div className="stars" aria-hidden="true" />
       <header className="hero glass">
         <div>
-          <p className="eyebrow">Starlog v1</p>
+          <p className="eyebrow">Command Center</p>
           <h1>Clip-first personal system for knowledge and execution.</h1>
           <p className="subcopy">
             A modern, spacy workspace: capture anything, connect ideas, schedule what matters, and

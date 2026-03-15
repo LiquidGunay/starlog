@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { runOfflineWarmup, type OfflineWarmupResult } from "../lib/offline-warmup";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -149,25 +150,31 @@ export default function SyncCenterPage() {
     window.localStorage.setItem(LEGACY_SYNC_CURSOR_KEY, String(pullCursor));
   }, [pullCursor]);
 
-  useEffect(() => {
-    writeEntitySnapshot(SYNC_SCOPE_SNAPSHOT, serverScope);
-  }, [serverScope]);
+  const loadServerHistory = useCallback(
+    async (scope: "client" | "all" = serverScope) => {
+      if (!token) {
+        setServerStatus("Add bearer token to load server sync history");
+        return;
+      }
 
-    const query =
-      scope === "client"
-        ? `/v1/sync/activity?limit=30&client_id=${encodeURIComponent(clientId)}`
-        : "/v1/sync/activity?limit=30";
-    try {
-      const payload = await apiRequest<SyncActivityListResponse>(apiBase, token, query);
-      setServerEntries(payload.entries);
-      setServerScope(scope);
-      writeEntitySnapshot(SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT, payload.entries);
-      writeEntitySnapshot(SYNC_CENTER_SCOPE_SNAPSHOT, scope);
-      setServerStatus(`Loaded ${payload.entries.length} server log entr${payload.entries.length === 1 ? "y" : "ies"}`);
-    } catch (error) {
-      setServerStatus(error instanceof Error ? error.message : "Failed to load server sync history");
-    }
-  }, [apiBase, clientId, serverScope, token]);
+      setServerStatus("Loading server sync history...");
+      const query =
+        scope === "client"
+          ? `/v1/sync/activity?limit=30&client_id=${encodeURIComponent(clientId)}`
+          : "/v1/sync/activity?limit=30";
+      try {
+        const payload = await apiRequest<SyncActivityListResponse>(apiBase, token, query);
+        setServerEntries(payload.entries);
+        setServerScope(scope);
+        writeEntitySnapshot(SYNC_CENTER_SERVER_ENTRIES_SNAPSHOT, payload.entries);
+        writeEntitySnapshot(SYNC_CENTER_SCOPE_SNAPSHOT, scope);
+        setServerStatus(`Loaded ${payload.entries.length} server log entr${payload.entries.length === 1 ? "y" : "ies"}`);
+      } catch (error) {
+        setServerStatus(error instanceof Error ? error.message : "Failed to load server sync history");
+      }
+    },
+    [apiBase, clientId, serverScope, token],
+  );
 
   useEffect(() => {
     loadServerHistory().catch(() => undefined);
@@ -234,7 +241,7 @@ export default function SyncCenterPage() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Sync Center</p>
+          <p className="eyebrow">Neural Sync</p>
           <h1>PWA outbox and replay log</h1>
           <p className="console-copy">
             Inspect queued local mutations, replay them manually, and review the recent flush history.

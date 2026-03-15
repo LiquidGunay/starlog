@@ -18,6 +18,9 @@
     "android:metro:relay:windows": "./scripts/android_windows_metro_relay.sh",
     "lint:web": "pnpm --filter web lint",
     "test:web:offline-cache": "playwright test --config=playwright.web.config.ts",
+    "test:web:hosted-smoke": "./scripts/pwa_hosted_smoke.sh",
+    "verify:pwa:portability-drill": "./scripts/pwa_portability_drill.sh",
+    "verify:pwa:release-gate": "./scripts/pwa_release_gate.sh",
     "test:desktop-helper": "playwright test",
     "test:android:smoke": "./scripts/android_native_smoke.sh",
     "test:android:smoke:windows": "powershell.exe -ExecutionPolicy Bypass -File .\\scripts\\android_native_smoke_windows.ps1"
