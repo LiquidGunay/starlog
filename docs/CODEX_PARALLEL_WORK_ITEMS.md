@@ -1,303 +1,393 @@
 # Codex Parallel Work Items
 
-Base code baseline after landing the current PR set: `0adba3a` on `master`.
+Base code baseline for this queue: `de2e08d` on `master`.
 
-Purpose: break the remaining implementation targets into independent workstreams so multiple Codex runs can keep making progress without stepping on each other.
+Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`).
 
-## Landed on `master`
+## Queue reset
 
-- `codex/desktop-helper-runtime-validation`
-  - Added runtime diagnostics, browser-clipboard fallback, tighter screenshot cleanup, and better helper coverage/docs.
-- `codex/pwa-offline-cache`
-  - Landed IndexedDB-backed entity caches, offline detail/search improvements, service-worker shell caching, and Playwright offline coverage.
-- `codex/android-native-validation`
-  - Hardened Android smoke tooling/docs, added a Windows-host fallback runner, and documented fresh-worktree env setup for native validation.
-- `codex/native-codex-bridge`
-  - Added the guarded experimental Codex bridge adapter contract, explicit opt-in/health handling, fallback behavior, and API/UI coverage around that boundary.
-- `codex/desktop-helper-host-matrix`
-  - Extended the helper validation matrix with real Windows PowerShell host checks, fixed the Windows active-window probe, and tightened host-specific diagnostics/docs.
-- `codex/phone-local-stt`
-  - Added an Android `SpeechRecognizer` local STT route with capability probing, mobile integration, and queued Whisper fallback when on-device STT is unavailable.
+- `WI-101` through `WI-106` are retired and should not be claimed.
+- This file now tracks the replacement queue derived from the new architecture/workflow plan.
 
 ## Working rules
 
-- Create each new workstream from `master` at `0adba3a` or a newer fast-forward of it.
+- Create each workstream from `master` at `de2e08d` or a newer fast-forward of it.
 - Keep branch names under the required `codex/` prefix.
 - Prefer rebasing onto `master` instead of merging other Codex branches together.
-- Do not stack Codex branches unless the dependency is explicit and recorded in this file first.
-- Do not add commits to a branch/PR that is already merged; create a new `codex/*` branch from current `master` and open a new PR.
+- Every claimed workitem must ship through a PR targeting `master` (no direct pushes to `master`).
+- Rebase onto latest `origin/master` whenever your branch is behind before requesting final review/merge, then rerun relevant validation.
+- Do not stack Codex branches unless the dependency is explicit and recorded here.
+- Do not add commits to a branch/PR that is already merged; create a new branch and a new PR.
 - Do not deploy from these branches without explicit user approval.
-- Update `AGENTS.md` with any new blocker or user preference discovered in the branch.
-- Every branch should leave behind:
-  - code changes,
-  - docs updates for the changed workflow,
-  - validation notes or commands that were actually run.
+- Update `AGENTS.md` with any newly discovered blocker or preference.
 
 ## Claiming and locks
 
-- Live lock authority is the shared `.git` registry under `$(git rev-parse --git-common-dir)/codex-workitems/`; this file is a human-readable mirror only.
-- Before starting work, pick exactly one workstream whose `Lock:` line starts with `UNCLAIMED`.
-- Each workstream has a required `Workitem ID`; every lock entry must include both `Workitem ID` and `Owner: Agent <name-or-id>`.
-- Claim the workitem in the shared registry (not in this file) using:
+- Live lock authority is the shared `.git` registry under `$(git rev-parse --git-common-dir)/codex-workitems/`.
+- This file is a human-readable mirror; authoritative lock state lives in `.git` registry files.
+- Before implementation, claim with:
   - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent>`
 - While actively working, heartbeat every 2 minutes:
   - `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent>`
-- On completion or handoff, release the shared lock:
+- Release on completion/handoff:
   - `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
-- Forced steal is allowed only for stale locks and must include explicit reason:
+- Stale-lock recovery:
   - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --force-steal --reason "<reason>"`
-- Keep the `Lock:` lines in this file updated as a readable mirror for humans after claim/heartbeat/release operations.
+- Keep each `Lock:` line below updated as a readable mirror after claim/heartbeat/release.
 
-### Timeout/check rationale
+## Active workstreams (new-plan aligned)
 
-- A `2 minute` heartbeat gives fast visibility into active ownership without heavy coordination overhead.
-- A `10 minute` timeout tolerates short test/build pauses while quickly recovering from crashed or abandoned agent sessions.
+### 1. Execution policy convergence
 
-## Remaining workstreams
-
-### 1. iOS share extension
-
-- Branch: `codex/ios-share-extension`
-- Workitem ID: `WI-101`
-- Lock: `UNCLAIMED | Workitem: WI-101 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: add the missing iOS native share-target path for the companion app.
+- Branch: `codex/execution-policy-bridge-convergence`
+- Workitem ID: `WI-201`
+- Lock: `UNCLAIMED | Workitem: WI-201 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: converge capability routing to the new policy model and remove remaining legacy target drift.
 - Scope:
-  - implement the iOS share-extension/config-plugin/native plumbing,
-  - land shared text/URL capture into Starlog quick capture,
-  - keep the existing Android native-share path working.
-- Out of scope:
-  - new Android-native validation tooling,
-  - phone-local LLM execution work.
+  - enforce `llm/stt/tts` target sets as `mobile_bridge -> desktop_bridge -> api`,
+  - enforce OCR local-only semantics in policy resolution and UI,
+  - normalize route metadata returned to clients.
 - Likely files:
-  - `apps/mobile/app.config.js`
+  - `services/api/app/services/integrations_service.py`
+  - `services/api/app/schemas/integrations.py`
+  - `apps/web/app/integrations/page.tsx`
   - `apps/mobile/App.tsx`
-  - `apps/mobile/ios/**` or related plugin files
-  - `docs/PHONE_SETUP.md`
-- Concrete work items:
-  - choose and wire the iOS share-extension/config-plugin path that fits the current Expo/native setup,
-  - map incoming iOS shared text/URL payloads into the same quick-capture draft path used on Android,
-  - make app launch/resume handling idempotent so repeated share callbacks do not duplicate drafts,
-  - regression-check that Android share-intent plumbing still works after any shared mobile-state changes,
-  - document the exact local build/run/manual-test steps for iOS share validation.
 - Acceptance:
-  - iOS dev build compiles,
-  - a shared text or URL payload lands in-app,
-  - docs explain the required local build/run flow.
+  - policy targets and route metadata are consistent across API/web/mobile,
+  - no legacy target labels remain in active policy resolution paths.
 - Validation:
-  - `pnpm --filter mobile exec tsc --noEmit`
-  - `pnpm --filter mobile ios` or equivalent Xcode/dev-build flow
+  - API tests covering policy resolution and route metadata
+  - web/mobile typecheck for changed routing surfaces
 
-### 2. Desktop helper macOS validation
+### 2. Worker auth and token lifecycle hardening
 
-- Branch: `codex/desktop-helper-macos-validation`
-- Workitem ID: `WI-102`
-- Lock: `UNCLAIMED | Workitem: WI-102 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: finish the remaining real macOS validation path for the desktop helper now that Linux and Windows host paths are covered.
+- Branch: `codex/worker-auth-lifecycle-hardening`
+- Workitem ID: `WI-202`
+- Lock: `UNCLAIMED | Workitem: WI-202 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: harden worker pairing/auth/refresh/revoke semantics to match the security model.
 - Scope:
-  - validate clipboard, screenshot, active-window, OCR, and shortcut behavior on a real macOS host,
-  - tighten macOS-specific diagnostics and permission guidance where Screen Recording/Accessibility checks are still assumed,
-  - keep the current Linux and Windows paths green.
-- Out of scope:
-  - turning the helper into a full desktop workspace,
-  - major UI redesign.
+  - tighten short-lived access token behavior and refresh rotation,
+  - enforce capability-scoped worker sessions during claim/execute paths,
+  - complete audit trail coverage for pairing, refresh, claim/complete, and revoke events.
 - Likely files:
+  - `services/api/app/services/worker_service.py`
+  - `services/api/app/api/routes/workers.py`
+  - `services/api/app/api/deps.py`
+  - `services/api/app/db/storage.py`
+- Acceptance:
+  - invalid/expired/revoked worker sessions are rejected deterministically,
+  - audit log coverage exists for the full worker session lifecycle.
+- Validation:
+  - API tests for pairing/refresh/heartbeat/revoke success and failure cases
+
+### 3. Mobile + desktop secure credential storage migration
+
+- Branch: `codex/client-secure-storage-migration`
+- Workitem ID: `WI-203`
+- Lock: `UNCLAIMED | Workitem: WI-203 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: move client-side tokens/secrets out of plain persisted state into OS secure storage.
+- Scope:
+  - mobile token/secret storage via secure platform storage,
+  - desktop helper token/secret storage via OS credential mechanism,
+  - migration path for existing plaintext-persisted values.
+- Likely files:
+  - `apps/mobile/App.tsx`
+  - `apps/mobile/package.json`
   - `tools/desktop-helper/src/main.js`
-  - `tools/desktop-helper/src-tauri/src/main.rs`
-  - `tools/desktop-helper/tests/helper.spec.ts`
-  - `tools/desktop-helper/README.md`
-- Concrete work items:
-  - validate the current `pbpaste`, `screencapture -i`, and `osascript` paths on a real macOS desktop session,
-  - capture missing Screen Recording / Accessibility / clipboard permission failure modes and turn them into actionable diagnostics,
-  - add or update tests for any fallback or error messaging that changes while fixing the macOS path,
-  - expand the README with the validated macOS matrix and troubleshooting steps.
+  - `tools/desktop-helper/src-tauri/**`
 - Acceptance:
-  - macOS is validated end to end,
-  - docs include a full Linux/macOS/Windows validation matrix,
-  - diagnostics map failures to actionable setup fixes.
+  - bearer tokens are no longer stored in plain SQLite/file config,
+  - migration preserves user auth state or provides a clear one-time reset path.
 - Validation:
-  - `pnpm test:desktop-helper`
-  - `cd tools/desktop-helper/src-tauri && cargo check`
-  - `pnpm --filter starlog-desktop-helper build`
+  - mobile/desktop manual verification + targeted tests around persistence redaction
 
-### 3. Local TTS worker hardening
+### 4. Bridge claim arbitration and routing telemetry
 
-- Branch: `codex/local-tts-worker-hardening`
-- Workitem ID: `WI-103`
-- Lock: `RELEASED | Workitem: WI-103 | Owner: Agent Implementer-A | Released: 2026-03-14 17:32 UTC | Reason: PR #14 opened (handoff to review)`
-- Goal: make the queued TTS path more reliable and easier to operate.
+- Branch: `codex/bridge-claim-arbitration-telemetry`
+- Workitem ID: `WI-204`
+- Lock: `UNCLAIMED | Workitem: WI-204 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: ensure claim arbitration always prefers highest-available target class and exposes clear job routing telemetry.
 - Scope:
-  - improve provider detection, timeouts, retries, and job metadata,
-  - make failure reporting and recovery clearer,
-  - deepen tests around the local wrapper providers.
-- Out of scope:
-  - phone-local on-device TTS playback, which already exists.
+  - enforce policy-priority + worker-heartbeat-aware claim arbitration,
+  - persist selected target / worker class metadata for each AI job,
+  - expose clear diagnostics for fallback decisions.
 - Likely files:
-  - `scripts/local_ai_worker.py`
-  - `services/api/app/api/routes/ai.py`
   - `services/api/app/services/ai_jobs_service.py`
-  - `services/api/tests/test_local_ai_worker.py`
-  - `docs/LOCAL_AI_WORKER.md`
-- Concrete work items:
-  - normalize provider selection and probe results into stable job metadata,
-  - add clearer timeout, retryable-failure, and terminal-failure classification,
-  - improve cancel/retry handling so job lifecycle transitions remain coherent,
-  - cover wrapper success/failure/timeout paths in focused tests,
-  - document operator-facing debugging and recovery steps for local TTS jobs.
-- Acceptance:
-  - queued TTS failures are diagnosable,
-  - retry/cancel semantics stay coherent,
-  - provider wrappers are covered by tests.
-- Validation:
-  - `uv run --project services/api --extra dev pytest tests/test_local_ai_worker.py -s`
-  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -s`
-
-### 4. Native Codex first-party bridge follow-up
-
-- Branch: `codex/native-codex-first-party-bridge`
-- Workitem ID: `WI-104`
-- Lock: `UNCLAIMED | Workitem: WI-104 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: replace the guarded experimental OpenAI-compatible bridge adapter with a first-party native Codex-subscription/OAuth path if the upstream contract becomes real.
-- Scope:
-  - inspect whether an official Codex subscription/OAuth contract exists yet,
-  - keep the current experimental adapter as the safe fallback until a first-party contract is proven,
-  - implement the native auth/health/execute path only if that contract is stable enough to support.
-- Out of scope:
-  - rewriting the AI provider model,
-  - making Codex the only required provider.
-- Likely files:
   - `services/api/app/services/ai_service.py`
-  - `services/api/app/services/agent_service.py`
-  - `services/api/app/api/routes/integrations.py`
-  - `apps/web/app/integrations/page.tsx`
-  - `docs/IMPLEMENTATION_STATUS.md`
-- Concrete work items:
-  - verify whether a first-party native Codex contract now exists beyond the current experimental adapter boundary,
-  - design the migration path so existing OpenAI-compatible bridge configs still fall back safely,
-  - implement the native auth/health/execute flow behind explicit feature gating if viable,
-  - surface first-party-vs-experimental status clearly in the integrations UI/docs,
-  - add tests around the native path and the preserved fallback path.
+  - `services/api/app/schemas/ai.py`
+  - `services/api/app/services/integrations_service.py`
 - Acceptance:
-  - either a real guarded first-party bridge path exists,
-  - or the repo keeps the current experimental boundary and documents why the native contract is still unavailable.
+  - mobile/desktop/api fallback order is deterministic under varying worker availability,
+  - job records clearly show requested-vs-selected route.
 - Validation:
-  - relevant API tests
-  - web lint/typecheck for changed surfaces
+  - API tests simulating worker online/offline/stale scenarios
 
-### 5. PWA offline cache follow-ups
+### 5. PWA offline warmup pack
 
-- Branch: `codex/pwa-offline-cache-followups`
-- Workitem ID: `WI-105`
-- Lock: `HANDOFF_REVIEW | Workitem: WI-105 | Owner: N/A | Claimed: 2026-03-14T17:20:56Z | Last heartbeat: 2026-03-14T18:19:20Z`
-- Goal: extend the new IndexedDB cache layer to the remaining PWA workspaces and add cache-management controls.
+- Branch: `codex/pwa-offline-warmup-pack`
+- Workitem ID: `WI-205`
+- Lock: `UNCLAIMED | Workitem: WI-205 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: add an explicit offline warmup flow that preloads critical route bundles and snapshots.
 - Scope:
-  - cache planner, sync-center, integrations, and richer assistant surfaces,
-  - add stale-prefix, quota, and clear-cache controls users can inspect,
-  - deepen offline browser coverage beyond the current notes/tasks/calendar/artifacts/search set.
-- Out of scope:
-  - replacing the current cache foundation,
-  - rewriting the app into a native-first client.
+  - offline warmup action for main PWA tabs,
+  - preload route data snapshots into IndexedDB caches,
+  - clear user-facing warmup/sync status.
 - Likely files:
+  - `apps/web/app/session-provider.tsx`
+  - `apps/web/app/sync-center/page.tsx`
   - `apps/web/app/lib/entity-cache.ts`
-  - `apps/web/app/lib/entity-snapshot.ts`
-  - `apps/web/app/lib/local-search.ts`
-  - `apps/web/app/planner/**`
-  - `apps/web/app/integrations/**`
-  - `apps/web/app/assistant/**`
-  - `apps/web/tests/offline-cache.spec.ts`
-- Concrete work items:
-  - extend cache persistence to planner blocks/events, sync-center data, integrations/provider health, and richer assistant history,
-  - add visible cache status, stale-prefix inspection, quota, and clear-cache controls,
-  - tighten invalidation rules so replayed mutations refresh the right cached scopes without nuking everything,
-  - expand offline search/restore behavior where those new caches should participate,
-  - add Playwright coverage for offline reload and reconnect behavior on the newly cached workspaces.
+  - `apps/web/public/sw.js`
 - Acceptance:
-  - remaining key workspaces survive offline reload from IndexedDB,
-  - cache state can be inspected and cleared intentionally,
-  - replay and invalidation behavior stay testable.
+  - key tabs can open/render offline immediately after warmup,
+  - warmup progress and completion state are visible in-app.
 - Validation:
-  - `pnpm --filter web exec tsc --noEmit`
-  - `pnpm --filter web lint`
-  - `pnpm test:web:offline-cache`
+  - Playwright offline warmup + reload coverage
 
-### 6. Phone-local LLM
+### 6. PWA offline voice capture queue
 
-- Branch: `codex/phone-local-llm`
-- Workitem ID: `WI-106`
-- Lock: `UNCLAIMED | Workitem: WI-106 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: explore and land the first viable phone-local LLM execution path behind the shared policy model.
+- Branch: `codex/pwa-offline-voice-queue`
+- Workitem ID: `WI-206`
+- Lock: `UNCLAIMED | Workitem: WI-206 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: add browser-side offline voice capture queueing with reconnect upload/transcription replay.
 - Scope:
-  - choose a realistic constrained local-LLM strategy,
-  - integrate it as an optional policy target,
-  - preserve existing batch/server/API fallbacks.
-- Out of scope:
-  - making phone-local LLM the default for every action.
+  - persist recorded media blobs locally,
+  - queue upload/transcribe jobs when offline,
+  - replay and status surfaces when back online.
 - Likely files:
-  - `apps/mobile/App.tsx`
-  - `services/api/app/services/ai_service.py`
-  - `apps/web/app/integrations/page.tsx`
-  - `docs/IMPLEMENTATION_STATUS.md`
-- Concrete work items:
-  - define the feasible model/runtime envelope for phone-local LLM work on the target Android-first setup,
-  - decide which narrow action surface should be supported first instead of attempting full parity immediately,
-  - add guarded policy routing for that local LLM path while keeping existing batch/API fallbacks intact,
-  - expose enough diagnostics in UI/docs to explain why the local path is or is not selected,
-  - write down explicit feasibility limits if the branch proves the path is not yet practical.
+  - `apps/web/app/assistant/page.tsx`
+  - `apps/web/app/lib/mutation-outbox.ts`
+  - `apps/web/app/session-provider.tsx`
+  - `apps/web/app/lib/entity-cache.ts`
 - Acceptance:
-  - the repo either has a real guarded phone-local LLM path,
-  - or a documented feasibility boundary with explicit next constraints.
+  - offline voice captures survive reload and replay on reconnect,
+  - queue and replay state are visible to the user.
 - Validation:
-  - `pnpm --filter mobile exec tsc --noEmit`
-  - relevant API/web checks for routing changes
+  - Playwright coverage for offline voice capture and reconnect replay
 
-### 7. Worker transport HTTPS enforcement
+### 7. Revisioned conflict lifecycle and merged patch UX
 
-- Branch: `codex/worker-transport-https-enforcement`
-- Workitem ID: `WI-108`
-- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
-- Goal: enforce worker endpoint transport security in production while keeping Railway/proxy deployments functional.
+- Branch: `codex/revision-conflict-lifecycle`
+- Workitem ID: `WI-207`
+- Lock: `UNCLAIMED | Workitem: WI-207 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: enforce revision/base-revision conflict defensibility and align UI resolution actions to `local_wins`, `remote_wins`, `merged_patch`.
 - Scope:
-  - make secure transport checks proxy-aware for HTTPS-terminated deployments,
-  - keep localhost HTTP allowed for local development workflows,
-  - add focused tests for worker transport behavior in production mode.
-- Out of scope:
-  - changing non-worker endpoint auth model,
-  - infrastructure/network policy changes outside app logic.
+  - enforce optimistic concurrency checks on mutation paths,
+  - return structured conflicts on revision mismatch,
+  - replace any stale `dismiss` UI/action path with `merged_patch` flow.
+- Likely files:
+  - `services/api/app/services/conflict_service.py`
+  - `services/api/app/schemas/conflicts.py`
+  - `services/api/app/api/routes/conflicts.py`
+  - `apps/web/app/planner/page.tsx`
+  - `apps/web/app/calendar/page.tsx`
+- Acceptance:
+  - conflicts are explicit and resolvable with the three planned strategies,
+  - UI/API strategy labels are consistent end-to-end.
+- Validation:
+  - API conflict tests + planner/calendar UI resolution regression checks
+
+### 8. Shared lock registry hardening and parity checks
+
+- Branch: `codex/shared-lock-registry-hardening`
+- Workitem ID: `WI-208`
+- Lock: `UNCLAIMED | Workitem: WI-208 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: harden `.git` shared lock operations for concurrency, stale-reclaim, and audit integrity.
+- Scope:
+  - add tests around concurrent claim behavior and stale lock reclaim,
+  - ensure CLI payload/schema matches AGENTS lock metadata requirements,
+  - add guardrails for registry drift between `workitems.json`, lock files, and audit log.
+- Likely files:
+  - `scripts/workitem_lock.py`
+  - `AGENTS.md`
+  - `docs/CODEX_PARALLEL_WORK_ITEMS.md`
+- Acceptance:
+  - lock lifecycle commands are deterministic under concurrency,
+  - status outputs and stored metadata are consistent with documented protocol.
+- Validation:
+  - scripted claim/heartbeat/release/force-steal race checks in a shared worktree setup
+
+### 9. Screen-design contract conformance pass
+
+- Branch: `codex/screen-design-contract-conformance`
+- Workitem ID: `WI-209`
+- Lock: `UNCLAIMED | Workitem: WI-209 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: align newly added architecture features with the `screen_design` IA and visual contract.
+- Scope:
+  - ensure offline queue/conflict/worker status surfaces live inside canonical screens,
+  - remove style-divergent UI additions where they drift from `screen_design`,
+  - document mapping of each new capability to its canonical UI surface.
+- Likely files:
+  - `apps/web/app/**`
+  - `apps/mobile/App.tsx`
+  - `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Acceptance:
+  - new architecture features are represented as extensions of canonical surfaces,
+  - no major surface introduces conflicting IA/visual language.
+- Validation:
+  - visual/manual regression pass against `screen_design` references
+
+### 10. HTTPS-only worker transport enforcement
+
+- Branch: `codex/worker-https-enforcement`
+- Workitem ID: `WI-210`
+- Lock: `UNCLAIMED | Workitem: WI-210 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: enforce HTTPS-only worker/API transport in non-local modes with explicit localhost dev exceptions.
+- Scope:
+  - harden secure transport checks for worker auth/pairing/heartbeat paths,
+  - block insecure worker traffic outside local development contexts,
+  - add clear API error messages for rejected insecure transport.
 - Likely files:
   - `services/api/app/api/deps.py`
-  - `services/api/tests/test_api_flows.py` or a dedicated API test module
-  - `AGENTS.md`
-- Concrete work items:
-  - normalize transport checks to consider proxy-forwarded scheme metadata where appropriate,
-  - ensure production rejects non-HTTPS worker calls outside localhost,
-  - add regression tests for blocked insecure requests and allowed proxied-HTTPS requests,
-  - document any discovered proxy/security caveats in `AGENTS.md`.
+  - `services/api/app/api/routes/workers.py`
+  - `services/api/tests/test_api_flows.py`
 - Acceptance:
-  - production-mode worker endpoints enforce HTTPS semantics correctly,
-  - proxied HTTPS requests are not falsely rejected,
-  - test coverage verifies both reject and allow paths.
+  - production-like mode rejects non-HTTPS worker auth flows,
+  - localhost dev loop remains functional with explicit exception handling.
 - Validation:
-  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -s`
-  - `uv run --project services/api ruff check services/api`
-  - `uv run --project services/api mypy services/api/app`
+  - API tests covering HTTPS-required and localhost-allowed cases
+
+### 11. Secrets redaction and at-rest protection sweep
+
+- Branch: `codex/secrets-redaction-sweep`
+- Workitem ID: `WI-211`
+- Lock: `UNCLAIMED | Workitem: WI-211 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: ensure provider keys and worker/session secrets stay encrypted at rest and redacted in all responses/logs.
+- Scope:
+  - verify and tighten encryption/redaction paths for integration/provider configs,
+  - audit worker/session artifacts for accidental sensitive-field leakage,
+  - extend tests for log/response redaction boundaries.
+- Likely files:
+  - `services/api/app/services/integrations_service.py`
+  - `services/api/app/services/worker_service.py`
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Acceptance:
+  - no sensitive tokens/keys appear unredacted in API/UI-facing payloads or diagnostics,
+  - at-rest storage for sensitive config remains encrypted/hashed consistently.
+- Validation:
+  - targeted API tests and log/response redaction checks
+
+### 12. Worker control plane UI and operations
+
+- Branch: `codex/worker-control-plane-ui`
+- Workitem ID: `WI-212`
+- Lock: `UNCLAIMED | Workitem: WI-212 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: expose pairing/session/revocation operations and worker heartbeat health in a first-class PWA surface.
+- Scope:
+  - add worker list/status/revocation workflows to integrations or sync-center surfaces,
+  - expose pairing token lifecycle controls with safe display/expiry behavior,
+  - show worker heartbeat recency and capability-class visibility for routing ops.
+- Likely files:
+  - `apps/web/app/integrations/page.tsx`
+  - `apps/web/app/sync-center/page.tsx`
+  - `services/api/app/api/routes/workers.py`
+  - `services/api/app/schemas/workers.py`
+- Acceptance:
+  - operators can inspect and revoke worker sessions without direct API calls,
+  - worker availability state is visible where routing/triage decisions are made.
+- Validation:
+  - web lint/typecheck + API integration checks for worker UI flows
+
+### 13. Offline review queue reliability
+
+- Branch: `codex/offline-review-queue-reliability`
+- Workitem ID: `WI-213`
+- Lock: `UNCLAIMED | Workitem: WI-213 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: harden offline review-submission queueing and replay semantics (beyond current generic mutation outbox behavior).
+- Scope:
+  - persist and replay review submissions with explicit duplicate/idempotency protections,
+  - surface per-review replay outcomes in sync/review UI,
+  - verify queue integrity across reloads and offline/online flaps.
+- Likely files:
+  - `apps/web/app/review/page.tsx`
+  - `apps/web/app/session-provider.tsx`
+  - `apps/web/app/lib/mutation-outbox.ts`
+  - `services/api/app/api/routes/reviews.py`
+- Acceptance:
+  - offline review events replay correctly and once,
+  - users can see replay success/failure per queued review.
+- Validation:
+  - Playwright offline review queue + reconnect tests
+
+### 14. Conflict audit timeline and merged-patch tooling
+
+- Branch: `codex/conflict-audit-timeline`
+- Workitem ID: `WI-214`
+- Lock: `UNCLAIMED | Workitem: WI-214 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: expose conflict mutation history and a practical merged-patch authoring/resolution flow.
+- Scope:
+  - add conflict history/audit timeline view with mutation context,
+  - add merged-patch authoring support in UI and API payload handling,
+  - keep resolution outcomes traceable for later sync diagnostics.
+- Likely files:
+  - `services/api/app/services/conflict_service.py`
+  - `services/api/app/schemas/conflicts.py`
+  - `apps/web/app/planner/page.tsx`
+  - `apps/web/app/calendar/page.tsx`
+- Acceptance:
+  - conflicts show actionable history and support merged-patch resolution,
+  - resolution audit data is queryable and human-readable.
+- Validation:
+  - API conflict tests + planner/calendar conflict-UX regression checks
+
+### 15. Architecture regression harness
+
+- Branch: `codex/architecture-regression-harness`
+- Workitem ID: `WI-215`
+- Lock: `UNCLAIMED | Workitem: WI-215 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: codify the architecture plan test matrix into repeatable automated checks.
+- Scope:
+  - add coverage slices for security, routing priority, offline warmup/queues, conflict lifecycle, and lock tooling,
+  - provide a single documented command matrix for supervisor validation,
+  - include deterministic pass/fail reporting for handoff and merge gating.
+- Likely files:
+  - `services/api/tests/test_api_flows.py`
+  - `apps/web/tests/offline-cache.spec.ts`
+  - `scripts/workitem_lock.py`
+  - `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Acceptance:
+  - architecture-critical regressions are covered by repeatable checks,
+  - validation commands are documented and usable by parallel agents.
+- Validation:
+  - API + Playwright + lock-tooling checks wired into a documented runbook
 
 ## Suggested execution order
 
 - Start immediately:
-  - iOS share extension
-  - desktop helper macOS validation
-  - local TTS worker hardening
-  - PWA offline cache follow-ups
-- Start in parallel if the necessary mobile/runtime tooling is available:
-  - phone-local LLM
-- Run as a research-heavy branch:
-  - native Codex first-party bridge follow-up
+  - `WI-201` execution policy convergence
+  - `WI-202` worker auth and token lifecycle hardening
+  - `WI-205` PWA offline warmup pack
+  - `WI-207` revisioned conflict lifecycle
+- Start after foundational APIs stabilize:
+  - `WI-203` client secure storage migration
+  - `WI-204` bridge claim arbitration and routing telemetry
+  - `WI-206` PWA offline voice queue
+  - `WI-210` HTTPS-only worker transport enforcement
+  - `WI-211` secrets redaction and at-rest protection sweep
+  - `WI-212` worker control plane UI and operations
+  - `WI-213` offline review queue reliability
+  - `WI-214` conflict audit timeline and merged-patch tooling
+- Run as platform-governance follow-ups:
+  - `WI-208` shared lock registry hardening
+  - `WI-209` screen-design contract conformance
+  - `WI-215` architecture regression harness
 
 ## Supervisor dispatch list (2026-03-14)
 
-- `WI-101` (`codex/ios-share-extension`): ship iOS share-extension capture into quick-capture drafts with Android regression safety.
-- `WI-102` (`codex/desktop-helper-macos-validation`): validate macOS clipboard/screenshot/window paths and tighten permission diagnostics.
-- `WI-103` (`codex/local-tts-worker-hardening`): harden queued TTS timeout/retry/cancel lifecycle plus worker/API tests.
-- `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
-- `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
-- `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-108` (`codex/worker-transport-https-enforcement`): harden worker transport checks for production HTTPS semantics and proxy-aware routing safety.
+- `WI-201` (`codex/execution-policy-bridge-convergence`)
+- `WI-202` (`codex/worker-auth-lifecycle-hardening`)
+- `WI-203` (`codex/client-secure-storage-migration`)
+- `WI-204` (`codex/bridge-claim-arbitration-telemetry`)
+- `WI-205` (`codex/pwa-offline-warmup-pack`)
+- `WI-206` (`codex/pwa-offline-voice-queue`)
+- `WI-207` (`codex/revision-conflict-lifecycle`)
+- `WI-208` (`codex/shared-lock-registry-hardening`)
+- `WI-209` (`codex/screen-design-contract-conformance`)
+- `WI-210` (`codex/worker-https-enforcement`)
+- `WI-211` (`codex/secrets-redaction-sweep`)
+- `WI-212` (`codex/worker-control-plane-ui`)
+- `WI-213` (`codex/offline-review-queue-reliability`)
+- `WI-214` (`codex/conflict-audit-timeline`)
+- `WI-215` (`codex/architecture-regression-harness`)

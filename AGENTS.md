@@ -58,6 +58,8 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
   5) On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
   6) Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` is human-readable planning context only; live lock authority is the shared `.git` registry.
+- Every claimed agent task must be delivered through a PR to `master`; direct pushes to `master` are not allowed.
+- If a task branch is behind `origin/master`, rebase onto latest `origin/master` before final review/merge and rerun relevant validation after the rebase.
 - Once a PR is merged, do not add commits to that branch/PR. Start a fresh `codex/*` branch from current `master` and open a new PR for follow-up work.
 - Lock timing rationale:
   - 2-minute heartbeat gives near-real-time liveness without overwhelming lock-file churn.
@@ -175,7 +177,9 @@ Troubleshooting checklist:
 - 2026-03-14: User wants Android mobile testing runs performed with the physical device kept unlocked throughout execution.
 - 2026-03-14: User wants explicit lock claim/heartbeat/release/force-steal usage instructions documented in `AGENTS.md`.
 - 2026-03-14: User wants the current architecture/workflow plan kept in a dedicated markdown file under `docs/`.
-- 2026-03-14: User wants repository CI checks/workflows removed for now.
+- 2026-03-14: User wants old parallel workitems discarded and replaced with a fresh queue based on the latest architecture/workflow plan after `master` updates.
+- 2026-03-14: User wants additional architecture-plan workitems beyond the first queue refresh so agents can run a larger parallel batch.
+- 2026-03-14: User wants it explicit that each agent task must ship via PR and must rebase onto latest `master` when behind.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
