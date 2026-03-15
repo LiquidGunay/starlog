@@ -5,13 +5,19 @@ const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
 const refreshDiagnosticsButton = document.getElementById("refreshDiagnostics");
 const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
+const quickOpenWorkspaceButton = document.getElementById("quickOpenWorkspace");
+const workspaceReturnQuickButton = document.getElementById("workspaceReturnQuick");
 const runtimeDiagnosticsNode = document.getElementById("runtimeDiagnostics");
 const recentCapturesNode = document.getElementById("recentCaptures");
 const CONFIG_STORAGE_KEY = "starlog.desktop-helper.config.v1";
 const RECENT_CAPTURE_STORAGE_KEY = "starlog.desktop-helper.recent-captures.v1";
+const SURFACE_MODE_STORAGE_KEY = "starlog.desktop-helper.surface-mode.v1";
+const MAIN_WINDOW_LABEL = "main";
+const WORKSPACE_WINDOW_LABEL = "workspace";
 const DEFAULT_API_BASE = "http://localhost:8000";
 const MAX_RECENT_CAPTURES = 6;
 const SCREENSHOT_PREVIEW_MAX_DIMENSION = 320;
+const WORKSPACE_SURFACE_WINDOW = { width: 1120, height: 760, minWidth: 940, minHeight: 620 };
 const RUNTIME_DIAGNOSTIC_ITEMS = [
   ["clipboard", "Clipboard"],
   ["screenshot", "Screenshot"],
@@ -36,6 +42,114 @@ function setStatus(message) {
 
 function hasTauriRuntime() {
   return Boolean(window.__TAURI__);
+}
+
+function isValidSurfaceMode(value) {
+  return value === "quick" || value === "workspace";
+}
+
+function readStoredSurfaceMode() {
+  try {
+    const raw = window.localStorage.getItem(SURFACE_MODE_STORAGE_KEY);
+    return isValidSurfaceMode(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function querySurfaceMode() {
+  try {
+    const mode = new URLSearchParams(window.location.search).get("mode");
+    return isValidSurfaceMode(mode) ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveInitialSurfaceMode() {
+  const modeFromQuery = querySurfaceMode();
+  if (modeFromQuery) {
+    return modeFromQuery;
+  }
+  if (hasTauriRuntime()) {
+    return "quick";
+  }
+  return readStoredSurfaceMode() || "workspace";
+}
+
+let currentSurfaceMode = resolveInitialSurfaceMode();
+
+async function applySurfaceMode(mode, { persist = true } = {}) {
+  if (!isValidSurfaceMode(mode)) {
+    return;
+  }
+
+  currentSurfaceMode = mode;
+  document.body.dataset.helperMode = mode;
+  if (persist) {
+    window.localStorage.setItem(SURFACE_MODE_STORAGE_KEY, mode);
+  }
+}
+
+async function openWorkspaceSurface() {
+  if (!hasTauriRuntime()) {
+    await applySurfaceMode("workspace");
+    return;
+  }
+
+  try {
+    const { getAllWindows, WebviewWindow } = await import("@tauri-apps/api/window");
+    const existingWorkspace = (await getAllWindows()).find((window) => window.label === WORKSPACE_WINDOW_LABEL);
+    if (existingWorkspace) {
+      await existingWorkspace.show();
+      await existingWorkspace.setFocus();
+      return;
+    }
+
+    const workspaceWindow = new WebviewWindow(WORKSPACE_WINDOW_LABEL, {
+      title: "Starlog Helper Studio",
+      url: "index.html?mode=workspace",
+      width: WORKSPACE_SURFACE_WINDOW.width,
+      height: WORKSPACE_SURFACE_WINDOW.height,
+      minWidth: WORKSPACE_SURFACE_WINDOW.minWidth,
+      minHeight: WORKSPACE_SURFACE_WINDOW.minHeight,
+      resizable: true,
+      center: true,
+      focus: true,
+    });
+
+    workspaceWindow.once("tauri://error", ({ payload }) => {
+      const message = typeof payload === "string" ? payload : "Workspace window failed to open";
+      setStatus(message);
+    });
+  } catch (error) {
+    setStatus(errorMessage(error, "Workspace window failed to open"));
+  }
+}
+
+async function returnToQuickSurface() {
+  if (!hasTauriRuntime()) {
+    await applySurfaceMode("quick");
+    return;
+  }
+
+  try {
+    const { getAllWindows, getCurrentWindow } = await import("@tauri-apps/api/window");
+    const currentWindow = getCurrentWindow();
+    if (currentWindow.label !== WORKSPACE_WINDOW_LABEL) {
+      await applySurfaceMode("quick");
+      return;
+    }
+
+    const mainWindow = (await getAllWindows()).find((window) => window.label === MAIN_WINDOW_LABEL);
+    if (mainWindow) {
+      await mainWindow.show();
+      await mainWindow.setFocus();
+    }
+    await currentWindow.close();
+  } catch (error) {
+    setStatus(errorMessage(error, "Quick surface could not be restored"));
+  }
 }
 
 function errorMessage(error, fallbackMessage) {
@@ -1121,6 +1235,7 @@ async function copyRuntimeDiagnostics() {
 }
 
 applyStoredConfig(readStoredConfig());
+document.body.dataset.helperMode = currentSurfaceMode;
 renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
 apiBaseInput.addEventListener("input", persistConfig);
@@ -1144,7 +1259,16 @@ copyDiagnosticsButton.addEventListener("click", () => {
   copyRuntimeDiagnostics().catch(() => undefined);
 });
 
+quickOpenWorkspaceButton?.addEventListener("click", () => {
+  openWorkspaceSurface().catch(() => undefined);
+});
+
+workspaceReturnQuickButton?.addEventListener("click", () => {
+  returnToQuickSurface().catch(() => undefined);
+});
+
 wireWindowShortcuts();
 loadRuntimeDiagnostics().catch(() => undefined);
 wireGlobalShortcuts().catch(() => undefined);
 hydrateSecureTokenFromStorage().catch(() => undefined);
+applySurfaceMode(currentSurfaceMode, { persist: false }).catch(() => undefined);

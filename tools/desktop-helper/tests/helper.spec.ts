@@ -17,6 +17,14 @@ test("persists helper config across reloads", async ({ page }) => {
   await expect(page.getByLabel("Bearer token")).toHaveValue("token-123");
 });
 
+test("quick popup can switch to workspace in browser fallback", async ({ page }) => {
+  await page.goto("/index.html?mode=quick");
+  await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "quick");
+
+  await page.getByRole("button", { name: "Open Workspace" }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "workspace");
+});
+
 test("browser runtime diagnostics show fallback capability state", async ({ page }) => {
   await page.goto("/index.html");
 

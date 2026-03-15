@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build",
+    "build:artifacts": "bash ./scripts/build_release_artifacts.sh",
+    "qa:screenshots": "node ./scripts/capture_qa_screenshots.mjs",
+    "runtime:probe": "bash ./scripts/runtime_dependency_probe.sh",
+    "signing:check": "bash ./scripts/signing_readiness_check.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.1",
