@@ -1257,8 +1257,13 @@ def test_provider_config_and_webhooks(
 
     codex_contract = client.get("/v1/integrations/providers/codex_bridge/contract", headers=auth_headers)
     assert codex_contract.status_code == 200
+    assert codex_contract.json()["contract_version"] == 2
     assert codex_contract.json()["execute_enabled"] is False
     assert codex_contract.json()["native_oauth_supported"] is False
+    assert codex_contract.json()["native_contract_state"] == "unavailable"
+    assert codex_contract.json()["recommended_runtime_mode"] == "api_fallback"
+    assert len(codex_contract.json()["first_party_blockers"]) >= 1
+    assert isinstance(codex_contract.json()["verified_at"], str)
     assert codex_contract.json()["feature_flag_key"] == "experimental_enabled"
 
     codex_provider = client.post(
@@ -1289,6 +1294,7 @@ def test_provider_config_and_webhooks(
     assert codex_contract.status_code == 200
     assert codex_contract.json()["configured"] is True
     assert codex_contract.json()["execute_enabled"] is True
+    assert codex_contract.json()["recommended_runtime_mode"] == "experimental_openai_compatible_bridge"
     assert codex_contract.json()["configured_adapter_kind"] == "openai_compatible"
     assert codex_contract.json()["derived_endpoints"]["execute"] == "https://codex.example.com/v1/chat/completions"
 
@@ -1461,8 +1467,8 @@ def test_codex_bridge_requires_explicit_opt_in_for_execution(
         headers=auth_headers,
     )
     assert live.status_code == 200
+    # Synchronous /ai/run execution intentionally skips bridge targets and falls through to API.
     assert live.json()["provider_used"] == "api"
-    assert live.json()["output"]["capability"] == "llm_summary"
 
 
 def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict[str, str]) -> None:

@@ -113,6 +113,36 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - expose clear diagnostics for fallback decisions.
 - Likely files:
   - `services/api/app/services/ai_jobs_service.py`
+  - `services/api/tests/test_local_ai_worker.py`
+  - `docs/LOCAL_AI_WORKER.md`
+- Concrete work items:
+  - normalize provider selection and probe results into stable job metadata,
+  - add clearer timeout, retryable-failure, and terminal-failure classification,
+  - improve cancel/retry handling so job lifecycle transitions remain coherent,
+  - cover wrapper success/failure/timeout paths in focused tests,
+  - document operator-facing debugging and recovery steps for local TTS jobs.
+- Acceptance:
+  - queued TTS failures are diagnosable,
+  - retry/cancel semantics stay coherent,
+  - provider wrappers are covered by tests.
+- Validation:
+  - `uv run --project services/api --extra dev pytest tests/test_local_ai_worker.py -s`
+  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -s`
+
+### 4. Native Codex first-party bridge follow-up
+
+- Branch: `codex/native-codex-first-party-bridge`
+- Workitem ID: `WI-104`
+- Lock: `UNCLAIMED | Workitem: WI-104 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: replace the guarded experimental OpenAI-compatible bridge adapter with a first-party native Codex-subscription/OAuth path if the upstream contract becomes real.
+- Scope:
+  - inspect whether an official Codex subscription/OAuth contract exists yet,
+  - keep the current experimental adapter as the safe fallback until a first-party contract is proven,
+  - implement the native auth/health/execute path only if that contract is stable enough to support.
+- Out of scope:
+  - rewriting the AI provider model,
+  - making Codex the only required provider.
+- Likely files:
   - `services/api/app/services/ai_service.py`
   - `services/api/app/schemas/ai.py`
   - `services/api/app/services/integrations_service.py`

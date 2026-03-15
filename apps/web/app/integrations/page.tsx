@@ -41,12 +41,16 @@ type ExecutionPolicy = {
   tts: string[];
   ocr: string[];
   available_targets: Record<string, string[]>;
+  resolved_routes?: Record<string, unknown>;
   updated_at?: string | null;
 };
 
 type CodexBridgeContract = {
+  contract_version: number;
   provider_name: string;
   summary: string;
+  native_contract_state: "unavailable" | "available";
+  native_contract_detail: string;
   feature_flag_key: string;
   supported_adapter_kinds: string[];
   configured_adapter_kind?: string | null;
@@ -57,11 +61,14 @@ type CodexBridgeContract = {
   optional_config: string[];
   native_oauth_supported: boolean;
   safe_fallback: string;
+  recommended_runtime_mode: "experimental_openai_compatible_bridge" | "api_fallback";
+  first_party_blockers: string[];
   configured: boolean;
   enabled: boolean;
   execute_enabled: boolean;
   missing_requirements: string[];
   derived_endpoints: Record<string, string>;
+  verified_at: string;
 };
 
 const INTEGRATIONS_PROVIDERS_SNAPSHOT = "integrations.providers";
@@ -125,10 +132,10 @@ export default function IntegrationsPage() {
   const [policyJson, setPolicyJson] = useState(
     JSON.stringify(
       {
-        llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
-        stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
-        tts: ["on_device", "server_local", "api_fallback"],
-        ocr: ["on_device"],
+        llm: ["mobile_bridge", "desktop_bridge", "api"],
+        stt: ["mobile_bridge", "desktop_bridge", "api"],
+        tts: ["mobile_bridge", "desktop_bridge", "api"],
+        ocr: ["mobile_bridge", "desktop_bridge"],
       },
       null,
       2,
@@ -490,6 +497,13 @@ export default function IntegrationsPage() {
             <div>
               <p className="console-copy">{codexContract.summary}</p>
               <p className="console-copy">
+                contract version: {codexContract.contract_version} | verified: {codexContract.verified_at}
+              </p>
+              <p className="console-copy">
+                native contract state: {codexContract.native_contract_state}
+              </p>
+              <p className="console-copy">{codexContract.native_contract_detail}</p>
+              <p className="console-copy">
                 configured: {codexContract.configured ? "yes" : "no"} | enabled:{" "}
                 {codexContract.enabled ? "yes" : "no"} | execute enabled:{" "}
                 {codexContract.execute_enabled ? "yes" : "no"}
@@ -502,6 +516,9 @@ export default function IntegrationsPage() {
                 native OAuth supported: {codexContract.native_oauth_supported ? "yes" : "no"}
               </p>
               <p className="console-copy">
+                recommended runtime mode: {codexContract.recommended_runtime_mode}
+              </p>
+              <p className="console-copy">
                 supported capabilities: {codexContract.supported_capabilities.join(", ")}
               </p>
               <p className="console-copy">
@@ -511,6 +528,16 @@ export default function IntegrationsPage() {
               <p className="console-copy">optional config: {codexContract.optional_config.join(" | ")}</p>
               <p className="console-copy">auth modes: {codexContract.supported_auth.join(", ")}</p>
               <p className="console-copy">{codexContract.safe_fallback}</p>
+              {codexContract.first_party_blockers.length > 0 ? (
+                <div>
+                  <p className="console-copy">first-party blockers:</p>
+                  <ul>
+                    {codexContract.first_party_blockers.map((item) => (
+                      <li key={item} className="console-copy">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {Object.keys(codexContract.derived_endpoints).length > 0 ? (
                 <p className="console-copy">
                   derived endpoints: {JSON.stringify(codexContract.derived_endpoints)}
@@ -535,14 +562,10 @@ export default function IntegrationsPage() {
         <div className="panel glass">
           <h2>Execution policy</h2>
           <p className="console-copy">
-            Define priority order per capability. `on_device` is for phone/laptop-native execution,
-            `batch_local_bridge` is for queued local workers, and the remaining targets are server-side
-            fallbacks.
+            Define priority order per capability using canonical targets: `mobile_bridge`, `desktop_bridge`, and `api`.
           </p>
           <p className="console-copy">
-            Android companion builds can now honor <code>{"stt: [\"on_device\", ...]"}</code> for
-            assistant voice commands when the phone exposes a working speech-recognition service. If
-            that probe fails on-device, the mobile app falls back to the queued Whisper bridge.
+            Android companion builds can honor <code>{"stt: [\"mobile_bridge\", ...]"}</code> for on-device-first command capture; if local probing fails, routing falls back through desktop bridge then API according to policy order.
           </p>
           {policyMeta ? (
             <p className="console-copy">
@@ -552,9 +575,10 @@ export default function IntegrationsPage() {
           {policyMeta ? (
             <p className="console-copy">Available targets: {JSON.stringify(policyMeta.available_targets)}</p>
           ) : null}
-          <label className="label" htmlFor="execution-policy">
-            Policy JSON
-          </label>
+          {policyMeta?.resolved_routes ? (
+            <p className="console-copy">Resolved routes: {JSON.stringify(policyMeta.resolved_routes)}</p>
+          ) : null}
+          <label className="label" htmlFor="execution-policy">Policy JSON</label>
           <textarea
             id="execution-policy"
             className="textarea"
