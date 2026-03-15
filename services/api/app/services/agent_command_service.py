@@ -72,7 +72,7 @@ COMMAND_INTENTS: list[AgentCommandIntent] = [
     AgentCommandIntent(
         name="execution_policy",
         description="Inspect or update AI routing priority order.",
-        examples=["show execution policy", "set llm policy to batch_local_bridge, server_local, api_fallback"],
+        examples=["show execution policy", "set llm policy to mobile_bridge, desktop_bridge, api"],
     ),
 ]
 
@@ -170,10 +170,10 @@ def _artifact_action_call(conn: Connection, action: str, target: str | None) -> 
         execution_order = integrations_service.capability_execution_order(
             conn,
             capability,
-            executable_targets={"batch_local_bridge", "server_local", "codex_bridge", "api_fallback"},
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
             prefer_local=True,
         )
-        if execution_order and execution_order[0] == "batch_local_bridge":
+        if execution_order and execution_order[0] in {"mobile_bridge", "desktop_bridge"}:
             arguments["defer"] = True
             provider_hint = integrations_service.default_batch_provider_hint(conn, capability)
             if provider_hint:
@@ -213,12 +213,19 @@ def _parse_execution_targets(raw: str, family: str) -> list[str]:
     parts = [item.strip().lower() for item in re.split(r"[,\s]+", raw) if item.strip()]
     normalized: list[str] = []
     aliases = {
-        "local": "server_local",
-        "server": "server_local",
-        "bridge": "batch_local_bridge",
-        "batch": "batch_local_bridge",
-        "codex": "codex_bridge",
-        "api": "api_fallback",
+        "mobile": "mobile_bridge",
+        "phone": "mobile_bridge",
+        "local": "desktop_bridge",
+        "server": "desktop_bridge",
+        "bridge": "desktop_bridge",
+        "batch": "desktop_bridge",
+        "codex": "desktop_bridge",
+        "on_device": "mobile_bridge",
+        "batch_local_bridge": "desktop_bridge",
+        "server_local": "desktop_bridge",
+        "codex_bridge": "desktop_bridge",
+        "api_fallback": "api",
+        "api": "api",
     }
     for part in parts:
         candidate = aliases.get(part, part)
