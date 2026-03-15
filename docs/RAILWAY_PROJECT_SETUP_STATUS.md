@@ -26,6 +26,8 @@ Date: 2026-03-15
 
 Deploy approval was given and the first supervised production deployments are live on the existing `perfect-intuition` project.
 
+On 2026-03-15, `master` was updated to include the `next@15.0.7` security fix so GitHub-based Railway builds against `master` no longer hit the prior `next@15.0.0` vulnerability gate.
+
 - `starlog-api`
   - status: live
   - health check: `https://starlog-api-production.up.railway.app/v1/health`
