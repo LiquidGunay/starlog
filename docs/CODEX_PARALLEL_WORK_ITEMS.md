@@ -179,7 +179,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-443. Railway project/service setup
 - Branch: `codex/railway-project-service-setup`
-- Lock: `IN_PROGRESS | Workitem: WI-443 | Owner: Agent codex-supervisor | Claimed: 2026-03-15T13:25:12Z | Last heartbeat: 2026-03-15T13:34:14Z`
+- Lock: `HANDOFF | Workitem: WI-443 | Owner: N/A | Claimed: 2026-03-15T13:25:12Z | Last heartbeat: 2026-03-15T13:34:14Z`
 - Goal: prepare the actual Railway project so deployment can happen cleanly when approved.
 - Scope:
   - create/select the correct Railway project,
