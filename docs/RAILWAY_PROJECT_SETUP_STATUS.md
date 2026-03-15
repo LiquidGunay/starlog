@@ -36,6 +36,7 @@ On 2026-03-15, `master` was updated to include the `next@15.0.7` security fix so
   - status: live
   - public URL: `https://starlog-web-production.up.railway.app`
   - verified response: `HTTP 200`
+  - GitHub deploy status on 2026-03-15: source hook is active, but one deploy failed because the live Railway start command still used the old `pnpm --filter web start -- --hostname ...` form.
 
 ## Applied deployment config
 
@@ -63,10 +64,12 @@ On 2026-03-15, `master` was updated to include the `next@15.0.7` security fix so
 ### `starlog-web`
 
 - Current deploy path:
-  - manual/supervised CLI deploy from repo root
+  - GitHub-connected deploys from `master`
 - Applied build/start settings:
   - build command: `pnpm --filter web build`
   - start command: `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
+- Compatibility note:
+  - the web workspace now strips a stray leading `--` in its package `start` wrapper so the current misconfigured Railway command can still boot until the dashboard value is corrected
 - The web service does not need a persistent volume.
 - The PWA can initially use the generated Railway domain until a custom Starlog domain/subdomain is chosen.
 
@@ -115,14 +118,16 @@ The pricing docs describe usage-based compute plus the plan floor. Since Starlog
 
 ## Remaining setup gap
 
-The important missing piece is GitHub source attachment for automatic deploys.
+The important remaining gap is normalizing the live Railway web service command.
 
-- Current service source for both Starlog services still shows `null` in Railway.
-- The live services were deployed successfully via supervised CLI deploys.
-- Automatic deploys from `master` are not configured yet and will require Railway service-source connection through the dashboard or GraphQL `serviceConnect`.
+- GitHub source attachment is now active; commit statuses on `master` showed Railway receiving and acting on repo updates.
+- `starlog-api` deployed successfully from the GitHub trigger on 2026-03-15.
+- `starlog-web` received the same GitHub trigger but failed because the live Railway dashboard still had the stale start command with the extra `--`.
+- Preferred live setting: `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
 
 ## Recommended next step
 
-1. Connect both Starlog services to `LiquidGunay/starlog` so `master` pushes can deploy without supervised CLI pushes.
-2. Decide whether to keep the generated Railway domains or add custom Starlog subdomains.
-3. If higher-compute AI work is added later, split it into a separate service so the base API can keep sleeping cheaply.
+1. Update the live `starlog-web` Railway start command to `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`.
+2. Re-trigger a GitHub deploy from `master` and confirm the web status flips to success.
+3. Decide whether to keep the generated Railway domains or add custom Starlog subdomains.
+4. If higher-compute AI work is added later, split it into a separate service so the base API can keep sleeping cheaply.
