@@ -607,6 +607,35 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `pnpm --filter web lint`
   - `pnpm test:web:offline-cache`
 
+### 7. PWA offline voice capture replay queue
+
+- Branch: `codex/pwa-offline-voice-queue`
+- Workitem ID: `WI-113`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #29 opened`
+- Goal: persist captured assistant voice clips locally and replay uploads after reconnect.
+- Scope:
+  - store assistant voice upload queue entries with media blobs in IndexedDB-backed snapshots,
+  - add explicit queue visibility and replay controls in the assistant tab,
+  - auto-replay queued uploads when online/token are available.
+- Out of scope:
+  - changing assistant server-side job contracts,
+  - redesigning assistant UI structure outside the existing screen design language.
+- Likely files:
+  - `apps/web/app/assistant/page.tsx`
+  - `apps/web/tests/assistant-voice-queue.spec.ts`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - queue voice uploads instead of dropping offline/unauthenticated captures,
+  - persist queue entries with blob payloads in IndexedDB (not localStorage bootstrap),
+  - add manual retry/drop controls plus queue status copy,
+  - add Playwright coverage for queued replay.
+- Acceptance:
+  - voice captures made offline are not lost and can be replayed later,
+  - assistant tab clearly shows queued voice upload state.
+- Validation:
+  - `pnpm test:web:offline-cache --grep "assistant voice uploads"`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -636,4 +665,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-114` (`codex/pwa-cache-synccenter-followup-b`): extend cache snapshot hydration/persistence for planner, integrations, and sync-center.
+- `WI-113` (`codex/pwa-offline-voice-queue`): add persisted assistant voice upload queue with offline replay controls.
