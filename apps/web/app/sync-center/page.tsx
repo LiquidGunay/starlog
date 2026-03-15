@@ -235,18 +235,58 @@ export default function SyncCenterPage() {
     }
   }
 
+  const progressSegments = 5;
+  const progressActive = [
+    isOnline,
+    outbox.length === 0,
+    serverEntries.length > 0,
+    pulledEvents.length > 0,
+    Boolean(warmupResult),
+  ].filter(Boolean).length;
+  const latestReplay = replayLog[0] ?? null;
+  const latestServerEntry = serverEntries[0] ?? null;
+  const warmupFailures = warmupResult?.steps.filter((step) => step.status === "failed").length ?? 0;
+
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <div>
-          <p className="eyebrow">Neural Sync</p>
-          <h1>PWA outbox and replay log</h1>
-          <p className="console-copy">
-            Inspect queued local mutations, replay them manually, and review the recent flush history.
-          </p>
-          <p className="console-copy">Client id: {clientId}</p>
-          <p className="console-copy">Network: {isOnline ? "online" : "offline"}</p>
-          <div className="button-row">
+    <main className="neural-sync-shell">
+      <header className="neural-sync-header">
+        <span className="neural-sync-back">← Command Center</span>
+        <div className="neural-sync-progress">
+          <span>Sync Progress</span>
+          <span className="sync-bars">
+            {Array.from({ length: progressSegments }).map((_, index) => (
+              <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
+            ))}
+          </span>
+          <strong>{progressActive}/{progressSegments}</strong>
+        </div>
+      </header>
+
+      <section className="neural-sync-main sync-center-main">
+        <article className="sync-card sync-center-hero-card">
+          <span className="sync-tag">Scope: {serverScope === "client" ? "this_device" : "all_devices"}</span>
+          <div className="sync-prompt">
+            Keep queued mutations moving, audit the replay edge, and pre-load the offline cache before the next disconnect.
+          </div>
+          <div className="sync-center-stat-grid">
+            <article className="sync-center-stat-card">
+              <strong>{outbox.length}</strong>
+              <span>queued mutations</span>
+            </article>
+            <article className="sync-center-stat-card">
+              <strong>{serverEntries.length}</strong>
+              <span>server entries</span>
+            </article>
+            <article className="sync-center-stat-card">
+              <strong>{pulledEvents.length}</strong>
+              <span>delta events</span>
+            </article>
+            <article className="sync-center-stat-card">
+              <strong>{warmupResult?.warmed_snapshots ?? 0}</strong>
+              <span>warmed snapshots</span>
+            </article>
+          </div>
+          <div className="button-row sync-center-action-row">
             <button className="button" type="button" onClick={() => flushOutbox()} disabled={flushInFlight}>
               {flushInFlight ? "Replaying..." : "Replay Queued Mutations"}
             </button>
@@ -274,122 +314,177 @@ export default function SyncCenterPage() {
               Pull Deltas
             </button>
             <button className="button" type="button" onClick={() => pullServerEvents(true)}>
-              Reset Pull Cursor
+              Reset Cursor
             </button>
             <button className="button" type="button" onClick={() => runWarmup()} disabled={warmupInFlight}>
               {warmupInFlight ? "Warming Offline Cache..." : "Offline Warmup"}
             </button>
           </div>
-          <p className="status">{flushSummary}</p>
-          <p className="console-copy">{serverStatus}</p>
-          <p className="console-copy">{pullStatus}</p>
-          <p className="console-copy">{warmupStatus}</p>
-          <p className="console-copy">Current pull cursor: {pullCursor}</p>
-        </div>
+          <div className="sync-answer">
+            <p className="console-copy">Client id: {clientId}</p>
+            <p className="console-copy">Network: {isOnline ? "online" : "offline"}</p>
+            <p className="console-copy">{flushSummary}</p>
+            <p className="console-copy">{serverStatus}</p>
+            <p className="console-copy">{pullStatus}</p>
+            <p className="console-copy">{warmupStatus}</p>
+            <p className="console-copy">Current pull cursor: {pullCursor}</p>
+          </div>
+        </article>
 
-        <div className="panel glass">
-          <h2>Pending outbox</h2>
-          {outbox.length === 0 ? (
-            <p className="console-copy">No queued mutations.</p>
-          ) : (
-            <ul>
-              {outbox.map((mutation) => (
-                <li key={mutation.id}>
-                  <p className="console-copy">
-                    <strong>{mutation.label}</strong> [{mutation.method}] {mutation.path}
-                  </p>
-                  <p className="console-copy">
-                    Attempts: {mutation.attempts} | Created: {new Date(mutation.created_at).toLocaleString()}
-                  </p>
-                  {mutation.last_error ? <p className="console-copy">Last error: {mutation.last_error}</p> : null}
-                  <div className="button-row">
-                    <button className="button" type="button" onClick={() => dropQueuedMutation(mutation.id)}>
-                      Drop
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Server mutation history</h2>
-          {serverEntries.length === 0 ? (
-            <p className="console-copy">No server-side sync history loaded.</p>
-          ) : (
-            <ul>
-              {serverEntries.map((entry) => (
-                <li key={entry.id}>
-                  <p className="console-copy">
-                    <strong>{entry.label}</strong> [{entry.status}] {entry.method} {entry.path}
-                  </p>
-                  <p className="console-copy">
-                    Client: {entry.client_id} | Attempts: {entry.attempts} | Recorded:{" "}
-                    {new Date(entry.recorded_at).toLocaleString()}
-                  </p>
-                  {entry.detail ? <p className="console-copy">Detail: {entry.detail}</p> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Server delta pull</h2>
-          {pulledEvents.length === 0 ? (
-            <p className="console-copy">No pulled delta events yet.</p>
-          ) : (
-            <ul>
-              {pulledEvents.map((event) => (
-                <li key={`${event.cursor}-${event.mutation_id}`}>
-                  <p className="console-copy">
-                    <strong>{event.entity}</strong> [{event.op}] cursor {event.cursor}
-                  </p>
-                  <p className="console-copy">
-                    Client: {event.client_id} | Received: {new Date(event.server_received_at).toLocaleString()}
-                  </p>
-                  <p className="console-copy">Payload: {JSON.stringify(event.payload)}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Offline warmup report</h2>
-          {!warmupResult ? (
-            <p className="console-copy">Run Offline Warmup to pre-load route snapshots for offline use.</p>
-          ) : (
-            <>
-              <p className="console-copy">
-                Updated snapshots: {warmupResult.warmed_snapshots} | Completed: {new Date(warmupResult.finished_at).toLocaleString()}
-              </p>
-              <ul>
-                {warmupResult.steps.map((step) => (
-                  <li key={step.id}>
+        <div className="sync-center-deck">
+          <section className="sync-center-panel glass">
+            <div className="sync-sidecar-head">
+              <div>
+                <p className="eyebrow">Replay Edge</p>
+                <h2>Pending outbox</h2>
+              </div>
+            </div>
+            {outbox.length === 0 ? (
+              <p className="console-copy">No queued mutations.</p>
+            ) : (
+              <ul className="sync-center-list">
+                {outbox.map((mutation) => (
+                  <li key={mutation.id} className="sync-center-list-item">
                     <p className="console-copy">
-                      <strong>{step.label}</strong> [{step.status}] snapshots: {step.warmed_snapshots}
+                      <strong>{mutation.label}</strong> [{mutation.method}] {mutation.path}
                     </p>
-                    {step.detail ? <p className="console-copy">Detail: {step.detail}</p> : null}
+                    <p className="console-copy">
+                      Attempts: {mutation.attempts} | Created: {new Date(mutation.created_at).toLocaleString()}
+                    </p>
+                    {mutation.last_error ? <p className="console-copy">Last error: {mutation.last_error}</p> : null}
+                    <div className="button-row">
+                      <button className="button" type="button" onClick={() => dropQueuedMutation(mutation.id)}>
+                        Drop
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
-            </>
-          )}
+            )}
 
-          <h2>Replay log</h2>
-          {replayLog.length === 0 ? (
-            <p className="console-copy">No replay history yet.</p>
-          ) : (
-            <ul>
-              {replayLog.slice(0, 20).map((entry) => (
-                <li key={`${entry.id}-${entry.updated_at}`}>
-                  <p className="console-copy">
-                    <strong>{entry.label}</strong> [{entry.status}] {entry.method} {entry.path}
-                  </p>
-                  <p className="console-copy">
-                    Attempts: {entry.attempts} | Updated: {new Date(entry.updated_at).toLocaleString()}
-                  </p>
-                  {entry.last_error ? <p className="console-copy">Detail: {entry.last_error}</p> : null}
-                </li>
-              ))}
-            </ul>
-          )}
+            <div className="sync-center-panel-footnote">
+              {latestReplay ? (
+                <p className="console-copy">
+                  Latest replay: <strong>{latestReplay.label}</strong> [{latestReplay.status}]
+                </p>
+              ) : (
+                <p className="console-copy">No replay history yet.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="sync-center-panel glass">
+            <div className="sync-sidecar-head">
+              <div>
+                <p className="eyebrow">Server Audit</p>
+                <h2>Mutation history and deltas</h2>
+              </div>
+            </div>
+            <div className="sync-center-panel-stack">
+              <div>
+                <p className="command-footnote">Server mutation history</p>
+                {serverEntries.length === 0 ? (
+                  <p className="console-copy">No server-side sync history loaded.</p>
+                ) : (
+                  <ul className="sync-center-list">
+                    {serverEntries.map((entry) => (
+                      <li key={entry.id} className="sync-center-list-item">
+                        <p className="console-copy">
+                          <strong>{entry.label}</strong> [{entry.status}] {entry.method} {entry.path}
+                        </p>
+                        <p className="console-copy">
+                          Client: {entry.client_id} | Attempts: {entry.attempts} | Recorded: {new Date(entry.recorded_at).toLocaleString()}
+                        </p>
+                        {entry.detail ? <p className="console-copy">Detail: {entry.detail}</p> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <p className="command-footnote">Server delta pull</p>
+                {pulledEvents.length === 0 ? (
+                  <p className="console-copy">No pulled delta events yet.</p>
+                ) : (
+                  <ul className="sync-center-list">
+                    {pulledEvents.map((event) => (
+                      <li key={`${event.cursor}-${event.mutation_id}`} className="sync-center-list-item">
+                        <p className="console-copy">
+                          <strong>{event.entity}</strong> [{event.op}] cursor {event.cursor}
+                        </p>
+                        <p className="console-copy">
+                          Client: {event.client_id} | Received: {new Date(event.server_received_at).toLocaleString()}
+                        </p>
+                        <p className="console-copy">Payload: {JSON.stringify(event.payload)}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            <div className="sync-center-panel-footnote">
+              {latestServerEntry ? (
+                <p className="console-copy">
+                  Latest server record: <strong>{latestServerEntry.label}</strong> [{latestServerEntry.status}]
+                </p>
+              ) : (
+                <p className="console-copy">Server history has not been loaded yet.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="sync-center-panel glass">
+            <div className="sync-sidecar-head">
+              <div>
+                <p className="eyebrow">Offline Warmup</p>
+                <h2>Cache readiness</h2>
+              </div>
+            </div>
+            {!warmupResult ? (
+              <p className="console-copy">Run Offline Warmup to pre-load route snapshots for offline use.</p>
+            ) : (
+              <>
+                <div className="sync-center-warmup-summary">
+                  <span>Updated snapshots: {warmupResult.warmed_snapshots}</span>
+                  <span>Failures: {warmupFailures}</span>
+                  <span>Completed: {new Date(warmupResult.finished_at).toLocaleString()}</span>
+                </div>
+                <ul className="sync-center-list">
+                  {warmupResult.steps.map((step) => (
+                    <li key={step.id} className="sync-center-list-item">
+                      <p className="console-copy">
+                        <strong>{step.label}</strong> [{step.status}] snapshots: {step.warmed_snapshots}
+                      </p>
+                      {step.detail ? <p className="console-copy">Detail: {step.detail}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            <div>
+              <p className="command-footnote">Replay log</p>
+              {replayLog.length === 0 ? (
+                <p className="console-copy">No replay history yet.</p>
+              ) : (
+                <ul className="sync-center-list">
+                  {replayLog.slice(0, 20).map((entry) => (
+                    <li key={`${entry.id}-${entry.updated_at}`} className="sync-center-list-item">
+                      <p className="console-copy">
+                        <strong>{entry.label}</strong> [{entry.status}] {entry.method} {entry.path}
+                      </p>
+                      <p className="console-copy">
+                        Attempts: {entry.attempts} | Updated: {new Date(entry.updated_at).toLocaleString()}
+                      </p>
+                      {entry.last_error ? <p className="console-copy">Detail: {entry.last_error}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
         </div>
       </section>
     </main>

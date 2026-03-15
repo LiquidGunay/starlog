@@ -494,19 +494,41 @@ export default function PlannerPage() {
               <div>
                 <p className="eyebrow">Chronos Matrix</p>
                 <h1>Tactical Timeline</h1>
+                <p className="chronos-subcopy">
+                  Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills forward.
+                </p>
               </div>
               <PaneToggleButton label="Hide pane" onClick={sidebarPane.collapse} />
             </div>
             <div className="chronos-controls">
+              <div className="chronos-cycle-switch">
+                <button className="active" type="button">3-Day Cycle</button>
+                <button type="button" disabled>7-Day Cycle</button>
+              </div>
               <label className="label" htmlFor="planner-date">
                 Date
               </label>
               <input
                 id="planner-date"
+                type="date"
                 className="input"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
               />
+              <div className="chronos-summary-grid">
+                <article className="chronos-summary-card">
+                  <strong>{timeline.length}</strong>
+                  <span>scheduled items</span>
+                </article>
+                <article className="chronos-summary-card">
+                  <strong>{unscheduledPool.length}</strong>
+                  <span>pool items</span>
+                </article>
+                <article className="chronos-summary-card">
+                  <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
+                  <span>open conflicts</span>
+                </article>
+              </div>
               <div className="button-row">
                 <button className="button" type="button" onClick={() => generate()}>
                   Generate Blocks
@@ -521,10 +543,6 @@ export default function PlannerPage() {
                   Run Google Sync
                 </button>
               </div>
-              <div className="chronos-cycle-switch">
-                <button className="active" type="button">3-Day Cycle</button>
-                <button type="button" disabled>7-Day Cycle</button>
-              </div>
               <p className="status">{status}</p>
             </div>
           </div>
@@ -536,6 +554,9 @@ export default function PlannerPage() {
             ) : (
               unscheduledPool.map((item) => (
                 <article key={item.id} className="chronos-pool-card">
+                  <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
+                    {item.type === "conflict" ? "sync conflict" : "event spillover"}
+                  </span>
                   <strong>{item.title}</strong>
                   <small>{item.subtitle}</small>
                 </article>

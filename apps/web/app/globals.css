@@ -790,13 +790,86 @@ a {
 
 .command-main-header {
   margin-bottom: 1rem;
+  display: grid;
+  gap: 0.85rem;
 }
 
 .command-main-header h1 {
-  margin: 0.45rem 0 0;
+  margin: 0;
   font-family: "Rajdhani", sans-serif;
   font-size: clamp(1.9rem, 3vw, 3rem);
   letter-spacing: 0.02em;
+}
+
+.command-story-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.9rem;
+  align-items: center;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-story-tag {
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 34%);
+  border-radius: 999px;
+  padding: 0.22rem 0.5rem;
+  color: var(--primary-soft);
+  background: color-mix(in srgb, var(--chip), transparent 12%);
+}
+
+.command-story-lede {
+  margin: 0;
+  max-width: 54rem;
+  color: color-mix(in srgb, var(--text), var(--muted) 34%);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+.command-story-panel {
+  max-width: 48rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 24%);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--panel), transparent 10%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary), transparent 88%);
+  padding: 1rem;
+}
+
+.command-story-list {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.command-story-list li {
+  position: relative;
+  padding-left: 1.2rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.command-story-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 10px rgba(156, 137, 255, 0.45);
+}
+
+.command-story-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.95rem;
 }
 
 .command-main-divider {
@@ -1111,6 +1184,18 @@ a {
   accent-color: var(--primary);
 }
 
+.artifact-filter-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .artifact-graph {
   position: absolute;
   inset: 0;
@@ -1133,6 +1218,84 @@ a {
   stroke: color-mix(in srgb, var(--primary), transparent 0%);
   stroke-width: 3px;
   filter: drop-shadow(0 0 12px rgba(156, 137, 255, 0.48));
+}
+
+.artifact-scene-card {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  width: min(540px, calc(100% - 3rem));
+  z-index: 18;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 16%);
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow);
+  padding: 1rem 1.05rem;
+}
+
+.artifact-scene-card.empty {
+  bottom: auto;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.artifact-scene-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.artifact-scene-tag {
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 34%);
+  border-radius: 999px;
+  padding: 0.22rem 0.5rem;
+  color: var(--primary-soft);
+  background: color-mix(in srgb, var(--chip), transparent 14%);
+}
+
+.artifact-scene-card h2 {
+  margin: 0.72rem 0 0;
+  font-family: "Rajdhani", sans-serif;
+  font-size: clamp(1.55rem, 2.8vw, 2.35rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.artifact-scene-copy {
+  margin: 0.75rem 0 0;
+  max-width: 36rem;
+  color: color-mix(in srgb, var(--text), var(--muted) 36%);
+  line-height: 1.6;
+}
+
+.artifact-scene-stats,
+.artifact-scene-actions,
+.artifact-scene-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+}
+
+.artifact-scene-stats span,
+.artifact-scene-links span {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 20%);
+  background: color-mix(in srgb, var(--chip), transparent 14%);
+  padding: 0.34rem 0.62rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .artifact-inspector {
@@ -1242,6 +1405,22 @@ a {
 .artifact-inbox-list button {
   width: 100%;
   text-align: left;
+}
+
+.artifact-inbox-button {
+  justify-content: flex-start;
+}
+
+.artifact-inbox-button.active {
+  border-color: color-mix(in srgb, var(--primary), transparent 10%);
+  color: var(--primary-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary), transparent 48%);
+}
+
+.artifact-version-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
 }
 
 .neural-sync-shell {
@@ -1439,6 +1618,103 @@ a {
   margin: 0.1rem 0 0;
 }
 
+.sync-center-main {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 1.2rem;
+}
+
+.sync-center-hero-card {
+  width: min(1120px, 100%);
+  min-height: 0;
+}
+
+.sync-center-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+.sync-center-stat-card {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 22%);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--chip), transparent 14%);
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.sync-center-stat-card strong {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.7rem;
+  letter-spacing: 0.04em;
+}
+
+.sync-center-stat-card span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sync-center-action-row {
+  margin-top: 0;
+}
+
+.sync-center-deck {
+  width: min(1120px, 100%);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.sync-center-panel {
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+  min-height: 0;
+}
+
+.sync-center-panel-stack {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.sync-center-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.sync-center-list-item {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 22%);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--chip), transparent 16%);
+  padding: 0.72rem;
+}
+
+.sync-center-panel-footnote {
+  border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 32%);
+  padding-top: 0.75rem;
+}
+
+.sync-center-warmup-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .chronos-shell {
   max-width: none;
   width: 100%;
@@ -1473,16 +1749,52 @@ a {
 }
 
 .chronos-sidebar h1 {
-  margin: 0;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.75rem;
-  letter-spacing: 0.16em;
+  margin: 0.18rem 0 0;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 2rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--text);
+}
+
+.chronos-subcopy {
+  margin: 0.55rem 0 0;
   color: var(--muted);
+  line-height: 1.5;
 }
 
 .chronos-controls {
   margin-top: 0.75rem;
+}
+
+.chronos-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0.8rem 0 0.15rem;
+}
+
+.chronos-summary-card {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 22%);
+  background: color-mix(in srgb, var(--chip), transparent 15%);
+  border-radius: 0.72rem;
+  padding: 0.58rem;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.chronos-summary-card strong {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.28rem;
+  line-height: 1;
+}
+
+.chronos-summary-card span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .chronos-cycle-switch {
@@ -1531,6 +1843,25 @@ a {
   background: color-mix(in srgb, var(--chip), transparent 12%);
   border-radius: 0.62rem;
   padding: 0.64rem;
+}
+
+.chronos-pool-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 34%);
+  border-radius: 999px;
+  padding: 0.15rem 0.42rem;
+  color: var(--primary-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chronos-pool-tag.conflict {
+  border-color: color-mix(in srgb, var(--warning), transparent 40%);
+  color: color-mix(in srgb, var(--warning), #ffffff 10%);
 }
 
 .chronos-pool-card strong {
@@ -1586,6 +1917,10 @@ a {
   color: var(--text);
 }
 
+.chronos-day-head span:nth-child(3) {
+  background: color-mix(in srgb, var(--panel), transparent 6%);
+}
+
 .chronos-day-head span:last-child {
   border-right: none;
 }
@@ -1620,6 +1955,10 @@ a {
 .chronos-day-col {
   border-right: 1px solid rgba(156, 137, 255, 0.13);
   position: relative;
+}
+
+.chronos-grid-inner > .chronos-day-col:nth-child(3) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel), transparent 24%), transparent 40%);
 }
 
 .chronos-day-col:last-child {
@@ -1772,6 +2111,14 @@ a {
     min-height: 0;
   }
 
+  .artifact-scene-card,
+  .artifact-scene-card.empty {
+    position: static;
+    width: auto;
+    transform: none;
+    margin: 0 1rem 1rem;
+  }
+
   .artifact-graph {
     position: relative;
     flex: 1;
@@ -1779,6 +2126,10 @@ a {
   }
 
   .chronos-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-center-deck {
     grid-template-columns: 1fr;
   }
 }
@@ -1795,6 +2146,14 @@ a {
 
   .command-scroll {
     padding: 0.9rem;
+  }
+
+  .command-story-meta {
+    gap: 0.45rem;
+  }
+
+  .chronos-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .sync-prompt {

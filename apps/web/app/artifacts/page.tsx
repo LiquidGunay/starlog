@@ -216,6 +216,7 @@ function ArtifactsPageContent() {
     () => visibleItems.find((artifact) => artifact.id === selectedId) || graph?.artifact || null,
     [graph?.artifact, selectedId, visibleItems],
   );
+  const selectedGraphRelations = graph?.relations.slice(0, 3) ?? [];
   const graphNodes = useMemo(() => {
     const limited = filteredArtifacts.slice(0, ARTIFACT_NODE_LIMIT);
     if (selectedArtifact && !limited.some((artifact) => artifact.id === selectedArtifact.id)) {
@@ -536,7 +537,10 @@ function ArtifactsPageContent() {
             <input id="filter-task" type="checkbox" checked={showTask} onChange={(event) => setShowTask(event.target.checked)} />
             Extracted Tasks
           </label>
-          <p className="console-copy">Visible nodes: {graphNodes.length}</p>
+          <div className="artifact-filter-stats">
+            <span>Visible nodes: {graphNodes.length}</span>
+            <span>Inbox: {visibleItems.length}</span>
+          </div>
         </aside> : null}
 
         <div className="artifact-graph" aria-hidden="true">
@@ -593,6 +597,44 @@ function ArtifactsPageContent() {
           </svg>
         </div>
 
+        <section className={selectedArtifact ? "artifact-scene-card" : "artifact-scene-card empty"}>
+          <div className="artifact-scene-meta">
+            <span className="artifact-scene-tag">{selectedArtifact ? selectedArtifact.source_type : "graph.idle"}</span>
+            <span>{selectedArtifact ? selectedArtifact.id : "Awaiting first clip"}</span>
+          </div>
+          <h2>{selectedArtifact?.title || "Build the artifact graph"}</h2>
+          <p className="artifact-scene-copy">
+            {selectedArtifact
+              ? "Preserve the raw capture, trace every derivative, and keep the active relations visible from this shared graph scene."
+              : "Create a clip or select an artifact to populate the graph, inspector metadata, and version chain."}
+          </p>
+          {selectedArtifact ? (
+            <div className="artifact-scene-stats">
+              <span>Summaries {graph?.summaries.length ?? 0}</span>
+              <span>Tasks {graph?.tasks.length ?? 0}</span>
+              <span>Versions {versions?.actions.length ?? 0}</span>
+            </div>
+          ) : (
+            <div className="artifact-scene-actions">
+              <button className="button" type="button" onClick={() => createArtifact()}>
+                Create Clip
+              </button>
+              <button className="button" type="button" onClick={() => loadArtifacts()}>
+                Refresh Inbox
+              </button>
+            </div>
+          )}
+          {selectedGraphRelations.length > 0 ? (
+            <div className="artifact-scene-links">
+              {selectedGraphRelations.map((relation) => (
+                <span key={relation.id}>
+                  {relation.relation_type} {"->"} {relation.target_type}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
         {!inspectorPane.collapsed ? <aside className="artifact-inspector">
           <header className="artifact-inspector-header">
             <div className="artifact-pane-head">
@@ -614,9 +656,13 @@ function ArtifactsPageContent() {
                 <ul className="artifact-inbox-list">
                   {visibleItems.map((artifact) => (
                     <li key={artifact.id}>
-                      <button className="button" type="button" onClick={() => {
-                        setSelectedId(artifact.id);
-                      }}>
+                      <button
+                        className={artifact.id === selectedId ? "button artifact-inbox-button active" : "button artifact-inbox-button"}
+                        type="button"
+                        onClick={() => {
+                          setSelectedId(artifact.id);
+                        }}
+                      >
                         {artifact.title || artifact.id} ({artifact.source_type})
                       </button>
                       {artifact.pending ? (
@@ -679,11 +725,13 @@ function ArtifactsPageContent() {
                   <p className="console-copy">Summary versions: {versions.summaries.length}</p>
                   <p className="console-copy">Card set versions: {versions.card_sets.length}</p>
                   <p className="console-copy">Action runs: {versions.actions.length}</p>
-                  {versions.actions.slice(0, 5).map((action) => (
-                    <p key={action.id} className="console-copy">
-                      {action.action} [{action.status}]
-                    </p>
-                  ))}
+                  <div className="artifact-version-list">
+                    {versions.actions.slice(0, 5).map((action) => (
+                      <p key={action.id} className="console-copy">
+                        {action.action} [{action.status}]
+                      </p>
+                    ))}
+                  </div>
                 </>
               )}
             </article>

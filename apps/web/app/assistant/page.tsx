@@ -200,6 +200,22 @@ export default function AssistantPage() {
     const collected = intents.flatMap((intent) => intent.examples);
     return collected.length > 0 ? collected : FALLBACK_EXAMPLES;
   }, [intents]);
+  const showcaseLabel = latest?.matched_intent?.replace(/_/g, ".") || "command.draft";
+  const showcasePlanner = latest?.planner || "preview_shell";
+  const showcaseDate = useMemo(
+    () => new Intl.DateTimeFormat([], { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+    [],
+  );
+  const showcaseActions = useMemo(() => {
+    if (latest?.steps.length) {
+      return latest.steps.slice(0, 3).map((step) => step.message || `${step.tool_name} ${step.status}`);
+    }
+    return [
+      "Refine the command until the planned tool flow looks correct.",
+      "Inspect the queue and agent panes before promoting to execute mode.",
+      "Push any long-running voice or Codex work into the side feeds for replay.",
+    ];
+  }, [latest]);
 
   useEffect(() => {
     setHistory((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
@@ -669,12 +685,35 @@ export default function AssistantPage() {
           </div>
           <div className="command-scroll">
             <div className="command-main-header">
-              <p className="eyebrow">Command Center</p>
-              <h1>Command shell</h1>
-            <div className="command-main-divider" />
-              <p className="console-copy">
-                Type or speak a command, inspect the planned tool calls, then execute without leaving this workspace.
+              <div className="command-story-meta">
+                <span className="command-story-tag">{showcaseLabel}</span>
+                <span className="command-story-id">ID: {showcasePlanner}</span>
+                <span className="command-story-date">{showcaseDate}</span>
+              </div>
+              <h1>{latest ? latest.command : "Command shell"}</h1>
+              <div className="command-main-divider" />
+              <p className="command-story-lede">
+                {latest?.summary || "Type or speak a command, inspect the planned tool calls, then execute without leaving this workspace."}
               </p>
+              <div className="command-story-panel">
+                <p className="command-footnote">Action items identified</p>
+                <ul className="command-story-list">
+                  {showcaseActions.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <div className="command-story-actions">
+                  <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
+                    Load sample
+                  </button>
+                  <button className="button" type="button" onClick={() => runCommand(false)}>
+                    Preview flow
+                  </button>
+                  <button className="button" type="button" onClick={() => runCommand(true)}>
+                    Execute flow
+                  </button>
+                </div>
+              </div>
             </div>
 
             <PaneRestoreStrip
