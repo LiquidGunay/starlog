@@ -12,26 +12,56 @@ This keeps Railway costs low because Codex/Whisper execution stays off Railway.
 
 ## What the worker processes
 
-- `provider_hint=codex_local`
+- `provider_hint=codex_local` (and `desktop_bridge_codex` / `mobile_bridge_codex`)
   - `llm_summary`
   - `llm_cards`
   - `llm_tasks`
   - `llm_agent_plan`
-- `provider_hint=whisper_local`
+- `provider_hint=whisper_local` (and `desktop_bridge_stt` / `mobile_bridge_stt`)
   - `stt`
-- `provider_hint=piper_local`
+- `provider_hint=piper_local` (and bridge hint `desktop_bridge_tts` / `mobile_bridge_tts` when Piper is configured)
   - `tts`
-- `provider_hint=say_local`
+- `provider_hint=say_local` (and bridge hint `desktop_bridge_tts` / `mobile_bridge_tts` when macOS `say` is selected)
   - `tts`
-- `provider_hint=espeak_local`
+- `provider_hint=espeak_local` (and bridge hint `desktop_bridge_tts` / `mobile_bridge_tts` when selected)
   - `tts`
-- `provider_hint=espeak_ng_local`
+- `provider_hint=espeak_ng_local` (and bridge hint `desktop_bridge_tts` / `mobile_bridge_tts` when selected)
   - `tts`
 
 For `stt` jobs with `action=assistant_command`, the transcript is fed back into Starlog's command planner automatically after Whisper finishes.
 For `llm_agent_plan` jobs with `action=assistant_command_ai`, Codex returns tool calls that Starlog validates and executes against the same tool layer used by deterministic commands.
 For `tts` jobs with `action=briefing_audio`, the worker uploads rendered audio back to Starlog and the briefing package stores that media reference for offline playback.
 Queued AI jobs can now also be cancelled or retried from `/ai-jobs` or through the `/v1/ai/jobs/{job_id}/cancel` and `/v1/ai/jobs/{job_id}/retry` APIs.
+
+## Provider normalization + runtime probing
+
+The worker now normalizes bridge-scoped provider hints into concrete local runtimes:
+
+- LLM bridge hints -> `codex_local`
+- STT bridge hints -> `whisper_local`
+- TTS bridge hints -> one of `piper_local` / `say_local` / `espeak_ng_local` / `espeak_local`
+
+TTS bridge runtime selection order:
+
+1. `--tts-command` or `STARLOG_TTS_COMMAND` configured -> `piper_local`
+2. macOS `say` available -> `say_local`
+3. `espeak-ng` available -> `espeak_ng_local`
+4. `espeak` available -> `espeak_local`
+
+If no compatible local TTS runtime exists, the job fails with a non-retryable classified error so the operator can fix local setup.
+
+## Timeout + retry behavior
+
+The worker classifies failures and retries only retryable categories (for example transient timeout/network/upstream-5xx errors).
+Default retry budget is `2` attempts per claimed job.
+
+Useful flags:
+
+- `--retryable-attempts`
+- `--codex-timeout-seconds`
+- `--whisper-timeout-seconds`
+- `--tts-timeout-seconds`
+- `--ffmpeg-timeout-seconds`
 
 ## Requirements on your laptop
 
@@ -112,10 +142,10 @@ export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --o
 
 After synthesis, the worker uploads the audio file to `/v1/media/upload` and completes the queued `tts` job with the resulting `media://...` blob ref.
 
-The default worker provider hints now include TTS providers as well:
+The default worker provider hints now include bridge + local hints:
 
 ```text
-codex_local,whisper_local,piper_local,say_local,espeak_local,espeak_ng_local
+desktop_bridge_codex,mobile_bridge_codex,desktop_bridge_stt,mobile_bridge_stt,desktop_bridge_tts,mobile_bridge_tts,codex_local,whisper_local,piper_local,say_local,espeak_local,espeak_ng_local
 ```
 
 Built-in local TTS wrappers:
