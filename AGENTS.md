@@ -88,6 +88,10 @@ bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
   - `services/api/.venv`
   - `apps/mobile/android/.gradle`
   - `tools/desktop-helper/src-tauri/target`
+- Fresh-worktree validation on this host succeeded without reinstalling after running the helper:
+  - `npx pnpm@9.15.0 --filter web exec tsc --noEmit`
+  - `cd apps/mobile && ./node_modules/.bin/tsc --noEmit`
+  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep "quick popup can switch to workspace in browser fallback"`
 - Default rule: reuse shared state for dependencies/caches; only localize a surface if your task changes that surface's dependency or build inputs.
 - Localize a surface before reinstall/rebuild if you modify any of:
   - `package.json`
@@ -328,6 +332,8 @@ Troubleshooting checklist:
 - 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
 - 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
 - 2026-03-14: Running dependent `git checkout`/branch-creation commands in parallel can race and leave the worktree on `master`; branch-switch operations should be run sequentially to avoid accidental commits to local `master`.
+- 2026-03-15: `scripts/use_shared_worktree_state.sh` initially failed in linked git worktrees because `git rev-parse --git-common-dir` can return a relative `.git` path for the canonical checkout; resolve each common dir relative to its repo root before comparing.
+- 2026-03-15: Fresh-worktree reuse was validated on this host without reinstalling dependencies by linking shared state, then running one web typecheck, one mobile typecheck, and one desktop helper Playwright test from the new worktree.
 - 2026-03-15: Railway GitHub deploy statuses confirmed the repo source hook is connected for both Starlog services; a doc-only merge produced `No deployment needed - watched paths not modified`, while a watched-path merge triggered real deploys.
 - 2026-03-15: The live Railway `starlog-web` service was still configured with `pnpm --filter web start -- --hostname ...`, which fails because `pnpm` forwards a literal leading `--` into `next start`; the preferred fix is `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`, and the web workspace now strips a stray leading `--` in its `start` wrapper as a compatibility fallback.
 - 2026-03-15: Railway web deploy initially crashed because `pnpm --filter web start -- --hostname ...` passed `--` through to `next start` as an invalid project directory; `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT` works on Railway.

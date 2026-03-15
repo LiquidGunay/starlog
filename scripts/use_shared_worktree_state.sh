@@ -38,6 +38,18 @@ done
 repo_root="$(git rev-parse --show-toplevel)"
 repo_root="$(cd "$repo_root" && pwd -P)"
 
+resolve_git_common_dir() {
+  local repo="$1"
+  local common
+
+  common="$(git -C "$repo" rev-parse --git-common-dir)"
+  if [[ "$common" != /* ]]; then
+    common="$repo/$common"
+  fi
+
+  (cd "$common" && pwd -P)
+}
+
 if [[ -z "$source_root" ]]; then
   if [[ -d /home/ubuntu/starlog && "$repo_root" != "/home/ubuntu/starlog" ]]; then
     source_root="/home/ubuntu/starlog"
@@ -59,10 +71,8 @@ if [[ "$repo_root" == "$source_root" ]]; then
   exit 0
 fi
 
-current_common="$(git rev-parse --git-common-dir)"
-source_common="$(git -C "$source_root" rev-parse --git-common-dir)"
-current_common="$(cd "$current_common" && pwd -P)"
-source_common="$(cd "$source_common" && pwd -P)"
+current_common="$(resolve_git_common_dir "$repo_root")"
+source_common="$(resolve_git_common_dir "$source_root")"
 
 if [[ "$current_common" != "$source_common" ]]; then
   echo "Source root must share the same git common dir as this worktree." >&2
