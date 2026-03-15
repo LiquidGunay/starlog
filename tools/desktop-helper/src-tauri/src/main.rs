@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use keyring::{Entry as KeyringEntry, Error as KeyringError};
 use serde::Serialize;
 use std::env;
 use std::fs;
@@ -8,6 +9,9 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const HELPER_TOKEN_SERVICE: &str = "starlog.desktop-helper";
+const HELPER_TOKEN_ACCOUNT: &str = "api-token";
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 struct ScreenshotClipResult {
@@ -102,6 +106,37 @@ fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout)
         .trim_end_matches(|character| character == '\r' || character == '\n')
         .to_string())
+}
+
+fn helper_token_entry() -> Result<KeyringEntry, String> {
+    KeyringEntry::new(HELPER_TOKEN_SERVICE, HELPER_TOKEN_ACCOUNT)
+        .map_err(|error| format!("failed to initialize secure token storage: {error}"))
+}
+
+#[tauri::command]
+fn get_secure_token() -> Result<Option<String>, String> {
+    let entry = helper_token_entry()?;
+    match entry.get_password() {
+        Ok(token) => Ok(Some(token)),
+        Err(KeyringError::NoEntry) => Ok(None),
+        Err(error) => Err(format!("failed to read secure token: {error}")),
+    }
+}
+
+#[tauri::command]
+fn set_secure_token(token: String) -> Result<(), String> {
+    let entry = helper_token_entry()?;
+    let normalized = token.trim();
+    if normalized.is_empty() {
+        match entry.delete_password() {
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+            Err(error) => Err(format!("failed to clear secure token: {error}")),
+        }
+    } else {
+        entry
+            .set_password(normalized)
+            .map_err(|error| format!("failed to persist secure token: {error}"))
+    }
 }
 
 fn run_tesseract(path: &str) -> Result<String, String> {
@@ -1192,6 +1227,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            get_secure_token,
+            set_secure_token,
             clip_clipboard_text,
             clip_active_window_context,
             inspect_runtime_diagnostics,

@@ -508,6 +508,37 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - `python3 scripts/sync_workitem_mirror.py`
 
+### 7. Desktop helper secure token storage
+
+- Branch: `codex/desktop-helper-secure-token`
+- Workitem ID: `WI-111`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #26 opened`
+- Goal: move desktop helper bearer-token persistence from plaintext localStorage to OS secure storage in Tauri runtime.
+- Scope:
+  - add Tauri secure-token commands backed by OS keyring/credential store,
+  - migrate legacy localStorage token into secure storage on first launch in Tauri,
+  - keep browser-only fallback behavior for non-Tauri helper tests/runs.
+- Out of scope:
+  - API auth protocol changes,
+  - redesigning helper capture UI.
+- Likely files:
+  - `tools/desktop-helper/src/main.js`
+  - `tools/desktop-helper/src-tauri/src/main.rs`
+  - `tools/desktop-helper/src-tauri/Cargo.toml`
+  - `tools/desktop-helper/README.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - wire `get_secure_token` / `set_secure_token` Tauri commands,
+  - update helper config persistence so Tauri no longer writes bearer token to localStorage,
+  - migrate existing localStorage token into secure storage once and redact local config afterwards,
+  - keep browser-runtime tests green with the existing local-storage token fallback outside Tauri.
+- Acceptance:
+  - Tauri runtime stores token in OS secure storage, not localStorage,
+  - helper still restores API base and retains expected browser fallback behavior.
+- Validation:
+  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts`
+  - `cd tools/desktop-helper/src-tauri && cargo check`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -537,4 +568,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-110` (`codex/workitem-mirror-sync-b`): automate lock-line mirror updates in `docs/CODEX_PARALLEL_WORK_ITEMS.md` from shared registry state.
+- `WI-111` (`codex/desktop-helper-secure-token`): migrate desktop-helper bearer-token persistence to OS secure storage in Tauri runtime.

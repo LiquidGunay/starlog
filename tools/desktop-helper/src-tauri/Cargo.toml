@@ -8,6 +8,7 @@ tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
 base64 = "0.22"
+keyring = "2.3.2"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2.0.0", features = [] }
 tauri-plugin-global-shortcut = "2"

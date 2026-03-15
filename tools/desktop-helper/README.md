@@ -4,7 +4,7 @@ Desktop helper for clipping content from non-browser apps.
 
 ## Current capabilities
 - Global OS shortcuts plus window-local fallback (`Cmd/Ctrl+Shift+C` and `Cmd/Ctrl+Shift+S`).
-- Persisted API base and bearer token between launches.
+- Persisted API base between launches; bearer token uses OS secure storage in Tauri runtime (browser fallback keeps local-storage behavior only outside Tauri).
 - Runtime diagnostics card for clipboard, screenshot, OCR, active-window metadata, and shortcut wiring, with refresh/copy controls plus latest-attempt notes for bug reports.
 - Native clipboard capture in Tauri runtime, with focused-window browser clipboard fallback when native access is unavailable.
 - Best-effort active app/window metadata capture per clip.
