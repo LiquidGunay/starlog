@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -25,9 +27,11 @@ const REVIEW_CARDS_SNAPSHOT = "review.cards";
 const REVIEW_SHOW_ANSWER_SNAPSHOT = "review.show_answer";
 const REVIEW_CURRENT_INDEX_SNAPSHOT = "review.current_index";
 const REVIEW_STATS_SNAPSHOT = "review.stats";
+const REVIEW_SIDECAR_PANE_SNAPSHOT = "review.pane.sidecar";
 
 export default function ReviewPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
+  const sidecarPane = usePaneCollapsed(REVIEW_SIDECAR_PANE_SNAPSHOT);
   const [cards, setCards] = useState<Card[]>(() => readEntitySnapshot<Card[]>(REVIEW_CARDS_SNAPSHOT, []));
   const [showAnswer, setShowAnswer] = useState(
     () => readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
@@ -243,9 +247,18 @@ export default function ReviewPage() {
           <span>{status}</span>
         </div>
 
-        <div className="sync-sidecar glass panel">
-          <p className="eyebrow">Neural Sync</p>
-          <h2>Focused review session</h2>
+        <PaneRestoreStrip
+          actions={sidecarPane.collapsed ? [{ id: "review-sidecar", label: "Show review sidecar", onClick: sidecarPane.expand }] : []}
+        />
+
+        {!sidecarPane.collapsed ? <div className="sync-sidecar glass panel">
+          <div className="sync-sidecar-head">
+            <div>
+              <p className="eyebrow">Neural Sync</p>
+              <h2>Focused review session</h2>
+            </div>
+            <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
+          </div>
           <div className="button-row">
             <button className="button" type="button" onClick={() => loadDue()}>Refresh Due Cards</button>
             <button
@@ -268,7 +281,7 @@ export default function ReviewPage() {
               ))}
             </div>
           )}
-        </div>
+        </div> : null}
       </section>
     </main>
   );

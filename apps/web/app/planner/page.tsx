@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -12,6 +13,7 @@ import {
   readEntitySnapshotAsync,
   writeEntitySnapshot,
 } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -79,6 +81,7 @@ const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
 const PLANNER_EVENTS_ENTITY_SCOPE = "planner.events";
 const PLANNER_CONFLICTS_ENTITY_SCOPE = "planner.conflicts";
 const PLANNER_OAUTH_ENTITY_SCOPE = "planner.oauth";
+const PLANNER_SIDEBAR_PANE_SNAPSHOT = "planner.pane.sidebar";
 
 function cachePlannerBlocks(blocks: Block[]): void {
   void replaceEntityCacheScope(
@@ -154,6 +157,7 @@ function isoDateFromOffset(baseDate: string, offset: number): string {
 
 export default function PlannerPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
+  const sidebarPane = usePaneCollapsed(PLANNER_SIDEBAR_PANE_SNAPSHOT);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const initialDate = useMemo(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today), [today]);
   const [date, setDate] = useState(initialDate);
@@ -483,11 +487,16 @@ export default function PlannerPage() {
 
   return (
     <main className="chronos-shell">
-      <section className="chronos-layout">
-        <aside className="chronos-sidebar">
+      <section className={sidebarPane.collapsed ? "chronos-layout chronos-layout-sidebar-collapsed" : "chronos-layout"}>
+        {!sidebarPane.collapsed ? <aside className="chronos-sidebar">
           <div className="chronos-sidebar-head">
-            <p className="eyebrow">Chronos Matrix</p>
-            <h1>Tactical Timeline</h1>
+            <div className="artifact-pane-head">
+              <div>
+                <p className="eyebrow">Chronos Matrix</p>
+                <h1>Tactical Timeline</h1>
+              </div>
+              <PaneToggleButton label="Hide pane" onClick={sidebarPane.collapse} />
+            </div>
             <div className="chronos-controls">
               <label className="label" htmlFor="planner-date">
                 Date
@@ -589,9 +598,12 @@ export default function PlannerPage() {
               )}
             </details>
           </div>
-        </aside>
+        </aside> : null}
 
         <section className="chronos-grid-wrap">
+          <PaneRestoreStrip
+            actions={sidebarPane.collapsed ? [{ id: "planner-sidebar", label: "Show timeline controls", onClick: sidebarPane.expand }] : []}
+          />
           <div className="chronos-day-head">
             <span />
             {cycleDays.map((cycleDay) => (
