@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Railway deploys this service from the repo root, so copy from the nested path.
+# This keeps the API build isolated while still using the repo-wide lockfile scan.
 COPY services/api/pyproject.toml /app/pyproject.toml
 COPY services/api/app /app/app
 
