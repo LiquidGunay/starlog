@@ -8,6 +8,27 @@ static def versionToNumber(major, minor, patch) {
   return patch * 100 + minor * 10000 + major * 1000000
 }
 
+static def readBuildValue(Project project, String key, String fallbackValue = "") {
+  def propertyValue = project.findProperty(key)
+  if (propertyValue != null && String.valueOf(propertyValue).trim()) {
+    return String.valueOf(propertyValue).trim()
+  }
+  def environmentValue = System.getenv(key)
+  if (environmentValue != null && environmentValue.trim()) {
+    return environmentValue.trim()
+  }
+  return fallbackValue
+}
+
+static def parsePositiveInt(def rawValue, int fallbackValue) {
+  try {
+    def parsedValue = Integer.parseInt(String.valueOf(rawValue))
+    return parsedValue > 0 ? parsedValue : fallbackValue
+  } catch (Exception ignored) {
+    return fallbackValue
+  }
+}
+
 def getRNVersion() {
   def version = providers.exec {
     workingDir(projectDir)
@@ -24,6 +45,21 @@ def getRNVersion() {
   )
 }
 def rnVersion = getRNVersion()
+def appVariant = readBuildValue(project, "APP_VARIANT", "development")
+def appIdSuffix = appVariant == "production" ? "" : appVariant == "preview" ? ".preview" : ".dev"
+def resolvedApplicationId = "com.starlog.app${appIdSuffix}"
+def resolvedVersionName = readBuildValue(project, "STARLOG_ANDROID_VERSION_NAME", readBuildValue(project, "STARLOG_VERSION_NAME", "0.1.0"))
+def resolvedVersionCode = parsePositiveInt(readBuildValue(project, "STARLOG_ANDROID_VERSION_CODE", "1"), 1)
+def releaseStoreFilePath = readBuildValue(project, "STARLOG_UPLOAD_STORE_FILE", "")
+def releaseStorePassword = readBuildValue(project, "STARLOG_UPLOAD_STORE_PASSWORD", "")
+def releaseKeyAlias = readBuildValue(project, "STARLOG_UPLOAD_KEY_ALIAS", "")
+def releaseKeyPassword = readBuildValue(project, "STARLOG_UPLOAD_KEY_PASSWORD", "")
+def hasReleaseSigning = releaseStoreFilePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+def allowDebugReleaseSigning = readBuildValue(project, "STARLOG_ALLOW_DEBUG_RELEASE_SIGNING", "false").toBoolean()
+def releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
+    def normalizedName = taskName.toLowerCase()
+    normalizedName.contains("release") || normalizedName.contains("bundle")
+}
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -111,11 +147,11 @@ android {
 
     namespace 'com.starlog.app.dev'
     defaultConfig {
-        applicationId 'com.starlog.app.dev'
+        applicationId resolvedApplicationId
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode resolvedVersionCode
+        versionName resolvedVersionName
     }
     signingConfigs {
         debug {
@@ -124,15 +160,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFilePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
@@ -144,6 +186,13 @@ android {
             useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
         }
     }
+}
+
+if (releaseTaskRequested && !hasReleaseSigning && !allowDebugReleaseSigning) {
+    throw new GradleException("Release signing credentials are missing. Set STARLOG_UPLOAD_STORE_FILE, STARLOG_UPLOAD_STORE_PASSWORD, STARLOG_UPLOAD_KEY_ALIAS, and STARLOG_UPLOAD_KEY_PASSWORD.")
+}
+if (releaseTaskRequested && !hasReleaseSigning && allowDebugReleaseSigning) {
+    logger.warn("STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true allows debug signing for this release task. Do not use this for production artifacts.")
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`

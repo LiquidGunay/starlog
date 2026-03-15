@@ -1,0 +1,8 @@
+[android-smoke] Waiting for adb device
+[android-smoke] Reversing tcp:8000
+[android-smoke] Opening dev client URL
+[android-smoke] Skipping APK install
+[android-smoke] Skipping initial app launch because DEV_CLIENT_URL already bootstrapped the dev client
+[android-smoke] Sending deep-link capture
+[android-smoke] Sending text share intent
+[android-smoke] Smoke flow completed. Inspect the device/emulator UI to confirm the Starlog quick-capture state.

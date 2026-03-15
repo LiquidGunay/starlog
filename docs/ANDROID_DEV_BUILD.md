@@ -34,6 +34,57 @@ This is the active native-mobile path for Starlog. It keeps the Expo-managed app
   - uses `APP_VARIANT=production`
   - package: `com.starlog.app`
 
+## Release signing + version policy
+
+Release tasks now fail by default unless explicit release-signing credentials are provided.
+This prevents accidental debug-keystore signing for production output.
+
+Required signing inputs for release tasks:
+
+- `STARLOG_UPLOAD_STORE_FILE`
+- `STARLOG_UPLOAD_STORE_PASSWORD`
+- `STARLOG_UPLOAD_KEY_ALIAS`
+- `STARLOG_UPLOAD_KEY_PASSWORD`
+
+Deterministic version inputs:
+
+- `STARLOG_VERSION_NAME` (or `STARLOG_ANDROID_VERSION_NAME`) controls app version display.
+- `STARLOG_ANDROID_VERSION_CODE` controls Android `versionCode`.
+- `STARLOG_IOS_BUILD_NUMBER` controls iOS `buildNumber` (optional).
+
+Production config verification example:
+
+```bash
+cd apps/mobile
+APP_VARIANT=production \
+STARLOG_VERSION_NAME=0.1.0 \
+STARLOG_ANDROID_VERSION_CODE=1 \
+npx expo config --json
+```
+
+Production release build example (AAB):
+
+```bash
+cd apps/mobile/android
+APP_VARIANT=production \
+STARLOG_VERSION_NAME=0.1.0 \
+STARLOG_ANDROID_VERSION_CODE=1 \
+STARLOG_UPLOAD_STORE_FILE=/abs/path/starlog-upload.keystore \
+STARLOG_UPLOAD_STORE_PASSWORD='***' \
+STARLOG_UPLOAD_KEY_ALIAS=starlog_upload \
+STARLOG_UPLOAD_KEY_PASSWORD='***' \
+./gradlew bundleRelease
+```
+
+For local non-production troubleshooting only, you can temporarily allow debug signing in
+release tasks with:
+
+```bash
+STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true
+```
+
+Do not use that override for production artifacts.
+
 ## First-time setup
 
 From repo root:

@@ -20,6 +20,7 @@ import {
   useColorScheme,
   View,
 } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 
@@ -39,6 +40,14 @@ type Palette = {
   text: string;
   muted: string;
   accent: string;
+  accentMuted: string;
+  secondary: string;
+  tertiary: string;
+  error: string;
+  onAccent: string;
+  surfaceLow: string;
+  surfaceHigh: string;
+  surfaceHighest: string;
 };
 
 type BriefingPayload = {
@@ -301,7 +310,7 @@ const artifactQuickActions: Array<{ label: string; action: ArtifactAction }> = [
 ];
 const assistantExampleCommands = [
   "summarize latest artifact",
-  "create task Review latest summary due tomorrow priority 4",
+  "create task",
   "search for spaced repetition",
 ];
 
@@ -312,23 +321,39 @@ function usePalette(): Palette {
   return useMemo(() => {
     if (scheme === "light") {
       return {
-        bg: "#eaf1ff",
-        bgAlt: "#dbe8ff",
-        panel: "rgba(255,255,255,0.82)",
-        border: "rgba(61,88,160,0.25)",
-        text: "#102340",
-        muted: "#4a5e87",
-        accent: "#355ebb",
+        bg: "#f2f5ff",
+        bgAlt: "#ffffff",
+        panel: "rgba(255,255,255,0.9)",
+        border: "rgba(71,49,164,0.16)",
+        text: "#1d2230",
+        muted: "#5c5f78",
+        accent: "#5f4bbe",
+        accentMuted: "rgba(95,75,190,0.12)",
+        secondary: "#b56624",
+        tertiary: "#197a79",
+        error: "#b33834",
+        onAccent: "#ffffff",
+        surfaceLow: "#eceffd",
+        surfaceHigh: "#e2e6fb",
+        surfaceHighest: "#d8ddf5",
       };
     }
     return {
-      bg: "#070c1b",
-      bgAlt: "#101a33",
-      panel: "rgba(18,26,53,0.75)",
-      border: "rgba(126,168,255,0.28)",
-      text: "#e9f1ff",
-      muted: "#9fb4d7",
-      accent: "#7ca6ff",
+      bg: "#10141a",
+      bgAlt: "#0a0e14",
+      panel: "rgba(201,190,255,0.06)",
+      border: "rgba(201,190,255,0.18)",
+      text: "#dfe2eb",
+      muted: "#c9c4d5",
+      accent: "#c9beff",
+      accentMuted: "rgba(201,190,255,0.15)",
+      secondary: "#f1bc8e",
+      tertiary: "#83d4d3",
+      error: "#ffb4ab",
+      onAccent: "#30118e",
+      surfaceLow: "#181c22",
+      surfaceHigh: "#262a31",
+      surfaceHighest: "#31353c",
     };
   }, [scheme]);
 }
@@ -767,9 +792,30 @@ function parseCaptureDeepLink(rawUrl: string): { title: string; text: string; so
   };
 }
 
+function parseSurfaceTabDeepLink(rawUrl: string): "capture" | "alarms" | "review" | null {
+  if (!rawUrl.startsWith("starlog://surface")) {
+    return null;
+  }
+  const queryIndex = rawUrl.indexOf("?");
+  if (queryIndex < 0) {
+    return null;
+  }
+  const params = new URLSearchParams(rawUrl.slice(queryIndex + 1));
+  const rawTab = (params.get("tab") ?? "").trim().toLowerCase();
+  if (rawTab === "capture" || rawTab === "alarms" || rawTab === "review") {
+    return rawTab;
+  }
+  return null;
+}
+
 export default function App() {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
+  const [activeTab, setActiveTab] = useState<"capture" | "alarms" | "review">("capture");
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showAdvancedCapture, setShowAdvancedCapture] = useState(false);
+  const [showAdvancedAlarms, setShowAdvancedAlarms] = useState(false);
+  const [showAdvancedReview, setShowAdvancedReview] = useState(false);
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
   const [pwaBase, setPwaBase] = useState(DEFAULT_PWA_BASE);
   const [token, setToken] = useState("");
@@ -851,6 +897,21 @@ export default function App() {
       ),
     [executionPolicy],
   );
+  const stationHour12 = ((alarmHour + 11) % 12) + 1;
+  const stationPeriod = alarmHour >= 12 ? "PM" : "AM";
+  const nextBriefingCountdown = useMemo(() => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(alarmHour, alarmMinute, 0, 0);
+    if (next.getTime() <= now.getTime()) {
+      next.setDate(next.getDate() + 1);
+    }
+    const totalMinutes = Math.floor((next.getTime() - now.getTime()) / 60000);
+    const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+    const mm = String(totalMinutes % 60).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }, [alarmHour, alarmMinute]);
+  const reviewCard = dueCards[0];
 
   async function refreshLocalSttAvailability(origin: "auto" | "manual") {
     const available = await probeLocalSttAvailability();
@@ -2046,6 +2107,11 @@ export default function App() {
 
       const initialUrl = await Linking.getInitialURL();
       if (active && initialUrl) {
+        const initialTab = parseSurfaceTabDeepLink(initialUrl);
+        if (initialTab) {
+          setActiveTab(initialTab);
+          setStatus(`Opened ${initialTab} surface`);
+        }
         const deepCapture = parseCaptureDeepLink(initialUrl);
         if (deepCapture) {
           setQuickCaptureTitle(deepCapture.title);
@@ -2095,6 +2161,11 @@ export default function App() {
     });
 
     const linkSubscription = Linking.addEventListener("url", (event) => {
+      const requestedTab = parseSurfaceTabDeepLink(event.url);
+      if (requestedTab) {
+        setActiveTab(requestedTab);
+        setStatus(`Opened ${requestedTab} surface`);
+      }
       const deepCapture = parseCaptureDeepLink(event.url);
       if (!deepCapture) {
         return;
@@ -2347,17 +2418,303 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style={palette.bg === "#070c1b" ? "light" : "dark"} />
+      <StatusBar style={palette.bg === "#10141a" ? "light" : "dark"} />
+      <View pointerEvents="none" style={styles.bgOrbTop} />
+      <View pointerEvents="none" style={styles.bgOrbCenter} />
+      <View style={styles.topBar}>
+        <View style={styles.topBarBrand}>
+          <View style={styles.topBarAvatar}>
+            <MaterialCommunityIcons name="radio-tower" size={14} color={palette.tertiary} />
+          </View>
+          <Text style={styles.topBarTitle}>Starlog</Text>
+        </View>
+        <View style={styles.topBarActions}>
+          <TouchableOpacity
+            style={styles.topBarIconButton}
+            onPress={() => {
+              loadExecutionPolicy("manual").catch(() => undefined);
+              loadArtifacts().catch(() => undefined);
+            }}
+          >
+            <MaterialCommunityIcons name="sync" size={16} color={palette.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.topBarIconButton} onPress={openPwa}>
+            <MaterialCommunityIcons name="account-circle" size={18} color={palette.tertiary} />
+          </TouchableOpacity>
+        </View>
+      </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>Starlog Companion</Text>
-          <Text style={styles.title}>Capture fast. Wake focused.</Text>
-          <Text style={styles.body}>
-            Mobile app handles share capture, queue retries, alarms, and offline brief playback while deep planning stays in the PWA.
+          <Text style={styles.eyebrow}>{activeTab === "capture" ? "System Ready" : activeTab === "alarms" ? "Station Time" : "Current Session"}</Text>
+          <Text style={styles.title}>
+            {activeTab === "capture" ? "Awaiting Command" : activeTab === "alarms" ? `${toHourMinuteLabel(stationHour12, alarmMinute)} ${stationPeriod}` : "Neural Synchronization"}
           </Text>
+          {activeTab === "capture" ? (
+            <>
+              <Text style={styles.body}>
+                Capture fast. Triage quickly. Run alarms and offline briefing playback while deep editing stays in the PWA.
+              </Text>
+              <TextInput
+                style={styles.heroInput}
+                value={assistantCommand}
+                onChangeText={setAssistantCommand}
+                placeholder="Specify objective..."
+                placeholderTextColor={palette.muted}
+              />
+              <View style={styles.routeGrid}>
+                <View style={[styles.routeCard, styles.routeCardPrimary]}>
+                  <Text style={styles.routeLabel}>Engine</Text>
+                  <Text style={styles.routeValue}>LLM-01</Text>
+                </View>
+                <View style={[styles.routeCard, styles.routeCardTertiary]}>
+                  <Text style={styles.routeLabel}>Audio</Text>
+                  <Text style={styles.routeValue}>VOICE STT</Text>
+                </View>
+                <View style={[styles.routeCard, styles.routeCardSecondary]}>
+                  <Text style={styles.routeLabel}>Output</Text>
+                  <Text style={styles.routeValue}>SPEECH</Text>
+                </View>
+              </View>
+              <Text style={styles.subtle}>Suggested Sub-routines</Text>
+              <View style={styles.chipRow}>
+                {assistantExampleCommands.map((example) => (
+                  <TouchableOpacity key={`hero-${example}`} style={styles.chip} activeOpacity={0.8} onPress={() => setAssistantCommand(example)}>
+                    <Text style={styles.chipText}>{example}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.dashboardWide}>
+                <Text style={styles.inlineCardTitle}>Environmental Logic</Text>
+                <Text style={styles.subtle}>Nominal state active</Text>
+                <Text style={styles.dashboardValue}>98%</Text>
+              </View>
+              <View style={styles.dashboardRow}>
+                <View style={styles.dashboardCell}>
+                  <Text style={styles.dashboardValueSmall}>{artifacts.length || 12}</Text>
+                  <Text style={styles.subtle}>Active Artifacts</Text>
+                </View>
+                <View style={styles.dashboardCell}>
+                  <Text style={styles.dashboardValueSmall}>4.2ms</Text>
+                  <Text style={styles.subtle}>Latent Response</Text>
+                </View>
+              </View>
+            </>
+          ) : null}
+          {activeTab === "review" ? (
+            <View style={styles.dashboardWide}>
+              <Text style={styles.inlineCardTitle}>Neural Synchronization: 42%</Text>
+              <Text style={styles.subtle}>Load due cards, reveal answers, and rate quickly.</Text>
+            </View>
+          ) : null}
+          {activeTab === "alarms" ? (
+            <View style={styles.dashboardWide}>
+              <Text style={styles.inlineCardTitle}>Next Briefing</Text>
+              <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(alarmHour, alarmMinute)}</Text>
+            </View>
+          ) : null}
         </View>
 
+        {activeTab === "capture" ? (
+          <View style={styles.panel}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionKicker}>Recent Artifacts</Text>
+              <View style={styles.pendingBadge}>
+                <Text style={styles.pendingBadgeText}>{pendingCaptures.length} Pending</Text>
+              </View>
+            </View>
+            <View style={styles.captureHeroActions}>
+              <TouchableOpacity style={styles.primaryAction} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+                <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={16} color={palette.onAccent} />
+                <Text style={styles.primaryActionText}>{voiceRecording ? "Stop" : "Voice"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconAction} onPress={submitQuickCapture}>
+                <MaterialCommunityIcons name="camera-outline" size={16} color={palette.accent} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconAction} onPress={() => setQuickCaptureText((prev) => prev || "Quick note")}>
+                <MaterialCommunityIcons name="format-text" size={16} color={palette.accent} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.captureArtifactCard}>
+              <Text style={styles.captureTrackLabel}>Science Track</Text>
+              <Text style={styles.captureArtifactTitle}>{selectedArtifact?.title || "Atmospheric Scan"}</Text>
+              <Text style={styles.body}>
+                {quickCaptureText.trim() ||
+                  "Detected trace amounts of Argon-40 near the sector 7 ridge. Suggests tectonic activity in the lower crust."}
+              </Text>
+              <View style={styles.chipRow}>
+                <View style={styles.miniTag}>
+                  <Text style={styles.miniTagText}>#TECTONIC</Text>
+                </View>
+                <View style={styles.miniTag}>
+                  <Text style={styles.miniTagText}>#S7_RIDGE</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.captureMediaRow}>
+              <View style={styles.captureMediaTile}>
+                <MaterialCommunityIcons name="image-outline" size={16} color={palette.accent} />
+                <Text style={styles.subtle}>Visual_LOG_01.png</Text>
+              </View>
+              <View style={styles.captureAlertTile}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={16} color={palette.secondary} />
+                <Text style={styles.inlineCardTitle}>Power Flux</Text>
+                <Text style={styles.subtle}>Spike in reactor core telemetry.</Text>
+              </View>
+            </View>
+            <View style={styles.captureVoiceMemo}>
+              <TouchableOpacity style={styles.capturePlayButton} onPress={playCached}>
+                <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineCardTitle}>Captain&apos;s Memo</Text>
+                <Text style={styles.subtle}>{voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s` : "42s"}</Text>
+              </View>
+            </View>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.button} onPress={() => setShowAdvancedCapture((value) => !value)}>
+                <Text style={styles.buttonText}>{showAdvancedCapture ? "Hide Advanced Capture" : "Show Advanced Capture"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {activeTab === "review" ? (
+          <View style={styles.panel}>
+            <View style={styles.reviewTopRow}>
+              <View>
+                <Text style={styles.sectionKicker}>Current Session</Text>
+                <Text style={styles.subtle}>Neural Synchronization: 42%</Text>
+              </View>
+              <View style={styles.reviewPillRow}>
+                <View style={styles.reviewPill}>
+                  <Text style={styles.reviewPillText}>12</Text>
+                </View>
+                <View style={styles.reviewPill}>
+                  <Text style={styles.reviewPillText}>85</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.reviewFlashcard}>
+              <Text style={styles.reviewMeta}>Last seen: 4 days ago</Text>
+              <Text style={styles.reviewCategory}>Scientific Nomenclature</Text>
+              <Text style={styles.reviewPromptLarge}>{reviewCard?.prompt || "Nebular Nucleosynthesis"}</Text>
+              <View style={styles.reviewDivider} />
+              <Text style={styles.reviewAnswerLarge}>
+                {showAnswer
+                  ? reviewCard?.answer ||
+                    "The process responsible for the formation of heavy elements within the core of collapsing stellar bodies."
+                  : "Tap reveal to show answer"}
+              </Text>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => {
+                  if (!reviewCard) {
+                    loadDueCards().catch(() => undefined);
+                  }
+                  setShowAnswer(true);
+                }}
+              >
+                <Text style={styles.buttonText}>Reveal Answer</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.reviewRateRow}>
+              <TouchableOpacity
+                style={styles.reviewRateButton}
+                onPress={() => (reviewCard ? submitReview(1) : setStatus("Load due cards first"))}
+              >
+                <Text style={styles.reviewRateLabel}>Again</Text>
+                <Text style={styles.reviewRateValue}>1m</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.reviewRateButton}
+                onPress={() => (reviewCard ? submitReview(2) : setStatus("Load due cards first"))}
+              >
+                <Text style={styles.reviewRateLabel}>Hard</Text>
+                <Text style={styles.reviewRateValue}>2d</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reviewRateButton, styles.reviewRateButtonActive]}
+                onPress={() => (reviewCard ? submitReview(4) : setStatus("Load due cards first"))}
+              >
+                <Text style={[styles.reviewRateLabel, styles.reviewRateLabelActive]}>Good</Text>
+                <Text style={styles.reviewRateValue}>4d</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.reviewRateButton}
+                onPress={() => (reviewCard ? submitReview(5) : setStatus("Load due cards first"))}
+              >
+                <Text style={styles.reviewRateLabel}>Easy</Text>
+                <Text style={styles.reviewRateValue}>7d</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.button} onPress={() => setShowAdvancedReview((value) => !value)}>
+                <Text style={styles.buttonText}>{showAdvancedReview ? "Hide Advanced Review" : "Show Advanced Review"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {activeTab === "alarms" ? (
+          <View style={styles.panel}>
+            <View style={styles.alarmClockRow}>
+              <Text style={styles.alarmClockText}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
+              <Text style={styles.alarmClockPeriod}>{stationPeriod}</Text>
+            </View>
+            <Text style={styles.alarmStationMeta}>Station Time • Sector 7G</Text>
+            <View style={styles.alarmNextCard}>
+              <View>
+                <Text style={styles.inlineCardTitle}>Next Briefing</Text>
+                <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(stationHour12, alarmMinute)} {stationPeriod}</Text>
+              </View>
+              <View>
+                <Text style={styles.alarmCountdown}>{nextBriefingCountdown}</Text>
+                <Text style={styles.subtle}>Until Sync</Text>
+              </View>
+            </View>
+            <View style={styles.alarmPlayerCard}>
+              <Text style={styles.inlineCardTitle}>Daily Briefing</Text>
+              <Text style={styles.subtle}>Galactic Market Pulse • Neural Link 4.2</Text>
+              <View style={styles.alarmWaveRow}>
+                {[4, 10, 6, 14, 5, 11, 13, 4, 8, 12].map((height, index) => (
+                  <View key={index} style={[styles.alarmWaveBar, { height }]} />
+                ))}
+              </View>
+              <View style={styles.alarmPlayerButtons}>
+                <TouchableOpacity style={styles.iconAction} onPress={playCached}>
+                  <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.iconAction} onPress={queueBriefingAudio}>
+                  <MaterialCommunityIcons name="text-to-speech" size={18} color={palette.accent} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.iconAction} onPress={generateAndCache}>
+                  <MaterialCommunityIcons name="download-outline" size={18} color={palette.accent} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.alarmCycleCard}>
+              <Text style={styles.inlineCardTitle}>Active Cycles</Text>
+              <View style={styles.alarmCycleRow}>
+                <View>
+                  <Text style={styles.alarmCycleTime}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
+                  <Text style={styles.subtle}>Morning Manifest</Text>
+                </View>
+                <TouchableOpacity style={styles.toggleButton} onPress={alarmNotificationId ? clearMorningAlarm : scheduleMorningAlarm}>
+                  <View style={[styles.toggleKnob, alarmNotificationId ? styles.toggleKnobOn : null]} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.button} onPress={() => setShowAdvancedAlarms((value) => !value)}>
+                <Text style={styles.buttonText}>{showAdvancedAlarms ? "Hide Advanced Alarms" : "Show Advanced Alarms"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {activeTab === "capture" && showAdvancedCapture ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Neural Sync</Text>
           <Text style={styles.panelTitle}>Execution routing</Text>
           <Text style={styles.subtle}>
             Mobile reads the shared execution policy, then falls back to the nearest implemented route on phone when needed.
@@ -2395,8 +2752,11 @@ export default function App() {
             </TouchableOpacity>
           </View>
         </View>
+        ) : null}
 
+        {activeTab === "capture" && showAdvancedCapture ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Command Center</Text>
           <Text style={styles.panelTitle}>Assistant command</Text>
           <Text style={styles.subtle}>
             Send typed or queued voice commands through the same tool-backed assistant layer used by the PWA.
@@ -2486,6 +2846,13 @@ export default function App() {
               Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
             </Text>
           )}
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={() => setShowDiagnostics((value) => !value)}>
+              <Text style={styles.buttonText}>{showDiagnostics ? "Hide Diagnostics" : "Show Diagnostics"}</Text>
+            </TouchableOpacity>
+          </View>
+          {showDiagnostics ? (
+            <>
           {assistantHistory[0] ? (
             <View style={styles.detailCard}>
               <Text style={styles.inlineCardTitle}>
@@ -2551,9 +2918,16 @@ export default function App() {
               ))}
             </View>
           ) : null}
+            </>
+          ) : (
+            <Text style={styles.subtle}>Diagnostics hidden for the focused command view.</Text>
+          )}
         </View>
+        ) : null}
 
+        {activeTab === "capture" && showAdvancedCapture ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Capture</Text>
           <Text style={styles.panelTitle}>Quick capture + queue</Text>
           <Text style={styles.label}>Capture title</Text>
           <TextInput style={styles.input} value={quickCaptureTitle} onChangeText={setQuickCaptureTitle} />
@@ -2633,8 +3007,11 @@ export default function App() {
             </View>
           ))}
         </View>
+        ) : null}
 
+        {(activeTab === "capture" && showAdvancedCapture) || (activeTab === "review" && showAdvancedReview) ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Artifact Nexus</Text>
           <Text style={styles.panelTitle}>Artifact triage</Text>
           <Text style={styles.subtle}>
             Load recent clips, trigger manual AI actions, then jump into the full artifact graph in the PWA.
@@ -2751,8 +3128,11 @@ export default function App() {
             </View>
           ) : null}
         </View>
+        ) : null}
 
+        {activeTab === "review" && showAdvancedReview ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Neural Sync</Text>
           <Text style={styles.panelTitle}>Quick review session</Text>
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.button} onPress={loadDueCards}>
@@ -2791,8 +3171,11 @@ export default function App() {
             <Text style={styles.subtle}>No due card loaded yet.</Text>
           )}
         </View>
+        ) : null}
 
+        {activeTab === "alarms" && showAdvancedAlarms ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Companion Link</Text>
           <Text style={styles.panelTitle}>Phone + PWA linkage</Text>
           <Text style={styles.label}>PWA URL</Text>
           <TextInput style={styles.input} value={pwaBase} onChangeText={setPwaBase} autoCapitalize="none" />
@@ -2804,8 +3187,11 @@ export default function App() {
           <Text style={styles.subtle}>Share deep-link format</Text>
           <Text style={styles.mono}>starlog://capture?title=Clip&text=Hello&source_url=https://example.com</Text>
         </View>
+        ) : null}
 
+        {activeTab === "alarms" && showAdvancedAlarms ? (
         <View style={styles.panel}>
+          <Text style={styles.sectionKicker}>Chronos Matrix</Text>
           <Text style={styles.panelTitle}>Offline Morning Brief Pipeline</Text>
           <Text style={styles.label}>API base</Text>
           <TextInput
@@ -2868,7 +3254,68 @@ export default function App() {
           </Text>
           <Text style={styles.subtle}>{status}</Text>
         </View>
+        ) : null}
       </ScrollView>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => {
+          if (sttResolution.active === "on_device") {
+            submitLocalVoiceAssistantCommand(false).catch(() => undefined);
+            return;
+          }
+          if (voiceRecording) {
+            stopVoiceRecording().catch(() => undefined);
+            return;
+          }
+          startVoiceRecording().catch(() => undefined);
+        }}
+      >
+        <MaterialCommunityIcons name="waveform" size={20} color={palette.onAccent} />
+      </TouchableOpacity>
+      <View style={styles.bottomNav}>
+        <TouchableOpacity
+          style={styles.bottomNavItem}
+          onPress={() => {
+            setActiveTab("capture");
+            setStatus("Capture surface active");
+          }}
+        >
+          <MaterialCommunityIcons
+            name="camera-iris"
+            size={17}
+            color={activeTab === "capture" ? palette.accent : palette.muted}
+          />
+          <Text style={[styles.bottomNavLabel, activeTab === "capture" ? styles.bottomNavLabelActive : null]}>Capture</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.bottomNavItem}
+          onPress={() => {
+            setActiveTab("alarms");
+            setStatus("Alarm + briefing surface active");
+          }}
+        >
+          <MaterialCommunityIcons
+            name="bell-ring-outline"
+            size={17}
+            color={activeTab === "alarms" ? palette.accent : palette.muted}
+          />
+          <Text style={[styles.bottomNavLabel, activeTab === "alarms" ? styles.bottomNavLabelActive : null]}>Alarms</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.bottomNavItem}
+          onPress={() => {
+            setActiveTab("review");
+            setStatus("Quick review surface active");
+          }}
+        >
+          <MaterialCommunityIcons
+            name="eye-outline"
+            size={17}
+            color={activeTab === "review" ? palette.accent : palette.muted}
+          />
+          <Text style={[styles.bottomNavLabel, activeTab === "review" ? styles.bottomNavLabelActive : null]}>Review</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -2879,36 +3326,545 @@ function themedStyles(palette: Palette) {
       flex: 1,
       backgroundColor: palette.bg,
     },
+    bgOrbTop: {
+      position: "absolute",
+      top: -120,
+      right: -120,
+      width: 260,
+      height: 260,
+      borderRadius: 999,
+      backgroundColor: palette.accentMuted,
+    },
+    bgOrbCenter: {
+      position: "absolute",
+      top: 180,
+      left: -100,
+      width: 220,
+      height: 220,
+      borderRadius: 999,
+      backgroundColor: "rgba(131,212,211,0.08)",
+    },
+    topBar: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderBottomWidth: 1,
+      borderBottomColor: "rgba(201,190,255,0.1)",
+      backgroundColor: "rgba(16,20,26,0.84)",
+    },
+    topBarBrand: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    topBarAvatar: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceHigh,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    topBarAvatarText: {
+      color: palette.accent,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    topBarTitle: {
+      color: palette.text,
+      fontSize: 20,
+      fontWeight: "700",
+      letterSpacing: 0.2,
+    },
+    topBarActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    topBarIconButton: {
+      width: 34,
+      height: 34,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceLow,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    topBarAction: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: palette.surfaceLow,
+    },
+    topBarActionText: {
+      color: palette.accent,
+      fontSize: 12,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
     scrollContent: {
-      paddingHorizontal: 16,
-      paddingVertical: 18,
-      gap: 12,
-      backgroundColor: palette.bg,
+      paddingHorizontal: 20,
+      paddingTop: 18,
+      paddingBottom: 136,
+      gap: 14,
     },
     hero: {
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.panel,
-      borderRadius: 18,
-      padding: 16,
-      gap: 8,
+      borderRadius: 20,
+      padding: 18,
+      gap: 10,
     },
     eyebrow: {
       textTransform: "uppercase",
-      letterSpacing: 1,
+      letterSpacing: 1.4,
       color: palette.accent,
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: "700",
     },
     title: {
       color: palette.text,
-      fontSize: 28,
-      fontWeight: "800",
+      fontSize: 31,
+      fontWeight: "600",
     },
     body: {
       color: palette.muted,
+      fontSize: 14,
+      lineHeight: 21,
+    },
+    heroInput: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 12,
+      color: palette.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: palette.bgAlt,
+    },
+    routeGrid: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 6,
+    },
+    routeCard: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      backgroundColor: palette.surfaceLow,
+      gap: 4,
+    },
+    routeCardPrimary: {
+      borderLeftWidth: 2,
+      borderLeftColor: palette.accent,
+    },
+    routeCardTertiary: {
+      borderLeftWidth: 2,
+      borderLeftColor: palette.tertiary,
+    },
+    routeCardSecondary: {
+      borderLeftWidth: 2,
+      borderLeftColor: palette.secondary,
+    },
+    routeLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+    },
+    routeValue: {
+      color: palette.text,
+      fontSize: 11,
+      fontWeight: "600",
+    },
+    sectionHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    pendingBadge: {
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      backgroundColor: "rgba(201,190,255,0.12)",
+    },
+    pendingBadgeText: {
+      color: palette.accent,
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    captureHeroActions: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 2,
+    },
+    primaryAction: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: "rgba(49,17,142,0.18)",
+      backgroundColor: palette.accent,
+      borderRadius: 12,
+      minHeight: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 6,
+    },
+    primaryActionText: {
+      color: palette.onAccent,
+      fontSize: 14,
+      fontWeight: "700",
+    },
+    iconAction: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceHigh,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    captureArtifactCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 12,
+      backgroundColor: palette.surfaceLow,
+      gap: 6,
+    },
+    captureTrackLabel: {
+      color: palette.tertiary,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.9,
+    },
+    captureArtifactTitle: {
+      color: palette.text,
+      fontSize: 30,
+      fontWeight: "600",
+      lineHeight: 36,
+    },
+    miniTag: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceHigh,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    miniTagText: {
+      color: palette.muted,
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    captureMediaRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    captureMediaTile: {
+      flex: 1,
+      minHeight: 110,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      backgroundColor: "rgba(6,11,22,0.65)",
+      padding: 10,
+      justifyContent: "flex-end",
+      gap: 4,
+    },
+    captureAlertTile: {
+      flex: 1,
+      minHeight: 110,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      backgroundColor: palette.surfaceLow,
+      padding: 10,
+      gap: 4,
+    },
+    captureVoiceMemo: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      backgroundColor: palette.surfaceHigh,
+      padding: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    capturePlayButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: palette.accent,
+      borderWidth: 1,
+      borderColor: "rgba(49,17,142,0.15)",
+    },
+    routeHint: {
+      color: palette.muted,
+      fontSize: 9,
+      lineHeight: 10,
+    },
+    dashboardWide: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 12,
+      gap: 2,
+      backgroundColor: palette.surfaceLow,
+      marginTop: 8,
+      position: "relative",
+    },
+    dashboardValue: {
+      position: "absolute",
+      right: 12,
+      top: 10,
+      color: palette.tertiary,
+      fontSize: 30,
+      fontWeight: "700",
+    },
+    dashboardRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 4,
+    },
+    dashboardCell: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      backgroundColor: palette.surfaceLow,
+      gap: 2,
+    },
+    dashboardValueSmall: {
+      color: palette.text,
+      fontSize: 24,
+      fontWeight: "700",
+      lineHeight: 28,
+    },
+    reviewTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 2,
+    },
+    reviewPillRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    reviewPill: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      backgroundColor: palette.surfaceHigh,
+    },
+    reviewPillText: {
+      color: palette.text,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    reviewFlashcard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 14,
+      backgroundColor: "rgba(16,20,26,0.66)",
+      gap: 8,
+    },
+    reviewMeta: {
+      color: palette.muted,
+      fontSize: 10,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+    },
+    reviewCategory: {
+      color: palette.secondary,
+      fontSize: 11,
+      textTransform: "uppercase",
+      letterSpacing: 1.5,
+      textAlign: "center",
+    },
+    reviewPromptLarge: {
+      color: palette.text,
+      fontSize: 49,
+      lineHeight: 56,
+      textAlign: "center",
+      fontWeight: "300",
+    },
+    reviewDivider: {
+      height: 2,
+      width: 46,
+      borderRadius: 999,
+      backgroundColor: "rgba(201,190,255,0.2)",
+      alignSelf: "center",
+    },
+    reviewAnswerLarge: {
+      color: palette.muted,
       fontSize: 15,
-      lineHeight: 22,
+      lineHeight: 24,
+      textAlign: "center",
+    },
+    reviewRateRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 2,
+    },
+    reviewRateButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 12,
+      backgroundColor: palette.surfaceLow,
+      minHeight: 70,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    reviewRateButtonActive: {
+      borderColor: "rgba(201,190,255,0.38)",
+      backgroundColor: "rgba(201,190,255,0.16)",
+    },
+    reviewRateLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      fontWeight: "700",
+    },
+    reviewRateLabelActive: {
+      color: palette.accent,
+    },
+    reviewRateValue: {
+      color: palette.text,
+      fontSize: 33,
+      lineHeight: 36,
+      fontWeight: "700",
+    },
+    alarmClockRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "center",
+      gap: 6,
+    },
+    alarmClockText: {
+      color: palette.text,
+      fontSize: 50,
+      fontWeight: "300",
+      lineHeight: 56,
+    },
+    alarmClockPeriod: {
+      color: palette.accent,
+      fontSize: 22,
+      fontWeight: "600",
+      marginBottom: 6,
+    },
+    alarmStationMeta: {
+      color: palette.muted,
+      fontSize: 11,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      textAlign: "center",
+      marginBottom: 2,
+    },
+    alarmNextCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      backgroundColor: palette.surfaceLow,
+      padding: 12,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    alarmCountdown: {
+      color: palette.secondary,
+      fontSize: 31,
+      fontWeight: "600",
+      textAlign: "right",
+    },
+    alarmPlayerCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 12,
+      gap: 8,
+      backgroundColor: palette.surfaceLow,
+    },
+    alarmWaveRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: 4,
+      height: 16,
+      marginTop: 2,
+    },
+    alarmWaveBar: {
+      flex: 1,
+      borderRadius: 999,
+      backgroundColor: "rgba(201,190,255,0.7)",
+    },
+    alarmPlayerButtons: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 10,
+    },
+    alarmCycleCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 12,
+      backgroundColor: palette.surfaceLow,
+      gap: 10,
+    },
+    alarmCycleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    alarmCycleTime: {
+      color: palette.text,
+      fontSize: 34,
+      fontWeight: "500",
+      lineHeight: 38,
+    },
+    toggleButton: {
+      width: 52,
+      height: 30,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceHighest,
+      paddingHorizontal: 3,
+      justifyContent: "center",
+    },
+    toggleKnob: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: palette.muted,
+      alignSelf: "flex-start",
+    },
+    toggleKnobOn: {
+      alignSelf: "flex-end",
+      backgroundColor: palette.accent,
     },
     panel: {
       borderWidth: 1,
@@ -2916,12 +3872,19 @@ function themedStyles(palette: Palette) {
       backgroundColor: palette.panel,
       borderRadius: 16,
       padding: 14,
-      gap: 8,
+      gap: 9,
+    },
+    sectionKicker: {
+      color: palette.accent,
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1.2,
+      opacity: 0.8,
     },
     panelTitle: {
       color: palette.text,
-      fontSize: 16,
-      fontWeight: "700",
+      fontSize: 19,
+      fontWeight: "600",
     },
     chipRow: {
       flexDirection: "row",
@@ -2933,14 +3896,14 @@ function themedStyles(palette: Palette) {
       borderWidth: 1,
       borderColor: palette.border,
       borderRadius: 999,
-      paddingVertical: 6,
+      paddingVertical: 7,
       paddingHorizontal: 12,
-      backgroundColor: palette.bgAlt,
+      backgroundColor: palette.surfaceLow,
     },
     chipText: {
       color: palette.text,
       fontWeight: "600",
-      fontSize: 13,
+      fontSize: 12,
     },
     inlineCard: {
       borderWidth: 1,
@@ -2948,7 +3911,7 @@ function themedStyles(palette: Palette) {
       borderRadius: 12,
       padding: 10,
       gap: 4,
-      backgroundColor: palette.bgAlt,
+      backgroundColor: palette.surfaceLow,
       marginTop: 4,
     },
     inlineCardActive: {
@@ -2960,7 +3923,7 @@ function themedStyles(palette: Palette) {
     },
     inlineCardTitle: {
       color: palette.text,
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "700",
     },
     detailCard: {
@@ -2969,35 +3932,37 @@ function themedStyles(palette: Palette) {
       borderRadius: 14,
       padding: 10,
       gap: 8,
-      backgroundColor: palette.panel,
+      backgroundColor: "rgba(16,20,26,0.55)",
       marginTop: 6,
     },
     subtle: {
       color: palette.muted,
-      fontSize: 13,
+      fontSize: 12,
     },
     label: {
       color: palette.muted,
-      fontSize: 13,
+      fontSize: 11,
       marginTop: 6,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
     },
     input: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 10,
+      borderRadius: 12,
       color: palette.text,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      backgroundColor: palette.bgAlt,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: palette.surfaceLow,
     },
     timeInput: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 10,
+      borderRadius: 12,
       color: palette.text,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      backgroundColor: palette.bgAlt,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: palette.surfaceLow,
       minWidth: 64,
       textAlign: "center",
     },
@@ -3010,15 +3975,15 @@ function themedStyles(palette: Palette) {
     button: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 999,
-      backgroundColor: palette.bgAlt,
+      borderRadius: 12,
+      backgroundColor: palette.surfaceHigh,
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingVertical: 10,
     },
     buttonText: {
       color: palette.text,
       fontWeight: "600",
-      fontSize: 13,
+      fontSize: 12,
     },
     mono: {
       color: palette.muted,
@@ -3028,10 +3993,10 @@ function themedStyles(palette: Palette) {
     reviewCard: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 10,
-      padding: 10,
+      borderRadius: 12,
+      padding: 12,
       gap: 8,
-      backgroundColor: palette.bgAlt,
+      backgroundColor: palette.surfaceLow,
       marginTop: 6,
     },
     reviewPrompt: {
@@ -3044,6 +4009,55 @@ function themedStyles(palette: Palette) {
       color: palette.muted,
       fontSize: 14,
       lineHeight: 20,
+    },
+    fab: {
+      position: "absolute",
+      right: 22,
+      bottom: 84,
+      width: 64,
+      height: 64,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "rgba(49,17,142,0.15)",
+      backgroundColor: palette.accent,
+    },
+    fabText: {
+      color: palette.onAccent,
+      fontSize: 12,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    bottomNav: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderTopWidth: 1,
+      borderTopColor: "rgba(201,190,255,0.12)",
+      backgroundColor: "rgba(10,14,20,0.92)",
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      paddingBottom: 12,
+      flexDirection: "row",
+      justifyContent: "space-around",
+    },
+    bottomNavItem: {
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: 72,
+    },
+    bottomNavLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    bottomNavLabelActive: {
+      color: palette.accent,
     },
   });
 }
