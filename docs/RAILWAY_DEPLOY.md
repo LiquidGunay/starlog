@@ -47,9 +47,14 @@ Create two Railway services from this repo:
 2. `starlog-web`
    - root directory: repo root
    - build command: `pnpm --filter web build`
-   - start command: `pnpm --filter web start -- --hostname 0.0.0.0 --port $PORT`
+   - start command: `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
 
 The API Dockerfile now respects Railway's `PORT`.
+
+The web workspace also includes a wrapper `start` script that strips a stray
+leading `--` if Railway passes one through `pnpm` argument forwarding. The
+preferred dashboard start command is still the explicit `exec next start`
+variant above.
 
 ## API environment
 

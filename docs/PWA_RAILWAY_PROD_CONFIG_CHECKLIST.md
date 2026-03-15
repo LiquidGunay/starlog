@@ -36,7 +36,7 @@ Required service settings:
 
 1. Root directory: repo root.
 2. Build command: `pnpm --filter web build`
-3. Start command: `pnpm --filter web start -- --hostname 0.0.0.0 --port $PORT`
+3. Start command: `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
 4. Public domain attached and reachable via HTTPS.
 
 Validation checks:
