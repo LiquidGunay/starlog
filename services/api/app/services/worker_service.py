@@ -2,6 +2,7 @@ import json
 import secrets
 from datetime import timedelta
 from sqlite3 import Connection
+from typing import Sequence
 
 from app.core.security import create_session_token, hash_token
 from app.core.time import utc_now
@@ -93,7 +94,7 @@ def complete_pairing(
     worker_id: str,
     worker_label: str,
     worker_class: str,
-    capabilities: list[str],
+    capabilities: Sequence[str],
 ) -> dict:
     now = utc_now()
     pairing_row = execute_fetchone(
@@ -248,7 +249,7 @@ def heartbeat(
     *,
     worker_id: str,
     access_token: str,
-    capabilities: list[str],
+    capabilities: Sequence[str],
 ) -> dict:
     now = utc_now()
     row = execute_fetchone(
@@ -342,4 +343,3 @@ def online_worker_classes_for_capability(conn: Connection, capability: str) -> s
         if worker_class:
             online_classes.add(worker_class)
     return online_classes
-

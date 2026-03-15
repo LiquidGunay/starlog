@@ -222,6 +222,7 @@ def _parse_execution_targets(raw: str, family: str) -> list[str]:
     }
     for part in parts:
         candidate = aliases.get(part, part)
+        candidate = integrations_service._normalize_execution_target(candidate, family)
         if candidate in allowed and candidate not in normalized:
             normalized.append(candidate)
     if not normalized:

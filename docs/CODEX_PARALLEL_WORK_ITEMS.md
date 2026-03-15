@@ -249,6 +249,37 @@ Purpose: break the remaining implementation targets into independent workstreams
   - `pnpm --filter mobile exec tsc --noEmit`
   - relevant API/web checks for routing changes
 
+### 7. Worker transport HTTPS enforcement
+
+- Branch: `codex/worker-transport-https-enforcement`
+- Workitem ID: `WI-108`
+- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
+- Goal: enforce worker endpoint transport security in production while keeping Railway/proxy deployments functional.
+- Scope:
+  - make secure transport checks proxy-aware for HTTPS-terminated deployments,
+  - keep localhost HTTP allowed for local development workflows,
+  - add focused tests for worker transport behavior in production mode.
+- Out of scope:
+  - changing non-worker endpoint auth model,
+  - infrastructure/network policy changes outside app logic.
+- Likely files:
+  - `services/api/app/api/deps.py`
+  - `services/api/tests/test_api_flows.py` or a dedicated API test module
+  - `AGENTS.md`
+- Concrete work items:
+  - normalize transport checks to consider proxy-forwarded scheme metadata where appropriate,
+  - ensure production rejects non-HTTPS worker calls outside localhost,
+  - add regression tests for blocked insecure requests and allowed proxied-HTTPS requests,
+  - document any discovered proxy/security caveats in `AGENTS.md`.
+- Acceptance:
+  - production-mode worker endpoints enforce HTTPS semantics correctly,
+  - proxied HTTPS requests are not falsely rejected,
+  - test coverage verifies both reject and allow paths.
+- Validation:
+  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -s`
+  - `uv run --project services/api ruff check services/api`
+  - `uv run --project services/api mypy services/api/app`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -269,3 +300,4 @@ Purpose: break the remaining implementation targets into independent workstreams
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
+- `WI-108` (`codex/worker-transport-https-enforcement`): harden worker transport checks for production HTTPS semantics and proxy-aware routing safety.

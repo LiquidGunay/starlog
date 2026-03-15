@@ -39,11 +39,38 @@ def require_token_hash(
     return hash_token(credentials.credentials)
 
 
+def _forwarded_proto_scheme(request: Request) -> str | None:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").strip()
+    if forwarded_proto:
+        first = forwarded_proto.split(",", 1)[0].strip().lower()
+        if first in {"http", "https"}:
+            return first
+
+    forwarded = request.headers.get("forwarded", "").strip()
+    if not forwarded:
+        return None
+    first_entry = forwarded.split(",", 1)[0]
+    for token in first_entry.split(";"):
+        key, _, value = token.strip().partition("=")
+        if key.lower() != "proto":
+            continue
+        normalized = value.strip().strip('"').lower()
+        if normalized in {"http", "https"}:
+            return normalized
+    return None
+
+
 def require_secure_worker_transport(request: Request) -> None:
     settings = get_settings()
     if settings.env == "dev":
         return
-    if request.url.scheme == "https":
+
+    scheme = request.url.scheme.lower()
+    if scheme != "https":
+        forwarded_scheme = _forwarded_proto_scheme(request)
+        if forwarded_scheme:
+            scheme = forwarded_scheme
+    if scheme == "https":
         return
 
     hostname = (request.url.hostname or "").lower()
