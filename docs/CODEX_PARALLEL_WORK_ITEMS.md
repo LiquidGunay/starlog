@@ -231,7 +231,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-445. Railway GitHub source wiring + idle-sleep audit
 - Branch: `codex/railway-source-wiring-and-sleep-audit`
-- Lock: `UNCLAIMED | Workitem: WI-445 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-445 | Owner: N/A | Claimed: 2026-03-15T16:26:08Z | Last heartbeat: 2026-03-15T16:31:40Z`
 - Goal: finish the hosted setup by wiring Starlog services to GitHub and verifying whether the web service can truly sleep to near-zero idle compute.
 - Scope:
   - connect `starlog-api` and `starlog-web` to `LiquidGunay/starlog` on the intended deploy branch,
