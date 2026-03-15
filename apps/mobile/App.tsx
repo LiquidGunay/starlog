@@ -812,10 +812,14 @@ export default function App() {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
   const [activeTab, setActiveTab] = useState<"capture" | "alarms" | "review">("capture");
+  const [countdownTick, setCountdownTick] = useState(() => Date.now());
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showAdvancedCapture, setShowAdvancedCapture] = useState(false);
   const [showAdvancedAlarms, setShowAdvancedAlarms] = useState(false);
   const [showAdvancedReview, setShowAdvancedReview] = useState(false);
+  const [captureOpsSection, setCaptureOpsSection] = useState<"queue" | "assistant" | "routing" | "triage">("queue");
+  const [reviewOpsSection, setReviewOpsSection] = useState<"session" | "triage">("session");
+  const [alarmOpsSection, setAlarmOpsSection] = useState<"briefing" | "link">("briefing");
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
   const [pwaBase, setPwaBase] = useState(DEFAULT_PWA_BASE);
   const [token, setToken] = useState("");
@@ -910,8 +914,27 @@ export default function App() {
     const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
     const mm = String(totalMinutes % 60).padStart(2, "0");
     return `${hh}:${mm}`;
-  }, [alarmHour, alarmMinute]);
+  }, [alarmHour, alarmMinute, countdownTick]);
   const reviewCard = dueCards[0];
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setCountdownTick(Date.now());
+    }, 30_000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  function applyDeepCapture(deepCapture: { title: string; text: string; sourceUrl: string }) {
+    setActiveTab("capture");
+    setQuickCaptureTitle(deepCapture.title);
+    setQuickCaptureText(deepCapture.text);
+    setQuickCaptureSourceUrl(deepCapture.sourceUrl);
+    setSharedFileDrafts([]);
+    setVoiceClipUri(null);
+    setVoiceClipDurationMs(0);
+    setCaptureOpsSection("queue");
+    setStatus("Loaded capture from share deep link");
+  }
 
   async function refreshLocalSttAvailability(origin: "auto" | "manual") {
     const available = await probeLocalSttAvailability();
@@ -2114,13 +2137,7 @@ export default function App() {
         }
         const deepCapture = parseCaptureDeepLink(initialUrl);
         if (deepCapture) {
-          setQuickCaptureTitle(deepCapture.title);
-          setQuickCaptureText(deepCapture.text);
-          setQuickCaptureSourceUrl(deepCapture.sourceUrl);
-          setSharedFileDrafts([]);
-          setVoiceClipUri(null);
-          setVoiceClipDurationMs(0);
-          setStatus("Loaded capture from share deep link");
+          applyDeepCapture(deepCapture);
         }
       }
 
@@ -2170,13 +2187,7 @@ export default function App() {
       if (!deepCapture) {
         return;
       }
-      setQuickCaptureTitle(deepCapture.title);
-      setQuickCaptureText(deepCapture.text);
-      setQuickCaptureSourceUrl(deepCapture.sourceUrl);
-      setSharedFileDrafts([]);
-      setVoiceClipUri(null);
-      setVoiceClipDurationMs(0);
-      setStatus("Loaded capture from share deep link");
+      applyDeepCapture(deepCapture);
     });
 
     return () => {
@@ -2416,6 +2427,641 @@ export default function App() {
     loadArtifactDetail(selectedArtifactId).catch(() => undefined);
   }, [hydrated, token, apiBase, selectedArtifactId]);
 
+  function renderOpsChip(label: string, active: boolean, onPress: () => void) {
+    return (
+      <TouchableOpacity
+        key={label}
+        style={[styles.opsChip, active ? styles.opsChipActive : null]}
+        activeOpacity={0.85}
+        onPress={onPress}
+      >
+        <Text style={[styles.opsChipText, active ? styles.opsChipTextActive : null]}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  function renderCaptureQueueSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Capture queue</Text>
+        <Text style={styles.subtle}>Keep text, voice, and shared-file intake off the main hero while preserving the full queue workflow.</Text>
+        <Text style={styles.label}>Capture title</Text>
+        <TextInput style={styles.input} value={quickCaptureTitle} onChangeText={setQuickCaptureTitle} />
+        <Text style={styles.label}>Source URL (optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={quickCaptureSourceUrl}
+          onChangeText={setQuickCaptureSourceUrl}
+          autoCapitalize="none"
+          placeholder="https://..."
+          placeholderTextColor={palette.muted}
+        />
+        <Text style={styles.label}>Quick capture text</Text>
+        <TextInput
+          style={styles.input}
+          value={quickCaptureText}
+          onChangeText={setQuickCaptureText}
+          placeholder="Clip text, ideas, or reminders..."
+          placeholderTextColor={palette.muted}
+          multiline
+        />
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={submitQuickCapture}>
+            <Text style={styles.buttonText}>Capture / Queue</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={() => flushPendingCaptures("manual")}>
+            <Text style={styles.buttonText}>Flush Queue</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+            <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Note" : "Start Voice Note"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
+            <Text style={styles.buttonText}>Upload / Queue Voice</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtle}>
+          Voice clip: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
+        </Text>
+        <Text style={styles.subtle}>
+          Shared file{sharedFileDrafts.length === 1 ? "" : "s"}: {describeSharedDrafts(sharedFileDrafts)}
+        </Text>
+        {sharedFileDrafts.length > 0 ? (
+          <>
+            {sharedFileDrafts.slice(0, 3).map((draft) => (
+              <View key={`${draft.localUri}:${draft.fileName}`} style={styles.inlineCard}>
+                <Text style={styles.subtle}>{describeSharedFile(draft.fileName, draft.mimeType, draft.bytesSize)}</Text>
+              </View>
+            ))}
+            {sharedFileDrafts.length > 3 ? (
+              <Text style={styles.subtle}>+{sharedFileDrafts.length - 3} more shared file(s)</Text>
+            ) : null}
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => {
+                  setSharedFileDrafts([]);
+                  setStatus("Cleared shared file drafts");
+                }}
+              >
+                <Text style={styles.buttonText}>Clear Shared Files</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : null}
+        <Text style={styles.subtle}>Pending captures: {pendingCaptures.length}</Text>
+        {pendingCaptures[0]?.lastError ? (
+          <Text style={styles.subtle}>Last queue error: {pendingCaptures[0].lastError}</Text>
+        ) : null}
+        {pendingCaptures.slice(0, 3).map((capture) => (
+          <View key={capture.id} style={styles.inlineCard}>
+            <Text style={styles.subtle}>{capture.title}</Text>
+            <Text style={styles.subtle}>
+              {capture.kind} | attempts: {capture.attempts} | queued {new Date(capture.createdAt).toLocaleTimeString()}
+            </Text>
+          </View>
+        ))}
+      </>
+    );
+  }
+
+  function renderCaptureRoutingSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Execution routing</Text>
+        <Text style={styles.subtle}>
+          Mobile reads the shared execution policy, then falls back to the nearest implemented route on phone when needed.
+        </Text>
+        <View style={styles.inlineCard}>
+          <Text style={styles.inlineCardTitle}>LLM actions</Text>
+          <Text style={styles.subtle}>
+            requested {formatExecutionTarget(llmResolution.requested)} {"->"} active {formatExecutionTarget(llmResolution.active)}
+          </Text>
+          {llmResolution.reason ? <Text style={styles.subtle}>{llmResolution.reason}</Text> : null}
+        </View>
+        <View style={styles.inlineCard}>
+          <Text style={styles.inlineCardTitle}>Voice STT</Text>
+          <Text style={styles.subtle}>
+            requested {formatExecutionTarget(sttResolution.requested)} {"->"} active {formatExecutionTarget(sttResolution.active)}
+          </Text>
+          {sttResolution.reason ? <Text style={styles.subtle}>{sttResolution.reason}</Text> : null}
+        </View>
+        <View style={styles.inlineCard}>
+          <Text style={styles.inlineCardTitle}>Speech playback</Text>
+          <Text style={styles.subtle}>
+            requested {formatExecutionTarget(ttsResolution.requested)} {"->"} active {formatExecutionTarget(ttsResolution.active)}
+          </Text>
+          {ttsResolution.reason ? <Text style={styles.subtle}>{ttsResolution.reason}</Text> : null}
+        </View>
+        <Text style={styles.subtle}>
+          Policy updated: {executionPolicy.updated_at ? new Date(executionPolicy.updated_at).toLocaleString() : "local default"}
+        </Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={() => loadExecutionPolicy("manual")}>
+            <Text style={styles.buttonText}>Refresh Policy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={openIntegrationsInPwa}>
+            <Text style={styles.buttonText}>Open Integrations</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+
+  function renderAssistantSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Assistant command relay</Text>
+        <Text style={styles.subtle}>
+          Keep command, voice, and queue inspection reachable without turning the main capture deck into a second console.
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={assistantCommand}
+          onChangeText={setAssistantCommand}
+          placeholder="summarize latest artifact"
+          placeholderTextColor={palette.muted}
+          multiline
+        />
+        <View style={styles.chipRow}>
+          {assistantExampleCommands.map((example) => (
+            <TouchableOpacity
+              key={example}
+              style={styles.chip}
+              activeOpacity={0.8}
+              onPress={() => setAssistantCommand(example)}
+            >
+              <Text style={styles.chipText}>{example}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(false)}>
+            <Text style={styles.buttonText}>Plan Command</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(true)}>
+            <Text style={styles.buttonText}>Execute Command</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(false)}>
+            <Text style={styles.buttonText}>Queue Codex Plan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(true)}>
+            <Text style={styles.buttonText}>Queue Codex Execute</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
+            <Text style={styles.buttonText}>Open PWA Assistant</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.buttonRow}>
+          {sttResolution.active === "on_device" ? (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(false)}>
+                <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Plan"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(true)}>
+                <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Execute"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => refreshLocalSttAvailability("manual")}>
+                <Text style={styles.buttonText}>Refresh STT</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+                <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Command" : "Start Voice Command"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(false)}>
+                <Text style={styles.buttonText}>Plan Voice Command</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
+                <Text style={styles.buttonText}>Execute Voice</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => {
+              loadAssistantVoiceJobs("manual").catch(() => undefined);
+              loadAssistantAiJobs("manual").catch(() => undefined);
+            }}
+          >
+            <Text style={styles.buttonText}>Refresh Jobs</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtle}>On-device STT: {localSttProbeLabel(localSttAvailable)}</Text>
+        {sttResolution.active === "on_device" ? (
+          <Text style={styles.subtle}>
+            Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint.
+          </Text>
+        ) : (
+          <Text style={styles.subtle}>
+            Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
+          </Text>
+        )}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={() => setShowDiagnostics((value) => !value)}>
+            <Text style={styles.buttonText}>{showDiagnostics ? "Hide Diagnostics" : "Show Diagnostics"}</Text>
+          </TouchableOpacity>
+        </View>
+        {showDiagnostics ? (
+          <>
+            {assistantHistory[0] ? (
+              <View style={styles.detailCard}>
+                <Text style={styles.inlineCardTitle}>
+                  Latest: {assistantHistory[0].matched_intent} [{assistantHistory[0].status}]
+                </Text>
+                <Text style={styles.subtle}>{assistantHistory[0].summary}</Text>
+                {assistantHistory[0].steps.map((step, index) => (
+                  <View key={`${step.tool_name}-${index}`} style={styles.inlineCard}>
+                    <Text style={styles.inlineCardTitle}>
+                      {step.tool_name} [{step.status}]
+                    </Text>
+                    {step.message ? <Text style={styles.subtle}>{step.message}</Text> : null}
+                    <Text style={styles.mono}>{JSON.stringify(step.arguments)}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.subtle}>No mobile assistant command history yet.</Text>
+            )}
+            {assistantVoiceJobs.length > 0 ? (
+              <View style={styles.detailCard}>
+                <Text style={styles.inlineCardTitle}>Voice command jobs</Text>
+                {assistantVoiceJobs.slice(0, 4).map((job) => (
+                  <View key={job.id} style={styles.inlineCard}>
+                    <Text style={styles.inlineCardTitle}>
+                      {job.id} [{job.status}]
+                    </Text>
+                    <Text style={styles.subtle}>
+                      provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
+                    </Text>
+                    {job.output.transcript ? <Text style={styles.subtle}>Transcript: {job.output.transcript}</Text> : null}
+                    {job.output.assistant_command ? (
+                      <Text style={styles.subtle}>
+                        Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                      </Text>
+                    ) : null}
+                    {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {assistantAiJobs.length > 0 ? (
+              <View style={styles.detailCard}>
+                <Text style={styles.inlineCardTitle}>Queued Codex jobs</Text>
+                {assistantAiJobs.slice(0, 4).map((job) => (
+                  <View key={job.id} style={styles.inlineCard}>
+                    <Text style={styles.inlineCardTitle}>
+                      {job.id} [{job.status}]
+                    </Text>
+                    <Text style={styles.subtle}>
+                      provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
+                    </Text>
+                    {typeof job.payload.command === "string" && job.payload.command ? (
+                      <Text style={styles.subtle}>Command: {job.payload.command}</Text>
+                    ) : null}
+                    {job.output.assistant_command ? (
+                      <Text style={styles.subtle}>
+                        Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                      </Text>
+                    ) : null}
+                    {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <Text style={styles.subtle}>Diagnostics hidden for the focused command view.</Text>
+        )}
+      </>
+    );
+  }
+
+  function renderArtifactTriageSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Artifact triage</Text>
+        <Text style={styles.subtle}>
+          Load recent clips, trigger manual AI actions, then jump into the full artifact graph in the PWA.
+        </Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={loadArtifacts}>
+            <Text style={styles.buttonText}>Refresh Inbox</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={openSelectedArtifactInPwa}>
+            <Text style={styles.buttonText}>Open in PWA</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={speakSelectedArtifact}>
+            <Text style={styles.buttonText}>Speak Locally</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtle}>
+          Selected: {selectedArtifact ? `${selectedArtifact.title || selectedArtifact.id}` : "none"}
+        </Text>
+        <Text style={styles.subtle}>{artifactDetailStatus}</Text>
+        <View style={styles.chipRow}>
+          {artifactQuickActions.map((item) => (
+            <TouchableOpacity
+              key={item.action}
+              style={styles.chip}
+              activeOpacity={0.8}
+              onPress={() => runArtifactAction(item.action)}
+            >
+              <Text style={styles.chipText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {artifacts.length === 0 ? (
+          <Text style={styles.subtle}>No artifacts loaded yet.</Text>
+        ) : (
+          artifacts.slice(0, 6).map((artifact) => {
+            const active = artifact.id === selectedArtifactId;
+            return (
+              <TouchableOpacity
+                key={artifact.id}
+                style={[styles.inlineCard, active ? styles.inlineCardActive : null]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedArtifactId(artifact.id)}
+              >
+                <Text style={styles.inlineCardTitle}>{artifact.title || artifact.id}</Text>
+                <Text style={styles.subtle}>
+                  {artifact.source_type} | {new Date(artifact.created_at).toLocaleString()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
+        {artifactGraph ? (
+          <View style={styles.detailCard}>
+            <Text style={styles.inlineCardTitle}>Selected artifact detail</Text>
+            <Text style={styles.subtle}>
+              summaries {artifactGraph.summaries.length} | cards {artifactGraph.cards.length} | tasks {artifactGraph.tasks.length} | notes {artifactGraph.notes.length}
+            </Text>
+            {artifactGraph.summaries[0] ? (
+              <View style={styles.inlineCard}>
+                <Text style={styles.inlineCardTitle}>Latest summary v{artifactGraph.summaries[0].version}</Text>
+                <Text style={styles.subtle}>
+                  {artifactGraph.summaries[0].content.slice(0, 180)}
+                  {artifactGraph.summaries[0].content.length > 180 ? "..." : ""}
+                </Text>
+              </View>
+            ) : null}
+            {artifactGraph.tasks.slice(0, 2).map((task) => (
+              <View key={task.id} style={styles.inlineCard}>
+                <Text style={styles.inlineCardTitle}>{task.title}</Text>
+                <Text style={styles.subtle}>task status: {task.status}</Text>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity style={styles.button} onPress={() => openTaskInPwa(task.id)}>
+                    <Text style={styles.buttonText}>Open Task</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            {artifactGraph.notes.slice(0, 1).map((note) => (
+              <View key={note.id} style={styles.inlineCard}>
+                <Text style={styles.inlineCardTitle}>{note.title}</Text>
+                <Text style={styles.subtle}>
+                  {note.body_md.slice(0, 160)}
+                  {note.body_md.length > 160 ? "..." : ""}
+                </Text>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity style={styles.button} onPress={() => openNoteInPwa(note.id)}>
+                    <Text style={styles.buttonText}>Open Note</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            {artifactGraph.cards.slice(0, 2).map((card) => (
+              <View key={card.id} style={styles.inlineCard}>
+                <Text style={styles.inlineCardTitle}>{card.prompt}</Text>
+                <Text style={styles.subtle}>
+                  {card.answer.slice(0, 140)}
+                  {card.answer.length > 140 ? "..." : ""}
+                </Text>
+              </View>
+            ))}
+            {artifactVersions ? (
+              <View style={styles.inlineCard}>
+                <Text style={styles.inlineCardTitle}>Version history</Text>
+                <Text style={styles.subtle}>
+                  {artifactVersions.summaries.length} summaries | {artifactVersions.card_sets.length} card sets | {artifactVersions.actions.length} actions
+                </Text>
+                {artifactVersions.actions.slice(0, 3).map((action) => (
+                  <Text key={action.id} style={styles.subtle}>
+                    {action.action} [{action.status}]
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderReviewSessionSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Quick review session</Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={loadDueCards}>
+            <Text style={styles.buttonText}>Load Due Cards</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => {
+              if (!dueCards[0]) {
+                setStatus("No due card selected");
+                return;
+              }
+              setShowAnswer(true);
+            }}
+          >
+            <Text style={styles.buttonText}>Reveal Answer</Text>
+          </TouchableOpacity>
+        </View>
+        {dueCards[0] ? (
+          <View style={styles.reviewCard}>
+            <Text style={styles.subtle}>
+              Card type: {dueCards[0].card_type} | due queue: {dueCards.length}
+            </Text>
+            <Text style={styles.reviewPrompt}>{dueCards[0].prompt}</Text>
+            {showAnswer ? <Text style={styles.reviewAnswer}>{dueCards[0].answer}</Text> : null}
+            <View style={styles.buttonRow}>
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <TouchableOpacity key={rating} style={styles.button} onPress={() => submitReview(rating)}>
+                  <Text style={styles.buttonText}>Rate {rating}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.subtle}>No due card loaded yet.</Text>
+        )}
+      </>
+    );
+  }
+
+  function renderCompanionLinkSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Phone + PWA linkage</Text>
+        <Text style={styles.label}>PWA URL</Text>
+        <TextInput style={styles.input} value={pwaBase} onChangeText={setPwaBase} autoCapitalize="none" />
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={openPwa}>
+            <Text style={styles.buttonText}>Open PWA</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtle}>Share deep-link format</Text>
+        <Text style={styles.mono}>starlog://capture?title=Clip&text=Hello&source_url=https://example.com</Text>
+      </>
+    );
+  }
+
+  function renderBriefingPipelineSection() {
+    return (
+      <>
+        <Text style={styles.opsSectionTitle}>Offline morning brief pipeline</Text>
+        <Text style={styles.label}>API base</Text>
+        <TextInput
+          style={styles.input}
+          value={apiBase}
+          onChangeText={setApiBase}
+          autoCapitalize="none"
+          placeholder="http://192.168.x.x:8000"
+          placeholderTextColor={palette.muted}
+        />
+        <Text style={styles.label}>Bearer token</Text>
+        <TextInput
+          style={styles.input}
+          value={token}
+          onChangeText={setToken}
+          autoCapitalize="none"
+          secureTextEntry
+        />
+        <Text style={styles.label}>Briefing date (YYYY-MM-DD)</Text>
+        <TextInput style={styles.input} value={briefingDate} onChangeText={setBriefingDate} autoCapitalize="none" />
+        <Text style={styles.label}>Alarm time</Text>
+        <View style={styles.buttonRow}>
+          <TextInput
+            style={styles.timeInput}
+            keyboardType="number-pad"
+            value={String(alarmHour)}
+            onChangeText={(value) => setAlarmHour(boundedInt(Number(value || "0"), 0, 23))}
+          />
+          <TextInput
+            style={styles.timeInput}
+            keyboardType="number-pad"
+            value={String(alarmMinute)}
+            onChangeText={(value) => setAlarmMinute(boundedInt(Number(value || "0"), 0, 59))}
+          />
+        </View>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={generateAndCache}>
+            <Text style={styles.buttonText}>Cache Briefing</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
+            <Text style={styles.buttonText}>Queue Audio Render</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={playCached}>
+            <Text style={styles.buttonText}>Play Cached</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={scheduleMorningAlarm}>
+            <Text style={styles.buttonText}>Schedule Daily Alarm</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={clearMorningAlarm}>
+            <Text style={styles.buttonText}>Clear Alarm</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtle}>Notification permission: {notificationPermission}</Text>
+        <Text style={styles.subtle}>Cached file: {cachedPath ?? "none"}</Text>
+        <Text style={styles.subtle}>
+          Alarm status: {alarmNotificationId ? `scheduled at ${toHourMinuteLabel(alarmHour, alarmMinute)}` : "not scheduled"}
+        </Text>
+        <Text style={styles.subtle}>{status}</Text>
+      </>
+    );
+  }
+
+  function renderCaptureOpsPanel() {
+    if (activeTab !== "capture" || !showAdvancedCapture) {
+      return null;
+    }
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.sectionKicker}>Mission Tools</Text>
+        <Text style={styles.panelTitle}>Capture support systems</Text>
+        <Text style={styles.subtle}>
+          Keep the main capture shell focused on intake. Use the support systems below for queue control, AI routing, and triage.
+        </Text>
+        <View style={styles.opsChipRow}>
+          {renderOpsChip("Queue", captureOpsSection === "queue", () => setCaptureOpsSection("queue"))}
+          {renderOpsChip("Assistant", captureOpsSection === "assistant", () => setCaptureOpsSection("assistant"))}
+          {renderOpsChip("Routing", captureOpsSection === "routing", () => setCaptureOpsSection("routing"))}
+          {renderOpsChip("Triage", captureOpsSection === "triage", () => setCaptureOpsSection("triage"))}
+        </View>
+        <View style={styles.opsSectionCard}>
+          {captureOpsSection === "queue" ? renderCaptureQueueSection() : null}
+          {captureOpsSection === "assistant" ? renderAssistantSection() : null}
+          {captureOpsSection === "routing" ? renderCaptureRoutingSection() : null}
+          {captureOpsSection === "triage" ? renderArtifactTriageSection() : null}
+        </View>
+      </View>
+    );
+  }
+
+  function renderReviewOpsPanel() {
+    if (activeTab !== "review" || !showAdvancedReview) {
+      return null;
+    }
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.sectionKicker}>Mission Tools</Text>
+        <Text style={styles.panelTitle}>Review support systems</Text>
+        <Text style={styles.subtle}>
+          Keep the flashcard deck primary. Use the secondary panel for session controls and artifact context when you need it.
+        </Text>
+        <View style={styles.opsChipRow}>
+          {renderOpsChip("Session", reviewOpsSection === "session", () => setReviewOpsSection("session"))}
+          {renderOpsChip("Triage", reviewOpsSection === "triage", () => setReviewOpsSection("triage"))}
+        </View>
+        <View style={styles.opsSectionCard}>
+          {reviewOpsSection === "session" ? renderReviewSessionSection() : null}
+          {reviewOpsSection === "triage" ? renderArtifactTriageSection() : null}
+        </View>
+      </View>
+    );
+  }
+
+  function renderAlarmOpsPanel() {
+    if (activeTab !== "alarms" || !showAdvancedAlarms) {
+      return null;
+    }
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.sectionKicker}>Mission Tools</Text>
+        <Text style={styles.panelTitle}>Alarm + briefing support systems</Text>
+        <Text style={styles.subtle}>
+          Keep the station clock and player front-and-center. Use the secondary panel for setup, caching, and phone-to-PWA linkage.
+        </Text>
+        <View style={styles.opsChipRow}>
+          {renderOpsChip("Briefing", alarmOpsSection === "briefing", () => setAlarmOpsSection("briefing"))}
+          {renderOpsChip("Link", alarmOpsSection === "link", () => setAlarmOpsSection("link"))}
+        </View>
+        <View style={styles.opsSectionCard}>
+          {alarmOpsSection === "briefing" ? renderBriefingPipelineSection() : null}
+          {alarmOpsSection === "link" ? renderCompanionLinkSection() : null}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style={palette.bg === "#10141a" ? "light" : "dark"} />
@@ -2571,8 +3217,14 @@ export default function App() {
               </View>
             </View>
             <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.button} onPress={() => setShowAdvancedCapture((value) => !value)}>
-                <Text style={styles.buttonText}>{showAdvancedCapture ? "Hide Advanced Capture" : "Show Advanced Capture"}</Text>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => {
+                  setCaptureOpsSection("queue");
+                  setShowAdvancedCapture((value) => !value);
+                }}
+              >
+                <Text style={styles.buttonText}>{showAdvancedCapture ? "Close Mission Tools" : "Open Mission Tools"}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2648,8 +3300,14 @@ export default function App() {
               </TouchableOpacity>
             </View>
             <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.button} onPress={() => setShowAdvancedReview((value) => !value)}>
-                <Text style={styles.buttonText}>{showAdvancedReview ? "Hide Advanced Review" : "Show Advanced Review"}</Text>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => {
+                  setReviewOpsSection("session");
+                  setShowAdvancedReview((value) => !value);
+                }}
+              >
+                <Text style={styles.buttonText}>{showAdvancedReview ? "Close Mission Tools" : "Open Mission Tools"}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2705,556 +3363,22 @@ export default function App() {
               </View>
             </View>
             <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.button} onPress={() => setShowAdvancedAlarms((value) => !value)}>
-                <Text style={styles.buttonText}>{showAdvancedAlarms ? "Hide Advanced Alarms" : "Show Advanced Alarms"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
-
-        {activeTab === "capture" && showAdvancedCapture ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Neural Sync</Text>
-          <Text style={styles.panelTitle}>Execution routing</Text>
-          <Text style={styles.subtle}>
-            Mobile reads the shared execution policy, then falls back to the nearest implemented route on phone when needed.
-          </Text>
-          <View style={styles.inlineCard}>
-            <Text style={styles.inlineCardTitle}>LLM actions</Text>
-            <Text style={styles.subtle}>
-              requested {formatExecutionTarget(llmResolution.requested)} {"->"} active {formatExecutionTarget(llmResolution.active)}
-            </Text>
-            {llmResolution.reason ? <Text style={styles.subtle}>{llmResolution.reason}</Text> : null}
-          </View>
-          <View style={styles.inlineCard}>
-            <Text style={styles.inlineCardTitle}>Voice STT</Text>
-            <Text style={styles.subtle}>
-              requested {formatExecutionTarget(sttResolution.requested)} {"->"} active {formatExecutionTarget(sttResolution.active)}
-            </Text>
-            {sttResolution.reason ? <Text style={styles.subtle}>{sttResolution.reason}</Text> : null}
-          </View>
-          <View style={styles.inlineCard}>
-            <Text style={styles.inlineCardTitle}>Speech playback</Text>
-            <Text style={styles.subtle}>
-              requested {formatExecutionTarget(ttsResolution.requested)} {"->"} active {formatExecutionTarget(ttsResolution.active)}
-            </Text>
-            {ttsResolution.reason ? <Text style={styles.subtle}>{ttsResolution.reason}</Text> : null}
-          </View>
-          <Text style={styles.subtle}>
-            Policy updated: {executionPolicy.updated_at ? new Date(executionPolicy.updated_at).toLocaleString() : "local default"}
-          </Text>
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={() => loadExecutionPolicy("manual")}>
-              <Text style={styles.buttonText}>Refresh Policy</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={openIntegrationsInPwa}>
-              <Text style={styles.buttonText}>Open Integrations</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        ) : null}
-
-        {activeTab === "capture" && showAdvancedCapture ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Command Center</Text>
-          <Text style={styles.panelTitle}>Assistant command</Text>
-          <Text style={styles.subtle}>
-            Send typed or queued voice commands through the same tool-backed assistant layer used by the PWA.
-          </Text>
-          <TextInput
-            style={styles.input}
-            value={assistantCommand}
-            onChangeText={setAssistantCommand}
-            placeholder="summarize latest artifact"
-            placeholderTextColor={palette.muted}
-            multiline
-          />
-          <View style={styles.chipRow}>
-            {assistantExampleCommands.map((example) => (
               <TouchableOpacity
-                key={example}
-                style={styles.chip}
-                activeOpacity={0.8}
-                onPress={() => setAssistantCommand(example)}
+                style={styles.button}
+                onPress={() => {
+                  setAlarmOpsSection("briefing");
+                  setShowAdvancedAlarms((value) => !value);
+                }}
               >
-                <Text style={styles.chipText}>{example}</Text>
+                <Text style={styles.buttonText}>{showAdvancedAlarms ? "Close Mission Tools" : "Open Mission Tools"}</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(false)}>
-              <Text style={styles.buttonText}>Plan Command</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(true)}>
-              <Text style={styles.buttonText}>Execute Command</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(false)}>
-              <Text style={styles.buttonText}>Queue Codex Plan</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(true)}>
-              <Text style={styles.buttonText}>Queue Codex Execute</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
-              <Text style={styles.buttonText}>Open PWA Assistant</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.buttonRow}>
-            {sttResolution.active === "on_device" ? (
-              <>
-                <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(false)}>
-                  <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Plan"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(true)}>
-                  <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Execute"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={() => refreshLocalSttAvailability("manual")}>
-                  <Text style={styles.buttonText}>Refresh STT</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
-                  <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Command" : "Start Voice Command"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(false)}>
-                  <Text style={styles.buttonText}>Plan Voice Command</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
-                  <Text style={styles.buttonText}>Execute Voice</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => {
-                loadAssistantVoiceJobs("manual").catch(() => undefined);
-                loadAssistantAiJobs("manual").catch(() => undefined);
-              }}
-            >
-              <Text style={styles.buttonText}>Refresh Jobs</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.subtle}>
-            On-device STT: {localSttProbeLabel(localSttAvailable)}
-          </Text>
-          {sttResolution.active === "on_device" ? (
-            <Text style={styles.subtle}>
-              Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint.
-            </Text>
-          ) : (
-            <Text style={styles.subtle}>
-              Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
-            </Text>
-          )}
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={() => setShowDiagnostics((value) => !value)}>
-              <Text style={styles.buttonText}>{showDiagnostics ? "Hide Diagnostics" : "Show Diagnostics"}</Text>
-            </TouchableOpacity>
-          </View>
-          {showDiagnostics ? (
-            <>
-          {assistantHistory[0] ? (
-            <View style={styles.detailCard}>
-              <Text style={styles.inlineCardTitle}>
-                Latest: {assistantHistory[0].matched_intent} [{assistantHistory[0].status}]
-              </Text>
-              <Text style={styles.subtle}>{assistantHistory[0].summary}</Text>
-              {assistantHistory[0].steps.map((step, index) => (
-                <View key={`${step.tool_name}-${index}`} style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>
-                    {step.tool_name} [{step.status}]
-                  </Text>
-                  {step.message ? <Text style={styles.subtle}>{step.message}</Text> : null}
-                  <Text style={styles.mono}>{JSON.stringify(step.arguments)}</Text>
-                </View>
-              ))}
             </View>
-          ) : (
-            <Text style={styles.subtle}>No mobile assistant command history yet.</Text>
-          )}
-          {assistantVoiceJobs.length > 0 ? (
-            <View style={styles.detailCard}>
-              <Text style={styles.inlineCardTitle}>Voice command jobs</Text>
-              {assistantVoiceJobs.slice(0, 4).map((job) => (
-                <View key={job.id} style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>
-                    {job.id} [{job.status}]
-                  </Text>
-                  <Text style={styles.subtle}>
-                    provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
-                  </Text>
-                  {job.output.transcript ? <Text style={styles.subtle}>Transcript: {job.output.transcript}</Text> : null}
-                  {job.output.assistant_command ? (
-                    <Text style={styles.subtle}>
-                      Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                    </Text>
-                  ) : null}
-                  {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
-                </View>
-              ))}
-            </View>
-          ) : null}
-          {assistantAiJobs.length > 0 ? (
-            <View style={styles.detailCard}>
-              <Text style={styles.inlineCardTitle}>Queued Codex jobs</Text>
-              {assistantAiJobs.slice(0, 4).map((job) => (
-                <View key={job.id} style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>
-                    {job.id} [{job.status}]
-                  </Text>
-                  <Text style={styles.subtle}>
-                    provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
-                  </Text>
-                  {typeof job.payload.command === "string" && job.payload.command ? (
-                    <Text style={styles.subtle}>Command: {job.payload.command}</Text>
-                  ) : null}
-                  {job.output.assistant_command ? (
-                    <Text style={styles.subtle}>
-                      Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                    </Text>
-                  ) : null}
-                  {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
-                </View>
-              ))}
-            </View>
-          ) : null}
-            </>
-          ) : (
-            <Text style={styles.subtle}>Diagnostics hidden for the focused command view.</Text>
-          )}
-        </View>
+          </View>
         ) : null}
 
-        {activeTab === "capture" && showAdvancedCapture ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Capture</Text>
-          <Text style={styles.panelTitle}>Quick capture + queue</Text>
-          <Text style={styles.label}>Capture title</Text>
-          <TextInput style={styles.input} value={quickCaptureTitle} onChangeText={setQuickCaptureTitle} />
-          <Text style={styles.label}>Source URL (optional)</Text>
-          <TextInput
-            style={styles.input}
-            value={quickCaptureSourceUrl}
-            onChangeText={setQuickCaptureSourceUrl}
-            autoCapitalize="none"
-            placeholder="https://..."
-            placeholderTextColor={palette.muted}
-          />
-          <Text style={styles.label}>Quick capture text</Text>
-          <TextInput
-            style={styles.input}
-            value={quickCaptureText}
-            onChangeText={setQuickCaptureText}
-            placeholder="Clip text, ideas, or reminders..."
-            placeholderTextColor={palette.muted}
-            multiline
-          />
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={submitQuickCapture}>
-              <Text style={styles.buttonText}>Capture / Queue</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={() => flushPendingCaptures("manual")}>
-              <Text style={styles.buttonText}>Flush Queue</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
-              <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Note" : "Start Voice Note"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
-              <Text style={styles.buttonText}>Upload / Queue Voice</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.subtle}>
-            Voice clip: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
-          </Text>
-          <Text style={styles.subtle}>
-            Shared file{sharedFileDrafts.length === 1 ? "" : "s"}: {describeSharedDrafts(sharedFileDrafts)}
-          </Text>
-          {sharedFileDrafts.length > 0 ? (
-            <>
-              {sharedFileDrafts.slice(0, 3).map((draft) => (
-                <View key={`${draft.localUri}:${draft.fileName}`} style={styles.inlineCard}>
-                  <Text style={styles.subtle}>{describeSharedFile(draft.fileName, draft.mimeType, draft.bytesSize)}</Text>
-                </View>
-              ))}
-              {sharedFileDrafts.length > 3 ? (
-                <Text style={styles.subtle}>+{sharedFileDrafts.length - 3} more shared file(s)</Text>
-              ) : null}
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={() => {
-                    setSharedFileDrafts([]);
-                    setStatus("Cleared shared file drafts");
-                  }}
-                >
-                  <Text style={styles.buttonText}>Clear Shared Files</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : null}
-          <Text style={styles.subtle}>Pending captures: {pendingCaptures.length}</Text>
-          {pendingCaptures[0]?.lastError ? (
-            <Text style={styles.subtle}>Last queue error: {pendingCaptures[0].lastError}</Text>
-          ) : null}
-          {pendingCaptures.slice(0, 3).map((capture) => (
-            <View key={capture.id} style={styles.inlineCard}>
-              <Text style={styles.subtle}>{capture.title}</Text>
-              <Text style={styles.subtle}>
-                {capture.kind} | attempts: {capture.attempts} | queued {new Date(capture.createdAt).toLocaleTimeString()}
-              </Text>
-            </View>
-          ))}
-        </View>
-        ) : null}
-
-        {(activeTab === "capture" && showAdvancedCapture) || (activeTab === "review" && showAdvancedReview) ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Artifact Nexus</Text>
-          <Text style={styles.panelTitle}>Artifact triage</Text>
-          <Text style={styles.subtle}>
-            Load recent clips, trigger manual AI actions, then jump into the full artifact graph in the PWA.
-          </Text>
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={loadArtifacts}>
-              <Text style={styles.buttonText}>Refresh Inbox</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={openSelectedArtifactInPwa}>
-              <Text style={styles.buttonText}>Open in PWA</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={speakSelectedArtifact}>
-              <Text style={styles.buttonText}>Speak Locally</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.subtle}>
-            Selected: {selectedArtifact ? `${selectedArtifact.title || selectedArtifact.id}` : "none"}
-          </Text>
-          <Text style={styles.subtle}>{artifactDetailStatus}</Text>
-          <View style={styles.chipRow}>
-            {artifactQuickActions.map((item) => (
-              <TouchableOpacity
-                key={item.action}
-                style={styles.chip}
-                activeOpacity={0.8}
-                onPress={() => runArtifactAction(item.action)}
-              >
-                <Text style={styles.chipText}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {artifacts.length === 0 ? (
-            <Text style={styles.subtle}>No artifacts loaded yet.</Text>
-          ) : (
-            artifacts.slice(0, 6).map((artifact) => {
-              const active = artifact.id === selectedArtifactId;
-              return (
-                <TouchableOpacity
-                  key={artifact.id}
-                  style={[styles.inlineCard, active ? styles.inlineCardActive : null]}
-                  activeOpacity={0.85}
-                  onPress={() => setSelectedArtifactId(artifact.id)}
-                >
-                  <Text style={styles.inlineCardTitle}>{artifact.title || artifact.id}</Text>
-                  <Text style={styles.subtle}>
-                    {artifact.source_type} | {new Date(artifact.created_at).toLocaleString()}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })
-          )}
-          {artifactGraph ? (
-            <View style={styles.detailCard}>
-              <Text style={styles.inlineCardTitle}>Selected artifact detail</Text>
-              <Text style={styles.subtle}>
-                summaries {artifactGraph.summaries.length} | cards {artifactGraph.cards.length} | tasks {artifactGraph.tasks.length} | notes {artifactGraph.notes.length}
-              </Text>
-              {artifactGraph.summaries[0] ? (
-                <View style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>Latest summary v{artifactGraph.summaries[0].version}</Text>
-                  <Text style={styles.subtle}>
-                    {artifactGraph.summaries[0].content.slice(0, 180)}
-                    {artifactGraph.summaries[0].content.length > 180 ? "..." : ""}
-                  </Text>
-                </View>
-              ) : null}
-              {artifactGraph.tasks.slice(0, 2).map((task) => (
-                <View key={task.id} style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>{task.title}</Text>
-                  <Text style={styles.subtle}>task status: {task.status}</Text>
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.button} onPress={() => openTaskInPwa(task.id)}>
-                      <Text style={styles.buttonText}>Open Task</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-              {artifactGraph.notes.slice(0, 1).map((note) => (
-                <View key={note.id} style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>{note.title}</Text>
-                  <Text style={styles.subtle}>
-                    {note.body_md.slice(0, 160)}
-                    {note.body_md.length > 160 ? "..." : ""}
-                  </Text>
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.button} onPress={() => openNoteInPwa(note.id)}>
-                      <Text style={styles.buttonText}>Open Note</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-              {artifactGraph.cards.slice(0, 2).map((card) => (
-                <View key={card.id} style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>{card.prompt}</Text>
-                  <Text style={styles.subtle}>
-                    {card.answer.slice(0, 140)}
-                    {card.answer.length > 140 ? "..." : ""}
-                  </Text>
-                </View>
-              ))}
-              {artifactVersions ? (
-                <View style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>Version history</Text>
-                  <Text style={styles.subtle}>
-                    {artifactVersions.summaries.length} summaries | {artifactVersions.card_sets.length} card sets | {artifactVersions.actions.length} actions
-                  </Text>
-                  {artifactVersions.actions.slice(0, 3).map((action) => (
-                    <Text key={action.id} style={styles.subtle}>
-                      {action.action} [{action.status}]
-                    </Text>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-        ) : null}
-
-        {activeTab === "review" && showAdvancedReview ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Neural Sync</Text>
-          <Text style={styles.panelTitle}>Quick review session</Text>
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={loadDueCards}>
-              <Text style={styles.buttonText}>Load Due Cards</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => {
-                if (!dueCards[0]) {
-                  setStatus("No due card selected");
-                  return;
-                }
-                setShowAnswer(true);
-              }}
-            >
-              <Text style={styles.buttonText}>Reveal Answer</Text>
-            </TouchableOpacity>
-          </View>
-
-          {dueCards[0] ? (
-            <View style={styles.reviewCard}>
-              <Text style={styles.subtle}>
-                Card type: {dueCards[0].card_type} | due queue: {dueCards.length}
-              </Text>
-              <Text style={styles.reviewPrompt}>{dueCards[0].prompt}</Text>
-              {showAnswer ? <Text style={styles.reviewAnswer}>{dueCards[0].answer}</Text> : null}
-              <View style={styles.buttonRow}>
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <TouchableOpacity key={rating} style={styles.button} onPress={() => submitReview(rating)}>
-                    <Text style={styles.buttonText}>Rate {rating}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          ) : (
-            <Text style={styles.subtle}>No due card loaded yet.</Text>
-          )}
-        </View>
-        ) : null}
-
-        {activeTab === "alarms" && showAdvancedAlarms ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Companion Link</Text>
-          <Text style={styles.panelTitle}>Phone + PWA linkage</Text>
-          <Text style={styles.label}>PWA URL</Text>
-          <TextInput style={styles.input} value={pwaBase} onChangeText={setPwaBase} autoCapitalize="none" />
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={openPwa}>
-              <Text style={styles.buttonText}>Open PWA</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.subtle}>Share deep-link format</Text>
-          <Text style={styles.mono}>starlog://capture?title=Clip&text=Hello&source_url=https://example.com</Text>
-        </View>
-        ) : null}
-
-        {activeTab === "alarms" && showAdvancedAlarms ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionKicker}>Chronos Matrix</Text>
-          <Text style={styles.panelTitle}>Offline Morning Brief Pipeline</Text>
-          <Text style={styles.label}>API base</Text>
-          <TextInput
-            style={styles.input}
-            value={apiBase}
-            onChangeText={setApiBase}
-            autoCapitalize="none"
-            placeholder="http://192.168.x.x:8000"
-            placeholderTextColor={palette.muted}
-          />
-          <Text style={styles.label}>Bearer token</Text>
-          <TextInput
-            style={styles.input}
-            value={token}
-            onChangeText={setToken}
-            autoCapitalize="none"
-            secureTextEntry
-          />
-          <Text style={styles.label}>Briefing date (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={briefingDate} onChangeText={setBriefingDate} autoCapitalize="none" />
-
-          <Text style={styles.label}>Alarm time (24h)</Text>
-          <View style={styles.buttonRow}>
-            <TextInput
-              style={styles.timeInput}
-              keyboardType="number-pad"
-              value={String(alarmHour)}
-              onChangeText={(value) => setAlarmHour(boundedInt(Number(value || "0"), 0, 23))}
-            />
-            <TextInput
-              style={styles.timeInput}
-              keyboardType="number-pad"
-              value={String(alarmMinute)}
-              onChangeText={(value) => setAlarmMinute(boundedInt(Number(value || "0"), 0, 59))}
-            />
-          </View>
-
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.button} onPress={generateAndCache}>
-              <Text style={styles.buttonText}>Cache Briefing</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
-              <Text style={styles.buttonText}>Queue Audio Render</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={playCached}>
-              <Text style={styles.buttonText}>Play Cached</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={scheduleMorningAlarm}>
-              <Text style={styles.buttonText}>Schedule Daily Alarm</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={clearMorningAlarm}>
-              <Text style={styles.buttonText}>Clear Alarm</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.subtle}>Notification permission: {notificationPermission}</Text>
-          <Text style={styles.subtle}>Cached file: {cachedPath ?? "none"}</Text>
-          <Text style={styles.subtle}>
-            Alarm status: {alarmNotificationId ? `scheduled at ${toHourMinuteLabel(alarmHour, alarmMinute)}` : "not scheduled"}
-          </Text>
-          <Text style={styles.subtle}>{status}</Text>
-        </View>
-        ) : null}
+        {renderCaptureOpsPanel()}
+        {renderReviewOpsPanel()}
+        {renderAlarmOpsPanel()}
       </ScrollView>
       <TouchableOpacity
         style={styles.fab}
@@ -3904,6 +4028,48 @@ function themedStyles(palette: Palette) {
       color: palette.text,
       fontWeight: "600",
       fontSize: 12,
+    },
+    opsChipRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 4,
+    },
+    opsChip: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 999,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      backgroundColor: palette.surfaceLow,
+    },
+    opsChipActive: {
+      borderColor: palette.accent,
+      backgroundColor: palette.surfaceHigh,
+    },
+    opsChipText: {
+      color: palette.muted,
+      fontWeight: "700",
+      fontSize: 11,
+      letterSpacing: 0.3,
+      textTransform: "uppercase",
+    },
+    opsChipTextActive: {
+      color: palette.accent,
+    },
+    opsSectionCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 12,
+      gap: 8,
+      backgroundColor: "rgba(16,20,26,0.55)",
+      marginTop: 2,
+    },
+    opsSectionTitle: {
+      color: palette.text,
+      fontSize: 15,
+      fontWeight: "700",
     },
     inlineCard: {
       borderWidth: 1,
