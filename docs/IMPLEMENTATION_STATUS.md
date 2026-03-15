@@ -42,7 +42,7 @@
 - Mobile companion capture path now supports retry queue + manual/auto flush for transient network failures.
 - Mobile companion now supports local voice-note recording, upload/queue, and Whisper-backed deferred transcription jobs.
 - Mobile companion now supports `starlog://capture?...` deep-link ingestion for share-to-app style capture prefill.
-- Mobile companion now supports native share-intent prefills for shared text/URLs/files/audio in dev builds, with Android validated end-to-end and iOS extension intake enabled behind the same draft-ingestion flow.
+- Mobile companion now supports native share-intent prefills for shared text/URLs/files/audio in dev builds, with Android validated end-to-end; any iOS extension intake remains outside the current v1 distribution scope.
 - Mobile companion now uploads shared Android images/files as media-backed artifacts instead of reducing them to placeholder text.
 - Mobile companion now keeps multiple shared Android files together in the quick-capture screen instead of dropping everything after the first file.
 - Mobile companion now materializes shared Android files/audio into app-owned storage and persists shared draft state so native share intake survives routine app/background restarts more reliably.
@@ -53,7 +53,7 @@
 - Repo now includes a WSL-to-Windows Metro relay helper (`scripts/android_windows_metro_relay.sh` plus `scripts/tcp_relay.py`) so a physical Android phone can reach the WSL Metro server over the Windows LAN IP instead of relying only on `adb reverse tcp:8081`.
 - Repo now includes an Android dev-client opener helper (`scripts/android_open_dev_client.sh` / `pnpm android:open:dev-client`) so a physical phone can jump straight into the Expo dev build over the LAN relay without depending on the Dev Launcher home screen.
 - Physical Android validation now confirms two live-device fixes on the connected Android 14 phone: deep-link smoke payloads with `&source_url=...` survive remote-shell quoting correctly, and the cleanest Metro path on this host is LAN Metro plus the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` open flow with only API port `8000` reversed.
-- `expo-share-intent` now has iOS enabled in app config with activation rules; macOS-host validation is still required to fully certify iOS share behavior.
+- `expo-share-intent` may still expose iOS activation rules in app config, but iOS share certification is outside the current v1 distribution scope.
 - Mobile alarm flow hardened with daily schedule, clear/re-schedule control, Android channel setup, and fallback playback behavior.
 - Mobile companion now supports quick SRS review sessions (load due cards, reveal answer, submit ratings).
 - Mobile companion now supports lightweight artifact inbox triage, manual artifact actions, and open-in-PWA handoff.
@@ -138,9 +138,8 @@
 
 ## Next implementation targets
 
-1. Add the missing iOS share-extension path and re-run share-parity checks against the current Android native-share flow.
-2. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
-3. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
-4. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
-5. Tune retention policy thresholds with production-like usage data (prefix limits, age windows, and pressure cutoffs) so pruning remains predictable as cache volume grows.
-6. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.
+1. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
+2. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
+3. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
+4. Tune retention policy thresholds with production-like usage data (prefix limits, age windows, and pressure cutoffs) so pruning remains predictable as cache volume grows.
+5. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.
