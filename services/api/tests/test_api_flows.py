@@ -816,6 +816,147 @@ def test_ai_job_cancel_retry_and_stale_worker_guard(client: TestClient, auth_hea
     assert graph.json()["summaries"][0]["content"] == "Retried queued summary."
 
 
+def test_bridge_claim_priority_prefers_mobile_then_falls_back_to_desktop(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    def pair_worker(worker_id: str, worker_class: str) -> dict[str, str]:
+        started = client.post(
+            "/v1/workers/pairing/start",
+            json={"expires_in_minutes": 15},
+            headers=auth_headers,
+        )
+        assert started.status_code == 201
+        pairing_token = started.json()["pairing_token"]
+
+        completed = client.post(
+            "/v1/workers/pairing/complete",
+            json={
+                "pairing_token": pairing_token,
+                "worker_id": worker_id,
+                "worker_label": f"{worker_class}:{worker_id}",
+                "worker_class": worker_class,
+                "capabilities": ["llm_summary"],
+            },
+            headers=auth_headers,
+        )
+        assert completed.status_code == 200
+        access_token = completed.json()["access_token"]
+        worker_headers = {"Authorization": f"Bearer {access_token}"}
+
+        heartbeat = client.post(
+            "/v1/workers/heartbeat",
+            json={"worker_id": worker_id, "capabilities": ["llm_summary"]},
+            headers=worker_headers,
+        )
+        assert heartbeat.status_code == 200
+        return worker_headers
+
+    policy = client.post(
+        "/v1/integrations/execution-policy",
+        json={
+            "llm": ["mobile_bridge", "desktop_bridge", "api"],
+            "stt": ["mobile_bridge", "desktop_bridge", "api"],
+            "tts": ["mobile_bridge", "desktop_bridge", "api"],
+            "ocr": ["mobile_bridge", "desktop_bridge"],
+        },
+        headers=auth_headers,
+    )
+    assert policy.status_code == 200
+
+    desktop_worker_id = "desktop-bridge-worker"
+    mobile_worker_id = "mobile-bridge-worker"
+    desktop_headers = pair_worker(desktop_worker_id, "desktop_bridge")
+
+    first_job = client.post(
+        "/v1/ai/jobs",
+        json={"capability": "llm_summary", "payload": {"text": "Desktop should claim when mobile is offline."}},
+        headers=auth_headers,
+    )
+    assert first_job.status_code == 201
+    first_job_id = first_job.json()["id"]
+    assert first_job.json()["requested_targets"][0] == "mobile_bridge"
+
+    first_claim = client.post(
+        "/v1/ai/jobs/claim-next",
+        json={"capabilities": ["llm_summary"]},
+        headers=desktop_headers,
+    )
+    assert first_claim.status_code == 200
+    first_claim_payload = first_claim.json()
+    assert first_claim_payload["id"] == first_job_id
+    assert first_claim_payload["selected_target"] == "desktop_bridge"
+    assert first_claim_payload["claimed_worker_class"] == "desktop_bridge"
+    assert first_claim_payload["worker_id"] == desktop_worker_id
+
+    first_complete = client.post(
+        f"/v1/ai/jobs/{first_job_id}/worker-complete",
+        json={"provider_used": "desktop_bridge_codex", "output": {"summary": "Desktop bridge output"}},
+        headers=desktop_headers,
+    )
+    assert first_complete.status_code == 200
+
+    mobile_headers = pair_worker(mobile_worker_id, "mobile_bridge")
+    second_job = client.post(
+        "/v1/ai/jobs",
+        json={"capability": "llm_summary", "payload": {"text": "Mobile should claim when available."}},
+        headers=auth_headers,
+    )
+    assert second_job.status_code == 201
+    second_job_id = second_job.json()["id"]
+
+    desktop_skipped = client.post(
+        "/v1/ai/jobs/claim-next",
+        json={"capabilities": ["llm_summary"]},
+        headers=desktop_headers,
+    )
+    assert desktop_skipped.status_code == 404
+
+    second_claim = client.post(
+        "/v1/ai/jobs/claim-next",
+        json={"capabilities": ["llm_summary"]},
+        headers=mobile_headers,
+    )
+    assert second_claim.status_code == 200
+    second_claim_payload = second_claim.json()
+    assert second_claim_payload["id"] == second_job_id
+    assert second_claim_payload["selected_target"] == "mobile_bridge"
+    assert second_claim_payload["claimed_worker_class"] == "mobile_bridge"
+    assert second_claim_payload["worker_id"] == mobile_worker_id
+
+    second_complete = client.post(
+        f"/v1/ai/jobs/{second_job_id}/worker-complete",
+        json={"provider_used": "mobile_bridge_codex", "output": {"summary": "Mobile bridge output"}},
+        headers=mobile_headers,
+    )
+    assert second_complete.status_code == 200
+
+    revoked = client.post(
+        f"/v1/workers/{mobile_worker_id}/revoke",
+        json={"reason": "Test fallback back to desktop"},
+        headers=auth_headers,
+    )
+    assert revoked.status_code == 200
+    assert revoked.json()["revoked_at"] is not None
+
+    third_job = client.post(
+        "/v1/ai/jobs",
+        json={"capability": "llm_summary", "payload": {"text": "Desktop should reclaim after mobile revoke."}},
+        headers=auth_headers,
+    )
+    assert third_job.status_code == 201
+
+    third_claim = client.post(
+        "/v1/ai/jobs/claim-next",
+        json={"capabilities": ["llm_summary"]},
+        headers=desktop_headers,
+    )
+    assert third_claim.status_code == 200
+    assert third_claim.json()["selected_target"] == "desktop_bridge"
+    assert third_claim.json()["claimed_worker_class"] == "desktop_bridge"
+    assert third_claim.json()["worker_id"] == desktop_worker_id
+
+
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:
     artifact = client.post(
         "/v1/artifacts",

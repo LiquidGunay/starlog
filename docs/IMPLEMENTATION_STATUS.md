@@ -100,6 +100,7 @@
 - Local AI worker now defaults to picking up queued TTS jobs too, supports provider-specific local TTS wrappers (`piper_local`, `say_local`, `espeak_local`, `espeak_ng_local`), and carries voice/rate metadata through the render result.
 - Added `/ai-jobs` workspace for queued local Codex/Whisper job inspection.
 - `/ai-jobs` now supports filtering by status/capability/provider/action plus manual cancel/retry controls for queued or failed local AI jobs.
+- API routing coverage now validates bridge claim arbitration through worker pairing + `/v1/ai/jobs/claim-next`, including mobile-first selection and desktop fallback when mobile workers are unavailable or revoked.
 - Added an agent-control API/tool catalog (`/v1/agent/tools`, `/v1/agent/execute`) plus a web tester page at `/agent-tools` so future voice/chat surfaces can call Starlog actions without UI clicks.
 - Agent tools can now also read/update execution policy so future chat/voice shells can control routing preferences directly.
 - Agent tool coverage now spans artifacts, notes, tasks, calendar events, time-block generation, review, briefing/alarm flows, search, and execution-policy management.

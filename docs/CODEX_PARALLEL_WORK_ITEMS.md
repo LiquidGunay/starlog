@@ -793,6 +793,32 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - Validation:
   - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "agent_tool_catalog_and_execution or agent_command_shell_plans_and_executes or execution_policy_controls_ai_routing" -s`
 
+### 7. Bridge routing priority tests
+
+- Branch: `codex/bridge-routing-priority-tests`
+- Workitem ID: `WI-121`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #37 opened`
+- Goal: cover mobile/desktop bridge claim arbitration behavior from the architecture plan so routing priority remains verifiable.
+- Scope:
+  - add API-flow coverage for worker pairing/auth and `/v1/ai/jobs/claim-next`,
+  - validate `mobile_bridge -> desktop_bridge` preference when worker availability changes.
+- Out of scope:
+  - changing queue storage semantics,
+  - changing worker scheduling behavior in services.
+- Likely files:
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - create a desktop worker session and verify it can claim when mobile is unavailable,
+  - add mobile worker session and verify mobile claims first while desktop gets no claim,
+  - revoke mobile worker and verify desktop fallback claims resume.
+- Acceptance:
+  - bridge claim priority is covered with an executable test,
+  - fallback behavior is explicit and regression-resistant.
+- Validation:
+  - `uv run --project services/api --extra dev pytest services/api/tests/test_api_flows.py -k "bridge_claim_priority_prefers_mobile_then_falls_back_to_desktop" -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -822,4 +848,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-120` (`codex/agent-policy-target-normalization`): normalize agent execution-policy command parsing and tests to canonical bridge targets.
+- `WI-121` (`codex/bridge-routing-priority-tests`): add mobile/desktop bridge claim-priority and fallback coverage to API flow tests.
