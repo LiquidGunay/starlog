@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -23,16 +24,85 @@ type AIJob = {
   finished_at?: string | null;
 };
 
+const AI_JOBS_LIST_SNAPSHOT = "ai_jobs.items";
+const AI_JOBS_STATUS_FILTER_SNAPSHOT = "ai_jobs.filter.status";
+const AI_JOBS_CAPABILITY_FILTER_SNAPSHOT = "ai_jobs.filter.capability";
+const AI_JOBS_PROVIDER_FILTER_SNAPSHOT = "ai_jobs.filter.provider";
+const AI_JOBS_ACTION_FILTER_SNAPSHOT = "ai_jobs.filter.action";
+const AI_JOBS_RETRY_PROVIDER_SNAPSHOT = "ai_jobs.retry_provider";
+
 export default function AIJobsPage() {
   const { apiBase, token } = useSessionConfig();
-  const [jobs, setJobs] = useState<AIJob[]>([]);
-  const [statusFilter, setStatusFilter] = useState("pending");
-  const [capabilityFilter, setCapabilityFilter] = useState("");
-  const [providerFilter, setProviderFilter] = useState("");
-  const [actionFilter, setActionFilter] = useState("");
-  const [retryProviderHint, setRetryProviderHint] = useState("");
+  const [jobs, setJobs] = useState<AIJob[]>(() => readEntitySnapshot<AIJob[]>(AI_JOBS_LIST_SNAPSHOT, []));
+  const [statusFilter, setStatusFilter] = useState(
+    () => readEntitySnapshot<string>(AI_JOBS_STATUS_FILTER_SNAPSHOT, "pending"),
+  );
+  const [capabilityFilter, setCapabilityFilter] = useState(
+    () => readEntitySnapshot<string>(AI_JOBS_CAPABILITY_FILTER_SNAPSHOT, ""),
+  );
+  const [providerFilter, setProviderFilter] = useState(
+    () => readEntitySnapshot<string>(AI_JOBS_PROVIDER_FILTER_SNAPSHOT, ""),
+  );
+  const [actionFilter, setActionFilter] = useState(
+    () => readEntitySnapshot<string>(AI_JOBS_ACTION_FILTER_SNAPSHOT, ""),
+  );
+  const [retryProviderHint, setRetryProviderHint] = useState(
+    () => readEntitySnapshot<string>(AI_JOBS_RETRY_PROVIDER_SNAPSHOT, ""),
+  );
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [status, setStatus] = useState("Ready");
+
+  useEffect(() => {
+    setJobs((previous) => previous.length > 0 ? previous : readEntitySnapshot<AIJob[]>(AI_JOBS_LIST_SNAPSHOT, []));
+    setStatusFilter((previous) => previous || readEntitySnapshot<string>(AI_JOBS_STATUS_FILTER_SNAPSHOT, "pending"));
+    setCapabilityFilter((previous) => previous || readEntitySnapshot<string>(AI_JOBS_CAPABILITY_FILTER_SNAPSHOT, ""));
+    setProviderFilter((previous) => previous || readEntitySnapshot<string>(AI_JOBS_PROVIDER_FILTER_SNAPSHOT, ""));
+    setActionFilter((previous) => previous || readEntitySnapshot<string>(AI_JOBS_ACTION_FILTER_SNAPSHOT, ""));
+    setRetryProviderHint((previous) => previous || readEntitySnapshot<string>(AI_JOBS_RETRY_PROVIDER_SNAPSHOT, ""));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [cachedJobs, cachedStatus, cachedCapability, cachedProvider, cachedAction, cachedRetryProvider] =
+        await Promise.all([
+          readEntitySnapshotAsync<AIJob[]>(AI_JOBS_LIST_SNAPSHOT, []),
+          readEntitySnapshotAsync<string>(AI_JOBS_STATUS_FILTER_SNAPSHOT, "pending"),
+          readEntitySnapshotAsync<string>(AI_JOBS_CAPABILITY_FILTER_SNAPSHOT, ""),
+          readEntitySnapshotAsync<string>(AI_JOBS_PROVIDER_FILTER_SNAPSHOT, ""),
+          readEntitySnapshotAsync<string>(AI_JOBS_ACTION_FILTER_SNAPSHOT, ""),
+          readEntitySnapshotAsync<string>(AI_JOBS_RETRY_PROVIDER_SNAPSHOT, ""),
+        ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (cachedJobs.length > 0) {
+        setJobs(cachedJobs);
+      }
+      if (cachedStatus) {
+        setStatusFilter(cachedStatus);
+      }
+      if (cachedCapability) {
+        setCapabilityFilter(cachedCapability);
+      }
+      if (cachedProvider) {
+        setProviderFilter(cachedProvider);
+      }
+      if (cachedAction) {
+        setActionFilter(cachedAction);
+      }
+      if (cachedRetryProvider) {
+        setRetryProviderHint(cachedRetryProvider);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function loadJobs(nextStatus = statusFilter) {
     try {
@@ -53,11 +123,33 @@ export default function AIJobsPage() {
       const query = `?${params.toString()}`;
       const payload = await apiRequest<AIJob[]>(apiBase, token, `/v1/ai/jobs${query}`);
       setJobs(payload);
+      writeEntitySnapshot(AI_JOBS_LIST_SNAPSHOT, payload);
+      writeEntitySnapshot(AI_JOBS_STATUS_FILTER_SNAPSHOT, nextStatus);
       setStatus(`Loaded ${payload.length} AI job(s)`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load AI jobs");
     }
   }
+
+  useEffect(() => {
+    writeEntitySnapshot(AI_JOBS_STATUS_FILTER_SNAPSHOT, statusFilter);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    writeEntitySnapshot(AI_JOBS_CAPABILITY_FILTER_SNAPSHOT, capabilityFilter);
+  }, [capabilityFilter]);
+
+  useEffect(() => {
+    writeEntitySnapshot(AI_JOBS_PROVIDER_FILTER_SNAPSHOT, providerFilter);
+  }, [providerFilter]);
+
+  useEffect(() => {
+    writeEntitySnapshot(AI_JOBS_ACTION_FILTER_SNAPSHOT, actionFilter);
+  }, [actionFilter]);
+
+  useEffect(() => {
+    writeEntitySnapshot(AI_JOBS_RETRY_PROVIDER_SNAPSHOT, retryProviderHint);
+  }, [retryProviderHint]);
 
   async function cancelJob(jobId: string) {
     setBusyJobId(jobId);

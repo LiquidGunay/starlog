@@ -664,6 +664,34 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `pnpm --filter web exec tsc --noEmit`
   - `pnpm --filter web lint`
 
+### 7. PWA cache snapshots for AI jobs + portability
+
+- Branch: `codex/pwa-cache-ai-jobs-portability-b`
+- Workitem ID: `WI-117`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-117 | Owner: N/A | Claimed: 2026-03-14T19:32:20Z | Last heartbeat: 2026-03-14T19:37:15Z`
+- Goal: add snapshot restore/persistence for AI jobs and portability pages so queued job context and latest export snapshot survive offline reload.
+- Scope:
+  - persist AI jobs list + filter state + retry provider state,
+  - persist portability export payload + import buffer,
+  - keep online load/restore semantics unchanged.
+- Out of scope:
+  - changing AI job execution lifecycle semantics,
+  - changing export/import payload format.
+- Likely files:
+  - `apps/web/app/ai-jobs/page.tsx`
+  - `apps/web/app/portability/page.tsx`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Concrete work items:
+  - hydrate from bootstrap snapshots and async IndexedDB reads,
+  - persist snapshots after successful refreshes and state edits,
+  - preserve compatibility with existing manual refresh controls.
+- Acceptance:
+  - `ai-jobs` and `portability` display prior local state after offline reload when available,
+  - pages still refresh against API when online.
+- Validation:
+  - `pnpm --filter web exec tsc --noEmit`
+  - `pnpm --filter web lint`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -693,4 +721,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-115` (`codex/pwa-cache-review-agenttools-b`): add offline snapshot restore/persist coverage for review and agent-tools pages.
+- `WI-117` (`codex/pwa-cache-ai-jobs-portability-b`): add offline snapshot restore/persist coverage for AI jobs and portability pages.
