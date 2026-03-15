@@ -22,53 +22,49 @@ Date: 2026-03-15
   - service id: `c55d2d8a-5adb-4a0c-a5fe-623dc3f25478`
   - generated Railway domain: `https://starlog-web-production.up.railway.app`
 
-## Important deployment guardrail
+## Live deployment status
 
-No Starlog deployment was triggered in this pass.
+Deploy approval was given and the first supervised production deployments are live on the existing `perfect-intuition` project.
 
-The following were intentionally deferred until explicit deploy approval:
+- `starlog-api`
+  - status: live
+  - health check: `https://starlog-api-production.up.railway.app/v1/health`
+  - verified response: `{"status":"ok","env":"prod","users":0}`
+- `starlog-web`
+  - status: live
+  - public URL: `https://starlog-web-production.up.railway.app`
+  - verified response: `HTTP 200`
 
-- source repo wiring
-- build/start command wiring
-- persistent volume attach for `starlog-api`
-- production env var writes
-- custom domain changes
-- first deploy/redeploy
-
-This keeps the existing `perfect-intuition` project stable while reserving the Starlog service slots and default service domains.
-
-## Ready-to-apply deployment config
-
-Apply these only when deploy approval is given.
+## Applied deployment config
 
 ### `starlog-api`
 
-- Source repo: `LiquidGunay/starlog`
-- Branch: current release branch or `master` after merge approval
-- Runtime path:
-  - repo root remains `starlog`
-  - deploy from `services/api`
-  - use the existing API Dockerfile path under `services/api/Dockerfile`
+- Current deploy path:
+  - manual/supervised CLI deploy from repo root
+  - Dockerfile path: `services/api/Dockerfile.railway`
 - Persistent volume:
   - mount path: `/app/.localdata`
-- Required env vars:
+- Applied env vars:
   - `STARLOG_ENV=prod`
   - `STARLOG_DB_PATH=/app/.localdata/starlog.db`
   - `STARLOG_MEDIA_DIR=/app/.localdata/media`
-  - `STARLOG_SECRETS_MASTER_KEY=<long-random-secret>`
-  - `STARLOG_CORS_ALLOW_ORIGINS=https://<your-web-domain>`
+  - `STARLOG_SECRETS_MASTER_KEY=<configured>`
+  - `STARLOG_CORS_ALLOW_ORIGINS=https://starlog-web-production.up.railway.app`
 - Optional calendar env vars:
   - `STARLOG_GOOGLE_CLIENT_ID`
   - `STARLOG_GOOGLE_CLIENT_SECRET`
   - `STARLOG_GOOGLE_REDIRECT_URI=https://<api-domain>/v1/calendar/sync/google/oauth/callback`
+- Watch paths:
+  - `/services/api/**`
+  - `/pnpm-lock.yaml`
 
 ### `starlog-web`
 
-- Source repo: `LiquidGunay/starlog`
-- Branch: current release branch or `master` after merge approval
-- Build/start settings:
+- Current deploy path:
+  - manual/supervised CLI deploy from repo root
+- Applied build/start settings:
   - build command: `pnpm --filter web build`
-  - start command: `pnpm --filter web start -- --hostname 0.0.0.0 --port $PORT`
+  - start command: `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
 - The web service does not need a persistent volume.
 - The PWA can initially use the generated Railway domain until a custom Starlog domain/subdomain is chosen.
 
@@ -98,28 +94,33 @@ Official docs:
 
 These are estimates, not invoices. They assume the existing personal-site services remain in the same workspace/project and that Starlog adds incremental usage on top of the current hobby setup.
 
-1. Low-touch single-user setup with sleepy web usage.
-   - `starlog-api`: roughly `512 MB` RAM average while active, `~0.05 vCPU` average, `~1 GB` actual stored data.
-   - `starlog-web`: mostly idle/sleeping or very low usage.
-   - Rough Starlog incremental cost: about `$6-$8/month`, plus minor egress.
+1. Low-touch single-user setup with app sleeping enabled.
+   - Railway docs say sleeping services incur no compute charges while asleep.
+   - With `sleepApplication=true` on both Starlog services and bursty personal use, the realistic incremental cost should sit near the hobby floor plus storage/egress.
+   - Rough Starlog incremental cost: about `$5-$6/month`, plus volume and minor egress.
 
-2. Daily-use single-user setup with both API and web warm much of the month.
-   - `starlog-api`: `512 MB` RAM + `~0.05-0.10 vCPU` average + `1-5 GB` stored data.
-   - `starlog-web`: `256 MB` RAM + `~0.02-0.05 vCPU` average.
-   - Rough Starlog incremental cost: about `$9-$13/month`, plus egress.
+2. Daily-use single-user setup with regular wake-ups across the day.
+   - `starlog-api`: `512 MB` RAM + low CPU while active + small persistent volume.
+   - `starlog-web`: mostly sleeping between sessions, waking on access.
+   - Rough Starlog incremental cost: about `$6-$8/month`, plus egress.
 
-3. Practical budget expectation for v1 in this existing project.
-   - If the current personal-site usage is low, total workspace cost may still land near the hobby floor plus Starlog's incremental compute.
-   - If both Starlog services are kept warm continuously, a realistic combined workspace total is more likely to move into the low-teens per month.
+3. Higher-activity setup or later split services.
+   - If the API stays warm much more often, or higher-compute jobs are split into dedicated services later, the incremental cost will rise with active compute time rather than from a fixed second-project fee.
+   - That is the point where separating low-compute and high-compute services becomes cost-relevant.
 
 Inference note:
-The pricing docs describe billing as plan + resource usage. Since Starlog is being added to an existing project/workspace rather than a separate project, there is no separate flat "Starlog project" fee implied by the docs; the bill impact is the added resource usage from the two Starlog services.
+The pricing docs describe usage-based compute plus the plan floor. Since Starlog is being added to an existing project/workspace rather than a separate project, the bill impact should mainly be incremental resource usage from the two Starlog services, not a second per-project flat fee.
+
+## Remaining setup gap
+
+The important missing piece is GitHub source attachment for automatic deploys.
+
+- Current service source for both Starlog services still shows `null` in Railway.
+- The live services were deployed successfully via supervised CLI deploys.
+- Automatic deploys from `master` are not configured yet and will require Railway service-source connection through the dashboard or GraphQL `serviceConnect`.
 
 ## Recommended next step
 
-Before any first deployment, confirm:
-
-1. which branch should be wired as the initial Railway source,
-2. which custom domains, if any, should be added for Starlog,
-3. the production `STARLOG_SECRETS_MASTER_KEY`, and
-4. whether the first deploy should happen from Railway GitHub source or a manual supervised push.
+1. Connect both Starlog services to `LiquidGunay/starlog` so `master` pushes can deploy without supervised CLI pushes.
+2. Decide whether to keep the generated Railway domains or add custom Starlog subdomains.
+3. If higher-compute AI work is added later, split it into a separate service so the base API can keep sleeping cheaply.
