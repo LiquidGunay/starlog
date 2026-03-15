@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import {
   readEntityCacheScope,
   readEntityCacheValue,
@@ -19,6 +20,7 @@ import {
   readEntitySnapshotAsync,
   writeEntitySnapshot,
 } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { applyOptimisticArtifacts } from "../lib/optimistic-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -61,6 +63,8 @@ const ARTIFACT_ITEMS_ENTITY_SCOPE = "artifacts.items";
 const ARTIFACT_GRAPH_ENTITY_SCOPE = "artifacts.graph";
 const ARTIFACT_VERSIONS_ENTITY_SCOPE = "artifacts.versions";
 const ARTIFACT_NODE_LIMIT = 8;
+const ARTIFACT_FILTER_HUD_PANE_SNAPSHOT = "artifacts.pane.filter_hud";
+const ARTIFACT_INSPECTOR_PANE_SNAPSHOT = "artifacts.pane.inspector";
 
 function artifactGraphCacheKey(artifactId: string): string {
   return `artifacts.graph:${artifactId}`;
@@ -189,6 +193,8 @@ function buildArtifactGraphNodes(artifacts: Artifact[]): ArtifactGraphNode[] {
 function ArtifactsPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
+  const filterHudPane = usePaneCollapsed(ARTIFACT_FILTER_HUD_PANE_SNAPSHOT);
+  const inspectorPane = usePaneCollapsed(ARTIFACT_INSPECTOR_PANE_SNAPSHOT);
   const [items, setItems] = useState<Artifact[]>(() => readEntitySnapshot<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []));
   const [selectedId, setSelectedId] = useState<string>(() => readEntitySnapshot<string>(ARTIFACT_SELECTED_SNAPSHOT, ""));
   const [graph, setGraph] = useState<ArtifactGraph | null>(() => readEntitySnapshot<ArtifactGraph | null>(ARTIFACT_GRAPH_SNAPSHOT, null));
@@ -505,8 +511,19 @@ function ArtifactsPageContent() {
   return (
     <main className="artifact-nexus-shell">
       <section className="artifact-nexus-canvas">
-        <aside className="artifact-filter-hud">
-          <h2>Filter HUD</h2>
+        <PaneRestoreStrip
+          className="pane-restore-strip-floating"
+          actions={[
+            ...(filterHudPane.collapsed ? [{ id: "filters", label: "Show filter HUD", onClick: filterHudPane.expand }] : []),
+            ...(inspectorPane.collapsed ? [{ id: "inspector", label: "Show inspector", onClick: inspectorPane.expand }] : []),
+          ]}
+        />
+
+        {!filterHudPane.collapsed ? <aside className="artifact-filter-hud">
+          <div className="artifact-pane-head">
+            <h2>Filter HUD</h2>
+            <PaneToggleButton label="Hide pane" onClick={filterHudPane.collapse} />
+          </div>
           <label htmlFor="filter-raw">
             <input id="filter-raw" type="checkbox" checked={showRaw} onChange={(event) => setShowRaw(event.target.checked)} />
             Raw Clips
@@ -520,7 +537,7 @@ function ArtifactsPageContent() {
             Extracted Tasks
           </label>
           <p className="console-copy">Visible nodes: {graphNodes.length}</p>
-        </aside>
+        </aside> : null}
 
         <div className="artifact-graph" aria-hidden="true">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -576,11 +593,16 @@ function ArtifactsPageContent() {
           </svg>
         </div>
 
-        <aside className="artifact-inspector">
+        {!inspectorPane.collapsed ? <aside className="artifact-inspector">
           <header className="artifact-inspector-header">
-            <p className="eyebrow">Artifact Nexus</p>
-            <h1>Clip inbox and references</h1>
-            <p className="status">{status}</p>
+            <div className="artifact-pane-head">
+              <div>
+                <p className="eyebrow">Artifact Nexus</p>
+                <h1>Clip inbox and references</h1>
+                <p className="status">{status}</p>
+              </div>
+              <PaneToggleButton label="Hide pane" onClick={inspectorPane.collapse} />
+            </div>
           </header>
 
           <div className="artifact-inspector-body">
@@ -716,7 +738,7 @@ function ArtifactsPageContent() {
               </div>
             </details>
           </div>
-        </aside>
+        </aside> : null}
       </section>
     </main>
   );

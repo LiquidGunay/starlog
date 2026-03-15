@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { ApiError } from "../lib/starlog-client";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -86,6 +88,8 @@ const ASSISTANT_INTENTS_ENTITY_SCOPE = "assistant.intents";
 const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
 const ASSISTANT_VOICE_JOBS_ENTITY_SCOPE = "assistant.voice_jobs";
 const ASSISTANT_AI_JOBS_ENTITY_SCOPE = "assistant.ai_jobs";
+const ASSISTANT_QUEUE_PANE_SNAPSHOT = "assistant.pane.queue";
+const ASSISTANT_AGENT_PANE_SNAPSHOT = "assistant.pane.agent";
 
 function cacheAssistantIntents(intents: AgentIntent[]): void {
   const recordedAt = new Date().toISOString();
@@ -168,6 +172,8 @@ function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueIte
 
 export default function AssistantPage() {
   const { apiBase, token, isOnline } = useSessionConfig();
+  const queuePane = usePaneCollapsed(ASSISTANT_QUEUE_PANE_SNAPSHOT);
+  const agentPane = usePaneCollapsed(ASSISTANT_AGENT_PANE_SNAPSHOT);
   const [command, setCommand] = useState("summarize latest artifact");
   const [status, setStatus] = useState("Ready");
   const [latest, setLatest] = useState<AgentCommandResponse | null>(() => {
@@ -590,11 +596,18 @@ export default function AssistantPage() {
 
   return (
     <main className="command-center-shell">
-      <section className="command-center-layout">
-        <aside className="command-center-column">
+      <section
+        className={[
+          "command-center-layout",
+          queuePane.collapsed ? "command-center-layout-left-collapsed" : "",
+          agentPane.collapsed ? "command-center-layout-right-collapsed" : "",
+        ].filter(Boolean).join(" ")}
+      >
+        {!queuePane.collapsed ? <aside className="command-center-column">
           <div className="command-column-header">
             <span className="command-column-title">Inbox Queue</span>
             <span className="command-footnote">{history.length} recent</span>
+            <PaneToggleButton label="Hide pane" onClick={queuePane.collapse} />
           </div>
           <ul className="command-queue-list">
             {history.length === 0 ? (
@@ -639,7 +652,7 @@ export default function AssistantPage() {
               </li>
             ))}
           </ul>
-        </aside>
+        </aside> : null}
 
         <section className="command-center-main">
           <div className="command-column-header">
@@ -658,11 +671,18 @@ export default function AssistantPage() {
             <div className="command-main-header">
               <p className="eyebrow">Command Center</p>
               <h1>Command shell</h1>
-              <div className="command-main-divider" />
+            <div className="command-main-divider" />
               <p className="console-copy">
                 Type or speak a command, inspect the planned tool calls, then execute without leaving this workspace.
               </p>
             </div>
+
+            <PaneRestoreStrip
+              actions={[
+                ...(queuePane.collapsed ? [{ id: "queue", label: "Show inbox queue", onClick: queuePane.expand }] : []),
+                ...(agentPane.collapsed ? [{ id: "agent", label: "Show agent feed", onClick: agentPane.expand }] : []),
+              ]}
+            />
 
             <article className="command-rich-card command-form-grid">
               <label className="label" htmlFor="assistant-command">Command</label>
@@ -741,10 +761,13 @@ export default function AssistantPage() {
           </div>
         </section>
 
-        <aside className="command-agent-panel">
-          <div className="command-agent-tabs">
-            <div className="command-agent-tab active">AI Agent</div>
-            <div className="command-agent-tab">Insights</div>
+        {!agentPane.collapsed ? <aside className="command-agent-panel">
+          <div className="command-agent-head">
+            <div className="command-agent-tabs">
+              <div className="command-agent-tab active">AI Agent</div>
+              <div className="command-agent-tab">Insights</div>
+            </div>
+            <PaneToggleButton label="Hide pane" onClick={agentPane.collapse} />
           </div>
           <div className="command-agent-body">
             <div className="command-agent-scroll">
@@ -890,7 +913,7 @@ export default function AssistantPage() {
               <p className="command-footnote">Aether AI can take actions in external modules.</p>
             </div>
           </div>
-        </aside>
+        </aside> : null}
       </section>
     </main>
   );

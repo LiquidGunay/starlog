@@ -475,6 +475,49 @@ a {
   opacity: 0.55;
 }
 
+.pane-toggle-button,
+.pane-restore-button {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 12%);
+  background: color-mix(in srgb, var(--chip), transparent 16%);
+  color: var(--text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  padding: 0.42rem 0.65rem;
+  transition: all 140ms ease;
+}
+
+.pane-toggle-button:hover,
+.pane-restore-button:hover {
+  border-color: color-mix(in srgb, var(--primary), transparent 28%);
+  color: var(--primary-soft);
+}
+
+.pane-restore-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+}
+
+.pane-restore-strip-floating {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 26;
+  margin-bottom: 0;
+  justify-content: flex-end;
+}
+
+.artifact-pane-head,
+.sync-sidecar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .status {
   margin-top: 0.78rem;
   color: var(--muted);
@@ -624,6 +667,18 @@ a {
   display: grid;
   grid-template-columns: minmax(250px, 22vw) minmax(420px, 1fr) minmax(300px, 23vw);
   min-height: calc(100vh - 123px);
+}
+
+.command-center-layout.command-center-layout-left-collapsed {
+  grid-template-columns: minmax(420px, 1fr) minmax(300px, 23vw);
+}
+
+.command-center-layout.command-center-layout-right-collapsed {
+  grid-template-columns: minmax(250px, 22vw) minmax(420px, 1fr);
+}
+
+.command-center-layout.command-center-layout-left-collapsed.command-center-layout-right-collapsed {
+  grid-template-columns: minmax(420px, 1fr);
 }
 
 .command-center-column {
@@ -807,10 +862,17 @@ a {
   background: color-mix(in srgb, var(--panel), transparent 10%);
 }
 
+.command-agent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border), transparent 40%);
+}
+
 .command-agent-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid color-mix(in srgb, var(--panel-border), transparent 40%);
+  flex: 1;
 }
 
 .command-agent-tab {
@@ -1373,6 +1435,10 @@ a {
   width: min(760px, 100%);
 }
 
+.sync-sidecar-head h2 {
+  margin: 0.1rem 0 0;
+}
+
 .chronos-shell {
   max-width: none;
   width: 100%;
@@ -1386,6 +1452,10 @@ a {
   display: grid;
   grid-template-columns: minmax(255px, 26vw) minmax(420px, 1fr);
   gap: 0.62rem;
+}
+
+.chronos-layout.chronos-layout-sidebar-collapsed {
+  grid-template-columns: 1fr;
 }
 
 .chronos-sidebar {
@@ -1628,6 +1698,15 @@ a {
     grid-template-columns: 280px 1fr;
   }
 
+  .command-center-layout.command-center-layout-left-collapsed,
+  .command-center-layout.command-center-layout-left-collapsed.command-center-layout-right-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .command-center-layout.command-center-layout-right-collapsed {
+    grid-template-columns: 280px 1fr;
+  }
+
   .runtime-chip-meta {
     display: none;
   }
@@ -1679,6 +1758,12 @@ a {
     position: static;
     width: auto;
     margin: 1rem;
+  }
+
+  .pane-restore-strip-floating {
+    position: static;
+    margin: 1rem 1rem 0;
+    justify-content: flex-start;
   }
 
   .artifact-nexus-canvas {
