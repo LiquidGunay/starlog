@@ -177,22 +177,75 @@ Last queue reset: `2026-03-15`.
   - `./node_modules/.bin/playwright test --config=playwright.web.config.ts`
   - updated screenshots for the four canonical PWA pages.
 
+### WI-446. Centralize provider + LLM configuration
+- Branch: `codex/pwa-central-llm-config`
+- Lock: `UNCLAIMED | Workitem: WI-446 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: move provider/LLM configuration out of each tab and into one central configurable surface.
+- Scope:
+  - identify every repeated provider/config block across the PWA tabs,
+  - replace those repeated per-tab controls with a single settings/config window or route,
+  - preserve all current provider/base-URL/model options without forcing users to reconfigure per surface.
+- Acceptance:
+  - tab-level repeated localhost/provider config panels are removed from canonical surfaces,
+  - one central config surface exists and controls the shared provider/runtime state,
+  - screenshots show the simplified tabs and the new central config surface.
+- Validation:
+  - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web exec tsc --noEmit`
+  - `cd apps/web && ./node_modules/.bin/next build`
+  - Playwright screenshots for the central config surface plus affected tabs.
+
+### WI-447. Collapsible side panes across the PWA
+- Branch: `codex/pwa-collapsible-side-panes`
+- Lock: `UNCLAIMED | Workitem: WI-447 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: make the side panes across the main PWA surfaces collapsible so the workspace can focus on the primary content.
+- Scope:
+  - identify the recurring side-panel pattern on the main PWA shells,
+  - add a consistent collapse/expand interaction that works on desktop and mobile widths,
+  - preserve access to the side content without forcing it to remain permanently visible.
+- Acceptance:
+  - canonical side panes can be collapsed and restored consistently,
+  - collapsed state does not break navigation or core workflows,
+  - screenshots/video capture demonstrate the interaction on major surfaces.
+- Validation:
+  - `./node_modules/.bin/playwright test --config=playwright.web.config.ts`
+  - `cd apps/web && ./node_modules/.bin/next build`
+
 ### WI-443. Railway project/service setup
 - Branch: `codex/railway-project-service-setup`
-- Lock: `HANDOFF | Workitem: WI-443 | Owner: N/A | Claimed: 2026-03-15T13:25:12Z | Last heartbeat: 2026-03-15T13:34:14Z`
-- Goal: prepare the actual Railway project so deployment can happen cleanly when approved.
+- Lock: `COMPLETED | Workitem: WI-443 | Owner: N/A | Claimed: 2026-03-15T16:26:08Z | Last heartbeat: 2026-03-15T16:31:40Z`
+- Goal: create the actual Railway project state and first live deployments on the existing Railway project.
 - Scope:
   - create/select the correct Railway project,
   - create/configure `starlog-api` and `starlog-web` services,
   - wire required env vars, persistent volume, domains, and secrets,
-  - document anything still needed from the supervisor before first deploy.
+  - complete the first approved production deploys,
+  - document the remaining auto-deploy/source gap.
 - Acceptance:
-  - Railway project state is ready for deployment,
-  - required secrets/inputs are clearly enumerated,
-  - no deploy is executed without explicit user approval.
+  - Starlog API and web are live on Railway,
+  - generated Railway domains are serving,
+  - remaining GitHub-source gap is explicitly documented.
 - Validation:
-  - `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md` completed against the real Railway project,
-  - service/project status captured for handoff.
+  - `https://starlog-api-production.up.railway.app/v1/health`
+  - `https://starlog-web-production.up.railway.app/`
+  - status captured in `docs/RAILWAY_PROJECT_SETUP_STATUS.md`
+
+### WI-445. Railway GitHub source wiring + idle-sleep audit
+- Branch: `codex/railway-source-wiring-and-sleep-audit`
+- Lock: `UNCLAIMED | Workitem: WI-445 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: finish the hosted setup by wiring Starlog services to GitHub and verifying whether the web service can truly sleep to near-zero idle compute.
+- Scope:
+  - connect `starlog-api` and `starlog-web` to `LiquidGunay/starlog` on the intended deploy branch,
+  - verify future `master` deploy behavior from Railway service source instead of supervised CLI deploys,
+  - inspect why the web service still shows idle memory/usage and determine whether that can reach Railway sleep/zero-compute behavior in practice,
+  - document the actual floor if Railway still reports non-zero idle memory after sleep.
+- Acceptance:
+  - both Starlog services show the expected GitHub source/branch in Railway,
+  - automatic deploy path is documented and testable,
+  - idle-usage findings are documented with a clear conclusion about whether zero is achievable.
+- Validation:
+  - `railway status --json`
+  - `railway environment config --json`
+  - hosted idle verification after the configured sleep window.
 
 ### WI-444. PWA install/setup on the main laptop and phone
 - Branch: `codex/pwa-main-device-setup`
@@ -231,8 +284,8 @@ Last queue reset: `2026-03-15`.
 
 ## Suggested execution order
 
-1. `WI-461` -> `WI-443`
-2. `WI-441` -> `WI-442`
+1. `WI-461` -> `WI-443` -> `WI-445`
+2. `WI-441` -> `WI-446` -> `WI-447` -> `WI-442`
 3. `WI-401` -> `WI-402` -> `WI-403`
 4. `WI-421` -> `WI-422` -> `WI-423`
 5. `WI-444` after the chosen hosted/local setup path is confirmed.
@@ -241,7 +294,9 @@ Parallel-safe starters right now:
 - `WI-461`
 - `WI-401`
 - `WI-421`
-- `WI-443`
+- `WI-445`
+- `WI-446`
+- `WI-447`
 
 Recommended immediate next workitem:
-- `WI-443` (Railway project/service setup)
+- `WI-445` (Railway GitHub source wiring + idle-sleep audit)

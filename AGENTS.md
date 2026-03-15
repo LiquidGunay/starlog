@@ -263,6 +263,9 @@ Troubleshooting checklist:
 - 2026-03-14: User wants old parallel workitems discarded and replaced with a fresh queue based on the latest architecture/workflow plan after `master` updates.
 - 2026-03-14: User wants additional architecture-plan workitems beyond the first queue refresh so agents can run a larger parallel batch.
 - 2026-03-14: User wants it explicit that each agent task must ship via PR and must rebase onto latest `master` when behind.
+- 2026-03-15: User wants provider/LLM configuration moved out of individual tabs into one central configurable window.
+- 2026-03-15: User wants side panes across the main UI to be collapsible.
+- 2026-03-15: User wants the Railway-hosted web service to sleep to effectively zero idle compute usage if Railway allows it.
 - 2026-03-15: User wants desktop helper UI aligned to `screen_design` themes and expects a compact quick-capture popup plus a separate larger workspace surface for advanced controls.
 - 2026-03-15: User wants the PWA IA and visual language aligned to the `screen_design` references, with canonical surface naming (`Command Center`, `Artifact Nexus`, `Neural Sync`, `Chronos Matrix`).
 - 2026-03-15: User wants typography/chat styling to closely match the design HTML references and prefers contextual nav (Notes/Tasks under Command Center) without redundant `Calendar` links alongside `Chronos Matrix`.
@@ -325,6 +328,10 @@ Troubleshooting checklist:
 - 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
 - 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
 - 2026-03-14: Running dependent `git checkout`/branch-creation commands in parallel can race and leave the worktree on `master`; branch-switch operations should be run sequentially to avoid accidental commits to local `master`.
+- 2026-03-15: Railway web deploy initially crashed because `pnpm --filter web start -- --hostname ...` passed `--` through to `next start` as an invalid project directory; `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT` works on Railway.
+- 2026-03-15: Railway blocked repo-root Starlog API deploys on a critical `next@15.0.0` advisory from the root `pnpm-lock.yaml`; bumping the web app to `next@15.0.7` cleared the security gate.
+- 2026-03-15: Railway `environment edit` applied build/deploy/variable settings for Starlog services but did not attach GitHub source metadata; service source still shows `null`, so automatic deploy wiring needs a separate service-source connection step.
+- 2026-03-15: Railway `up` respects watch-pattern diffs when deciding whether to deploy; repo-root API deploys needed the root lockfile included in watch paths because that file can block builds via Railway's security scan.
 - 2026-03-15: Linux `tauri build --bundles appimage` initially panicked (`couldn't find a square icon to use as AppImage icon`) until explicit bundle icon paths were added in `tools/desktop-helper/src-tauri/tauri.conf.json`.
 - 2026-03-15: On this host, Linux `tauri build --bundles deb,appimage` can stall inside `linuxdeploy` after producing the `.deb`; the deterministic release pipeline now defaults to `deb` and keeps AppImage as an explicit optional attempt.
 - 2026-03-15: Adding hosted-only Playwright smoke specs to `apps/web/tests` can unintentionally affect the general PWA release gate unless `playwright.web.config.ts` explicitly ignores hosted smoke tests.
