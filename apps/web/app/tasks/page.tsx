@@ -3,7 +3,6 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import {
   mergeEntityCacheScope,
   readEntityCacheScope,
@@ -334,7 +333,6 @@ function TasksPageContent() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Command Center</p>
           <h1>Execution workspace</h1>

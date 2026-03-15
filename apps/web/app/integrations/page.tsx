@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
@@ -389,7 +388,6 @@ export default function IntegrationsPage() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Chronos Matrix</p>
           <h1>Provider configs and runtime health</h1>

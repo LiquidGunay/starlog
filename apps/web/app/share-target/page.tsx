@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { useSessionConfig } from "../session-provider";
 
 function ShareTargetContent() {
@@ -87,7 +86,6 @@ function ShareTargetContent() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Command Center</p>
           <h1>PWA share capture</h1>

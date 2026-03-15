@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 
 function buildCaptureLink(title: string, text: string, sourceUrl: string): string {
   const params = new URLSearchParams();
@@ -43,7 +42,6 @@ export default function MobileSharePage() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Command Center</p>
           <h1>Generate mobile capture deep-links</h1>
