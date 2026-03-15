@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { runOfflineWarmup, type OfflineWarmupResult } from "../lib/offline-warmup";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -76,6 +76,9 @@ export default function SyncCenterPage() {
     () => readEntitySnapshot<SyncEvent[]>(SYNC_CENTER_PULLED_EVENTS_SNAPSHOT, []),
   );
   const [pullStatus, setPullStatus] = useState("Server delta pull idle");
+  const [warmupStatus, setWarmupStatus] = useState("Offline warmup idle");
+  const [warmupResult, setWarmupResult] = useState<OfflineWarmupResult | null>(null);
+  const [warmupInFlight, setWarmupInFlight] = useState(false);
 
   useEffect(() => {
     setServerScope((previous) => previous || readEntitySnapshot<"client" | "all">(SYNC_CENTER_SCOPE_SNAPSHOT, "client"));
@@ -197,32 +200,34 @@ export default function SyncCenterPage() {
     }
   }
 
-  useEffect(() => {
+  async function runWarmup() {
+    if (warmupInFlight) {
+      return;
+    }
     if (!token) {
+      setWarmupStatus("Add bearer token to run offline warmup");
       return;
     }
 
-    const refreshIfStale = () => {
-      if (!window.navigator.onLine || !hasStaleEntityCache(SYNC_CACHE_PREFIXES)) {
-        return;
+    setWarmupInFlight(true);
+    setWarmupStatus("Warming offline snapshots...");
+    try {
+      const result = await runOfflineWarmup(apiBase, token);
+      const failed = result.steps.filter((step) => step.status === "failed");
+      setWarmupResult(result);
+      if (failed.length === 0) {
+        setWarmupStatus(`Offline warmup complete: ${result.warmed_snapshots} snapshots updated`);
+      } else {
+        setWarmupStatus(
+          `Offline warmup partial: ${result.warmed_snapshots} snapshots updated, ${failed.length} step(s) failed`,
+        );
       }
-      loadServerHistory().catch(() => undefined);
-    };
-
-    refreshIfStale();
-
-    const onInvalidation = (event: Event) => {
-      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
-      if (detail && cachePrefixesIntersect(detail.prefixes, SYNC_CACHE_PREFIXES)) {
-        refreshIfStale();
-      }
-    };
-
-    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
-    return () => {
-      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
-    };
-  }, [loadServerHistory, token]);
+    } catch (error) {
+      setWarmupStatus(error instanceof Error ? error.message : "Offline warmup failed");
+    } finally {
+      setWarmupInFlight(false);
+    }
+  }
 
   return (
     <main className="shell">
@@ -266,10 +271,14 @@ export default function SyncCenterPage() {
             <button className="button" type="button" onClick={() => pullServerEvents(true)}>
               Reset Pull Cursor
             </button>
+            <button className="button" type="button" onClick={() => runWarmup()} disabled={warmupInFlight}>
+              {warmupInFlight ? "Warming Offline Cache..." : "Offline Warmup"}
+            </button>
           </div>
           <p className="status">{flushSummary}</p>
           <p className="console-copy">{serverStatus}</p>
           <p className="console-copy">{pullStatus}</p>
+          <p className="console-copy">{warmupStatus}</p>
           <p className="console-copy">Current pull cursor: {pullCursor}</p>
         </div>
 
@@ -335,6 +344,27 @@ export default function SyncCenterPage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          <h2>Offline warmup report</h2>
+          {!warmupResult ? (
+            <p className="console-copy">Run Offline Warmup to pre-load route snapshots for offline use.</p>
+          ) : (
+            <>
+              <p className="console-copy">
+                Updated snapshots: {warmupResult.warmed_snapshots} | Completed: {new Date(warmupResult.finished_at).toLocaleString()}
+              </p>
+              <ul>
+                {warmupResult.steps.map((step) => (
+                  <li key={step.id}>
+                    <p className="console-copy">
+                      <strong>{step.label}</strong> [{step.status}] snapshots: {step.warmed_snapshots}
+                    </p>
+                    {step.detail ? <p className="console-copy">Detail: {step.detail}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           <h2>Replay log</h2>
