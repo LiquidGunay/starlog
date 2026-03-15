@@ -19,11 +19,13 @@ class CalendarEventUpdateRequest(BaseModel):
     source: str | None = None
     remote_id: str | None = None
     etag: str | None = None
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class CalendarEventResponse(BaseModel):
     id: str
     title: str
+    revision: int
     starts_at: datetime
     ends_at: datetime
     source: str

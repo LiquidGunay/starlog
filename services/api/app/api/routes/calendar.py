@@ -62,7 +62,16 @@ def update_event(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> CalendarEventResponse:
-    updated = calendar_service.update_event(db, event_id, payload.model_dump())
+    try:
+        updated = calendar_service.update_event(db, event_id, payload.model_dump())
+    except calendar_service.conflict_service.RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "revision_conflict",
+                "conflict": exc.conflict,
+            },
+        ) from exc
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
     return CalendarEventResponse.model_validate(updated)
