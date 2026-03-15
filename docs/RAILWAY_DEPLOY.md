@@ -23,6 +23,19 @@ Supporting runbooks:
 - `docs/PWA_PORTABILITY_DRILL.md`
 - `docs/PWA_GO_LIVE_RUNBOOK.md`
 
+## Existing project option
+
+Starlog does not require a dedicated Railway project.
+
+- You can add `starlog-api` and `starlog-web` as additional services inside an existing Railway project that already hosts unrelated services.
+- Keep service names, generated domains, custom domains, and volumes distinct from the existing app's resources.
+- The safest setup order is:
+  1. link the existing project,
+  2. create empty `starlog-api` and `starlog-web` services,
+  3. reserve/generated Railway domains if desired,
+  4. wire source/build/start/env/volume settings only when you are ready to allow deployment.
+- This keeps project organization simple and avoids accidental deploys while still reserving the Starlog service slots.
+
 ## Service layout
 
 Create two Railway services from this repo:

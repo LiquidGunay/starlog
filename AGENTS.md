@@ -115,6 +115,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
+- `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
 - `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.
@@ -269,6 +270,7 @@ Troubleshooting checklist:
 - 2026-03-15: User clarified that iOS share status is out of scope for v1 and must not block v1 distribution work.
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
 - 2026-03-15: User wants fresh worktrees to reuse dependency installs/build caches from the canonical checkout unless a task changes that surface's dependency/build inputs.
+- 2026-03-15: User wants Starlog Railway services added to the existing Railway project that already hosts the personal website instead of creating a separate Railway project.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -338,3 +340,4 @@ Troubleshooting checklist:
 - 2026-03-15: Post-merge mobile UI audit found the advanced capture/review panels duplicate the focused companion shell with a second admin-console layer; follow-up should collapse those controls into more compact secondary surfaces.
 - 2026-03-15: Post-merge desktop UI audit found the helper workspace reuses the quick-popup capture console instead of a more distinct studio config surface, creating redundant UI relative to the desktop design reference.
 - 2026-03-15: Fresh worktrees can now reuse shared dependency and cache state through `scripts/use_shared_worktree_state.sh`; only surfaces with changed dependency/build inputs should localize and rerun setup.
+- 2026-03-15: Railway setup for WI-443 is now linked to the existing `perfect-intuition` project, with empty `starlog-api` and `starlog-web` services created plus Railway-provided domains reserved; source/build/start/env wiring is intentionally deferred until deploy approval.
