@@ -666,6 +666,39 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `./node_modules/.bin/playwright test --config=/tmp/playwright.web.noserver.config.ts apps/web/tests/offline-cache.spec.ts --grep "offline warmup"`
   - `cd apps/web && ./node_modules/.bin/tsc --noEmit`
 
+### 7. Note revision-conflict enforcement
+
+- Branch: `codex/note-revision-conflict-api`
+- Workitem ID: `WI-117`
+- Lock: `HANDOFF in shared registry (no active lock); released 2026-03-14 with note: PR #33 opened`
+- Goal: enforce structured revision-conflict handling for note updates and harden conflict-resolution payload validation.
+- Scope:
+  - allow note update requests to carry `base_revision`,
+  - emit structured `409` revision conflict responses when stale revisions are submitted,
+  - enforce `merged_patch` payload requirements on conflict resolution endpoint,
+  - add API tests for conflict create/list/get/resolve flow.
+- Out of scope:
+  - full optimistic-concurrency rollout across every entity type,
+  - UI conflict resolution tooling.
+- Likely files:
+  - `services/api/app/schemas/notes.py`
+  - `services/api/app/services/notes_service.py`
+  - `services/api/app/api/routes/notes.py`
+  - `services/api/app/schemas/conflicts.py`
+  - `services/api/tests/test_api_flows.py`
+  - `docs/IMPLEMENTATION_STATUS.md`
+  - `AGENTS.md`
+- Concrete work items:
+  - add `base_revision` to note updates,
+  - create and return `entity_conflicts` records on mismatch,
+  - validate `merged_patch` requires `merged_payload`, and other strategies reject it,
+  - test stale write -> conflict -> resolution path.
+- Acceptance:
+  - stale note write is rejected with structured conflict payload,
+  - conflict APIs enforce explicit resolution payload semantics.
+- Validation:
+  - `uv run --project services/api --extra dev pytest tests/test_api_flows.py -k \"revision_conflict\" -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -695,4 +728,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-116` (`codex/pwa-offline-warmup-flow`): add explicit Sync Center offline warmup to preload route snapshots before disconnect.
+- `WI-117` (`codex/note-revision-conflict-api`): enforce structured note revision conflicts and conflict-resolution payload validation.
