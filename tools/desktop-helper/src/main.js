@@ -8,6 +8,8 @@ const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
 const quickOpenWorkspaceButton = document.getElementById("quickOpenWorkspace");
 const workspaceReturnQuickButton = document.getElementById("workspaceReturnQuick");
 const runtimeDiagnosticsNode = document.getElementById("runtimeDiagnostics");
+const diagnosticTilesNode = document.getElementById("diagnosticTiles");
+const studioHealthBadgeNode = document.getElementById("studioHealthBadge");
 const recentCapturesNode = document.getElementById("recentCaptures");
 const CONFIG_STORAGE_KEY = "starlog.desktop-helper.config.v1";
 const RECENT_CAPTURE_STORAGE_KEY = "starlog.desktop-helper.recent-captures.v1";
@@ -325,16 +327,51 @@ function diagnosticStatusLabel(status) {
   return "Unavailable";
 }
 
+function overallDiagnosticStatus(diagnostics) {
+  const statuses = RUNTIME_DIAGNOSTIC_ITEMS.map(([key]) => diagnostics[key]?.status || "unavailable");
+  if (statuses.every((status) => status === "available")) {
+    return { label: "System Nominal", status: "available" };
+  }
+  if (statuses.some((status) => status === "unavailable")) {
+    return { label: "Needs Attention", status: "unavailable" };
+  }
+  return { label: "Partial Coverage", status: "degraded" };
+}
+
 function renderRuntimeDiagnostics(diagnostics) {
   runtimeDiagnosticsNode.replaceChildren();
+  diagnosticTilesNode?.replaceChildren();
 
   const summary = document.createElement("p");
   summary.className = "help";
   summary.textContent = `${diagnostics.runtime === "tauri" ? "Native Tauri runtime" : "Browser fallback"} · ${diagnostics.platform}`;
   runtimeDiagnosticsNode.appendChild(summary);
 
+  const health = overallDiagnosticStatus(diagnostics);
+  if (studioHealthBadgeNode) {
+    studioHealthBadgeNode.textContent = health.label;
+    studioHealthBadgeNode.className = `section-chip ${health.status === "available" ? "" : health.status}`.trim();
+  }
+
   for (const [key, label] of RUNTIME_DIAGNOSTIC_ITEMS) {
     const item = diagnostics[key];
+    if (diagnosticTilesNode) {
+      const tile = document.createElement("article");
+      tile.className = "diagnostic-tile";
+
+      const tileLabel = document.createElement("p");
+      tileLabel.className = "diagnostic-tile-kicker";
+      tileLabel.textContent = label;
+      tile.appendChild(tileLabel);
+
+      const tileBadge = document.createElement("span");
+      tileBadge.className = `diagnostic-tile-badge ${item.status}`;
+      tileBadge.textContent = diagnosticStatusLabel(item.status);
+      tile.appendChild(tileBadge);
+
+      diagnosticTilesNode.appendChild(tile);
+    }
+
     const row = document.createElement("article");
     row.className = "diagnostic-row";
 
@@ -628,10 +665,16 @@ function formatCapturedAt(value) {
 
 function renderRecentCaptures(entries) {
   recentCapturesNode.replaceChildren();
+  recentCapturesNode.className = "recent-grid";
   if (entries.length === 0) {
-    const emptyState = document.createElement("p");
-    emptyState.className = "help";
-    emptyState.textContent = "No captures yet.";
+    const emptyState = document.createElement("article");
+    emptyState.className = "recent-empty-card";
+
+    const emptyLabel = document.createElement("p");
+    emptyLabel.className = "help";
+    emptyLabel.textContent = "No captures yet.";
+    emptyState.appendChild(emptyLabel);
+
     recentCapturesNode.appendChild(emptyState);
     return;
   }
@@ -640,9 +683,14 @@ function renderRecentCaptures(entries) {
     const card = document.createElement("article");
     card.className = "recent-card";
 
+    const artifact = document.createElement("span");
+    artifact.className = "recent-artifact mono";
+    artifact.textContent = entry.artifactId;
+    card.appendChild(artifact);
+
     const title = document.createElement("p");
     title.className = "recent-title";
-    title.textContent = `${entry.title} · ${entry.artifactId}`;
+    title.textContent = entry.title;
     card.appendChild(title);
 
     const kind = document.createElement("p");
@@ -674,6 +722,21 @@ function renderRecentCaptures(entries) {
       backend.className = "recent-meta";
       backend.textContent = `Capture backend: ${entry.captureBackend}`;
       card.appendChild(backend);
+    }
+
+    const tags = document.createElement("div");
+    tags.className = "recent-tag-row";
+    for (const value of [entry.ocrEngine && `OCR ${entry.ocrEngine}`, entry.platform, entry.contextBackend]) {
+      if (!value) {
+        continue;
+      }
+      const tag = document.createElement("span");
+      tag.className = "recent-tag mono";
+      tag.textContent = value;
+      tags.appendChild(tag);
+    }
+    if (tags.childNodes.length > 0) {
+      card.appendChild(tags);
     }
 
     if (entry.summary) {

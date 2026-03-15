@@ -23,6 +23,8 @@
         --primary: #c9beff;
         --primary-container: #9c89ff;
         --tertiary: #83d4d3;
+        --warning: #f6da6f;
+        --danger: #fbb3b3;
         --on-surface: #dfe2eb;
         --on-surface-variant: #c9c4d5;
       }
@@ -53,6 +55,11 @@
           linear-gradient(to bottom, rgba(201, 190, 255, 0.08) 1px, transparent 1px);
       }
 
+      button,
+      input {
+        font: inherit;
+      }
+
       .headline {
         font-family: "Space Grotesk", sans-serif;
       }
@@ -66,6 +73,7 @@
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
         border: 1px solid rgba(201, 190, 255, 0.1);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
       }
 
       .helper-app {
@@ -80,29 +88,31 @@
         display: block;
       }
 
-      .quick-only {
+      .quick-only,
+      .quick-surface-panel {
         display: none;
       }
 
       .studio-topbar {
-        height: 64px;
-        display: flex;
+        min-height: 72px;
+        display: grid;
+        grid-template-columns: 220px minmax(280px, 1fr) auto;
         align-items: center;
-        justify-content: space-between;
-        padding: 0 16px;
+        gap: 16px;
+        padding: 14px 18px;
         border-bottom: 1px solid rgba(147, 142, 158, 0.22);
       }
 
       .topbar-brand {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
       }
 
       .brand-mark {
-        width: 30px;
-        height: 30px;
-        border-radius: 10px;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
         background: linear-gradient(140deg, var(--primary), var(--primary-container));
         display: grid;
         place-items: center;
@@ -112,36 +122,78 @@
 
       .topbar-title {
         margin: 0;
-        color: var(--primary);
-        font-size: 20px;
+        color: var(--on-surface);
+        font-size: 26px;
+        font-weight: 500;
       }
 
-      .topbar-button {
+      .studio-search {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(147, 142, 158, 0.2);
+        background: rgba(10, 14, 20, 0.72);
+        padding: 10px 14px;
+        color: var(--outline);
+      }
+
+      .studio-search input {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: var(--on-surface-variant);
+        padding: 0;
+      }
+
+      .studio-search input:focus {
+        outline: none;
+        box-shadow: none;
+      }
+
+      .studio-search input:disabled {
+        opacity: 1;
+        cursor: default;
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .topbar-chip {
+        border-left: 1px solid rgba(147, 142, 158, 0.18);
+        padding-left: 14px;
+        color: var(--on-surface-variant);
+        font-size: 13px;
+      }
+
+      .topbar-avatar {
+        width: 32px;
+        height: 32px;
         border-radius: 999px;
         border: 1px solid rgba(201, 190, 255, 0.25);
-        background: rgba(201, 190, 255, 0.08);
-        color: var(--on-surface);
-        padding: 8px 12px;
-        font-family: "Space Grotesk", sans-serif;
+        background: rgba(201, 190, 255, 0.12);
+        display: grid;
+        place-items: center;
         font-size: 12px;
-        cursor: pointer;
-      }
-
-      .topbar-button:hover {
-        border-color: rgba(201, 190, 255, 0.46);
-        background: rgba(201, 190, 255, 0.16);
+        color: var(--primary);
       }
 
       .studio-layout {
         flex: 1;
         min-height: 0;
         display: grid;
-        grid-template-columns: 240px 1fr;
+        grid-template-columns: 220px 1fr;
       }
 
       .studio-sidebar {
         border-right: 1px solid rgba(147, 142, 158, 0.22);
-        padding: 14px;
+        padding: 16px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
       }
 
       .sidebar-label {
@@ -155,26 +207,26 @@
 
       .sidebar-sub {
         margin: 8px 0 0;
-        color: var(--on-surface-variant);
-        font-size: 11px;
+        color: var(--tertiary);
+        font-size: 12px;
       }
 
       .sidebar-nav {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        margin-top: 14px;
+        gap: 8px;
       }
 
       .sidebar-item {
-        border-radius: 12px;
+        border-radius: 14px;
         border: 1px solid transparent;
         background: transparent;
         color: var(--on-surface-variant);
-        padding: 10px;
+        padding: 12px;
         text-align: left;
         font-family: "Space Grotesk", sans-serif;
-        font-size: 13px;
+        font-size: 14px;
+        cursor: default;
       }
 
       .sidebar-item.active {
@@ -183,21 +235,69 @@
         border-color: rgba(201, 190, 255, 0.22);
       }
 
+      .sidebar-spacer {
+        flex: 1;
+      }
+
+      .sidebar-launch {
+        width: 100%;
+        border-radius: 16px;
+        border: 1px solid rgba(201, 190, 255, 0.28);
+        background: linear-gradient(180deg, rgba(201, 190, 255, 0.22), rgba(156, 137, 255, 0.18));
+        color: #24104d;
+        padding: 12px 14px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
       .studio-main {
         min-height: 0;
         overflow: auto;
-        padding: 16px;
+        padding: 24px;
+      }
+
+      .workspace-overview {
+        margin-bottom: 18px;
+      }
+
+      .workspace-kicker {
+        margin: 0;
+        color: var(--outline);
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .workspace-title {
+        margin: 10px 0 0;
+        font-size: clamp(34px, 4vw, 48px);
+        font-weight: 500;
+        line-height: 1.05;
+      }
+
+      .workspace-title span {
+        color: rgba(201, 190, 255, 0.86);
+      }
+
+      .workspace-accent {
+        width: 92px;
+        height: 3px;
+        margin-top: 10px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--primary), transparent);
       }
 
       .studio-grid {
         display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 12px;
+        grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.82fr);
+        gap: 16px;
       }
 
       .section-card {
-        border-radius: 20px;
-        padding: 14px;
+        border-radius: 24px;
+        padding: 18px;
       }
 
       .section-title {
@@ -210,7 +310,7 @@
 
       .section-title-main {
         font-family: "Space Grotesk", sans-serif;
-        font-size: 16px;
+        font-size: 28px;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -221,17 +321,111 @@
         border: 1px solid rgba(131, 212, 211, 0.38);
         background: rgba(131, 212, 211, 0.1);
         color: var(--tertiary);
-        padding: 4px 8px;
+        padding: 5px 10px;
         font-size: 10px;
         font-family: "JetBrains Mono", monospace;
         text-transform: uppercase;
       }
 
+      .section-chip.degraded {
+        border-color: rgba(246, 218, 111, 0.34);
+        background: rgba(246, 218, 111, 0.12);
+        color: var(--warning);
+      }
+
+      .section-chip.unavailable {
+        border-color: rgba(251, 179, 179, 0.34);
+        background: rgba(251, 179, 179, 0.12);
+        color: var(--danger);
+      }
+
+      .diagnostic-tiles {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .diagnostic-tile {
+        border-radius: 18px;
+        border: 1px solid rgba(147, 142, 158, 0.14);
+        background: rgba(255, 255, 255, 0.03);
+        min-height: 92px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .diagnostic-tile-kicker {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--outline);
+      }
+
+      .diagnostic-tile-badge {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .diagnostic-tile-badge.available {
+        background: rgba(52, 211, 153, 0.14);
+        color: #7af0be;
+      }
+
+      .diagnostic-tile-badge.degraded,
+      .diagnostic-tile-badge.pending {
+        background: rgba(250, 204, 21, 0.16);
+        color: var(--warning);
+      }
+
+      .diagnostic-tile-badge.unavailable {
+        background: rgba(252, 165, 165, 0.16);
+        color: var(--danger);
+      }
+
+      .diagnostic-visual {
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        align-items: end;
+        gap: 6px;
+        min-height: 140px;
+        margin-top: 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(147, 142, 158, 0.14);
+        background: rgba(10, 14, 20, 0.48);
+        padding: 16px 14px 12px;
+      }
+
+      .diagnostic-bar {
+        border-radius: 10px 10px 4px 4px;
+        background: rgba(201, 190, 255, 0.32);
+      }
+
+      .diagnostic-bar:nth-child(1) { height: 36px; }
+      .diagnostic-bar:nth-child(2) { height: 54px; }
+      .diagnostic-bar:nth-child(3) { height: 74px; }
+      .diagnostic-bar:nth-child(4) { height: 24px; }
+      .diagnostic-bar:nth-child(5) { height: 68px; }
+      .diagnostic-bar:nth-child(6) { height: 96px; background: rgba(201, 190, 255, 0.56); }
+      .diagnostic-bar:nth-child(7) { height: 48px; }
+      .diagnostic-bar:nth-child(8) { height: 18px; }
+      .diagnostic-bar:nth-child(9) { height: 60px; }
+
       .diagnostic-controls {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 12px;
+        margin-top: 16px;
       }
 
       .action-button {
@@ -245,7 +439,9 @@
         cursor: pointer;
       }
 
-      .action-button:hover {
+      .action-button:hover,
+      .sidebar-launch:hover,
+      .command-button:hover {
         border-color: rgba(201, 190, 255, 0.5);
         background: rgba(201, 190, 255, 0.16);
       }
@@ -253,13 +449,18 @@
       .help {
         color: var(--on-surface-variant);
         font-size: 12px;
+        line-height: 1.55;
         margin: 0;
+      }
+
+      .diagnostic-detail-stack {
+        display: grid;
+        gap: 10px;
       }
 
       .diagnostic-row {
         border-top: 1px solid rgba(147, 142, 158, 0.22);
         padding-top: 10px;
-        margin-top: 10px;
       }
 
       .diagnostic-heading {
@@ -290,12 +491,12 @@
       .diagnostic-badge.degraded,
       .diagnostic-badge.pending {
         background: rgba(250, 204, 21, 0.16);
-        color: #f6da6f;
+        color: var(--warning);
       }
 
       .diagnostic-badge.unavailable {
         background: rgba(252, 165, 165, 0.16);
-        color: #fbb3b3;
+        color: var(--danger);
       }
 
       .diagnostic-meta,
@@ -317,19 +518,10 @@
         color: #cbc2ff;
       }
 
-      .capture-console {
-        border-radius: 20px;
-        padding: 14px;
-      }
-
-      .capture-kicker {
-        margin: 0;
-        color: var(--on-surface-variant);
-        font-size: 12px;
-      }
-
-      .form-block {
-        margin-top: 12px;
+      .config-panel {
+        display: grid;
+        gap: 14px;
+        align-content: start;
       }
 
       .label {
@@ -340,6 +532,10 @@
         letter-spacing: 0.12em;
         text-transform: uppercase;
         color: var(--outline);
+      }
+
+      .form-block {
+        margin-top: 0;
       }
 
       input {
@@ -358,14 +554,174 @@
         box-shadow: 0 0 0 2px rgba(201, 190, 255, 0.15);
       }
 
+      .config-divider {
+        height: 1px;
+        background: rgba(147, 142, 158, 0.2);
+      }
+
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .toggle-switch {
+        width: 48px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid rgba(147, 142, 158, 0.28);
+        background: rgba(201, 190, 255, 0.18);
+        padding: 3px;
+        cursor: pointer;
+      }
+
+      .toggle-switch span {
+        display: block;
+        width: 20px;
+        height: 20px;
+        margin-left: auto;
+        border-radius: 999px;
+        background: var(--primary);
+      }
+
+      .recent-wrap {
+        margin-top: 18px;
+      }
+
+      .recent-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+      }
+
+      .recent-card,
+      .recent-empty-card {
+        border-radius: 22px;
+        border: 1px solid rgba(147, 142, 158, 0.16);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 14px;
+        min-height: 250px;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .recent-title {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 18px;
+      }
+
+      .recent-artifact {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        border-radius: 999px;
+        border: 1px solid rgba(201, 190, 255, 0.2);
+        background: rgba(201, 190, 255, 0.08);
+        color: var(--primary);
+        padding: 4px 8px;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .recent-meta {
+        margin: 0;
+        color: var(--on-surface-variant);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .recent-summary {
+        margin: 0;
+        color: var(--on-surface);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .recent-tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .recent-tag {
+        border-radius: 999px;
+        background: rgba(10, 14, 20, 0.56);
+        border: 1px solid rgba(147, 142, 158, 0.2);
+        color: var(--outline);
+        padding: 3px 7px;
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .recent-preview-image {
+        display: block;
+        width: 100%;
+        height: 164px;
+        border-radius: 16px;
+        border: 1px solid rgba(201, 190, 255, 0.24);
+        background: rgba(4, 4, 10, 0.84);
+        object-fit: cover;
+      }
+
+      .recent-empty-card {
+        place-items: center;
+        border-style: dashed;
+        color: var(--outline);
+        text-align: center;
+      }
+
+      .capture-console {
+        border-radius: 24px;
+        padding: 16px;
+      }
+
+      .quick-brand {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .quick-brand-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .quick-title {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .quick-subtitle {
+        margin: 2px 0 0;
+        font-size: 10px;
+        color: var(--on-surface-variant);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .capture-kicker {
+        margin: 0;
+        color: var(--on-surface-variant);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
       .capture-actions {
-        margin-top: 12px;
+        margin-top: 14px;
         display: grid;
         gap: 8px;
       }
 
       .command-button {
-        border-radius: 14px;
+        border-radius: 16px;
         border: 1px solid rgba(201, 190, 255, 0.2);
         background: rgba(49, 53, 60, 0.34);
         color: var(--on-surface);
@@ -374,13 +730,8 @@
         justify-content: space-between;
         gap: 12px;
         width: 100%;
-        padding: 11px;
+        padding: 12px;
         cursor: pointer;
-      }
-
-      .command-button:hover {
-        border-color: rgba(201, 190, 255, 0.38);
-        background: rgba(201, 190, 255, 0.1);
       }
 
       .command-left {
@@ -390,8 +741,8 @@
       }
 
       .command-icon {
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
         border-radius: 999px;
         background: rgba(201, 190, 255, 0.12);
         border: 1px solid rgba(201, 190, 255, 0.24);
@@ -404,7 +755,7 @@
 
       .command-label {
         font-family: "Space Grotesk", sans-serif;
-        font-size: 14px;
+        font-size: 15px;
       }
 
       .command-meta {
@@ -423,65 +774,48 @@
         padding: 2px 6px;
       }
 
-      .workspace-capture-footer {
+      .quick-footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(147, 142, 158, 0.22);
       }
 
-      .workspace-capture-note {
-        margin: 0;
+      .quick-sync {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--outline);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .quick-sync-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--tertiary);
+        box-shadow: 0 0 12px rgba(131, 212, 211, 0.45);
+      }
+
+      .quick-avatar {
+        border-radius: 999px;
+        border: 1px solid rgba(201, 190, 255, 0.18);
+        background: rgba(201, 190, 255, 0.08);
         color: var(--on-surface-variant);
+        padding: 4px 8px;
         font-size: 11px;
       }
 
-      .quick-brand {
-        display: none;
-      }
-
-      #status {
-        margin: 12px 0 0;
+      .status-line {
+        margin: 0 24px 20px 244px;
         color: var(--on-surface-variant);
         font-size: 13px;
-      }
-
-      .recent-wrap {
-        margin-top: 12px;
-      }
-
-      .recent-card {
-        border-top: 1px solid rgba(147, 142, 158, 0.22);
-        padding-top: 10px;
-        margin-top: 10px;
-      }
-
-      .recent-title {
-        margin: 0;
-        font-size: 14px;
-      }
-
-      .recent-meta {
-        margin: 4px 0 0;
-        color: var(--on-surface-variant);
-        font-size: 12px;
-      }
-
-      .recent-summary {
-        margin: 6px 0 0;
-        color: var(--on-surface);
-        font-size: 13px;
-      }
-
-      .recent-preview-image {
-        display: block;
-        width: 100%;
-        margin-top: 8px;
-        border-radius: 10px;
-        border: 1px solid rgba(201, 190, 255, 0.24);
-        background: rgba(4, 4, 10, 0.84);
-        object-fit: cover;
       }
 
       code {
@@ -498,6 +832,10 @@
         display: inline-flex;
       }
 
+      body[data-helper-mode="quick"] .quick-surface-panel {
+        display: block;
+      }
+
       body[data-helper-mode="quick"] .helper-app {
         min-height: 100vh;
         align-items: center;
@@ -505,72 +843,66 @@
         padding: 14px;
       }
 
-      body[data-helper-mode="quick"] .studio-layout {
-        display: block;
-      }
-
-      body[data-helper-mode="quick"] .studio-main {
-        padding: 0;
-        overflow: visible;
-      }
-
-      body[data-helper-mode="quick"] .studio-grid {
-        grid-template-columns: 1fr;
-      }
-
       body[data-helper-mode="quick"] .capture-console {
         width: min(360px, 100%);
-        border-radius: 20px;
-        padding: 14px;
         box-shadow:
           0 26px 48px rgba(0, 0, 0, 0.45),
           0 0 20px rgba(201, 190, 255, 0.09);
       }
 
-      body[data-helper-mode="quick"] .quick-brand {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 10px;
+      body[data-helper-mode="quick"] .status-line {
+        width: min(360px, 100%);
+        margin: 10px 0 0;
       }
 
-      body[data-helper-mode="quick"] .quick-brand-left {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
+      @media (max-width: 1180px) {
+        .studio-topbar {
+          grid-template-columns: 220px 1fr;
+        }
 
-      body[data-helper-mode="quick"] .quick-title {
-        margin: 0;
-        font-size: 13px;
-      }
+        .topbar-actions {
+          grid-column: 1 / -1;
+          justify-content: flex-end;
+        }
 
-      body[data-helper-mode="quick"] .quick-subtitle {
-        margin: 2px 0 0;
-        font-size: 10px;
-        color: var(--on-surface-variant);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-      }
+        .diagnostic-tiles {
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        }
 
-      body[data-helper-mode="quick"] .capture-kicker {
-        margin-bottom: 8px;
-      }
-
-      body[data-helper-mode="quick"] .capture-actions {
-        gap: 7px;
-      }
-
-      body[data-helper-mode="quick"] .workspace-capture-footer {
-        margin-top: 10px;
-      }
-
-      body[data-helper-mode="quick"] #status {
-        margin-top: 10px;
-      }
-
-      @media (max-width: 1100px) {
         .studio-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .studio-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .studio-sidebar {
+          border-right: 0;
+          border-bottom: 1px solid rgba(147, 142, 158, 0.22);
+        }
+
+        .status-line {
+          margin-left: 24px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .studio-topbar {
+          grid-template-columns: 1fr;
+        }
+
+        .studio-main {
+          padding: 16px;
+        }
+
+        .status-line {
+          margin: 0 16px 16px;
+        }
+
+        .recent-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -581,29 +913,58 @@
       <header class="studio-topbar glass-panel workspace-only">
         <div class="topbar-brand">
           <div class="brand-mark headline">S</div>
-          <h1 class="topbar-title headline">Starlog Helper Studio</h1>
+          <h1 class="topbar-title headline">Starlog</h1>
         </div>
-        <button id="workspaceReturnQuick" type="button" class="topbar-button">Quick Surface</button>
+        <label class="studio-search">
+          <span class="mono">&gt;_</span>
+          <input aria-label="Search system logs" placeholder="Search system logs..." disabled />
+        </label>
+        <div class="topbar-actions">
+          <span class="topbar-chip">Commander Profile</span>
+          <span class="topbar-avatar mono">A2</span>
+        </div>
       </header>
 
-      <div class="studio-layout">
-        <aside class="studio-sidebar glass-panel workspace-only">
-          <p class="sidebar-label">AI Command Center</p>
-          <p class="sidebar-sub">Active neural link</p>
+      <div class="studio-layout workspace-only">
+        <aside class="studio-sidebar glass-panel">
+          <div>
+            <p class="sidebar-label">AI Command Center</p>
+            <p class="sidebar-sub">Active neural link</p>
+          </div>
           <nav class="sidebar-nav">
             <button type="button" class="sidebar-item active">Tactical</button>
             <button type="button" class="sidebar-item">Logs</button>
             <button type="button" class="sidebar-item">Comms</button>
           </nav>
+          <div class="sidebar-spacer"></div>
+          <button id="workspaceReturnQuick" type="button" class="sidebar-launch">New Capture Relay</button>
         </aside>
 
         <section class="studio-main">
+          <div class="workspace-overview">
+            <p class="workspace-kicker mono">AI Command Center</p>
+            <h2 class="workspace-title headline">Tactical <span>Overview</span></h2>
+            <div class="workspace-accent"></div>
+          </div>
+
           <div class="studio-grid">
-            <article class="section-card glass-panel workspace-only">
+            <article class="section-card glass-panel workspace-diagnostics">
               <h2 class="section-title">
                 <span class="section-title-main">Runtime Diagnostics</span>
-                <span class="section-chip">System Nominal</span>
+                <span id="studioHealthBadge" class="section-chip">System Nominal</span>
               </h2>
+              <div id="diagnosticTiles" class="diagnostic-tiles" style="margin-top: 18px"></div>
+              <div class="diagnostic-visual" aria-hidden="true">
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+                <span class="diagnostic-bar"></span>
+              </div>
               <div class="diagnostic-controls">
                 <button id="refreshDiagnostics" type="button" class="action-button">Refresh Diagnostics</button>
                 <button id="copyDiagnostics" type="button" class="action-button">Copy Diagnostics</button>
@@ -611,89 +972,107 @@
               <p class="help" style="margin-top: 8px">
                 Copy a redacted diagnostics snapshot after refresh when you need to report runtime issues.
               </p>
-              <div id="runtimeDiagnostics" style="margin-top: 10px">
+              <div id="runtimeDiagnostics" class="diagnostic-detail-stack" style="margin-top: 10px">
                 <p class="help">Checking runtime capabilities.</p>
               </div>
             </article>
 
-            <article class="section-card glass-panel capture-console">
-              <div class="quick-brand quick-only">
-                <div class="quick-brand-left">
-                  <div class="brand-mark headline">S</div>
-                  <div>
-                    <p class="quick-title headline">Starlog</p>
-                    <p class="quick-subtitle">Aetheris Command</p>
-                  </div>
-                </div>
-                <span class="section-chip">Popup</span>
-              </div>
-
-              <h2 class="section-title workspace-only">
-                <span class="section-title-main">Capture Surface</span>
+            <article class="section-card glass-panel config-panel">
+              <h2 class="section-title">
+                <span class="section-title-main">Interface Config</span>
               </h2>
-
-              <p class="capture-kicker">Capture clipboard and screenshots from any desktop app into Starlog.</p>
-
-              <div class="form-block workspace-only">
+              <div class="form-block">
                 <label class="label" for="apiBase">API base</label>
                 <input id="apiBase" value="http://localhost:8000" />
               </div>
-
-              <div class="form-block workspace-only">
+              <div class="form-block">
                 <label class="label" for="token">Bearer token</label>
                 <input id="token" type="password" placeholder="paste token" />
               </div>
-
-              <div class="capture-actions">
-                <button id="clipSelection" class="command-button" type="button">
-                  <span class="command-left">
-                    <span class="command-icon mono">CLP</span>
-                    <span class="command-label">Clip Clipboard</span>
-                  </span>
-                  <span class="command-meta quick-only">
-                    <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd>
-                  </span>
-                </button>
-
-                <button id="clipScreenshot" class="command-button" type="button">
-                  <span class="command-left">
-                    <span class="command-icon mono">IMG</span>
-                    <span class="command-label">Clip Screenshot</span>
-                  </span>
-                  <span class="command-meta quick-only">
-                    <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>S</kbd>
-                  </span>
-                </button>
-
-                <button id="quickOpenWorkspace" type="button" class="command-button quick-only">
-                  <span class="command-left">
-                    <span class="command-icon mono">WRK</span>
-                    <span class="command-label">Open Workspace</span>
-                  </span>
-                  <span class="command-meta">
-                    <kbd>Cmd</kbd><kbd>W</kbd>
-                  </span>
-                </button>
+              <div class="config-divider"></div>
+              <div class="toggle-row">
+                <div>
+                  <p class="label">Deep neural uplink</p>
+                  <p class="help">Encryption active. All tactical telemetry is routed through the Orion relay network.</p>
+                </div>
+                <button type="button" class="toggle-switch" aria-pressed="true"><span></span></button>
               </div>
-
-              <div class="workspace-capture-footer workspace-only">
-                <p class="workspace-capture-note">Need the compact taskbar popup? Switch to <code>Quick Surface</code>.</p>
+              <div class="config-divider"></div>
+              <div>
+                <p class="label">Quick capture relay</p>
+                <p class="help">
+                  Immediate capture lives in the compact popup. Keep the studio focused on diagnostics, config, and capture history.
+                </p>
               </div>
-
-              <p id="status">Waiting for action</p>
             </article>
           </div>
 
-          <article class="section-card glass-panel recent-wrap workspace-only">
+          <article class="section-card glass-panel recent-wrap">
             <h2 class="section-title">
               <span class="section-title-main">Recent Captures</span>
             </h2>
-            <div id="recentCaptures" style="margin-top: 10px">
-              <p class="help">No captures yet.</p>
+            <div id="recentCaptures" class="recent-grid" style="margin-top: 10px">
+              <article class="recent-empty-card">
+                <p class="help">No captures yet.</p>
+              </article>
             </div>
           </article>
         </section>
       </div>
+
+      <article class="section-card glass-panel capture-console quick-surface-panel">
+        <div class="quick-brand">
+          <div class="quick-brand-left">
+            <div class="brand-mark headline">S</div>
+            <div>
+              <p class="quick-title headline">Starlog</p>
+              <p class="quick-subtitle">Aetheris Command</p>
+            </div>
+          </div>
+          <span class="section-chip">Popup</span>
+        </div>
+
+        <p class="capture-kicker">Capture clipboard and screenshots from any desktop app into Starlog.</p>
+
+        <div class="capture-actions">
+          <button id="clipSelection" class="command-button" type="button">
+            <span class="command-left">
+              <span class="command-icon mono">CLP</span>
+              <span class="command-label">Clip Clipboard</span>
+            </span>
+            <span class="command-meta quick-only">
+              <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd>
+            </span>
+          </button>
+
+          <button id="clipScreenshot" class="command-button" type="button">
+            <span class="command-left">
+              <span class="command-icon mono">IMG</span>
+              <span class="command-label">Clip Screenshot</span>
+            </span>
+            <span class="command-meta quick-only">
+              <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>S</kbd>
+            </span>
+          </button>
+
+          <button id="quickOpenWorkspace" type="button" class="command-button">
+            <span class="command-left">
+              <span class="command-icon mono">WRK</span>
+              <span class="command-label">Open Workspace</span>
+            </span>
+            <span class="command-meta quick-only">
+              <kbd>Cmd</kbd><kbd>W</kbd>
+            </span>
+          </button>
+        </div>
+
+        <div class="quick-footer">
+          <span class="quick-sync"><span class="quick-sync-dot"></span>Sync active</span>
+          <span class="quick-avatar mono">A2</span>
+        </div>
+      </article>
+
+      <p id="status" class="status-line">Waiting for action</p>
     </main>
 
     <script type="module" src="./main.js"></script>
