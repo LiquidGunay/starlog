@@ -1,4 +1,19 @@
 const variant = process.env.APP_VARIANT || "production";
+const DEFAULT_VERSION_NAME =
+  process.env.STARLOG_VERSION_NAME || process.env.STARLOG_ANDROID_VERSION_NAME || "0.1.0";
+const DEFAULT_ANDROID_VERSION_CODE = parsePositiveInt(process.env.STARLOG_ANDROID_VERSION_CODE, 1);
+const DEFAULT_IOS_BUILD_NUMBER = process.env.STARLOG_IOS_BUILD_NUMBER || String(DEFAULT_ANDROID_VERSION_CODE);
+
+function parsePositiveInt(rawValue, fallbackValue) {
+  if (!rawValue) {
+    return fallbackValue;
+  }
+  const parsedValue = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsedValue) || parsedValue < 1) {
+    return fallbackValue;
+  }
+  return parsedValue;
+}
 
 function variantName(currentVariant) {
   if (currentVariant === "development") {
@@ -36,7 +51,7 @@ module.exports = {
     name: variantName(variant),
     slug: "starlog",
     scheme: "starlog",
-    version: "0.1.0",
+    version: DEFAULT_VERSION_NAME,
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
@@ -48,6 +63,7 @@ module.exports = {
     assetBundlePatterns: ["**/*"],
     ios: {
       supportsTablet: true,
+      buildNumber: DEFAULT_IOS_BUILD_NUMBER,
       bundleIdentifier: `com.starlog.app${packageSuffix}`,
     },
     android: {
@@ -55,6 +71,7 @@ module.exports = {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#0d1117",
       },
+      versionCode: DEFAULT_ANDROID_VERSION_CODE,
       package: `com.starlog.app${packageSuffix}`,
       intentFilters: [
         {

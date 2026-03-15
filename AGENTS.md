@@ -125,6 +125,23 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
+6a) If the dev client shows `Unable to load script` or a blank white screen, prime the first bundle explicitly:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> reverse tcp:8081 tcp:8081
+"$ADB_WIN" -s <SERIAL> shell am force-stop com.starlog.app.dev
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081%2Findex.bundle%3Fplatform%3Dandroid%26dev%3Dtrue%26minify%3Dfalse'
+```
+
+Expected checkpoint in Metro terminal:
+
+```text
+Android Bundled ... index.js (...)
+```
+
+After that first bundle completes, reopen the normal dev-client URL from step 6 and continue smoke/screenshots.
+
 7) Run the Android smoke flow after the app loads:
 
 ```bash
@@ -147,6 +164,8 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 Troubleshooting checklist:
 - `failed to connect to /192.168.0.102 (port 8081)`: relay is not reachable; re-check step 3 and step 4.
 - `unexpected end of stream on http://127.0.0.1:8081/...`: avoid the localhost reverse path for Metro on this host; use LAN URL flow above.
+- `Unable to load script` after opening the dev client: run step 6a once to prebuild the first bundle, wait for `Android Bundled ...`, then reopen step 6 URL.
+- White screen for ~20-40s on first open: keep phone unlocked and wait for first bundle compile to finish before retrying.
 - `adb devices` empty but phone appears in Device Manager: unlock phone, enable USB debugging, accept authorization prompt.
 - `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying wireless flow.
 
@@ -180,6 +199,7 @@ Troubleshooting checklist:
 - 2026-03-14: User wants old parallel workitems discarded and replaced with a fresh queue based on the latest architecture/workflow plan after `master` updates.
 - 2026-03-14: User wants additional architecture-plan workitems beyond the first queue refresh so agents can run a larger parallel batch.
 - 2026-03-14: User wants it explicit that each agent task must ship via PR and must rebase onto latest `master` when behind.
+- 2026-03-15: User wants mobile implementation/testing runs to include stored screenshots as completion proof.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -234,3 +254,9 @@ Troubleshooting checklist:
 - 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
 - 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
 - 2026-03-14: Running dependent `git checkout`/branch-creation commands in parallel can race and leave the worktree on `master`; branch-switch operations should be run sequentially to avoid accidental commits to local `master`.
+- 2026-03-15: On this phone, `adb shell svc power stayon usb` does not persist because secure-setting writes are restricted (`mStayOnWhilePluggedInSetting` remains `0`), so testers must keep the device manually unlocked.
+- 2026-03-15: A stale local debug APK triggered `Cannot find native module 'ExpoSecureStore'`; rebuilding `apps/mobile/android` and reinstalling `app-debug.apk` resolved the native-module mismatch.
+- 2026-03-15: Metro startup from this NTFS worktree can stall before binding `:8081`; using `/home/ubuntu/starlog` for long-running Metro/Gradle validation avoided the startup stall while edits remained in the worktree.
+- 2026-03-15: This host/phone pairing can still show a transient `Cannot connect to Metro...` toast even when localhost reverse transport (`tcp:8081`) bundles successfully; capture/test flows can proceed with that warning as a known dev-client transport quirk.
+- 2026-03-15: First dev-client open on this host can fail with `Unable to load script` until Metro finishes an initial bundle compile; a one-time explicit `index.bundle` deep-link via `adb reverse tcp:8081` consistently primes the session, after which normal `exp+starlog://expo-development-client/?url=http://<LAN_IP>:8081` opens work again.
+- 2026-03-15: Mobile design-alignment pass introduced icon usage from `@expo/vector-icons`; the `apps/mobile` workspace must include that dependency (and lockfile update) or Metro fails with `Unable to resolve "@expo/vector-icons" from "App.tsx"`.
