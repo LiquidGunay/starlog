@@ -34,6 +34,7 @@
 - Desktop helper now exposes runtime diagnostics for clipboard/screenshot/OCR/shortcut state, includes refresh/copy controls for redacted bug-report snapshots, falls back to browser clipboard reads when native access is unavailable, and cleans up temporary screenshot files after upload attempts.
 - Desktop helper diagnostics now keep latest-attempt notes with actionable fix hints, recent captures now show the backend that produced them, and the helper docs now include a real Linux/Windows host validation matrix.
 - Desktop helper host-matrix follow-up also validated the Windows PowerShell host path, fixed the Windows active-window probe (`$PID` collision), and maps Windows screenshot/window failures to actionable interactive-session guidance.
+- Desktop helper now also maps common macOS `screencapture`/`osascript` failures to explicit Screen Recording / Automation / Accessibility guidance, and runtime diagnostics now run a best-effort macOS active-window probe to surface permission issues early.
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
 - Mobile companion local state is now backed by Expo SQLite with migration from the earlier JSON-file store.

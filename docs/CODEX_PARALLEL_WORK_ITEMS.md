@@ -65,10 +65,10 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 
 ### 2. Worker auth and token lifecycle hardening
 
-- Branch: `codex/worker-auth-lifecycle-hardening`
-- Workitem ID: `WI-202`
-- Lock: `UNCLAIMED | Workitem: WI-202 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: harden worker pairing/auth/refresh/revoke semantics to match the security model.
+- Branch: `codex/desktop-helper-macos-validation`
+- Workitem ID: `WI-102`
+- Lock: `UNCLAIMED | Workitem: WI-102 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Goal: finish the remaining real macOS validation path for the desktop helper now that Linux and Windows host paths are covered.
 - Scope:
   - tighten short-lived access token behavior and refresh rotation,
   - enforce capability-scoped worker sessions during claim/execute paths,

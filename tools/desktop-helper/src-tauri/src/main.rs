@@ -251,6 +251,47 @@ fn actionable_windows_error(operation: &str, detail: &str) -> String {
     format!("{operation} failed on Windows. Detail: {normalized}")
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn actionable_macos_error(operation: &str, detail: &str) -> String {
+    let normalized = detail.trim();
+    if normalized.is_empty() {
+        return format!("{operation} failed on macOS.");
+    }
+
+    let lower = normalized.to_lowercase();
+    if lower.contains("not authorized to send apple events")
+        || (lower.contains("system events") && lower.contains("not authorized"))
+    {
+        return format!(
+            "{operation} requires macOS Automation permission for System Events. \
+             Allow the helper under System Settings -> Privacy & Security -> Automation. Detail: {normalized}"
+        );
+    }
+
+    if lower.contains("not allowed assistive access")
+        || lower.contains("assistive access")
+        || lower.contains("accessibility")
+    {
+        return format!(
+            "{operation} requires macOS Accessibility permission. \
+             Allow the helper under System Settings -> Privacy & Security -> Accessibility. Detail: {normalized}"
+        );
+    }
+
+    if lower.contains("operation not permitted")
+        || lower.contains("screen recording")
+        || lower.contains("cannot capture screen")
+        || lower.contains("failed to capture")
+    {
+        return format!(
+            "{operation} requires macOS Screen Recording permission. \
+             Allow the helper under System Settings -> Privacy & Security -> Screen Recording. Detail: {normalized}"
+        );
+    }
+
+    format!("{operation} failed on macOS. Detail: {normalized}")
+}
+
 #[cfg(any(target_os = "windows", test))]
 fn windows_active_window_script() -> &'static str {
     r#"
@@ -497,14 +538,91 @@ fn linux_active_window_runtime_capability() -> RuntimeCapability {
 }
 
 #[cfg(target_os = "macos")]
+fn macos_active_window_probe() -> Result<(Option<String>, Option<String>), String> {
+    let app_name = run_command(
+        "osascript",
+        &[
+            "-e",
+            "tell application \"System Events\" to get name of first application process whose frontmost is true",
+        ],
+    )
+    .map_err(|error| actionable_macos_error("Active window metadata", &error))
+    .map(non_empty)?;
+
+    let window_title = match run_command(
+        "osascript",
+        &[
+            "-e",
+            "tell application \"System Events\" to tell (first application process whose frontmost is true) to get name of front window",
+        ],
+    )
+    {
+        Ok(value) => non_empty(value),
+        Err(error) => {
+            let lower = error.to_lowercase();
+            if lower.contains("can't get window")
+                || lower.contains("can't get name of front window")
+                || lower.contains("invalid index")
+            {
+                None
+            } else {
+                return Err(actionable_macos_error("Active window metadata", &error));
+            }
+        }
+    };
+
+    if app_name.is_none() && window_title.is_none() {
+        return Err(
+            "Active window metadata probe returned no app/window values. \
+             Keep a normal app window focused and confirm Automation/Accessibility permissions for the helper."
+                .to_string(),
+        );
+    }
+
+    Ok((app_name, window_title))
+}
+
+#[cfg(target_os = "macos")]
 fn runtime_diagnostics() -> RuntimeDiagnostics {
+    let active_window_capability = if command_exists("osascript") {
+        match macos_active_window_probe() {
+            Ok((app_name, window_title)) => {
+                let mut detail = "Active window metadata is ready via osascript.".to_string();
+                if app_name.is_some() || window_title.is_some() {
+                    let app = app_name.unwrap_or_else(|| "Unknown app".to_string());
+                    let window = window_title.unwrap_or_else(|| "Unknown window".to_string());
+                    detail = format!("Active window metadata is ready via osascript. Probe saw: {app} / {window}.");
+                }
+                capability(
+                    "available",
+                    detail,
+                    Some("osascript"),
+                    vec!["osascript".to_string()],
+                )
+            }
+            Err(error) => capability(
+                "degraded",
+                error,
+                Some("osascript"),
+                vec!["osascript".to_string()],
+            ),
+        }
+    } else {
+        capability(
+            "degraded",
+            "Active window metadata is best-effort only until osascript is available.",
+            None,
+            Vec::new(),
+        )
+    };
+
     RuntimeDiagnostics {
         runtime: "tauri".to_string(),
         platform: "macos".to_string(),
         clipboard: if command_exists("pbpaste") {
             capability(
                 "available",
-                "Clipboard capture is ready via pbpaste.",
+                "Clipboard capture is ready via pbpaste. If reads fail, grant clipboard access prompt for the helper.",
                 Some("pbpaste"),
                 vec!["pbpaste".to_string()],
             )
@@ -519,7 +637,8 @@ fn runtime_diagnostics() -> RuntimeDiagnostics {
         screenshot: if command_exists("screencapture") {
             capability(
                 "available",
-                "Interactive screenshot capture is ready via screencapture.",
+                "Interactive screenshot capture is ready via screencapture. \
+                 macOS Screen Recording permission is required if captures keep failing.",
                 Some("screencapture"),
                 vec!["screencapture".to_string()],
             )
@@ -531,21 +650,7 @@ fn runtime_diagnostics() -> RuntimeDiagnostics {
                 Vec::new(),
             )
         },
-        active_window: if command_exists("osascript") {
-            capability(
-                "available",
-                "Active window metadata is ready via osascript.",
-                Some("osascript"),
-                vec!["osascript".to_string()],
-            )
-        } else {
-            capability(
-                "degraded",
-                "Active window metadata is best-effort only until osascript is available.",
-                None,
-                Vec::new(),
-            )
-        },
+        active_window: active_window_capability,
         ocr: ocr_runtime_capability(),
     }
 }
@@ -684,27 +789,19 @@ fn runtime_diagnostics() -> RuntimeDiagnostics {
 
 #[cfg(target_os = "macos")]
 fn active_window_context() -> ActiveWindowContext {
-    ActiveWindowContext {
-        app_name: run_command(
-            "osascript",
-            &[
-                "-e",
-                "tell application \"System Events\" to get name of first application process whose frontmost is true",
-            ],
-        )
-        .ok()
-        .and_then(non_empty),
-        window_title: run_command(
-            "osascript",
-            &[
-                "-e",
-                "tell application \"System Events\" to tell (first application process whose frontmost is true) to get name of front window",
-            ],
-        )
-        .ok()
-        .and_then(non_empty),
-        platform: "macos".to_string(),
-        backend: Some("osascript".to_string()),
+    match macos_active_window_probe() {
+        Ok((app_name, window_title)) => ActiveWindowContext {
+            app_name,
+            window_title,
+            platform: "macos".to_string(),
+            backend: Some("osascript".to_string()),
+        },
+        Err(_) => ActiveWindowContext {
+            app_name: None,
+            window_title: None,
+            platform: "macos".to_string(),
+            backend: Some("osascript-error".to_string()),
+        },
     }
 }
 
@@ -875,19 +972,44 @@ fn capture_screenshot(path: &Path) -> ScreenshotCaptureAttempt {
 
     #[cfg(target_os = "macos")]
     {
-        let status = Command::new("screencapture")
+        let output = Command::new("screencapture")
             .args(["-i", &target])
-            .status()
+            .output()
             .map_err(|error| format!("failed to run screencapture: {error}"));
-        return match status {
-            Ok(status) if status.success() => {
+        return match output {
+            Ok(output) if output.status.success() => {
                 captured_screenshot_attempt(format!("Screenshot captured: {target}"), "screencapture")
             }
-            Ok(_) => cancelled_screenshot_attempt(
-                "Screenshot capture was cancelled or failed",
-                "screencapture",
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let detail = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    String::new()
+                };
+                let lower = detail.to_lowercase();
+                if lower.contains("cancel")
+                    || lower.contains("user canceled")
+                    || detail.is_empty()
+                {
+                    cancelled_screenshot_attempt(
+                        "Screenshot capture was cancelled or failed",
+                        "screencapture",
+                    )
+                } else {
+                    failed_screenshot_attempt(
+                        actionable_macos_error("Screenshot capture", &detail),
+                        Some("screencapture"),
+                    )
+                }
+            }
+            Err(error) => failed_screenshot_attempt(
+                actionable_macos_error("Screenshot capture", &error),
+                Some("screencapture"),
             ),
-            Err(error) => failed_screenshot_attempt(error, Some("screencapture")),
         };
     }
 
@@ -1148,6 +1270,26 @@ mod tests {
         );
 
         assert!(detail.contains("focused foreground window"));
+    }
+
+    #[test]
+    fn actionable_macos_error_flags_automation_permission_requirement() {
+        let detail = actionable_macos_error(
+            "Active window metadata",
+            "System Events got an error: Not authorized to send Apple events to System Events.",
+        );
+
+        assert!(detail.contains("Automation permission"));
+    }
+
+    #[test]
+    fn actionable_macos_error_flags_screen_recording_permission_requirement() {
+        let detail = actionable_macos_error(
+            "Screenshot capture",
+            "screencapture: cannot capture screen while operation not permitted",
+        );
+
+        assert!(detail.contains("Screen Recording permission"));
     }
 
     #[test]

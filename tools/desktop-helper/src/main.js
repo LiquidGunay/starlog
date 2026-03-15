@@ -308,6 +308,9 @@ function screenshotFailureHint(result, message) {
   const status = typeof result?.status === "string" ? result.status : "";
 
   if (backend === "screencapture") {
+    if (/screen recording|not authorized|operation not permitted|cannot capture screen/i.test(message)) {
+      return "Grant Screen Recording permission to the helper in macOS Privacy & Security settings, then retry.";
+    }
     return status === "cancelled"
       ? "Complete the macOS selection to capture a screenshot, or press Escape intentionally to cancel."
       : "Confirm Screen Recording permission for the helper and that screencapture is available.";
@@ -690,11 +693,21 @@ async function readCaptureContext() {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const result = await invoke("clip_active_window_context");
+    const backend = result?.backend || "tauri";
+    if (backend === "osascript-error") {
+      updateCapabilityNote(
+        "activeWindow",
+        "Last active-window probe failed via osascript. Grant Automation and Accessibility permissions for the helper, then retry.",
+        {
+          status: degradedStatusForCapability("activeWindow"),
+        },
+      );
+    }
     return {
       display: {
         appName: result?.app_name || "Unknown app",
         windowTitle: result?.window_title || "Unknown window",
-        contextBackend: result?.backend || "tauri",
+        contextBackend: backend,
         platform: result?.platform || navigator.platform || "unknown",
         clippedAt,
       },
@@ -703,7 +716,7 @@ async function readCaptureContext() {
         clipped_at: clippedAt,
         active_app: result?.app_name || undefined,
         window_title: result?.window_title || undefined,
-        context_backend: result?.backend || "tauri",
+        context_backend: backend,
         platform: result?.platform || navigator.platform || "unknown",
       },
     };
