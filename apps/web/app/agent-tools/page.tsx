@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -140,7 +139,6 @@ export default function AgentToolsPage() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Command Center</p>
           <h1>LLM-control surface</h1>

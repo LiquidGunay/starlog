@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import { useSessionConfig } from "../session-provider";
-import { SessionControls } from "./session-controls";
 
 type ConsoleState = {
   artifactId: string;
@@ -117,7 +116,6 @@ export function ApiConsole() {
 
   return (
     <section className="workspace glass">
-      <SessionControls />
       <div className="console-grid">
         <div>
           <p className="eyebrow">Live API Console</p>

@@ -3,7 +3,6 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -442,7 +441,6 @@ function CalendarPageContent() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Chronos Matrix</p>
           <h1>Weekly board and event lifecycle</h1>

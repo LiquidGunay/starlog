@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { runOfflineWarmup, type OfflineWarmupResult } from "../lib/offline-warmup";
 import { apiRequest } from "../lib/starlog-client";
@@ -239,7 +238,6 @@ export default function SyncCenterPage() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Neural Sync</p>
           <h1>PWA outbox and replay log</h1>

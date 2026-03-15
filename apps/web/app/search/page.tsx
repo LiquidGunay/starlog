@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { searchLocalSnapshots } from "../lib/local-search";
 import { apiRequest } from "../lib/starlog-client";
@@ -118,7 +117,6 @@ export default function SearchPage() {
   return (
     <main className="shell">
       <section className="workspace glass">
-        <SessionControls />
         <div>
           <p className="eyebrow">Artifact Nexus</p>
           <h1>Cross-workspace retrieval</h1>
