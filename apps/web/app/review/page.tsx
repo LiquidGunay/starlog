@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -269,10 +268,6 @@ export default function ReviewPage() {
               ))}
             </div>
           )}
-          <details>
-            <summary className="label">PWA session controls</summary>
-            <SessionControls />
-          </details>
         </div>
       </section>
     </main>

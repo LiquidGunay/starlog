@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSessionConfig } from "../session-provider";
 
 type Surface = {
   id: "command-center" | "artifact-nexus" | "neural-sync" | "chronos-matrix";
@@ -21,7 +22,7 @@ const SURFACES: Surface[] = [
     id: "command-center",
     label: "Command Center",
     href: "/assistant",
-    prefixes: ["/", "/notes", "/tasks", "/assistant", "/agent-tools", "/ai-jobs", "/mobile-share", "/share-target"],
+    prefixes: ["/", "/notes", "/tasks", "/assistant", "/agent-tools", "/ai-jobs", "/mobile-share", "/share-target", "/runtime"],
     glyph: "◻",
   },
   {
@@ -81,6 +82,7 @@ function matchesPath(pathname: string, prefixes: string[]): boolean {
 
 export function TopNavigation() {
   const pathname = usePathname();
+  const { isOnline, outbox } = useSessionConfig();
   const activeSurface = SURFACES.find((surface) => matchesPath(pathname, surface.prefixes)) ?? SURFACES[0];
   const utilityLinks = CONTEXT_LINKS[activeSurface.id];
 
@@ -112,6 +114,14 @@ export function TopNavigation() {
             <span className="system-dot" aria-hidden="true" />
             SYS.READY
           </span>
+          <Link href="/runtime" className={pathname === "/runtime" ? "runtime-chip active" : "runtime-chip"}>
+            <span
+              className={isOnline ? "runtime-chip-dot online" : "runtime-chip-dot offline"}
+              aria-hidden="true"
+            />
+            Runtime
+            <span className="runtime-chip-meta">{outbox.length} queued</span>
+          </Link>
           <span className="avatar-chip" aria-hidden="true">
             ⦿
           </span>

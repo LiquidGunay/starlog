@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { SessionControls } from "../components/session-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -588,11 +587,6 @@ export default function PlannerPage() {
                   <p className="console-copy">{oauthStatus.detail}</p>
                 </>
               )}
-            </details>
-
-            <details>
-              <summary className="label">PWA session controls</summary>
-              <SessionControls />
             </details>
           </div>
         </aside>
