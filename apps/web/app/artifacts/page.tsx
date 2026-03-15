@@ -61,6 +61,7 @@ const ARTIFACT_CACHE_PREFIXES = ["artifacts."];
 const ARTIFACT_ITEMS_ENTITY_SCOPE = "artifacts.items";
 const ARTIFACT_GRAPH_ENTITY_SCOPE = "artifacts.graph";
 const ARTIFACT_VERSIONS_ENTITY_SCOPE = "artifacts.versions";
+const ARTIFACT_NODE_LIMIT = 8;
 
 function artifactGraphCacheKey(artifactId: string): string {
   return `artifacts.graph:${artifactId}`;
@@ -127,6 +128,65 @@ function cacheArtifactContext(
   ]);
 }
 
+type ArtifactCategory = "raw" | "summary" | "task";
+
+type ArtifactGraphNode = {
+  artifact: Artifact;
+  category: ArtifactCategory;
+  x: number;
+  y: number;
+};
+
+function resolveArtifactCategory(sourceType: string): ArtifactCategory {
+  const normalized = sourceType.toLowerCase();
+  if (normalized.includes("summary") || normalized.includes("note")) {
+    return "summary";
+  }
+  if (normalized.includes("task") || normalized.includes("review")) {
+    return "task";
+  }
+  return "raw";
+}
+
+function categoryEnabled(category: ArtifactCategory, raw: boolean, summary: boolean, task: boolean): boolean {
+  if (category === "raw") {
+    return raw;
+  }
+  if (category === "summary") {
+    return summary;
+  }
+  return task;
+}
+
+function categoryColor(category: ArtifactCategory): string {
+  if (category === "summary") {
+    return "#9c89ff";
+  }
+  if (category === "task") {
+    return "#f59e0b";
+  }
+  return "#94a3b8";
+}
+
+function buildArtifactGraphNodes(artifacts: Artifact[]): ArtifactGraphNode[] {
+  if (artifacts.length === 0) {
+    return [];
+  }
+  const radiusX = 34;
+  const radiusY = 32;
+  const centerX = 44;
+  const centerY = 50;
+  return artifacts.map((artifact, index) => {
+    const angle = (Math.PI * 2 * index) / artifacts.length - Math.PI / 2;
+    return {
+      artifact,
+      category: resolveArtifactCategory(artifact.source_type),
+      x: centerX + Math.cos(angle) * radiusX,
+      y: centerY + Math.sin(angle) * radiusY,
+    };
+  });
+}
+
 function ArtifactsPageContent() {
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
@@ -139,7 +199,25 @@ function ArtifactsPageContent() {
   const [quickUrl, setQuickUrl] = useState("");
   const [quickClip, setQuickClip] = useState("Capture from artifact workspace.");
   const [deferAi, setDeferAi] = useState(false);
+  const [showRaw, setShowRaw] = useState(true);
+  const [showSummary, setShowSummary] = useState(true);
+  const [showTask, setShowTask] = useState(true);
   const visibleItems = useMemo(() => applyOptimisticArtifacts(items, outbox), [items, outbox]);
+  const filteredArtifacts = useMemo(
+    () => visibleItems.filter((artifact) => categoryEnabled(resolveArtifactCategory(artifact.source_type), showRaw, showSummary, showTask)),
+    [showRaw, showSummary, showTask, visibleItems],
+  );
+  const selectedArtifact = useMemo(
+    () => visibleItems.find((artifact) => artifact.id === selectedId) || graph?.artifact || null,
+    [graph?.artifact, selectedId, visibleItems],
+  );
+  const graphNodes = useMemo(() => {
+    const limited = filteredArtifacts.slice(0, ARTIFACT_NODE_LIMIT);
+    if (selectedArtifact && !limited.some((artifact) => artifact.id === selectedArtifact.id)) {
+      limited[0] = selectedArtifact;
+    }
+    return buildArtifactGraphNodes(limited);
+  }, [filteredArtifacts, selectedArtifact]);
 
   useEffect(() => {
     setItems((previous) => previous.length > 0 ? previous : readEntitySnapshot<Artifact[]>(ARTIFACT_ITEMS_SNAPSHOT, []));
@@ -426,117 +504,225 @@ function ArtifactsPageContent() {
   }, [selectedId]);
 
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <SessionControls />
-        <div>
-          <p className="eyebrow">Artifacts</p>
-          <h1>Clip inbox and references</h1>
-          <p className="console-copy">Review everything clipped from browser, desktop helper, and mobile share.</p>
-          <label className="label" htmlFor="quick-title">Title</label>
-          <input
-            id="quick-title"
-            className="input"
-            value={quickTitle}
-            onChange={(event) => setQuickTitle(event.target.value)}
-          />
-          <label className="label" htmlFor="quick-url">Source URL (optional)</label>
-          <input
-            id="quick-url"
-            className="input"
-            value={quickUrl}
-            onChange={(event) => setQuickUrl(event.target.value)}
-            placeholder="https://..."
-          />
-          <label className="label" htmlFor="quick-clip">Quick clip</label>
-          <textarea
-            id="quick-clip"
-            className="textarea"
-            value={quickClip}
-            onChange={(event) => setQuickClip(event.target.value)}
-          />
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => createArtifact()}>Create Clip</button>
-            <button className="button" type="button" onClick={() => loadArtifacts()}>Refresh</button>
-            <Link className="button" href="/ai-jobs">AI Jobs</Link>
-          </div>
-          <label className="label" htmlFor="defer-ai">
-            <input
-              id="defer-ai"
-              type="checkbox"
-              checked={deferAi}
-              onChange={(event) => setDeferAi(event.target.checked)}
-            />{" "}
-            Queue summarize/cards/tasks for local Codex runner instead of running now
+    <main className="artifact-nexus-shell">
+      <section className="artifact-nexus-canvas">
+        <aside className="artifact-filter-hud">
+          <h2>Filter HUD</h2>
+          <label htmlFor="filter-raw">
+            <input id="filter-raw" type="checkbox" checked={showRaw} onChange={(event) => setShowRaw(event.target.checked)} />
+            Raw Clips
           </label>
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => runAction("summarize")}>Summarize</button>
-            <button className="button" type="button" onClick={() => runAction("cards")}>Create Cards</button>
-            <button className="button" type="button" onClick={() => runAction("tasks")}>Suggest Tasks</button>
-            <button className="button" type="button" onClick={() => runAction("append_note")}>Append Note</button>
+          <label htmlFor="filter-summary">
+            <input id="filter-summary" type="checkbox" checked={showSummary} onChange={(event) => setShowSummary(event.target.checked)} />
+            Summaries
+          </label>
+          <label htmlFor="filter-task">
+            <input id="filter-task" type="checkbox" checked={showTask} onChange={(event) => setShowTask(event.target.checked)} />
+            Extracted Tasks
+          </label>
+          <p className="console-copy">Visible nodes: {graphNodes.length}</p>
+        </aside>
+
+        <div className="artifact-graph" aria-hidden="true">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            {graphNodes.map((node, index) => {
+              const next = graphNodes[(index + 1) % graphNodes.length];
+              if (!next || index === graphNodes.length - 1) {
+                return null;
+              }
+              return (
+                <line
+                  key={`edge-${node.artifact.id}-${next.artifact.id}`}
+                  x1={node.x}
+                  y1={node.y}
+                  x2={next.x}
+                  y2={next.y}
+                  stroke="rgba(148,163,184,0.28)"
+                  strokeWidth="0.24"
+                />
+              );
+            })}
+            {graphNodes.map((node) => {
+              const active = node.artifact.id === selectedId;
+              const label = (node.artifact.title || node.artifact.id).slice(0, 12);
+              return (
+                <g
+                  key={node.artifact.id}
+                  className={active ? "artifact-node active" : "artifact-node"}
+                  onClick={() => {
+                    setSelectedId(node.artifact.id);
+                  }}
+                >
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={active ? 2.15 : 1.7}
+                    fill="rgba(16, 11, 31, 0.92)"
+                    stroke={categoryColor(node.category)}
+                    strokeWidth={active ? 0.55 : 0.3}
+                  />
+                  <text
+                    x={node.x}
+                    y={node.y + 4.1}
+                    fill="#94a3b8"
+                    textAnchor="middle"
+                    fontFamily="JetBrains Mono"
+                    fontSize="1.2"
+                  >
+                    {label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        <aside className="artifact-inspector">
+          <header className="artifact-inspector-header">
+            <p className="eyebrow">Artifact Nexus</p>
+            <h1>Clip inbox and references</h1>
+            <p className="status">{status}</p>
+          </header>
+
+          <div className="artifact-inspector-body">
+            <article className="artifact-card">
+              <h2>Inbox</h2>
+              {visibleItems.length === 0 ? (
+                <p className="console-copy">No artifacts yet.</p>
+              ) : (
+                <ul className="artifact-inbox-list">
+                  {visibleItems.map((artifact) => (
+                    <li key={artifact.id}>
+                      <button className="button" type="button" onClick={() => {
+                        setSelectedId(artifact.id);
+                      }}>
+                        {artifact.title || artifact.id} ({artifact.source_type})
+                      </button>
+                      {artifact.pending ? (
+                        <p className="console-copy">Pending: {artifact.pendingLabel || "queued mutation"}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+
+            <article className="artifact-card">
+              <h2>Metadata</h2>
+              {!selectedArtifact ? (
+                <p className="console-copy">Select an artifact to inspect metadata.</p>
+              ) : (
+                <dl className="artifact-metadata-grid">
+                  <dt>Artifact</dt>
+                  <dd>{selectedArtifact.title || selectedArtifact.id}</dd>
+                  <dt>Source</dt>
+                  <dd>{selectedArtifact.source_type}</dd>
+                  <dt>Created</dt>
+                  <dd>{new Date(selectedArtifact.created_at).toLocaleString()}</dd>
+                  <dt>Status</dt>
+                  <dd>{selectedArtifact.pending ? "queued" : "captured"}</dd>
+                </dl>
+              )}
+            </article>
+
+            <article className="artifact-card">
+              <h2>Linked graph</h2>
+              {selectedId.startsWith("pending:") ? (
+                <p className="console-copy">Replay the queued capture before graph data is available.</p>
+              ) : !graph ? (
+                <p className="console-copy">Select an artifact to inspect graph links.</p>
+              ) : (
+                <>
+                  <p className="console-copy">Summaries: {graph.summaries.length}</p>
+                  <p className="console-copy">Cards: {graph.cards.length}</p>
+                  <p className="console-copy">Tasks: {graph.tasks.length}</p>
+                  <p className="console-copy">Notes: {graph.notes.length}</p>
+                  <p className="console-copy">Relations: {graph.relations.length}</p>
+                  {graph.relations.slice(0, 4).map((relation) => (
+                    <p key={relation.id} className="console-copy">
+                      {relation.relation_type} → {relation.target_type} ({relation.target_id})
+                    </p>
+                  ))}
+                </>
+              )}
+            </article>
+
+            <article className="artifact-card">
+              <h2>Version history</h2>
+              {selectedId.startsWith("pending:") ? (
+                <p className="console-copy">Replay the queued capture before version history is available.</p>
+              ) : !versions ? (
+                <p className="console-copy">Select an artifact to inspect versions.</p>
+              ) : (
+                <>
+                  <p className="console-copy">Summary versions: {versions.summaries.length}</p>
+                  <p className="console-copy">Card set versions: {versions.card_sets.length}</p>
+                  <p className="console-copy">Action runs: {versions.actions.length}</p>
+                  {versions.actions.slice(0, 5).map((action) => (
+                    <p key={action.id} className="console-copy">
+                      {action.action} [{action.status}]
+                    </p>
+                  ))}
+                </>
+              )}
+            </article>
+
+            <article className="artifact-card">
+              <h2>Action console</h2>
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => runAction("summarize")}>Summarize</button>
+                <button className="button" type="button" onClick={() => runAction("cards")}>Create Cards</button>
+                <button className="button" type="button" onClick={() => runAction("tasks")}>Suggest Tasks</button>
+                <button className="button" type="button" onClick={() => runAction("append_note")}>Append Note</button>
+                <Link className="button" href="/ai-jobs">AI Jobs</Link>
+              </div>
+              <label className="label" htmlFor="defer-ai">
+                <input
+                  id="defer-ai"
+                  type="checkbox"
+                  checked={deferAi}
+                  onChange={(event) => setDeferAi(event.target.checked)}
+                />{" "}
+                Queue summarize/cards/tasks for local Codex runner instead of running now
+              </label>
+            </article>
+
+            <details className="artifact-quick-capture" open>
+              <summary>Quick capture controls</summary>
+              <label className="label" htmlFor="quick-title">Title</label>
+              <input
+                id="quick-title"
+                className="input"
+                value={quickTitle}
+                onChange={(event) => setQuickTitle(event.target.value)}
+              />
+              <label className="label" htmlFor="quick-url">Source URL (optional)</label>
+              <input
+                id="quick-url"
+                className="input"
+                value={quickUrl}
+                onChange={(event) => setQuickUrl(event.target.value)}
+                placeholder="https://..."
+              />
+              <label className="label" htmlFor="quick-clip">Quick clip</label>
+              <textarea
+                id="quick-clip"
+                className="textarea"
+                value={quickClip}
+                onChange={(event) => setQuickClip(event.target.value)}
+              />
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => createArtifact()}>Create Clip</button>
+                <button className="button" type="button" onClick={() => loadArtifacts()}>Refresh</button>
+              </div>
+            </details>
+
+            <details className="artifact-quick-capture">
+              <summary>PWA session controls</summary>
+              <SessionControls />
+            </details>
           </div>
-          <p className="status">{status}</p>
-        </div>
-
-        <div className="panel glass">
-          <h2>Inbox</h2>
-          {visibleItems.length === 0 ? (
-            <p className="console-copy">No artifacts yet.</p>
-          ) : (
-            <ul>
-              {visibleItems.map((artifact) => (
-                <li key={artifact.id}>
-                  <button className="button" type="button" onClick={() => {
-                    setSelectedId(artifact.id);
-                  }}>
-                    {artifact.title || artifact.id} ({artifact.source_type})
-                  </button>
-                  {artifact.pending ? (
-                    <p className="console-copy">Pending: {artifact.pendingLabel || "queued mutation"}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Linked graph</h2>
-          {selectedId.startsWith("pending:") ? (
-            <p className="console-copy">Replay the queued capture before graph data is available.</p>
-          ) : !graph ? (
-            <p className="console-copy">Select an artifact to inspect graph links.</p>
-          ) : (
-            <div>
-              <p className="console-copy">Summaries: {graph.summaries.length}</p>
-              <p className="console-copy">Cards: {graph.cards.length}</p>
-              <p className="console-copy">Tasks: {graph.tasks.length}</p>
-              <p className="console-copy">Notes: {graph.notes.length}</p>
-              <p className="console-copy">Relations: {graph.relations.length}</p>
-              {graph.relations.slice(0, 4).map((relation) => (
-                <p key={relation.id} className="console-copy">
-                  {relation.relation_type} → {relation.target_type} ({relation.target_id})
-                </p>
-              ))}
-            </div>
-          )}
-
-          <h2>Version history</h2>
-          {selectedId.startsWith("pending:") ? (
-            <p className="console-copy">Replay the queued capture before version history is available.</p>
-          ) : !versions ? (
-            <p className="console-copy">Select an artifact to inspect versions.</p>
-          ) : (
-            <div>
-              <p className="console-copy">Summary versions: {versions.summaries.length}</p>
-              <p className="console-copy">Card set versions: {versions.card_sets.length}</p>
-              <p className="console-copy">Action runs: {versions.actions.length}</p>
-              {versions.actions.slice(0, 5).map((action) => (
-                <p key={action.id} className="console-copy">
-                  {action.action} [{action.status}]
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
+        </aside>
       </section>
     </main>
   );

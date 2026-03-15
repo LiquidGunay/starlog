@@ -45,7 +45,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-301. Android release signing + versioning hardening
 - Branch: `codex/mobile-release-signing-versioning`
-- Lock: `UNCLAIMED | Workitem: WI-301 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-301 | Owner: N/A | Claimed: 2026-03-15T05:49:44Z | Last heartbeat: 2026-03-15T10:53:46Z`
 - Goal: make Android release output store-ready (no debug signing/default app id drift).
 - Scope:
   - finalize release signing configuration (keystore/alias/password wiring),
@@ -75,7 +75,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-303. Android release QA matrix (device-first)
 - Branch: `codex/mobile-release-qa-matrix`
-- Lock: `UNCLAIMED | Workitem: WI-303 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-303 | Owner: N/A | Claimed: 2026-03-15T10:55:49Z | Last heartbeat: 2026-03-15T10:55:49Z`
 - Goal: validate all v1 companion flows on real Android hardware.
 - Scope:
   - deep-link capture,
@@ -107,7 +107,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-305. Android store-distribution package prep
 - Branch: `codex/mobile-store-distribution-pack`
-- Lock: `UNCLAIMED | Workitem: WI-305 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-305 | Owner: N/A | Claimed: 2026-03-15T11:02:38Z | Last heartbeat: 2026-03-15T11:02:38Z`
 - Goal: prepare non-code artifacts required for v1 Android distribution.
 - Scope:
   - release notes template,
@@ -122,7 +122,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-306. Mobile release candidate cut + handoff
 - Branch: `codex/mobile-v1-rc-cut`
-- Lock: `UNCLAIMED | Workitem: WI-306 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `IN_PROGRESS | Workitem: WI-306 | Owner: Agent codex-mobile-9061 | Claimed: 2026-03-15T11:06:18Z | Last heartbeat: 2026-03-15T11:08:29Z`
 - Goal: package mobile release candidate and handoff with rollback notes.
 - Scope:
   - RC build selection,
@@ -138,7 +138,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-321. Desktop installer artifact pipeline
 - Branch: `codex/desktop-installer-artifacts`
-- Lock: `UNCLAIMED | Workitem: WI-321 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-321 | Owner: N/A | Claimed: 2026-03-15T05:53:33Z | Last heartbeat: 2026-03-15T10:50:52Z`
 - Goal: produce distributable desktop helper artifacts beyond raw binary output.
 - Scope:
   - target packaging outputs for v1 platforms,
@@ -151,7 +151,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-322. Desktop signing/notarization readiness
 - Branch: `codex/desktop-signing-notarization`
-- Lock: `UNCLAIMED | Workitem: WI-322 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-322 | Owner: N/A | Claimed: 2026-03-15T05:53:39Z | Last heartbeat: 2026-03-15T10:50:52Z`
 - Goal: ensure desktop binaries can be distributed without trust/security warnings where applicable.
 - Scope:
   - signing credential flow per target OS,
@@ -164,7 +164,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-323. Desktop runtime dependency + diagnostics hardening
 - Branch: `codex/desktop-runtime-deps-diagnostics`
-- Lock: `UNCLAIMED | Workitem: WI-323 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-323 | Owner: N/A | Claimed: 2026-03-15T05:53:45Z | Last heartbeat: 2026-03-15T10:50:53Z`
 - Goal: reduce support risk by validating host dependency behavior and diagnostics quality.
 - Scope:
   - confirm runtime behavior with/without OCR dependency,
@@ -178,7 +178,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-324. Desktop QA matrix (Windows + macOS focus)
 - Branch: `codex/desktop-win-macos-qa`
-- Lock: `UNCLAIMED | Workitem: WI-324 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-324 | Owner: N/A | Claimed: 2026-03-15T05:53:47Z | Last heartbeat: 2026-03-15T10:50:54Z`
 - Goal: verify v1 helper flows on target user platforms.
 - Scope:
   - clipboard clip,
@@ -195,7 +195,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-325. Desktop v1 release package + handoff
 - Branch: `codex/desktop-v1-release-pack`
-- Lock: `UNCLAIMED | Workitem: WI-325 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-325 | Owner: N/A | Claimed: 2026-03-15T05:53:50Z | Last heartbeat: 2026-03-15T10:50:55Z`
 - Goal: publish-ready desktop package definition with checksums/changelog/install notes.
 - Scope:
   - RC artifact selection,
@@ -210,7 +210,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-341. Unblock web build (planner + sync center)
 - Branch: `codex/pwa-build-unblock`
-- Lock: `UNCLAIMED | Workitem: WI-341 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-341 | Owner: N/A | Claimed: 2026-03-15T05:57:10Z | Last heartbeat: 2026-03-15T10:34:13Z`
 - Goal: restore passing web typecheck/lint/build on current `master`.
 - Scope:
   - resolve duplicate symbol/regression issues in planner,
@@ -225,7 +225,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-342. PWA release verification gate
 - Branch: `codex/pwa-release-verification-gate`
-- Lock: `UNCLAIMED | Workitem: WI-342 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-342 | Owner: N/A | Claimed: 2026-03-15T10:35:24Z | Last heartbeat: 2026-03-15T10:36:43Z`
 - Goal: define a repeatable pre-deploy verification pass for the PWA.
 - Scope:
   - codify required checks in one runbook command sequence,
@@ -237,7 +237,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-343. Railway production config hardening
 - Branch: `codex/pwa-railway-prod-config`
-- Lock: `UNCLAIMED | Workitem: WI-343 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-343 | Owner: N/A | Claimed: 2026-03-15T10:38:46Z | Last heartbeat: 2026-03-15T10:38:46Z`
 - Goal: finalize Railway API + web config for secure/stable v1 operation.
 - Scope:
   - validate required env vars (`STARLOG_ENV`, DB/media paths, CORS, secrets master key),
@@ -250,7 +250,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-344. Hosted PWA production smoke + integration checks
 - Branch: `codex/pwa-hosted-smoke`
-- Lock: `UNCLAIMED | Workitem: WI-344 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-344 | Owner: N/A | Claimed: 2026-03-15T10:45:06Z | Last heartbeat: 2026-03-15T10:45:06Z`
 - Goal: verify critical user flows on hosted Railway deployment.
 - Scope:
   - bootstrap/login/session controls,
@@ -264,7 +264,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-345. Backup/restore + portability drill for hosted v1
 - Branch: `codex/pwa-portability-drill`
-- Lock: `UNCLAIMED | Workitem: WI-345 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-345 | Owner: N/A | Claimed: 2026-03-15T10:46:28Z | Last heartbeat: 2026-03-15T10:46:28Z`
 - Goal: verify that v1 hosted data can be exported/restored reliably.
 - Scope:
   - export snapshot generation,
@@ -278,7 +278,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-346. PWA go-live runbook + rollback/monitoring
 - Branch: `codex/pwa-go-live-runbook`
-- Lock: `UNCLAIMED | Workitem: WI-346 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-346 | Owner: N/A | Claimed: 2026-03-15T10:57:26Z | Last heartbeat: 2026-03-15T10:57:26Z`
 - Goal: finalize operational readiness for v1 launch.
 - Scope:
   - deployment order,

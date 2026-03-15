@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
   cachePrefixesIntersect,
@@ -72,7 +73,7 @@ type TimelineItem = {
 const PLANNER_BLOCKS_SNAPSHOT = "planner.blocks";
 const PLANNER_EVENTS_SNAPSHOT = "planner.events";
 const PLANNER_CONFLICTS_SNAPSHOT = "planner.conflicts";
-const PLANNER_OAUTH_SNAPSHOT = "planner.oauth";
+const PLANNER_OAUTH_STATUS_SNAPSHOT = "planner.oauth_status";
 const PLANNER_DATE_SNAPSHOT = "planner.date";
 const PLANNER_CACHE_PREFIXES = ["planner.", "calendar."];
 const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
@@ -146,12 +147,11 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-const PLANNER_DATE_SNAPSHOT = "planner.date";
-const PLANNER_BLOCKS_SNAPSHOT = "planner.blocks";
-const PLANNER_EVENTS_SNAPSHOT = "planner.events";
-const PLANNER_CONFLICTS_SNAPSHOT = "planner.conflicts";
-const PLANNER_OAUTH_STATUS_SNAPSHOT = "planner.oauth_status";
-const PLANNER_CACHE_PREFIXES = ["planner."];
+function isoDateFromOffset(baseDate: string, offset: number): string {
+  const stamp = new Date(`${baseDate}T00:00:00`);
+  stamp.setDate(stamp.getDate() + offset);
+  return stamp.toISOString().slice(0, 10);
+}
 
 export default function PlannerPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
@@ -251,6 +251,7 @@ export default function PlannerPage() {
       );
       setBlocks(payload.blocks);
       writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, payload.blocks);
+      cachePlannerBlocks(payload.blocks);
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(`Generated ${payload.generated} blocks for ${date}`);
     } catch (error) {
@@ -263,6 +264,7 @@ export default function PlannerPage() {
       const payload = await apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status");
       setOauthStatus(payload);
       writeEntitySnapshot(PLANNER_OAUTH_STATUS_SNAPSHOT, payload);
+      cachePlannerOauthStatus(payload);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "OAuth status load failed");
     }
@@ -281,6 +283,9 @@ export default function PlannerPage() {
       writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, blockPayload);
       writeEntitySnapshot(PLANNER_EVENTS_SNAPSHOT, eventPayload);
       writeEntitySnapshot(PLANNER_OAUTH_STATUS_SNAPSHOT, oauthPayload);
+      cachePlannerBlocks(blockPayload);
+      cachePlannerEvents(eventPayload);
+      cachePlannerOauthStatus(oauthPayload);
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
     } catch (error) {
@@ -332,6 +337,7 @@ export default function PlannerPage() {
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
+      cachePlannerConflicts(conflictPayload);
       await Promise.all([load(), loadOauthStatus()]);
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
     } catch (error) {
@@ -352,6 +358,7 @@ export default function PlannerPage() {
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
+      cachePlannerConflicts(conflictPayload);
       await load();
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
     } catch (error) {
@@ -370,6 +377,7 @@ export default function PlannerPage() {
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
+      cachePlannerConflicts(conflictPayload);
       await load();
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(
@@ -388,6 +396,7 @@ export default function PlannerPage() {
 
   useEffect(() => {
     writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflicts);
+    cachePlannerConflicts(conflicts);
   }, [conflicts]);
 
   useEffect(() => {
@@ -417,145 +426,235 @@ export default function PlannerPage() {
     };
   }, [load, token]);
 
+  const startHour = 8;
+  const endHour = 15;
+  const hourSlots = useMemo(() => Array.from({ length: endHour - startHour + 1 }, (_, index) => startHour + index), [endHour, startHour]);
+  const rowHeight = 80;
+  const cycleDays = useMemo(
+    () => [
+      { id: "cycle1", label: "Cycle 1", offsetLabel: "T-0", date: isoDateFromOffset(date, 0) },
+      { id: "cycle2", label: "Cycle 2", offsetLabel: "T+1", date: isoDateFromOffset(date, 1) },
+      { id: "cycle3", label: "Cycle 3", offsetLabel: "T+2", date: isoDateFromOffset(date, 2) },
+    ],
+    [date],
+  );
+
+  const timelineByCycle = useMemo(
+    () => cycleDays.map((cycleDay) => timeline.filter((item) => isSameDay(item.startsAt, cycleDay.date))),
+    [cycleDays, timeline],
+  );
+
+  const unscheduledPool = useMemo(() => {
+    const unresolvedConflicts = conflicts
+      .filter((conflict) => !conflict.resolved)
+      .slice(0, 3)
+      .map((conflict) => ({
+        id: conflict.id,
+        title: `Resolve ${conflict.remote_id}`,
+        subtitle: `policy ${conflict.strategy}`,
+        type: "conflict" as const,
+      }));
+    if (unresolvedConflicts.length > 0) {
+      return unresolvedConflicts;
+    }
+    return events
+      .filter((event) => !cycleDays.some((cycleDay) => isSameDay(event.starts_at, cycleDay.date)))
+      .slice(0, 3)
+      .map((event) => ({
+        id: event.id,
+        title: event.title,
+        subtitle: `${event.source} • ${formatTime(event.starts_at)}`,
+        type: "event" as const,
+      }));
+  }, [conflicts, cycleDays, events]);
+
+  const nowLineOffset = useMemo(() => {
+    const now = new Date();
+    if (now.toISOString().slice(0, 10) !== cycleDays[0]?.date) {
+      return null;
+    }
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const minMinutes = startHour * 60;
+    const maxMinutes = (endHour + 1) * 60;
+    if (nowMinutes < minMinutes || nowMinutes > maxMinutes) {
+      return null;
+    }
+    return ((nowMinutes - minMinutes) / 60) * rowHeight;
+  }, [cycleDays, endHour, rowHeight, startHour]);
+
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <SessionControls />
-        <div>
-          <p className="eyebrow">Planner</p>
-          <h1>Time blocks and calendar sync</h1>
-          <label className="label" htmlFor="planner-date">
-            Date
-          </label>
-          <input
-            id="planner-date"
-            className="input"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => generate()}>
-              Generate Blocks
-            </button>
-            <button className="button" type="button" onClick={() => load()}>
-              Refresh
-            </button>
-            <button className="button" type="button" onClick={() => addSampleEvent()}>
-              Add Event
-            </button>
-            <button className="button" type="button" onClick={() => runGoogleSync()}>
-              Run Google Sync
-            </button>
-          </div>
-          <p className="status">{status}</p>
-        </div>
-
-        <div className="panel glass">
-          <h2>Day board</h2>
-          <p className="console-copy">
-            {timeline.length} scheduled item(s) on {date}
-          </p>
-          {timeline.length === 0 ? (
-            <p className="console-copy">No timeline items for this day yet.</p>
-          ) : (
-            <ul className="timeline-list">
-              {timeline.map((item) => (
-                <li key={item.id} className="timeline-item">
-                  <div>
-                    <span
-                      className={`timeline-kind ${
-                        item.kind === "block" ? "timeline-kind-block" : "timeline-kind-event"
-                      }`}
-                    >
-                      {item.kind}
-                    </span>
-                    <strong>{item.title}</strong>
-                    <p className="console-copy">{item.source}</p>
-                  </div>
-                  <div className="timeline-time">
-                    {formatTime(item.startsAt)} - {formatTime(item.endsAt)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Blocks</h2>
-          {blocks.length === 0 ? (
-            <p className="console-copy">No blocks yet.</p>
-          ) : (
-            <ul>
-              {blocks.map((block) => (
-                <li key={block.id}>
-                  <strong>{block.title}</strong> - {block.starts_at} to {block.ends_at}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Calendar events</h2>
-          {events.length === 0 ? (
-            <p className="console-copy">No events yet.</p>
-          ) : (
-            <ul>
-              {events.map((event) => (
-                <li key={event.id}>
-                  <strong>{event.title}</strong> ({event.source})
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Sync conflicts</h2>
-          {conflicts.length === 0 ? (
-            <p className="console-copy">No conflicts.</p>
-          ) : (
-            <ul>
-              {conflicts.map((conflict) => (
-                <li key={conflict.id}>
-                  <p className="console-copy">
-                    Remote {conflict.remote_id} - policy {conflict.strategy}
-                  </p>
-                  <div className="button-row">
-                    <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
-                      Replay Sync
-                    </button>
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => resolveConflict(conflict.id, "local_wins")}
-                    >
-                      Local Wins
-                    </button>
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => resolveConflict(conflict.id, "remote_wins")}
-                    >
-                      Remote Wins
-                    </button>
-                    <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
-                      Dismiss
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h2>Google OAuth</h2>
-          {!oauthStatus ? (
-            <p className="console-copy">OAuth status not loaded.</p>
-          ) : (
-            <div>
-              <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
-              <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
-              <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
-              <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
-              <p className="console-copy">{oauthStatus.detail}</p>
+    <main className="chronos-shell">
+      <section className="chronos-layout">
+        <aside className="chronos-sidebar">
+          <div className="chronos-sidebar-head">
+            <p className="eyebrow">Chronos Matrix</p>
+            <h1>Tactical Timeline</h1>
+            <div className="chronos-controls">
+              <label className="label" htmlFor="planner-date">
+                Date
+              </label>
+              <input
+                id="planner-date"
+                className="input"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+              />
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => generate()}>
+                  Generate Blocks
+                </button>
+                <button className="button" type="button" onClick={() => load()}>
+                  Refresh
+                </button>
+                <button className="button" type="button" onClick={() => addSampleEvent()}>
+                  Add Event
+                </button>
+                <button className="button" type="button" onClick={() => runGoogleSync()}>
+                  Run Google Sync
+                </button>
+              </div>
+              <div className="chronos-cycle-switch">
+                <button className="active" type="button">3-Day Cycle</button>
+                <button type="button" disabled>7-Day Cycle</button>
+              </div>
+              <p className="status">{status}</p>
             </div>
-          )}
-        </div>
+          </div>
+
+          <div className="chronos-pool">
+            <h2>Unscheduled Task Pool</h2>
+            {unscheduledPool.length === 0 ? (
+              <p className="console-copy">No unscheduled tasks or conflicts.</p>
+            ) : (
+              unscheduledPool.map((item) => (
+                <article key={item.id} className="chronos-pool-card">
+                  <strong>{item.title}</strong>
+                  <small>{item.subtitle}</small>
+                </article>
+              ))
+            )}
+
+            <article className="chronos-pool-card">
+              <strong>{timeline.length} scheduled item(s) on {date}</strong>
+              <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
+            </article>
+
+            <details>
+              <summary className="label">Sync conflicts</summary>
+              {conflicts.length === 0 ? (
+                <p className="console-copy">No conflicts.</p>
+              ) : (
+                conflicts.map((conflict) => (
+                  <article key={conflict.id} className="chronos-pool-card">
+                    <strong>Remote {conflict.remote_id}</strong>
+                    <small>policy {conflict.strategy}</small>
+                    <div className="button-row">
+                      <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
+                        Replay Sync
+                      </button>
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => resolveConflict(conflict.id, "local_wins")}
+                      >
+                        Local Wins
+                      </button>
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => resolveConflict(conflict.id, "remote_wins")}
+                      >
+                        Remote Wins
+                      </button>
+                      <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
+                        Dismiss
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </details>
+
+            <details>
+              <summary className="label">Google OAuth</summary>
+              {!oauthStatus ? (
+                <p className="console-copy">OAuth status not loaded.</p>
+              ) : (
+                <>
+                  <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
+                  <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
+                  <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
+                  <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
+                  <p className="console-copy">{oauthStatus.detail}</p>
+                </>
+              )}
+            </details>
+
+            <details>
+              <summary className="label">PWA session controls</summary>
+              <SessionControls />
+            </details>
+          </div>
+        </aside>
+
+        <section className="chronos-grid-wrap">
+          <div className="chronos-day-head">
+            <span />
+            {cycleDays.map((cycleDay) => (
+              <span key={cycleDay.id}>
+                <strong>{cycleDay.label}</strong>
+                {cycleDay.offsetLabel}
+              </span>
+            ))}
+          </div>
+          <div className="chronos-grid">
+            <div className="chronos-grid-inner">
+              <div className="chronos-hours">
+                {hourSlots.map((hour) => (
+                  <div key={`hour-${hour}`} className="chronos-hour">{`${hour.toString().padStart(2, "0")}:00`}</div>
+                ))}
+              </div>
+              {cycleDays.map((cycleDay, cycleIndex) => (
+                <div key={cycleDay.id} className="chronos-day-col">
+                  {hourSlots.map((hour) => (
+                    <div key={`${cycleDay.id}-${hour}`} className="chronos-day-row" />
+                  ))}
+                  {timelineByCycle[cycleIndex].map((item) => {
+                    const startMinutes = Math.max(startHour * 60, toMinutes(item.startsAt));
+                    const endMinutes = Math.min((endHour + 1) * 60, toMinutes(item.endsAt));
+                    if (endMinutes <= startMinutes) {
+                      return null;
+                    }
+                    const top = ((startMinutes - startHour * 60) / 60) * rowHeight + 2;
+                    const height = Math.max(32, ((endMinutes - startMinutes) / 60) * rowHeight - 4);
+                    const taskClass = item.kind === "event" ? "chronos-task event" : "chronos-task";
+                    return (
+                      <article
+                        key={item.id}
+                        className={taskClass}
+                        style={{
+                          left: "4px",
+                          right: "4px",
+                          top: `${top}px`,
+                          height: `${height}px`,
+                        }}
+                      >
+                        <strong>{item.title}</strong>
+                        <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
+                      </article>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            {nowLineOffset !== null ? <div className="chronos-now-line" style={{ top: `${nowLineOffset}px` }} /> : null}
+          </div>
+          <div className="chronos-foot-controls">
+            <p className="console-copy">
+              Day board: {timeline.length > 0 ? "timeline active" : "no timeline items for this day yet"}.
+            </p>
+          </div>
+        </section>
       </section>
     </main>
   );

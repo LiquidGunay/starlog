@@ -45,7 +45,7 @@ export default function MobileSharePage() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Mobile Share</p>
+          <p className="eyebrow">Command Center</p>
           <h1>Generate mobile capture deep-links</h1>
           <p className="console-copy">
             This bridges web/PWA workflows with the companion app until native share-extension flows are completed.

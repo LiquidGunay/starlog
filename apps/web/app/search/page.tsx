@@ -120,7 +120,7 @@ export default function SearchPage() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Search</p>
+          <p className="eyebrow">Artifact Nexus</p>
           <h1>Cross-workspace retrieval</h1>
           <p className="console-copy">
             Search notes, artifacts, tasks, planner blocks, integrations, assistant history, and calendar events

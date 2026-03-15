@@ -181,6 +181,8 @@ Troubleshooting checklist:
 - 2026-03-14: User wants additional architecture-plan workitems beyond the first queue refresh so agents can run a larger parallel batch.
 - 2026-03-14: User wants it explicit that each agent task must ship via PR and must rebase onto latest `master` when behind.
 - 2026-03-15: User wants desktop helper UI aligned to `screen_design` themes and expects a compact quick-capture popup plus a separate larger workspace surface for advanced controls.
+- 2026-03-15: User wants the PWA IA and visual language aligned to the `screen_design` references, with canonical surface naming (`Command Center`, `Artifact Nexus`, `Neural Sync`, `Chronos Matrix`).
+- 2026-03-15: User wants typography/chat styling to closely match the design HTML references and prefers contextual nav (Notes/Tasks under Command Center) without redundant `Calendar` links alongside `Chronos Matrix`.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -237,3 +239,6 @@ Troubleshooting checklist:
 - 2026-03-14: Running dependent `git checkout`/branch-creation commands in parallel can race and leave the worktree on `master`; branch-switch operations should be run sequentially to avoid accidental commits to local `master`.
 - 2026-03-15: Linux `tauri build --bundles appimage` initially panicked (`couldn't find a square icon to use as AppImage icon`) until explicit bundle icon paths were added in `tools/desktop-helper/src-tauri/tauri.conf.json`.
 - 2026-03-15: On this host, Linux `tauri build --bundles deb,appimage` can stall inside `linuxdeploy` after producing the `.deb`; the deterministic release pipeline now defaults to `deb` and keeps AppImage as an explicit optional attempt.
+- 2026-03-15: Adding hosted-only Playwright smoke specs to `apps/web/tests` can unintentionally affect the general PWA release gate unless `playwright.web.config.ts` explicitly ignores hosted smoke tests.
+- 2026-03-15: `make verify-export` assumes `.localdata/starlog.db`; portability drills in clean worktrees need an isolated seeded DB path (for example, by setting `STARLOG_DB_PATH`) before running export roundtrip verification.
+- 2026-03-15: Assistant voice queue Playwright checks rely on `voice-job-*` being visible; moving job lists into collapsed `<details>` causes false regressions unless those sections are open by default or tests expand them.

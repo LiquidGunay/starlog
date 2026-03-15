@@ -8,6 +8,21 @@ Recommended Starlog hosting split:
 
 This keeps the hosted footprint small and avoids paying Railway CPU time for long AI jobs.
 
+## Pre-deploy gates
+
+Run these before Railway deploy:
+
+1. `./scripts/pwa_release_gate.sh`
+2. `./scripts/pwa_hosted_smoke.sh`
+3. `./scripts/pwa_portability_drill.sh`
+
+Supporting runbooks:
+
+- `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md`
+- `docs/PWA_HOSTED_SMOKE_CHECKLIST.md`
+- `docs/PWA_PORTABILITY_DRILL.md`
+- `docs/PWA_GO_LIVE_RUNBOOK.md`
+
 ## Service layout
 
 Create two Railway services from this repo:

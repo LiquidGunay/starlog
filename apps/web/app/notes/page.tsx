@@ -258,7 +258,7 @@ function NotesPageContent() {
       <section className="workspace glass">
         <SessionControls />
         <div>
-          <p className="eyebrow">Notes</p>
+          <p className="eyebrow">Command Center</p>
           <h1>Primary note workspace</h1>
           <p className="console-copy">
             Edit notes in the PWA and keep queued note mutations visible until replay completes.

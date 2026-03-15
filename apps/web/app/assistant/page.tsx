@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { replaceEntityCacheScope } from "../lib/entity-cache";
+import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { ApiError } from "../lib/starlog-client";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -81,6 +82,49 @@ const ASSISTANT_INTENTS_SNAPSHOT = "assistant.intents";
 const ASSISTANT_VOICE_JOBS_SNAPSHOT = "assistant.voice_jobs";
 const ASSISTANT_AI_JOBS_SNAPSHOT = "assistant.ai_jobs";
 const ASSISTANT_VOICE_UPLOAD_QUEUE_SNAPSHOT = "assistant.voice_upload_queue";
+const ASSISTANT_CACHE_PREFIXES = ["assistant."];
+const ASSISTANT_INTENTS_ENTITY_SCOPE = "assistant.intents";
+const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
+const ASSISTANT_VOICE_JOBS_ENTITY_SCOPE = "assistant.voice_jobs";
+const ASSISTANT_AI_JOBS_ENTITY_SCOPE = "assistant.ai_jobs";
+
+function cacheAssistantIntents(intents: AgentIntent[]): void {
+  const recordedAt = new Date().toISOString();
+  void replaceEntityCacheScope(
+    ASSISTANT_INTENTS_ENTITY_SCOPE,
+    intents.map((intent) => ({
+      id: intent.name,
+      value: intent,
+      updated_at: recordedAt,
+      search_text: `${intent.name} ${intent.description} ${intent.examples.join(" ")}`,
+    })),
+  );
+}
+
+function cacheAssistantHistory(history: AgentCommandResponse[]): void {
+  const recordedAt = new Date().toISOString();
+  void replaceEntityCacheScope(
+    ASSISTANT_HISTORY_ENTITY_SCOPE,
+    history.map((entry, index) => ({
+      id: `${entry.matched_intent}:${entry.planner}:${index}`,
+      value: entry,
+      updated_at: recordedAt,
+      search_text: `${entry.command} ${entry.summary} ${entry.matched_intent} ${entry.planner}`,
+    })),
+  );
+}
+
+function cacheAssistantJobs(scope: string, jobs: AssistantQueuedJob[]): void {
+  void replaceEntityCacheScope(
+    scope,
+    jobs.map((job) => ({
+      id: job.id,
+      value: job,
+      updated_at: job.finished_at || job.created_at,
+      search_text: `${job.capability} ${job.status} ${job.provider_hint || ""} ${job.provider_used || ""} ${job.action || ""} ${job.payload.command || job.payload.title || ""}`,
+    })),
+  );
+}
 
 function createVoiceQueueId(): string {
   if (typeof window !== "undefined" && window.crypto?.randomUUID) {
@@ -546,218 +590,312 @@ export default function AssistantPage() {
   ]);
 
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <SessionControls />
-        <div>
-          <p className="eyebrow">Assistant</p>
-          <h1>Command shell</h1>
-          <p className="console-copy">
-            Type or speak a command, inspect the planned tool calls, then execute without clicking through the rest of the UI.
-          </p>
-          <label className="label" htmlFor="assistant-command">Command</label>
-          <textarea
-            id="assistant-command"
-            className="textarea"
-            value={command}
-            onChange={(event) => setCommand(event.target.value)}
-            rows={5}
-          />
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => runCommand(false)}>Plan Command</button>
-            <button className="button" type="button" onClick={() => runCommand(true)}>Execute Command</button>
-            <button className="button" type="button" onClick={() => queueAssistCommand(false)}>Queue Codex Plan</button>
-            <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex Execute</button>
-            <button className="button" type="button" onClick={() => {
-              loadVoiceJobs("manual").catch(() => undefined);
-              loadAssistJobs("manual").catch(() => undefined);
-            }}>Refresh Jobs</button>
+    <main className="command-center-shell">
+      <section className="command-center-layout">
+        <aside className="command-center-column">
+          <div className="command-column-header">
+            <span className="command-column-title">Inbox Queue</span>
+            <span className="command-footnote">{history.length} recent</span>
           </div>
-          <div className="button-row">
-            <button className="button" type="button" onClick={recording ? stopVoiceRecording : startVoiceRecording}>
-              {recording ? "Stop Voice Command" : "Start Voice Command"}
-            </button>
-            <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan Voice</button>
-            <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute Voice</button>
-            <button
-              className="button"
-              type="button"
-              onClick={() => {
-                replayVoiceUploadQueue("manual").catch(() => undefined);
-              }}
-              disabled={voiceUploadQueue.length === 0 || voiceQueueReplayInFlight}
-            >
-              {voiceQueueReplayInFlight ? "Replaying Voice Uploads..." : "Retry Voice Uploads"}
-            </button>
+          <ul className="command-queue-list">
+            {history.length === 0 ? (
+              <li className="command-queue-item">
+                <div className="command-queue-meta">
+                  <span>idle</span>
+                  <span>no runs</span>
+                </div>
+                <h3>No command history yet</h3>
+                <p>Plan or execute a command to populate the queue.</p>
+              </li>
+            ) : (
+              history.map((entry, index) => (
+                <li key={`${entry.command}-${index}`} className={index === 0 ? "command-queue-item active" : "command-queue-item"}>
+                  <div className="command-queue-meta">
+                    <span>{entry.matched_intent}</span>
+                    <span>{entry.status}</span>
+                  </div>
+                  <h3>{entry.command}</h3>
+                  <p>{entry.summary}</p>
+                </li>
+              ))
+            )}
+          </ul>
+          <div className="command-column-header">
+            <span className="command-column-title">Intent Presets</span>
+            <span className="command-footnote">{exampleCommands.length} samples</span>
           </div>
-          <p className="console-copy">Voice clip: {recording ? "recording..." : voiceBlob ? "ready" : "none"}</p>
-          <p className="console-copy">
-            Voice upload queue: {voiceUploadQueue.length} {isOnline ? "(online)" : "(offline)"}
-          </p>
-          <p className="status">{status}</p>
-        </div>
+          <ul className="command-queue-list">
+            {exampleCommands.slice(0, 8).map((example) => (
+              <li key={example} className="command-queue-item">
+                <div className="command-queue-meta">
+                  <span>preset</span>
+                  <span>tap to load</span>
+                </div>
+                <h3>{example}</h3>
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => setCommand(example)}>
+                    Load command
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </aside>
 
-        <div className="panel glass">
-          <h2>Intent catalog</h2>
-          {intents.length === 0 ? (
-            <p className="console-copy">No intent catalog loaded yet. Fallback examples are still available.</p>
-          ) : (
-            <ul>
-              {intents.map((intent) => (
-                <li key={intent.name}>
+        <section className="command-center-main">
+          <div className="command-column-header">
+            <span className="command-column-title">Command Center</span>
+            <span className="command-footnote">{isOnline ? "online" : "offline"} mode</span>
+          </div>
+          <div className="command-center-search">
+            <input
+              value={command}
+              onChange={(event) => setCommand(event.target.value)}
+              aria-label="Search archive, artifacts, or tasks"
+              placeholder="Search archive, artifacts, or tasks..."
+            />
+          </div>
+          <div className="command-scroll">
+            <div className="command-main-header">
+              <p className="eyebrow">Command Center</p>
+              <h1>Command shell</h1>
+              <div className="command-main-divider" />
+              <p className="console-copy">
+                Type or speak a command, inspect the planned tool calls, then execute without leaving this workspace.
+              </p>
+            </div>
+
+            <article className="command-rich-card command-form-grid">
+              <label className="label" htmlFor="assistant-command">Command</label>
+              <textarea
+                id="assistant-command"
+                className="textarea"
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+                rows={5}
+              />
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => runCommand(false)}>Plan Command</button>
+                <button className="button" type="button" onClick={() => runCommand(true)}>Execute Command</button>
+                <button className="button" type="button" onClick={() => queueAssistCommand(false)}>Queue Codex Plan</button>
+                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex Execute</button>
+                <button className="button" type="button" onClick={() => {
+                  loadVoiceJobs("manual").catch(() => undefined);
+                  loadAssistJobs("manual").catch(() => undefined);
+                }}>Refresh Jobs</button>
+              </div>
+              <p className="status">{status}</p>
+            </article>
+
+            <article className="command-rich-card">
+              <h2>Latest response</h2>
+              {!latest ? (
+                <p className="console-copy">No command run yet.</p>
+              ) : (
+                <>
                   <p className="console-copy">
-                    <strong>{intent.name}</strong> - {intent.description}
+                    intent: {latest.matched_intent} [{latest.status}]
                   </p>
-                  <div className="button-row">
-                    {intent.examples.map((example) => (
-                      <button key={example} className="button" type="button" onClick={() => setCommand(example)}>
-                        {example}
-                      </button>
+                  <p className="console-copy">{latest.summary}</p>
+                  <div className="command-step-grid">
+                    {latest.steps.map((step, index) => (
+                      <div key={`${step.tool_name}-${index}`} className="command-step-card">
+                        <p className="console-copy">
+                          <strong>{step.tool_name}</strong> [{step.status}]
+                        </p>
+                        {step.message ? <p className="console-copy">{step.message}</p> : null}
+                        <p className="console-copy">arguments</p>
+                        <pre>{JSON.stringify(step.arguments, null, 2)}</pre>
+                        <p className="console-copy">result</p>
+                        <pre>{JSON.stringify(step.result, null, 2)}</pre>
+                      </div>
                     ))}
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          {intents.length === 0 ? (
-            <div className="button-row">
-              {exampleCommands.map((example) => (
-                <button key={example} className="button" type="button" onClick={() => setCommand(example)}>
-                  {example}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+                </>
+              )}
+            </article>
 
-        <div className="panel glass">
-          <h2>Latest response</h2>
-          {!latest ? (
-            <p className="console-copy">No command run yet.</p>
-          ) : (
-            <>
-              <p className="console-copy">
-                intent: {latest.matched_intent} [{latest.status}]
-              </p>
-              <p className="console-copy">{latest.summary}</p>
-              {latest.steps.map((step, index) => (
-                <div key={`${step.tool_name}-${index}`} className="panel glass">
-                  <p className="console-copy">
-                    <strong>{step.tool_name}</strong> [{step.status}]
-                  </p>
-                  {step.message ? <p className="console-copy">{step.message}</p> : null}
-                  <p className="console-copy">arguments</p>
-                  <pre className="console-copy">{JSON.stringify(step.arguments, null, 2)}</pre>
-                  <p className="console-copy">result</p>
-                  <pre className="console-copy">{JSON.stringify(step.result, null, 2)}</pre>
+            <article className="command-rich-card">
+              <h2>Intent catalog</h2>
+              {intents.length === 0 ? (
+                <p className="console-copy">No intent catalog loaded yet. Fallback examples are still available.</p>
+              ) : (
+                <div className="scroll-panel">
+                  {intents.map((intent) => (
+                    <div key={intent.name} className="command-step-card">
+                      <p className="console-copy">
+                        <strong>{intent.name}</strong> - {intent.description}
+                      </p>
+                      <div className="button-row">
+                        {intent.examples.map((example) => (
+                          <button key={example} className="button" type="button" onClick={() => setCommand(example)}>
+                            {example}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </>
-          )}
-        </div>
+              )}
+            </article>
 
-        <div className="panel glass">
-          <h2>Queued voice uploads</h2>
-          {voiceUploadQueue.length === 0 ? (
-            <p className="console-copy">No queued voice uploads.</p>
-          ) : (
-            <ul>
-              {voiceUploadQueue.map((item) => (
-                <li key={item.id}>
-                  <p className="console-copy">
-                    <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
-                  </p>
-                  <p className="console-copy">
-                    captured: {new Date(item.created_at).toLocaleString()}
-                    {item.last_attempt_at ? ` | last replay: ${new Date(item.last_attempt_at).toLocaleString()}` : ""}
-                  </p>
-                  {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
-                  <div className="button-row">
-                    <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
-                      Drop queued upload
-                    </button>
+            <article className="command-rich-card command-session">
+              <h2>PWA session controls</h2>
+              <SessionControls />
+            </article>
+          </div>
+        </section>
+
+        <aside className="command-agent-panel">
+          <div className="command-agent-tabs">
+            <div className="command-agent-tab active">AI Agent</div>
+            <div className="command-agent-tab">Insights</div>
+          </div>
+          <div className="command-agent-body">
+            <div className="command-agent-scroll">
+              <div className="command-chat-row">
+                <div className="command-chat-avatar ai">✶</div>
+                <div className="command-chat-stream">
+                  <div className="command-chat-message ai">
+                    {latest ? latest.summary : "Awaiting command. Use plan mode first to inspect tool calls."}
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                  <span className="command-chat-meta">Aether Agent • Just now</span>
+                </div>
+              </div>
 
-        <div className="panel glass">
-          <h2>Voice jobs</h2>
-          {voiceJobs.length === 0 ? (
-            <p className="console-copy">No voice command jobs yet.</p>
-          ) : (
-            <ul>
-              {voiceJobs.map((job) => (
-                <li key={job.id}>
-                  <p className="console-copy">
-                    <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                  </p>
-                  <p className="console-copy">
-                    created: {new Date(job.created_at).toLocaleString()}
-                    {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
-                  </p>
-                  {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
-                  {job.output.assistant_command ? (
-                    <p className="console-copy">
-                      command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                    </p>
-                  ) : null}
-                  {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              <div className="command-chat-row user">
+                <div className="command-chat-avatar user">●</div>
+                <div className="command-chat-stream">
+                  <div className="command-chat-message user">{command || "No command drafted yet."}</div>
+                </div>
+              </div>
 
-        <div className="panel glass">
-          <h2>Queued Codex jobs</h2>
-          {assistJobs.length === 0 ? (
-            <p className="console-copy">No queued Codex planner jobs yet.</p>
-          ) : (
-            <ul>
-              {assistJobs.map((job) => (
-                <li key={job.id}>
+              <div className="command-agent-statusline">
+                <div className="command-agent-spinner" aria-hidden="true" />
+                <div>
+                  <p className="command-footnote">Agent Performing Action</p>
+                  <p className="console-copy">Voice clip: {recording ? "recording..." : voiceBlob ? "ready" : "none"}</p>
                   <p className="console-copy">
-                    <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                    Voice upload queue: {voiceUploadQueue.length} {isOnline ? "(online)" : "(offline)"}
                   </p>
-                  {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
-                  <p className="console-copy">
-                    created: {new Date(job.created_at).toLocaleString()}
-                    {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
-                  </p>
-                  {job.output.assistant_command ? (
-                    <p className="console-copy">
-                      command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                    </p>
-                  ) : null}
-                  {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                </div>
+              </div>
 
-        <div className="panel glass">
-          <h2>Recent history</h2>
-          {history.length === 0 ? (
-            <p className="console-copy">No history yet.</p>
-          ) : (
-            <ul>
-              {history.map((entry, index) => (
-                <li key={`${entry.command}-${index}`}>
-                  <p className="console-copy">
-                    <strong>{entry.command}</strong> [{entry.status}]
-                  </p>
-                  <p className="console-copy">
-                    planner: {entry.planner} | intent: {entry.matched_intent}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              <details className="command-agent-detail" open>
+                <summary>Queued voice uploads ({voiceUploadQueue.length})</summary>
+                {voiceUploadQueue.length === 0 ? (
+                  <p className="console-copy">No queued voice uploads.</p>
+                ) : (
+                  <div className="scroll-panel">
+                    {voiceUploadQueue.map((item) => (
+                      <div key={item.id} className="command-step-card">
+                        <p className="console-copy">
+                          <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
+                        </p>
+                        <p className="console-copy">
+                          captured: {new Date(item.created_at).toLocaleString()}
+                          {item.last_attempt_at ? ` | last replay: ${new Date(item.last_attempt_at).toLocaleString()}` : ""}
+                        </p>
+                        {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
+                        <div className="button-row">
+                          <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
+                            Drop queued upload
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </details>
+
+              <details className="command-agent-detail" open>
+                <summary>Voice jobs ({voiceJobs.length})</summary>
+                {voiceJobs.length === 0 ? (
+                  <p className="console-copy">No voice command jobs yet.</p>
+                ) : (
+                  <div className="scroll-panel">
+                    {voiceJobs.map((job) => (
+                      <div key={job.id} className="command-step-card">
+                        <p className="console-copy">
+                          <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                        </p>
+                        <p className="console-copy">
+                          created: {new Date(job.created_at).toLocaleString()}
+                          {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
+                        </p>
+                        {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
+                        {job.output.assistant_command ? (
+                          <p className="console-copy">
+                            command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                          </p>
+                        ) : null}
+                        {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </details>
+
+              <details className="command-agent-detail" open>
+                <summary>Queued Codex jobs ({assistJobs.length})</summary>
+                {assistJobs.length === 0 ? (
+                  <p className="console-copy">No queued Codex planner jobs yet.</p>
+                ) : (
+                  <div className="scroll-panel">
+                    {assistJobs.map((job) => (
+                      <div key={job.id} className="command-step-card">
+                        <p className="console-copy">
+                          <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                        </p>
+                        {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
+                        <p className="console-copy">
+                          created: {new Date(job.created_at).toLocaleString()}
+                          {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
+                        </p>
+                        {job.output.assistant_command ? (
+                          <p className="console-copy">
+                            command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                          </p>
+                        ) : null}
+                        {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </details>
+            </div>
+
+            <div className="command-agent-input">
+              <label className="label" htmlFor="assistant-chat-command">Agent command</label>
+              <textarea
+                id="assistant-chat-command"
+                className="textarea"
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+                rows={3}
+                placeholder="Command the AI agent..."
+              />
+              <div className="button-row">
+                <button className="button" type="button" onClick={recording ? stopVoiceRecording : startVoiceRecording}>
+                  {recording ? "Stop Voice Command" : "Start Voice Command"}
+                </button>
+                <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan Voice</button>
+                <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute Voice</button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    replayVoiceUploadQueue("manual").catch(() => undefined);
+                  }}
+                  disabled={voiceUploadQueue.length === 0 || voiceQueueReplayInFlight}
+                >
+                  {voiceQueueReplayInFlight ? "Replaying Voice Uploads..." : "Retry Voice Uploads"}
+                </button>
+              </div>
+              <p className="command-footnote">Aether AI can take actions in external modules.</p>
+            </div>
+          </div>
+        </aside>
       </section>
     </main>
   );
