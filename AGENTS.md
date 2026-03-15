@@ -175,6 +175,7 @@ Troubleshooting checklist:
 - 2026-03-14: User wants Android mobile testing runs performed with the physical device kept unlocked throughout execution.
 - 2026-03-14: User wants explicit lock claim/heartbeat/release/force-steal usage instructions documented in `AGENTS.md`.
 - 2026-03-14: User wants the current architecture/workflow plan kept in a dedicated markdown file under `docs/`.
+- 2026-03-14: User wants repository CI checks/workflows removed for now.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
