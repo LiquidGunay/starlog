@@ -1,7 +1,7 @@
 UV ?= uv
 API_PROJECT ?= services/api
 
-.PHONY: bootstrap bootstrap-api bootstrap-web dev-api dev-web dev-web-lan dev-worker dev-local-ai test-api lint-api seed-api verify-export
+.PHONY: bootstrap bootstrap-api bootstrap-web dev-api dev-web dev-web-lan dev-worker dev-local-ai test-api lint-api seed-api verify-export sync-workitem-mirror check-workitem-mirror test-workitem-mirror
 
 bootstrap: bootstrap-api bootstrap-web
 
@@ -38,3 +38,12 @@ seed-api:
 
 verify-export:
 	$(UV) run --project $(API_PROJECT) python -m app.verify_export_roundtrip
+
+sync-workitem-mirror:
+	python3 scripts/sync_workitem_mirror.py
+
+check-workitem-mirror:
+	python3 scripts/sync_workitem_mirror.py --check
+
+test-workitem-mirror:
+	python3 -m unittest scripts/tests/test_sync_workitem_mirror.py
