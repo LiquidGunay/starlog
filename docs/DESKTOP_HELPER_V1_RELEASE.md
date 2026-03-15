@@ -56,6 +56,9 @@ Last updated: 2026-03-15
   - `checksums.sha256`
   - `manifest.tsv`
   - `build-info.txt`
+- Checksums from this run:
+  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
+  - raw binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
 
 ## Signing/notarization readiness (WI-322)
 
@@ -171,12 +174,32 @@ Last updated: 2026-03-15
 ### Current RC candidate (2026-03-15)
 
 - Candidate id:
-  - `v0.1.0-x86_64-linux-rc1`
+  - `v0.1.0-x86_64-linux-rc2`
 - Artifact folder:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/`
 - Checksums:
-  - `.deb`: `65f8d411b7b979e130dbf1c697ad633b7e0264dc51eae827bc4d8d0ae23fdd5a`
-  - binary: `730d9cebcd1a83a77aa266349a867e7818d84ec762d5a9c5b756fbc9aedcbbf9`
+  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
+  - binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
+- Exact staged artifacts:
+  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
+  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
+
+### Host install smoke (non-destructive, this host)
+
+- Package metadata inspection:
+  - `dpkg-deb -I artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
+- Dry-run install:
+  - `dpkg --dry-run -i artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
+- Payload extraction check:
+  - `dpkg-deb -x ... <tmpdir>`
+- Binary linkage check:
+  - `ldd artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
+
+- Smoke results:
+  - Debian package metadata is correct: package `starlog-desktop-helper`, version `0.1.0`, architecture `amd64`.
+  - Declared package dependencies match the runtime: `libwebkit2gtk-4.1-0`, `libgtk-3-0`.
+  - Extracted payload contains `/usr/bin/starlog_desktop_helper` and `/usr/share/applications/Starlog Desktop Helper.desktop`.
+  - Raw staged binary links successfully against the expected GTK/WebKit libraries on this host.
 
 ### Release notes template
 
