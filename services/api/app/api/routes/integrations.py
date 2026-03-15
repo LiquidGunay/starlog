@@ -7,6 +7,7 @@ from app.schemas.integrations import (
     CodexBridgeContractResponse,
     ExecutionPolicyRequest,
     ExecutionPolicyResponse,
+    MobileLLMContractResponse,
     ProviderConfigRequest,
     ProviderConfigResponse,
     ProviderHealthResponse,
@@ -49,6 +50,15 @@ def codex_bridge_contract(
 ) -> CodexBridgeContractResponse:
     contract = integrations_service.codex_bridge_contract(db)
     return CodexBridgeContractResponse.model_validate(contract)
+
+
+@router.get("/providers/mobile_llm/contract", response_model=MobileLLMContractResponse)
+def mobile_llm_contract(
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> MobileLLMContractResponse:
+    contract = integrations_service.mobile_llm_contract(db)
+    return MobileLLMContractResponse.model_validate(contract)
 
 
 @router.get("/providers/{provider_name}/health", response_model=ProviderHealthResponse)

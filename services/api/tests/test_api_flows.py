@@ -1168,7 +1168,7 @@ def test_provider_config_and_webhooks(
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import google_calendar_service, integrations_service
+    from app.services import google_calendar_service, integrations_service, worker_service
 
     configured = client.post(
         "/v1/integrations/providers/local_llm",
@@ -1265,6 +1265,44 @@ def test_provider_config_and_webhooks(
     assert len(codex_contract.json()["first_party_blockers"]) >= 1
     assert isinstance(codex_contract.json()["verified_at"], str)
     assert codex_contract.json()["feature_flag_key"] == "experimental_enabled"
+
+    mobile_contract = client.get("/v1/integrations/providers/mobile_llm/contract", headers=auth_headers)
+    assert mobile_contract.status_code == 200
+    assert mobile_contract.json()["provider_name"] == "mobile_llm"
+    assert mobile_contract.json()["runtime_state"] == "unavailable"
+    assert mobile_contract.json()["feature_flag_key"] == "phone_local_llm_enabled"
+    assert mobile_contract.json()["route_target"] == "mobile_bridge"
+    assert mobile_contract.json()["recommended_policy_order"] == ["mobile_bridge", "desktop_bridge", "api"]
+    assert mobile_contract.json()["phone_local_runtime_supported"] is False
+    assert "mobile_llm provider config is missing." in mobile_contract.json()["blockers"]
+
+    mobile_provider = client.post(
+        "/v1/integrations/providers/mobile_llm",
+        json={
+            "enabled": True,
+            "mode": "local_first",
+            "config": {
+                "phone_local_llm_enabled": True,
+            },
+        },
+        headers=auth_headers,
+    )
+    assert mobile_provider.status_code == 200
+
+    def fake_online_classes(_conn, capability: str) -> set[str]:
+        if capability.startswith("llm_"):
+            return {"mobile_bridge"}
+        return set()
+
+    monkeypatch.setattr(worker_service, "online_worker_classes_for_capability", fake_online_classes)
+
+    mobile_ready_contract = client.get("/v1/integrations/providers/mobile_llm/contract", headers=auth_headers)
+    assert mobile_ready_contract.status_code == 200
+    assert mobile_ready_contract.json()["runtime_state"] == "experimental_available"
+    assert mobile_ready_contract.json()["mobile_bridge_worker_online"] is True
+    assert mobile_ready_contract.json()["phone_local_runtime_supported"] is True
+    assert all(mobile_ready_contract.json()["capability_checks"].values())
+    assert mobile_ready_contract.json()["blockers"] == []
 
     codex_provider = client.post(
         "/v1/integrations/providers/codex_bridge",

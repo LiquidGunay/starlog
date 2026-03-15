@@ -54,6 +54,24 @@ class CodexBridgeContractResponse(BaseModel):
     verified_at: datetime
 
 
+class MobileLLMContractResponse(BaseModel):
+    contract_version: int = 1
+    provider_name: str
+    summary: str
+    runtime_state: Literal["unavailable", "experimental_available"] = "unavailable"
+    feature_flag_key: str
+    route_target: Literal["mobile_bridge"] = "mobile_bridge"
+    required_capabilities: list[str] = Field(default_factory=list)
+    capability_checks: dict[str, bool] = Field(default_factory=dict)
+    required_runtime: list[str] = Field(default_factory=list)
+    mobile_bridge_worker_online: bool = False
+    phone_local_runtime_supported: bool = False
+    blockers: list[str] = Field(default_factory=list)
+    recommended_policy_order: list[Literal["mobile_bridge", "desktop_bridge", "api"]] = Field(default_factory=list)
+    safe_fallback: str
+    checked_at: datetime
+
+
 # Canonical v2 targets:
 # - mobile_bridge
 # - desktop_bridge
