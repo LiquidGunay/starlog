@@ -5,6 +5,8 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Keep this Dockerfile comment in place as a safe watched-path trigger for
+# Railway GitHub deploy verification without changing API runtime behavior.
 # Railway deploys this service from the repo root, so copy from the nested path.
 # This keeps the API build isolated while still using the repo-wide lockfile scan.
 COPY services/api/pyproject.toml /app/pyproject.toml
