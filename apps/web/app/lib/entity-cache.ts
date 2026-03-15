@@ -19,6 +19,13 @@ export type EntityCacheRecord<T> = {
   search_text: string;
 };
 
+export type EntityCacheScopeSummary = {
+  scope: string;
+  records: number;
+  newest_updated_at: string | null;
+  newest_cached_at: string | null;
+};
+
 type StoredEntityRecord = EntityCacheRecord<unknown> & {
   cache_key: string;
 };
@@ -233,4 +240,91 @@ export async function readEntityCacheValue<T>(
   }
 
   return record.value as T;
+}
+
+export async function listEntityCacheScopeSummaries(): Promise<EntityCacheScopeSummary[]> {
+  const records = await withEntityStore("readonly", async (store) => {
+    return new Promise<StoredEntityRecord[]>((resolve, reject) => {
+      const items: StoredEntityRecord[] = [];
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(items);
+          return;
+        }
+
+        items.push(cursor.value as StoredEntityRecord);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  });
+
+  const summaries = new Map<string, EntityCacheScopeSummary>();
+  for (const record of records ?? []) {
+    const current = summaries.get(record.scope);
+    if (!current) {
+      summaries.set(record.scope, {
+        scope: record.scope,
+        records: 1,
+        newest_updated_at: record.updated_at,
+        newest_cached_at: record.cached_at,
+      });
+      continue;
+    }
+
+    current.records += 1;
+    if (record.updated_at > (current.newest_updated_at ?? "")) {
+      current.newest_updated_at = record.updated_at;
+    }
+    if (record.cached_at > (current.newest_cached_at ?? "")) {
+      current.newest_cached_at = record.cached_at;
+    }
+  }
+
+  return [...summaries.values()].sort((left, right) => left.scope.localeCompare(right.scope));
+}
+
+export async function clearEntityCacheScopeRecords(scope: string): Promise<number> {
+  const deletedCount = await withEntityStore("readwrite", async (store) => {
+    const index = store.index(ENTITY_SCOPE_INDEX);
+    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+      const values: IDBValidKey[] = [];
+      const request = index.openCursor(IDBKeyRange.only(scope));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(values);
+          return;
+        }
+
+        values.push(cursor.primaryKey);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const key of keys) {
+      await requestToPromise(store.delete(key));
+    }
+
+    return keys.length;
+  });
+
+  return deletedCount ?? 0;
+}
+
+export async function clearAllEntityCacheRecords(): Promise<number> {
+  const deletedCount = await withEntityStore("readwrite", async (store) => {
+    const count = await new Promise<number>((resolve, reject) => {
+      const request = store.count();
+      request.onsuccess = () => resolve(request.result ?? 0);
+      request.onerror = () => reject(request.error);
+    });
+    await requestToPromise(store.clear());
+    return count;
+  });
+
+  return deletedCount ?? 0;
 }

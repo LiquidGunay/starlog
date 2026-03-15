@@ -10,7 +10,15 @@ import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
 type SearchResult = {
-  kind: "artifact" | "note" | "task" | "calendar_event";
+  kind:
+    | "artifact"
+    | "note"
+    | "task"
+    | "calendar_event"
+    | "planner_block"
+    | "assistant_command"
+    | "integration_provider"
+    | "sync_event";
   id: string;
   title: string;
   snippet: string;
@@ -38,6 +46,18 @@ function resultHref(result: SearchResult): string {
   }
   if (result.kind === "calendar_event") {
     return `/calendar?event=${encodeURIComponent(result.id)}`;
+  }
+  if (result.kind === "planner_block") {
+    return "/planner";
+  }
+  if (result.kind === "assistant_command") {
+    return "/assistant";
+  }
+  if (result.kind === "integration_provider") {
+    return "/integrations";
+  }
+  if (result.kind === "sync_event") {
+    return "/sync-center";
   }
   return "/";
 }
@@ -103,7 +123,8 @@ export default function SearchPage() {
           <p className="eyebrow">Search</p>
           <h1>Cross-workspace retrieval</h1>
           <p className="console-copy">
-            Search notes, artifacts, tasks, and calendar events from one place. If the API is unavailable, Starlog falls back to recent local snapshots.
+            Search notes, artifacts, tasks, planner blocks, integrations, assistant history, and calendar events
+            from one place. If the API is unavailable, Starlog falls back to recent local snapshots.
           </p>
           <label className="label" htmlFor="search-query">Query</label>
           <input

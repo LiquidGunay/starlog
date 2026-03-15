@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
-import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -64,6 +73,47 @@ const ASSISTANT_HISTORY_SNAPSHOT = "assistant.history";
 const ASSISTANT_INTENTS_SNAPSHOT = "assistant.intents";
 const ASSISTANT_VOICE_JOBS_SNAPSHOT = "assistant.voice_jobs";
 const ASSISTANT_AI_JOBS_SNAPSHOT = "assistant.ai_jobs";
+const ASSISTANT_CACHE_PREFIXES = ["assistant."];
+const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
+const ASSISTANT_INTENTS_ENTITY_SCOPE = "assistant.intents";
+const ASSISTANT_VOICE_JOBS_ENTITY_SCOPE = "assistant.voice_jobs";
+const ASSISTANT_AI_JOBS_ENTITY_SCOPE = "assistant.ai_jobs";
+
+function cacheAssistantHistory(history: AgentCommandResponse[]): void {
+  void replaceEntityCacheScope(
+    ASSISTANT_HISTORY_ENTITY_SCOPE,
+    history.map((entry, index) => ({
+      id: `${entry.planner}:${entry.command}:${index}`,
+      value: entry,
+      updated_at: new Date().toISOString(),
+      search_text: `${entry.command} ${entry.summary} ${entry.matched_intent} ${entry.status}`,
+    })),
+  );
+}
+
+function cacheAssistantIntents(intents: AgentIntent[]): void {
+  void replaceEntityCacheScope(
+    ASSISTANT_INTENTS_ENTITY_SCOPE,
+    intents.map((intent) => ({
+      id: intent.name,
+      value: intent,
+      updated_at: new Date().toISOString(),
+      search_text: `${intent.name} ${intent.description} ${intent.examples.join(" ")}`,
+    })),
+  );
+}
+
+function cacheAssistantJobs(scope: string, jobs: AssistantQueuedJob[]): void {
+  void replaceEntityCacheScope(
+    scope,
+    jobs.map((job) => ({
+      id: job.id,
+      value: job,
+      updated_at: job.finished_at || job.created_at,
+      search_text: `${job.id} ${job.status} ${job.payload.command || ""} ${job.output.transcript || ""} ${job.error_text || ""}`,
+    })),
+  );
+}
 
 export default function AssistantPage() {
   const { apiBase, token } = useSessionConfig();
@@ -99,13 +149,67 @@ export default function AssistantPage() {
     setAssistJobs((previous) => previous.length > 0 ? previous : readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [
+        cachedHistory,
+        cachedIntents,
+        cachedVoiceJobs,
+        cachedAssistJobs,
+        bootstrapHistory,
+        bootstrapIntents,
+        bootstrapVoiceJobs,
+        bootstrapAssistJobs,
+      ] = await Promise.all([
+        readEntityCacheScope<AgentCommandResponse>(ASSISTANT_HISTORY_ENTITY_SCOPE),
+        readEntityCacheScope<AgentIntent>(ASSISTANT_INTENTS_ENTITY_SCOPE),
+        readEntityCacheScope<AssistantQueuedJob>(ASSISTANT_VOICE_JOBS_ENTITY_SCOPE),
+        readEntityCacheScope<AssistantQueuedJob>(ASSISTANT_AI_JOBS_ENTITY_SCOPE),
+        readEntitySnapshotAsync<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []),
+        readEntitySnapshotAsync<AgentIntent[]>(ASSISTANT_INTENTS_SNAPSHOT, []),
+        readEntitySnapshotAsync<AssistantQueuedJob[]>(ASSISTANT_VOICE_JOBS_SNAPSHOT, []),
+        readEntitySnapshotAsync<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextHistory = cachedHistory.length > 0 ? cachedHistory : bootstrapHistory;
+      if (nextHistory.length > 0) {
+        setHistory(nextHistory);
+        setLatest(nextHistory[0] ?? null);
+      }
+      const nextIntents = cachedIntents.length > 0 ? cachedIntents : bootstrapIntents;
+      if (nextIntents.length > 0) {
+        setIntents(nextIntents);
+      }
+      const nextVoiceJobs = cachedVoiceJobs.length > 0 ? cachedVoiceJobs : bootstrapVoiceJobs;
+      if (nextVoiceJobs.length > 0) {
+        setVoiceJobs(nextVoiceJobs);
+      }
+      const nextAssistJobs = cachedAssistJobs.length > 0 ? cachedAssistJobs : bootstrapAssistJobs;
+      if (nextAssistJobs.length > 0) {
+        setAssistJobs(nextAssistJobs);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadIntents = useCallback(async () => {
     try {
       const payload = await apiRequest<AgentIntent[]>(apiBase, token, "/v1/agent/intents");
       setIntents(payload);
       writeEntitySnapshot(ASSISTANT_INTENTS_SNAPSHOT, payload);
+      cacheAssistantIntents(payload);
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
     } catch {
-      setIntents([]);
+      // Keep existing cached intents when live refresh fails.
     }
   }, [apiBase, token]);
 
@@ -117,6 +221,7 @@ export default function AssistantPage() {
     setHistory((previous) => {
       const next = [candidate, ...previous.filter((item) => item.command !== candidate.command || item.planner !== candidate.planner)].slice(0, 8);
       writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, next);
+      cacheAssistantHistory(next);
       return next;
     });
   }, []);
@@ -130,7 +235,9 @@ export default function AssistantPage() {
       );
       setVoiceJobs(payload);
       writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, payload);
+      cacheAssistantJobs(ASSISTANT_VOICE_JOBS_ENTITY_SCOPE, payload);
       recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} voice command job(s)`);
       }
@@ -150,7 +257,9 @@ export default function AssistantPage() {
       );
       setAssistJobs(payload);
       writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, payload);
+      cacheAssistantJobs(ASSISTANT_AI_JOBS_ENTITY_SCOPE, payload);
       recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} queued Codex planner job(s)`);
       }
@@ -181,8 +290,10 @@ export default function AssistantPage() {
       setHistory((previous) => {
         const next = [payload, ...previous].slice(0, 8);
         writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, next);
+        cacheAssistantHistory(next);
         return next;
       });
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Assistant command failed");
@@ -209,8 +320,10 @@ export default function AssistantPage() {
       setAssistJobs((previous) => {
         const next = [payload, ...previous.filter((item) => item.id !== payload.id)].slice(0, 12);
         writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, next);
+        cacheAssistantJobs(ASSISTANT_AI_JOBS_ENTITY_SCOPE, next);
         return next;
       });
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       setStatus(`Queued Codex ${execute ? "execute" : "plan"} job ${payload.id}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to queue Codex planner job");
@@ -294,8 +407,10 @@ export default function AssistantPage() {
       setVoiceJobs((previous) => {
         const next = [payload, ...previous].slice(0, 12);
         writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, next);
+        cacheAssistantJobs(ASSISTANT_VOICE_JOBS_ENTITY_SCOPE, next);
         return next;
       });
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       setVoiceBlob(null);
       setStatus(`Queued voice command ${payload.id}`);
     } catch (error) {
@@ -310,6 +425,35 @@ export default function AssistantPage() {
     loadIntents().catch(() => undefined);
     loadVoiceJobs("auto").catch(() => undefined);
     loadAssistJobs("auto").catch(() => undefined);
+  }, [loadAssistJobs, loadIntents, loadVoiceJobs, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(ASSISTANT_CACHE_PREFIXES)) {
+        return;
+      }
+      loadIntents().catch(() => undefined);
+      loadVoiceJobs("auto").catch(() => undefined);
+      loadAssistJobs("auto").catch(() => undefined);
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, ASSISTANT_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
   }, [loadAssistJobs, loadIntents, loadVoiceJobs, token]);
 
   return (

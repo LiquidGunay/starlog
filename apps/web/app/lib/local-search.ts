@@ -9,7 +9,15 @@ import {
 import type { QueuedMutation } from "./mutation-outbox";
 
 type SearchResult = {
-  kind: "artifact" | "note" | "task" | "calendar_event";
+  kind:
+    | "artifact"
+    | "note"
+    | "task"
+    | "calendar_event"
+    | "planner_block"
+    | "assistant_command"
+    | "integration_provider"
+    | "sync_event";
   id: string;
   title: string;
   snippet: string;
@@ -62,11 +70,46 @@ type ArtifactGraphSnapshot = {
   notes: Array<{ id: string; title: string }>;
 };
 
+type PlannerBlockSnapshot = {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+};
+
+type AssistantHistorySnapshot = {
+  command: string;
+  planner: string;
+  matched_intent: string;
+  status: "planned" | "executed" | "failed";
+  summary: string;
+};
+
+type IntegrationProviderSnapshot = {
+  provider_name: string;
+  enabled: boolean;
+  mode: string;
+  updated_at: string;
+};
+
+type SyncEventSnapshot = {
+  cursor: number;
+  client_id: string;
+  mutation_id: string;
+  entity: string;
+  op: string;
+  server_received_at: string;
+};
+
 const ARTIFACT_ITEMS_ENTITY_SCOPE = "artifacts.items";
 const ARTIFACT_GRAPH_ENTITY_SCOPE = "artifacts.graph";
 const NOTES_ENTITY_SCOPE = "notes.items";
 const TASKS_ENTITY_SCOPE = "tasks.items";
 const CALENDAR_EVENTS_ENTITY_SCOPE = "calendar.events";
+const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
+const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
+const INTEGRATIONS_PROVIDERS_ENTITY_SCOPE = "integrations.providers";
+const SYNC_PULL_EVENTS_ENTITY_SCOPE = "sync.pulled_events";
 
 function includesQuery(fields: Array<string | null | undefined>, query: string): boolean {
   return fields.some((field) => field?.toLowerCase().includes(query));
@@ -107,16 +150,38 @@ export async function searchLocalSnapshots(
     return [];
   }
 
-  const [cachedArtifactItems, cachedNoteItems, cachedTaskItems, cachedCalendarItems, cachedArtifactGraphs] =
-    await Promise.all([
+  const [
+    cachedArtifactItems,
+    cachedNoteItems,
+    cachedTaskItems,
+    cachedCalendarItems,
+    cachedArtifactGraphs,
+    cachedPlannerBlocks,
+    cachedAssistantHistory,
+    cachedIntegrationProviders,
+    cachedSyncEvents,
+  ] = await Promise.all([
       readEntityCacheScope<ArtifactSnapshot>(ARTIFACT_ITEMS_ENTITY_SCOPE),
       readEntityCacheScope<NoteSnapshot>(NOTES_ENTITY_SCOPE),
       readEntityCacheScope<TaskSnapshot>(TASKS_ENTITY_SCOPE),
       readEntityCacheScope<CalendarSnapshot>(CALENDAR_EVENTS_ENTITY_SCOPE),
       listEntityCacheRecords<ArtifactGraphSnapshot>(ARTIFACT_GRAPH_ENTITY_SCOPE),
+      readEntityCacheScope<PlannerBlockSnapshot>(PLANNER_BLOCKS_ENTITY_SCOPE),
+      listEntityCacheRecords<AssistantHistorySnapshot>(ASSISTANT_HISTORY_ENTITY_SCOPE),
+      readEntityCacheScope<IntegrationProviderSnapshot>(INTEGRATIONS_PROVIDERS_ENTITY_SCOPE),
+      readEntityCacheScope<SyncEventSnapshot>(SYNC_PULL_EVENTS_ENTITY_SCOPE),
     ]);
-  const [bootstrapArtifactItems, bootstrapNoteItems, bootstrapTaskItems, bootstrapCalendarItems, bootstrapArtifactGraphs] =
-    await Promise.all([
+  const [
+    bootstrapArtifactItems,
+    bootstrapNoteItems,
+    bootstrapTaskItems,
+    bootstrapCalendarItems,
+    bootstrapArtifactGraphs,
+    bootstrapPlannerBlocks,
+    bootstrapAssistantHistory,
+    bootstrapIntegrationProviders,
+    bootstrapSyncEvents,
+  ] = await Promise.all([
       cachedArtifactItems.length > 0
         ? Promise.resolve<ArtifactSnapshot[]>([])
         : readEntitySnapshotAsync<ArtifactSnapshot[]>("artifacts.items", []),
@@ -132,6 +197,18 @@ export async function searchLocalSnapshots(
       cachedArtifactGraphs.length > 0
         ? Promise.resolve<ArtifactGraphSnapshot[]>([])
         : listEntitySnapshotsByPrefix<ArtifactGraphSnapshot>("artifacts.graph:"),
+      cachedPlannerBlocks.length > 0
+        ? Promise.resolve<PlannerBlockSnapshot[]>([])
+        : readEntitySnapshotAsync<PlannerBlockSnapshot[]>("planner.blocks", []),
+      cachedAssistantHistory.length > 0
+        ? Promise.resolve<AssistantHistorySnapshot[]>([])
+        : readEntitySnapshotAsync<AssistantHistorySnapshot[]>("assistant.history", []),
+      cachedIntegrationProviders.length > 0
+        ? Promise.resolve<IntegrationProviderSnapshot[]>([])
+        : readEntitySnapshotAsync<IntegrationProviderSnapshot[]>("integrations.providers", []),
+      cachedSyncEvents.length > 0
+        ? Promise.resolve<SyncEventSnapshot[]>([])
+        : readEntitySnapshotAsync<SyncEventSnapshot[]>("sync.pulled_events", []),
     ]);
 
   const artifactItems =
@@ -144,6 +221,23 @@ export async function searchLocalSnapshots(
     cachedArtifactGraphs.length > 0
       ? cachedArtifactGraphs.map((record) => record.value)
       : bootstrapArtifactGraphs;
+  const plannerBlocks =
+    cachedPlannerBlocks.length > 0 ? cachedPlannerBlocks : bootstrapPlannerBlocks;
+  const assistantHistory = cachedAssistantHistory.length > 0
+    ? cachedAssistantHistory
+    : bootstrapAssistantHistory.map((entry, index) => ({
+        scope: ASSISTANT_HISTORY_ENTITY_SCOPE,
+        entity_id: `${entry.planner}:${entry.command}:${index}`,
+        value: entry,
+        updated_at: `1970-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+        cached_at: "1970-01-01T00:00:00Z",
+        search_text: `${entry.command} ${entry.summary} ${entry.matched_intent} ${entry.status}`,
+      }));
+  const integrationProviders =
+    cachedIntegrationProviders.length > 0
+      ? cachedIntegrationProviders
+      : bootstrapIntegrationProviders;
+  const syncEvents = cachedSyncEvents.length > 0 ? cachedSyncEvents : bootstrapSyncEvents;
 
   const results = new Map<string, SearchResult>();
   const artifacts = applyOptimisticArtifacts(artifactItems, outbox);
@@ -247,6 +341,86 @@ export async function searchLocalSnapshots(
         source_type: graph.artifact.source_type,
         cached: true,
         detail_cached: true,
+      },
+    });
+  }
+
+  for (const block of plannerBlocks) {
+    if (!includesQuery([block.title, block.starts_at, block.ends_at], query)) {
+      continue;
+    }
+
+    upsertResult(results, {
+      kind: "planner_block",
+      id: block.id,
+      title: block.title,
+      snippet: `Planner block ${block.starts_at} -> ${block.ends_at}`,
+      updated_at: block.ends_at,
+      metadata: {
+        cached: true,
+      },
+    });
+  }
+
+  for (const entry of assistantHistory) {
+    if (
+      !includesQuery(
+        [
+          entry.value.command,
+          entry.value.summary,
+          entry.value.matched_intent,
+          entry.value.planner,
+          entry.value.status,
+        ],
+        query,
+      )
+    ) {
+      continue;
+    }
+
+    upsertResult(results, {
+      kind: "assistant_command",
+      id: entry.entity_id,
+      title: entry.value.command,
+      snippet: `${entry.value.matched_intent} via ${entry.value.planner}: ${entry.value.summary}`,
+      updated_at: entry.updated_at,
+      metadata: {
+        cached: true,
+        status: entry.value.status,
+      },
+    });
+  }
+
+  for (const provider of integrationProviders) {
+    if (!includesQuery([provider.provider_name, provider.mode], query)) {
+      continue;
+    }
+
+    upsertResult(results, {
+      kind: "integration_provider",
+      id: provider.provider_name,
+      title: provider.provider_name,
+      snippet: `Integration provider ${provider.mode} (${provider.enabled ? "enabled" : "disabled"})`,
+      updated_at: provider.updated_at,
+      metadata: {
+        cached: true,
+      },
+    });
+  }
+
+  for (const event of syncEvents) {
+    if (!includesQuery([event.entity, event.op, event.client_id, event.mutation_id], query)) {
+      continue;
+    }
+
+    upsertResult(results, {
+      kind: "sync_event",
+      id: `${event.cursor}:${event.mutation_id}`,
+      title: `${event.entity} ${event.op}`,
+      snippet: `Sync cursor ${event.cursor} from ${event.client_id}`,
+      updated_at: event.server_received_at,
+      metadata: {
+        cached: true,
       },
     });
   }

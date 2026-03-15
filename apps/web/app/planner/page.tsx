@@ -1,8 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SessionControls } from "../components/session-controls";
+import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
+import {
+  ENTITY_CACHE_INVALIDATION_EVENT,
+  cachePrefixesIntersect,
+  clearEntityCachesStale,
+  hasStaleEntityCache,
+  readEntitySnapshot,
+  readEntitySnapshotAsync,
+  writeEntitySnapshot,
+} from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -60,6 +70,70 @@ type TimelineItem = {
   source: string;
 };
 
+const PLANNER_BLOCKS_SNAPSHOT = "planner.blocks";
+const PLANNER_EVENTS_SNAPSHOT = "planner.events";
+const PLANNER_CONFLICTS_SNAPSHOT = "planner.conflicts";
+const PLANNER_OAUTH_SNAPSHOT = "planner.oauth";
+const PLANNER_DATE_SNAPSHOT = "planner.date";
+const PLANNER_CACHE_PREFIXES = ["planner.", "calendar."];
+const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
+const PLANNER_EVENTS_ENTITY_SCOPE = "planner.events";
+const PLANNER_CONFLICTS_ENTITY_SCOPE = "planner.conflicts";
+const PLANNER_OAUTH_ENTITY_SCOPE = "planner.oauth";
+
+function cachePlannerBlocks(blocks: Block[]): void {
+  void replaceEntityCacheScope(
+    PLANNER_BLOCKS_ENTITY_SCOPE,
+    blocks.map((block) => ({
+      id: block.id,
+      value: block,
+      updated_at: block.ends_at,
+      search_text: `${block.title} ${block.starts_at} ${block.ends_at}`,
+    })),
+  );
+}
+
+function cachePlannerEvents(events: EventItem[]): void {
+  void replaceEntityCacheScope(
+    PLANNER_EVENTS_ENTITY_SCOPE,
+    events.map((event) => ({
+      id: event.id,
+      value: event,
+      updated_at: event.ends_at,
+      search_text: `${event.title} ${event.source} ${event.starts_at} ${event.ends_at}`,
+    })),
+  );
+}
+
+function cachePlannerConflicts(conflicts: Conflict[]): void {
+  const recordedAt = new Date().toISOString();
+  void replaceEntityCacheScope(
+    PLANNER_CONFLICTS_ENTITY_SCOPE,
+    conflicts.map((conflict) => ({
+      id: conflict.id,
+      value: conflict,
+      updated_at: conflict.resolved_at || recordedAt,
+      search_text: `${conflict.remote_id} ${conflict.strategy} ${conflict.resolution_strategy || ""}`,
+    })),
+  );
+}
+
+function cachePlannerOauthStatus(oauthStatus: OAuthStatus | null): void {
+  if (!oauthStatus) {
+    void replaceEntityCacheScope(PLANNER_OAUTH_ENTITY_SCOPE, []);
+    return;
+  }
+
+  void replaceEntityCacheScope(PLANNER_OAUTH_ENTITY_SCOPE, [
+    {
+      id: "google_oauth",
+      value: oauthStatus,
+      updated_at: oauthStatus.expires_at || new Date().toISOString(),
+      search_text: `${oauthStatus.connected ? "connected" : "disconnected"} ${oauthStatus.mode || ""} ${oauthStatus.source || ""} ${oauthStatus.detail}`,
+    },
+  ]);
+}
+
 function isSameDay(iso: string, date: string): boolean {
   return iso.slice(0, 10) === date;
 }
@@ -76,11 +150,13 @@ function formatTime(iso: string): string {
 export default function PlannerPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [date, setDate] = useState(today);
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [conflicts, setConflicts] = useState<Conflict[]>([]);
-  const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
+  const [date, setDate] = useState(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today));
+  const [blocks, setBlocks] = useState<Block[]>(() => readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []));
+  const [events, setEvents] = useState<EventItem[]>(() => readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []));
+  const [conflicts, setConflicts] = useState<Conflict[]>(() => readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []));
+  const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(
+    () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_SNAPSHOT, null),
+  );
   const [status, setStatus] = useState("Ready");
   const timeline = useMemo<TimelineItem[]>(() => {
     const blockItems = blocks
@@ -104,8 +180,122 @@ export default function PlannerPage() {
         source: event.source,
       }));
 
-    return [...blockItems, ...eventItems].sort((left, right) => toMinutes(left.startsAt) - toMinutes(right.startsAt));
+    return [...blockItems, ...eventItems].sort(
+      (left, right) => toMinutes(left.startsAt) - toMinutes(right.startsAt),
+    );
   }, [blocks, events, date]);
+
+  useEffect(() => {
+    setDate((previous) => previous || readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today));
+    setBlocks((previous) =>
+      previous.length > 0 ? previous : readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []),
+    );
+    setEvents((previous) =>
+      previous.length > 0 ? previous : readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []),
+    );
+    setConflicts((previous) =>
+      previous.length > 0 ? previous : readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []),
+    );
+    setOauthStatus((previous) =>
+      previous ?? readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_SNAPSHOT, null),
+    );
+  }, [today]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const [
+        cachedBlocks,
+        cachedEvents,
+        cachedConflicts,
+        cachedOauthEntries,
+        bootstrapBlocks,
+        bootstrapEvents,
+        bootstrapConflicts,
+        bootstrapOauth,
+        bootstrapDate,
+      ] = await Promise.all([
+        readEntityCacheScope<Block>(PLANNER_BLOCKS_ENTITY_SCOPE),
+        readEntityCacheScope<EventItem>(PLANNER_EVENTS_ENTITY_SCOPE),
+        readEntityCacheScope<Conflict>(PLANNER_CONFLICTS_ENTITY_SCOPE),
+        readEntityCacheScope<OAuthStatus>(PLANNER_OAUTH_ENTITY_SCOPE),
+        readEntitySnapshotAsync<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []),
+        readEntitySnapshotAsync<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []),
+        readEntitySnapshotAsync<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []),
+        readEntitySnapshotAsync<OAuthStatus | null>(PLANNER_OAUTH_SNAPSHOT, null),
+        readEntitySnapshotAsync<string>(PLANNER_DATE_SNAPSHOT, today),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextBlocks = cachedBlocks.length > 0 ? cachedBlocks : bootstrapBlocks;
+      const nextEvents = cachedEvents.length > 0 ? cachedEvents : bootstrapEvents;
+      const nextConflicts = cachedConflicts.length > 0 ? cachedConflicts : bootstrapConflicts;
+      const nextOauth = cachedOauthEntries[0] ?? bootstrapOauth;
+
+      if (nextBlocks.length > 0) {
+        setBlocks(nextBlocks);
+      }
+      if (nextEvents.length > 0) {
+        setEvents(nextEvents);
+      }
+      if (nextConflicts.length > 0) {
+        setConflicts(nextConflicts);
+      }
+      if (nextOauth) {
+        setOauthStatus(nextOauth);
+      }
+      if (bootstrapDate) {
+        setDate((previous) => previous || bootstrapDate);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [today]);
+
+  const loadOauthStatus = useCallback(async () => {
+    try {
+      const payload = await apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status");
+      setOauthStatus(payload);
+      writeEntitySnapshot(PLANNER_OAUTH_SNAPSHOT, payload);
+      cachePlannerOauthStatus(payload);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "OAuth status load failed");
+    }
+  }, [apiBase, token]);
+
+  const load = useCallback(async () => {
+    try {
+      const [blockPayload, eventPayload, oauthPayload] = await Promise.all([
+        apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
+        apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
+        apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
+      ]);
+      setBlocks(blockPayload);
+      setEvents(eventPayload);
+      setOauthStatus(oauthPayload);
+      writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, blockPayload);
+      writeEntitySnapshot(PLANNER_EVENTS_SNAPSHOT, eventPayload);
+      writeEntitySnapshot(PLANNER_OAUTH_SNAPSHOT, oauthPayload);
+      cachePlannerBlocks(blockPayload);
+      cachePlannerEvents(eventPayload);
+      cachePlannerOauthStatus(oauthPayload);
+      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
+      setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Load failed";
+      setStatus(
+        blocks.length > 0 || events.length > 0 || conflicts.length > 0 || Boolean(oauthStatus)
+          ? `Loaded cached planner data. ${detail}`
+          : detail,
+      );
+    }
+  }, [apiBase, blocks.length, conflicts.length, date, events.length, oauthStatus, token]);
 
   async function generate() {
     try {
@@ -119,34 +309,12 @@ export default function PlannerPage() {
         },
       );
       setBlocks(payload.blocks);
+      writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, payload.blocks);
+      cachePlannerBlocks(payload.blocks);
+      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(`Generated ${payload.generated} blocks for ${date}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Generation failed");
-    }
-  }
-
-  async function loadOauthStatus() {
-    try {
-      const payload = await apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status");
-      setOauthStatus(payload);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "OAuth status load failed");
-    }
-  }
-
-  async function load() {
-    try {
-      const [blockPayload, eventPayload, oauthPayload] = await Promise.all([
-        apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
-        apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
-        apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
-      ]);
-      setBlocks(blockPayload);
-      setEvents(eventPayload);
-      setOauthStatus(oauthPayload);
-      setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Load failed");
     }
   }
 
@@ -188,16 +356,24 @@ export default function PlannerPage() {
         "/v1/calendar/sync/google/run",
         { method: "POST" },
       );
-      setStatus(`Google sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`);
+      setStatus(
+        `Google sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`,
+      );
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
+      writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
+      cachePlannerConflicts(conflictPayload);
       await Promise.all([load(), loadOauthStatus()]);
+      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Google sync failed");
     }
   }
 
-  async function resolveConflict(conflictId: string, resolutionStrategy: "local_wins" | "remote_wins" | "dismiss") {
+  async function resolveConflict(
+    conflictId: string,
+    resolutionStrategy: "local_wins" | "remote_wins" | "dismiss",
+  ) {
     try {
       await apiRequest(apiBase, token, `/v1/calendar/sync/google/conflicts/${conflictId}/resolve`, {
         method: "POST",
@@ -206,7 +382,10 @@ export default function PlannerPage() {
       setStatus(`Resolved conflict ${conflictId} with ${resolutionStrategy}`);
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
+      writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
+      cachePlannerConflicts(conflictPayload);
       await load();
+      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Conflict resolution failed");
     }
@@ -222,7 +401,10 @@ export default function PlannerPage() {
       );
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
+      writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
+      cachePlannerConflicts(conflictPayload);
       await load();
+      clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(
         payload.conflict
           ? `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; conflict still present`
@@ -233,6 +415,44 @@ export default function PlannerPage() {
     }
   }
 
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    load().catch(() => undefined);
+  }, [load, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const refreshIfStale = () => {
+      if (!window.navigator.onLine || !hasStaleEntityCache(PLANNER_CACHE_PREFIXES)) {
+        return;
+      }
+      load().catch(() => undefined);
+    };
+
+    refreshIfStale();
+
+    const onInvalidation = (event: Event) => {
+      const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
+      if (detail && cachePrefixesIntersect(detail.prefixes, PLANNER_CACHE_PREFIXES)) {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    return () => {
+      window.removeEventListener(ENTITY_CACHE_INVALIDATION_EVENT, onInvalidation as EventListener);
+    };
+  }, [load, token]);
+
+  useEffect(() => {
+    writeEntitySnapshot(PLANNER_DATE_SNAPSHOT, date);
+  }, [date]);
+
   return (
     <main className="shell">
       <section className="workspace glass">
@@ -240,13 +460,28 @@ export default function PlannerPage() {
         <div>
           <p className="eyebrow">Planner</p>
           <h1>Time blocks and calendar sync</h1>
-          <label className="label" htmlFor="planner-date">Date</label>
-          <input id="planner-date" className="input" value={date} onChange={(event) => setDate(event.target.value)} />
+          <label className="label" htmlFor="planner-date">
+            Date
+          </label>
+          <input
+            id="planner-date"
+            className="input"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
           <div className="button-row">
-            <button className="button" type="button" onClick={() => generate()}>Generate Blocks</button>
-            <button className="button" type="button" onClick={() => load()}>Refresh</button>
-            <button className="button" type="button" onClick={() => addSampleEvent()}>Add Event</button>
-            <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google Sync</button>
+            <button className="button" type="button" onClick={() => generate()}>
+              Generate Blocks
+            </button>
+            <button className="button" type="button" onClick={() => load()}>
+              Refresh
+            </button>
+            <button className="button" type="button" onClick={() => addSampleEvent()}>
+              Add Event
+            </button>
+            <button className="button" type="button" onClick={() => runGoogleSync()}>
+              Run Google Sync
+            </button>
           </div>
           <p className="status">{status}</p>
         </div>
@@ -263,7 +498,11 @@ export default function PlannerPage() {
               {timeline.map((item) => (
                 <li key={item.id} className="timeline-item">
                   <div>
-                    <span className={`timeline-kind ${item.kind === "block" ? "timeline-kind-block" : "timeline-kind-event"}`}>
+                    <span
+                      className={`timeline-kind ${
+                        item.kind === "block" ? "timeline-kind-block" : "timeline-kind-event"
+                      }`}
+                    >
                       {item.kind}
                     </span>
                     <strong>{item.title}</strong>
@@ -317,10 +556,18 @@ export default function PlannerPage() {
                     <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
                       Replay Sync
                     </button>
-                    <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "local_wins")}>
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={() => resolveConflict(conflict.id, "local_wins")}
+                    >
                       Local Wins
                     </button>
-                    <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "remote_wins")}>
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={() => resolveConflict(conflict.id, "remote_wins")}
+                    >
                       Remote Wins
                     </button>
                     <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>

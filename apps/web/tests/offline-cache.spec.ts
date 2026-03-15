@@ -276,3 +276,198 @@ test("keeps artifact detail and offline search available from the local cache", 
   await expect(page.getByRole("link", { name: "Orion briefing" })).toBeVisible();
   await expect(page.locator(".panel")).toContainText("Nebula summary for the Orion field briefing.");
 });
+
+test("keeps planner timeline data available when refresh goes offline", async ({ context, page }) => {
+  await seedSession(page);
+  let allowPlannerApi = true;
+
+  await page.route(`${API_BASE}/v1/planning/blocks/*`, async (route) => {
+    if (!allowPlannerApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "block-1",
+          title: "Morning planning",
+          starts_at: "2026-03-12T08:00:00.000Z",
+          ends_at: "2026-03-12T09:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/calendar/events`, async (route) => {
+    if (!allowPlannerApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "event-1",
+          title: "Orbit review",
+          starts_at: "2026-03-12T10:00:00.000Z",
+          ends_at: "2026-03-12T11:00:00.000Z",
+          source: "internal",
+        },
+      ]),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/calendar/sync/google/oauth/status`, async (route) => {
+    if (!allowPlannerApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        connected: true,
+        mode: "oauth",
+        source: "google",
+        has_refresh_token: true,
+        detail: "Connected",
+      }),
+    });
+  });
+
+  await page.goto("/planner");
+  await page.getByLabel("Date").fill("2026-03-12");
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("Morning planning").first()).toBeVisible();
+  await expect(page.getByText("Orbit review").first()).toBeVisible();
+
+  allowPlannerApi = false;
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Refresh" }).click();
+
+  await expect(page.getByText("Morning planning").first()).toBeVisible();
+  await expect(page.getByText("Orbit review").first()).toBeVisible();
+});
+
+test("keeps integration provider data readable when refresh goes offline", async ({ context, page }) => {
+  await seedSession(page);
+  let allowIntegrationsApi = true;
+
+  await page.route(`${API_BASE}/v1/integrations/providers*`, async (route) => {
+    if (!allowIntegrationsApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          provider_name: "local_llm",
+          enabled: true,
+          mode: "local_first",
+          config: { model: "qwen2.5" },
+          updated_at: "2026-03-12T07:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/integrations/execution-policy`, async (route) => {
+    if (!allowIntegrationsApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        version: 3,
+        llm: ["on_device", "api_fallback"],
+        stt: ["on_device", "api_fallback"],
+        tts: ["on_device", "api_fallback"],
+        ocr: ["on_device"],
+        available_targets: {
+          llm: ["on_device", "api_fallback"],
+          stt: ["on_device", "api_fallback"],
+          tts: ["on_device", "api_fallback"],
+          ocr: ["on_device"],
+        },
+        updated_at: "2026-03-12T07:00:00.000Z",
+      }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/integrations/providers/codex_bridge/contract`, async (route) => {
+    if (!allowIntegrationsApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider_name: "codex_bridge",
+        summary: "Experimental bridge contract",
+        feature_flag_key: "codex_bridge_enabled",
+        supported_adapter_kinds: ["openai_compatible"],
+        configured_adapter_kind: "openai_compatible",
+        supported_auth: ["api_key"],
+        supported_capabilities: ["llm"],
+        unsupported_capabilities: ["oauth"],
+        required_config: ["api_base"],
+        optional_config: ["api_key"],
+        native_oauth_supported: false,
+        safe_fallback: "Use local/api providers",
+        configured: true,
+        enabled: true,
+        execute_enabled: true,
+        missing_requirements: [],
+        derived_endpoints: {},
+      }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/integrations/providers/local_llm/health`, async (route) => {
+    if (!allowIntegrationsApi) {
+      await route.abort();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider_name: "local_llm",
+        healthy: true,
+        detail: "ok",
+        checks: { model: true },
+        secure_storage: "none",
+        probe: { ping: "ok" },
+        auth_probe: { token: "n/a" },
+      }),
+    });
+  });
+
+  await page.goto("/integrations");
+  await page.getByRole("button", { name: "Refresh List" }).click();
+  await expect(page.locator(".status")).toContainText("Loaded 1 provider config(s)");
+  await expect(page.getByText("local_llm", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Health: ok (ok)")).toBeVisible();
+
+  allowIntegrationsApi = false;
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Refresh List" }).click();
+
+  await expect(page.getByText("local_llm", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Health: ok (ok)")).toBeVisible();
+});

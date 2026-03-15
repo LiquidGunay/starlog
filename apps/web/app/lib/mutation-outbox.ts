@@ -165,6 +165,18 @@ export function cachePrefixesForMutation(
   if (mutation.entity === "calendar_event") {
     return ["calendar."];
   }
+  if (mutation.entity === "planner_block") {
+    return ["planner."];
+  }
+  if (mutation.entity === "provider_config" || mutation.entity === "execution_policy") {
+    return ["integrations."];
+  }
+  if (mutation.entity === "assistant_command") {
+    return ["assistant."];
+  }
+  if (mutation.entity === "sync_activity") {
+    return ["sync."];
+  }
 
   if (mutation.path.startsWith("/v1/artifacts/") || mutation.path === "/v1/capture") {
     return ["artifacts."];
@@ -177,6 +189,18 @@ export function cachePrefixesForMutation(
   }
   if (mutation.path.startsWith("/v1/calendar/events")) {
     return ["calendar."];
+  }
+  if (mutation.path.startsWith("/v1/planning/")) {
+    return ["planner."];
+  }
+  if (mutation.path.startsWith("/v1/integrations/")) {
+    return ["integrations."];
+  }
+  if (mutation.path.startsWith("/v1/agent/command")) {
+    return ["assistant."];
+  }
+  if (mutation.path.startsWith("/v1/sync/")) {
+    return ["sync."];
   }
 
   return [];
