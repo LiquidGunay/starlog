@@ -11,6 +11,7 @@ Last updated: 2026-03-15
 | WI-323 | Runtime dependency diagnostics hardening via explicit probe script + troubleshooting alignment |
 | WI-324 | Desktop QA matrix updates with command evidence and screenshot capture artifacts |
 | WI-325 | v1 RC package structure (checksums, manifest, build metadata, install/rollback notes) |
+| WI-423 | Main-laptop setup pack, reset flow, install/runbook handoff, and configured daily-use smoke path |
 
 ## Distribution architecture
 
@@ -57,8 +58,8 @@ Last updated: 2026-03-15
   - `manifest.tsv`
   - `build-info.txt`
 - Checksums from this run:
-  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
-  - raw binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
+  - `.deb`: `71acab0501593cb42167b171aa68a95dfafdad4b7b42d542db89c4a117f49892`
+  - raw binary: `ebbe89fb7de09b4be6beaec3f8945efed48e519937c46f0888cacc5474885584`
 
 ## Signing/notarization readiness (WI-322)
 
@@ -150,13 +151,13 @@ Last updated: 2026-03-15
 ### Latest run evidence (2026-03-15, this host)
 
 - Automated command results:
-  - `./node_modules/.bin/playwright test` -> `11 passed`
+  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts` -> `13 passed`
   - `cd tools/desktop-helper && ./node_modules/.bin/tauri build --bundles deb` -> passed
 - Screenshots:
-  - `artifacts/desktop-helper/qa/2026-03-15T12-00-01-259Z/desktop-helper-workspace-clipboard.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T12-00-01-259Z/desktop-helper-workspace-diagnostics.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T12-00-01-259Z/desktop-helper-quick-popup.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T12-00-01-259Z/screenshots.json`
+  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-workspace-config.png`
+  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-workspace-diagnostics.png`
+  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-quick-popup.png`
+  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/screenshots.json`
 
 ## RC package + handoff (WI-325)
 
@@ -174,12 +175,12 @@ Last updated: 2026-03-15
 ### Current RC candidate (2026-03-15)
 
 - Candidate id:
-  - `v0.1.0-x86_64-linux-rc2`
+  - `v0.1.0-x86_64-linux-rc3`
 - Artifact folder:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/`
 - Checksums:
-  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
-  - binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
+  - `.deb`: `71acab0501593cb42167b171aa68a95dfafdad4b7b42d542db89c4a117f49892`
+  - binary: `ebbe89fb7de09b4be6beaec3f8945efed48e519937c46f0888cacc5474885584`
 - Exact staged artifacts:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
@@ -213,3 +214,13 @@ Last updated: 2026-03-15
 
 - Keep prior RC artifact folder intact under `artifacts/desktop-helper/`.
 - If a new RC regresses runtime behavior, redistribute previous checksum-verified artifact set and keep API compatibility unchanged (helper uploads via stable `/v1/capture`).
+
+## Main-laptop setup pack (WI-423)
+
+- Daily-use setup handoff for the Linux laptop is tracked in:
+  - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
+- Production API base verified for this pass:
+  - `https://starlog-api-production.up.railway.app`
+- The helper workspace now includes:
+  - `Copy Setup Checklist` for a redacted setup summary,
+  - `Reset Local State` for upgrade/uninstall/device-handoff cleanup.

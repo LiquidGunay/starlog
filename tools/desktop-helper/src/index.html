@@ -446,6 +446,17 @@
         background: rgba(201, 190, 255, 0.16);
       }
 
+      .action-button.danger {
+        border-color: rgba(251, 179, 179, 0.3);
+        background: rgba(251, 179, 179, 0.1);
+        color: var(--danger);
+      }
+
+      .action-button.danger:hover {
+        border-color: rgba(251, 179, 179, 0.54);
+        background: rgba(251, 179, 179, 0.18);
+      }
+
       .help {
         color: var(--on-surface-variant);
         font-size: 12px;
@@ -557,6 +568,17 @@
       .config-divider {
         height: 1px;
         background: rgba(147, 142, 158, 0.2);
+      }
+
+      .config-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .config-help-stack {
+        display: grid;
+        gap: 8px;
       }
 
       .toggle-row {
@@ -1002,6 +1024,19 @@
                 <p class="label">Quick capture relay</p>
                 <p class="help">
                   Immediate capture lives in the compact popup. Keep the studio focused on diagnostics, config, and capture history.
+                </p>
+              </div>
+              <div class="config-divider"></div>
+              <div class="config-actions">
+                <button id="copySetupChecklist" type="button" class="action-button">Copy Setup Checklist</button>
+                <button id="resetLocalState" type="button" class="action-button danger">Reset Local State</button>
+              </div>
+              <div class="config-help-stack">
+                <p class="help">
+                  Copy a setup summary after you set the API base and token. The checklist redacts the token but includes the current runtime readiness.
+                </p>
+                <p class="help">
+                  Reset clears the local API base, secure/local token, recent captures, and remembered surface mode on this device.
                 </p>
               </div>
             </article>

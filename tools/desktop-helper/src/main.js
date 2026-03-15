@@ -5,6 +5,8 @@ const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
 const refreshDiagnosticsButton = document.getElementById("refreshDiagnostics");
 const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
+const copySetupChecklistButton = document.getElementById("copySetupChecklist");
+const resetLocalStateButton = document.getElementById("resetLocalState");
 const quickOpenWorkspaceButton = document.getElementById("quickOpenWorkspace");
 const workspaceReturnQuickButton = document.getElementById("workspaceReturnQuick");
 const runtimeDiagnosticsNode = document.getElementById("runtimeDiagnostics");
@@ -522,6 +524,46 @@ function buildRuntimeDiagnosticsSnapshot() {
   }, null, 2);
 }
 
+function buildSetupChecklistSnapshot() {
+  const config = readConfig();
+  const lines = [
+    "Starlog Desktop Helper Setup Checklist",
+    `Captured at: ${new Date().toISOString()}`,
+    `Runtime: ${runtimeDiagnostics.runtime}`,
+    `Platform: ${runtimeDiagnostics.platform}`,
+    `API base: ${config.apiBase}`,
+    `Bearer token configured: ${config.token ? "yes" : "no"}`,
+    "",
+    "Checklist:",
+    "1. Launch the packaged helper on this device.",
+    `2. Set API base to ${config.apiBase}.`,
+    config.token
+      ? "3. Bearer token is configured on this device. Keep using secure storage for daily use."
+      : "3. Paste a bearer token into the helper before testing live uploads.",
+    "4. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
+    "5. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
+    "6. Review Recent Captures to confirm upload IDs, metadata, and screenshot previews render.",
+    "",
+    "Runtime readiness:",
+  ];
+
+  for (const [key, label] of RUNTIME_DIAGNOSTIC_ITEMS) {
+    const item = runtimeDiagnostics[key];
+    lines.push(`- ${label}: ${diagnosticStatusLabel(item.status)} - ${item.detail}`);
+    if (item.note) {
+      lines.push(`  Note: ${item.note}`);
+    }
+  }
+
+  lines.push(
+    "",
+    "Reset:",
+    "Use Reset Local State in the helper studio to clear the local API base, secure/local token, recent captures, and remembered surface mode on this device.",
+  );
+
+  return lines.join("\n");
+}
+
 async function copyTextToClipboard(text) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -762,6 +804,23 @@ function renderRecentCaptures(entries) {
 function persistRecentCaptures(entries) {
   window.localStorage.setItem(RECENT_CAPTURE_STORAGE_KEY, JSON.stringify(entries));
   renderRecentCaptures(entries);
+}
+
+async function resetLocalState() {
+  apiBaseInput.value = DEFAULT_API_BASE;
+  tokenInput.value = "";
+
+  try {
+    window.localStorage.removeItem(RECENT_CAPTURE_STORAGE_KEY);
+    window.localStorage.removeItem(SURFACE_MODE_STORAGE_KEY);
+  } catch {
+    // Ignore local storage reset issues and still clear the visible state.
+  }
+
+  renderRecentCaptures([]);
+  await persistToken();
+  await applySurfaceMode(hasTauriRuntime() ? "quick" : "workspace");
+  setStatus("Local setup reset to defaults");
 }
 
 function rememberCapture(entry) {
@@ -1297,6 +1356,15 @@ async function copyRuntimeDiagnostics() {
   }
 }
 
+async function copySetupChecklist() {
+  try {
+    await copyTextToClipboard(buildSetupChecklistSnapshot());
+    setStatus("Setup checklist copied to clipboard");
+  } catch (error) {
+    setStatus(errorMessage(error, "Setup checklist copy failed"));
+  }
+}
+
 applyStoredConfig(readStoredConfig());
 document.body.dataset.helperMode = currentSurfaceMode;
 renderRecentCaptures(readStoredRecentCaptures());
@@ -1320,6 +1388,14 @@ refreshDiagnosticsButton.addEventListener("click", () => {
 
 copyDiagnosticsButton.addEventListener("click", () => {
   copyRuntimeDiagnostics().catch(() => undefined);
+});
+
+copySetupChecklistButton?.addEventListener("click", () => {
+  copySetupChecklist().catch(() => undefined);
+});
+
+resetLocalStateButton?.addEventListener("click", () => {
+  resetLocalState().catch(() => undefined);
 });
 
 quickOpenWorkspaceButton?.addEventListener("click", () => {

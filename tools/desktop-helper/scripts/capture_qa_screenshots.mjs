@@ -81,27 +81,30 @@ try {
   await page.goto("http://127.0.0.1:4173/index.html?mode=workspace");
   await page.getByLabel("API base").fill("http://127.0.0.1:8000");
   await page.getByLabel("Bearer token").fill("qa-token");
+
+  const workspaceConfigShot = path.join(outputDir, "desktop-helper-workspace-config.png");
+  await page.screenshot({ path: workspaceConfigShot, fullPage: true });
+  screenshots.push(workspaceConfigShot);
+
+  await page.goto("http://127.0.0.1:4173/index.html?mode=quick");
   await page.getByRole("button", { name: "Clip Clipboard" }).click();
   await page.locator("#status").waitFor({ state: "visible" });
   await page.waitForTimeout(250);
 
-  const workspaceClipboardShot = path.join(outputDir, "desktop-helper-workspace-clipboard.png");
-  await page.screenshot({ path: workspaceClipboardShot, fullPage: true });
-  screenshots.push(workspaceClipboardShot);
+  const quickPopupShot = path.join(outputDir, "desktop-helper-quick-popup.png");
+  await page.screenshot({ path: quickPopupShot, fullPage: true });
+  screenshots.push(quickPopupShot);
 
   await page.getByRole("button", { name: "Clip Screenshot" }).click();
   await page.waitForTimeout(350);
 
+  await page.goto("http://127.0.0.1:4173/index.html?mode=workspace");
+  await page.getByRole("button", { name: "Refresh Diagnostics" }).click();
+  await page.waitForTimeout(250);
+
   const workspaceDiagnosticsShot = path.join(outputDir, "desktop-helper-workspace-diagnostics.png");
   await page.screenshot({ path: workspaceDiagnosticsShot, fullPage: true });
   screenshots.push(workspaceDiagnosticsShot);
-
-  await page.goto("http://127.0.0.1:4173/index.html?mode=quick");
-  await page.waitForTimeout(200);
-
-  const quickPopupShot = path.join(outputDir, "desktop-helper-quick-popup.png");
-  await page.screenshot({ path: quickPopupShot, fullPage: true });
-  screenshots.push(quickPopupShot);
 
   await browser.close();
 
