@@ -448,6 +448,38 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `pnpm --filter mobile exec tsc --noEmit`
   - `cd services/api && uv run --project . --extra dev pytest tests/test_api_flows.py -s`
 
+### 7. PWA automatic cache retention policy
+
+- Branch: `codex/pwa-cache-retention-policy-b`
+- Workitem ID: `WI-109`
+- Lock: `HANDOFF_REVIEW | Workitem: WI-109 | Owner: N/A | Claimed: 2026-03-14T18:36:40Z | Last heartbeat: 2026-03-14T18:54:25Z`
+- Goal: proactively prune cache records by prefix/scope retention rules instead of relying only on manual clears.
+- Scope:
+  - add per-scope IndexedDB entity retention caps with pressure-aware tightening,
+  - add per-prefix snapshot max-record and max-age pruning with pressure-aware tightening,
+  - run retention automatically on writes and expose explicit sweep controls in the shared session controls UI.
+- Out of scope:
+  - changing cache data models,
+  - replacing IndexedDB with another storage backend.
+- Likely files:
+  - `apps/web/app/lib/entity-cache.ts`
+  - `apps/web/app/lib/entity-snapshot.ts`
+  - `apps/web/app/components/session-controls.tsx`
+  - `docs/IMPLEMENTATION_STATUS.md`
+- Concrete work items:
+  - add scope/prefix retention policy maps and pressure-based limit multipliers,
+  - enforce retention in background after cache writes,
+  - expose manual retention sweep controls/status for operators,
+  - confirm offline cache tests remain stable.
+- Acceptance:
+  - cache writes trigger automatic retention pruning by policy,
+  - retention behavior can be triggered manually from the PWA session controls,
+  - web typecheck/lint and offline cache tests pass.
+- Validation:
+  - `pnpm --filter web exec tsc --noEmit`
+  - `pnpm --filter web lint`
+  - `pnpm test:web:offline-cache`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -477,4 +509,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-110` (`codex/mobile-token-secure-storage`): move mobile token persistence to OS secure storage with legacy migration.
+- `WI-109` (`codex/pwa-cache-retention-policy-b`): add automatic per-prefix/per-scope retention and pressure-aware cache pruning controls.

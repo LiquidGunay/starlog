@@ -2,6 +2,22 @@ const ENTITY_CACHE_DB_NAME = "starlog-web-entity-cache";
 const ENTITY_CACHE_DB_VERSION = 1;
 const ENTITY_STORE = "entities";
 const ENTITY_SCOPE_INDEX = "by_scope";
+const DEFAULT_SCOPE_RECORD_LIMIT = 250;
+const MIN_SCOPE_RECORD_LIMIT = 25;
+const RETENTION_SWEEP_INTERVAL_MS = 30_000;
+
+const ENTITY_SCOPE_LIMIT_POLICIES: Array<{ prefix: string; max_records: number }> = [
+  { prefix: "artifacts.graph", max_records: 120 },
+  { prefix: "artifacts.versions", max_records: 120 },
+  { prefix: "artifacts.items", max_records: 600 },
+  { prefix: "notes.", max_records: 500 },
+  { prefix: "tasks.", max_records: 500 },
+  { prefix: "calendar.", max_records: 700 },
+  { prefix: "planner.", max_records: 500 },
+  { prefix: "assistant.", max_records: 220 },
+  { prefix: "sync.", max_records: 220 },
+  { prefix: "integrations.", max_records: 160 },
+];
 
 export type EntityCacheEntryInput<T> = {
   id: string;
@@ -30,7 +46,16 @@ type StoredEntityRecord = EntityCacheRecord<unknown> & {
   cache_key: string;
 };
 
+export type EntityCacheStoragePressure = "unknown" | "normal" | "elevated" | "critical";
+
+export type EntityCacheRetentionSweepResult = {
+  scopes_checked: number;
+  pruned_records: number;
+  storage_pressure: EntityCacheStoragePressure;
+};
+
 let entityCacheDbPromise: Promise<IDBDatabase | null> | null = null;
+const retentionSweepAtByScope = new Map<string, number>();
 
 function cacheKey(scope: string, id: string): string {
   return `${scope}:${id}`;
@@ -111,6 +136,160 @@ function requestToPromise(request: IDBRequest): Promise<void> {
   });
 }
 
+function sortByRecency(records: Array<{ updated_at: string; cached_at: string }>): void {
+  records.sort((left, right) => {
+    if (left.updated_at !== right.updated_at) {
+      return right.updated_at.localeCompare(left.updated_at);
+    }
+    return right.cached_at.localeCompare(left.cached_at);
+  });
+}
+
+function pressureMultiplier(pressure: EntityCacheStoragePressure): number {
+  if (pressure === "critical") {
+    return 0.6;
+  }
+  if (pressure === "elevated") {
+    return 0.8;
+  }
+  return 1;
+}
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function shouldRunScopeSweep(scope: string): boolean {
+  const previous = retentionSweepAtByScope.get(scope) ?? 0;
+  return nowMs() - previous >= RETENTION_SWEEP_INTERVAL_MS;
+}
+
+function markScopeSweep(scope: string): void {
+  retentionSweepAtByScope.set(scope, nowMs());
+}
+
+function resolveBaseScopeLimit(scope: string): number {
+  let chosen = DEFAULT_SCOPE_RECORD_LIMIT;
+  let chosenLength = -1;
+  for (const policy of ENTITY_SCOPE_LIMIT_POLICIES) {
+    if (!scope.startsWith(policy.prefix)) {
+      continue;
+    }
+    if (policy.prefix.length > chosenLength) {
+      chosen = policy.max_records;
+      chosenLength = policy.prefix.length;
+    }
+  }
+  return chosen;
+}
+
+function resolveEffectiveScopeLimit(scope: string, pressure: EntityCacheStoragePressure): number {
+  const base = resolveBaseScopeLimit(scope);
+  const scaled = Math.floor(base * pressureMultiplier(pressure));
+  return Math.max(MIN_SCOPE_RECORD_LIMIT, scaled);
+}
+
+async function detectEntityCacheStoragePressure(): Promise<EntityCacheStoragePressure> {
+  if (typeof navigator === "undefined" || !navigator.storage?.estimate) {
+    return "unknown";
+  }
+
+  try {
+    const estimate = await navigator.storage.estimate();
+    const usage = estimate.usage ?? 0;
+    const quota = estimate.quota ?? 0;
+    if (!Number.isFinite(usage) || !Number.isFinite(quota) || quota <= 0) {
+      return "unknown";
+    }
+    const ratio = usage / quota;
+    if (ratio >= 0.9) {
+      return "critical";
+    }
+    if (ratio >= 0.75) {
+      return "elevated";
+    }
+    return "normal";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function pruneScopeToRetentionLimit(
+  scope: string,
+  pressure: EntityCacheStoragePressure,
+): Promise<number> {
+  const limit = resolveEffectiveScopeLimit(scope, pressure);
+
+  const deletedCount = await withEntityStore("readwrite", async (store) => {
+    const index = store.index(ENTITY_SCOPE_INDEX);
+    const records = await new Promise<Array<{ cache_key: IDBValidKey; updated_at: string; cached_at: string }>>(
+      (resolve, reject) => {
+        const values: Array<{ cache_key: IDBValidKey; updated_at: string; cached_at: string }> = [];
+        const request = index.openCursor(IDBKeyRange.only(scope));
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            resolve(values);
+            return;
+          }
+          const record = cursor.value as StoredEntityRecord;
+          values.push({
+            cache_key: cursor.primaryKey,
+            updated_at: record.updated_at,
+            cached_at: record.cached_at,
+          });
+          cursor.continue();
+        };
+        request.onerror = () => reject(request.error);
+      },
+    );
+
+    if (records.length <= limit) {
+      return 0;
+    }
+
+    sortByRecency(records);
+    const stale = records.slice(limit);
+    for (const record of stale) {
+      await requestToPromise(store.delete(record.cache_key));
+    }
+    return stale.length;
+  });
+
+  return deletedCount ?? 0;
+}
+
+async function runScopeRetentionIfNeeded(scope: string): Promise<void> {
+  if (!shouldRunScopeSweep(scope)) {
+    return;
+  }
+  markScopeSweep(scope);
+  const pressure = await detectEntityCacheStoragePressure();
+  await pruneScopeToRetentionLimit(scope, pressure);
+}
+
+async function listCachedScopes(): Promise<string[]> {
+  const scopes = await withEntityStore("readonly", async (store) => {
+    return new Promise<string[]>((resolve, reject) => {
+      const values = new Set<string>();
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve([...values].sort((left, right) => left.localeCompare(right)));
+          return;
+        }
+        const record = cursor.value as StoredEntityRecord;
+        values.add(record.scope);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  });
+
+  return scopes ?? [];
+}
+
 function normalizeRecord<T>(scope: string, entry: EntityCacheEntryInput<T>): StoredEntityRecord {
   return {
     cache_key: cacheKey(scope, entry.id),
@@ -133,6 +312,8 @@ async function putRecords(scope: string, entries: EntityCacheEntryInput<unknown>
       await requestToPromise(store.put(normalizeRecord(scope, entry)));
     }
   });
+
+  void runScopeRetentionIfNeeded(scope);
 }
 
 export async function replaceEntityCacheScope<T>(
@@ -169,6 +350,8 @@ export async function replaceEntityCacheScope<T>(
       await requestToPromise(store.put(normalizeRecord(scope, entry)));
     }
   });
+
+  void runScopeRetentionIfNeeded(scope);
 }
 
 export async function mergeEntityCacheScope<T>(
@@ -242,88 +425,31 @@ export async function readEntityCacheValue<T>(
   return record.value as T;
 }
 
-export async function listEntityCacheScopeSummaries(): Promise<EntityCacheScopeSummary[]> {
-  const records = await withEntityStore("readonly", async (store) => {
-    return new Promise<StoredEntityRecord[]>((resolve, reject) => {
-      const items: StoredEntityRecord[] = [];
-      const request = store.openCursor();
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          resolve(items);
-          return;
-        }
+export function listEntityCacheRetentionPolicies(): Array<{ scope_prefix: string; max_records: number }> {
+  return [
+    ...ENTITY_SCOPE_LIMIT_POLICIES.map((policy) => ({
+      scope_prefix: policy.prefix,
+      max_records: policy.max_records,
+    })),
+    { scope_prefix: "default", max_records: DEFAULT_SCOPE_RECORD_LIMIT },
+  ];
+}
 
-        items.push(cursor.value as StoredEntityRecord);
-        cursor.continue();
-      };
-      request.onerror = () => reject(request.error);
-    });
-  });
+export async function runEntityCacheRetentionSweep(): Promise<EntityCacheRetentionSweepResult> {
+  const pressure = await detectEntityCacheStoragePressure();
+  const scopes = await listCachedScopes();
+  let pruned = 0;
 
-  const summaries = new Map<string, EntityCacheScopeSummary>();
-  for (const record of records ?? []) {
-    const existing = summaries.get(record.scope);
-    if (!existing) {
-      summaries.set(record.scope, {
-        scope: record.scope,
-        records: 1,
-        newest_updated_at: record.updated_at,
-        newest_cached_at: record.cached_at,
-      });
-      continue;
-    }
-
-    existing.records += 1;
-    if (record.updated_at > (existing.newest_updated_at ?? "")) {
-      existing.newest_updated_at = record.updated_at;
-    }
-    if (record.cached_at > (existing.newest_cached_at ?? "")) {
-      existing.newest_cached_at = record.cached_at;
-    }
+  for (const scope of scopes) {
+    // Sequential by design to avoid multiple concurrent readwrite transactions.
+    // eslint-disable-next-line no-await-in-loop
+    pruned += await pruneScopeToRetentionLimit(scope, pressure);
+    markScopeSweep(scope);
   }
 
-  return [...summaries.values()].sort((left, right) => left.scope.localeCompare(right.scope));
-}
-
-export async function clearEntityCacheScopeRecords(scope: string): Promise<number> {
-  const deleted = await withEntityStore("readwrite", async (store) => {
-    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
-      const values: IDBValidKey[] = [];
-      const request = store.index(ENTITY_SCOPE_INDEX).openCursor(IDBKeyRange.only(scope));
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          resolve(values);
-          return;
-        }
-
-        values.push(cursor.primaryKey);
-        cursor.continue();
-      };
-      request.onerror = () => reject(request.error);
-    });
-
-    for (const key of keys) {
-      await requestToPromise(store.delete(key));
-    }
-
-    return keys.length;
-  });
-
-  return deleted ?? 0;
-}
-
-export async function clearAllEntityCacheRecords(): Promise<number> {
-  const deleted = await withEntityStore("readwrite", async (store) => {
-    const count = await new Promise<number>((resolve, reject) => {
-      const request = store.count();
-      request.onsuccess = () => resolve(request.result ?? 0);
-      request.onerror = () => reject(request.error);
-    });
-    await requestToPromise(store.clear());
-    return count;
-  });
-
-  return deleted ?? 0;
+  return {
+    scopes_checked: scopes.length,
+    pruned_records: pruned,
+    storage_pressure: pressure,
+  };
 }

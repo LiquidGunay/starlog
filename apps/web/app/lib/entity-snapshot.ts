@@ -3,6 +3,27 @@ const SNAPSHOT_DB_NAME = "starlog-web-cache";
 const SNAPSHOT_DB_VERSION = 1;
 const SNAPSHOT_STORE = "snapshots";
 const CACHE_INVALIDATION_KEY = "starlog-web-cache-invalidation-v1";
+const DEFAULT_SNAPSHOT_MAX_RECORDS = 60;
+const DEFAULT_SNAPSHOT_MAX_AGE_DAYS = 21;
+const SNAPSHOT_RETENTION_SWEEP_INTERVAL_MS = 30_000;
+
+const SNAPSHOT_RETENTION_POLICIES: Array<{
+  prefix: string;
+  max_records: number;
+  max_age_days: number;
+}> = [
+  { prefix: "artifacts.graph:", max_records: 80, max_age_days: 30 },
+  { prefix: "artifacts.versions:", max_records: 80, max_age_days: 30 },
+  { prefix: "artifacts.", max_records: 160, max_age_days: 30 },
+  { prefix: "notes.", max_records: 120, max_age_days: 21 },
+  { prefix: "tasks.", max_records: 120, max_age_days: 21 },
+  { prefix: "calendar.", max_records: 140, max_age_days: 21 },
+  { prefix: "planner.", max_records: 120, max_age_days: 21 },
+  { prefix: "assistant.", max_records: 80, max_age_days: 14 },
+  { prefix: "sync.", max_records: 80, max_age_days: 14 },
+  { prefix: "search.", max_records: 40, max_age_days: 14 },
+  { prefix: "integrations.", max_records: 60, max_age_days: 21 },
+];
 
 export const ENTITY_CACHE_INVALIDATION_EVENT = "starlog:cache-invalidation";
 
@@ -31,13 +52,16 @@ type CacheInvalidationEventDetail = {
   recorded_at: string;
 };
 
-export type EntitySnapshotStorageSummary = {
-  keys: string[];
-  total_records: number;
-  newest_updated_at: string | null;
+export type EntitySnapshotStoragePressure = "unknown" | "normal" | "elevated" | "critical";
+
+export type EntitySnapshotRetentionSweepResult = {
+  policies_checked: number;
+  pruned_records: number;
+  storage_pressure: EntitySnapshotStoragePressure;
 };
 
 let snapshotDbPromise: Promise<IDBDatabase | null> | null = null;
+const snapshotSweepAtByPolicy = new Map<string, number>();
 
 function snapshotStorageKey(key: string): string {
   return `${SNAPSHOT_PREFIX}${key}`;
@@ -108,6 +132,98 @@ function withSnapshotStore<T>(
   });
 }
 
+function pressureMultiplier(pressure: EntitySnapshotStoragePressure): number {
+  if (pressure === "critical") {
+    return 0.6;
+  }
+  if (pressure === "elevated") {
+    return 0.8;
+  }
+  return 1;
+}
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function shouldSweepPolicy(policyKey: string): boolean {
+  const previous = snapshotSweepAtByPolicy.get(policyKey) ?? 0;
+  return nowMs() - previous >= SNAPSHOT_RETENTION_SWEEP_INTERVAL_MS;
+}
+
+function markPolicySweep(policyKey: string): void {
+  snapshotSweepAtByPolicy.set(policyKey, nowMs());
+}
+
+function matchingPolicyPrefix(key: string): string {
+  let chosen = "";
+  for (const policy of SNAPSHOT_RETENTION_POLICIES) {
+    if (!key.startsWith(policy.prefix)) {
+      continue;
+    }
+    if (policy.prefix.length > chosen.length) {
+      chosen = policy.prefix;
+    }
+  }
+  return chosen;
+}
+
+function policyKeyForSnapshot(key: string): string {
+  const matched = matchingPolicyPrefix(key);
+  return matched || "default";
+}
+
+function policyForKey(key: string): { policy_key: string; max_records: number; max_age_days: number } {
+  const matched = matchingPolicyPrefix(key);
+  if (!matched) {
+    return {
+      policy_key: "default",
+      max_records: DEFAULT_SNAPSHOT_MAX_RECORDS,
+      max_age_days: DEFAULT_SNAPSHOT_MAX_AGE_DAYS,
+    };
+  }
+
+  const policy = SNAPSHOT_RETENTION_POLICIES.find((item) => item.prefix === matched);
+  if (!policy) {
+    return {
+      policy_key: "default",
+      max_records: DEFAULT_SNAPSHOT_MAX_RECORDS,
+      max_age_days: DEFAULT_SNAPSHOT_MAX_AGE_DAYS,
+    };
+  }
+
+  return {
+    policy_key: policy.prefix,
+    max_records: policy.max_records,
+    max_age_days: policy.max_age_days,
+  };
+}
+
+async function detectSnapshotStoragePressure(): Promise<EntitySnapshotStoragePressure> {
+  if (typeof navigator === "undefined" || !navigator.storage?.estimate) {
+    return "unknown";
+  }
+
+  try {
+    const estimate = await navigator.storage.estimate();
+    const usage = estimate.usage ?? 0;
+    const quota = estimate.quota ?? 0;
+    if (!Number.isFinite(usage) || !Number.isFinite(quota) || quota <= 0) {
+      return "unknown";
+    }
+    const ratio = usage / quota;
+    if (ratio >= 0.9) {
+      return "critical";
+    }
+    if (ratio >= 0.75) {
+      return "elevated";
+    }
+    return "normal";
+  } catch {
+    return "unknown";
+  }
+}
+
 function readBootstrapRaw(key: string): string | null {
   if (typeof window === "undefined") {
     return null;
@@ -169,6 +285,8 @@ async function persistSnapshotRecord(key: string, value: unknown): Promise<void>
       request.onerror = () => reject(request.error);
     });
   });
+
+  void runSnapshotRetentionForKey(key);
 }
 
 function readInvalidationMap(): CacheInvalidationMap {
@@ -199,29 +317,21 @@ function writeInvalidationMap(value: CacheInvalidationMap): void {
   }
 }
 
-function listBootstrapSnapshotStorageKeys(): string[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const keys: string[] = [];
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith(SNAPSHOT_PREFIX)) {
-        keys.push(key);
-      }
-    }
-    return keys;
-  } catch {
-    return [];
-  }
+function removeBootstrapSnapshotKey(snapshotKey: string): void {
+  removeBootstrapValue(snapshotKey);
 }
 
-async function listSnapshotRecords(): Promise<SnapshotRecord[]> {
-  const records = await withSnapshotStore("readonly", async (store) => {
-    return new Promise<SnapshotRecord[]>((resolve, reject) => {
-      const values: SnapshotRecord[] = [];
+async function pruneSnapshotPolicy(
+  policyKey: string,
+  pressure: EntitySnapshotStoragePressure,
+): Promise<number> {
+  const policySeed = policyKey === "default" ? policyForKey("") : policyForKey(policyKey);
+  const effectiveMax = Math.max(10, Math.floor(policySeed.max_records * pressureMultiplier(pressure)));
+  const cutoffMs = nowMs() - policySeed.max_age_days * 24 * 60 * 60 * 1000;
+
+  const result = await withSnapshotStore("readwrite", async (store) => {
+    const candidates = await new Promise<Array<{ key: string; updated_at: string }>>((resolve, reject) => {
+      const values: Array<{ key: string; updated_at: string }> = [];
       const request = store.openCursor();
       request.onsuccess = () => {
         const cursor = request.result;
@@ -229,15 +339,57 @@ async function listSnapshotRecords(): Promise<SnapshotRecord[]> {
           resolve(values);
           return;
         }
-
-        values.push(cursor.value as SnapshotRecord);
+        const record = cursor.value as SnapshotRecord;
+        const recordPolicy = policyKeyForSnapshot(record.key);
+        if (recordPolicy === policyKey) {
+          values.push({ key: record.key, updated_at: record.updated_at });
+        }
         cursor.continue();
       };
       request.onerror = () => reject(request.error);
     });
+
+    if (candidates.length === 0) {
+      return { deleted: 0, deleted_keys: [] as string[] };
+    }
+
+    candidates.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+    const staleKeys = candidates
+      .filter((record, index) => {
+        if (index >= effectiveMax) {
+          return true;
+        }
+        const stamp = Date.parse(record.updated_at);
+        return Number.isFinite(stamp) && stamp < cutoffMs;
+      })
+      .map((record) => record.key);
+
+    for (const key of staleKeys) {
+      await new Promise<void>((resolve, reject) => {
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    return { deleted: staleKeys.length, deleted_keys: staleKeys };
   });
 
-  return records ?? [];
+  const deleted = result?.deleted ?? 0;
+  for (const key of result?.deleted_keys ?? []) {
+    removeBootstrapSnapshotKey(key);
+  }
+  return deleted;
+}
+
+async function runSnapshotRetentionForKey(key: string): Promise<void> {
+  const policyKey = policyKeyForSnapshot(key);
+  if (!shouldSweepPolicy(policyKey)) {
+    return;
+  }
+  markPolicySweep(policyKey);
+  const pressure = await detectSnapshotStoragePressure();
+  await pruneSnapshotPolicy(policyKey, pressure);
 }
 
 export function cachePrefixesIntersect(prefixes: string[], targets: string[]): boolean {
@@ -402,116 +554,39 @@ export function hasStaleEntityCache(prefixes: string[]): boolean {
   return prefixes.some((prefix) => Boolean(invalidationMap[prefix]));
 }
 
-export function listStaleEntityCaches(): CacheInvalidationRecord[] {
-  return Object.values(readInvalidationMap()).sort((left, right) =>
-    right.recorded_at.localeCompare(left.recorded_at),
-  );
+export function listEntitySnapshotRetentionPolicies(): Array<{
+  prefix: string;
+  max_records: number;
+  max_age_days: number;
+}> {
+  return [
+    ...SNAPSHOT_RETENTION_POLICIES,
+    {
+      prefix: "default",
+      max_records: DEFAULT_SNAPSHOT_MAX_RECORDS,
+      max_age_days: DEFAULT_SNAPSHOT_MAX_AGE_DAYS,
+    },
+  ];
 }
 
-export async function summarizeEntitySnapshotStorage(): Promise<EntitySnapshotStorageSummary> {
-  const records = await listSnapshotRecords();
-  if (records.length > 0) {
-    return {
-      keys: records.map((record) => record.key).sort(),
-      total_records: records.length,
-      newest_updated_at:
-        records
-          .map((record) => record.updated_at)
-          .sort((left, right) => right.localeCompare(left))[0] ?? null,
-    };
+export async function runEntitySnapshotRetentionSweep(): Promise<EntitySnapshotRetentionSweepResult> {
+  const pressure = await detectSnapshotStoragePressure();
+  const policyKeys = [
+    ...SNAPSHOT_RETENTION_POLICIES.map((policy) => policy.prefix),
+    "default",
+  ];
+
+  let pruned = 0;
+  for (const policyKey of policyKeys) {
+    // Sequential by design to avoid overlapping readwrite transactions.
+    // eslint-disable-next-line no-await-in-loop
+    pruned += await pruneSnapshotPolicy(policyKey, pressure);
+    markPolicySweep(policyKey);
   }
 
-  const bootstrapKeys = listBootstrapSnapshotStorageKeys().map((key) =>
-    key.slice(SNAPSHOT_PREFIX.length),
-  );
   return {
-    keys: bootstrapKeys.sort(),
-    total_records: bootstrapKeys.length,
-    newest_updated_at: null,
+    policies_checked: policyKeys.length,
+    pruned_records: pruned,
+    storage_pressure: pressure,
   };
-}
-
-export async function clearEntitySnapshotsByPrefix(prefix: string): Promise<number> {
-  const deletedFromDb = await withSnapshotStore("readwrite", async (store) => {
-    const keys = await new Promise<string[]>((resolve, reject) => {
-      const values: string[] = [];
-      const request = store.openCursor();
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          resolve(values);
-          return;
-        }
-        const record = cursor.value as SnapshotRecord;
-        if (record.key.startsWith(prefix)) {
-          values.push(record.key);
-        }
-        cursor.continue();
-      };
-      request.onerror = () => reject(request.error);
-    });
-
-    for (const key of keys) {
-      await new Promise<void>((resolve, reject) => {
-        const request = store.delete(key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    }
-    return keys.length;
-  });
-
-  let deletedBootstrap = 0;
-  if (typeof window !== "undefined") {
-    for (const storageKey of listBootstrapSnapshotStorageKeys()) {
-      const key = storageKey.slice(SNAPSHOT_PREFIX.length);
-      if (!key.startsWith(prefix)) {
-        continue;
-      }
-      try {
-        window.localStorage.removeItem(storageKey);
-        deletedBootstrap += 1;
-      } catch {
-        // Best-effort cleanup only.
-      }
-    }
-  }
-
-  return (deletedFromDb ?? 0) + deletedBootstrap;
-}
-
-export async function clearAllEntitySnapshots(): Promise<number> {
-  const deletedFromDb = await withSnapshotStore("readwrite", async (store) => {
-    const count = await new Promise<number>((resolve, reject) => {
-      const request = store.count();
-      request.onsuccess = () => resolve(request.result ?? 0);
-      request.onerror = () => reject(request.error);
-    });
-    await new Promise<void>((resolve, reject) => {
-      const request = store.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-    return count;
-  });
-
-  let deletedBootstrap = 0;
-  if (typeof window !== "undefined") {
-    const keys = listBootstrapSnapshotStorageKeys();
-    deletedBootstrap = keys.length;
-    for (const key of keys) {
-      try {
-        window.localStorage.removeItem(key);
-      } catch {
-        // Best-effort cleanup only.
-      }
-    }
-    try {
-      window.localStorage.removeItem(CACHE_INVALIDATION_KEY);
-    } catch {
-      // Best-effort cleanup only.
-    }
-  }
-
-  return (deletedFromDb ?? 0) + deletedBootstrap;
 }
