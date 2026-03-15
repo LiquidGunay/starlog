@@ -180,6 +180,7 @@ Troubleshooting checklist:
 - 2026-03-14: User wants old parallel workitems discarded and replaced with a fresh queue based on the latest architecture/workflow plan after `master` updates.
 - 2026-03-14: User wants additional architecture-plan workitems beyond the first queue refresh so agents can run a larger parallel batch.
 - 2026-03-14: User wants it explicit that each agent task must ship via PR and must rebase onto latest `master` when behind.
+- 2026-03-15: User wants desktop helper UI aligned to `screen_design` themes and expects a compact quick-capture popup plus a separate larger workspace surface for advanced controls.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -234,3 +235,5 @@ Troubleshooting checklist:
 - 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
 - 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
 - 2026-03-14: Running dependent `git checkout`/branch-creation commands in parallel can race and leave the worktree on `master`; branch-switch operations should be run sequentially to avoid accidental commits to local `master`.
+- 2026-03-15: Linux `tauri build --bundles appimage` initially panicked (`couldn't find a square icon to use as AppImage icon`) until explicit bundle icon paths were added in `tools/desktop-helper/src-tauri/tauri.conf.json`.
+- 2026-03-15: On this host, Linux `tauri build --bundles deb,appimage` can stall inside `linuxdeploy` after producing the `.deb`; the deterministic release pipeline now defaults to `deb` and keeps AppImage as an explicit optional attempt.

@@ -3,80 +3,277 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Starlog Desktop Helper</title>
+    <title>Starlog Helper Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      :root {
+        --surface-dim: #10141a;
+        --surface-container-lowest: #0a0e14;
+        --surface-container-low: #181c22;
+        --surface-container: #1c2026;
+        --surface-container-high: #262a31;
+        --surface-container-highest: #31353c;
+        --outline: #938e9e;
+        --outline-variant: #484553;
+        --primary: #c9beff;
+        --primary-container: #9c89ff;
+        --tertiary: #83d4d3;
+        --on-surface: #dfe2eb;
+        --on-surface-variant: #c9c4d5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
-        font-family: Inter, system-ui, sans-serif;
-        background: radial-gradient(circle at top right, #1f315d, #0a1020);
-        color: #e6eeff;
+        min-height: 100vh;
+        font-family: "Manrope", system-ui, sans-serif;
+        color: var(--on-surface);
+        background:
+          radial-gradient(circle at 50% -24%, rgba(201, 190, 255, 0.17) 0%, transparent 50%),
+          linear-gradient(160deg, #0d1117, var(--surface-dim));
       }
-      main {
-        padding: 18px;
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.2;
+        background-size: 52px 52px;
+        background-image:
+          linear-gradient(to right, rgba(201, 190, 255, 0.08) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(201, 190, 255, 0.08) 1px, transparent 1px);
       }
-      h1 {
-        margin: 0 0 8px;
+
+      .headline {
+        font-family: "Space Grotesk", sans-serif;
       }
-      .card {
-        border: 1px solid rgba(126, 168, 255, 0.35);
-        background: rgba(17, 26, 50, 0.7);
-        border-radius: 14px;
-        padding: 12px;
-        margin-bottom: 12px;
+
+      .mono {
+        font-family: "JetBrains Mono", monospace;
       }
-      .label {
-        color: #9db4dd;
-        font-size: 13px;
-        display: block;
-        margin-top: 8px;
+
+      .glass-panel {
+        background: rgba(201, 190, 255, 0.05);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(201, 190, 255, 0.1);
       }
-      .row {
+
+      .helper-app {
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
         display: flex;
-        gap: 8px;
-        margin-top: 10px;
-        flex-wrap: wrap;
+        flex-direction: column;
       }
-      input {
-        width: 100%;
-        border: 1px solid rgba(126, 168, 255, 0.35);
-        border-radius: 8px;
-        padding: 8px;
-        background: rgba(17, 26, 50, 0.7);
-        color: #e6eeff;
+
+      .workspace-only {
+        display: block;
       }
-      button {
-        border: 1px solid rgba(126, 168, 255, 0.35);
+
+      .quick-only {
+        display: none;
+      }
+
+      .studio-topbar {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        border-bottom: 1px solid rgba(147, 142, 158, 0.22);
+      }
+
+      .topbar-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand-mark {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        background: linear-gradient(140deg, var(--primary), var(--primary-container));
+        display: grid;
+        place-items: center;
+        color: #2c0c85;
+        font-weight: 700;
+      }
+
+      .topbar-title {
+        margin: 0;
+        color: var(--primary);
+        font-size: 20px;
+      }
+
+      .topbar-button {
         border-radius: 999px;
-        background: rgba(126, 168, 255, 0.14);
-        color: #e6eeff;
-        padding: 7px 10px;
+        border: 1px solid rgba(201, 190, 255, 0.25);
+        background: rgba(201, 190, 255, 0.08);
+        color: var(--on-surface);
+        padding: 8px 12px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 12px;
         cursor: pointer;
       }
-      #status {
-        margin-top: 8px;
-        color: #9db4dd;
+
+      .topbar-button:hover {
+        border-color: rgba(201, 190, 255, 0.46);
+        background: rgba(201, 190, 255, 0.16);
+      }
+
+      .studio-layout {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 240px 1fr;
+      }
+
+      .studio-sidebar {
+        border-right: 1px solid rgba(147, 142, 158, 0.22);
+        padding: 14px;
+      }
+
+      .sidebar-label {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--outline);
+      }
+
+      .sidebar-sub {
+        margin: 8px 0 0;
+        color: var(--on-surface-variant);
+        font-size: 11px;
+      }
+
+      .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 14px;
+      }
+
+      .sidebar-item {
+        border-radius: 12px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--on-surface-variant);
+        padding: 10px;
+        text-align: left;
+        font-family: "Space Grotesk", sans-serif;
         font-size: 13px;
       }
+
+      .sidebar-item.active {
+        color: var(--primary);
+        background: rgba(201, 190, 255, 0.1);
+        border-color: rgba(201, 190, 255, 0.22);
+      }
+
+      .studio-main {
+        min-height: 0;
+        overflow: auto;
+        padding: 16px;
+      }
+
+      .studio-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 12px;
+      }
+
+      .section-card {
+        border-radius: 20px;
+        padding: 14px;
+      }
+
+      .section-title {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .section-title-main {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .section-chip {
+        border-radius: 999px;
+        border: 1px solid rgba(131, 212, 211, 0.38);
+        background: rgba(131, 212, 211, 0.1);
+        color: var(--tertiary);
+        padding: 4px 8px;
+        font-size: 10px;
+        font-family: "JetBrains Mono", monospace;
+        text-transform: uppercase;
+      }
+
+      .diagnostic-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .action-button {
+        border-radius: 999px;
+        border: 1px solid rgba(201, 190, 255, 0.28);
+        background: rgba(201, 190, 255, 0.08);
+        color: var(--on-surface);
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 13px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+
+      .action-button:hover {
+        border-color: rgba(201, 190, 255, 0.5);
+        background: rgba(201, 190, 255, 0.16);
+      }
+
       .help {
-        color: #9db4dd;
+        color: var(--on-surface-variant);
         font-size: 12px;
         margin: 0;
       }
+
       .diagnostic-row {
-        border-top: 1px solid rgba(126, 168, 255, 0.2);
+        border-top: 1px solid rgba(147, 142, 158, 0.22);
         padding-top: 10px;
         margin-top: 10px;
       }
+
       .diagnostic-heading {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
       }
+
       .diagnostic-title {
         margin: 0;
         font-size: 14px;
       }
+
       .diagnostic-badge {
         border-radius: 999px;
         padding: 2px 8px;
@@ -84,112 +281,421 @@
         letter-spacing: 0.03em;
         text-transform: uppercase;
       }
+
       .diagnostic-badge.available {
-        background: rgba(103, 214, 161, 0.16);
-        color: #7ef0bc;
+        background: rgba(52, 211, 153, 0.14);
+        color: #7af0be;
       }
+
       .diagnostic-badge.degraded,
       .diagnostic-badge.pending {
-        background: rgba(255, 201, 102, 0.16);
-        color: #ffd67c;
+        background: rgba(250, 204, 21, 0.16);
+        color: #f6da6f;
       }
+
       .diagnostic-badge.unavailable {
-        background: rgba(255, 120, 120, 0.16);
-        color: #ff9f9f;
+        background: rgba(252, 165, 165, 0.16);
+        color: #fbb3b3;
       }
+
       .diagnostic-meta,
-      .diagnostic-detail {
-        margin: 4px 0 0;
-        font-size: 12px;
-      }
-      .diagnostic-meta {
-        color: #9db4dd;
-      }
-      .diagnostic-detail {
-        color: #dfe9ff;
-      }
+      .diagnostic-detail,
       .diagnostic-note {
         margin: 4px 0 0;
-        color: #c5d6ff;
         font-size: 12px;
       }
+
+      .diagnostic-meta {
+        color: var(--on-surface-variant);
+      }
+
+      .diagnostic-detail {
+        color: var(--on-surface);
+      }
+
+      .diagnostic-note {
+        color: #cbc2ff;
+      }
+
+      .capture-console {
+        border-radius: 20px;
+        padding: 14px;
+      }
+
+      .capture-kicker {
+        margin: 0;
+        color: var(--on-surface-variant);
+        font-size: 12px;
+      }
+
+      .form-block {
+        margin-top: 12px;
+      }
+
+      .label {
+        display: block;
+        margin: 0 0 6px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--outline);
+      }
+
+      input {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(147, 142, 158, 0.24);
+        background: rgba(10, 14, 20, 0.88);
+        color: var(--on-surface);
+        padding: 10px;
+        font-size: 13px;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: rgba(201, 190, 255, 0.45);
+        box-shadow: 0 0 0 2px rgba(201, 190, 255, 0.15);
+      }
+
+      .capture-actions {
+        margin-top: 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .command-button {
+        border-radius: 14px;
+        border: 1px solid rgba(201, 190, 255, 0.2);
+        background: rgba(49, 53, 60, 0.34);
+        color: var(--on-surface);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+        padding: 11px;
+        cursor: pointer;
+      }
+
+      .command-button:hover {
+        border-color: rgba(201, 190, 255, 0.38);
+        background: rgba(201, 190, 255, 0.1);
+      }
+
+      .command-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .command-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: rgba(201, 190, 255, 0.12);
+        border: 1px solid rgba(201, 190, 255, 0.24);
+        display: grid;
+        place-items: center;
+        font-family: "JetBrains Mono", monospace;
+        color: var(--primary);
+        font-size: 12px;
+      }
+
+      .command-label {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 14px;
+      }
+
+      .command-meta {
+        display: flex;
+        gap: 4px;
+        color: var(--on-surface-variant);
+      }
+
+      kbd {
+        border-radius: 6px;
+        border: 1px solid rgba(147, 142, 158, 0.35);
+        background: rgba(10, 14, 20, 0.82);
+        color: var(--on-surface-variant);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        padding: 2px 6px;
+      }
+
+      .workspace-capture-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .workspace-capture-note {
+        margin: 0;
+        color: var(--on-surface-variant);
+        font-size: 11px;
+      }
+
+      .quick-brand {
+        display: none;
+      }
+
+      #status {
+        margin: 12px 0 0;
+        color: var(--on-surface-variant);
+        font-size: 13px;
+      }
+
+      .recent-wrap {
+        margin-top: 12px;
+      }
+
       .recent-card {
-        border-top: 1px solid rgba(126, 168, 255, 0.2);
+        border-top: 1px solid rgba(147, 142, 158, 0.22);
         padding-top: 10px;
         margin-top: 10px;
       }
+
       .recent-title {
         margin: 0;
         font-size: 14px;
       }
+
       .recent-meta {
         margin: 4px 0 0;
-        color: #9db4dd;
+        color: var(--on-surface-variant);
         font-size: 12px;
       }
+
       .recent-summary {
         margin: 6px 0 0;
-        color: #dfe9ff;
+        color: var(--on-surface);
         font-size: 13px;
       }
+
       .recent-preview-image {
         display: block;
         width: 100%;
         margin-top: 8px;
         border-radius: 10px;
-        border: 1px solid rgba(126, 168, 255, 0.25);
-        background: rgba(5, 9, 20, 0.9);
+        border: 1px solid rgba(201, 190, 255, 0.24);
+        background: rgba(4, 4, 10, 0.84);
         object-fit: cover;
       }
+
       code {
-        background: rgba(126, 168, 255, 0.15);
-        padding: 2px 4px;
+        background: rgba(201, 190, 255, 0.15);
         border-radius: 4px;
+        padding: 2px 4px;
+      }
+
+      body[data-helper-mode="quick"] .workspace-only {
+        display: none;
+      }
+
+      body[data-helper-mode="quick"] .quick-only {
+        display: inline-flex;
+      }
+
+      body[data-helper-mode="quick"] .helper-app {
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+      }
+
+      body[data-helper-mode="quick"] .studio-layout {
+        display: block;
+      }
+
+      body[data-helper-mode="quick"] .studio-main {
+        padding: 0;
+        overflow: visible;
+      }
+
+      body[data-helper-mode="quick"] .studio-grid {
+        grid-template-columns: 1fr;
+      }
+
+      body[data-helper-mode="quick"] .capture-console {
+        width: min(360px, 100%);
+        border-radius: 20px;
+        padding: 14px;
+        box-shadow:
+          0 26px 48px rgba(0, 0, 0, 0.45),
+          0 0 20px rgba(201, 190, 255, 0.09);
+      }
+
+      body[data-helper-mode="quick"] .quick-brand {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+
+      body[data-helper-mode="quick"] .quick-brand-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      body[data-helper-mode="quick"] .quick-title {
+        margin: 0;
+        font-size: 13px;
+      }
+
+      body[data-helper-mode="quick"] .quick-subtitle {
+        margin: 2px 0 0;
+        font-size: 10px;
+        color: var(--on-surface-variant);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      body[data-helper-mode="quick"] .capture-kicker {
+        margin-bottom: 8px;
+      }
+
+      body[data-helper-mode="quick"] .capture-actions {
+        gap: 7px;
+      }
+
+      body[data-helper-mode="quick"] .workspace-capture-footer {
+        margin-top: 10px;
+      }
+
+      body[data-helper-mode="quick"] #status {
+        margin-top: 10px;
+      }
+
+      @media (max-width: 1100px) {
+        .studio-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
-  <body>
-    <main>
-      <h1>Starlog Helper</h1>
-      <div class="card">
-        <p class="label">Hotkeys</p>
-        <p class="help"><code>Cmd/Ctrl + Shift + C</code> clip clipboard to Starlog</p>
-        <p class="help"><code>Cmd/Ctrl + Shift + S</code> screenshot clip (local OCR when available)</p>
-      </div>
-
-      <div class="card">
-        <label class="label" for="apiBase">API base</label>
-        <input id="apiBase" value="http://localhost:8000" />
-
-        <label class="label" for="token">Bearer token</label>
-        <input id="token" type="password" placeholder="paste token" />
-
-        <div class="row">
-          <button id="clipSelection">Clip Clipboard</button>
-          <button id="clipScreenshot">Clip Screenshot</button>
+  <body data-helper-mode="workspace">
+    <main class="helper-app">
+      <header class="studio-topbar glass-panel workspace-only">
+        <div class="topbar-brand">
+          <div class="brand-mark headline">S</div>
+          <h1 class="topbar-title headline">Starlog Helper Studio</h1>
         </div>
-        <p id="status">Waiting for action</p>
-      </div>
+        <button id="workspaceReturnQuick" type="button" class="topbar-button">Quick Surface</button>
+      </header>
 
-      <div class="card">
-        <p class="label">Runtime diagnostics</p>
-        <div class="row">
-          <button id="refreshDiagnostics" type="button">Refresh Diagnostics</button>
-          <button id="copyDiagnostics" type="button">Copy Diagnostics</button>
-        </div>
-        <p class="help">Copy a redacted diagnostics snapshot after refresh when you need to report a runtime issue.</p>
-        <div id="runtimeDiagnostics">
-          <p class="help">Checking runtime capabilities.</p>
-        </div>
-      </div>
+      <div class="studio-layout">
+        <aside class="studio-sidebar glass-panel workspace-only">
+          <p class="sidebar-label">AI Command Center</p>
+          <p class="sidebar-sub">Active neural link</p>
+          <nav class="sidebar-nav">
+            <button type="button" class="sidebar-item active">Tactical</button>
+            <button type="button" class="sidebar-item">Logs</button>
+            <button type="button" class="sidebar-item">Comms</button>
+          </nav>
+        </aside>
 
-      <div class="card">
-        <p class="label">Recent captures</p>
-        <div id="recentCaptures">
-          <p class="help">No captures yet.</p>
-        </div>
+        <section class="studio-main">
+          <div class="studio-grid">
+            <article class="section-card glass-panel workspace-only">
+              <h2 class="section-title">
+                <span class="section-title-main">Runtime Diagnostics</span>
+                <span class="section-chip">System Nominal</span>
+              </h2>
+              <div class="diagnostic-controls">
+                <button id="refreshDiagnostics" type="button" class="action-button">Refresh Diagnostics</button>
+                <button id="copyDiagnostics" type="button" class="action-button">Copy Diagnostics</button>
+              </div>
+              <p class="help" style="margin-top: 8px">
+                Copy a redacted diagnostics snapshot after refresh when you need to report runtime issues.
+              </p>
+              <div id="runtimeDiagnostics" style="margin-top: 10px">
+                <p class="help">Checking runtime capabilities.</p>
+              </div>
+            </article>
+
+            <article class="section-card glass-panel capture-console">
+              <div class="quick-brand quick-only">
+                <div class="quick-brand-left">
+                  <div class="brand-mark headline">S</div>
+                  <div>
+                    <p class="quick-title headline">Starlog</p>
+                    <p class="quick-subtitle">Aetheris Command</p>
+                  </div>
+                </div>
+                <span class="section-chip">Popup</span>
+              </div>
+
+              <h2 class="section-title workspace-only">
+                <span class="section-title-main">Capture Surface</span>
+              </h2>
+
+              <p class="capture-kicker">Capture clipboard and screenshots from any desktop app into Starlog.</p>
+
+              <div class="form-block workspace-only">
+                <label class="label" for="apiBase">API base</label>
+                <input id="apiBase" value="http://localhost:8000" />
+              </div>
+
+              <div class="form-block workspace-only">
+                <label class="label" for="token">Bearer token</label>
+                <input id="token" type="password" placeholder="paste token" />
+              </div>
+
+              <div class="capture-actions">
+                <button id="clipSelection" class="command-button" type="button">
+                  <span class="command-left">
+                    <span class="command-icon mono">CLP</span>
+                    <span class="command-label">Clip Clipboard</span>
+                  </span>
+                  <span class="command-meta quick-only">
+                    <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd>
+                  </span>
+                </button>
+
+                <button id="clipScreenshot" class="command-button" type="button">
+                  <span class="command-left">
+                    <span class="command-icon mono">IMG</span>
+                    <span class="command-label">Clip Screenshot</span>
+                  </span>
+                  <span class="command-meta quick-only">
+                    <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>S</kbd>
+                  </span>
+                </button>
+
+                <button id="quickOpenWorkspace" type="button" class="command-button quick-only">
+                  <span class="command-left">
+                    <span class="command-icon mono">WRK</span>
+                    <span class="command-label">Open Workspace</span>
+                  </span>
+                  <span class="command-meta">
+                    <kbd>Cmd</kbd><kbd>W</kbd>
+                  </span>
+                </button>
+              </div>
+
+              <div class="workspace-capture-footer workspace-only">
+                <p class="workspace-capture-note">Need the compact taskbar popup? Switch to <code>Quick Surface</code>.</p>
+              </div>
+
+              <p id="status">Waiting for action</p>
+            </article>
+          </div>
+
+          <article class="section-card glass-panel recent-wrap workspace-only">
+            <h2 class="section-title">
+              <span class="section-title-main">Recent Captures</span>
+            </h2>
+            <div id="recentCaptures" style="margin-top: 10px">
+              <p class="help">No captures yet.</p>
+            </div>
+          </article>
+        </section>
       </div>
     </main>
+
     <script type="module" src="./main.js"></script>
   </body>
 </html>

@@ -3,6 +3,9 @@
 Desktop helper for clipping content from non-browser apps.
 
 ## Current capabilities
+- Two-surface desktop UX aligned to Starlog design language:
+  - compact quick-capture popup (capture buttons + open-workspace launcher),
+  - full helper workspace window (diagnostics + recent captures + API/token controls).
 - Global OS shortcuts plus window-local fallback (`Cmd/Ctrl+Shift+C` and `Cmd/Ctrl+Shift+S`).
 - Persisted API base between launches; bearer token uses OS secure storage in Tauri runtime (browser fallback keeps local-storage behavior only outside Tauri).
 - Runtime diagnostics card for clipboard, screenshot, OCR, active-window metadata, and shortcut wiring, with refresh/copy controls plus latest-attempt notes for bug reports.
@@ -13,6 +16,8 @@ Desktop helper for clipping content from non-browser apps.
   - Windows: full-screen PowerShell capture
   - Linux: best-effort `grim`/`slurp`, `gnome-screenshot`, ImageMagick `import`, plus full-screen `grim` or `scrot` fallback
 - Strict on-device OCR attempt for screenshots via local `tesseract` when available.
+- Screenshot region selection overlays are OS-native capture surfaces; the helper window itself stays in compact/workspace bounds and does not switch to full-screen UI.
+- `Open Workspace` launches a dedicated larger helper window (`workspace`) from the quick popup instead of resizing the popup itself.
 - Queued upload to Starlog API.
 - Best-effort cleanup of temporary screenshot files after upload.
 - In-app recent-capture history with artifact IDs, clip summaries, screenshot thumbnails, captured context, and the backend used for the capture.
@@ -53,11 +58,36 @@ Desktop helper for clipping content from non-browser apps.
 - Browser-style validation: `./node_modules/.bin/playwright test`
 - Rust backend validation: `cd tools/desktop-helper/src-tauri && cargo check`
 - Native helper build: `cd tools/desktop-helper && ./node_modules/.bin/tauri build`
+- Runtime dependency probe: `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh`
+- Signing readiness probe (target-aware): `cd tools/desktop-helper && ./scripts/signing_readiness_check.sh <linux|windows|macos|all>`
+- Bundle + release artifact staging: `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh`
+- QA screenshot capture: `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
 - Windows host probes used in this branch:
   - `powershell.exe -NoProfile -Command 'Write-Output $PSVersionTable.PSVersion.ToString()'`
   - `powershell.exe -NoProfile -Command 'Get-Clipboard -Raw'`
   - PowerShell user32 foreground-window probe matching the helper script
   - PowerShell full-screen screenshot probe matching the helper script
+
+## Release packaging
+
+- Staged release artifacts are generated under:
+  - `artifacts/desktop-helper/v<version>/<arch-os>/`
+- `build_release_artifacts.sh` produces:
+  - host installers (`.deb`, `.AppImage`, `.msi`, `.dmg`, etc. when supported),
+  - raw helper binary fallback,
+  - `checksums.sha256`,
+  - `manifest.tsv`,
+  - `build-info.txt`.
+- Artifact names are normalized as:
+  - `starlog-desktop-helper-v<version>-<arch-os>-<source-file>`
+
+## Signing and notarization
+
+- Use `signing_readiness_check.sh` before RC packaging to catch missing cert/notarization env vars.
+- `linux` target checks optional package-signing tools (`gpg`, `dpkg-sig`, `rpmsign`) and reports warnings.
+- `windows` target checks `signtool` and certificate env (`WINDOWS_CERTIFICATE` + `WINDOWS_CERTIFICATE_PASSWORD`, or `WINDOWS_CERTIFICATE_SHA1`).
+- `macos` target checks cert + notarization env (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_PATH`, `APPLE_TEAM_ID`).
+- Distribution runbook and RC checklist: `docs/DESKTOP_HELPER_V1_RELEASE.md`.
 
 ## Manual runtime checks
 
