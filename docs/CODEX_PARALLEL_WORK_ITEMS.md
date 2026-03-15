@@ -419,6 +419,35 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
   - `pnpm --filter web lint`
   - `pnpm test:web:offline-cache`
 
+### 7. Mobile secure token storage
+
+- Branch: `codex/mobile-token-secure-storage`
+- Workitem ID: `WI-110`
+- Lock: `HANDOFF (released) in shared registry; this document is a mirror only`
+- Goal: move mobile bearer-token persistence from plaintext app state to OS secure storage.
+- Scope:
+  - add a secure token storage abstraction in the mobile companion,
+  - migrate legacy persisted tokens into secure storage on startup,
+  - stop writing bearer token values into SQLite/file-backed persisted app state.
+- Out of scope:
+  - changing API auth protocol/token format,
+  - desktop secure storage migration.
+- Likely files:
+  - `apps/mobile/App.tsx`
+  - `apps/mobile/package.json`
+  - `AGENTS.md`
+- Concrete work items:
+  - wire `expo-secure-store` read/write helpers for mobile bearer token storage,
+  - keep backward compatibility by migrating existing persisted plaintext token once,
+  - sanitize persisted state writes so `token` is no longer stored in SQLite payloads,
+  - document the migration/security caveats in `AGENTS.md`.
+- Acceptance:
+  - mobile app restores/stores token via secure storage,
+  - persisted app state no longer contains bearer token values.
+- Validation:
+  - `pnpm --filter mobile exec tsc --noEmit`
+  - `cd services/api && uv run --project . --extra dev pytest tests/test_api_flows.py -s`
+
 ## Suggested execution order
 
 - Start immediately:
@@ -448,4 +477,4 @@ Plan source: `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` (updated `2026-03-14`)
 - `WI-104` (`codex/native-codex-first-party-bridge`): verify first-party Codex bridge viability and either implement guarded path or document boundary.
 - `WI-105` (`codex/pwa-offline-cache-followups`): extend IndexedDB caching to remaining PWA workspaces with cache inspection/clear controls.
 - `WI-106` (`codex/phone-local-llm`): implement or bound the first practical phone-local LLM routing path with policy diagnostics.
-- `WI-107` (`codex/pwa-cache-eviction-policy-b`): add per-prefix cache eviction policy controls and storage-quota guidance in shared PWA session controls.
+- `WI-110` (`codex/mobile-token-secure-storage`): move mobile token persistence to OS secure storage with legacy migration.

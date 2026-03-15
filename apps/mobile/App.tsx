@@ -3,6 +3,7 @@ import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import * as Notifications from "expo-notifications";
 import { useShareIntent } from "expo-share-intent";
+import * as SecureStore from "expo-secure-store";
 import * as Speech from "expo-speech";
 import * as SQLite from "expo-sqlite";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -259,6 +260,7 @@ const DEFAULT_VOICE_MIME = "audio/x-m4a";
 const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
+const MOBILE_SECURE_TOKEN_KEY = "starlog.api.token";
 const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
   llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
   stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
@@ -405,6 +407,27 @@ async function stateDatabase(): Promise<SQLite.SQLiteDatabase> {
     })();
   }
   return stateDbPromise;
+}
+
+async function readSecureToken(): Promise<string> {
+  try {
+    return (await SecureStore.getItemAsync(MOBILE_SECURE_TOKEN_KEY)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+async function writeSecureToken(rawToken: string): Promise<void> {
+  const token = rawToken.trim();
+  try {
+    if (!token) {
+      await SecureStore.deleteItemAsync(MOBILE_SECURE_TOKEN_KEY);
+      return;
+    }
+    await SecureStore.setItemAsync(MOBILE_SECURE_TOKEN_KEY, token);
+  } catch {
+    // Keep app behavior resilient if secure storage is unavailable on a host/device.
+  }
 }
 
 function tomorrowDateString(): string {
@@ -578,7 +601,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
         return migrated;
       }
       if (parsed.version === 3) {
-        return {
+        const normalized: PersistedState = {
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
@@ -588,6 +611,11 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantAiJobs: [],
           ...parsed,
         };
+        if (normalized.token) {
+          // Strip legacy plaintext token persistence from the local DB row.
+          await writePersistedState(normalized);
+        }
+        return normalized;
       }
     }
 
@@ -628,6 +656,10 @@ async function readPersistedState(): Promise<PersistedState | null> {
 }
 
 async function writePersistedState(payload: PersistedState): Promise<void> {
+  const sanitized: PersistedState = {
+    ...payload,
+    token: "",
+  };
   const db = await stateDatabase();
   await db.runAsync(
     `
@@ -638,7 +670,7 @@ async function writePersistedState(payload: PersistedState): Promise<void> {
         updated_at = excluded.updated_at
     `,
     MOBILE_STATE_KEY,
-    JSON.stringify(payload),
+    JSON.stringify(sanitized),
     new Date().toISOString(),
   );
 }
@@ -1976,10 +2008,16 @@ export default function App() {
       await refreshLocalSttAvailability("auto");
 
       const persisted = await readPersistedState();
+      const secureToken = await readSecureToken();
+      const recoveredToken = secureToken || persisted?.token || "";
+      if (!secureToken && persisted?.token) {
+        await writeSecureToken(persisted.token);
+      }
+
       if (active && persisted) {
         setApiBase(persisted.apiBase);
         setPwaBase(persisted.pwaBase);
-        setToken(persisted.token);
+        setToken(recoveredToken);
         setQuickCaptureTitle(persisted.quickCaptureTitle);
         setQuickCaptureText(persisted.quickCaptureText);
         setQuickCaptureSourceUrl(persisted.quickCaptureSourceUrl);
@@ -2002,6 +2040,8 @@ export default function App() {
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
         setAssistantAiJobs(persisted.assistantAiJobs || []);
+      } else if (active && recoveredToken) {
+        setToken(recoveredToken);
       }
 
       const initialUrl = await Linking.getInitialURL();
@@ -2197,6 +2237,13 @@ export default function App() {
       appStateSubscription.remove();
     };
   }, [token, pendingCaptures.length, apiBase]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    writeSecureToken(token).catch(() => undefined);
+  }, [hydrated, token]);
 
   useEffect(() => {
     if (!hydrated) {
