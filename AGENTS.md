@@ -115,6 +115,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` — current human-readable work queue for parallel agent execution.
+- `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — daily-use install, prerequisite, config, smoke, and reset handoff for the desktop helper on the main laptop.
 - `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
@@ -361,3 +362,5 @@ Troubleshooting checklist:
 - 2026-03-15: Post-merge desktop UI audit found the helper workspace reuses the quick-popup capture console instead of a more distinct studio config surface, creating redundant UI relative to the desktop design reference.
 - 2026-03-15: Fresh worktrees can now reuse shared dependency and cache state through `scripts/use_shared_worktree_state.sh`; only surfaces with changed dependency/build inputs should localize and rerun setup.
 - 2026-03-15: Railway setup for WI-443 is now linked to the existing `perfect-intuition` project, with empty `starlog-api` and `starlog-web` services created plus Railway-provided domains reserved; source/build/start/env wiring is intentionally deferred until deploy approval.
+- 2026-03-15: The desktop-helper QA screenshot script had drifted behind the popup/workspace split and still tried to click capture buttons from the workspace route; it now captures config in the workspace and capture actions in the quick popup.
+- 2026-03-15: Main-laptop helper readiness on this Linux host still depends on installing clipboard, screenshot, active-window, and OCR helper packages; the setup-pack doc now records the concrete `apt-get` path plus built-in helper reset controls.

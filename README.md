@@ -75,6 +75,13 @@ STARLOG_TOKEN=YOUR_BEARER_TOKEN make dev-local-ai
 
 Guide: `docs/RAILWAY_DEPLOY.md`
 
+### Desktop helper install/setup
+
+Linux installable artifact and daily-use setup handoff:
+
+- distribution runbook: `docs/DESKTOP_HELPER_V1_RELEASE.md`
+- main-laptop setup pack: `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
+
 ## View progress on phone
 
 Use the phone setup guide for both PWA and Expo companion flows:

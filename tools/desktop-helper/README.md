@@ -8,6 +8,9 @@ Desktop helper for clipping content from non-browser apps.
   - full helper workspace window (diagnostics + recent captures + API/token controls).
 - Global OS shortcuts plus window-local fallback (`Cmd/Ctrl+Shift+C` and `Cmd/Ctrl+Shift+S`).
 - Persisted API base between launches; bearer token uses OS secure storage in Tauri runtime (browser fallback keeps local-storage behavior only outside Tauri).
+- Setup-pack controls in the workspace config surface:
+  - `Copy Setup Checklist` copies a redacted, current readiness summary for daily-use setup/handoff.
+  - `Reset Local State` clears API base, secure/local token, recent captures, and remembered surface mode on the current device.
 - Runtime diagnostics card for clipboard, screenshot, OCR, active-window metadata, and shortcut wiring, with refresh/copy controls plus latest-attempt notes for bug reports.
 - Native clipboard capture in Tauri runtime, with focused-window browser clipboard fallback when native access is unavailable.
 - Best-effort active app/window metadata capture per clip.
@@ -62,6 +65,7 @@ Desktop helper for clipping content from non-browser apps.
 - Signing readiness probe (target-aware): `cd tools/desktop-helper && ./scripts/signing_readiness_check.sh <linux|windows|macos|all>`
 - Bundle + release artifact staging: `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh`
 - QA screenshot capture: `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
+- Main-laptop install/setup handoff: `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
 - Windows host probes used in this branch:
   - `powershell.exe -NoProfile -Command 'Write-Output $PSVersionTable.PSVersion.ToString()'`
   - `powershell.exe -NoProfile -Command 'Get-Clipboard -Raw'`

@@ -209,6 +209,66 @@ test("copy diagnostics includes the latest runtime note without the token", asyn
   expect(copiedDiagnostics).not.toContain("token-123");
 });
 
+test("copy setup checklist redacts the token and includes readiness guidance", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__copiedDiagnostics = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value) => {
+          window.__copiedDiagnostics = String(value);
+        },
+      },
+    });
+  });
+
+  await page.goto("/index.html");
+  await page.getByLabel("API base").fill("https://starlog.example");
+  await page.getByLabel("Bearer token").fill("token-123");
+  await page.getByRole("button", { name: "Copy Setup Checklist" }).click();
+
+  await expect(page.locator("#status")).toHaveText("Setup checklist copied to clipboard");
+
+  const copiedChecklist = await page.evaluate(() => window.__copiedDiagnostics || "");
+  expect(copiedChecklist).toContain("Starlog Desktop Helper Setup Checklist");
+  expect(copiedChecklist).toContain("API base: https://starlog.example");
+  expect(copiedChecklist).toContain("Bearer token configured: yes");
+  expect(copiedChecklist).toContain("Reset Local State");
+  expect(copiedChecklist).not.toContain("token-123");
+});
+
+test("reset local state clears config, recent captures, and quick surface preference", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "starlog.desktop-helper.recent-captures.v1",
+      JSON.stringify([
+        {
+          artifactId: "artifact-reset",
+          title: "Desktop clip",
+          kind: "clipboard",
+          capturedAt: "2026-03-15T18:00:00.000Z",
+          appName: "Codex",
+          windowTitle: "Setup Reset Test",
+        },
+      ]),
+    );
+  });
+
+  await page.goto("/index.html?mode=quick");
+  await page.getByRole("button", { name: "Open Workspace" }).click();
+  await page.getByLabel("API base").fill("https://starlog.example");
+  await page.getByLabel("Bearer token").fill("token-123");
+  await expect(page.locator("#recentCaptures")).toContainText("artifact-reset");
+
+  await page.getByRole("button", { name: "Reset Local State" }).click();
+
+  await expect(page.locator("#status")).toHaveText("Local setup reset to defaults");
+  await expect(page.getByLabel("API base")).toHaveValue("http://localhost:8000");
+  await expect(page.getByLabel("Bearer token")).toHaveValue("");
+  await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "workspace");
+  await expect(page.locator("#recentCaptures")).toContainText("No captures yet.");
+});
+
 test("recent helper captures persist across reloads", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
