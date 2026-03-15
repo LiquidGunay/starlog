@@ -118,9 +118,8 @@
 - PWA offline search now reads the IndexedDB cache, reuses cached artifact graph detail, and overlays queued note/task/calendar/artifact mutations so offline retrieval stays useful after local edits.
 - Filtered task refreshes now merge back into the canonical local task cache, so switching filters or reloading offline does not collapse the offline task/search view down to only the most recently fetched subset.
 - PWA mutation replay now marks affected cache scopes stale, key workspaces auto-refresh those scopes on reconnect, and the service worker now caches core app-shell routes/assets so offline reloads can reach the cached entity data.
-- The IndexedDB-backed cache layer now also covers planner, integrations, sync-center, and richer assistant snapshots/jobs, so those views can recover from local cache when API refreshes fail.
-- Session controls now expose cache diagnostics and controls (scope counts, stale prefixes, storage estimate, and clear-local-cache actions) to make eviction/debug workflows operator-visible.
-- Offline local search now includes planner blocks, integration providers, assistant command history, and sync pull events in addition to artifacts/notes/tasks/calendar entries.
+- PWA session controls now expose cache policy telemetry (scope/prefix counts, stale markers, and quota estimates) plus targeted prefix eviction, stale-marker clears, and full local-cache reset actions.
+- Cache policy guidance now reports storage pressure bands (`healthy`, `elevated`, `critical`) from `navigator.storage.estimate` so users can proactively evict heavy prefixes before quota write failures.
 - Export/import roundtrip restore now covers relation/action/sync/provider tables and includes `make verify-export` drill tooling.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
@@ -128,7 +127,10 @@
 
 ## Validation run for this pass
 
-- `cd /home/ubuntu/starlog && npx pnpm@9.15.0 install`
+- `cd /home/ubuntu/starlog/services/api && uv run --project services/api --extra dev pytest tests/test_api_flows.py -k 'provider_config_and_webhooks or execution_policy_controls_ai_routing or codex_bridge_requires_explicit_opt_in_for_execution' -s`
+- `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/tsc --noEmit`
+- `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/next lint`
+- `cd /home/ubuntu/starlog && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
 - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web exec tsc --noEmit`
 - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web lint`
 - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 test:web:offline-cache`
@@ -139,5 +141,5 @@
 2. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
 3. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
 4. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
-5. Broaden the new PWA local-first cache layer to remaining workspaces (planner, integrations, sync-center, richer assistant views) and add clearer eviction/quota controls on top of the IndexedDB cache.
-6. Move from the new phone-local LLM contract/feasibility guardrails to a real mobile worker runtime path once Android-side local model runtime integration is proven practical.
+5. Add automatic per-prefix retention/aging policies so cache eviction can be proactive instead of only manual.
+6. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.

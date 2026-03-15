@@ -208,7 +208,7 @@ function listBootstrapSnapshotStorageKeys(): string[] {
     const keys: string[] = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index);
-      if (key && key.startsWith(SNAPSHOT_PREFIX)) {
+      if (key?.startsWith(SNAPSHOT_PREFIX)) {
         keys.push(key);
       }
     }
@@ -218,7 +218,7 @@ function listBootstrapSnapshotStorageKeys(): string[] {
   }
 }
 
-async function listIndexedDbSnapshots(): Promise<SnapshotRecord[]> {
+async function listSnapshotRecords(): Promise<SnapshotRecord[]> {
   const records = await withSnapshotStore("readonly", async (store) => {
     return new Promise<SnapshotRecord[]>((resolve, reject) => {
       const values: SnapshotRecord[] = [];
@@ -409,14 +409,15 @@ export function listStaleEntityCaches(): CacheInvalidationRecord[] {
 }
 
 export async function summarizeEntitySnapshotStorage(): Promise<EntitySnapshotStorageSummary> {
-  const records = await listIndexedDbSnapshots();
+  const records = await listSnapshotRecords();
   if (records.length > 0) {
     return {
       keys: records.map((record) => record.key).sort(),
       total_records: records.length,
-      newest_updated_at: records
-        .map((record) => record.updated_at)
-        .sort((left, right) => right.localeCompare(left))[0] ?? null,
+      newest_updated_at:
+        records
+          .map((record) => record.updated_at)
+          .sort((left, right) => right.localeCompare(left))[0] ?? null,
     };
   }
 
@@ -430,45 +431,87 @@ export async function summarizeEntitySnapshotStorage(): Promise<EntitySnapshotSt
   };
 }
 
+export async function clearEntitySnapshotsByPrefix(prefix: string): Promise<number> {
+  const deletedFromDb = await withSnapshotStore("readwrite", async (store) => {
+    const keys = await new Promise<string[]>((resolve, reject) => {
+      const values: string[] = [];
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(values);
+          return;
+        }
+        const record = cursor.value as SnapshotRecord;
+        if (record.key.startsWith(prefix)) {
+          values.push(record.key);
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const key of keys) {
+      await new Promise<void>((resolve, reject) => {
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+    return keys.length;
+  });
+
+  let deletedBootstrap = 0;
+  if (typeof window !== "undefined") {
+    for (const storageKey of listBootstrapSnapshotStorageKeys()) {
+      const key = storageKey.slice(SNAPSHOT_PREFIX.length);
+      if (!key.startsWith(prefix)) {
+        continue;
+      }
+      try {
+        window.localStorage.removeItem(storageKey);
+        deletedBootstrap += 1;
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  }
+
+  return (deletedFromDb ?? 0) + deletedBootstrap;
+}
+
 export async function clearAllEntitySnapshots(): Promise<number> {
-  const snapshotCount = await withSnapshotStore("readwrite", async (store) => {
+  const deletedFromDb = await withSnapshotStore("readwrite", async (store) => {
     const count = await new Promise<number>((resolve, reject) => {
       const request = store.count();
       request.onsuccess = () => resolve(request.result ?? 0);
       request.onerror = () => reject(request.error);
     });
-
     await new Promise<void>((resolve, reject) => {
       const request = store.clear();
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-
     return count;
   });
 
-  let bootstrapCount = 0;
+  let deletedBootstrap = 0;
   if (typeof window !== "undefined") {
-    try {
-      const bootstrapKeys = listBootstrapSnapshotStorageKeys();
-      bootstrapCount = bootstrapKeys.length;
-      for (const key of bootstrapKeys) {
+    const keys = listBootstrapSnapshotStorageKeys();
+    deletedBootstrap = keys.length;
+    for (const key of keys) {
+      try {
         window.localStorage.removeItem(key);
+      } catch {
+        // Best-effort cleanup only.
       }
-
-      const stalePrefixes = Object.keys(readInvalidationMap());
+    }
+    try {
       window.localStorage.removeItem(CACHE_INVALIDATION_KEY);
-      if (stalePrefixes.length > 0) {
-        dispatchInvalidationEvent({
-          action: "clear",
-          prefixes: stalePrefixes,
-          recorded_at: new Date().toISOString(),
-        });
-      }
     } catch {
       // Best-effort cleanup only.
     }
   }
 
-  return (snapshotCount ?? 0) + bootstrapCount;
+  return (deletedFromDb ?? 0) + deletedBootstrap;
 }
