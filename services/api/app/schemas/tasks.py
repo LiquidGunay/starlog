@@ -20,12 +20,14 @@ class TaskUpdateRequest(BaseModel):
     priority: int | None = Field(default=None, ge=1, le=5)
     due_at: datetime | None = None
     linked_note_id: str | None = None
+    base_revision: int | None = Field(default=None, ge=1)
 
 
 class TaskResponse(BaseModel):
     id: str
     title: str
     status: str
+    revision: int
     estimate_min: int | None = None
     priority: int
     due_at: datetime | None = None

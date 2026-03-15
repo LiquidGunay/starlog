@@ -45,7 +45,16 @@ def update_task(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> TaskResponse:
-    updated = tasks_service.update_task(db, task_id, payload.model_dump())
+    try:
+        updated = tasks_service.update_task(db, task_id, payload.model_dump())
+    except tasks_service.conflict_service.RevisionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "revision_conflict",
+                "conflict": exc.conflict,
+            },
+        ) from exc
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return TaskResponse.model_validate(updated)

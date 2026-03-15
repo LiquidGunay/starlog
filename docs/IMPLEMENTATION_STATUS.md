@@ -108,8 +108,7 @@
 - Added `POST /v1/agent/command/assist`, which queues Codex-backed assistant planning/execution jobs against the same tool layer used by deterministic commands.
 - Added `POST /v1/agent/command/voice`, which queues STT jobs with `action=assistant_command` and executes the command planner automatically when transcription completes.
 - Added `/assistant`, the first chat-style command shell in the PWA, with backend-loaded examples, in-browser voice recording, queued Codex planning/execution jobs, local snapshot-backed history, and recent command/job inspection.
-- Notes updates now support optional `base_revision` optimistic-concurrency checks; stale writes return structured `409 revision_conflict` payloads with persisted conflict records exposed via `/v1/conflicts/*`.
-- Conflict resolution payload validation now enforces `strategy=merged_patch` requires `merged_payload`, while non-`merged_patch` strategies reject merged payload bodies.
+- Tasks updates now support optional `base_revision` optimistic-concurrency checks using `tasks.revision`; stale updates return structured `409 revision_conflict` responses with persisted conflict records.
 - Integrations workspace now includes editable execution-policy JSON so the same preference ordering can later be honored by phone-local runtimes too.
 - Added a guarded phone-local LLM contract endpoint (`/v1/integrations/providers/mobile_llm/contract`) plus Integrations UI visibility for runtime state, capability checks, blockers, and explicit fallback guidance (`mobile_bridge -> desktop_bridge -> api`).
 - Mobile companion includes briefing cache + notification alarm pipeline scaffold.
