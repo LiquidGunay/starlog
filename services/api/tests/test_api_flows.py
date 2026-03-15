@@ -1505,8 +1505,8 @@ def test_codex_bridge_requires_explicit_opt_in_for_execution(
         headers=auth_headers,
     )
     assert live.status_code == 200
-    # Synchronous /ai/run execution intentionally skips bridge targets and falls through to API.
     assert live.json()["provider_used"] == "api"
+    assert live.json()["output"]["capability"] == "llm_summary"
 
 
 def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict[str, str]) -> None:
