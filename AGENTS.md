@@ -7,6 +7,7 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 - Web-first PWA is the primary workspace.
 - Companion mobile app is focused on capture, alarms/offline briefing playback, quick review/triage.
 - Full note editing on mobile is done via the PWA.
+- iOS share-specific work is out of scope for v1 distribution and must not block v1 release readiness.
 - Clipping is first-class: browser clipper + cross-platform desktop helper (Tauri) + mobile share capture.
 - Knowledge model uses an artifact graph with explicit provenance links.
 - Keep version history for summaries/cards generated from the same artifact.
@@ -66,6 +67,68 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
   - 10-minute stale timeout tolerates short command/test pauses but recovers quickly from crashed or abandoned sessions.
   - Checking/refreshing at the 2-minute heartbeat cadence keeps takeover decisions consistent and deterministic.
 - Any merge-conflict resolution insight discovered while working must be appended to this file's **Issue log**.
+
+## Shared dependency/build reuse across worktrees
+
+Fresh worktrees should reuse existing dependency installs and compiler caches from the canonical checkout instead of re-running full setup by default.
+
+- Canonical checkout for this host: `/home/ubuntu/starlog`
+- Before running installs in a fresh worktree, link shared state:
+
+```bash
+cd <your-worktree>
+bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
+```
+
+- The helper links these shared paths when they are absent locally:
+  - `node_modules`
+  - `apps/web/node_modules`
+  - `apps/mobile/node_modules`
+  - `tools/desktop-helper/node_modules`
+  - `services/api/.venv`
+  - `apps/mobile/android/.gradle`
+  - `tools/desktop-helper/src-tauri/target`
+- Default rule: reuse shared state for dependencies/caches; only localize a surface if your task changes that surface's dependency or build inputs.
+- Localize a surface before reinstall/rebuild if you modify any of:
+  - `package.json`
+  - `pnpm-lock.yaml`
+  - `services/api/pyproject.toml`
+  - `services/api/uv.lock`
+  - `apps/mobile/android/**`
+  - `apps/mobile/app.config.js`
+  - `tools/desktop-helper/src-tauri/Cargo.toml`
+  - `tools/desktop-helper/src-tauri/Cargo.lock`
+- If a worktree needs different state for one surface, keep only that surface local and continue reusing shared state for the rest.
+- For long-running Metro/Gradle mobile validation on this host, prefer the canonical checkout if the NTFS worktree path stalls before binding `:8081`.
+
+## Markdown map
+
+This section is the repo-local purpose map for markdown files so agents know which docs are authoritative before opening or editing them.
+
+- `AGENTS.md` — repo instructions, locked v1 preferences, lock protocol, runbooks, markdown map, preference log, and issue log.
+- `README.md` — top-level repo overview, workspace layout, quick-start entrypoints, and release entrypoints.
+- `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
+- `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
+- `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
+- `docs/CODEX_PARALLEL_WORK_ITEMS.md` — current human-readable work queue for parallel agent execution.
+- `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
+- `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
+- `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
+- `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
+- `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
+- `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
+- `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.
+- `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md` — required Railway production config for API/web services.
+- `docs/PWA_RELEASE_VERIFICATION_GATE.md` — mandatory pre-release gate for PWA builds/tests.
+- `docs/RAILWAY_DEPLOY.md` — recommended Railway deployment model and supporting runbooks.
+- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — canonical architecture/workflow/design contract for current implementation direction.
+- `docs/STARLOG_V1_PLAN.md` — product-scope and architecture plan for Starlog v1.
+- `services/worker/README.md` — placeholder scope note for future dedicated worker-runtime code.
+- `tools/browser-extension/README.md` — browser clipper scaffold purpose and local load instructions.
+- `tools/desktop-helper/README.md` — desktop helper capabilities, validation matrix, and host evidence.
+- `apps/mobile/.expo/README.md` — Expo-generated explanation of local `.expo` state; informational only, not a planning source.
+- `services/api/.pytest_cache/README.md` — pytest-generated cache note; informational only, not a planning source.
+- Vendor markdown under `services/api/.venv/**` is third-party package/license material and is not part of Starlog repo guidance.
 
 ## Phone testing runbook (Android, this host)
 
@@ -203,6 +266,9 @@ Troubleshooting checklist:
 - 2026-03-15: User wants the PWA IA and visual language aligned to the `screen_design` references, with canonical surface naming (`Command Center`, `Artifact Nexus`, `Neural Sync`, `Chronos Matrix`).
 - 2026-03-15: User wants typography/chat styling to closely match the design HTML references and prefers contextual nav (Notes/Tasks under Command Center) without redundant `Calendar` links alongside `Chronos Matrix`.
 - 2026-03-15: User wants mobile implementation/testing runs to include stored screenshots as completion proof.
+- 2026-03-15: User clarified that iOS share status is out of scope for v1 and must not block v1 distribution work.
+- 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
+- 2026-03-15: User wants fresh worktrees to reuse dependency installs/build caches from the canonical checkout unless a task changes that surface's dependency/build inputs.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -268,3 +334,7 @@ Troubleshooting checklist:
 - 2026-03-15: This host/phone pairing can still show a transient `Cannot connect to Metro...` toast even when localhost reverse transport (`tcp:8081`) bundles successfully; capture/test flows can proceed with that warning as a known dev-client transport quirk.
 - 2026-03-15: First dev-client open on this host can fail with `Unable to load script` until Metro finishes an initial bundle compile; a one-time explicit `index.bundle` deep-link via `adb reverse tcp:8081` consistently primes the session, after which normal `exp+starlog://expo-development-client/?url=http://<LAN_IP>:8081` opens work again.
 - 2026-03-15: Mobile design-alignment pass introduced icon usage from `@expo/vector-icons`; the `apps/mobile` workspace must include that dependency (and lockfile update) or Metro fails with `Unable to resolve "@expo/vector-icons" from "App.tsx"`.
+- 2026-03-15: Post-merge UI audit found `SessionControls` repeated as a primary panel across canonical PWA surfaces; follow-up should consolidate session/admin controls into a secondary settings surface to stay aligned with `screen_design`.
+- 2026-03-15: Post-merge mobile UI audit found the advanced capture/review panels duplicate the focused companion shell with a second admin-console layer; follow-up should collapse those controls into more compact secondary surfaces.
+- 2026-03-15: Post-merge desktop UI audit found the helper workspace reuses the quick-popup capture console instead of a more distinct studio config surface, creating redundant UI relative to the desktop design reference.
+- 2026-03-15: Fresh worktrees can now reuse shared dependency and cache state through `scripts/use_shared_worktree_state.sh`; only surfaces with changed dependency/build inputs should localize and rerun setup.

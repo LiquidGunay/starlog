@@ -11,7 +11,7 @@ This is the active native-mobile path for Starlog. It keeps the Expo-managed app
   - SQLite-backed mobile state
   - audio recording for voice-note capture
   - Android share-intent receive via `expo-share-intent`
-  - iOS share-extension path is now enabled in app config, but this document covers Android validation only
+  - any iOS share-extension config remains non-v1 and does not affect the Android validation path documented here
 
 ## Files added for this path
 
@@ -311,7 +311,7 @@ REACT_NATIVE_PACKAGER_HOSTNAME=<WINDOWS_LAN_IP> pnpm start:dev-client:lan
 ```
 
 Important: Android share-sheet receive depends on the native dev build. It does not work in Expo Go.
-The current config explicitly disables the iOS share-extension branch until that patch path is implemented.
+Any iOS share-extension configuration is out of scope for v1 and does not affect this Android path.
 
 ## Point the app at the backend
 
@@ -327,7 +327,7 @@ The current mobile app stores this value locally, so you can switch between loca
 This path is working now, but it does **not** yet implement:
 
 - fully on-phone Whisper execution
-- iOS share-extension patching/hardening (Android is the active priority path)
+- iOS share-extension patching/hardening as part of the v1 distribution path (Android is the active priority path)
 
 Current voice-note STT design:
 
@@ -368,4 +368,4 @@ Validation status in this repo:
 - the lean AOSP API 34 x86_64 image (`pnpm android:emulator:aosp`) avoids the heaviest Google-app first-boot work and is the current best emulator fallback for local Starlog validation here
 - first boot under software-emulated x86_64 can publish `package` before `sys.boot_completed` flips; the Android smoke helper now accepts that earlier package/activity-ready state and retries transient install failures during first-boot package-manager stabilization
 
-The remaining native-mobile tasks now focus on on-device STT/LLM execution and iOS parity.
+The remaining native-mobile tasks for v1 now focus on on-device STT/LLM execution and Android polish. iOS parity is outside the current v1 distribution scope.
