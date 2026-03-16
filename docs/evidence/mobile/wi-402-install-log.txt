@@ -1,0 +1,34 @@
+WI-402 Android installable preview release
+Date: 2026-03-16
+Device: OPPO CPH2381 (9dd62e84)
+Artifact: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+Staged Windows artifact: C:\Temp\starlog-preview-0.1.0-preview.1-101.apk
+Package: com.starlog.app.preview
+Resolved launcher: com.starlog.app.preview/com.starlog.app.dev.MainActivity
+Version name: 0.1.0-preview.1
+Version code: 101
+SHA-256: 95a2a568be36666b365a342f5651abdd6fdd776199b6da8c43435d57537abfd4
+
+Build command:
+export JAVA_HOME="$HOME/.local/jdks/temurin-17"
+export ANDROID_HOME="$HOME/.local/android"
+export ANDROID_SDK_ROOT="$HOME/.local/android"
+cd /home/ubuntu/starlog/apps/mobile/android
+APP_VARIANT=preview STARLOG_VERSION_NAME=0.1.0-preview.1 STARLOG_ANDROID_VERSION_CODE=101 STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true ./gradlew assembleRelease --console=plain
+
+Install command on this host:
+powershell.exe -NoProfile -Command "& { & 'C:\Temp\android-platform-tools\platform-tools\adb.exe' -s 9dd62e84 install -r 'C:\Temp\starlog-preview-0.1.0-preview.1-101.apk' }"
+
+Launch verification:
+Starting: Intent { cmp=com.starlog.app.preview/com.starlog.app.dev.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.starlog.app.preview/com.starlog.app.dev.MainActivity
+TotalTime: 715
+WaitTime: 735
+Complete
+
+UI verification:
+- Resumed activity belongs to com.starlog.app.preview
+- UI dump contains Starlog shell text including "SYSTEM READY", "Awaiting Command", "CAPTURE", "ALARMS", and "REVIEW"
+- Screenshot evidence: docs/evidence/mobile/wi-402-preview-launch.png

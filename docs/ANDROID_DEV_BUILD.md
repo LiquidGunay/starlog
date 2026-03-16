@@ -85,6 +85,59 @@ STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true
 
 Do not use that override for production artifacts.
 
+## Main-phone installable preview artifact (WI-402)
+
+For this host and the current repo state, the selected installable daily-use artifact is a
+`preview` release APK, not a debug build and not the production AAB.
+
+- Output artifact: `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+- Selected package: `com.starlog.app.preview`
+- Resolved launcher component on device: `com.starlog.app.preview/com.starlog.app.dev.MainActivity`
+- Version name: `0.1.0-preview.1`
+- Version code: `101`
+- SHA-256: `95a2a568be36666b365a342f5651abdd6fdd776199b6da8c43435d57537abfd4`
+
+Reproducible build command:
+
+```bash
+export JAVA_HOME="$HOME/.local/jdks/temurin-17"
+export ANDROID_HOME="$HOME/.local/android"
+export ANDROID_SDK_ROOT="$HOME/.local/android"
+cd /home/ubuntu/starlog/apps/mobile/android
+APP_VARIANT=preview \
+STARLOG_VERSION_NAME=0.1.0-preview.1 \
+STARLOG_ANDROID_VERSION_CODE=101 \
+STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true \
+./gradlew assembleRelease --console=plain
+```
+
+This debug-signing override is acceptable only for local internal installation on the main
+phone. It does not replace the real release-signing inputs required for store or production
+distribution:
+
+- `STARLOG_UPLOAD_STORE_FILE`
+- `STARLOG_UPLOAD_STORE_PASSWORD`
+- `STARLOG_UPLOAD_KEY_ALIAS`
+- `STARLOG_UPLOAD_KEY_PASSWORD`
+
+On this WSL + Windows-host setup, the phone is reachable from Windows `adb.exe`, not from the
+local Linux `adb`. That means the built APK must be staged into a Windows-visible path before
+installation:
+
+```bash
+cp /home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+  /mnt/c/Temp/starlog-preview-0.1.0-preview.1-101.apk
+
+powershell.exe -NoProfile -Command "& { & 'C:\Temp\android-platform-tools\platform-tools\adb.exe' -s <SERIAL> install -r 'C:\Temp\starlog-preview-0.1.0-preview.1-101.apk' }"
+```
+
+Launch verification command on this host:
+
+```bash
+/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe -s <SERIAL> \
+  shell am start -W -n com.starlog.app.preview/com.starlog.app.dev.MainActivity
+```
+
 ## First-time setup
 
 From repo root:

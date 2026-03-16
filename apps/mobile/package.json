@@ -20,8 +20,10 @@
   "dependencies": {
     "@babel/runtime": "^7.28.6",
     "@expo/vector-icons": "^14.0.2",
+    "@react-native/assets-registry": "0.74.87",
     "@react-native/gradle-plugin": "0.74.87",
     "expo": "~51.0.0",
+    "expo-asset": "~10.0.10",
     "expo-av": "~14.0.7",
     "expo-dev-client": "~4.0.29",
     "expo-file-system": "~17.0.1",

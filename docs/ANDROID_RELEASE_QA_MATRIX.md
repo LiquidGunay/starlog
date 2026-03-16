@@ -31,3 +31,34 @@ ADB binary: `/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe`
    - Mitigation: use localhost dev-client URL + explicit `adb reverse tcp:8081` to make bundling deterministic.
 3. Device shell cannot persist `stayon usb` because secure setting writes are restricted.
    - Mitigation: keep phone manually unlocked throughout validation.
+
+## WI-402 installable preview release
+
+Date: 2026-03-16  
+Device: OPPO CPH2381 (`9dd62e84`)  
+Artifact: `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`  
+Installed package: `com.starlog.app.preview`  
+Launcher component: `com.starlog.app.preview/com.starlog.app.dev.MainActivity`  
+Version: `0.1.0-preview.1 (101)`  
+SHA-256: `95a2a568be36666b365a342f5651abdd6fdd776199b6da8c43435d57537abfd4`
+
+## WI-402 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Preview release APK build (`assembleRelease`) | PASS | `docs/evidence/mobile/wi-402-install-log.txt` |
+| Windows-host install of preview release APK | PASS | `docs/evidence/mobile/wi-402-install-log.txt` |
+| Cold launch of installed preview package | PASS | `docs/evidence/mobile/wi-402-install-log.txt` |
+| App renders real Starlog shell instead of dev-client blocker | PASS | `docs/evidence/mobile/wi-402-preview-launch.png` |
+| Resumed foreground activity belongs to preview package | PASS | `docs/evidence/mobile/wi-402-install-log.txt` |
+
+## WI-402 blockers and mitigations
+
+1. `:app:createBundleReleaseJsAndAssets` failed under pnpm until `expo-asset` was declared directly in `apps/mobile/package.json`.
+   - Mitigation: add `expo-asset@~10.0.10` as a direct mobile dependency and refresh `pnpm-lock.yaml`.
+2. The same release bundling step then failed until `@react-native/assets-registry` was declared directly in `apps/mobile/package.json`.
+   - Mitigation: add `@react-native/assets-registry@0.74.87` to the mobile workspace so Expo CLI can resolve it from app root during release bundling.
+3. On this host, Windows `adb.exe` can see the phone while WSL `adb` cannot, but Windows `adb.exe` cannot install from a WSL-only APK path.
+   - Mitigation: copy the APK into `C:\Temp\...` first, then install via the Windows `adb.exe`.
+4. The preview package does not launch at `com.starlog.app.preview/.MainActivity`.
+   - Mitigation: resolve and use the actual launcher component reported by package manager: `com.starlog.app.preview/com.starlog.app.dev.MainActivity`.
