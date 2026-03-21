@@ -132,7 +132,7 @@ def _request_spec(capability: str, payload: dict) -> tuple[str, str]:
 
     if capability == "llm_agent_plan":
         return (
-            'Plan Starlog tool calls from the command. Return strict JSON with shape {"matched_intent":"...","summary":"...","tool_calls":[{"tool_name":"...","arguments":{},"message":"..."}]}.',
+            'Plan Starlog tool calls from the command. Return strict JSON with shape {"matched_intent":"...","summary":"...","tool_calls":[{"tool_name":"...","arguments_json":"{\\"key\\":\\"value\\"}","message":"..."}]}.',
             source_text,
         )
 

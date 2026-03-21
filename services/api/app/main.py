@@ -10,6 +10,33 @@ from app.core.logging import configure_logging
 from app.db.storage import init_storage
 from app.middleware_request_id import request_id_middleware
 
+LOCAL_COMPANION_CORS_ORIGINS = (
+    "http://127.0.0.1:4173",
+    "http://localhost:4173",
+    "http://127.0.0.1:1420",
+    "http://localhost:1420",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    "tauri://localhost",
+    "null",
+)
+
+
+def resolved_cors_origins(raw_origins: str) -> list[str]:
+    configured_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    if not configured_origins or configured_origins == ["*"]:
+        return ["*"]
+
+    merged_origins: list[str] = []
+    seen: set[str] = set()
+    for origin in [*configured_origins, *LOCAL_COMPANION_CORS_ORIGINS]:
+        if origin in seen:
+            continue
+        seen.add(origin)
+        merged_origins.append(origin)
+    return merged_origins
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -20,7 +47,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Starlog API", version="0.2.0", lifespan=lifespan)
 
 settings = get_settings()
-allow_origins = [origin.strip() for origin in settings.cors_allow_origins.split(",")]
+allow_origins = resolved_cors_origins(settings.cors_allow_origins)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
