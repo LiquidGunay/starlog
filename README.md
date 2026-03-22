@@ -118,6 +118,12 @@ Use the fast cross-surface PR gate for runtime/API/web/helper changes:
 
 Guide: `docs/AI_VALIDATION_SMOKE_MATRIX.md`
 
+### Current vNext handoff
+
+For the shortest install/test bundle across desktop, phone, and PWA, start here:
+
+- `docs/VNEXT_TEST_BUNDLE.md`
+
 For web release candidates, run the heavier PWA release gate as well:
 
 ```bash

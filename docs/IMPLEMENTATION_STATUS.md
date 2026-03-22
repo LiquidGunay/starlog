@@ -1,5 +1,8 @@
 # Starlog Implementation Status
 
+`PLAN.md` is the canonical forward-looking spec. For the shortest current install/test handoff across desktop,
+phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
+
 ## Completed in this pass
 
 - Monorepo scaffolding (web, mobile, api, contracts, tools).
@@ -139,8 +142,8 @@
 
 ## Next implementation targets
 
-1. Recover the chat-surface assistant Playwright lanes so `apps/web/tests/assistant-*.spec.ts` can move back into the default PR smoke matrix.
-2. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
-3. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
-4. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
-5. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
+1. Finish `WI-580`, `WI-581`, and `WI-582` so the local PC helper path, connected-phone Android path, and hosted PWA path each have a current-master release-candidate pass.
+2. Recover the chat-surface assistant Playwright lanes so `apps/web/tests/assistant-*.spec.ts` can move back into the default PR smoke matrix.
+3. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
+4. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
+5. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
