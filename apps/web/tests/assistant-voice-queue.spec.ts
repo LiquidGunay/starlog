@@ -52,6 +52,24 @@ async function seedSession(page: import("@playwright/test").Page): Promise<void>
 test("replays queued assistant voice uploads from offline capture", async ({ context, page }) => {
   await seedSession(page);
 
+  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "thr_primary",
+        slug: "primary",
+        title: "Primary conversation",
+        mode: "voice_native",
+        session_state: {},
+        tool_traces: [],
+        created_at: "2026-03-22T09:00:00.000Z",
+        updated_at: "2026-03-22T09:00:00.000Z",
+        messages: [],
+      }),
+    });
+  });
+
   await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -94,16 +112,17 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
 
   await page.goto("/assistant");
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Start Voice Command" }).click();
-  await page.getByRole("button", { name: "Stop Voice Command" }).click();
-  await expect(page.getByText("Voice clip: ready", { exact: false })).toBeVisible();
+  const holdToTalk = page.locator(".assistant-voice-button");
+  await holdToTalk.dispatchEvent("pointerdown");
+  await holdToTalk.dispatchEvent("pointerup");
+  await expect(page.getByText("Voice clip captured and ready for upload.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Plan Voice" }).click();
-  await expect(page.getByText("Voice upload queue: 1", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: /Plan voice/i }).click();
+  await expect(page.getByText("Upload queue: 1", { exact: false })).toBeVisible();
 
   await context.setOffline(false);
   await expect.poll(() => uploadCalls).toBe(1);
-  await expect(page.getByText("Voice upload queue: 0", { exact: false })).toBeVisible();
+  await expect(page.getByText("Upload queue: 0", { exact: false })).toBeVisible();
   await expect(page.getByText("Uploaded 1 queued voice command(s)", { exact: false })).toBeVisible();
   await expect(page.getByText("voice-job-1", { exact: false })).toBeVisible();
 });
