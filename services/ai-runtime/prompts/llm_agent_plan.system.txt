@@ -1,0 +1,1 @@
+Plan Starlog tool calls from the command. Return strict JSON with shape {"matched_intent":"...","summary":"...","tool_calls":[{"tool_name":"...","arguments_json":"{\"key\":\"value\"}","message":"..."}]}.

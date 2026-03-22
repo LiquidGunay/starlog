@@ -8,7 +8,7 @@ from sqlite3 import Connection
 from typing import Any, Literal
 
 from app.schemas.agent import AgentCommandIntent, AgentCommandResponse, AgentCommandStep
-from app.services import agent_service, ai_jobs_service, artifacts_service, integrations_service, tasks_service
+from app.services import agent_service, ai_jobs_service, artifacts_service, conversation_service, integrations_service, tasks_service
 
 COMMAND_DATE_PATTERN = r"(today|tomorrow|\d{4}-\d{2}-\d{2})"
 DATETIME_PATTERN = r"(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2})"
@@ -548,6 +548,84 @@ def _execute_planned_calls(
     )
 
 
+def _assistant_cards(response: AgentCommandResponse) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = [
+        {
+            "kind": "assistant_summary",
+            "title": response.matched_intent.replace("_", " "),
+            "body": response.summary,
+            "metadata": {
+                "planner": response.planner,
+                "status": response.status,
+            },
+        }
+    ]
+    for step in response.steps:
+        cards.append(
+            {
+                "kind": "tool_step",
+                "title": step.tool_name,
+                "body": step.message or step.status,
+                "metadata": {
+                    "status": step.status,
+                    "arguments": step.arguments,
+                },
+            }
+        )
+    return cards
+
+
+def _persist_conversation_turn(
+    conn: Connection,
+    *,
+    command: str,
+    response: AgentCommandResponse,
+    input_mode: str,
+    device_target: str,
+) -> None:
+    conversation_service.append_message(
+        conn,
+        role="user",
+        content=command,
+        metadata={
+            "input_mode": input_mode,
+            "device_target": device_target,
+            "execute_requested": response.status != "planned",
+        },
+    )
+    assistant_message = conversation_service.append_message(
+        conn,
+        role="assistant",
+        content=response.summary,
+        cards=_assistant_cards(response),
+        metadata={
+            "assistant_command": response.model_dump(mode="json"),
+            "matched_intent": response.matched_intent,
+            "planner": response.planner,
+            "status": response.status,
+        },
+    )
+    for step in response.steps:
+        conversation_service.record_tool_trace(
+            conn,
+            message_id=str(assistant_message["id"]),
+            tool_name=step.tool_name,
+            arguments=step.arguments,
+            status=step.status,
+            result=step.result,
+        )
+    conversation_service.update_session_state(
+        conn,
+        {
+            "last_command": command,
+            "last_matched_intent": response.matched_intent,
+            "last_planner": response.planner,
+            "last_status": response.status,
+            "last_tool_names": [step.tool_name for step in response.steps],
+        },
+    )
+
+
 def run_command(
     conn: Connection,
     command: str,
@@ -556,7 +634,7 @@ def run_command(
     device_target: str,
 ) -> AgentCommandResponse:
     matched_intent, summary, planned_calls = _plan_command(conn, command, device_target)
-    return _execute_planned_calls(
+    response = _execute_planned_calls(
         conn,
         command,
         planner="deterministic",
@@ -565,6 +643,14 @@ def run_command(
         execute=execute,
         planned_calls=planned_calls,
     )
+    _persist_conversation_turn(
+        conn,
+        command=command,
+        response=response,
+        input_mode="text",
+        device_target=device_target,
+    )
+    return response
 
 
 def apply_ai_command_plan(
@@ -601,7 +687,7 @@ def apply_ai_command_plan(
             planned_calls.append(PlannedToolCall(tool_name=tool_name, arguments=arguments, message=message))
 
     if not planned_calls:
-        return AgentCommandResponse(
+        response = AgentCommandResponse(
             command=command,
             planner=planner,
             matched_intent=matched_intent,
@@ -609,8 +695,16 @@ def apply_ai_command_plan(
             summary=f"{summary} No valid tool calls were returned.",
             steps=[],
         )
+        _persist_conversation_turn(
+            conn,
+            command=command,
+            response=response,
+            input_mode="llm_assist",
+            device_target="assistant-ai",
+        )
+        return response
 
-    return _execute_planned_calls(
+    response = _execute_planned_calls(
         conn,
         command,
         planner=planner,
@@ -619,6 +713,14 @@ def apply_ai_command_plan(
         execute=execute,
         planned_calls=planned_calls,
     )
+    _persist_conversation_turn(
+        conn,
+        command=command,
+        response=response,
+        input_mode="llm_assist",
+        device_target="assistant-ai",
+    )
+    return response
 
 
 def queue_assist_command(

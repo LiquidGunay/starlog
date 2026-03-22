@@ -251,6 +251,104 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS conversation_threads (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  cards_json TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_session_state (
+  thread_id TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_tool_traces (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  message_id TEXT,
+  tool_name TEXT NOT NULL,
+  arguments_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+  FOREIGN KEY (message_id) REFERENCES conversation_messages(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_memory_entries (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  entry_type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_events (
+  id TEXT PRIMARY KEY,
+  surface TEXT NOT NULL,
+  signal_type TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS research_sources (
+  id TEXT PRIMARY KEY,
+  source_kind TEXT NOT NULL,
+  label TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  config_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS research_items (
+  id TEXT PRIMARY KEY,
+  source_id TEXT,
+  external_id TEXT,
+  title TEXT NOT NULL,
+  url TEXT,
+  authors_json TEXT NOT NULL,
+  abstract TEXT,
+  published_at TEXT,
+  content_artifact_id TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (source_id) REFERENCES research_sources(id),
+  FOREIGN KEY (content_artifact_id) REFERENCES artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS research_digests (
+  id TEXT PRIMARY KEY,
+  digest_date TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary_md TEXT NOT NULL,
+  items_json TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ai_jobs (
   id TEXT PRIMARY KEY,
   capability TEXT NOT NULL,
@@ -371,6 +469,10 @@ CREATE INDEX IF NOT EXISTS idx_briefing_date ON briefing_packages(date);
 CREATE INDEX IF NOT EXISTS idx_domain_events_id ON domain_events(id);
 CREATE INDEX IF NOT EXISTS idx_provider_name ON provider_configs(provider_name);
 CREATE INDEX IF NOT EXISTS idx_app_settings_updated ON app_settings(updated_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_threads_slug ON conversation_threads(slug);
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_thread_created ON conversation_messages(thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_tool_traces_thread_created ON conversation_tool_traces(thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_memory_thread_created ON conversation_memory_entries(thread_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_status_created ON ai_jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_provider_status ON ai_jobs(provider_hint, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_selected_target ON ai_jobs(selected_target, status, created_at);
@@ -381,6 +483,9 @@ CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
 CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expires_at);
 CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_research_items_source_updated ON research_items(source_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
 """
 
 
@@ -471,6 +576,102 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expires_at);
         CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
         CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
+        CREATE TABLE IF NOT EXISTS conversation_threads (
+          id TEXT PRIMARY KEY,
+          slug TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          cards_json TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_session_state (
+          thread_id TEXT PRIMARY KEY,
+          state_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_tool_traces (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          message_id TEXT,
+          tool_name TEXT NOT NULL,
+          arguments_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          result_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+          FOREIGN KEY (message_id) REFERENCES conversation_messages(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_memory_entries (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          entry_type TEXT NOT NULL,
+          content TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+        );
+        CREATE TABLE IF NOT EXISTS recommendation_events (
+          id TEXT PRIMARY KEY,
+          surface TEXT NOT NULL,
+          signal_type TEXT NOT NULL,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          weight REAL NOT NULL DEFAULT 1.0,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS research_sources (
+          id TEXT PRIMARY KEY,
+          source_kind TEXT NOT NULL,
+          label TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          config_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS research_items (
+          id TEXT PRIMARY KEY,
+          source_id TEXT,
+          external_id TEXT,
+          title TEXT NOT NULL,
+          url TEXT,
+          authors_json TEXT NOT NULL,
+          abstract TEXT,
+          published_at TEXT,
+          content_artifact_id TEXT,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (source_id) REFERENCES research_sources(id),
+          FOREIGN KEY (content_artifact_id) REFERENCES artifacts(id)
+        );
+        CREATE TABLE IF NOT EXISTS research_digests (
+          id TEXT PRIMARY KEY,
+          digest_date TEXT NOT NULL,
+          title TEXT NOT NULL,
+          summary_md TEXT NOT NULL,
+          items_json TEXT NOT NULL,
+          provider TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_threads_slug ON conversation_threads(slug);
+        CREATE INDEX IF NOT EXISTS idx_conversation_messages_thread_created ON conversation_messages(thread_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_conversation_tool_traces_thread_created ON conversation_tool_traces(thread_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_conversation_memory_thread_created ON conversation_memory_entries(thread_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_research_items_source_updated ON research_items(source_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
         """
     )
 
