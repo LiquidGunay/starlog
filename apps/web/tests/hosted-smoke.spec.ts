@@ -61,11 +61,14 @@ test("loads core PWA routes with hosted API session state", async ({ page }) => 
 
 test("shows seeded hosted smoke entities", async ({ page }) => {
   await page.goto("/notes");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Primary note workspace");
   await expect(page.getByText(`${SMOKE_LABEL} Note`)).toBeVisible();
 
   await page.goto("/tasks");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Execution workspace");
   await expect(page.getByText(`${SMOKE_LABEL} Task`)).toBeVisible();
 
   await page.goto("/artifacts");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Clip inbox and references");
   await expect(page.getByText(`${SMOKE_LABEL} Artifact`)).toBeVisible();
 });
