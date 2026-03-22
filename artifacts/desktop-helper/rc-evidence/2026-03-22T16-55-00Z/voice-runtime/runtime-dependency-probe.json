@@ -1,0 +1,8 @@
+{
+  "generated_at_utc": "2026-03-22T14:43:10Z",
+  "target": "linux",
+  "clipboard": {"status": "missing", "detail": "install wl-paste, xclip, or xsel"},
+  "screenshot": {"status": "missing", "detail": "install grim+slurp, gnome-screenshot, ImageMagick import, or scrot"},
+  "active_window": {"status": "degraded", "detail": "install xdotool (X11) or hyprctl (Hyprland) for richer metadata"},
+  "ocr": {"status": "degraded", "detail": "install tesseract for local OCR"}
+}
