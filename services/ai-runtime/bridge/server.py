@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+from pathlib import Path
 import subprocess
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
+import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +36,139 @@ def _run_command(template: str, variables: dict[str, str]) -> str:
         stderr = result.stderr.strip() or "command failed"
         raise HTTPException(status_code=502, detail=stderr)
     return result.stdout.strip()
+
+
+def _server_headers(auth_token: str, *, content_type: str | None = None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    if content_type:
+        headers["Content-Type"] = content_type
+    return headers
+
+
+def _multipart_body(
+    *,
+    file_field: str,
+    file_path: Path,
+    fields: dict[str, str],
+) -> tuple[bytes, str]:
+    boundary = f"starlog-boundary-{uuid.uuid4().hex}"
+    body = bytearray()
+    for name, value in fields.items():
+        if not value:
+            continue
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+        body.extend(value.encode("utf-8"))
+        body.extend(b"\r\n")
+
+    mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="{file_field}"; filename="{file_path.name}"\r\n'
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8")
+    )
+    body.extend(file_path.read_bytes())
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+    return bytes(body), boundary
+
+
+def _read_response_payload(response) -> tuple[str, str]:
+    content_type = response.headers.get("Content-Type", "")
+    payload = response.read().decode("utf-8", errors="replace").strip()
+    return content_type, payload
+
+
+def _extract_transcript(*, payload: str, content_type: str) -> str:
+    if "json" in content_type.lower() or payload.startswith("{"):
+        parsed = json.loads(payload)
+        if isinstance(parsed, dict):
+            for key in ("transcript", "text", "output"):
+                value = parsed.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    return payload.strip()
+
+
+def _call_stt_server(config, payload: SttRequest) -> str:
+    if not payload.audio_path:
+        raise HTTPException(status_code=400, detail="audio_path is required when STT server mode is enabled")
+    audio_path = Path(payload.audio_path)
+    if not audio_path.exists():
+        raise HTTPException(status_code=400, detail=f"audio_path does not exist: {audio_path}")
+
+    body, boundary = _multipart_body(
+        file_field="file",
+        file_path=audio_path,
+        fields={
+            "response-format": "json",
+            "temperature": "0.0",
+            "text_hint": payload.text_hint or "",
+        },
+    )
+    request = UrlRequest(
+        config.stt_server_url,
+        data=body,
+        headers=_server_headers(
+            config.stt_server_auth_token,
+            content_type=f"multipart/form-data; boundary={boundary}",
+        ),
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=120) as response:
+            content_type, response_payload = _read_response_payload(response)
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip() or exc.reason
+        raise HTTPException(status_code=502, detail=f"STT server request failed: {detail}") from exc
+    except URLError as exc:
+        raise HTTPException(status_code=502, detail=f"STT server is unavailable: {exc.reason}") from exc
+
+    transcript = _extract_transcript(payload=response_payload, content_type=content_type)
+    if not transcript:
+        raise HTTPException(status_code=502, detail="STT server returned an empty transcript")
+    return transcript
+
+
+def _call_tts_server(config, payload: TtsRequest) -> tuple[str, str]:
+    request = UrlRequest(
+        config.tts_server_url,
+        data=json.dumps(
+            {
+                "text": payload.text,
+                "output_path": payload.output_path,
+                "provider_hint": payload.provider_hint,
+                "voice_name": payload.voice_name,
+                "rate_wpm": payload.rate_wpm,
+            }
+        ).encode("utf-8"),
+        headers=_server_headers(config.tts_server_auth_token, content_type="application/json"),
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=180) as response:
+            content_type, response_payload = _read_response_payload(response)
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip() or exc.reason
+        raise HTTPException(status_code=502, detail=f"TTS server request failed: {detail}") from exc
+    except URLError as exc:
+        raise HTTPException(status_code=502, detail=f"TTS server is unavailable: {exc.reason}") from exc
+
+    if "json" in content_type.lower() or response_payload.startswith("{"):
+        parsed = json.loads(response_payload)
+        if isinstance(parsed, dict):
+            audio_path = str(parsed.get("audio_path") or payload.output_path or "").strip()
+            detail = str(parsed.get("detail") or "Bridge rendered speech through the configured local TTS server.").strip()
+            if audio_path:
+                return audio_path, detail
+    rendered_path = response_payload.strip() or (payload.output_path or "")
+    if not rendered_path:
+        raise HTTPException(status_code=502, detail="TTS server returned an empty audio path")
+    return rendered_path, "Bridge rendered speech through the configured local TTS server."
 
 
 def _provided_bridge_token(request: Request) -> str:
@@ -77,6 +216,15 @@ def transcribe(payload: SttRequest, request: Request) -> SttResponse:
             detail="Bridge returned the supplied debug transcript without running an external command.",
         )
 
+    if config.stt_server_url:
+        transcript = _call_stt_server(config, payload)
+        return SttResponse(
+            status="ok",
+            provider="server",
+            transcript=transcript,
+            detail="Bridge transcribed audio through the configured local STT server.",
+        )
+
     if not config.stt_command:
         raise HTTPException(status_code=503, detail="STT bridge command is not configured")
     if not payload.audio_path:
@@ -114,6 +262,15 @@ def speak(payload: TtsRequest, request: Request) -> TtsResponse:
             detail="Bridge returned the supplied debug audio path without running an external command.",
         )
 
+    if config.tts_server_url:
+        rendered_path, detail = _call_tts_server(config, payload)
+        return TtsResponse(
+            status="ok",
+            provider="server",
+            audio_path=rendered_path,
+            detail=detail,
+        )
+
     if not config.tts_command:
         raise HTTPException(status_code=503, detail="TTS bridge command is not configured")
     if not payload.output_path:
@@ -125,6 +282,8 @@ def speak(payload: TtsRequest, request: Request) -> TtsResponse:
             "text": payload.text,
             "provider_hint": payload.provider_hint or "",
             "output_path": payload.output_path,
+            "voice": payload.voice_name or "",
+            "rate": str(payload.rate_wpm or ""),
         },
     ).strip() or payload.output_path
     return TtsResponse(
