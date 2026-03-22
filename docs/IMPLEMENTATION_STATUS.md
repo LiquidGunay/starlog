@@ -36,6 +36,8 @@
 - Desktop helper diagnostics now keep latest-attempt notes with actionable fix hints, recent captures now show the backend that produced them, and the helper docs now include a real Linux/Windows host validation matrix.
 - Desktop helper host-matrix follow-up also validated the Windows PowerShell host path, fixed the Windows active-window probe (`$PID` collision), and maps Windows screenshot/window failures to actionable interactive-session guidance.
 - Desktop helper now also maps common macOS `screencapture`/`osascript` failures to explicit Screen Recording / Automation / Accessibility guidance, and runtime diagnostics now run a best-effort macOS active-window probe to surface permission issues early.
+- Desktop helper RC follow-up on 2026-03-22 rebuilt the Linux `.deb`/binary artifacts, validated authenticated localhost bridge discovery on `127.0.0.1:8091`, exercised the merged local voice server path through `scripts/local_voice_runtime_smoke.py`, and captured one real helper clipboard upload into a local API (`art_b40fadfafc55444897413ec4bdc59593`) with evidence under `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/`.
+- This host still lacks the Linux clipboard/screenshot/OCR binaries (`wl-paste`/`xclip`, screenshot tooling, `tesseract`), so the current desktop RC is distributable for bridge/upload feedback but native Linux screenshot/OCR remains a host-setup blocker, not a helper-code blocker.
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
 - Mobile companion local state is now backed by Expo SQLite with migration from the earlier JSON-file store.

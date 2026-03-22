@@ -1,6 +1,6 @@
 # Desktop Helper v1 Distribution Runbook
 
-Last updated: 2026-03-15
+Last updated: 2026-03-22
 
 ## Workitem coverage
 
@@ -12,6 +12,7 @@ Last updated: 2026-03-15
 | WI-324 | Desktop QA matrix updates with command evidence and screenshot capture artifacts |
 | WI-325 | v1 RC package structure (checksums, manifest, build metadata, install/rollback notes) |
 | WI-423 | Main-laptop setup pack, reset flow, install/runbook handoff, and configured daily-use smoke path |
+| WI-580 | Local-PC release-candidate rerun with localhost bridge auth/discovery, local voice smoke, real helper upload, and refreshed operator docs |
 
 ## Distribution architecture
 
@@ -45,7 +46,7 @@ Last updated: 2026-03-15
 - Naming convention:
   - `starlog-desktop-helper-v<version>-<arch-os>-<normalized-source-file>`
 
-### Latest run evidence (2026-03-15, this host)
+### Latest run evidence (2026-03-22, this host)
 
 - Command:
   - `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh`
@@ -58,8 +59,8 @@ Last updated: 2026-03-15
   - `manifest.tsv`
   - `build-info.txt`
 - Checksums from this run:
-  - `.deb`: `71acab0501593cb42167b171aa68a95dfafdad4b7b42d542db89c4a117f49892`
-  - raw binary: `ebbe89fb7de09b4be6beaec3f8945efed48e519937c46f0888cacc5474885584`
+  - `.deb`: `2c022ceb315cb214f5da09a81db4a933c02b4720d75a1aa8764546792171cead`
+  - raw binary: `bcb87e6989c1ee940b602448bf64fa5dfb5c7b6c46ce5d69ee97ddb8b3318efc`
 
 ## Signing/notarization readiness (WI-322)
 
@@ -88,7 +89,7 @@ Last updated: 2026-03-15
 - Inject secrets via CI/secure shell environment only.
 - Keep separate credentials for CI automation vs personal local release validation.
 
-### Latest run evidence (2026-03-15, this host)
+### Latest run evidence (2026-03-22, this host)
 
 - Command:
   - `cd tools/desktop-helper && ./scripts/signing_readiness_check.sh linux`
@@ -113,7 +114,7 @@ Last updated: 2026-03-15
 
 - The helper already surfaces runtime diagnostics in-app; this probe script gives an operator-visible preflight outside the GUI for release/support workflows.
 
-### Latest run evidence (2026-03-15, this host)
+### Latest run evidence (2026-03-22, this host)
 
 - Command:
   - `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh linux ../../artifacts/desktop-helper/v0.1.0/x86_64-linux/runtime-dependency-probe.json`
@@ -135,6 +136,8 @@ Last updated: 2026-03-15
   - `cd tools/desktop-helper/src-tauri && cargo check`
 - Native release build:
   - `cd tools/desktop-helper && ./node_modules/.bin/tauri build`
+- Localhost RC smoke:
+  - `STARLOG_DESKTOP_HELPER_RC_API_BASE=http://127.0.0.1:8010 STARLOG_DESKTOP_HELPER_RC_BEARER_TOKEN=<token> STARLOG_DESKTOP_HELPER_RC_BRIDGE_TOKEN=<bridge-token> node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/rc-evidence/<timestamp>`
 - QA screenshot capture:
   - `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
 
@@ -142,22 +145,29 @@ Last updated: 2026-03-15
 
 | Surface | Linux (this host) | Windows | macOS |
 | --- | --- | --- | --- |
-| Clipboard capture | Pass in browser-fallback QA + pass in local API smoke upload | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
-| Screenshot capture | Browser fallback path pass; native Linux runtime depends on host screenshot binaries from runtime probe | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
-| Active-window metadata | Pass/degraded-with-guidance paths covered | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
-| OCR dependency behavior | Pass for dependency detection; `tesseract` remains optional-degraded | Pending rerun on current RC | Pending rerun on current RC |
+| Clipboard capture | Pass for browser-fallback upload into a real local API; native Linux path still blocked by missing host clipboard binaries | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
+| Screenshot capture | Native Linux runtime still blocked by missing screenshot binaries; helper reports the missing-backend state cleanly | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
+| Active-window metadata | Pass/degraded-with-guidance paths covered; RC smoke kept browser-context fallback visible | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
+| OCR dependency behavior | Pass for dependency detection; `tesseract` remains optional-degraded on this host | Pending rerun on current RC | Pending real-host rerun |
 | Shortcut behavior | Pass for browser fallback + plugin wiring checks | Manual-only runtime check still required | Manual-only runtime check still required |
+| Local bridge discovery/auth | Pass against a real authenticated bridge on `127.0.0.1:8091` | Pending real-host rerun | Pending real-host rerun |
+| Local voice server path | Pass with mock STT + local TTS wrapper on `127.0.0.1:8171/8093` | Pending real-host rerun | Pending real-host rerun |
 
-### Latest run evidence (2026-03-15, this host)
+### Latest run evidence (2026-03-22, this host)
 
 - Automated command results:
-  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts` -> `13 passed`
-  - `cd tools/desktop-helper && ./node_modules/.bin/tauri build --bundles deb` -> passed
-- Screenshots:
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-workspace-config.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-workspace-diagnostics.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-quick-popup.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/screenshots.json`
+  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` -> `3 passed`
+  - `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh` -> passed
+  - `PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py` -> passed against the authenticated bridge
+- Screenshots and smoke summary:
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-config.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-diagnostics.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-quick-popup.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/rc-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/local-voice-smoke.json`
+- Real capture confirmation:
+  - helper upload artifact id `art_b40fadfafc55444897413ec4bdc59593`
+  - `GET /v1/artifacts?limit=5` on the local API returned the stored helper capture with browser-clipboard metadata
 
 ## RC package + handoff (WI-325)
 
@@ -172,15 +182,15 @@ Last updated: 2026-03-15
   - `build-info.txt`,
   - this runbook + helper README commands.
 
-### Current RC candidate (2026-03-15)
+### Current RC candidate (2026-03-22)
 
 - Candidate id:
-  - `v0.1.0-x86_64-linux-rc3`
+  - `v0.1.0-x86_64-linux-rc4`
 - Artifact folder:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/`
 - Checksums:
-  - `.deb`: `71acab0501593cb42167b171aa68a95dfafdad4b7b42d542db89c4a117f49892`
-  - binary: `ebbe89fb7de09b4be6beaec3f8945efed48e519937c46f0888cacc5474885584`
+  - `.deb`: `2c022ceb315cb214f5da09a81db4a933c02b4720d75a1aa8764546792171cead`
+  - binary: `bcb87e6989c1ee940b602448bf64fa5dfb5c7b6c46ce5d69ee97ddb8b3318efc`
 - Exact staged artifacts:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
@@ -201,6 +211,8 @@ Last updated: 2026-03-15
   - Declared package dependencies match the runtime: `libwebkit2gtk-4.1-0`, `libgtk-3-0`.
   - Extracted payload contains `/usr/bin/starlog_desktop_helper` and `/usr/share/applications/Starlog Desktop Helper.desktop`.
   - Raw staged binary links successfully against the expected GTK/WebKit libraries on this host.
+  - Helper browser-fallback smoke uploaded a real clipboard capture into a local API while discovering and authenticating against the local bridge.
+  - Native Linux screenshot/OCR smoke is still blocked on missing host packages (`wl-paste`/`xclip`, screenshot tooling, `tesseract`) rather than packaging or helper upload code.
 
 ### Release notes template
 
