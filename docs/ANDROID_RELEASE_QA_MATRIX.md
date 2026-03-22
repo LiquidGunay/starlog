@@ -62,3 +62,31 @@ SHA-256: `95a2a568be36666b365a342f5651abdd6fdd776199b6da8c43435d57537abfd4`
    - Mitigation: copy the APK into `C:\Temp\...` first, then install via the Windows `adb.exe`.
 4. The preview package does not launch at `com.starlog.app.preview/.MainActivity`.
    - Mitigation: resolve and use the actual launcher component reported by package manager: `com.starlog.app.preview/com.starlog.app.dev.MainActivity`.
+
+## WI-403 production integration setup
+
+Date: 2026-03-21
+Device: OPPO CPH2381 (`9dd62e84`)
+Hosted API: `https://starlog-api-production.up.railway.app`
+Hosted PWA: `https://starlog-web-production.up.railway.app`
+
+## WI-403 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Railway production auth bootstrap + bearer login | PASS | manual API verification (`/v1/health` shows `users: 1`) |
+| Hosted PWA runtime session reads Railway API base | PASS | `docs/evidence/pwa/wi-403-live-notes.png` |
+| Hosted PWA notes list shows seeded production data | PASS | `docs/evidence/pwa/wi-403-live-notes.png` |
+| Hosted PWA tasks list shows seeded production data | PASS | `docs/evidence/pwa/wi-403-live-tasks.png` |
+| Hosted PWA artifacts surface shows production artifacts | PASS | `docs/evidence/pwa/wi-403-live-artifacts.png` |
+| Railway queued `codex_local` summary completes on laptop-local worker | PASS | completed job `job_a7b1283486d447b19720e20dc9c3d3cb` |
+| Preview app Railway API/token configured on phone | PASS | `docs/evidence/mobile/wi-403-preview-configured.png` |
+| Preview app cold-start deep-link capture (`starlog://capture?...`) prefills capture surface | PASS | `docs/evidence/mobile/wi-403-deeplink-fresh-build.png` |
+| Local browser helper fallback (`http://127.0.0.1:4173`) can clip directly to Railway | PASS | CORS allowlist widened in API and validated via merged origin resolution + hosted integration rerun |
+| Spoken briefing render / offline playback against Railway | PASS | completed job `job_9b11f48641054fb590f4239fdc5db835`, briefing `brf_cca0f68239ff411683488f7cb7009e05` now has `audio_ref=media://med_1c8c2a34778c4d5cafdb2e3d566405ab` |
+| Railway queued `assistant_command_ai` / `llm_agent_plan` completes on laptop-local worker | PASS | completed job `job_3247b776ece04d809089d44fef5cf25a` |
+
+## WI-403 blockers and mitigations
+
+1. Cold-start deep-link validation can still look like a false negative if the proof capture stops at the top hero section.
+   - Mitigation: scroll down to the queued capture form before judging whether title/text/source prefill landed.

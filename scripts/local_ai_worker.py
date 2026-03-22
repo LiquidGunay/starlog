@@ -298,10 +298,10 @@ def _schema_for(job: dict) -> dict[str, Any]:
                         "type": "object",
                         "properties": {
                             "tool_name": tool_name_schema,
-                            "arguments": {"type": "object"},
+                            "arguments_json": {"type": "string"},
                             "message": {"type": "string"},
                         },
-                        "required": ["tool_name", "arguments"],
+                        "required": ["tool_name", "arguments_json", "message"],
                         "additionalProperties": False,
                     },
                 },
@@ -365,7 +365,8 @@ def _prompt_for(job: dict) -> str:
             "Return JSON only. Use only the provided tools. "
             "Prefer the smallest set of tool calls that fully satisfies the command. "
             "If a command is ambiguous, choose a safe read-only plan or an empty tool_calls array. "
-            "The returned arguments must match each tool schema.\n\n"
+            "Each tool call must include `arguments_json` as a compact JSON object string whose parsed object matches "
+            "the tool schema exactly. Do not return markdown fences.\n\n"
             f"Current date: {current_date or 'unknown'}\n"
             f"Command: {command}\n\n"
             "Supported intents:\n"
@@ -404,7 +405,31 @@ def _run_codex(job: dict, model: str | None, timeout_seconds: float) -> dict:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Codex exec failed")
         if not output_path.exists():
             raise RuntimeError("Codex exec finished without writing structured output")
-        return json.loads(output_path.read_text(encoding="utf-8"))
+        decoded = json.loads(output_path.read_text(encoding="utf-8"))
+        if str(job["capability"]) == "llm_agent_plan":
+            raw_calls = decoded.get("tool_calls")
+            if isinstance(raw_calls, list):
+                normalized_calls: list[dict[str, Any]] = []
+                for item in raw_calls:
+                    if not isinstance(item, dict):
+                        continue
+                    normalized = dict(item)
+                    arguments_json = normalized.pop("arguments_json", None)
+                    if isinstance(arguments_json, str):
+                        try:
+                            arguments = json.loads(arguments_json)
+                        except json.JSONDecodeError as exc:
+                            raise RuntimeError(
+                                f"Planner returned invalid arguments_json for {normalized.get('tool_name')}: {arguments_json}"
+                            ) from exc
+                        if not isinstance(arguments, dict):
+                            raise RuntimeError(
+                                f"Planner returned non-object arguments_json for {normalized.get('tool_name')}"
+                            )
+                        normalized["arguments"] = arguments
+                    normalized_calls.append(normalized)
+                decoded["tool_calls"] = normalized_calls
+        return decoded
 
 
 def _blob_url(api_base: str, blob_ref: str) -> str:

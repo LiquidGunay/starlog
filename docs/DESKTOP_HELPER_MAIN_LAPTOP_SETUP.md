@@ -68,6 +68,12 @@ App entry points after install:
 6. Click `Refresh Diagnostics`.
 7. Resolve any runtime items still marked `Partial` or `Unavailable`.
 
+Production-origin note:
+
+- The current Railway API CORS allowlist is intentionally scoped to the hosted PWA domain.
+- A local browser-served helper fallback (`http://127.0.0.1:4173`) therefore fails production preflight with `Disallowed CORS origin`.
+- Validate daily use against the installed Tauri helper on this laptop, or widen `STARLOG_CORS_ALLOW_ORIGINS` explicitly if you need browser-fallback clipping to hit Railway directly.
+
 The helper now has a built-in `Reset Local State` control. It clears:
 
 - local API base

@@ -121,6 +121,34 @@ pnpm --filter mobile start
 10. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before native validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
 11. If you validate the Android native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.
 
+### Railway production mode on this host
+
+For the current hosted setup on the main phone:
+
+1. Install the preview package `com.starlog.app.preview`.
+2. Launch the package with the resolved component if you are driving it from ADB:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> shell monkey -p com.starlog.app.preview -c android.intent.category.LAUNCHER 1
+```
+
+3. Open `Alarms`.
+4. Scroll to `Open Mission Tools`.
+5. Keep `Briefing` selected.
+6. Set:
+   - `API base`: `https://starlog-api-production.up.railway.app`
+   - `Bearer token`: token from Railway login
+7. The configured preview UI for this pass is recorded at:
+   - `docs/evidence/mobile/wi-403-preview-configured.png`
+
+Observed notes from the 2026-03-16 production pass:
+
+- The preview launcher component resolves to `com.starlog.app.preview/com.starlog.app.dev.MainActivity`, not `com.starlog.app.preview/.MainActivity`.
+- If both the preview and dev builds are installed, generic `starlog://...` launches can surface an Android chooser unless the explicit preview component is targeted.
+- Cold-start deep-link capture did not prefill the preview UI during this pass even when the explicit preview component received the `starlog://capture?...` intent.
+- Spoken briefing playback against Railway is still blocked on this host until a supported local TTS runtime is installed for the laptop worker.
+
 ### WSL physical-device Metro path
 
 For this specific host, the most reliable dev-client path has been LAN Metro through a Windows relay instead of `adb reverse tcp:8081`:
@@ -194,6 +222,10 @@ Ways to trigger:
 - Android shell note: if the URI includes `&source_url=...`, use the repo smoke helpers or quote/escape the remote shell command so Android does not split the deep link at `&`.
 
 When opened, the app pre-fills the capture form so you can submit immediately or queue offline.
+
+Current preview-build note:
+
+- On the 2026-03-16 production pass, a cold-start explicit-component launch delivered the `starlog://capture?...` intent to the preview package but the expected prefilled capture state did not surface in the UI. Treat preview deep-link capture as not yet release-ready until that behavior is fixed.
 
 ## 6b) Test Android native share intent
 

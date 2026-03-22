@@ -28,6 +28,29 @@ class StarlogLocalSttModule(reactContext: ReactApplicationContext) : ReactContex
   }
 
   @ReactMethod
+  fun getCurrentIntentUrl(promise: Promise) {
+    promise.resolve(StarlogIntentStore.currentIntentUrl() ?: currentActivity?.intent?.dataString)
+  }
+
+  @ReactMethod
+  fun clearCurrentIntentUrl(promise: Promise) {
+    StarlogIntentStore.clear()
+    val activity = currentActivity
+    if (activity == null) {
+      promise.resolve(false)
+      return
+    }
+
+    val updatedIntent = activity.intent ?: Intent()
+    updatedIntent.data = null
+    if (updatedIntent.action == Intent.ACTION_VIEW) {
+      updatedIntent.action = Intent.ACTION_MAIN
+    }
+    activity.intent = updatedIntent
+    promise.resolve(true)
+  }
+
+  @ReactMethod
   fun recognizeOnce(options: ReadableMap?, promise: Promise) {
     if (!SpeechRecognizer.isRecognitionAvailable(reactApplicationContext)) {
       promise.reject("stt_unavailable", "Android speech recognition is unavailable on this device.")

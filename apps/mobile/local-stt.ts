@@ -15,6 +15,8 @@ type LocalSttOptions = {
 };
 
 type NativeLocalSttModule = {
+  clearCurrentIntentUrl?(): Promise<boolean>;
+  getCurrentIntentUrl?(): Promise<string | null>;
   isAvailable(): Promise<boolean>;
   recognizeOnce(options?: LocalSttOptions): Promise<LocalSttResult>;
 };
@@ -37,4 +39,26 @@ export async function recognizeSpeechOnce(options: LocalSttOptions = {}): Promis
     throw new Error("On-device STT is only available in the Android dev build.");
   }
   return localSttModule.recognizeOnce(options);
+}
+
+export async function getCurrentIntentUrl(): Promise<string | null> {
+  if (Platform.OS !== "android" || !localSttModule?.getCurrentIntentUrl) {
+    return null;
+  }
+  try {
+    return (await localSttModule.getCurrentIntentUrl()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearCurrentIntentUrl(): Promise<void> {
+  if (Platform.OS !== "android" || !localSttModule?.clearCurrentIntentUrl) {
+    return;
+  }
+  try {
+    await localSttModule.clearCurrentIntentUrl();
+  } catch {
+    // Best-effort cleanup; ignore native failures here.
+  }
 }

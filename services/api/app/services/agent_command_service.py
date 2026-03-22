@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -585,6 +586,15 @@ def apply_ai_command_plan(
                 continue
             tool_name = str(item.get("tool_name") or "").strip()
             arguments = item.get("arguments")
+            if not isinstance(arguments, dict):
+                raw_arguments = item.get("arguments_json")
+                if isinstance(raw_arguments, str):
+                    try:
+                        parsed_arguments = json.loads(raw_arguments)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(parsed_arguments, dict):
+                        arguments = parsed_arguments
             if not tool_name or not isinstance(arguments, dict):
                 continue
             message = str(item.get("message") or f"Run tool {tool_name} ({index + 1})").strip()

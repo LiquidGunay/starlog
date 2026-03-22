@@ -1,10 +1,13 @@
 package com.starlog.app.dev
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 
+import com.facebook.react.ReactApplication
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 
@@ -16,7 +19,15 @@ class MainActivity : ReactActivity() {
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
+    StarlogIntentStore.update(intent)
     super.onCreate(null)
+  }
+
+  override fun onNewIntent(intent: Intent?) {
+    StarlogIntentStore.update(intent)
+    super.onNewIntent(intent)
+    setIntent(intent)
+    emitAppLink(intent)
   }
 
   /**
@@ -37,7 +48,27 @@ class MainActivity : ReactActivity() {
               this,
               mainComponentName,
               fabricEnabled
-          ){})
+          ){
+            override fun getLaunchOptions(): Bundle {
+              return Bundle().apply {
+                putString("initialIntentUrl", intent?.dataString)
+              }
+            }
+          })
+  }
+
+  private fun emitAppLink(intent: Intent?) {
+    val url = intent?.dataString ?: return
+    val reactContext = (application as? ReactApplication)
+      ?.reactNativeHost
+      ?.reactInstanceManager
+      ?.currentReactContext
+    if (reactContext == null) {
+      return
+    }
+    reactContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit("StarlogAppLink", url)
   }
 
   /**

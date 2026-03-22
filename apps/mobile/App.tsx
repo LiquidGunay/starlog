@@ -9,6 +9,7 @@ import * as SQLite from "expo-sqlite";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
+  DeviceEventEmitter,
   Linking,
   Platform,
   SafeAreaView,
@@ -22,7 +23,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-import { probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
+import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -519,6 +520,15 @@ function incomingShareIntentFingerprint(intent: IncomingShareIntent): string {
   });
 }
 
+function hasMeaningfulIncomingShareIntent(intent: IncomingShareIntent): boolean {
+  return Boolean(
+    (intent.text ?? "").trim() ||
+      (intent.webUrl ?? "").trim() ||
+      (intent.meta?.title ?? "").trim() ||
+      (intent.files ?? []).length > 0,
+  );
+}
+
 function shareSourcePlatformLabel(): string {
   return Platform.OS === "ios" ? "iOS" : "Android";
 }
@@ -770,45 +780,140 @@ async function readCachedBriefing(path: string): Promise<BriefingPayload> {
   return JSON.parse(text) as BriefingPayload;
 }
 
-function parseCaptureDeepLink(rawUrl: string): { title: string; text: string; sourceUrl: string } | null {
-  if (!rawUrl.startsWith("starlog://capture")) {
+type ParsedAppDeepLink = {
+  params: Record<string, string>;
+  route: string;
+  scheme: string;
+};
+
+type AppProps = {
+  initialIntentUrl?: string | null;
+};
+
+const APP_LINK_DEDUP_WINDOW_MS = 1500;
+
+const SUPPORTED_MOBILE_DEEP_LINK_SCHEMES = new Set([
+  "starlog",
+  "exp+starlog",
+  "com.starlog.app.dev",
+  "com.starlog.app.preview",
+]);
+
+async function resolveInitialDeepLinkUrl(
+  attempts = 8,
+  delayMs = 250,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const initialUrl =
+      Platform.OS === "android" ? (await getCurrentIntentUrl()) ?? (await Linking.getInitialURL()) : await Linking.getInitialURL();
+    if (initialUrl) {
+      return initialUrl;
+    }
+    if (attempt + 1 < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
+function decodeDeepLinkParam(value: string): string {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return value;
+  }
+}
+
+function parseDeepLinkParams(rawQuery: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (!rawQuery) {
+    return params;
+  }
+  for (const segment of rawQuery.split("&")) {
+    if (!segment) {
+      continue;
+    }
+    const [rawKey, ...rawValueParts] = segment.split("=");
+    const key = decodeDeepLinkParam(rawKey ?? "").trim();
+    if (!key || key in params) {
+      continue;
+    }
+    params[key] = decodeDeepLinkParam(rawValueParts.join("="));
+  }
+  return params;
+}
+
+function deepLinkParam(params: Record<string, string>, key: string): string | null {
+  return params[key] ?? null;
+}
+
+function parseAppDeepLink(rawUrl: string, depth = 0): ParsedAppDeepLink | null {
+  if (depth > 3) {
     return null;
   }
-  const queryIndex = rawUrl.indexOf("?");
-  if (queryIndex < 0) {
+  const trimmedUrl = rawUrl.trim();
+  const match = trimmedUrl.match(/^([a-z][a-z0-9+.-]*):\/\/([^?#]*)(?:\?([^#]*))?/i);
+  if (!match) {
+    return null;
+  }
+  const scheme = match[1]?.toLowerCase() ?? "";
+  if (!SUPPORTED_MOBILE_DEEP_LINK_SCHEMES.has(scheme)) {
     return null;
   }
 
-  const params = new URLSearchParams(rawUrl.slice(queryIndex + 1));
-  const text = (params.get("text") ?? params.get("content") ?? "").trim();
+  const route = (match[2] ?? "")
+    .replace(/^\/+/, "")
+    .split("/")[0]
+    ?.trim()
+    .toLowerCase();
+  const params = parseDeepLinkParams(match[3] ?? "");
+
+  const nestedUrl = deepLinkParam(params, "url");
+  if (nestedUrl && nestedUrl !== trimmedUrl) {
+    const parsedNested = parseAppDeepLink(nestedUrl, depth + 1);
+    if (parsedNested) {
+      return parsedNested;
+    }
+  }
+
+  if (!route) {
+    return null;
+  }
+  return { scheme, route, params };
+}
+
+function parseCaptureDeepLink(rawUrl: string): { title: string; text: string; sourceUrl: string } | null {
+  const parsedUrl = parseAppDeepLink(rawUrl);
+  if (!parsedUrl || parsedUrl.route !== "capture") {
+    return null;
+  }
+  const { params } = parsedUrl;
+  const text = (deepLinkParam(params, "text") ?? deepLinkParam(params, "content") ?? "").trim();
   if (!text) {
     return null;
   }
 
   return {
-    title: (params.get("title") ?? DEFAULT_CAPTURE_TITLE).trim() || DEFAULT_CAPTURE_TITLE,
+    title: (deepLinkParam(params, "title") ?? DEFAULT_CAPTURE_TITLE).trim() || DEFAULT_CAPTURE_TITLE,
     text,
-    sourceUrl: (params.get("source_url") ?? params.get("url") ?? "").trim(),
+    sourceUrl: (deepLinkParam(params, "source_url") ?? deepLinkParam(params, "url") ?? "").trim(),
   };
 }
 
 function parseSurfaceTabDeepLink(rawUrl: string): "capture" | "alarms" | "review" | null {
-  if (!rawUrl.startsWith("starlog://surface")) {
+  const parsedUrl = parseAppDeepLink(rawUrl);
+  if (!parsedUrl || parsedUrl.route !== "surface") {
     return null;
   }
-  const queryIndex = rawUrl.indexOf("?");
-  if (queryIndex < 0) {
-    return null;
-  }
-  const params = new URLSearchParams(rawUrl.slice(queryIndex + 1));
-  const rawTab = (params.get("tab") ?? "").trim().toLowerCase();
+  const { params } = parsedUrl;
+  const rawTab = (deepLinkParam(params, "tab") ?? "").trim().toLowerCase();
   if (rawTab === "capture" || rawTab === "alarms" || rawTab === "review") {
     return rawTab;
   }
   return null;
 }
 
-export default function App() {
+export default function App({ initialIntentUrl = null }: AppProps) {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
   const [activeTab, setActiveTab] = useState<"capture" | "alarms" | "review">("capture");
@@ -857,6 +962,7 @@ export default function App() {
   const lastShareFingerprint = useRef<{ value: string; processedAt: number } | null>(null);
   const cardPromptStartedAt = useRef<number | null>(null);
   const briefingSoundRef = useRef<Audio.Sound | null>(null);
+  const lastHandledAppLink = useRef<{ handledAt: number; url: string } | null>(null);
   const {
     hasShareIntent,
     shareIntent,
@@ -926,6 +1032,7 @@ export default function App() {
 
   function applyDeepCapture(deepCapture: { title: string; text: string; sourceUrl: string }) {
     setActiveTab("capture");
+    setShowAdvancedCapture(true);
     setQuickCaptureTitle(deepCapture.title);
     setQuickCaptureText(deepCapture.text);
     setQuickCaptureSourceUrl(deepCapture.sourceUrl);
@@ -934,6 +1041,41 @@ export default function App() {
     setVoiceClipDurationMs(0);
     setCaptureOpsSection("queue");
     setStatus("Loaded capture from share deep link");
+  }
+
+  function handleAppLink(rawUrl: string): boolean {
+    const normalizedUrl = rawUrl.trim();
+    const now = Date.now();
+    if (
+      !normalizedUrl ||
+      (lastHandledAppLink.current &&
+        lastHandledAppLink.current.url === normalizedUrl &&
+        now - lastHandledAppLink.current.handledAt < APP_LINK_DEDUP_WINDOW_MS)
+    ) {
+      return false;
+    }
+
+    let handled = false;
+    const requestedTab = parseSurfaceTabDeepLink(normalizedUrl);
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      setStatus(`Opened ${requestedTab} surface`);
+      handled = true;
+    }
+
+    const deepCapture = parseCaptureDeepLink(normalizedUrl);
+    if (deepCapture) {
+      applyDeepCapture(deepCapture);
+      handled = true;
+    }
+
+    if (handled) {
+      lastHandledAppLink.current = { handledAt: now, url: normalizedUrl };
+      if (Platform.OS === "android") {
+        clearCurrentIntentUrl().catch(() => undefined);
+      }
+    }
+    return handled;
   }
 
   async function refreshLocalSttAvailability(origin: "auto" | "manual") {
@@ -2076,6 +2218,7 @@ export default function App() {
     let active = true;
 
     async function initialize() {
+      const initialUrlPromise = initialIntentUrl ? Promise.resolve(initialIntentUrl) : resolveInitialDeepLinkUrl();
       if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync("starlog-morning", {
           name: "Starlog Morning Brief",
@@ -2128,17 +2271,9 @@ export default function App() {
         setToken(recoveredToken);
       }
 
-      const initialUrl = await Linking.getInitialURL();
+      const initialUrl = await initialUrlPromise;
       if (active && initialUrl) {
-        const initialTab = parseSurfaceTabDeepLink(initialUrl);
-        if (initialTab) {
-          setActiveTab(initialTab);
-          setStatus(`Opened ${initialTab} surface`);
-        }
-        const deepCapture = parseCaptureDeepLink(initialUrl);
-        if (deepCapture) {
-          applyDeepCapture(deepCapture);
-        }
+        handleAppLink(initialUrl);
       }
 
       if (active) {
@@ -2178,22 +2313,49 @@ export default function App() {
     });
 
     const linkSubscription = Linking.addEventListener("url", (event) => {
-      const requestedTab = parseSurfaceTabDeepLink(event.url);
-      if (requestedTab) {
-        setActiveTab(requestedTab);
-        setStatus(`Opened ${requestedTab} surface`);
-      }
-      const deepCapture = parseCaptureDeepLink(event.url);
-      if (!deepCapture) {
-        return;
-      }
-      applyDeepCapture(deepCapture);
+      handleAppLink(event.url);
     });
+    const nativeLinkSubscription =
+      Platform.OS === "android"
+        ? DeviceEventEmitter.addListener("StarlogAppLink", (nextUrl: unknown) => {
+            if (typeof nextUrl === "string") {
+              handleAppLink(nextUrl);
+            }
+          })
+        : null;
+
+    const linkPollingInterval =
+      Platform.OS === "android"
+        ? setInterval(() => {
+            Linking.getInitialURL()
+              .then(async (url) => {
+                const nextUrl = (await getCurrentIntentUrl()) ?? url;
+                if (!active || !nextUrl) {
+                  return;
+                }
+                handleAppLink(nextUrl);
+              })
+              .catch(() => {
+                getCurrentIntentUrl()
+                  .then((url) => {
+                    if (!active || !url) {
+                      return;
+                    }
+                    handleAppLink(url);
+                  })
+                  .catch(() => undefined);
+              });
+          }, 1000)
+        : null;
 
     return () => {
       active = false;
       notificationSubscription.remove();
       linkSubscription.remove();
+      nativeLinkSubscription?.remove();
+      if (linkPollingInterval) {
+        clearInterval(linkPollingInterval);
+      }
       if (briefingSoundRef.current) {
         briefingSoundRef.current.unloadAsync().catch(() => undefined);
         briefingSoundRef.current = null;
@@ -2212,7 +2374,12 @@ export default function App() {
     if (!hasShareIntent) {
       return;
     }
-    const fingerprint = incomingShareIntentFingerprint(shareIntent as IncomingShareIntent);
+    const payload = shareIntent as IncomingShareIntent;
+    if (!hasMeaningfulIncomingShareIntent(payload)) {
+      resetShareIntent();
+      return;
+    }
+    const fingerprint = incomingShareIntentFingerprint(payload);
     const previous = lastShareFingerprint.current;
     const now = Date.now();
     if (previous && previous.value === fingerprint && now - previous.processedAt < 15000) {
@@ -2225,7 +2392,6 @@ export default function App() {
     let cancelled = false;
 
     async function applyIncomingShareIntent() {
-      const payload = shareIntent as IncomingShareIntent;
       const sharedText = (payload.text ?? "").trim();
       const sharedUrl = (payload.webUrl ?? "").trim();
       const shareFiles = payload.files ?? [];
