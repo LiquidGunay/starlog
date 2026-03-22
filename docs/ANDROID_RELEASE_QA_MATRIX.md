@@ -90,3 +90,35 @@ Hosted PWA: `https://starlog-web-production.up.railway.app`
 
 1. Cold-start deep-link validation can still look like a false negative if the proof capture stops at the top hero section.
    - Mitigation: scroll down to the queued capture form before judging whether title/text/source prefill landed.
+
+## WI-581 voice-native release-candidate pass
+
+Date: 2026-03-22
+Device target: OPPO CPH2381 (`9dd62e84`)
+Worktree: `/tmp/starlog-android-rc-10NdP4`
+Branch: `codex/android-release-candidate`
+Artifact: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Installed package target: `com.starlog.app.preview`
+Version: `0.1.0-preview.rc1 (102)`
+SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+
+## WI-581 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Preview release APK assembly (`assembleRelease`) | PASS | `docs/evidence/mobile/wi-581-rc-summary.md` |
+| Mobile TypeScript compile (`apps/mobile`) | PASS | `docs/evidence/mobile/wi-581-rc-summary.md` |
+| Connected-phone install/launch rerun from this Codex shell | BLOCKED | `docs/evidence/mobile/wi-581-rc-summary.md` |
+| Preview package cold launch on the connected phone | PASS (prior phone evidence) | `docs/evidence/mobile/wi-402-install-log.txt`, `docs/evidence/mobile/wi-402-preview-launch.png` |
+| Deep-link capture prefill on the connected phone | PASS (prior phone evidence) | `docs/evidence/mobile/wi-403-deeplink-fresh-build.png` |
+| Preview app configured against Railway on the connected phone | PASS (prior phone evidence) | `docs/evidence/mobile/wi-403-preview-configured.png` |
+| Spoken briefing render / offline playback pipeline against Railway | PASS (prior phone evidence) | completed job `job_9b11f48641054fb590f4239fdc5db835`, briefing `brf_cca0f68239ff411683488f7cb7009e05` with `audio_ref=media://med_1c8c2a34778c4d5cafdb2e3d566405ab` |
+| Fresh hold-to-talk screenshot evidence on the connected phone | BLOCKED | `docs/evidence/mobile/wi-581-rc-summary.md` |
+| Fresh assistant/chat screenshot evidence on the connected phone | BLOCKED | `docs/evidence/mobile/wi-581-rc-summary.md` |
+
+## WI-581 blockers and mitigations
+
+1. This Codex Linux shell cannot execute the Windows `adb.exe` that this host uses for the physical phone (`Exec format error`), and local WSL `adb devices -l` reports no attached device.
+   - Mitigation: run the final install/smoke/screenshot loop from the Windows-side flow in `docs/ANDROID_DEV_BUILD.md` or `scripts/android_native_smoke_windows.ps1`.
+2. Fresh connected-phone screenshot proof for hold-to-talk and assistant/chat is not present in this pass.
+   - Mitigation: use the RC APK above with the Windows-host runbook, then capture the phone screenshots into `docs/evidence/mobile/` before calling the build fully distributable.

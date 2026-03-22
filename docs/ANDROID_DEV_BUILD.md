@@ -138,6 +138,35 @@ Launch verification command on this host:
   shell am start -W -n com.starlog.app.preview/com.starlog.app.dev.MainActivity
 ```
 
+## Current voice-native RC artifact (WI-581)
+
+Current preview release-candidate artifact:
+
+- Output artifact: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+- Selected package: `com.starlog.app.preview`
+- Version name: `0.1.0-preview.rc1`
+- Version code: `102`
+- SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+
+Reproducible build command:
+
+```bash
+export JAVA_HOME="$HOME/.local/jdks/temurin-17"
+export ANDROID_HOME="$HOME/.local/android"
+export ANDROID_SDK_ROOT="$HOME/.local/android"
+cd /home/ubuntu/starlog/apps/mobile/android
+APP_VARIANT=preview \
+STARLOG_VERSION_NAME=0.1.0-preview.rc1 \
+STARLOG_ANDROID_VERSION_CODE=102 \
+STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true \
+./gradlew assembleRelease --console=plain
+```
+
+For this host, a Codex Linux shell still cannot execute the Windows `adb.exe` that reaches the
+physical phone, and local WSL `adb devices -l` may stay empty even when earlier Windows-host
+validation succeeded. Use the Windows-host smoke flow below for the final install/screenshot
+pass against the connected phone.
+
 ## First-time setup
 
 From repo root:
