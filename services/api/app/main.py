@@ -24,7 +24,9 @@ LOCAL_COMPANION_CORS_ORIGINS = (
 
 def resolved_cors_origins(raw_origins: str) -> list[str]:
     configured_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
-    if not configured_origins or configured_origins == ["*"]:
+    if not configured_origins:
+        return []
+    if configured_origins == ["*"]:
         return ["*"]
 
     merged_origins: list[str] = []

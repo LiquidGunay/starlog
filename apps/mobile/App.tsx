@@ -790,6 +790,8 @@ type AppProps = {
   initialIntentUrl?: string | null;
 };
 
+const APP_LINK_DEDUP_WINDOW_MS = 1500;
+
 const SUPPORTED_MOBILE_DEEP_LINK_SCHEMES = new Set([
   "starlog",
   "exp+starlog",
@@ -960,7 +962,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const lastShareFingerprint = useRef<{ value: string; processedAt: number } | null>(null);
   const cardPromptStartedAt = useRef<number | null>(null);
   const briefingSoundRef = useRef<Audio.Sound | null>(null);
-  const lastHandledAppLink = useRef<string | null>(null);
+  const lastHandledAppLink = useRef<{ handledAt: number; url: string } | null>(null);
   const {
     hasShareIntent,
     shareIntent,
@@ -1043,7 +1045,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   function handleAppLink(rawUrl: string): boolean {
     const normalizedUrl = rawUrl.trim();
-    if (!normalizedUrl || lastHandledAppLink.current === normalizedUrl) {
+    const now = Date.now();
+    if (
+      !normalizedUrl ||
+      (lastHandledAppLink.current &&
+        lastHandledAppLink.current.url === normalizedUrl &&
+        now - lastHandledAppLink.current.handledAt < APP_LINK_DEDUP_WINDOW_MS)
+    ) {
       return false;
     }
 
@@ -1062,7 +1070,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     if (handled) {
-      lastHandledAppLink.current = normalizedUrl;
+      lastHandledAppLink.current = { handledAt: now, url: normalizedUrl };
       if (Platform.OS === "android") {
         clearCurrentIntentUrl().catch(() => undefined);
       }
