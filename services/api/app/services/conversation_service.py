@@ -60,7 +60,7 @@ def _thread_payload(
     traces = execute_fetchall(
         conn,
         """
-        SELECT id, thread_id, message_id, tool_name, arguments_json, status, result_json, created_at
+        SELECT id, thread_id, message_id, tool_name, arguments_json, status, result_json, metadata_json, created_at
         FROM conversation_tool_traces
         WHERE thread_id = ?
         ORDER BY created_at DESC
@@ -123,6 +123,7 @@ def _thread_payload(
                 "arguments": item["arguments_json"],
                 "status": item["status"],
                 "result": item["result_json"],
+                "metadata": item.get("metadata_json", {}),
                 "created_at": item["created_at"],
             }
             for item in traces
@@ -249,14 +250,17 @@ def record_tool_trace(
     arguments: dict[str, Any],
     status: str,
     result: dict[str, Any] | list[dict[str, Any]],
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     thread = ensure_primary_thread(conn)
     trace_id = new_id("trace")
     now = utc_now().isoformat()
     conn.execute(
         """
-        INSERT INTO conversation_tool_traces (id, thread_id, message_id, tool_name, arguments_json, status, result_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_tool_traces (
+          id, thread_id, message_id, tool_name, arguments_json, status, result_json, metadata_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             trace_id,
@@ -266,6 +270,7 @@ def record_tool_trace(
             json.dumps(arguments, sort_keys=True),
             status,
             json.dumps(result, sort_keys=True),
+            json.dumps(metadata or {}, sort_keys=True),
             now,
         ),
     )
@@ -277,7 +282,7 @@ def record_tool_trace(
     row = execute_fetchone(
         conn,
         """
-        SELECT id, thread_id, message_id, tool_name, arguments_json, status, result_json, created_at
+        SELECT id, thread_id, message_id, tool_name, arguments_json, status, result_json, metadata_json, created_at
         FROM conversation_tool_traces
         WHERE id = ?
         """,
@@ -293,6 +298,7 @@ def record_tool_trace(
         "arguments": row["arguments_json"],
         "status": row["status"],
         "result": row["result_json"],
+        "metadata": row.get("metadata_json", {}),
         "created_at": row["created_at"],
     }
 
@@ -355,6 +361,7 @@ def build_chat_preview_request(
                 "tool_name": trace["tool_name"],
                 "status": trace["status"],
                 "result": trace["result"],
+                "metadata": trace.get("metadata", {}),
                 "created_at": trace["created_at"],
             }
             for trace in thread["tool_traces"]

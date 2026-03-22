@@ -6,12 +6,21 @@ from pydantic import BaseModel, Field
 from app.schemas.artifacts import ArtifactAction
 from app.schemas.integrations import ExecutionTarget
 
+ConfirmationMode = Literal["never", "always"]
+ConfirmationState = Literal["not_required", "required", "confirmed"]
+
+
+class AgentToolConfirmationPolicy(BaseModel):
+    mode: ConfirmationMode = "never"
+    reason: str | None = None
+
 
 class AgentToolDefinition(BaseModel):
     name: str
     description: str
     parameters_schema: dict[str, Any] = Field(default_factory=dict)
     backing_endpoint: str | None = None
+    confirmation_policy: AgentToolConfirmationPolicy = Field(default_factory=AgentToolConfirmationPolicy)
 
 
 class AgentToolCallRequest(BaseModel):
@@ -43,9 +52,12 @@ class AgentAssistCommandRequest(BaseModel):
 class AgentCommandStep(BaseModel):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
-    status: Literal["planned", "ok", "dry_run", "failed"] = "planned"
+    status: Literal["planned", "ok", "dry_run", "failed", "confirmation_required"] = "planned"
     message: str | None = None
     result: dict[str, Any] | list[dict[str, Any]] = Field(default_factory=lambda: {})
+    backing_endpoint: str | None = None
+    requires_confirmation: bool = False
+    confirmation_state: ConfirmationState = "not_required"
 
 
 class AgentCommandResponse(BaseModel):
