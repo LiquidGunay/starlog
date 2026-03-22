@@ -1,0 +1,23 @@
+{
+  "id": "research-digest-quality-001",
+  "workflow": "research_digest",
+  "input": {
+    "title": "Arxiv batch",
+    "text": "Rank and summarize the top papers from today's ingest.",
+    "context": {
+      "source": "arxiv",
+      "limit": 10
+    }
+  },
+  "checks": {
+    "must_include": [
+      "ranking rationale",
+      "provenance",
+      "follow-up summary option"
+    ],
+    "must_not_include": [
+      "fabricated citation",
+      "missing source link"
+    ]
+  }
+}
