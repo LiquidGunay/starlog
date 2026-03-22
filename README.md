@@ -108,6 +108,22 @@ calendar state, and assistant history remain readable while the network is down.
 make test-api
 ```
 
+### PR smoke matrix
+
+Use the fast cross-surface PR gate for runtime/API/web/helper changes:
+
+```bash
+./scripts/ci_smoke_matrix.sh
+```
+
+Guide: `docs/AI_VALIDATION_SMOKE_MATRIX.md`
+
+For web release candidates, run the heavier PWA release gate as well:
+
+```bash
+./scripts/pwa_release_gate.sh
+```
+
 ### Seed demo data
 
 ```bash

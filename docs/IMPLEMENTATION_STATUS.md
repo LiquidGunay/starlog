@@ -101,6 +101,7 @@
 - Local AI worker now defaults to picking up queued TTS jobs too, supports provider-specific local TTS wrappers (`piper_local`, `say_local`, `espeak_local`, `espeak_ng_local`), and carries voice/rate metadata through the render result.
 - Added `/ai-jobs` workspace for queued local Codex/Whisper job inspection.
 - `/ai-jobs` now supports filtering by status/capability/provider/action plus manual cancel/retry controls for queued or failed local AI jobs.
+- Added `docs/AI_VALIDATION_SMOKE_MATRIX.md` plus `scripts/ci_smoke_matrix.sh` to define the fast PR smoke gate across runtime, API, web, and local bridge surfaces, while keeping currently red/unstable watch lanes explicit instead of silently dropping them.
 - Worker auth lifecycle coverage now verifies pairing, access-token rotation on refresh, stale-token rejection, revocation enforcement, and revoked-worker visibility via `/v1/workers?include_revoked=true`.
 - Added an agent-control API/tool catalog (`/v1/agent/tools`, `/v1/agent/execute`) plus a web tester page at `/agent-tools` so future voice/chat surfaces can call Starlog actions without UI clicks.
 - Agent tools can now also read/update execution policy so future chat/voice shells can control routing preferences directly.
@@ -138,8 +139,8 @@
 
 ## Next implementation targets
 
-1. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
-2. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
-3. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
-4. Tune retention policy thresholds with production-like usage data (prefix limits, age windows, and pressure cutoffs) so pruning remains predictable as cache volume grows.
-5. Explore and, if viable, land the first guarded phone-local LLM backend behind the same policy model.
+1. Recover the chat-surface assistant Playwright lanes so `apps/web/tests/assistant-*.spec.ts` can move back into the default PR smoke matrix.
+2. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
+3. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
+4. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
+5. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
