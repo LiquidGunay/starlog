@@ -504,16 +504,42 @@ def _execute_planned_calls(
     summary: str,
     execute: bool,
     planned_calls: list[PlannedToolCall],
+    enforce_confirmation_policy: bool = False,
 ) -> AgentCommandResponse:
     steps: list[AgentCommandStep] = []
     overall_status: Literal["planned", "executed", "failed"] = "executed" if execute else "planned"
 
     for planned in planned_calls:
         try:
-            status_text, normalized, result = agent_service.execute_tool(
+            spec, _validated, normalized, confirmation_policy = agent_service.prepare_tool_call(
+                planned.tool_name,
+                planned.arguments,
+            )
+            requires_confirmation = confirmation_policy.mode == "always"
+            confirmation_state: Literal["not_required", "required", "confirmed"] = "not_required"
+            if requires_confirmation:
+                confirmation_state = "confirmed" if not enforce_confirmation_policy else "required"
+
+            if execute and enforce_confirmation_policy and requires_confirmation:
+                overall_status = "planned"
+                steps.append(
+                    AgentCommandStep(
+                        tool_name=planned.tool_name,
+                        arguments=normalized,
+                        status="confirmation_required",
+                        message=planned.message,
+                        result={"confirmation_reason": confirmation_policy.reason or ""},
+                        backing_endpoint=spec.backing_endpoint,
+                        requires_confirmation=True,
+                        confirmation_state="required",
+                    )
+                )
+                continue
+
+            status_text, _executed_normalized, result = agent_service.execute_tool(
                 conn,
                 tool_name=planned.tool_name,
-                arguments=planned.arguments,
+                arguments=normalized,
                 dry_run=not execute,
             )
             steps.append(
@@ -523,6 +549,9 @@ def _execute_planned_calls(
                     status=status_text,
                     message=planned.message,
                     result=result,
+                    backing_endpoint=spec.backing_endpoint,
+                    requires_confirmation=requires_confirmation,
+                    confirmation_state=confirmation_state,
                 )
             )
         except Exception as exc:
@@ -534,6 +563,8 @@ def _execute_planned_calls(
                     status="failed",
                     message=f"{planned.message}: {exc}",
                     result={},
+                    requires_confirmation=False,
+                    confirmation_state="not_required",
                 )
             )
             break
@@ -569,6 +600,8 @@ def _assistant_cards(response: AgentCommandResponse) -> list[dict[str, Any]]:
                 "metadata": {
                     "status": step.status,
                     "arguments": step.arguments,
+                    "confirmation_state": step.confirmation_state,
+                    "requires_confirmation": step.requires_confirmation,
                 },
             }
         )
@@ -613,6 +646,13 @@ def _persist_conversation_turn(
             arguments=step.arguments,
             status=step.status,
             result=step.result,
+            metadata={
+                "planner": response.planner,
+                "message": step.message,
+                "backing_endpoint": step.backing_endpoint,
+                "requires_confirmation": step.requires_confirmation,
+                "confirmation_state": step.confirmation_state,
+            },
         )
     conversation_service.update_session_state(
         conn,
@@ -642,6 +682,7 @@ def run_command(
         summary=summary,
         execute=execute,
         planned_calls=planned_calls,
+        enforce_confirmation_policy=False,
     )
     _persist_conversation_turn(
         conn,
@@ -712,6 +753,7 @@ def apply_ai_command_plan(
         summary=summary,
         execute=execute,
         planned_calls=planned_calls,
+        enforce_confirmation_policy=True,
     )
     _persist_conversation_turn(
         conn,

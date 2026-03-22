@@ -1,7 +1,12 @@
 from fastapi import FastAPI
 
-from runtime_app.schemas import WorkflowPreviewRequest, WorkflowPreviewResponse
-from runtime_app.workflows import briefing_preview, chat_preview, research_digest_preview
+from runtime_app.schemas import (
+    CapabilityExecutionRequest,
+    CapabilityExecutionResponse,
+    WorkflowPreviewRequest,
+    WorkflowPreviewResponse,
+)
+from runtime_app.workflows import briefing_preview, chat_preview, execute_capability, research_digest_preview
 
 app = FastAPI(title="Starlog AI Runtime", version="0.1.0")
 
@@ -24,3 +29,8 @@ def preview_briefing(payload: WorkflowPreviewRequest) -> WorkflowPreviewResponse
 @app.post("/v1/research/digests/preview", response_model=WorkflowPreviewResponse)
 def preview_research_digest(payload: WorkflowPreviewRequest) -> WorkflowPreviewResponse:
     return research_digest_preview(payload.title, payload.text, payload.context)
+
+
+@app.post("/v1/execute", response_model=CapabilityExecutionResponse)
+def execute_runtime_capability(payload: CapabilityExecutionRequest) -> CapabilityExecutionResponse:
+    return execute_capability(payload.capability, payload.payload)

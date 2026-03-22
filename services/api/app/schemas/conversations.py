@@ -32,6 +32,7 @@ class ConversationToolTrace(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     status: str
     result: dict[str, Any] | list[dict[str, Any]] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 

@@ -286,6 +286,7 @@ CREATE TABLE IF NOT EXISTS conversation_tool_traces (
   arguments_json TEXT NOT NULL,
   status TEXT NOT NULL,
   result_json TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
   FOREIGN KEY (message_id) REFERENCES conversation_messages(id)
@@ -530,6 +531,7 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "ai_jobs", "requested_targets_json", "TEXT")
     _ensure_column(conn, "ai_jobs", "selected_target", "TEXT")
     _ensure_column(conn, "ai_jobs", "claimed_worker_class", "TEXT")
+    _ensure_column(conn, "conversation_tool_traces", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS worker_pairings (
@@ -608,6 +610,7 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           arguments_json TEXT NOT NULL,
           status TEXT NOT NULL,
           result_json TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
           created_at TEXT NOT NULL,
           FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
           FOREIGN KEY (message_id) REFERENCES conversation_messages(id)

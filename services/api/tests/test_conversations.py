@@ -38,6 +38,8 @@ def test_agent_command_persists_conversation_and_tool_traces(
     assert payload["messages"][1]["role"] == "assistant"
     assert payload["messages"][1]["metadata"]["assistant_command"]["matched_intent"] == "create_task"
     assert payload["tool_traces"][0]["tool_name"] == "create_task"
+    assert payload["tool_traces"][0]["metadata"]["confirmation_state"] == "confirmed"
+    assert payload["tool_traces"][0]["metadata"]["backing_endpoint"] == "/v1/tasks"
     assert payload["session_state"]["last_matched_intent"] == "create_task"
 
 

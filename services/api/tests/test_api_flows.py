@@ -252,6 +252,8 @@ def test_agent_tool_catalog_and_execution(client: TestClient, auth_headers: dict
     assert "set_execution_policy" in tool_names
     assert "create_note" in tool_names
     assert "generate_time_blocks" in tool_names
+    create_task_tool = next(item for item in tools.json() if item["name"] == "create_task")
+    assert create_task_tool["confirmation_policy"]["mode"] == "always"
 
     openai_tools = client.get("/v1/agent/tools?format=openai", headers=auth_headers)
     assert openai_tools.status_code == 200
@@ -680,13 +682,15 @@ def test_assist_agent_command_queue_executes_after_codex_plan(
     )
     assert completed.status_code == 200
     completed_payload = completed.json()
-    assert completed_payload["output"]["assistant_command"]["status"] == "executed"
+    assert completed_payload["output"]["assistant_command"]["status"] == "planned"
     assert completed_payload["output"]["assistant_command"]["matched_intent"] == "create_task"
     assert completed_payload["output"]["assistant_command"]["planner"] == "llm_assist"
+    assert completed_payload["output"]["assistant_command"]["steps"][0]["status"] == "confirmation_required"
+    assert completed_payload["output"]["assistant_command"]["steps"][0]["confirmation_state"] == "required"
 
     tasks = client.get("/v1/tasks", headers=auth_headers)
     assert tasks.status_code == 200
-    assert any(task["title"] == "AI planned follow-up" for task in tasks.json())
+    assert all(task["title"] != "AI planned follow-up" for task in tasks.json())
 
 
 def test_briefing_audio_queue_attaches_rendered_audio(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -974,7 +978,9 @@ def test_ai_run_fallback_policy(client: TestClient, auth_headers: dict[str, str]
         headers=auth_headers,
     )
     assert llm.status_code == 200
-    assert llm.json()["provider_used"] == "api"
+    assert llm.json()["provider_used"] == "local_ai_runtime"
+    assert llm.json()["output"]["_runtime"]["capability"] == "llm_summary"
+    assert "Summary draft" in llm.json()["output"]["summary"]
 
     ocr = client.post(
         "/v1/ai/run",
@@ -1566,7 +1572,8 @@ def test_execution_policy_controls_ai_routing(client: TestClient, auth_headers: 
         headers=auth_headers,
     )
     assert run.status_code == 200
-    assert run.json()["provider_used"] == "api"
+    assert run.json()["provider_used"] == "local_ai_runtime"
+    assert run.json()["output"]["_runtime"]["capability"] == "llm_summary"
 
 
 def test_codex_bridge_requires_explicit_opt_in_for_execution(
@@ -1618,7 +1625,7 @@ def test_codex_bridge_requires_explicit_opt_in_for_execution(
         headers=auth_headers,
     )
     assert guarded.status_code == 200
-    assert guarded.json()["provider_used"] == "api"
+    assert guarded.json()["provider_used"] == "local_ai_runtime"
 
     def fake_invoke(_provider_name: str, config: dict, capability: str, payload: dict) -> dict:
         assert capability == "llm_summary"
@@ -1660,8 +1667,8 @@ def test_codex_bridge_requires_explicit_opt_in_for_execution(
         headers=auth_headers,
     )
     assert live.status_code == 200
-    assert live.json()["provider_used"] == "api"
-    assert live.json()["output"]["capability"] == "llm_summary"
+    assert live.json()["provider_used"] == "local_ai_runtime"
+    assert live.json()["output"]["_runtime"]["capability"] == "llm_summary"
 
 
 def test_google_sync_oauth_and_delta_flow(client: TestClient, auth_headers: dict[str, str]) -> None:

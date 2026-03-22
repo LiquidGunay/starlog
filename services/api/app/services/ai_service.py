@@ -18,6 +18,9 @@ LLM_CAPABILITIES = {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}
 PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "ai-runtime" / "prompts"
 AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-nano"
 AI_RUNTIME_BASE_ENV = "STARLOG_AI_RUNTIME_BASE_URL"
+AI_RUNTIME_EXECUTE_PATH = "/v1/execute"
+AI_RUNTIME_EXECUTE_TIMEOUT_SECONDS = 8.0
+AI_RUNTIME_EXECUTE_RETRIES = 2
 AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS = 5.0
 AI_RUNTIME_PREVIEW_RETRIES = 2
 
@@ -196,8 +199,19 @@ def _request_spec(capability: str, payload: dict) -> tuple[str, str]:
             for item in tools:
                 if not isinstance(item, dict):
                     continue
+                confirmation_policy = item.get("confirmation_policy")
+                confirmation_text = ""
+                if isinstance(confirmation_policy, dict):
+                    mode = str(confirmation_policy.get("mode") or "").strip()
+                    reason = str(confirmation_policy.get("reason") or "").strip()
+                    if mode:
+                        confirmation_text = f" Confirmation policy: {mode}."
+                    if reason:
+                        confirmation_text = f"{confirmation_text} {reason}".strip()
                 tool_lines.append(
-                    f"- {item.get('name', 'unknown')}: {item.get('description', '')} Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+                    f"- {item.get('name', 'unknown')}: {item.get('description', '')} "
+                    f"Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+                    f"{confirmation_text}"
                 )
         return (
             _load_prompt("llm_agent_plan.system.txt"),
@@ -218,6 +232,10 @@ def _runtime_preview_url(path: str) -> str | None:
     if not _valid_url(base):
         return None
     return f"{base.rstrip('/')}{path}"
+
+
+def _runtime_execute_url() -> str | None:
+    return _runtime_preview_url(AI_RUNTIME_EXECUTE_PATH)
 
 
 def _invoke_runtime_preview(workflow: str, payload: dict) -> dict:
@@ -280,6 +298,127 @@ def _invoke_runtime_preview(workflow: str, payload: dict) -> dict:
 
 def preview_workflow(workflow: str, payload: dict) -> dict:
     return _invoke_runtime_preview(workflow, payload)
+
+
+def _local_runtime_execution(capability: str, payload: dict) -> dict:
+    system_prompt, user_prompt = _request_spec(capability, payload)
+    title = str(payload.get("title") or "Untitled").strip() or "Untitled"
+    source_text = _text_source(payload)
+    excerpt = " ".join(source_text.split())[:280] if source_text else ""
+
+    if capability == "llm_summary":
+        summary = (
+            f"Summary draft for {title}: {excerpt}"
+            if excerpt
+            else f"Summary draft for {title}: no source text was provided."
+        )
+        output = {"summary": summary, "text": summary}
+    elif capability == "llm_cards":
+        answer = excerpt or f"Review the key ideas from {title}."
+        output = {
+            "cards": [
+                {
+                    "prompt": f"What is the core idea in {title}?",
+                    "answer": answer,
+                    "card_type": "qa",
+                },
+                {
+                    "prompt": f"What detail from {title} is most worth revisiting?",
+                    "answer": answer[:120] or title,
+                    "card_type": "qa",
+                },
+            ]
+        }
+    elif capability == "llm_tasks":
+        output = {
+            "tasks": [
+                {
+                    "title": f"Review {title}",
+                    "estimate_min": 20,
+                    "priority": 3,
+                }
+            ]
+        }
+    elif capability == "llm_agent_plan":
+        command = str(payload.get("command") or source_text or "").strip()
+        tools = payload.get("tool_catalog")
+        available_tools = {
+            str(item.get("name"))
+            for item in tools
+            if isinstance(tools, list) and isinstance(item, dict)
+        }
+        if "create_task" in available_tools and "task" in command.lower():
+            output = {
+                "planner": "runtime_prompt_fallback",
+                "matched_intent": "create_task",
+                "summary": "Draft a follow-up task from the request and require confirmation before committing.",
+                "tool_calls": [
+                    {
+                        "tool_name": "create_task",
+                        "arguments": {"title": command[:120] or "Follow up", "priority": 3},
+                        "message": "Create a task from the assisted command",
+                    }
+                ],
+            }
+        else:
+            output = {
+                "planner": "runtime_prompt_fallback",
+                "matched_intent": "assistant_ai",
+                "summary": "No direct runtime fallback tool call matched the request.",
+                "tool_calls": [],
+            }
+    else:
+        raise ProviderError(f"Unsupported runtime capability: {capability}")
+
+    return {
+        "provider_used": "local_ai_runtime",
+        "capability": capability,
+        "model": AI_RUNTIME_DEFAULT_MODEL,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "output": output,
+    }
+
+
+def _invoke_runtime_execute(capability: str, payload: dict, prefer_local: bool) -> dict:
+    url = _runtime_execute_url()
+    if not url:
+        return _local_runtime_execution(capability, payload)
+
+    request = Request(
+        url,
+        data=json.dumps({"capability": capability, "payload": payload, "prefer_local": prefer_local}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    last_error: Exception | None = None
+    for _attempt in range(AI_RUNTIME_EXECUTE_RETRIES):
+        try:
+            with urlopen(request, timeout=AI_RUNTIME_EXECUTE_TIMEOUT_SECONDS) as response:  # noqa: S310
+                body = response.read().decode("utf-8")
+            decoded = json.loads(body)
+            if not isinstance(decoded, dict):
+                raise ProviderError("AI runtime returned a non-object execution payload")
+            output = decoded.get("output")
+            if not isinstance(output, dict):
+                output = {}
+            return {
+                "provider_used": str(decoded.get("provider_used") or "ai_runtime"),
+                "capability": str(decoded.get("capability") or capability),
+                "model": str(decoded.get("model") or AI_RUNTIME_DEFAULT_MODEL),
+                "system_prompt": str(decoded.get("system_prompt") or ""),
+                "user_prompt": str(decoded.get("user_prompt") or ""),
+                "output": output,
+            }
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise ProviderError(f"AI runtime HTTP {exc.code}: {detail or 'request failed'}") from exc
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise ProviderError(f"AI runtime execution request failed: {last_error}") from last_error
+    raise ProviderError("AI runtime execution request failed")
 
 
 def _invoke_openai_compatible(provider_name: str, config: dict, capability: str, payload: dict) -> dict:
@@ -389,17 +528,7 @@ def _api_provider(conn: Connection | None, capability: str, payload: dict) -> di
         raise ProviderError("OCR is strict on-device only")
 
     if capability in LLM_CAPABILITIES:
-        provider = _provider_record(conn, "api_llm")
-        if provider is not None:
-            config = dict(provider["config"])
-            config.setdefault("model", payload.get("model") or "fallback-model")
-            return _invoke_openai_compatible("api_llm", config, capability, payload)
-
-        return {
-            "provider": "api_fallback",
-            "model": payload.get("model", "fallback-model"),
-            "capability": capability,
-        }
+        return _invoke_runtime_execute(capability, payload, prefer_local=True)
 
     if capability == "stt":
         return {"provider": "api_fallback", "transcript": payload.get("text_hint", "")}
@@ -433,6 +562,17 @@ def run(
                 continue
             if target == "api":
                 output = _api_provider(conn, capability, payload)
+                if capability in LLM_CAPABILITIES:
+                    runtime_output = output.get("output")
+                    normalized_output = dict(runtime_output) if isinstance(runtime_output, dict) else {}
+                    normalized_output["_runtime"] = {
+                        "capability": str(output.get("capability") or capability),
+                        "model": str(output.get("model") or AI_RUNTIME_DEFAULT_MODEL),
+                        "provider_used": str(output.get("provider_used") or "ai_runtime"),
+                        "system_prompt": str(output.get("system_prompt") or ""),
+                        "user_prompt": str(output.get("user_prompt") or ""),
+                    }
+                    return str(output.get("provider_used") or "ai_runtime"), "ok", normalized_output
                 return "api", "fallback", output
         except ProviderError:
             continue

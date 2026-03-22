@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from sqlite3 import Connection
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
 from app.schemas.agent import (
+    AgentToolConfirmationPolicy,
     AgentToolDefinition,
     CaptureTextToolArgs,
     CreateCalendarEventToolArgs,
@@ -52,6 +53,7 @@ class ToolSpec:
     arg_model: type[BaseModel]
     backing_endpoint: str
     handler: Any
+    confirmation_policy: AgentToolConfirmationPolicy = field(default_factory=AgentToolConfirmationPolicy)
 
 
 def _capture_text(conn: Connection, args: CaptureTextToolArgs) -> dict[str, Any]:
@@ -280,6 +282,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=RunArtifactActionToolArgs,
         backing_endpoint="/v1/artifacts/{artifact_id}/actions",
         handler=_run_artifact_action,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Appending notes mutates the knowledge base and should be explicitly confirmed in assisted plans.",
+        ),
     ),
     "create_note": ToolSpec(
         name="create_note",
@@ -287,6 +293,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=CreateNoteToolArgs,
         backing_endpoint="/v1/notes",
         handler=_create_note,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Creating notes from an assisted plan should be confirmed before writing.",
+        ),
     ),
     "update_note": ToolSpec(
         name="update_note",
@@ -294,6 +304,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=UpdateNoteToolArgs,
         backing_endpoint="/v1/notes/{note_id}",
         handler=_update_note,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Updating existing notes from an assisted plan should be confirmed before writing.",
+        ),
     ),
     "list_notes": ToolSpec(
         name="list_notes",
@@ -315,6 +329,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=CreateTaskToolArgs,
         backing_endpoint="/v1/tasks",
         handler=_create_task,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Creating tasks from an assisted plan should be confirmed before writing.",
+        ),
     ),
     "update_task": ToolSpec(
         name="update_task",
@@ -322,6 +340,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=UpdateTaskToolArgs,
         backing_endpoint="/v1/tasks/{task_id}",
         handler=_update_task,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Updating tasks from an assisted plan should be confirmed before writing.",
+        ),
     ),
     "list_tasks": ToolSpec(
         name="list_tasks",
@@ -336,6 +358,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=CreateCalendarEventToolArgs,
         backing_endpoint="/v1/calendar/events",
         handler=_create_calendar_event,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Calendar changes should not be committed from an assisted plan without confirmation.",
+        ),
     ),
     "list_calendar_events": ToolSpec(
         name="list_calendar_events",
@@ -350,6 +376,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=GenerateTimeBlocksToolArgs,
         backing_endpoint="/v1/planning/blocks/generate",
         handler=_generate_time_blocks,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Time blocking writes schedule state and should be confirmed in assisted plans.",
+        ),
     ),
     "generate_briefing": ToolSpec(
         name="generate_briefing",
@@ -364,6 +394,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=RenderBriefingAudioToolArgs,
         backing_endpoint="/v1/briefings/{briefing_id}/audio/render",
         handler=_render_briefing_audio,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Queued audio rendering is a potentially costly workflow and should be confirmed in assisted plans.",
+        ),
     ),
     "schedule_morning_brief_alarm": ToolSpec(
         name="schedule_morning_brief_alarm",
@@ -371,6 +405,10 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=ScheduleMorningBriefAlarmToolArgs,
         backing_endpoint="/v1/alarms",
         handler=_schedule_morning_brief_alarm,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Alarm scheduling changes device behavior and should be explicitly confirmed.",
+        ),
     ),
     "list_due_cards": ToolSpec(
         name="list_due_cards",
@@ -406,8 +444,29 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=SetExecutionPolicyToolArgs,
         backing_endpoint="/v1/integrations/execution-policy",
         handler=_set_execution_policy,
+        confirmation_policy=AgentToolConfirmationPolicy(
+            mode="always",
+            reason="Execution-policy changes affect shared routing behavior and should be confirmed in assisted plans.",
+        ),
     ),
 }
+
+
+def get_tool_spec(tool_name: str) -> ToolSpec:
+    spec = TOOL_SPECS.get(tool_name)
+    if spec is None:
+        raise KeyError(f"Unknown tool: {tool_name}")
+    return spec
+
+
+def prepare_tool_call(tool_name: str, arguments: dict[str, Any]) -> tuple[ToolSpec, BaseModel, dict[str, Any], AgentToolConfirmationPolicy]:
+    spec = get_tool_spec(tool_name)
+    validated = spec.arg_model.model_validate(arguments)
+    normalized = validated.model_dump(mode="json", exclude_none=True)
+    policy = spec.confirmation_policy
+    if tool_name == "run_artifact_action" and normalized.get("action") in {"summarize", "cards", "tasks"}:
+        policy = AgentToolConfirmationPolicy(mode="never")
+    return spec, validated, normalized, policy
 
 
 def list_tool_definitions() -> list[AgentToolDefinition]:
@@ -417,6 +476,7 @@ def list_tool_definitions() -> list[AgentToolDefinition]:
             description=spec.description,
             parameters_schema=spec.arg_model.model_json_schema(),
             backing_endpoint=spec.backing_endpoint,
+            confirmation_policy=spec.confirmation_policy,
         )
         for spec in TOOL_SPECS.values()
     ]
@@ -442,12 +502,7 @@ def execute_tool(
     arguments: dict[str, Any],
     dry_run: bool = False,
 ) -> tuple[Literal["ok", "dry_run"], dict[str, Any], Any]:
-    spec = TOOL_SPECS.get(tool_name)
-    if spec is None:
-        raise KeyError(f"Unknown tool: {tool_name}")
-
-    validated = spec.arg_model.model_validate(arguments)
-    normalized = validated.model_dump(mode="json", exclude_none=True)
+    spec, validated, normalized, _policy = prepare_tool_call(tool_name, arguments)
     if dry_run:
         return "dry_run", normalized, {
             "description": spec.description,
