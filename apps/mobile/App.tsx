@@ -12,6 +12,7 @@ import {
   DeviceEventEmitter,
   Linking,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -959,6 +960,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [status, setStatus] = useState("Ready");
   const [hydrated, setHydrated] = useState(false);
   const flushInFlight = useRef(false);
+  const voiceRecordingRef = useRef<Audio.Recording | null>(null);
+  const captureHoldActive = useRef(false);
   const lastShareFingerprint = useRef<{ value: string; processedAt: number } | null>(null);
   const cardPromptStartedAt = useRef<number | null>(null);
   const briefingSoundRef = useRef<Audio.Sound | null>(null);
@@ -1029,6 +1032,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }, 30_000);
     return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    voiceRecordingRef.current = voiceRecording;
+  }, [voiceRecording]);
 
   function applyDeepCapture(deepCapture: { title: string; text: string; sourceUrl: string }) {
     setActiveTab("capture");
@@ -1608,7 +1615,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function startVoiceRecording() {
-    if (voiceRecording) {
+    if (voiceRecordingRef.current) {
       setStatus("Voice recording is already in progress");
       return;
     }
@@ -1625,6 +1632,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         playsInSilentModeIOS: true,
       });
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      voiceRecordingRef.current = recording;
       setVoiceRecording(recording);
       setSharedFileDrafts([]);
       setVoiceClipUri(null);
@@ -1636,15 +1644,17 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function stopVoiceRecording() {
-    if (!voiceRecording) {
+    const activeRecording = voiceRecordingRef.current ?? voiceRecording;
+    if (!activeRecording) {
       setStatus("No voice recording is in progress");
       return;
     }
 
     try {
-      await voiceRecording.stopAndUnloadAsync();
-      const status = await voiceRecording.getStatusAsync();
-      const uri = voiceRecording.getURI();
+      await activeRecording.stopAndUnloadAsync();
+      const status = await activeRecording.getStatusAsync();
+      const uri = activeRecording.getURI();
+      voiceRecordingRef.current = null;
       setVoiceRecording(null);
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
@@ -1657,8 +1667,27 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setVoiceClipDurationMs(typeof status.durationMillis === "number" ? status.durationMillis : 0);
       setStatus("Voice note ready to upload or queue");
     } catch (error) {
+      voiceRecordingRef.current = null;
       setVoiceRecording(null);
       setStatus(error instanceof Error ? error.message : "Failed to stop voice recording");
+    }
+  }
+
+  async function beginHoldToTalkCapture() {
+    captureHoldActive.current = true;
+    if (voiceRecordingRef.current) {
+      return;
+    }
+    await startVoiceRecording();
+    if (!captureHoldActive.current && voiceRecordingRef.current) {
+      await stopVoiceRecording();
+    }
+  }
+
+  async function endHoldToTalkCapture() {
+    captureHoldActive.current = false;
+    if (voiceRecordingRef.current) {
+      await stopVoiceRecording();
     }
   }
 
@@ -1849,6 +1878,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setStatus(error instanceof Error ? error.message : "Failed to queue briefing audio");
     }
   }
+
+  const holdToTalkLabel = voiceRecording ? "Release to stop" : "Hold to talk";
+  const offlineBriefingStatus = cachedPath
+    ? `Offline briefing cached for ${briefingDate}`
+    : "No offline briefing cached yet";
 
   async function scheduleMorningAlarm() {
     try {
@@ -3335,10 +3369,18 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </View>
             </View>
             <View style={styles.captureHeroActions}>
-              <TouchableOpacity style={styles.primaryAction} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
+              <Pressable
+                style={styles.primaryAction}
+                onPressIn={() => {
+                  beginHoldToTalkCapture().catch(() => undefined);
+                }}
+                onPressOut={() => {
+                  endHoldToTalkCapture().catch(() => undefined);
+                }}
+              >
                 <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={16} color={palette.onAccent} />
-                <Text style={styles.primaryActionText}>{voiceRecording ? "Stop" : "Voice"}</Text>
-              </TouchableOpacity>
+                <Text style={styles.primaryActionText}>{holdToTalkLabel}</Text>
+              </Pressable>
               <TouchableOpacity style={styles.iconAction} onPress={submitQuickCapture}>
                 <MaterialCommunityIcons name="camera-outline" size={16} color={palette.accent} />
               </TouchableOpacity>
@@ -3346,6 +3388,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 <MaterialCommunityIcons name="format-text" size={16} color={palette.accent} />
               </TouchableOpacity>
             </View>
+            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then upload or queue it from Mission Tools.</Text>
             <View style={styles.captureArtifactCard}>
               <Text style={styles.captureTrackLabel}>Science Track</Text>
               <Text style={styles.captureArtifactTitle}>{selectedArtifact?.title || "Atmospheric Scan"}</Text>
@@ -3499,13 +3542,17 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             <View style={styles.alarmPlayerCard}>
               <Text style={styles.inlineCardTitle}>Daily Briefing</Text>
               <Text style={styles.subtle}>Galactic Market Pulse • Neural Link 4.2</Text>
+              <Text style={styles.subtle}>{offlineBriefingStatus}</Text>
               <View style={styles.alarmWaveRow}>
                 {[4, 10, 6, 14, 5, 11, 13, 4, 8, 12].map((height, index) => (
                   <View key={index} style={[styles.alarmWaveBar, { height }]} />
                 ))}
               </View>
               <View style={styles.alarmPlayerButtons}>
-                <TouchableOpacity style={styles.iconAction} onPress={playCached}>
+                <TouchableOpacity
+                  style={[styles.iconAction, !cachedPath ? { opacity: 0.45 } : null]}
+                  onPress={playCached}
+                >
                   <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.iconAction} onPress={queueBriefingAudio}>
