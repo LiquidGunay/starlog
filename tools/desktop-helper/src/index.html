@@ -989,6 +989,7 @@
               </div>
               <div class="diagnostic-controls">
                 <button id="refreshDiagnostics" type="button" class="action-button">Refresh Diagnostics</button>
+                <button id="checkBridge" type="button" class="action-button">Check Local Bridge</button>
                 <button id="copyDiagnostics" type="button" class="action-button">Copy Diagnostics</button>
               </div>
               <p class="help" style="margin-top: 8px">
@@ -1008,6 +1009,10 @@
                 <input id="apiBase" value="http://localhost:8000" />
               </div>
               <div class="form-block">
+                <label class="label" for="bridgeBase">Local bridge base</label>
+                <input id="bridgeBase" value="http://127.0.0.1:8091" />
+              </div>
+              <div class="form-block">
                 <label class="label" for="token">Bearer token</label>
                 <input id="token" type="password" placeholder="paste token" />
               </div>
@@ -1024,6 +1029,13 @@
                 <p class="label">Quick capture relay</p>
                 <p class="help">
                   Immediate capture lives in the compact popup. Keep the studio focused on diagnostics, config, and capture history.
+                </p>
+              </div>
+              <div class="config-divider"></div>
+              <div>
+                <p class="label">Desktop local bridge</p>
+                <p class="help">
+                  Point this at the Python localhost bridge when you want local STT, TTS, and desktop-context probes to stay on the machine.
                 </p>
               </div>
               <div class="config-divider"></div>
