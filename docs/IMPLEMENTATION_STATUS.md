@@ -132,6 +132,12 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
 - Physical Android validation on the attached phone now confirms: the dev client can render the companion UI through the Windows LAN relay path, the previous `unexpected end of stream on http://127.0.0.1:8081/...` failure is avoidable with Expo LAN mode plus relay, and the remaining toast-level Metro warning is tied to mixed `localhost`/LAN Dev Launcher endpoints rather than a blank-screen app failure.
+- Railway-hosted PWA release-candidate path is now concrete enough for user testing:
+  - public web URL: `https://starlog-web-production.up.railway.app`
+  - public API health: `https://starlog-api-production.up.railway.app/v1/health`
+  - release gate passed via `bash ./scripts/pwa_release_gate.sh` on `2026-03-22T14:13:04Z`
+  - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:09:08Z`
+  - release gate build passes when run in isolation; a prior `Unexpected end of JSON input` failure came from overlapping Next builds during concurrent gate/smoke execution rather than a persistent app defect
 
 ## Validation run for this pass
 
@@ -149,3 +155,5 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 3. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
 4. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
 5. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
+6. Re-authenticate Railway CLI in the operator environment so live dashboard/start-command verification can be completed without falling back to public URL checks only.
+7. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.

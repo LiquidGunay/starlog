@@ -16,18 +16,46 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("loads core PWA routes with hosted API session state", async ({ page }) => {
-  const routeChecks: Array<{ path: string; heading: string }> = [
-    { path: "/notes", heading: "Primary note workspace" },
-    { path: "/tasks", heading: "Execution workspace" },
-    { path: "/calendar", heading: "Weekly board and event lifecycle" },
-    { path: "/artifacts", heading: "Clip inbox and references" },
-    { path: "/sync-center", heading: "PWA outbox and replay log" },
+  await page.goto("/runtime");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Central session and sync configuration");
+  await expect(page.locator("#session-api-base")).toHaveValue(API_BASE);
+
+  const routeChecks: Array<{ path: string; assertion: () => Promise<void> }> = [
+    {
+      path: "/notes",
+      assertion: async () => {
+        await expect(page.getByRole("heading", { level: 1 })).toContainText("Primary note workspace");
+      },
+    },
+    {
+      path: "/tasks",
+      assertion: async () => {
+        await expect(page.getByRole("heading", { level: 1 })).toContainText("Execution workspace");
+      },
+    },
+    {
+      path: "/calendar",
+      assertion: async () => {
+        await expect(page.getByRole("heading", { level: 1 })).toContainText("Weekly board and event lifecycle");
+      },
+    },
+    {
+      path: "/artifacts",
+      assertion: async () => {
+        await expect(page.getByRole("heading", { level: 1 })).toContainText("Clip inbox and references");
+      },
+    },
+    {
+      path: "/sync-center",
+      assertion: async () => {
+        await expect(page.getByText("Sync Progress")).toBeVisible();
+      },
+    },
   ];
 
   for (const check of routeChecks) {
     await page.goto(check.path);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(check.heading);
-    await expect(page.locator("#session-api-base")).toHaveValue(API_BASE);
+    await check.assertion();
   }
 });
 
