@@ -14,6 +14,7 @@ class BridgeConfig:
     host: str
     port: int
     base_url: str
+    auth_token: str
     stt_command: str
     tts_command: str
     context_command: str
@@ -39,6 +40,7 @@ def load_bridge_config() -> BridgeConfig:
         host=host,
         port=port,
         base_url=base_url,
+        auth_token=os.getenv("STARLOG_BRIDGE_AUTH_TOKEN", "").strip(),
         stt_command=os.getenv("STARLOG_BRIDGE_STT_CMD", "").strip(),
         tts_command=os.getenv("STARLOG_BRIDGE_TTS_CMD", "").strip(),
         context_command=os.getenv("STARLOG_BRIDGE_CONTEXT_CMD", "").strip(),

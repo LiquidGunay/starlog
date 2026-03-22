@@ -123,8 +123,11 @@ type IncomingShareIntent = {
   files?: IncomingShareIntentFile[];
 };
 
+type VoiceRoutePreference = "shared_policy" | "on_device_first" | "bridge_first";
+type BriefingPlaybackPreference = "offline_first" | "refresh_then_cache";
+
 type PersistedState = {
-  version: 3;
+  version: 4;
   apiBase: string;
   pwaBase: string;
   token: string;
@@ -146,14 +149,23 @@ type PersistedState = {
   artifactVersions: ArtifactVersions | null;
   dueCards: DueCard[];
   executionPolicy: ExecutionPolicy;
+  voiceRoutePreference: VoiceRoutePreference;
+  briefingPlaybackPreference: BriefingPlaybackPreference;
   assistantCommand?: string;
   assistantHistory?: AssistantCommandResponse[];
   assistantVoiceJobs?: AssistantVoiceJob[];
   assistantAiJobs?: AssistantQueuedJob[];
 };
 
-type PersistedStateV2 = Omit<
+type PersistedStateV3 = Omit<
   PersistedState,
+  "version" | "voiceRoutePreference" | "briefingPlaybackPreference"
+> & {
+  version: 3;
+};
+
+type PersistedStateV2 = Omit<
+  PersistedStateV3,
   "version" | "executionPolicy"
 > & {
   version: 2;
@@ -534,6 +546,23 @@ function shareSourcePlatformLabel(): string {
   return Platform.OS === "ios" ? "iOS" : "Android";
 }
 
+const DEFAULT_VOICE_ROUTE_PREFERENCE: VoiceRoutePreference = "shared_policy";
+const DEFAULT_BRIEFING_PLAYBACK_PREFERENCE: BriefingPlaybackPreference = "offline_first";
+
+function normalizeVoiceRoutePreference(value: unknown): VoiceRoutePreference {
+  if (value === "on_device_first" || value === "bridge_first") {
+    return value;
+  }
+  return DEFAULT_VOICE_ROUTE_PREFERENCE;
+}
+
+function normalizeBriefingPlaybackPreference(value: unknown): BriefingPlaybackPreference {
+  if (value === "refresh_then_cache") {
+    return value;
+  }
+  return DEFAULT_BRIEFING_PLAYBACK_PREFERENCE;
+}
+
 function defaultExecutionPolicy(): ExecutionPolicy {
   return {
     version: 1,
@@ -555,14 +584,29 @@ function policyOrder(policy: ExecutionPolicy, family: ExecutionPolicyFamily): Ex
   return policy[family].length > 0 ? policy[family] : DEFAULT_EXECUTION_TARGETS[family];
 }
 
-function resolveExecutionTarget(
-  policy: ExecutionPolicy,
-  family: ExecutionPolicyFamily,
+function uniqueExecutionTargets(targets: ExecutionTarget[]): ExecutionTarget[] {
+  return [...new Set(targets)] as ExecutionTarget[];
+}
+
+function sttOrderForPreference(policy: ExecutionPolicy, preference: VoiceRoutePreference): ExecutionTarget[] {
+  const requestedOrder = policyOrder(policy, "stt");
+  if (preference === "shared_policy") {
+    return requestedOrder;
+  }
+
+  const preferredOrder: ExecutionTarget[] =
+    preference === "on_device_first"
+      ? ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"]
+      : ["batch_local_bridge", "on_device", "server_local", "codex_bridge", "api_fallback"];
+  return uniqueExecutionTargets([...preferredOrder, ...requestedOrder]);
+}
+
+function resolveExecutionTargetFromOrder(
+  requestedOrder: ExecutionTarget[],
   executableTargets: ExecutionTarget[],
   fallbackTarget?: ExecutionTarget,
   fallbackReason?: string,
 ): ExecutionResolution {
-  const requestedOrder = policyOrder(policy, family);
   const requested = requestedOrder[0] ?? "none";
   const active = requestedOrder.find((target) => executableTargets.includes(target)) ?? fallbackTarget ?? "none";
   if (active === "none") {
@@ -580,6 +624,16 @@ function resolveExecutionTarget(
     };
   }
   return { requested, active };
+}
+
+function resolveExecutionTarget(
+  policy: ExecutionPolicy,
+  family: ExecutionPolicyFamily,
+  executableTargets: ExecutionTarget[],
+  fallbackTarget?: ExecutionTarget,
+  fallbackReason?: string,
+): ExecutionResolution {
+  return resolveExecutionTargetFromOrder(policyOrder(policy, family), executableTargets, fallbackTarget, fallbackReason);
 }
 
 function formatExecutionTarget(target: ExecutionTarget | "none"): string {
@@ -619,15 +673,17 @@ async function readPersistedState(): Promise<PersistedState | null> {
       MOBILE_STATE_KEY,
     );
     if (row?.value) {
-      const parsed = JSON.parse(row.value) as PersistedState | PersistedStateV2;
+      const parsed = JSON.parse(row.value) as PersistedState | PersistedStateV3 | PersistedStateV2;
       if (parsed.version === 2) {
         const migrated: PersistedState = {
           ...parsed,
-          version: 3,
+          version: 4,
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
           executionPolicy: defaultExecutionPolicy(),
+          voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
+          briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
           assistantVoiceJobs: [],
@@ -641,11 +697,33 @@ async function readPersistedState(): Promise<PersistedState | null> {
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
+          voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
+          briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
           assistantCommand: "summarize latest artifact",
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
           ...parsed,
+          version: 4,
+        };
+        if (normalized.token) {
+          // Strip legacy plaintext token persistence from the local DB row.
+          await writePersistedState(normalized);
+        }
+        return normalized;
+      }
+      if (parsed.version === 4) {
+        const normalized: PersistedState = {
+          sharedFileDrafts: [],
+          voiceClipUri: null,
+          voiceClipDurationMs: 0,
+          assistantCommand: "summarize latest artifact",
+          assistantHistory: [],
+          assistantVoiceJobs: [],
+          assistantAiJobs: [],
+          ...parsed,
+          voiceRoutePreference: normalizeVoiceRoutePreference(parsed.voiceRoutePreference),
+          briefingPlaybackPreference: normalizeBriefingPlaybackPreference(parsed.briefingPlaybackPreference),
         };
         if (normalized.token) {
           // Strip legacy plaintext token persistence from the local DB row.
@@ -668,7 +746,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
 
     const migrated: PersistedState = {
       ...legacy,
-      version: 3,
+      version: 4,
       sharedFileDrafts: [],
       voiceClipUri: null,
       voiceClipDurationMs: 0,
@@ -678,6 +756,8 @@ async function readPersistedState(): Promise<PersistedState | null> {
       artifactVersions: null,
       dueCards: [],
       executionPolicy: defaultExecutionPolicy(),
+      voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
+      briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
       assistantCommand: "summarize latest artifact",
       assistantHistory: [],
       assistantVoiceJobs: [],
@@ -940,6 +1020,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [localSttListening, setLocalSttListening] = useState(false);
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
   const [cachedPath, setCachedPath] = useState<string | null>(null);
+  const [voiceRoutePreference, setVoiceRoutePreference] = useState<VoiceRoutePreference>(DEFAULT_VOICE_ROUTE_PREFERENCE);
+  const [briefingPlaybackPreference, setBriefingPlaybackPreference] = useState<BriefingPlaybackPreference>(
+    DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
+  );
   const [alarmHour, setAlarmHour] = useState(7);
   const [alarmMinute, setAlarmMinute] = useState(0);
   const [alarmNotificationId, setAlarmNotificationId] = useState<string | null>(null);
@@ -989,15 +1073,26 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     [executionPolicy],
   );
   const sttResolution = useMemo(
-    () =>
-      resolveExecutionTarget(
-        executionPolicy,
-        "stt",
+    () => {
+      const resolution = resolveExecutionTargetFromOrder(
+        sttOrderForPreference(executionPolicy, voiceRoutePreference),
         sttTargets,
         sttTargets[0] ?? "batch_local_bridge",
         sttFallbackReason(localSttAvailable),
-      ),
-    [executionPolicy, localSttAvailable, sttTargets],
+      );
+      if (voiceRoutePreference === "shared_policy") {
+        return resolution;
+      }
+      const overrideNote =
+        voiceRoutePreference === "on_device_first"
+          ? "Voice override is preferring on-device STT on mobile."
+          : "Voice override is preferring the laptop bridge queue before other STT routes.";
+      return {
+        ...resolution,
+        reason: resolution.reason ? `${overrideNote} ${resolution.reason}` : overrideNote,
+      };
+    },
+    [executionPolicy, localSttAvailable, sttTargets, voiceRoutePreference],
   );
   const ttsResolution = useMemo(
     () =>
@@ -1806,7 +1901,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return true;
   }
 
-  async function playCached() {
+  async function playCachedBriefing() {
     try {
       if (!cachedPath) {
         setStatus("No cached briefing yet");
@@ -1822,6 +1917,31 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to play cached briefing");
     }
+  }
+
+  async function refreshCacheAndPlayBriefing() {
+    try {
+      if (!token) {
+        setStatus("Add API token first");
+        return;
+      }
+      const baseUrl = normalizeBaseUrl(apiBase);
+      const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
+      const path = await cacheBriefing(baseUrl, token, briefing);
+      setCachedPath(path);
+      const cachedBriefing = await readCachedBriefing(path);
+      await playBriefingPayload(cachedBriefing, "cached");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to refresh and play briefing");
+    }
+  }
+
+  async function playBriefing() {
+    if (briefingPlaybackPreference === "refresh_then_cache") {
+      await refreshCacheAndPlayBriefing();
+      return;
+    }
+    await playCachedBriefing();
   }
 
   async function generateAndCache() {
@@ -1883,6 +2003,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const offlineBriefingStatus = cachedPath
     ? `Offline briefing cached for ${briefingDate}`
     : "No offline briefing cached yet";
+  const briefingPlaybackStatus =
+    briefingPlaybackPreference === "offline_first"
+      ? "Playback preference: use the cached offline package first."
+      : "Playback preference: refresh from the API, recache, then play.";
 
   async function scheduleMorningAlarm() {
     try {
@@ -2287,6 +2411,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setVoiceClipDurationMs(persisted.voiceClipDurationMs ?? 0);
         setBriefingDate(persisted.briefingDate);
         setCachedPath(persisted.cachedPath);
+        setVoiceRoutePreference(normalizeVoiceRoutePreference(persisted.voiceRoutePreference));
+        setBriefingPlaybackPreference(normalizeBriefingPlaybackPreference(persisted.briefingPlaybackPreference));
         setAlarmHour(boundedInt(persisted.alarmHour, 0, 23));
         setAlarmMinute(boundedInt(persisted.alarmMinute, 0, 59));
         setAlarmNotificationId(persisted.alarmNotificationId);
@@ -2533,7 +2659,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     writePersistedState({
-      version: 3,
+      version: 4,
       apiBase,
       pwaBase,
       token,
@@ -2555,6 +2681,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       artifactVersions,
       dueCards,
       executionPolicy,
+      voiceRoutePreference,
+      briefingPlaybackPreference,
       assistantCommand,
       assistantHistory,
       assistantVoiceJobs,
@@ -2574,6 +2702,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     artifacts,
     briefingDate,
     cachedPath,
+    briefingPlaybackPreference,
     dueCards,
     executionPolicy,
     hydrated,
@@ -2585,6 +2714,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     quickCaptureTitle,
     selectedArtifactId,
     token,
+    voiceRoutePreference,
     voiceClipDurationMs,
     voiceClipUri,
   ]);
@@ -2746,6 +2876,17 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             requested {formatExecutionTarget(sttResolution.requested)} {"->"} active {formatExecutionTarget(sttResolution.active)}
           </Text>
           {sttResolution.reason ? <Text style={styles.subtle}>{sttResolution.reason}</Text> : null}
+          <View style={styles.opsChipRow}>
+            {renderOpsChip("Shared Policy", voiceRoutePreference === "shared_policy", () =>
+              setVoiceRoutePreference("shared_policy"),
+            )}
+            {renderOpsChip("On-device First", voiceRoutePreference === "on_device_first", () =>
+              setVoiceRoutePreference("on_device_first"),
+            )}
+            {renderOpsChip("Bridge First", voiceRoutePreference === "bridge_first", () =>
+              setVoiceRoutePreference("bridge_first"),
+            )}
+          </View>
         </View>
         <View style={styles.inlineCard}>
           <Text style={styles.inlineCardTitle}>Speech playback</Text>
@@ -3159,6 +3300,18 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             onChangeText={(value) => setAlarmMinute(boundedInt(Number(value || "0"), 0, 59))}
           />
         </View>
+        <View style={styles.inlineCard}>
+          <Text style={styles.inlineCardTitle}>Playback route</Text>
+          <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
+          <View style={styles.opsChipRow}>
+            {renderOpsChip("Offline First", briefingPlaybackPreference === "offline_first", () =>
+              setBriefingPlaybackPreference("offline_first"),
+            )}
+            {renderOpsChip("Refresh + Cache", briefingPlaybackPreference === "refresh_then_cache", () =>
+              setBriefingPlaybackPreference("refresh_then_cache"),
+            )}
+          </View>
+        </View>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.button} onPress={generateAndCache}>
             <Text style={styles.buttonText}>Cache Briefing</Text>
@@ -3166,8 +3319,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
             <Text style={styles.buttonText}>Queue Audio Render</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={playCached}>
-            <Text style={styles.buttonText}>Play Cached</Text>
+          <TouchableOpacity style={styles.button} onPress={playBriefing}>
+            <Text style={styles.buttonText}>Play Briefing</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.button} onPress={scheduleMorningAlarm}>
             <Text style={styles.buttonText}>Schedule Daily Alarm</Text>
@@ -3178,6 +3331,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         </View>
         <Text style={styles.subtle}>Notification permission: {notificationPermission}</Text>
         <Text style={styles.subtle}>Cached file: {cachedPath ?? "none"}</Text>
+        <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
         <Text style={styles.subtle}>
           Alarm status: {alarmNotificationId ? `scheduled at ${toHourMinuteLabel(alarmHour, alarmMinute)}` : "not scheduled"}
         </Text>
@@ -3417,7 +3571,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </View>
             </View>
             <View style={styles.captureVoiceMemo}>
-              <TouchableOpacity style={styles.capturePlayButton} onPress={playCached}>
+              <TouchableOpacity style={styles.capturePlayButton} onPress={playBriefing}>
                 <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
@@ -3543,6 +3697,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               <Text style={styles.inlineCardTitle}>Daily Briefing</Text>
               <Text style={styles.subtle}>Galactic Market Pulse • Neural Link 4.2</Text>
               <Text style={styles.subtle}>{offlineBriefingStatus}</Text>
+              <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
               <View style={styles.alarmWaveRow}>
                 {[4, 10, 6, 14, 5, 11, 13, 4, 8, 12].map((height, index) => (
                   <View key={index} style={[styles.alarmWaveBar, { height }]} />
@@ -3550,8 +3705,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </View>
               <View style={styles.alarmPlayerButtons}>
                 <TouchableOpacity
-                  style={[styles.iconAction, !cachedPath ? { opacity: 0.45 } : null]}
-                  onPress={playCached}
+                  style={[
+                    styles.iconAction,
+                    !cachedPath && briefingPlaybackPreference === "offline_first" ? { opacity: 0.45 } : null,
+                  ]}
+                  onPress={playBriefing}
                 >
                   <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
                 </TouchableOpacity>

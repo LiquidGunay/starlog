@@ -15,6 +15,8 @@ class BridgeHealthResponse(BaseModel):
     status: str
     service: str
     base_url: str
+    auth_required: bool
+    authenticated: bool
     capabilities: dict[str, CapabilityInfo]
 
 
