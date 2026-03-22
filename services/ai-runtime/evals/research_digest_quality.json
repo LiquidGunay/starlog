@@ -19,5 +19,10 @@
       "fabricated citation",
       "missing source link"
     ]
+  },
+  "threshold": 1.0,
+  "samples": {
+    "good": "Top papers with ranking rationale: paper one is first because it best matches the current goal. Provenance: arXiv source link attached for each item, with a follow-up summary option available.",
+    "bad": "Here are papers with a fabricated citation and no source link."
   }
 }
