@@ -40,6 +40,7 @@ Desktop helper for clipping content from non-browser apps.
 | Host path | Date | Checks | Result |
 | --- | --- | --- | --- |
 | Linux helper workspace in this repo | 2026-03-10 | Playwright helper UI tests, `cargo check`, Linux Tauri release build | Passed. Browser fallback logic, runtime note rendering, Rust backend checks, and the Linux release artifact stayed green. |
+| Linux RC localhost stack in this repo | 2026-03-22 | `build_release_artifacts.sh`, runtime dependency probe, authenticated bridge discovery on `127.0.0.1:8091`, local voice smoke, and real browser-fallback clipboard upload into a local API on `127.0.0.1:8010` | Passed for the current host-supported path. The helper discovered the authenticated bridge, uploaded a real clipboard capture (`art_b40fadfafc55444897413ec4bdc59593`) into the local API, and produced RC screenshots under `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/`. Native Linux clipboard/screenshot/OCR remain blocked on this host until `wl-paste`/`xclip`, screenshot tooling, and `tesseract` are installed. |
 | Windows host backend from WSL via `powershell.exe` | 2026-03-10 | PowerShell version probe, `Get-Clipboard -Raw`, foreground-window probe, full-screen screenshot capture | Passed. PowerShell reported `5.1.26100.7705`; clipboard returned `STATUS=ok` with `LENGTH=141`; the foreground-window probe returned `APP:Codex` / `TITLE:Codex`; screenshot capture wrote `C:\Users\bossg\AppData\Local\Temp\starlog-host-matrix-test.png` with `SIZE=192937`. |
 | Windows OCR/tooling probe from WSL via `cmd.exe` | 2026-03-10 | `where tesseract` | Not installed on the Windows `PATH` in this host check, so OCR remains a setup dependency even though screenshot capture itself worked. |
 | Windows shortcut path | 2026-03-10 | Manual-only check | Not directly automatable from WSL. The helper still exposes the same Tauri global-shortcut plus window-keydown fallback matrix documented below. |
@@ -64,6 +65,7 @@ Desktop helper for clipping content from non-browser apps.
 - Runtime dependency probe: `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh`
 - Signing readiness probe (target-aware): `cd tools/desktop-helper && ./scripts/signing_readiness_check.sh <linux|windows|macos|all>`
 - Bundle + release artifact staging: `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh`
+- RC localhost smoke with real API + bridge: `cd tools/desktop-helper && STARLOG_DESKTOP_HELPER_RC_API_BASE=http://127.0.0.1:8010 STARLOG_DESKTOP_HELPER_RC_BEARER_TOKEN=<token> STARLOG_DESKTOP_HELPER_RC_BRIDGE_TOKEN=<bridge-token> node ./scripts/capture_rc_smoke.mjs`
 - QA screenshot capture: `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
 - Main-laptop install/setup handoff: `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
 - Windows host probes used in this branch:
@@ -100,6 +102,16 @@ Desktop helper for clipping content from non-browser apps.
 3. Trigger `Cmd/Ctrl+Shift+S` and confirm the status text clearly reports whether the helper used region capture, a full-screen fallback, or no backend at all.
 4. Use Copy Diagnostics to capture a redacted runtime snapshot for issue reporting, then inspect Recent captures and confirm metadata, capture-backend labels, OCR details, and screenshot preview thumbnails render after a successful upload.
 5. Intentionally reproduce one clipboard or screenshot failure path and confirm the copied diagnostics snapshot includes the latest failure note without exposing the bearer token.
+
+## Current Linux host note
+
+The 2026-03-22 RC pass on this host validated the helper through the browser-fallback clipboard path plus the localhost bridge. Native Linux screenshot/OCR validation is still blocked here because the runtime probe reported:
+
+- no `wl-paste`, `xclip`, or `xsel`
+- no `grim`, `slurp`, `gnome-screenshot`, `import`, or `scrot`
+- no `tesseract`
+
+Until those binaries are installed, this host can validate release packaging, bridge discovery/auth, and API upload flow, but not the full native Linux screenshot/OCR path.
 
 ## macOS validation checklist
 

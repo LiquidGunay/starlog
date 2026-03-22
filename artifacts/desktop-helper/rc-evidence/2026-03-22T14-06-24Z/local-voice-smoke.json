@@ -1,0 +1,44 @@
+{
+  "health": {
+    "status": "ok",
+    "service": "desktop_local_bridge",
+    "base_url": "http://127.0.0.1:8091",
+    "auth_required": true,
+    "authenticated": true,
+    "capabilities": {
+      "stt": {
+        "status": "available",
+        "detail": "Server-backed STT bridge is configured at http://127.0.0.1:8171/inference.",
+        "preferred_backend": "http"
+      },
+      "tts": {
+        "status": "available",
+        "detail": "Server-backed TTS bridge is configured at http://127.0.0.1:8093/v1/tts/speak.",
+        "preferred_backend": "http"
+      },
+      "context": {
+        "status": "available",
+        "detail": "Desktop context bridge is configured.",
+        "preferred_backend": "static_json"
+      },
+      "clip": {
+        "status": "degraded",
+        "detail": "Set STARLOG_BRIDGE_CLIP_CMD to route bridge clip actions into existing Starlog capture tooling.",
+        "preferred_backend": null
+      }
+    }
+  },
+  "stt": {
+    "status": "ok",
+    "provider": "server",
+    "transcript": "desktop helper rc smoke transcript",
+    "detail": "Bridge transcribed audio through the configured local STT server."
+  },
+  "tts": {
+    "status": "ok",
+    "provider": "server",
+    "audio_path": "/mnt/c/Users/bossg/AppData/Local/Temp/starlog-local-voice-smoke-huyi7_s9/tts-output.wav",
+    "detail": "Local TTS server synthesized audio via wi580_debug."
+  },
+  "tts_output_exists": true
+}

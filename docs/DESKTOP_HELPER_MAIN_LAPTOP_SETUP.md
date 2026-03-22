@@ -1,6 +1,6 @@
 # Desktop Helper Main-Laptop Setup Pack
 
-Last updated: 2026-03-15
+Last updated: 2026-03-22
 
 This guide is the daily-use setup handoff for the Linux desktop helper on this host.
 
@@ -9,8 +9,8 @@ This guide is the daily-use setup handoff for the Linux desktop helper on this h
 - Package: `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
 - Binary fallback: `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
 - Checksums:
-  - `.deb`: `71acab0501593cb42167b171aa68a95dfafdad4b7b42d542db89c4a117f49892`
-  - binary: `ebbe89fb7de09b4be6beaec3f8945efed48e519937c46f0888cacc5474885584`
+  - `.deb`: `2c022ceb315cb214f5da09a81db4a933c02b4720d75a1aa8764546792171cead`
+  - binary: `bcb87e6989c1ee940b602448bf64fa5dfb5c7b6c46ce5d69ee97ddb8b3318efc`
 
 ## Production API target
 
@@ -20,7 +20,7 @@ This guide is the daily-use setup handoff for the Linux desktop helper on this h
 
 ## Linux prerequisites on this host
 
-The latest runtime probe on this host still reported:
+The latest runtime probe on this host reported:
 
 - `clipboard`: missing
 - `screenshot`: missing
@@ -70,7 +70,7 @@ App entry points after install:
 
 Optional local voice runtime for this laptop:
 
-1. Start the resident Whisper server:
+1. For a real Whisper/Piper-style setup, start the resident STT/TTS services you actually have on this host:
 
 ```bash
 export STARLOG_LOCAL_WHISPER_MODEL='/ABS/PATH/ggml-base.en.bin'
@@ -87,19 +87,36 @@ export STARLOG_LOCAL_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.on
 PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_tts_server.py
 ```
 
-3. Start the bridge with server-backed voice env:
+3. If you only need to smoke the merged bridge path on this host, the exact local RC stack used on 2026-03-22 was:
 
 ```bash
-export STARLOG_BRIDGE_STT_SERVER_URL='http://127.0.0.1:8171/inference'
-export STARLOG_BRIDGE_TTS_SERVER_URL='http://127.0.0.1:8093/v1/tts/speak'
-cd services/ai-runtime
-uv run --project . uvicorn bridge.server:app --host 127.0.0.1 --port 8091
+services/api/.venv/bin/python scripts/mock_stt_server.py
+
+STARLOG_LOCAL_TTS_PROVIDER_NAME=wi580_debug \
+STARLOG_LOCAL_TTS_GPU_MODE=off \
+STARLOG_LOCAL_TTS_COMMAND='python3 scripts/write_debug_wav.py --output-path {output_path}' \
+PYTHONPATH=services/ai-runtime \
+uv run --project services/ai-runtime python scripts/local_tts_server.py
 ```
 
-4. Smoke it:
+4. Start the bridge with server-backed voice env:
 
 ```bash
-PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py
+export STARLOG_BRIDGE_AUTH_TOKEN='bridge-secret'
+export STARLOG_BRIDGE_STT_SERVER_URL='http://127.0.0.1:8171/inference'
+export STARLOG_BRIDGE_TTS_SERVER_URL='http://127.0.0.1:8093/v1/tts/speak'
+export STARLOG_BRIDGE_CONTEXT_JSON='{"app_name":"Codex","window_title":"WI-580 RC Smoke","platform":"linux"}'
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime uvicorn bridge.server:app --host 127.0.0.1 --port 8091
+```
+
+5. Smoke it:
+
+```bash
+STARLOG_LOCAL_BRIDGE_AUTH_TOKEN='bridge-secret' \
+STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=/tmp/starlog-wi580-smoke-input.wav \
+STARLOG_LOCAL_VOICE_SMOKE_TEXT_HINT='desktop helper rc smoke transcript' \
+PYTHONPATH=services/ai-runtime \
+uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py
 ```
 
 Production-origin note:
@@ -117,11 +134,21 @@ The helper now has a built-in `Reset Local State` control. It clears:
 
 ## Daily-use smoke
 
-1. Trigger `Cmd/Ctrl+Shift+C`.
-2. Confirm the status line reports a saved clip and `Recent Captures` shows the new artifact id.
-3. Trigger `Cmd/Ctrl+Shift+S`.
-4. Confirm the status line reports either a saved screenshot or a precise missing-backend note.
-5. In the workspace, inspect `Runtime Diagnostics` and `Recent Captures` for:
+1. If you are validating against a local API instead of Railway, start it on an open port. The 2026-03-22 RC pass used `127.0.0.1:8010` because `127.0.0.1:8000` was already occupied on this host.
+2. Run the browser-fallback RC smoke when you need a deterministic local proof of bridge discovery plus one real clipboard upload:
+
+```bash
+STARLOG_DESKTOP_HELPER_RC_API_BASE='http://127.0.0.1:8010' \
+STARLOG_DESKTOP_HELPER_RC_BEARER_TOKEN='<token>' \
+STARLOG_DESKTOP_HELPER_RC_BRIDGE_TOKEN='bridge-secret' \
+node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/rc-evidence/<timestamp>
+```
+
+3. For an installed native helper check, trigger `Cmd/Ctrl+Shift+C`.
+4. Confirm the status line reports a saved clip and `Recent Captures` shows the new artifact id.
+5. Trigger `Cmd/Ctrl+Shift+S`.
+6. Confirm the status line reports either a saved screenshot or a precise missing-backend note.
+7. In the workspace, inspect `Runtime Diagnostics` and `Recent Captures` for:
    - capture backend labels,
    - active-window metadata,
    - OCR state,
@@ -154,13 +181,22 @@ If you need to clear the secure token after the app has already been removed, re
 
 ## Evidence from this pass
 
-- QA screenshots:
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-workspace-config.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-quick-popup.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/desktop-helper-workspace-diagnostics.png`
-  - `artifacts/desktop-helper/qa/2026-03-15T18-58-51-736Z/screenshots.json`
+- RC screenshots and smoke summary:
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-config.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-quick-popup.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-diagnostics.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/rc-smoke.json`
+- Local voice smoke:
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/local-voice-smoke.json`
+  - bridge auth passed, STT returned `desktop helper rc smoke transcript`, and the local TTS wrapper produced a WAV file
+- Real local capture:
+  - local API on `http://127.0.0.1:8010`
+  - helper uploaded artifact `art_b40fadfafc55444897413ec4bdc59593`
+  - `GET /v1/artifacts?limit=5` confirmed the stored capture content and helper metadata
 - Package smoke:
   - `dpkg-deb -I` confirmed package `starlog-desktop-helper`, version `0.1.0`, architecture `amd64`
   - `dpkg-deb -x` confirmed payload includes `/usr/bin/starlog_desktop_helper` and the desktop launcher file
   - `ldd` confirmed the staged binary links against GTK/WebKit libraries on this host
-  - `dpkg --dry-run -i` still warns on `/var/log/dpkg.log` without privilege in this environment, but the unpack plan is otherwise valid
+  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` passed after the RC smoke server was no longer bound on `127.0.0.1:4173`
+- Host blocker that still applies:
+  - native Linux clipboard, screenshot, and OCR binaries are not installed here yet, so native screenshot/OCR validation remains blocked on host setup rather than helper code
