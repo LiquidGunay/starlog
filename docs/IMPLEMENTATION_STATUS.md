@@ -135,8 +135,8 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - Railway-hosted PWA release-candidate path is now concrete enough for user testing:
   - public web URL: `https://starlog-web-production.up.railway.app`
   - public API health: `https://starlog-api-production.up.railway.app/v1/health`
-  - release gate passed via `bash ./scripts/pwa_release_gate.sh` on `2026-03-22T14:13:04Z`
-  - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:09:08Z`
+  - release gate passed via `bash ./scripts/pwa_release_gate.sh` on `2026-03-22T14:18:37Z`
+  - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:16:56Z`
   - release gate build passes when run in isolation; a prior `Unexpected end of JSON input` failure came from overlapping Next builds during concurrent gate/smoke execution rather than a persistent app defect
 
 ## Validation run for this pass

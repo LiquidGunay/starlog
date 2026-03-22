@@ -42,8 +42,8 @@ On 2026-03-22, the public Railway endpoints were re-checked as part of WI-582 to
   - GitHub deploy status on 2026-03-15: source hook is active, but one deploy failed because the live Railway start command still used the old `pnpm --filter web start -- --hostname ...` form.
   - repo release evidence on 2026-03-22:
     - local production-style release gate completed successfully when run in isolation
-    - `bash ./scripts/pwa_hosted_smoke.sh` passed end-to-end at `2026-03-22T14:09:08Z`
-    - hosted smoke artifacts: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T140804Z.log`
+    - `bash ./scripts/pwa_hosted_smoke.sh` passed end-to-end at `2026-03-22T14:16:56Z`
+    - hosted smoke artifacts: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T141604Z.log`
 
 ## Railway access note for this environment
 

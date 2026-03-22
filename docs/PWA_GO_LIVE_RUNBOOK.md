@@ -20,8 +20,8 @@
 - Verified on 2026-03-22:
   - `curl -I https://starlog-web-production.up.railway.app` -> `HTTP/2 200`
   - `curl https://starlog-api-production.up.railway.app/v1/health` -> `{"status":"ok","env":"prod","users":1}`
-  - `bash ./scripts/pwa_release_gate.sh` passed at `2026-03-22T14:13:04Z`
-  - `bash ./scripts/pwa_hosted_smoke.sh` passed at `2026-03-22T14:09:08Z`
+  - `bash ./scripts/pwa_release_gate.sh` passed at `2026-03-22T14:18:37Z`
+  - `bash ./scripts/pwa_hosted_smoke.sh` passed at `2026-03-22T14:16:56Z`
 - Operator note:
   - this shell cannot currently administer Railway because `railway whoami` returns `Unauthorized. Please run railway login again.`
   - public hosted verification is still available, so release-candidate testing can proceed against the generated Railway domains

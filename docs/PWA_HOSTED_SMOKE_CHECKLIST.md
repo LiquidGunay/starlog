@@ -21,9 +21,9 @@ Artifacts:
 - API log: `artifacts/pwa-hosted-smoke/api-<timestamp>.log`
 - screenshots: `artifacts/pwa-hosted-smoke/test-results/`
 - latest verified pass in WI-582:
-  - run log: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T140804Z.log`
-  - API log: `artifacts/pwa-hosted-smoke/api-20260322T140804Z.log`
-  - completed at: `2026-03-22T14:09:08Z`
+  - run log: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T141604Z.log`
+  - API log: `artifacts/pwa-hosted-smoke/api-20260322T141604Z.log`
+  - completed at: `2026-03-22T14:16:56Z`
 
 ## Hosted (Railway) manual checks
 
