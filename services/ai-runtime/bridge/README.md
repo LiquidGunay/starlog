@@ -50,8 +50,16 @@ current request was authenticated.
 
 ## Recommended local server path
 
-- STT: launch a resident `whisper.cpp` server and point `STARLOG_BRIDGE_STT_SERVER_URL` at it.
+- STT: launch a resident `whisper.cpp` server or Starlog's rootless `faster-whisper` server and point `STARLOG_BRIDGE_STT_SERVER_URL` at it.
 - TTS: launch Starlog's local TTS server wrapper and point `STARLOG_BRIDGE_TTS_SERVER_URL` at it.
+
+Rootless STT example:
+
+```bash
+STARLOG_LOCAL_STT_MODEL='tiny.en' \
+STARLOG_LOCAL_STT_DEVICE='auto' \
+uv run --project . --extra local-voice python ../../scripts/local_stt_server.py
+```
 
 Example bridge env:
 

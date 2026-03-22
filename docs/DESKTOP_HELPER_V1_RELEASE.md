@@ -102,6 +102,7 @@ Last updated: 2026-03-22
 ### Command
 
 - `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh <linux|windows|macos> [output-json-path]`
+- `cd tools/desktop-helper && ./scripts/bootstrap_linux_runtime_deps.sh [--output-json <path>]`
 
 ### Probe coverage
 
@@ -118,13 +119,16 @@ Last updated: 2026-03-22
 
 - Command:
   - `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh linux ../../artifacts/desktop-helper/v0.1.0/x86_64-linux/runtime-dependency-probe.json`
+  - `cd tools/desktop-helper && ./scripts/bootstrap_linux_runtime_deps.sh --output-json ../../artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
 - Output:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/runtime-dependency-probe.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
 - Probe summary:
   - `clipboard`: missing local Linux helper tooling
   - `screenshot`: missing local Linux screenshot tooling
   - `active_window`: degraded (metadata helpers missing)
   - `ocr`: degraded (`tesseract` missing)
+  - bootstrap status: exact Ubuntu install command captured; package installation still requires interactive `sudo` on this host
 
 ## QA matrix + evidence (WI-324)
 
@@ -151,20 +155,24 @@ Last updated: 2026-03-22
 | OCR dependency behavior | Pass for dependency detection; `tesseract` remains optional-degraded on this host | Pending rerun on current RC | Pending real-host rerun |
 | Shortcut behavior | Pass for browser fallback + plugin wiring checks | Manual-only runtime check still required | Manual-only runtime check still required |
 | Local bridge discovery/auth | Pass against a real authenticated bridge on `127.0.0.1:8091` | Pending real-host rerun | Pending real-host rerun |
-| Local voice server path | Pass with mock STT + local TTS wrapper on `127.0.0.1:8171/8093` | Pending real-host rerun | Pending real-host rerun |
+| Local voice server path | Pass for real rootless STT on `127.0.0.1:8171`; TTS remains optional/unconfigured on this host | Pending real-host rerun | Pending real-host rerun |
 
 ### Latest run evidence (2026-03-22, this host)
 
 - Automated command results:
   - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` -> `3 passed`
   - `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh` -> passed
-  - `PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py` -> passed against the authenticated bridge
+  - `cd services/ai-runtime && uv run --extra dev --extra local-voice pytest -s ./bridge/tests/test_server.py ./bridge/tests/test_local_stt_server.py ./tests/test_workflows.py` -> `18 passed`
+  - `PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py` -> passed against the authenticated bridge with real STT and skipped TTS
 - Screenshots and smoke summary:
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-config.png`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-diagnostics.png`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-quick-popup.png`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/rc-smoke.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/local-voice-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/runtime-dependency-probe.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-voice-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-stt-direct.json`
 - Real capture confirmation:
   - helper upload artifact id `art_b40fadfafc55444897413ec4bdc59593`
   - `GET /v1/artifacts?limit=5` on the local API returned the stored helper capture with browser-clipboard metadata
@@ -212,7 +220,7 @@ Last updated: 2026-03-22
   - Extracted payload contains `/usr/bin/starlog_desktop_helper` and `/usr/share/applications/Starlog Desktop Helper.desktop`.
   - Raw staged binary links successfully against the expected GTK/WebKit libraries on this host.
   - Helper browser-fallback smoke uploaded a real clipboard capture into a local API while discovering and authenticating against the local bridge.
-  - Native Linux screenshot/OCR smoke is still blocked on missing host packages (`wl-paste`/`xclip`, screenshot tooling, `tesseract`) rather than packaging or helper upload code.
+  - Native Linux screenshot/OCR smoke is still blocked on missing host packages (`wl-paste`/`xclip`, screenshot tooling, `tesseract`), and the concrete remaining operator step is to run the generated `apt-get` command with interactive `sudo`.
 
 ### Release notes template
 
