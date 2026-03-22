@@ -23,5 +23,10 @@
       "silent write",
       "unconfirmed calendar change"
     ]
+  },
+  "threshold": 1.0,
+  "samples": {
+    "good": "Morning briefing: schedule blocks start at 9am, tasks focus on the API migration, and review pressure is rising while all calendar updates remain confirmation-gated.",
+    "bad": "Morning briefing: silent write a calendar change and ignore the review queue."
   }
 }
