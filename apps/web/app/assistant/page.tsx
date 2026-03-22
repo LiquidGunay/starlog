@@ -68,6 +68,25 @@ type AssistantVoiceUploadQueueItem = {
   last_error?: string;
 };
 
+type ConversationMessage = {
+  id: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  metadata: {
+    assistant_command?: AgentCommandResponse;
+  };
+  created_at: string;
+};
+
+type ConversationSnapshot = {
+  id: string;
+  slug: string;
+  title: string;
+  mode: string;
+  session_state: Record<string, unknown>;
+  messages: ConversationMessage[];
+};
+
 const FALLBACK_EXAMPLES = [
   "summarize latest artifact",
   "create cards for latest artifact",
@@ -127,6 +146,15 @@ function cacheAssistantJobs(scope: string, jobs: AssistantQueuedJob[]): void {
       search_text: `${job.capability} ${job.status} ${job.provider_hint || ""} ${job.provider_used || ""} ${job.action || ""} ${job.payload.command || job.payload.title || ""}`,
     })),
   );
+}
+
+function extractAssistantHistory(snapshot: ConversationSnapshot): AgentCommandResponse[] {
+  return snapshot.messages
+    .map((message) => message.metadata?.assistant_command)
+    .filter((entry): entry is AgentCommandResponse => !!entry)
+    .slice()
+    .reverse()
+    .slice(0, 8);
 }
 
 function createVoiceQueueId(): string {
@@ -189,11 +217,21 @@ export default function AssistantPage() {
   const [voiceQueueReplayInFlight, setVoiceQueueReplayInFlight] = useState(false);
   const [recording, setRecording] = useState(false);
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [sessionState, setSessionState] = useState<Record<string, unknown>>({});
+  const [conversationTitle, setConversationTitle] = useState("Primary Thread");
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [speakingReply, setSpeakingReply] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const holdToTalkActiveRef = useRef(false);
+  const stopRecordingOnceReadyRef = useRef(false);
   const browserSupportsRecording = useMemo(
     () => typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia,
+    [],
+  );
+  const browserSupportsSpeech = useMemo(
+    () => typeof window !== "undefined" && "speechSynthesis" in window,
     [],
   );
   const exampleCommands = useMemo(() => {
@@ -216,6 +254,30 @@ export default function AssistantPage() {
       "Push any long-running voice or Codex work into the side feeds for replay.",
     ];
   }, [latest]);
+  const latestSpokenReply = useMemo(() => {
+    if (latest?.summary) {
+      return latest.summary;
+    }
+    const assistantMessage = [...conversationMessages].reverse().find((message) => message.role === "assistant");
+    return assistantMessage?.content?.trim() || "";
+  }, [conversationMessages, latest]);
+  const transcriptMessages = useMemo(() => {
+    if (conversationMessages.length > 0) {
+      return conversationMessages;
+    }
+    if (!latest) {
+      return [];
+    }
+    return [
+      {
+        id: "assistant-preview",
+        role: "assistant" as const,
+        content: latest.summary,
+        metadata: { assistant_command: latest },
+        created_at: new Date().toISOString(),
+      },
+    ];
+  }, [conversationMessages, latest]);
 
   useEffect(() => {
     setHistory((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
@@ -267,6 +329,28 @@ export default function AssistantPage() {
     }
   }, [apiBase, token]);
 
+  const loadConversation = useCallback(async (origin: "auto" | "manual") => {
+    try {
+      const payload = await apiRequest<ConversationSnapshot>(apiBase, token, "/v1/conversations/primary");
+      const derivedHistory = extractAssistantHistory(payload);
+      setConversationTitle(payload.title);
+      setConversationMessages(payload.messages);
+      setSessionState(payload.session_state);
+      setLatest(derivedHistory[0] ?? null);
+      setHistory(derivedHistory);
+      writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, derivedHistory);
+      cacheAssistantHistory(derivedHistory);
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
+      if (origin === "manual") {
+        setStatus(`Loaded conversation ${payload.title}`);
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load conversation");
+      }
+    }
+  }, [apiBase, token]);
+
   const recordCompletedCommand = useCallback((candidate: AgentCommandResponse | null | undefined) => {
     if (!candidate) {
       return;
@@ -291,6 +375,9 @@ export default function AssistantPage() {
       writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, payload);
       cacheAssistantJobs(ASSISTANT_VOICE_JOBS_ENTITY_SCOPE, payload);
       recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
+      if (payload.some((job) => job.output.assistant_command)) {
+        loadConversation("auto").catch(() => undefined);
+      }
       clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} voice command job(s)`);
@@ -300,7 +387,7 @@ export default function AssistantPage() {
         setStatus(error instanceof Error ? error.message : "Failed to load voice jobs");
       }
     }
-  }, [apiBase, recordCompletedCommand, token]);
+  }, [apiBase, loadConversation, recordCompletedCommand, token]);
 
   const loadAssistJobs = useCallback(async (origin: "auto" | "manual") => {
     try {
@@ -313,6 +400,9 @@ export default function AssistantPage() {
       writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, payload);
       cacheAssistantJobs(ASSISTANT_AI_JOBS_ENTITY_SCOPE, payload);
       recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
+      if (payload.some((job) => job.output.assistant_command)) {
+        loadConversation("auto").catch(() => undefined);
+      }
       clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} queued Codex planner job(s)`);
@@ -322,7 +412,7 @@ export default function AssistantPage() {
         setStatus(error instanceof Error ? error.message : "Failed to load queued Codex jobs");
       }
     }
-  }, [apiBase, recordCompletedCommand, token]);
+  }, [apiBase, loadConversation, recordCompletedCommand, token]);
 
   const appendVoiceJobs = useCallback((jobs: AssistantQueuedJob[]) => {
     if (jobs.length === 0) {
@@ -447,6 +537,68 @@ export default function AssistantPage() {
     setStatus(`Dropped queued voice upload ${queueId}`);
   }
 
+  function discardVoiceCapture() {
+    setVoiceBlob(null);
+    setStatus("Discarded captured voice command");
+  }
+
+  function beginHoldToTalk() {
+    holdToTalkActiveRef.current = true;
+    stopRecordingOnceReadyRef.current = false;
+    if (!recording && !recorderRef.current) {
+      void startVoiceRecording();
+    }
+  }
+
+  function endHoldToTalk() {
+    holdToTalkActiveRef.current = false;
+    if (recording || recorderRef.current) {
+      stopVoiceRecording();
+      return;
+    }
+    stopRecordingOnceReadyRef.current = true;
+  }
+
+  function toggleSpokenReply() {
+    if (!browserSupportsSpeech) {
+      setStatus("This browser cannot play spoken replies");
+      return;
+    }
+    const synth = window.speechSynthesis;
+    if (speakingReply) {
+      synth.cancel();
+      setSpeakingReply(false);
+      setStatus("Stopped spoken reply");
+      return;
+    }
+    const nextReply = latestSpokenReply.trim();
+    if (!nextReply) {
+      setStatus("No assistant reply is available to speak");
+      return;
+    }
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(nextReply);
+    utterance.rate = 1.03;
+    utterance.pitch = 0.95;
+    utterance.onend = () => {
+      setSpeakingReply(false);
+      setStatus("Finished spoken reply");
+    };
+    utterance.onerror = () => {
+      setSpeakingReply(false);
+      setStatus("Spoken reply failed");
+    };
+    setSpeakingReply(true);
+    setStatus("Speaking latest assistant reply");
+    synth.speak(utterance);
+  }
+
+  useEffect(() => () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
+
   async function runCommand(execute: boolean) {
     const trimmed = command.trim();
     if (!trimmed) {
@@ -470,6 +622,7 @@ export default function AssistantPage() {
         cacheAssistantHistory(next);
         return next;
       });
+      loadConversation("auto").catch(() => undefined);
       clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
       setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}`);
     } catch (error) {
@@ -531,6 +684,8 @@ export default function AssistantPage() {
         setVoiceBlob(blob);
         setRecording(false);
         chunksRef.current = [];
+        holdToTalkActiveRef.current = false;
+        stopRecordingOnceReadyRef.current = false;
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         recorderRef.current = null;
@@ -542,7 +697,13 @@ export default function AssistantPage() {
       setVoiceBlob(null);
       setRecording(true);
       setStatus("Recording voice command...");
+      if (!holdToTalkActiveRef.current || stopRecordingOnceReadyRef.current) {
+        stopRecordingOnceReadyRef.current = false;
+        recorder.stop();
+      }
     } catch (error) {
+      holdToTalkActiveRef.current = false;
+      stopRecordingOnceReadyRef.current = false;
       setStatus(error instanceof Error ? error.message : "Failed to start voice recording");
     }
   }
@@ -584,14 +745,30 @@ export default function AssistantPage() {
     );
   }
 
+  async function resetConversationSession() {
+    try {
+      await apiRequest<{ thread_id: string; session_state: Record<string, unknown> }>(
+        apiBase,
+        token,
+        "/v1/conversations/primary/session/reset",
+        { method: "POST" },
+      );
+      setSessionState({});
+      setStatus("Cleared short-term conversation state");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to clear conversation state");
+    }
+  }
+
   useEffect(() => {
     if (!token) {
       return;
     }
+    loadConversation("auto").catch(() => undefined);
     loadIntents().catch(() => undefined);
     loadVoiceJobs("auto").catch(() => undefined);
     loadAssistJobs("auto").catch(() => undefined);
-  }, [loadAssistJobs, loadIntents, loadVoiceJobs, token]);
+  }, [loadAssistJobs, loadConversation, loadIntents, loadVoiceJobs, token]);
 
   useEffect(() => {
     if (!voiceUploadQueueHydrated || voiceUploadQueue.length === 0 || !isOnline || !token) {
@@ -611,7 +788,7 @@ export default function AssistantPage() {
   ]);
 
   return (
-    <main className="command-center-shell">
+    <main className="command-center-shell assistant-thread-shell">
       <section
         className={[
           "command-center-layout",
@@ -619,340 +796,384 @@ export default function AssistantPage() {
           agentPane.collapsed ? "command-center-layout-right-collapsed" : "",
         ].filter(Boolean).join(" ")}
       >
-        {!queuePane.collapsed ? <aside className="command-center-column">
-          <div className="command-column-header">
-            <span className="command-column-title">Inbox Queue</span>
-            <span className="command-footnote">{history.length} recent</span>
-            <PaneToggleButton label="Hide pane" onClick={queuePane.collapse} />
-          </div>
-          <ul className="command-queue-list">
-            {history.length === 0 ? (
-              <li className="command-queue-item">
-                <div className="command-queue-meta">
-                  <span>idle</span>
-                  <span>no runs</span>
+        {!queuePane.collapsed ? (
+          <aside className="command-center-column assistant-side-column">
+            <div className="command-column-header">
+              <span className="command-column-title">Thread Activity</span>
+              <span className="command-footnote">{history.length} recent runs</span>
+              <PaneToggleButton label="Hide pane" onClick={queuePane.collapse} />
+            </div>
+            <div className="assistant-side-stack">
+              <section className="assistant-side-card glass">
+                <div className="assistant-side-card-head">
+                  <span className="assistant-side-kicker">Recent</span>
+                  <span className="command-footnote">{showcaseLabel}</span>
                 </div>
-                <h3>No command history yet</h3>
-                <p>Plan or execute a command to populate the queue.</p>
-              </li>
-            ) : (
-              history.map((entry, index) => (
-                <li key={`${entry.command}-${index}`} className={index === 0 ? "command-queue-item active" : "command-queue-item"}>
-                  <div className="command-queue-meta">
-                    <span>{entry.matched_intent}</span>
-                    <span>{entry.status}</span>
-                  </div>
-                  <h3>{entry.command}</h3>
-                  <p>{entry.summary}</p>
-                </li>
-              ))
-            )}
-          </ul>
-          <div className="command-column-header">
-            <span className="command-column-title">Intent Presets</span>
-            <span className="command-footnote">{exampleCommands.length} samples</span>
-          </div>
-          <ul className="command-queue-list">
-            {exampleCommands.slice(0, 8).map((example) => (
-              <li key={example} className="command-queue-item">
-                <div className="command-queue-meta">
-                  <span>preset</span>
-                  <span>tap to load</span>
+                <ul className="assistant-mini-feed">
+                  {history.length === 0 ? (
+                    <li className="assistant-mini-feed-empty">No recent command runs yet.</li>
+                  ) : (
+                    history.map((entry, index) => (
+                      <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
+                        <button type="button" className="assistant-mini-feed-button" onClick={() => setCommand(entry.command)}>
+                          <span className="assistant-mini-feed-meta">{entry.matched_intent} · {entry.status}</span>
+                          <strong>{entry.command}</strong>
+                          <span>{entry.summary}</span>
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </section>
+
+              <section className="assistant-side-card glass">
+                <div className="assistant-side-card-head">
+                  <span className="assistant-side-kicker">Prompt Starters</span>
+                  <span className="command-footnote">{exampleCommands.length} samples</span>
                 </div>
-                <h3>{example}</h3>
-                <div className="button-row">
-                  <button className="button" type="button" onClick={() => setCommand(example)}>
-                    Load command
-                  </button>
+                <div className="assistant-chip-grid">
+                  {exampleCommands.slice(0, 8).map((example) => (
+                    <button key={example} type="button" className="assistant-chip-button" onClick={() => setCommand(example)}>
+                      {example}
+                    </button>
+                  ))}
                 </div>
-              </li>
-            ))}
-          </ul>
-        </aside> : null}
+              </section>
+
+              <section className="assistant-side-card glass">
+                <div className="assistant-side-card-head">
+                  <span className="assistant-side-kicker">Session Context</span>
+                  <span className="command-footnote">{Object.keys(sessionState).length} live keys</span>
+                </div>
+                <p className="console-copy">
+                  {Object.keys(sessionState).length > 0
+                    ? JSON.stringify(sessionState, null, 2)
+                    : "Short-term session state is empty."}
+                </p>
+              </section>
+            </div>
+          </aside>
+        ) : null}
 
         <section className="command-center-main">
-          <div className="command-column-header">
-            <span className="command-column-title">Command Center</span>
-            <span className="command-footnote">{isOnline ? "online" : "offline"} mode</span>
-          </div>
-          <div className="command-center-search">
-            <input
-              value={command}
-              onChange={(event) => setCommand(event.target.value)}
-              aria-label="Search archive, artifacts, or tasks"
-              placeholder="Search archive, artifacts, or tasks..."
-            />
-          </div>
-          <div className="command-scroll">
-            <div className="command-main-header">
-              <div className="command-story-meta">
-                <span className="command-story-tag">{showcaseLabel}</span>
-                <span className="command-story-id">ID: {showcasePlanner}</span>
-                <span className="command-story-date">{showcaseDate}</span>
+          <div className="command-scroll assistant-main-scroll">
+            <section className="assistant-hero glass">
+              <div className="assistant-hero-copy">
+                <div className="assistant-hero-meta">
+                  <span className="assistant-hero-kicker">{conversationTitle}</span>
+                  <span className="assistant-hero-separator">/</span>
+                  <span>{showcasePlanner}</span>
+                  <span className="assistant-hero-separator">/</span>
+                  <span>{showcaseDate}</span>
+                </div>
+                <h1>Voice-native command thread</h1>
+                <p>
+                  Keep the thread as the operating surface. Speak or type, inspect the structured cards inline,
+                  and treat the side panes as optional support rather than the primary UI.
+                </p>
               </div>
-              <h1>{latest ? latest.command : "Command shell"}</h1>
-              <div className="command-main-divider" />
-              <p className="command-story-lede">
-                {latest?.summary || "Type or speak a command, inspect the planned tool calls, then execute without leaving this workspace."}
-              </p>
-              <div className="command-story-panel">
-                <p className="command-footnote">Action items identified</p>
-                <ul className="command-story-list">
-                  {showcaseActions.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-                <div className="command-story-actions">
-                  <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
-                    Load sample
-                  </button>
+              <div className="assistant-hero-actions">
+                <button
+                  className={recording ? "assistant-voice-button recording" : "assistant-voice-button"}
+                  type="button"
+                  onPointerDown={beginHoldToTalk}
+                  onPointerUp={endHoldToTalk}
+                  onPointerLeave={endHoldToTalk}
+                  onPointerCancel={endHoldToTalk}
+                  disabled={!browserSupportsRecording}
+                >
+                  <span className="assistant-voice-button-label">
+                    {recording ? "Release to capture" : voiceBlob ? "Voice captured" : "Hold to talk"}
+                  </span>
+                  <span className="assistant-voice-button-meta">
+                    {browserSupportsRecording ? "local mic capture" : "browser capture unavailable"}
+                  </span>
+                </button>
+                <div className="assistant-hero-button-row">
                   <button className="button" type="button" onClick={() => runCommand(false)}>
-                    Preview flow
+                    Plan flow
                   </button>
                   <button className="button" type="button" onClick={() => runCommand(true)}>
                     Execute flow
                   </button>
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={toggleSpokenReply}
+                    disabled={!browserSupportsSpeech || !latestSpokenReply}
+                  >
+                    {speakingReply ? "Stop spoken reply" : "Speak latest reply"}
+                  </button>
                 </div>
               </div>
-            </div>
+              <div className="assistant-hero-stats">
+                <div className="assistant-stat-pill">
+                  <span>network</span>
+                  <strong>{isOnline ? "online" : "offline"}</strong>
+                </div>
+                <div className="assistant-stat-pill">
+                  <span>voice queue</span>
+                  <strong>{voiceUploadQueue.length}</strong>
+                </div>
+                <div className="assistant-stat-pill">
+                  <span>planner jobs</span>
+                  <strong>{assistJobs.length}</strong>
+                </div>
+              </div>
+            </section>
 
             <PaneRestoreStrip
               actions={[
-                ...(queuePane.collapsed ? [{ id: "queue", label: "Show inbox queue", onClick: queuePane.expand }] : []),
-                ...(agentPane.collapsed ? [{ id: "agent", label: "Show agent feed", onClick: agentPane.expand }] : []),
+                ...(queuePane.collapsed ? [{ id: "queue", label: "Show thread activity", onClick: queuePane.expand }] : []),
+                ...(agentPane.collapsed ? [{ id: "agent", label: "Show voice and jobs", onClick: agentPane.expand }] : []),
               ]}
             />
 
-            <article className="command-rich-card command-form-grid">
+            <section className="assistant-thread-panel glass">
+              <div className="assistant-thread-head">
+                <div>
+                  <span className="assistant-side-kicker">Transcript</span>
+                  <h2>Persistent conversation</h2>
+                </div>
+                <div className="assistant-thread-actions">
+                  <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
+                    Load sample
+                  </button>
+                  <button className="button" type="button" onClick={() => resetConversationSession()}>
+                    Clear session
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={() => {
+                      loadConversation("manual").catch(() => undefined);
+                      loadVoiceJobs("manual").catch(() => undefined);
+                      loadAssistJobs("manual").catch(() => undefined);
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              <div className="assistant-thread-feed">
+                {transcriptMessages.length === 0 ? (
+                  <div className="assistant-empty-thread">
+                    <p className="assistant-empty-kicker">No messages yet</p>
+                    <h3>Start with a spoken or typed command</h3>
+                    <p>
+                      The thread will retain the structured agent output, while the side panes keep supporting detail
+                      like queues and background jobs.
+                    </p>
+                    <ul className="command-story-list">
+                      {showcaseActions.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  transcriptMessages.map((message) => {
+                    const assistantCommand = message.metadata?.assistant_command;
+                    const fallbackBody = assistantCommand?.summary || "No message content recorded.";
+                    const body = message.content.trim() || fallbackBody;
+                    return (
+                      <article key={message.id} className={`assistant-thread-message role-${message.role}`}>
+                        <div className="assistant-thread-message-meta">
+                          <span className="assistant-role-chip">{message.role}</span>
+                          <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div className="assistant-thread-bubble">
+                          <p>{body}</p>
+                          {assistantCommand ? (
+                            <div className="assistant-inline-card">
+                              <div className="assistant-inline-card-head">
+                                <span>{assistantCommand.matched_intent}</span>
+                                <span>{assistantCommand.status}</span>
+                              </div>
+                              <p>{assistantCommand.summary}</p>
+                              <div className="assistant-inline-card-steps">
+                                {assistantCommand.steps.slice(0, 3).map((step, index) => (
+                                  <div key={`${assistantCommand.command}-${step.tool_name}-${index}`} className="assistant-inline-step">
+                                    <strong>{step.tool_name}</strong>
+                                    <span>{step.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="button-row">
+                                <button className="button" type="button" onClick={() => setCommand(assistantCommand.command)}>
+                                  Reuse command
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            <section className="assistant-composer glass">
+              <div className="assistant-composer-head">
+                <div>
+                  <span className="assistant-side-kicker">Composer</span>
+                  <h2>Speak or type the next turn</h2>
+                </div>
+                <p className="command-footnote">Buttons remain optional. Voice is the primary entry point.</p>
+              </div>
               <label className="label" htmlFor="assistant-command">Command</label>
               <textarea
                 id="assistant-command"
                 className="textarea"
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
-                rows={5}
+                rows={4}
+                placeholder="Ask Starlog to create notes, summarize artifacts, prepare a briefing, or clip what is on screen."
               />
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => runCommand(false)}>Plan Command</button>
-                <button className="button" type="button" onClick={() => runCommand(true)}>Execute Command</button>
-                <button className="button" type="button" onClick={() => queueAssistCommand(false)}>Queue Codex Plan</button>
-                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex Execute</button>
-                <button className="button" type="button" onClick={() => {
-                  loadVoiceJobs("manual").catch(() => undefined);
-                  loadAssistJobs("manual").catch(() => undefined);
-                }}>Refresh Jobs</button>
+              <div className="assistant-toolbar">
+                <button className="button" type="button" onClick={() => runCommand(false)}>Plan</button>
+                <button className="button" type="button" onClick={() => runCommand(true)}>Execute</button>
+                <button className="button" type="button" onClick={() => queueAssistCommand(false)}>Queue planner</button>
+                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue execute</button>
               </div>
-              <p className="status">{status}</p>
-            </article>
-
-            <article className="command-rich-card">
-              <h2>Latest response</h2>
-              {!latest ? (
-                <p className="console-copy">No command run yet.</p>
-              ) : (
-                <>
-                  <p className="console-copy">
-                    intent: {latest.matched_intent} [{latest.status}]
-                  </p>
-                  <p className="console-copy">{latest.summary}</p>
-                  <div className="command-step-grid">
-                    {latest.steps.map((step, index) => (
-                      <div key={`${step.tool_name}-${index}`} className="command-step-card">
-                        <p className="console-copy">
-                          <strong>{step.tool_name}</strong> [{step.status}]
-                        </p>
-                        {step.message ? <p className="console-copy">{step.message}</p> : null}
-                        <p className="console-copy">arguments</p>
-                        <pre>{JSON.stringify(step.arguments, null, 2)}</pre>
-                        <p className="console-copy">result</p>
-                        <pre>{JSON.stringify(step.result, null, 2)}</pre>
-                      </div>
-                    ))}
+              {voiceBlob ? (
+                <div className="assistant-voice-ready">
+                  <p className="console-copy">Voice clip captured and ready for upload.</p>
+                  <div className="button-row">
+                    <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan voice</button>
+                    <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute voice</button>
+                    <button className="button" type="button" onClick={() => discardVoiceCapture()}>Discard clip</button>
                   </div>
-                </>
-              )}
-            </article>
-
-            <article className="command-rich-card">
-              <h2>Intent catalog</h2>
-              {intents.length === 0 ? (
-                <p className="console-copy">No intent catalog loaded yet. Fallback examples are still available.</p>
-              ) : (
-                <div className="scroll-panel">
-                  {intents.map((intent) => (
-                    <div key={intent.name} className="command-step-card">
-                      <p className="console-copy">
-                        <strong>{intent.name}</strong> - {intent.description}
-                      </p>
-                      <div className="button-row">
-                        {intent.examples.map((example) => (
-                          <button key={example} className="button" type="button" onClick={() => setCommand(example)}>
-                            {example}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
                 </div>
+              ) : (
+                <p className="command-footnote">
+                  Hold the mic button above, release to stage the clip, then choose whether to plan or execute it.
+                </p>
               )}
-            </article>
-
+              <p className="status">{status}</p>
+            </section>
           </div>
         </section>
 
-        {!agentPane.collapsed ? <aside className="command-agent-panel">
-          <div className="command-agent-head">
-            <div className="command-agent-tabs">
-              <div className="command-agent-tab active">AI Agent</div>
-              <div className="command-agent-tab">Insights</div>
+        {!agentPane.collapsed ? (
+          <aside className="command-agent-panel assistant-side-column">
+            <div className="command-agent-head">
+              <div className="command-agent-tabs">
+                <div className="command-agent-tab active">Voice</div>
+                <div className="command-agent-tab">Jobs</div>
+              </div>
+              <PaneToggleButton label="Hide pane" onClick={agentPane.collapse} />
             </div>
-            <PaneToggleButton label="Hide pane" onClick={agentPane.collapse} />
-          </div>
-          <div className="command-agent-body">
-            <div className="command-agent-scroll">
-              <div className="command-chat-row">
-                <div className="command-chat-avatar ai">✶</div>
-                <div className="command-chat-stream">
-                  <div className="command-chat-message ai">
-                    {latest ? latest.summary : "Awaiting command. Use plan mode first to inspect tool calls."}
+            <div className="command-agent-body">
+              <div className="command-agent-scroll assistant-side-stack">
+                <section className="assistant-side-card glass">
+                  <div className="assistant-side-card-head">
+                    <span className="assistant-side-kicker">Voice State</span>
+                    <span className="command-footnote">{recording ? "recording" : voiceBlob ? "ready" : "idle"}</span>
                   </div>
-                  <span className="command-chat-meta">Aether Agent • Just now</span>
-                </div>
-              </div>
+                  <p className="console-copy">Upload queue: {voiceUploadQueue.length} {isOnline ? "(online)" : "(offline)"}</p>
+                  <p className="console-copy">Speech playback: {speakingReply ? "speaking" : "idle"}</p>
+                  <div className="button-row">
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={() => {
+                        replayVoiceUploadQueue("manual").catch(() => undefined);
+                      }}
+                      disabled={voiceUploadQueue.length === 0 || voiceQueueReplayInFlight}
+                    >
+                      {voiceQueueReplayInFlight ? "Replaying..." : "Replay queued voice"}
+                    </button>
+                  </div>
+                </section>
 
-              <div className="command-chat-row user">
-                <div className="command-chat-avatar user">●</div>
-                <div className="command-chat-stream">
-                  <div className="command-chat-message user">{command || "No command drafted yet."}</div>
-                </div>
-              </div>
-
-              <div className="command-agent-statusline">
-                <div className="command-agent-spinner" aria-hidden="true" />
-                <div>
-                  <p className="command-footnote">Agent Performing Action</p>
-                  <p className="console-copy">Voice clip: {recording ? "recording..." : voiceBlob ? "ready" : "none"}</p>
-                  <p className="console-copy">
-                    Voice upload queue: {voiceUploadQueue.length} {isOnline ? "(online)" : "(offline)"}
-                  </p>
-                </div>
-              </div>
-
-              <details className="command-agent-detail" open>
-                <summary>Queued voice uploads ({voiceUploadQueue.length})</summary>
-                {voiceUploadQueue.length === 0 ? (
-                  <p className="console-copy">No queued voice uploads.</p>
-                ) : (
-                  <div className="scroll-panel">
-                    {voiceUploadQueue.map((item) => (
-                      <div key={item.id} className="command-step-card">
-                        <p className="console-copy">
-                          <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
-                        </p>
-                        <p className="console-copy">
-                          captured: {new Date(item.created_at).toLocaleString()}
-                          {item.last_attempt_at ? ` | last replay: ${new Date(item.last_attempt_at).toLocaleString()}` : ""}
-                        </p>
-                        {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
-                        <div className="button-row">
-                          <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
-                            Drop queued upload
-                          </button>
+                <details className="command-agent-detail" open>
+                  <summary>Queued voice uploads ({voiceUploadQueue.length})</summary>
+                  {voiceUploadQueue.length === 0 ? (
+                    <p className="console-copy">No queued voice uploads.</p>
+                  ) : (
+                    <div className="scroll-panel">
+                      {voiceUploadQueue.map((item) => (
+                        <div key={item.id} className="command-step-card">
+                          <p className="console-copy">
+                            <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
+                          </p>
+                          <p className="console-copy">
+                            captured: {new Date(item.created_at).toLocaleString()}
+                            {item.last_attempt_at ? ` | last replay: ${new Date(item.last_attempt_at).toLocaleString()}` : ""}
+                          </p>
+                          {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
+                          <div className="button-row">
+                            <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
+                              Drop upload
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </details>
+                      ))}
+                    </div>
+                  )}
+                </details>
 
-              <details className="command-agent-detail" open>
-                <summary>Voice jobs ({voiceJobs.length})</summary>
-                {voiceJobs.length === 0 ? (
-                  <p className="console-copy">No voice command jobs yet.</p>
-                ) : (
-                  <div className="scroll-panel">
-                    {voiceJobs.map((job) => (
-                      <div key={job.id} className="command-step-card">
-                        <p className="console-copy">
-                          <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                        </p>
-                        <p className="console-copy">
-                          created: {new Date(job.created_at).toLocaleString()}
-                          {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
-                        </p>
-                        {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
-                        {job.output.assistant_command ? (
+                <details className="command-agent-detail" open>
+                  <summary>Voice jobs ({voiceJobs.length})</summary>
+                  {voiceJobs.length === 0 ? (
+                    <p className="console-copy">No voice command jobs yet.</p>
+                  ) : (
+                    <div className="scroll-panel">
+                      {voiceJobs.map((job) => (
+                        <div key={job.id} className="command-step-card">
                           <p className="console-copy">
-                            command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                            <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
                           </p>
-                        ) : null}
-                        {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </details>
-
-              <details className="command-agent-detail" open>
-                <summary>Queued Codex jobs ({assistJobs.length})</summary>
-                {assistJobs.length === 0 ? (
-                  <p className="console-copy">No queued Codex planner jobs yet.</p>
-                ) : (
-                  <div className="scroll-panel">
-                    {assistJobs.map((job) => (
-                      <div key={job.id} className="command-step-card">
-                        <p className="console-copy">
-                          <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                        </p>
-                        {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
-                        <p className="console-copy">
-                          created: {new Date(job.created_at).toLocaleString()}
-                          {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
-                        </p>
-                        {job.output.assistant_command ? (
                           <p className="console-copy">
-                            command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                            created: {new Date(job.created_at).toLocaleString()}
+                            {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
                           </p>
-                        ) : null}
-                        {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </details>
-            </div>
+                          {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
+                          {job.output.assistant_command ? (
+                            <p className="console-copy">
+                              command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                            </p>
+                          ) : null}
+                          {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </details>
 
-            <div className="command-agent-input">
-              <label className="label" htmlFor="assistant-chat-command">Agent command</label>
-              <textarea
-                id="assistant-chat-command"
-                className="textarea"
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                rows={3}
-                placeholder="Command the AI agent..."
-              />
-              <div className="button-row">
-                <button className="button" type="button" onClick={recording ? stopVoiceRecording : startVoiceRecording}>
-                  {recording ? "Stop Voice Command" : "Start Voice Command"}
-                </button>
-                <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan Voice</button>
-                <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute Voice</button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    replayVoiceUploadQueue("manual").catch(() => undefined);
-                  }}
-                  disabled={voiceUploadQueue.length === 0 || voiceQueueReplayInFlight}
-                >
-                  {voiceQueueReplayInFlight ? "Replaying Voice Uploads..." : "Retry Voice Uploads"}
-                </button>
+                <details className="command-agent-detail" open>
+                  <summary>Queued planner jobs ({assistJobs.length})</summary>
+                  {assistJobs.length === 0 ? (
+                    <p className="console-copy">No queued planner jobs yet.</p>
+                  ) : (
+                    <div className="scroll-panel">
+                      {assistJobs.map((job) => (
+                        <div key={job.id} className="command-step-card">
+                          <p className="console-copy">
+                            <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                          </p>
+                          {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
+                          <p className="console-copy">
+                            created: {new Date(job.created_at).toLocaleString()}
+                            {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
+                          </p>
+                          {job.output.assistant_command ? (
+                            <p className="console-copy">
+                              command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                            </p>
+                          ) : null}
+                          {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </details>
               </div>
-              <p className="command-footnote">Aether AI can take actions in external modules.</p>
             </div>
-          </div>
-        </aside> : null}
+          </aside>
+        ) : null}
       </section>
     </main>
   );
