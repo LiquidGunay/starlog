@@ -132,6 +132,7 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
 - Physical Android validation on the attached phone now confirms: the dev client can render the companion UI through the Windows LAN relay path, the previous `unexpected end of stream on http://127.0.0.1:8081/...` failure is avoidable with Expo LAN mode plus relay, and the remaining toast-level Metro warning is tied to mixed `localhost`/LAN Dev Launcher endpoints rather than a blank-screen app failure.
+- WI-593 now has a maximal host-local cross-surface proof bundle in `docs/CROSS_SURFACE_PROOF.md`, including isolated API evidence for the persistent thread, a real desktop-helper clip uploaded into that same API, PWA screenshots against the same build/API pair, and the one remaining external Windows-host Android smoke step.
 - Railway-hosted PWA release-candidate path is now concrete enough for user testing:
   - public web URL: `https://starlog-web-production.up.railway.app`
   - public API health: `https://starlog-api-production.up.railway.app/v1/health`

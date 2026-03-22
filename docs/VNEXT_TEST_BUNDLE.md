@@ -33,12 +33,15 @@ hosted-smoke drift still needs watching.
   - `README.md`
   - `docs/PWA_GO_LIVE_RUNBOOK.md`
   - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md`
+  - `docs/AI_VALIDATION_SMOKE_MATRIX.md`
+  - `docs/CROSS_SURFACE_PROOF.md`
 
 What to judge:
 
 - chat feels like the main operating surface,
 - hold-to-talk states read clearly,
-- inline cards stay readable after repeated voice turns.
+- inline cards stay readable after repeated voice turns,
+- cross-surface proof artifacts line up with the isolated API evidence in `docs/CROSS_SURFACE_PROOF.md`.
 
 ### Android phone
 
@@ -104,6 +107,10 @@ Save:
 - The phone proof is still host-external. The preview bundle is ready for user testing on web and
   desktop immediately, but the final fresh physical-phone screenshots still require the Windows-side
   operator step above.
+- The cross-surface host-local proof is now documented in `docs/CROSS_SURFACE_PROOF.md`; on the
+  recorded run, the built PWA shell loaded and rendered the helper-uploaded artifact, but the
+  seeded assistant-thread marker still required API-level evidence rather than a visible transcript
+  render.
 
 ## Fast pre-handoff verification
 
