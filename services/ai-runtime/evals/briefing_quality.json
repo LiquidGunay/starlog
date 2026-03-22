@@ -1,0 +1,27 @@
+{
+  "id": "briefing-quality-001",
+  "workflow": "briefing",
+  "input": {
+    "title": "Morning briefing",
+    "text": "Summarize today's tasks, schedule, and review cues.",
+    "context": {
+      "date": "2026-03-22",
+      "sources": [
+        "calendar",
+        "tasks",
+        "srs"
+      ]
+    }
+  },
+  "checks": {
+    "must_include": [
+      "schedule",
+      "tasks",
+      "review"
+    ],
+    "must_not_include": [
+      "silent write",
+      "unconfirmed calendar change"
+    ]
+  }
+}
