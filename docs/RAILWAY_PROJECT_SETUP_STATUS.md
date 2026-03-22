@@ -1,6 +1,6 @@
 # Railway Project Setup Status (WI-443)
 
-Date: 2026-03-15
+Date: 2026-03-22
 
 ## Current linked project
 
@@ -28,15 +28,28 @@ Deploy approval was given and the first supervised production deployments are li
 
 On 2026-03-15, `master` was updated to include the `next@15.0.7` security fix so GitHub-based Railway builds against `master` no longer hit the prior `next@15.0.0` vulnerability gate.
 
+On 2026-03-22, the public Railway endpoints were re-checked as part of WI-582 to make the hosted PWA path concrete for user testing.
+
 - `starlog-api`
   - status: live
   - health check: `https://starlog-api-production.up.railway.app/v1/health`
-  - verified response: `{"status":"ok","env":"prod","users":0}`
+  - verified response on 2026-03-22: `{"status":"ok","env":"prod","users":1}`
 - `starlog-web`
   - status: live
   - public URL: `https://starlog-web-production.up.railway.app`
-  - verified response: `HTTP 200`
+  - verified response on 2026-03-22: `HTTP/2 200`
+  - current edge headers confirm Railway + Next.js are serving the app (`server: railway-edge`, `x-powered-by: Next.js`)
   - GitHub deploy status on 2026-03-15: source hook is active, but one deploy failed because the live Railway start command still used the old `pnpm --filter web start -- --hostname ...` form.
+  - repo release evidence on 2026-03-22:
+    - local production-style release gate completed successfully when run in isolation
+    - `bash ./scripts/pwa_hosted_smoke.sh` passed end-to-end at `2026-03-22T14:16:56Z`
+    - hosted smoke artifacts: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T141604Z.log`
+
+## Railway access note for this environment
+
+- Public hosted verification works from this shell.
+- Railway CLI administration is currently blocked here because `railway whoami` returns `Unauthorized. Please run railway login again.`
+- Result: this WI verified live public URLs and release readiness, but did not mutate live Railway config from this environment.
 
 ## Applied deployment config
 
@@ -118,16 +131,16 @@ The pricing docs describe usage-based compute plus the plan floor. Since Starlog
 
 ## Remaining setup gap
 
-The important remaining gap is normalizing the live Railway web service command.
+The main hosted-admin gap is still direct Railway dashboard/CLI confirmation of the live web start command.
 
-- GitHub source attachment is now active; commit statuses on `master` showed Railway receiving and acting on repo updates.
-- `starlog-api` deployed successfully from the GitHub trigger on 2026-03-15.
-- `starlog-web` received the same GitHub trigger but failed because the live Railway dashboard still had the stale start command with the extra `--`.
-- Preferred live setting: `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
+- GitHub source attachment is active; prior commit statuses on `master` showed Railway receiving and acting on repo updates.
+- Repo docs and package-level compatibility fallback both point to the preferred live setting:
+  - `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`
+- This shell could not confirm or update that dashboard value directly because Railway CLI auth is missing.
 
 ## Recommended next step
 
-1. Update the live `starlog-web` Railway start command to `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`.
-2. Re-trigger a GitHub deploy from `master` and confirm the web status flips to success.
-3. Decide whether to keep the generated Railway domains or add custom Starlog subdomains.
-4. If higher-compute AI work is added later, split it into a separate service so the base API can keep sleeping cheaply.
+1. Re-authenticate Railway CLI or inspect the Railway dashboard, then confirm `starlog-web` is using `pnpm --filter web exec next start --hostname 0.0.0.0 --port $PORT`.
+2. If the live dashboard still differs, update it and re-trigger a GitHub deploy from `master`.
+3. Re-run `bash ./scripts/pwa_hosted_smoke.sh` and the hosted manual checklist after that config confirmation.
+4. Decide whether to keep the generated Railway domains or add custom Starlog subdomains.

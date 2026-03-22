@@ -2,16 +2,29 @@
 
 ## Deployment order
 
-1. Run release gate: `./scripts/pwa_release_gate.sh`
+1. Run release gate: `bash ./scripts/pwa_release_gate.sh`
 2. Confirm Railway production config checklist:
    - `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md`
 3. Deploy API service (`starlog-api`).
 4. Verify API health: `GET /v1/health` returns `env=prod`.
 5. Deploy web service (`starlog-web`).
 6. Run hosted smoke:
-   - production-like local run: `./scripts/pwa_hosted_smoke.sh`
+   - production-like local run: `bash ./scripts/pwa_hosted_smoke.sh`
    - Railway manual smoke: `docs/PWA_HOSTED_SMOKE_CHECKLIST.md`
 7. Run portability drill: `./scripts/pwa_portability_drill.sh`
+
+## Current release-candidate evidence
+
+- Public web URL: `https://starlog-web-production.up.railway.app`
+- Public API URL: `https://starlog-api-production.up.railway.app`
+- Verified on 2026-03-22:
+  - `curl -I https://starlog-web-production.up.railway.app` -> `HTTP/2 200`
+  - `curl https://starlog-api-production.up.railway.app/v1/health` -> `{"status":"ok","env":"prod","users":1}`
+  - `bash ./scripts/pwa_release_gate.sh` passed at `2026-03-22T14:18:37Z`
+  - `bash ./scripts/pwa_hosted_smoke.sh` passed at `2026-03-22T14:16:56Z`
+- Operator note:
+  - this shell cannot currently administer Railway because `railway whoami` returns `Unauthorized. Please run railway login again.`
+  - public hosted verification is still available, so release-candidate testing can proceed against the generated Railway domains
 
 ## Rollback triggers
 
