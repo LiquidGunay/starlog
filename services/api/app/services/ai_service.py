@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 from sqlite3 import Connection
 from typing import Literal
 from urllib.error import HTTPError, URLError
@@ -13,6 +15,52 @@ class ProviderError(Exception):
 
 
 LLM_CAPABILITIES = {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}
+PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "ai-runtime" / "prompts"
+AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-nano"
+AI_RUNTIME_BASE_ENV = "STARLOG_AI_RUNTIME_BASE_URL"
+AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS = 5.0
+AI_RUNTIME_PREVIEW_RETRIES = 2
+
+PREVIEW_WORKFLOWS: dict[str, dict[str, str]] = {
+    "chat_turn": {
+        "path": "/v1/chat/preview",
+        "system_prompt": "chat_turn.system.txt",
+        "user_prompt": "chat_turn.user.txt",
+        "default_title": "Primary Starlog Thread",
+    },
+    "briefing": {
+        "path": "/v1/briefings/preview",
+        "system_prompt": "briefing.system.txt",
+        "user_prompt": "briefing.user.txt",
+        "default_title": "Daily briefing",
+    },
+    "research_digest": {
+        "path": "/v1/research/digests/preview",
+        "system_prompt": "research_digest.system.txt",
+        "user_prompt": "research_digest.user.txt",
+        "default_title": "Research digest",
+    },
+}
+
+
+class _SafePromptDict(dict[str, object]):
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
+def _load_prompt(name: str) -> str:
+    return (PROMPTS_ROOT / name).read_text(encoding="utf-8").strip()
+
+
+def _render_prompt(name: str, **kwargs: object) -> str:
+    rendered_kwargs = {key: _format_prompt_value(value) for key, value in kwargs.items()}
+    return _load_prompt(name).format_map(_SafePromptDict(rendered_kwargs))
+
+
+def _format_prompt_value(value: object) -> object:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, indent=2, sort_keys=True)
+    return value
 
 
 def _text_source(payload: dict) -> str:
@@ -114,29 +162,124 @@ def _request_spec(capability: str, payload: dict) -> tuple[str, str]:
 
     if capability == "llm_summary":
         return (
-            "Summarize the source for a personal knowledge system. Return concise Markdown with bullets when useful.",
-            f"Title: {title}\n\nSource:\n{source_text}",
+            _load_prompt("llm_summary.system.txt"),
+            _render_prompt("llm_summary.user.txt", title=title, text=source_text),
         )
 
     if capability == "llm_cards":
         return (
-            'Create study cards from the source. Return strict JSON with shape {"cards":[{"prompt":"...","answer":"...","card_type":"qa"}]}.',
-            f"Title: {title}\n\nSource:\n{source_text}",
+            _load_prompt("llm_cards.system.txt"),
+            _render_prompt("llm_cards.user.txt", title=title, text=source_text),
         )
 
     if capability == "llm_tasks":
         return (
-            'Create concrete next-step tasks from the source. Return strict JSON with shape {"tasks":[{"title":"...","estimate_min":15,"priority":3}]}.',
-            f"Title: {title}\n\nSource:\n{source_text}",
+            _load_prompt("llm_tasks.system.txt"),
+            _render_prompt("llm_tasks.user.txt", title=title, text=source_text),
         )
 
     if capability == "llm_agent_plan":
+        intents = payload.get("intents", [])
+        intent_lines = []
+        if isinstance(intents, list):
+            for item in intents:
+                if not isinstance(item, dict):
+                    continue
+                examples = item.get("examples")
+                examples_text = ", ".join(str(entry) for entry in examples) if isinstance(examples, list) else ""
+                intent_lines.append(
+                    f"- {item.get('name', 'unknown')}: {item.get('description', '')} Examples: {examples_text}"
+                )
+        tools = payload.get("tool_catalog", [])
+        tool_lines = []
+        if isinstance(tools, list):
+            for item in tools:
+                if not isinstance(item, dict):
+                    continue
+                tool_lines.append(
+                    f"- {item.get('name', 'unknown')}: {item.get('description', '')} Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+                )
         return (
-            'Plan Starlog tool calls from the command. Return strict JSON with shape {"matched_intent":"...","summary":"...","tool_calls":[{"tool_name":"...","arguments_json":"{\\"key\\":\\"value\\"}","message":"..."}]}.',
-            source_text,
+            _load_prompt("llm_agent_plan.system.txt"),
+            _render_prompt(
+                "llm_agent_plan.user.txt",
+                current_date=str(payload.get("current_date") or "unknown"),
+                command=str(payload.get("command") or source_text),
+                intent_lines="\n".join(intent_lines) if intent_lines else "- none provided",
+                tool_lines="\n".join(tool_lines) if tool_lines else "- none provided",
+            ),
         )
 
     return ("", source_text)
+
+
+def _runtime_preview_url(path: str) -> str | None:
+    base = os.environ.get(AI_RUNTIME_BASE_ENV, "").strip()
+    if not _valid_url(base):
+        return None
+    return f"{base.rstrip('/')}{path}"
+
+
+def _invoke_runtime_preview(workflow: str, payload: dict) -> dict:
+    config = PREVIEW_WORKFLOWS.get(workflow)
+    if config is None:
+        raise ProviderError(f"Unsupported preview workflow: {workflow}")
+
+    url = _runtime_preview_url(config["path"])
+    title = str(payload.get("title") or config["default_title"]).strip() or config["default_title"]
+    text = _text_source(payload)
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+
+    if not url:
+        return {
+            "workflow": workflow,
+            "provider_used": "local_prompt_preview",
+            "model": AI_RUNTIME_DEFAULT_MODEL,
+            "system_prompt": _load_prompt(config["system_prompt"]),
+            "user_prompt": _render_prompt(
+                config["user_prompt"],
+                title=title,
+                text=text,
+                context=_format_prompt_value(context),
+            ),
+            "context": context,
+        }
+
+    request = Request(
+        url,
+        data=json.dumps({"title": title, "text": text, "context": context}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    last_error: Exception | None = None
+    for _attempt in range(AI_RUNTIME_PREVIEW_RETRIES):
+        try:
+            with urlopen(request, timeout=AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS) as response:  # noqa: S310
+                body = response.read().decode("utf-8")
+            decoded = json.loads(body)
+            if not isinstance(decoded, dict):
+                raise ProviderError("AI runtime returned a non-object preview payload")
+            return {
+                "provider_used": "ai_runtime",
+                "workflow": str(decoded.get("workflow") or workflow),
+                "model": str(decoded.get("model") or AI_RUNTIME_DEFAULT_MODEL),
+                "system_prompt": str(decoded.get("system_prompt") or ""),
+                "user_prompt": str(decoded.get("user_prompt") or ""),
+                "context": decoded.get("context") if isinstance(decoded.get("context"), dict) else context,
+            }
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise ProviderError(f"AI runtime HTTP {exc.code}: {detail or 'request failed'}") from exc
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise ProviderError(f"AI runtime preview request failed: {last_error}") from last_error
+    raise ProviderError("AI runtime preview request failed")
+
+
+def preview_workflow(workflow: str, payload: dict) -> dict:
+    return _invoke_runtime_preview(workflow, payload)
 
 
 def _invoke_openai_compatible(provider_name: str, config: dict, capability: str, payload: dict) -> dict:
