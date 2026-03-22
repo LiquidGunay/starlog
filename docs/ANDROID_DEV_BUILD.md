@@ -167,6 +167,29 @@ physical phone, and local WSL `adb devices -l` may stay empty even when earlier 
 validation succeeded. Use the Windows-host smoke flow below for the final install/screenshot
 pass against the connected phone.
 
+For the current RC proof pass, the APK has already been staged into a Windows-visible path:
+
+- `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+
+Use this exact native Windows PowerShell command from the repo root for the remaining RC install
+and screenshot proof:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 `
+  -AdbPath "C:\Temp\android-platform-tools\platform-tools\adb.exe" `
+  -Serial 9dd62e84 `
+  -ApkPath "C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk" `
+  -AppPackage "com.starlog.app.preview" `
+  -AppActivity "com.starlog.app.preview/com.starlog.app.dev.MainActivity" `
+  -ReversePorts "8000"
+```
+
+Then capture and save:
+
+- a hold-to-talk screenshot on the current RC APK
+- an assistant/chat screenshot on the current RC APK
+- the Windows smoke log for the RC install/run
+
 ## First-time setup
 
 From repo root:

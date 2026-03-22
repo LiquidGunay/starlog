@@ -122,3 +122,29 @@ SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
    - Mitigation: run the final install/smoke/screenshot loop from the Windows-side flow in `docs/ANDROID_DEV_BUILD.md` or `scripts/android_native_smoke_windows.ps1`.
 2. Fresh connected-phone screenshot proof for hold-to-talk and assistant/chat is not present in this pass.
    - Mitigation: use the RC APK above with the Windows-host runbook, then capture the phone screenshots into `docs/evidence/mobile/` before calling the build fully distributable.
+
+## WI-584 Android RC phone-proof blocker reduction
+
+Date: 2026-03-22
+Device target: OPPO CPH2381 (`9dd62e84`)
+Worktree: `/tmp/starlog-wi584-phone-proof`
+Branch: `codex/android-phone-proof`
+Artifact staged for Windows-host install: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+
+## WI-584 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| RC APK staged into a Windows-visible path for native-host install | PASS | `docs/evidence/mobile/wi-584-phone-proof-blocker.md` |
+| Windows `adb.exe devices -l` invoked from this Codex Linux shell | BLOCKED | `docs/evidence/mobile/wi-584-phone-proof-blocker.md` |
+| Windows PowerShell interop invoked from this Codex Linux shell | BLOCKED | `docs/evidence/mobile/wi-584-phone-proof-blocker.md` |
+| WSL-local `adb devices -l` device discovery in this shell | BLOCKED | `docs/evidence/mobile/wi-584-phone-proof-blocker.md` |
+| Remaining RC phone-proof narrowed to one native Windows smoke + screenshot pass | PASS | `docs/evidence/mobile/wi-584-phone-proof-blocker.md`, `docs/ANDROID_DEV_BUILD.md` |
+
+## WI-584 blocker and narrowest fix
+
+1. This specific Codex Linux subagent shell cannot execute Windows interop binaries at all, so neither `C:\Temp\android-platform-tools\platform-tools\adb.exe` nor `powershell.exe` can be used from here, and WSL-local `adb` is not available on `PATH`.
+   - Narrowest fix: from a native Windows shell on this host, run the exact RC install/smoke command now documented in `docs/ANDROID_DEV_BUILD.md`, then capture the two remaining screenshots:
+     - hold-to-talk on the installed RC app
+     - assistant/chat on the installed RC app
