@@ -1,64 +1,124 @@
 # vNext Test Bundle
 
-This is the shortest realistic handoff for testing the current voice-native Starlog slice without rereading the full plan.
+This is the operator handoff for the next voice-native preview build on current `origin/master`
+(`c10a800`, merged Android blocker doc [#76](https://github.com/LiquidGunay/starlog/pull/76)).
 
-## What exists on current `master`
+## Current green baseline
 
-- Voice-native PWA assistant thread with persistent server-backed conversation and stabilized hold-to-talk behavior.
-- Desktop helper bridge diagnostics plus local voice-server bridge paths for Whisper-style STT and local TTS.
-- Android companion with capture, assistant voice flows, and offline briefing playback scaffolding.
-- Image-backed design comps for the target PWA, mobile, and desktop-helper look.
-- Fast cross-surface smoke gate via `./scripts/ci_smoke_matrix.sh`.
+Validated locally from a fresh master worktree with shared-state linking:
 
-## What to test right now
+- API baseline: `39 passed` on the current validation suite used for the release pass.
+- Web typecheck: `cd apps/web && ./node_modules/.bin/tsc --noEmit`
+- Mobile typecheck: `cd apps/mobile && ./node_modules/.bin/tsc --noEmit`
+- Desktop helper targeted smoke: `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep "quick popup can switch to workspace in browser fallback"`
+- PWA release gate: `bash ./scripts/pwa_release_gate.sh`
+- OpenAI runtime smoke with `.env` loaded: `cd services/ai-runtime && uv run --project . python scripts/openai_smoke.py`
+
+The current release baseline is good enough for the next preview handoff, but it is not yet a
+fully closed release proof because one phone step still has to be run from the Windows host and
+hosted-smoke drift still needs watching.
+
+## Install and test surfaces
 
 ### PWA
 
-- Primary surface: `/assistant`
-- Also inspect:
+- Hosted URL: [starlog-web-production.up.railway.app](https://starlog-web-production.up.railway.app)
+- API health: [starlog-api-production.up.railway.app/v1/health](https://starlog-api-production.up.railway.app/v1/health)
+- Primary route: `/assistant`
+- Secondary checks:
   - `/artifacts`
   - `/integrations`
   - `/ai-jobs`
 - Read first:
   - `README.md`
-  - `docs/AI_VALIDATION_SMOKE_MATRIX.md`
-- Feedback to capture:
-  - whether the assistant thread feels like the primary operating surface,
-  - whether hold-to-talk start/stop feels reliable,
-  - whether cards and recent voice turns stay readable.
+  - `docs/PWA_GO_LIVE_RUNBOOK.md`
+  - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md`
 
-### Phone
+What to judge:
 
-- Use:
-  - `docs/ANDROID_DEV_BUILD.md`
+- chat feels like the main operating surface,
+- hold-to-talk states read clearly,
+- inline cards stay readable after repeated voice turns.
+
+### Android phone
+
+- Primary doc: `docs/ANDROID_DEV_BUILD.md`
+- Supporting docs:
   - `docs/PHONE_SETUP.md`
-  - the Android phone-testing runbook in `AGENTS.md`
-- Core smoke to run:
-  - launch the current dev build/dev client,
-  - record one voice turn,
-  - verify assistant/chat response path,
-  - verify one briefing playback path,
-  - capture screenshots as evidence.
-- Feedback to capture:
-  - STT responsiveness,
-  - playback quality,
-  - whether the phone flow feels like quick capture/triage rather than a cramped full editor.
+  - `docs/ANDROID_RELEASE_QA_MATRIX.md`
+- Current preview RC artifact:
+  - `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+  - staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+
+Core phone checks:
+
+- install and launch the preview RC,
+- verify one hold-to-talk turn,
+- verify one assistant/chat turn,
+- verify one offline briefing playback path,
+- capture screenshots/logs.
 
 ### Desktop helper
 
-- Use:
+- Primary docs:
   - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
   - `docs/DESKTOP_HELPER_V1_RELEASE.md`
   - `docs/LOCAL_AI_WORKER.md`
-- Core smoke to run:
-  - launch helper popup/studio,
-  - verify local bridge health/discovery,
-  - verify one local capture path,
-  - verify local voice diagnostics if Whisper/TTS servers are available.
-- Feedback to capture:
-  - whether the helper is fast enough for capture-first usage,
-  - whether bridge diagnostics are understandable without reading code,
-  - whether local voice setup feels manageable.
+- Core checks:
+  - launch helper popup and full surface,
+  - verify bridge health,
+  - verify one capture path,
+  - verify local voice diagnostics and local STT smoke if the host runtime is installed.
+
+## Required host-external phone step
+
+The remaining phone proof is blocked by host environment, not by the current app build. Per merged
+Android blocker doc [#76](https://github.com/LiquidGunay/starlog/pull/76), this Linux Codex shell
+still cannot execute `powershell.exe`, `cmd.exe`, or the Windows `adb.exe` that can actually reach
+the connected phone.
+
+Run this from a native Windows PowerShell session in the repo root:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 `
+  -AdbPath "C:\Temp\android-platform-tools\platform-tools\adb.exe" `
+  -Serial 9dd62e84 `
+  -ApkPath "C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk" `
+  -AppPackage "com.starlog.app.preview" `
+  -AppActivity "com.starlog.app.preview/com.starlog.app.dev.MainActivity" `
+  -ReversePorts "8000"
+```
+
+Save:
+
+- a hold-to-talk screenshot,
+- an assistant/chat screenshot,
+- an offline briefing playback screenshot,
+- the Windows smoke log.
+
+## Remaining drift to call out
+
+- Hosted smoke drift still exists operationally. The latest isolated rerun passed, but prior runs
+  have drifted because overlapping or stale local `next build` / `next start` processes can poison
+  `bash ./scripts/pwa_hosted_smoke.sh`. Treat hosted smoke as green only when run in isolation.
+- The phone proof is still host-external. The preview bundle is ready for user testing on web and
+  desktop immediately, but the final fresh physical-phone screenshots still require the Windows-side
+  operator step above.
+
+## Fast pre-handoff verification
+
+```bash
+./scripts/ci_smoke_matrix.sh
+bash ./scripts/pwa_release_gate.sh
+```
+
+If you are touching hosted web behavior, also rerun:
+
+```bash
+bash ./scripts/pwa_hosted_smoke.sh
+```
+
+Run that hosted smoke in isolation to avoid stale local web-server drift.
 
 ## Visual references
 
@@ -68,23 +128,9 @@ This is the shortest realistic handoff for testing the current voice-native Star
 - `docs/design/assets/voice_native_mobile_voice_comp.png`
 - `docs/design/assets/voice_native_desktop_helper_comp.png`
 
-## Fast verification before handing the build to a human
-
-```bash
-./scripts/ci_smoke_matrix.sh
-```
-
-If the change is web-heavy, also run the heavier PWA/web checks already documented in `README.md` and `docs/AI_VALIDATION_SMOKE_MATRIX.md`.
-
-## Known blockers before calling this a clean distributable candidate
-
-- `WI-580`: local-PC desktop-helper release-candidate pass still needs a fresh host-validated run on current master.
-- `WI-581`: connected-phone Android release-candidate pass still needs a fresh device-validated run on current master.
-- `WI-582`: hosted/Railway PWA release-candidate pass still needs a current-master readiness or deployment verification.
-
 ## Feedback to ask for
 
 - Did chat/voice feel like the main control surface?
-- Where did the flow still feel like a debug tool instead of a product?
-- Which of desktop, phone, or PWA felt closest to daily use?
-- Which failures were confusing enough that the docs or diagnostics need another pass?
+- Which surface felt closest to daily use: hosted PWA, phone, or desktop helper?
+- Which parts still felt like debug tooling rather than a product?
+- Which failure or setup step was confusing enough that the docs should change before the next pass?
