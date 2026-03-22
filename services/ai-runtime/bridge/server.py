@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from bridge.config import capability_summary, load_bridge_config, parse_static_context
@@ -32,19 +32,42 @@ def _run_command(template: str, variables: dict[str, str]) -> str:
     return result.stdout.strip()
 
 
+def _provided_bridge_token(request: Request) -> str:
+    authorization = request.headers.get("authorization", "").strip()
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return request.headers.get("x-starlog-bridge-token", "").strip()
+
+
+def _is_authenticated(request: Request, expected_token: str) -> bool:
+    if not expected_token:
+        return True
+    return _provided_bridge_token(request) == expected_token
+
+
+def _require_authenticated(request: Request, expected_token: str) -> None:
+    if not _is_authenticated(request, expected_token):
+        raise HTTPException(status_code=401, detail="Bridge authentication failed")
+
+
 @app.get("/health", response_model=BridgeHealthResponse)
-def health() -> BridgeHealthResponse:
+def health(request: Request) -> BridgeHealthResponse:
     config = load_bridge_config()
     return BridgeHealthResponse(
         status="ok",
         service="desktop_local_bridge",
         base_url=config.base_url,
+        auth_required=bool(config.auth_token),
+        authenticated=_is_authenticated(request, config.auth_token),
         capabilities=capability_summary(config),
     )
 
 
 @app.post("/v1/stt/transcribe", response_model=SttResponse)
-def transcribe(payload: SttRequest) -> SttResponse:
+def transcribe(payload: SttRequest, request: Request) -> SttResponse:
+    config = load_bridge_config()
+    _require_authenticated(request, config.auth_token)
+
     if payload.debug_transcript and payload.debug_transcript.strip():
         transcript = payload.debug_transcript.strip()
         return SttResponse(
@@ -54,7 +77,6 @@ def transcribe(payload: SttRequest) -> SttResponse:
             detail="Bridge returned the supplied debug transcript without running an external command.",
         )
 
-    config = load_bridge_config()
     if not config.stt_command:
         raise HTTPException(status_code=503, detail="STT bridge command is not configured")
     if not payload.audio_path:
@@ -79,7 +101,10 @@ def transcribe(payload: SttRequest) -> SttResponse:
 
 
 @app.post("/v1/tts/speak", response_model=TtsResponse)
-def speak(payload: TtsRequest) -> TtsResponse:
+def speak(payload: TtsRequest, request: Request) -> TtsResponse:
+    config = load_bridge_config()
+    _require_authenticated(request, config.auth_token)
+
     if payload.debug_audio_path and payload.debug_audio_path.strip():
         audio_path = payload.debug_audio_path.strip()
         return TtsResponse(
@@ -89,7 +114,6 @@ def speak(payload: TtsRequest) -> TtsResponse:
             detail="Bridge returned the supplied debug audio path without running an external command.",
         )
 
-    config = load_bridge_config()
     if not config.tts_command:
         raise HTTPException(status_code=503, detail="TTS bridge command is not configured")
     if not payload.output_path:
@@ -112,8 +136,9 @@ def speak(payload: TtsRequest) -> TtsResponse:
 
 
 @app.get("/v1/context/active", response_model=ContextResponse)
-def active_context() -> ContextResponse:
+def active_context(request: Request) -> ContextResponse:
     config = load_bridge_config()
+    _require_authenticated(request, config.auth_token)
     static_context = parse_static_context(config)
     if static_context is not None:
         return ContextResponse(

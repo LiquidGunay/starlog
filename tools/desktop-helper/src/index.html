@@ -989,6 +989,7 @@
               </div>
               <div class="diagnostic-controls">
                 <button id="refreshDiagnostics" type="button" class="action-button">Refresh Diagnostics</button>
+                <button id="discoverBridge" type="button" class="action-button">Discover Local Bridge</button>
                 <button id="checkBridge" type="button" class="action-button">Check Local Bridge</button>
                 <button id="copyDiagnostics" type="button" class="action-button">Copy Diagnostics</button>
               </div>
@@ -1013,6 +1014,10 @@
                 <input id="bridgeBase" value="http://127.0.0.1:8091" />
               </div>
               <div class="form-block">
+                <label class="label" for="bridgeToken">Local bridge token</label>
+                <input id="bridgeToken" type="password" placeholder="optional localhost token" />
+              </div>
+              <div class="form-block">
                 <label class="label" for="token">Bearer token</label>
                 <input id="token" type="password" placeholder="paste token" />
               </div>
@@ -1035,7 +1040,7 @@
               <div>
                 <p class="label">Desktop local bridge</p>
                 <p class="help">
-                  Point this at the Python localhost bridge when you want local STT, TTS, and desktop-context probes to stay on the machine.
+                  Point this at the Python localhost bridge when you want local STT, TTS, and desktop-context probes to stay on the machine. Use Discover Local Bridge to sweep common localhost bases, and add the bridge token only when the bridge reports auth is required.
                 </p>
               </div>
               <div class="config-divider"></div>
@@ -1045,10 +1050,10 @@
               </div>
               <div class="config-help-stack">
                 <p class="help">
-                  Copy a setup summary after you set the API base and token. The checklist redacts the token but includes the current runtime readiness.
+                  Copy a setup summary after you set the API base and tokens. The checklist redacts both the API bearer token and the local bridge token while keeping the current runtime readiness.
                 </p>
                 <p class="help">
-                  Reset clears the local API base, secure/local token, recent captures, and remembered surface mode on this device.
+                  Reset clears the local API base, bridge token, secure/local API token, recent captures, and remembered surface mode on this device.
                 </p>
               </div>
             </article>

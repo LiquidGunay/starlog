@@ -1,12 +1,14 @@
 const statusNode = document.getElementById("status");
 const apiBaseInput = document.getElementById("apiBase");
 const bridgeBaseInput = document.getElementById("bridgeBase");
+const bridgeTokenInput = document.getElementById("bridgeToken");
 const tokenInput = document.getElementById("token");
 const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
 const refreshDiagnosticsButton = document.getElementById("refreshDiagnostics");
 const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
 const checkBridgeButton = document.getElementById("checkBridge");
+const discoverBridgeButton = document.getElementById("discoverBridge");
 const copySetupChecklistButton = document.getElementById("copySetupChecklist");
 const resetLocalStateButton = document.getElementById("resetLocalState");
 const quickOpenWorkspaceButton = document.getElementById("quickOpenWorkspace");
@@ -549,19 +551,23 @@ function buildSetupChecklistSnapshot() {
     `Platform: ${runtimeDiagnostics.platform}`,
     `API base: ${config.apiBase}`,
     `Bridge base: ${config.bridgeBase}`,
+    `Bridge auth token configured: ${config.bridgeToken ? "yes" : "no"}`,
     `Bearer token configured: ${config.token ? "yes" : "no"}`,
     "",
     "Checklist:",
     "1. Launch the packaged helper on this device.",
     `2. Set API base to ${config.apiBase}.`,
     `3. Set local bridge base to ${config.bridgeBase}.`,
+    config.bridgeToken
+      ? "4. Bridge auth token is configured locally. Keep it aligned with STARLOG_BRIDGE_AUTH_TOKEN when bridge auth is enabled."
+      : "4. Add a bridge auth token only if the local bridge reports auth is required.",
     config.token
-      ? "4. Bearer token is configured on this device. Keep using secure storage for daily use."
-      : "4. Paste a bearer token into the helper before testing live uploads.",
-    "5. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
-    "6. Check Local Bridge to confirm STT/TTS/context routes are reachable on localhost.",
-    "7. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
-    "8. Review Recent Captures to confirm upload IDs, metadata, and screenshot previews render.",
+      ? "5. Bearer token is configured on this device. Keep using secure storage for daily use."
+      : "5. Paste a bearer token into the helper before testing live uploads.",
+    "6. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
+    "7. Discover or Check Local Bridge to confirm STT/TTS/context routes are reachable on localhost.",
+    "8. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
+    "9. Review Recent Captures to confirm upload IDs, metadata, and screenshot previews render.",
     "",
     "Runtime readiness:",
   ];
@@ -638,6 +644,7 @@ function applyStoredConfig(config) {
   bridgeBaseInput.value = typeof config?.bridgeBase === "string" && config.bridgeBase.trim()
     ? config.bridgeBase
     : DEFAULT_BRIDGE_BASE;
+  bridgeTokenInput.value = typeof config?.bridgeToken === "string" ? config.bridgeToken : "";
   tokenInput.value = hasTauriRuntime()
     ? ""
     : (typeof config?.token === "string" ? config.token : "");
@@ -647,6 +654,7 @@ function readConfig() {
   return {
     apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
     bridgeBase: bridgeBaseInput.value.trim() || DEFAULT_BRIDGE_BASE,
+    bridgeToken: bridgeTokenInput.value.trim(),
     token: tokenInput.value.trim(),
   };
 }
@@ -655,6 +663,7 @@ function persistConfig() {
   const nextConfig = {
     apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
     bridgeBase: bridgeBaseInput.value.trim() || DEFAULT_BRIDGE_BASE,
+    bridgeToken: bridgeTokenInput.value.trim(),
   };
   if (!hasTauriRuntime()) {
     nextConfig.token = tokenInput.value.trim();
@@ -833,6 +842,7 @@ function persistRecentCaptures(entries) {
 async function resetLocalState() {
   apiBaseInput.value = DEFAULT_API_BASE;
   bridgeBaseInput.value = DEFAULT_BRIDGE_BASE;
+  bridgeTokenInput.value = "";
   tokenInput.value = "";
 
   try {
@@ -859,9 +869,82 @@ function bridgeSummaryStatus(capabilities) {
   return "unavailable";
 }
 
-async function loadBridgeDiagnostics() {
-  const { bridgeBase } = readConfig();
-  if (!bridgeBase) {
+function normalizeBridgeBase(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function bridgeHealthHeaders(bridgeToken) {
+  const token = String(bridgeToken || "").trim();
+  return token ? { "X-Starlog-Bridge-Token": token } : {};
+}
+
+function bridgeDiscoveryCandidates(preferredBase) {
+  const normalizedPreferred = normalizeBridgeBase(preferredBase);
+  const candidates = [
+    normalizedPreferred,
+    DEFAULT_BRIDGE_BASE,
+    DEFAULT_BRIDGE_BASE.replace("127.0.0.1", "localhost"),
+    "http://localhost:8091",
+  ];
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+async function probeBridge(base, bridgeToken) {
+  const normalizedBase = normalizeBridgeBase(base);
+  const response = await fetch(`${normalizedBase}/health`, {
+    headers: bridgeHealthHeaders(bridgeToken),
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  return { normalizedBase, payload };
+}
+
+function bridgeDiagnosticPayload(normalizedBase, payload) {
+  const capabilities = typeof payload?.capabilities === "object" && payload.capabilities ? payload.capabilities : {};
+  const detailParts = [];
+  for (const [key, label] of [
+    ["stt", "STT"],
+    ["tts", "TTS"],
+    ["context", "Context"],
+    ["clip", "Clip"],
+  ]) {
+    const item = capabilities[key];
+    if (!item) {
+      continue;
+    }
+    const status = typeof item.status === "string" ? item.status : "unknown";
+    detailParts.push(`${label}: ${status}`);
+  }
+
+  const authRequired = Boolean(payload?.auth_required);
+  const authenticated = payload?.authenticated !== false;
+  let status = bridgeSummaryStatus(capabilities);
+  if (authRequired && !authenticated) {
+    status = "degraded";
+  }
+
+  const detail = detailParts.length > 0
+    ? `Local bridge reachable at ${normalizedBase}. ${detailParts.join(" · ")}.`
+    : `Local bridge reachable at ${normalizedBase}.`;
+  const authNote = authRequired
+    ? (authenticated ? "Bridge auth passed." : "Bridge auth required. Add the local bridge token to test protected routes.")
+    : "Bridge auth is not required.";
+  const serviceNote = typeof payload?.service === "string" ? `Service: ${payload.service}` : "Service: unknown";
+
+  return {
+    status,
+    detail,
+    note: `${serviceNote} ${authNote}`.trim(),
+  };
+}
+
+async function loadBridgeDiagnostics(options = {}) {
+  const { discover = false } = options;
+  const { bridgeBase, bridgeToken } = readConfig();
+  const candidates = discover ? bridgeDiscoveryCandidates(bridgeBase) : [bridgeBase];
+  if (candidates.length === 0 || !candidates[0]) {
     mergeRuntimeDiagnostics({
       bridge: {
         status: "unavailable",
@@ -870,53 +953,48 @@ async function loadBridgeDiagnostics() {
         availableBackends: ["http"],
       },
     });
-    return;
+    return null;
   }
 
-  const normalizedBase = bridgeBase.replace(/\/+$/, "");
-  try {
-    const response = await fetch(`${normalizedBase}/health`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+  let lastFailure = null;
+  for (const candidate of candidates) {
+    const normalizedBase = normalizeBridgeBase(candidate);
+    if (!normalizedBase) {
+      continue;
     }
-    const payload = await response.json();
-    const capabilities = typeof payload?.capabilities === "object" && payload.capabilities ? payload.capabilities : {};
-    const detailParts = [];
-    for (const [key, label] of [
-      ["stt", "STT"],
-      ["tts", "TTS"],
-      ["context", "Context"],
-      ["clip", "Clip"],
-    ]) {
-      const item = capabilities[key];
-      if (!item) {
-        continue;
+
+    try {
+      const { payload } = await probeBridge(normalizedBase, bridgeToken);
+      if (discover && normalizedBase !== normalizeBridgeBase(bridgeBase)) {
+        bridgeBaseInput.value = normalizedBase;
+        persistConfig();
       }
-      const status = typeof item.status === "string" ? item.status : "unknown";
-      detailParts.push(`${label}: ${status}`);
+      mergeRuntimeDiagnostics({
+        bridge: {
+          ...bridgeDiagnosticPayload(normalizedBase, payload),
+          preferredBackend: "http",
+          availableBackends: ["http"],
+        },
+      });
+      return normalizedBase;
+    } catch (error) {
+      lastFailure = error;
     }
-    mergeRuntimeDiagnostics({
-      bridge: {
-        status: bridgeSummaryStatus(capabilities),
-        detail: detailParts.length > 0
-          ? `Local bridge reachable at ${normalizedBase}. ${detailParts.join(" · ")}.`
-          : `Local bridge reachable at ${normalizedBase}.`,
-        preferredBackend: "http",
-        availableBackends: ["http"],
-        note: typeof payload?.service === "string" ? `Service: ${payload.service}` : "",
-      },
-    });
-  } catch (error) {
-    mergeRuntimeDiagnostics({
-      bridge: {
-        status: "unavailable",
-        detail: `Local bridge probe failed for ${normalizedBase}.`,
-        preferredBackend: "http",
-        availableBackends: ["http"],
-        note: errorMessage(error, "Bridge unavailable"),
-      },
-    });
   }
+
+  const firstCandidate = normalizeBridgeBase(candidates[0]);
+  mergeRuntimeDiagnostics({
+    bridge: {
+      status: "unavailable",
+      detail: discover
+        ? `Local bridge discovery failed across ${candidates.length} localhost candidate${candidates.length === 1 ? "" : "s"}.`
+        : `Local bridge probe failed for ${firstCandidate}.`,
+      preferredBackend: "http",
+      availableBackends: ["http"],
+      note: errorMessage(lastFailure, "Bridge unavailable"),
+    },
+  });
+  return null;
 }
 
 function rememberCapture(entry) {
@@ -1454,6 +1532,20 @@ async function checkLocalBridge() {
   }
 }
 
+async function discoverLocalBridge() {
+  setStatus("Discovering local bridge...");
+  try {
+    const discoveredBase = await loadBridgeDiagnostics({ discover: true });
+    if (!discoveredBase) {
+      setStatus("No local bridge discovered");
+      return;
+    }
+    setStatus(`Local bridge discovered at ${discoveredBase}`);
+  } catch (error) {
+    setStatus(errorMessage(error, "Local bridge discovery failed"));
+  }
+}
+
 async function copyRuntimeDiagnostics() {
   try {
     await copyTextToClipboard(buildRuntimeDiagnosticsSnapshot());
@@ -1478,6 +1570,7 @@ renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
 apiBaseInput.addEventListener("input", persistConfig);
 bridgeBaseInput.addEventListener("input", persistConfig);
+bridgeTokenInput.addEventListener("input", persistConfig);
 tokenInput.addEventListener("input", () => {
   persistToken().catch(() => undefined);
 });
@@ -1500,6 +1593,10 @@ copyDiagnosticsButton.addEventListener("click", () => {
 
 checkBridgeButton?.addEventListener("click", () => {
   checkLocalBridge().catch(() => undefined);
+});
+
+discoverBridgeButton?.addEventListener("click", () => {
+  discoverLocalBridge().catch(() => undefined);
 });
 
 copySetupChecklistButton?.addEventListener("click", () => {
