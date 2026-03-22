@@ -148,3 +148,28 @@ SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
    - Narrowest fix: from a native Windows shell on this host, run the exact RC install/smoke command now documented in `docs/ANDROID_DEV_BUILD.md`, then capture the two remaining screenshots:
      - hold-to-talk on the installed RC app
      - assistant/chat on the installed RC app
+
+## WI-590 current-master proof refresh
+
+Date: 2026-03-22
+Device target: OPPO CPH2381 (`9dd62e84`)
+Repo commit: `fbf6c44c8d42e825022d3a5b565860b4e5cbee7f`
+Artifact: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+
+## WI-590 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Current-master repo state matches canonical release artifact commit | PASS | `docs/evidence/mobile/wi-590-master-proof.md` |
+| Current preview APK remains present and hash-stable | PASS | `docs/evidence/mobile/wi-590-master-proof.md` |
+| Windows-visible APK staging for host install/run | PASS | `docs/evidence/mobile/wi-590-master-proof.md` |
+| Linux-shell execution of Windows ADB path | BLOCKED | `docs/evidence/mobile/wi-590-master-proof.md` |
+| Linux ADB visibility of connected physical phone | BLOCKED | `docs/evidence/mobile/wi-590-master-proof.md` |
+| Fresh on-phone hold-to-talk / assistant / briefing screenshots from this Codex shell | BLOCKED | `docs/evidence/mobile/wi-590-master-proof.md` |
+
+## WI-590 blocker
+
+1. The current-master Android artifact is ready, but this Codex Linux shell still cannot execute Windows-host binaries (`powershell.exe`, `cmd.exe`, `adb.exe`) and Linux `adb` still sees no connected phone here.
+   - Mitigation: run the documented native Windows `scripts/android_native_smoke_windows.ps1` command against the staged `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk` file, then capture the hold-to-talk and assistant/chat screenshots there.

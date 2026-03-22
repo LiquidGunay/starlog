@@ -190,6 +190,27 @@ Then capture and save:
 - an assistant/chat screenshot on the current RC APK
 - the Windows smoke log for the RC install/run
 
+## Current-master proof refresh (WI-590)
+
+On 2026-03-22, the latest `origin/master` validation worktree resolved to the same commit already
+present in the canonical checkout:
+
+- `fbf6c44c8d42e825022d3a5b565860b4e5cbee7f`
+
+The current preview artifact therefore remains:
+
+- `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+- staged host copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+- SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+
+The remaining blocker is environmental, not app-side:
+
+- this Codex Linux shell cannot execute `powershell.exe` or `cmd.exe` (`Exec format error`)
+- Linux `adb devices -l` still returns no connected phone on this host
+
+Use the native Windows PowerShell command above to complete the fresh physical-phone screenshots for
+hold-to-talk, assistant/chat, and offline briefing playback.
+
 ## First-time setup
 
 From repo root:
