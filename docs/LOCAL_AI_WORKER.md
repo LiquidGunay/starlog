@@ -69,6 +69,48 @@ Useful flags:
 - `ffmpeg` installed if uploaded audio is not already WAV
 - `whisper.cpp` built locally if you want voice-note transcription
 
+## Resident local voice servers
+
+Starlog now supports a resident local server path through the desktop bridge:
+
+- STT server: `scripts/run_whisper_cpp_server.sh`
+- TTS server: `scripts/local_tts_server.py`
+- bridge smoke: `scripts/local_voice_runtime_smoke.py`
+
+Recommended bridge env:
+
+```bash
+export STARLOG_BRIDGE_STT_SERVER_URL='http://127.0.0.1:8171/inference'
+export STARLOG_BRIDGE_TTS_SERVER_URL='http://127.0.0.1:8093/v1/tts/speak'
+```
+
+### Whisper server
+
+The preferred STT server path is the official `whisper.cpp` server. A typical launch flow is:
+
+```bash
+export STARLOG_LOCAL_WHISPER_MODEL='/ABS/PATH/ggml-base.en.bin'
+export STARLOG_LOCAL_WHISPER_GPU_LAYERS=999
+bash scripts/run_whisper_cpp_server.sh
+```
+
+If your local build uses different flags, override `STARLOG_LOCAL_WHISPER_SERVER_EXTRA_ARGS`.
+
+### TTS server
+
+Starlog ships a small local TTS server wrapper:
+
+```bash
+export STARLOG_LOCAL_TTS_PROVIDER_NAME='vibevoice_community_fallback'
+export STARLOG_LOCAL_TTS_GPU_MODE='gpu'
+export STARLOG_LOCAL_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
+
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
+  python scripts/local_tts_server.py
+```
+
+The official Microsoft `VibeVoice` repo is back online, but the TTS code was removed after September 2025. If you have a working community or internal VibeVoice command path, point `STARLOG_LOCAL_TTS_COMMAND` at it and set `STARLOG_LOCAL_TTS_PROVIDER_NAME` accordingly. Otherwise, use Piper or another local TTS command as the closest viable fallback while keeping the bridge on the same server abstraction.
+
 ## Run against a local API
 
 ```bash
@@ -186,3 +228,14 @@ PYTHONPATH=services/api uv run --project services/api \
 ```
 
 Use this if you want manual batch processing instead of a continuously running worker.
+
+## Env-gated bridge smoke
+
+Once the bridge and local voice servers are up, run:
+
+```bash
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
+  python scripts/local_voice_runtime_smoke.py
+```
+
+Set `STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH` if you want the smoke to exercise STT in addition to TTS.

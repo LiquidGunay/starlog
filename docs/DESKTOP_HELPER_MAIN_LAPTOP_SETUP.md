@@ -68,6 +68,40 @@ App entry points after install:
 6. Click `Refresh Diagnostics`.
 7. Resolve any runtime items still marked `Partial` or `Unavailable`.
 
+Optional local voice runtime for this laptop:
+
+1. Start the resident Whisper server:
+
+```bash
+export STARLOG_LOCAL_WHISPER_MODEL='/ABS/PATH/ggml-base.en.bin'
+export STARLOG_LOCAL_WHISPER_GPU_LAYERS=999
+bash scripts/run_whisper_cpp_server.sh
+```
+
+2. Start the local TTS server wrapper:
+
+```bash
+export STARLOG_LOCAL_TTS_PROVIDER_NAME='vibevoice_community_fallback'
+export STARLOG_LOCAL_TTS_GPU_MODE='gpu'
+export STARLOG_LOCAL_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_tts_server.py
+```
+
+3. Start the bridge with server-backed voice env:
+
+```bash
+export STARLOG_BRIDGE_STT_SERVER_URL='http://127.0.0.1:8171/inference'
+export STARLOG_BRIDGE_TTS_SERVER_URL='http://127.0.0.1:8093/v1/tts/speak'
+cd services/ai-runtime
+uv run --project . uvicorn bridge.server:app --host 127.0.0.1 --port 8091
+```
+
+4. Smoke it:
+
+```bash
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py
+```
+
 Production-origin note:
 
 - The current Railway API CORS allowlist is intentionally scoped to the hosted PWA domain.

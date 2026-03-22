@@ -38,6 +38,8 @@ class TtsRequest(BaseModel):
     text: str = Field(min_length=1)
     provider_hint: str | None = None
     output_path: str | None = None
+    voice_name: str | None = None
+    rate_wpm: int | None = None
     debug_audio_path: str | None = None
 
 

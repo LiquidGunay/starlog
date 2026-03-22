@@ -16,7 +16,11 @@ class BridgeConfig:
     base_url: str
     auth_token: str
     stt_command: str
+    stt_server_url: str
+    stt_server_auth_token: str
     tts_command: str
+    tts_server_url: str
+    tts_server_auth_token: str
     context_command: str
     clip_command: str
     static_context_json: str
@@ -42,7 +46,11 @@ def load_bridge_config() -> BridgeConfig:
         base_url=base_url,
         auth_token=os.getenv("STARLOG_BRIDGE_AUTH_TOKEN", "").strip(),
         stt_command=os.getenv("STARLOG_BRIDGE_STT_CMD", "").strip(),
+        stt_server_url=os.getenv("STARLOG_BRIDGE_STT_SERVER_URL", "").strip(),
+        stt_server_auth_token=os.getenv("STARLOG_BRIDGE_STT_SERVER_AUTH_TOKEN", "").strip(),
         tts_command=os.getenv("STARLOG_BRIDGE_TTS_CMD", "").strip(),
+        tts_server_url=os.getenv("STARLOG_BRIDGE_TTS_SERVER_URL", "").strip(),
+        tts_server_auth_token=os.getenv("STARLOG_BRIDGE_TTS_SERVER_AUTH_TOKEN", "").strip(),
         context_command=os.getenv("STARLOG_BRIDGE_CONTEXT_CMD", "").strip(),
         clip_command=os.getenv("STARLOG_BRIDGE_CLIP_CMD", "").strip(),
         static_context_json=os.getenv("STARLOG_BRIDGE_CONTEXT_JSON", "").strip(),
@@ -50,20 +58,40 @@ def load_bridge_config() -> BridgeConfig:
 
 
 def capability_summary(config: BridgeConfig) -> dict[str, dict[str, Any]]:
+    stt_available = bool(config.stt_server_url or config.stt_command)
+    stt_preferred_backend = "http" if config.stt_server_url else ("command" if config.stt_command else None)
+    if config.stt_server_url:
+        stt_detail = f"Server-backed STT bridge is configured at {config.stt_server_url}."
+    elif config.stt_command:
+        stt_detail = "Command-backed STT bridge is configured."
+    else:
+        stt_detail = (
+            "Set STARLOG_BRIDGE_STT_SERVER_URL for a resident local server, or "
+            "STARLOG_BRIDGE_STT_CMD for command-backed transcription."
+        )
+
+    tts_available = bool(config.tts_server_url or config.tts_command)
+    tts_preferred_backend = "http" if config.tts_server_url else ("command" if config.tts_command else None)
+    if config.tts_server_url:
+        tts_detail = f"Server-backed TTS bridge is configured at {config.tts_server_url}."
+    elif config.tts_command:
+        tts_detail = "Command-backed TTS bridge is configured."
+    else:
+        tts_detail = (
+            "Set STARLOG_BRIDGE_TTS_SERVER_URL for a resident local server, or "
+            "STARLOG_BRIDGE_TTS_CMD for command-backed synthesis."
+        )
+
     return {
         "stt": {
-            "status": "available" if config.stt_command else "unavailable",
-            "detail": "Command-backed STT bridge is configured."
-            if config.stt_command
-            else "Set STARLOG_BRIDGE_STT_CMD to enable local speech transcription.",
-            "preferred_backend": "command" if config.stt_command else None,
+            "status": "available" if stt_available else "unavailable",
+            "detail": stt_detail,
+            "preferred_backend": stt_preferred_backend,
         },
         "tts": {
-            "status": "available" if config.tts_command else "unavailable",
-            "detail": "Command-backed TTS bridge is configured."
-            if config.tts_command
-            else "Set STARLOG_BRIDGE_TTS_CMD to enable local speech synthesis.",
-            "preferred_backend": "command" if config.tts_command else None,
+            "status": "available" if tts_available else "unavailable",
+            "detail": tts_detail,
+            "preferred_backend": tts_preferred_backend,
         },
         "context": {
             "status": "available" if config.context_command or config.static_context_json else "degraded",
