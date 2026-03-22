@@ -1,0 +1,42 @@
+{
+  "health": {
+    "status": "ok",
+    "service": "desktop_local_bridge",
+    "base_url": "http://127.0.0.1:8091",
+    "auth_required": true,
+    "authenticated": true,
+    "capabilities": {
+      "stt": {
+        "status": "available",
+        "detail": "Server-backed STT bridge is configured at http://127.0.0.1:8171/inference.",
+        "preferred_backend": "http"
+      },
+      "tts": {
+        "status": "unavailable",
+        "detail": "Set STARLOG_BRIDGE_TTS_SERVER_URL for a resident local server, or STARLOG_BRIDGE_TTS_CMD for command-backed synthesis.",
+        "preferred_backend": null
+      },
+      "context": {
+        "status": "available",
+        "detail": "Desktop context bridge is configured.",
+        "preferred_backend": "static_json"
+      },
+      "clip": {
+        "status": "degraded",
+        "detail": "Set STARLOG_BRIDGE_CLIP_CMD to route bridge clip actions into existing Starlog capture tooling.",
+        "preferred_backend": null
+      }
+    }
+  },
+  "stt": {
+    "status": "ok",
+    "provider": "server",
+    "transcript": "and so my fellow Americans ask not what your country can do for you ask what you can do for your country.",
+    "detail": "Bridge transcribed audio through the configured local STT server."
+  },
+  "tts": {
+    "status": "skipped",
+    "detail": "STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS is enabled."
+  },
+  "tts_output_exists": false
+}

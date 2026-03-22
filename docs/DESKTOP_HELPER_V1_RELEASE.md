@@ -13,6 +13,7 @@ Last updated: 2026-03-22
 | WI-325 | v1 RC package structure (checksums, manifest, build metadata, install/rollback notes) |
 | WI-423 | Main-laptop setup pack, reset flow, install/runbook handoff, and configured daily-use smoke path |
 | WI-580 | Local-PC release-candidate rerun with localhost bridge auth/discovery, local voice smoke, real helper upload, and refreshed operator docs |
+| WI-591 | Current-master desktop helper proof on the target laptop with one exact remaining host blocker |
 
 ## Distribution architecture
 
@@ -165,17 +166,18 @@ Last updated: 2026-03-22
   - `cd services/ai-runtime && uv run --extra dev --extra local-voice pytest -s ./bridge/tests/test_server.py ./bridge/tests/test_local_stt_server.py ./tests/test_workflows.py` -> `18 passed`
   - `PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py` -> passed against the authenticated bridge with real STT and skipped TTS
 - Screenshots and smoke summary:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-config.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-diagnostics.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-quick-popup.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/rc-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-config.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-diagnostics.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-quick-popup.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/rc-smoke.json`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/runtime-dependency-probe.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-voice-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/runtime-dependency-probe.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime-smoke.json`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-stt-direct.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/sudo-check.txt`
 - Real capture confirmation:
-  - helper upload artifact id `art_b40fadfafc55444897413ec4bdc59593`
-  - `GET /v1/artifacts?limit=5` on the local API returned the stored helper capture with browser-clipboard metadata
+  - helper upload artifact id `art_3d4598c462bf40d7a056651820bd6a15`
+  - `rc-smoke.json` shows the helper discovered the authenticated bridge at `http://127.0.0.1:8091` and saved the clipboard clip through the local API
 
 ## RC package + handoff (WI-325)
 
@@ -221,6 +223,7 @@ Last updated: 2026-03-22
   - Raw staged binary links successfully against the expected GTK/WebKit libraries on this host.
   - Helper browser-fallback smoke uploaded a real clipboard capture into a local API while discovering and authenticating against the local bridge.
   - Native Linux screenshot/OCR smoke is still blocked on missing host packages (`wl-paste`/`xclip`, screenshot tooling, `tesseract`), and the concrete remaining operator step is to run the generated `apt-get` command with interactive `sudo`.
+  - The exact host-side blocker is now reduced to one issue with command evidence: `sudo -n true` still returns `sudo: a password is required` on this machine, so package installation cannot be completed from this shell alone.
 
 ### Release notes template
 

@@ -80,6 +80,12 @@ App entry points after install:
 6. Click `Refresh Diagnostics`.
 7. Resolve any runtime items still marked `Partial` or `Unavailable`.
 
+Current-master local proof status:
+
+- helper browser-fallback smoke passed against a fresh local API on `http://127.0.0.1:8010`
+- bridge auth + local STT smoke passed against `http://127.0.0.1:8091` and `http://127.0.0.1:8171`
+- the only remaining Linux-host blocker is installing native clipboard/screenshot/OCR packages from an interactive `sudo` session
+
 Optional local voice runtime for this laptop:
 
 1. Start the rootless local STT server from the repo. This path works on this host without `sudo`:
@@ -187,22 +193,22 @@ If you need to clear the secure token after the app has already been removed, re
 ## Evidence from this pass
 
 - RC screenshots and smoke summary:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-config.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-quick-popup.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-diagnostics.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/rc-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-config.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-quick-popup.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-diagnostics.png`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/rc-smoke.json`
 - Runtime bootstrap + dependency probe:
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/runtime-dependency-probe.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/runtime-dependency-probe.json`
 - Real local voice smoke:
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/jfk.wav`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-voice-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime-smoke.json`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-stt-direct.json`
-  - bridge auth passed, the rootless local STT server returned `and so my fellow Americans ask not what your country can do for you...`, and the direct STT response recorded `device=cpu` / `compute_type=int8`
+  - bridge auth passed, the rootless local STT server returned `and so my fellow Americans ask not what your country can do for you ask what you can do for your country.`, and the direct STT response recorded `device=cpu` / `compute_type=int8`
 - Real local capture:
   - local API on `http://127.0.0.1:8010`
-  - helper uploaded artifact `art_b40fadfafc55444897413ec4bdc59593`
-  - `GET /v1/artifacts?limit=5` confirmed the stored capture content and helper metadata
+  - helper uploaded artifact `art_3d4598c462bf40d7a056651820bd6a15`
+  - `rc-smoke.json` confirms local bridge discovery at `http://127.0.0.1:8091` and a saved clipboard clip from the helper popup
 - Package smoke:
   - `dpkg-deb -I` confirmed package `starlog-desktop-helper`, version `0.1.0`, architecture `amd64`
   - `dpkg-deb -x` confirmed payload includes `/usr/bin/starlog_desktop_helper` and the desktop launcher file
@@ -210,3 +216,4 @@ If you need to clear the secure token after the app has already been removed, re
   - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` passed after the RC smoke server was no longer bound on `127.0.0.1:4173`
 - Host blocker that still applies:
   - native Linux clipboard, screenshot, and OCR binaries are not installed here yet, and installing them from this shell still requires interactive `sudo`, so native screenshot/OCR validation remains blocked on host setup rather than helper code
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/sudo-check.txt` records the exact failure: `sudo: a password is required`
