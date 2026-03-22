@@ -1,0 +1,44 @@
+{
+  "id": "briefing-memory-context-pr57-001",
+  "workflow": "briefing",
+  "source_prs": [
+    57
+  ],
+  "input": {
+    "title": "Briefing memory context",
+    "text": "Generate today's briefing using recent memory context, recommendation hints, and source references.",
+    "context": {
+      "date": "2026-03-22",
+      "memory_summary": "Yesterday's focus drifted after lunch; protect the first deep-work block.",
+      "recommendation_hints": [
+        "front-load review work",
+        "protect one uninterrupted block"
+      ],
+      "sources": [
+        "calendar",
+        "tasks",
+        "conversation_memory"
+      ]
+    }
+  },
+  "checks": {
+    "must_include": [
+      "recent memory",
+      "recommendation",
+      "source reference"
+    ],
+    "must_not_include": [
+      "silent calendar write",
+      "memory context omitted"
+    ]
+  },
+  "golden_output": {
+    "summary_style": "concise",
+    "sections": [
+      "schedule",
+      "tasks",
+      "review",
+      "memory context"
+    ]
+  }
+}
