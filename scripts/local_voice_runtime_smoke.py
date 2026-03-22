@@ -42,18 +42,23 @@ def main() -> None:
     else:
         result["stt"] = {"status": "skipped", "detail": "Set STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH to exercise STT."}
 
-    with tempfile.TemporaryDirectory(prefix="starlog-local-voice-smoke-") as temp_dir:
-        output_path = Path(temp_dir) / "tts-output.wav"
-        result["tts"] = _call_json(
-            f"{base_url}/v1/tts/speak",
-            payload={
-                "text": os.getenv("STARLOG_LOCAL_VOICE_SMOKE_TEXT", "Starlog local voice runtime smoke test."),
-                "output_path": str(output_path),
-                "voice_name": os.getenv("STARLOG_LOCAL_VOICE_SMOKE_VOICE", "") or None,
-                "rate_wpm": int(os.getenv("STARLOG_LOCAL_VOICE_SMOKE_RATE_WPM", "0") or "0") or None,
-            },
-        )
-        result["tts_output_exists"] = output_path.exists()
+    skip_tts = os.getenv("STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS", "").strip().lower() in {"1", "true", "yes"}
+    if skip_tts:
+        result["tts"] = {"status": "skipped", "detail": "STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS is enabled."}
+        result["tts_output_exists"] = False
+    else:
+        with tempfile.TemporaryDirectory(prefix="starlog-local-voice-smoke-") as temp_dir:
+            output_path = Path(temp_dir) / "tts-output.wav"
+            result["tts"] = _call_json(
+                f"{base_url}/v1/tts/speak",
+                payload={
+                    "text": os.getenv("STARLOG_LOCAL_VOICE_SMOKE_TEXT", "Starlog local voice runtime smoke test."),
+                    "output_path": str(output_path),
+                    "voice_name": os.getenv("STARLOG_LOCAL_VOICE_SMOKE_VOICE", "") or None,
+                    "rate_wpm": int(os.getenv("STARLOG_LOCAL_VOICE_SMOKE_RATE_WPM", "0") or "0") or None,
+                },
+            )
+            result["tts_output_exists"] = output_path.exists()
 
     print(json.dumps(result, indent=2))
 

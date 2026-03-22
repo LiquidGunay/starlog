@@ -17,6 +17,10 @@ dependencies = [
 dev = [
   "pytest>=8.3.0,<8.4.0",
 ]
+local-voice = [
+  "faster-whisper>=1.2.0,<2.0.0",
+  "python-multipart>=0.0.20,<0.1.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

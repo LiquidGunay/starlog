@@ -69,6 +69,19 @@ Useful flags:
 - `ffmpeg` installed if uploaded audio is not already WAV
 - `whisper.cpp` built locally if you want voice-note transcription
 
+Rootless STT fallback for laptop/bridge testing:
+
+```bash
+STARLOG_LOCAL_STT_MODEL='tiny.en' \
+STARLOG_LOCAL_STT_DEVICE='auto' \
+uv run --project services/ai-runtime --extra local-voice python scripts/local_stt_server.py
+```
+
+Notes:
+
+- This path avoids system-package installation for STT itself.
+- On this host, auto mode initially sees the NVIDIA GPU but falls back to CPU if CUDA user-space libraries such as `libcublas.so.12` are unavailable.
+
 ## Resident local voice servers
 
 Starlog now supports a resident local server path through the desktop bridge:
@@ -234,6 +247,14 @@ Use this if you want manual batch processing instead of a continuously running w
 Once the bridge and local voice servers are up, run:
 
 ```bash
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
+  python scripts/local_voice_runtime_smoke.py
+```
+
+If you only have STT configured, skip the TTS leg explicitly:
+
+```bash
+STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS=1 \
 PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
   python scripts/local_voice_runtime_smoke.py
 ```

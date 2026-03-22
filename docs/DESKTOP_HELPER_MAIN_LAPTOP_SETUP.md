@@ -20,26 +20,38 @@ This guide is the daily-use setup handoff for the Linux desktop helper on this h
 
 ## Linux prerequisites on this host
 
-The latest runtime probe on this host reported:
+The latest runtime probe on this host still reports:
 
 - `clipboard`: missing
 - `screenshot`: missing
 - `active_window`: degraded
 - `ocr`: degraded
 
-Recommended install command for this Linux setup:
+Generate the exact package list for this host:
+
+```bash
+tools/desktop-helper/scripts/bootstrap_linux_runtime_deps.sh \
+  --output-json artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/linux-bootstrap.json
+```
+
+Current install command for this Linux setup:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y wl-clipboard gnome-screenshot xdotool tesseract-ocr
+sudo apt-get install -y wl-clipboard grim slurp xclip scrot xdotool gnome-screenshot imagemagick tesseract-ocr ffmpeg
 ```
 
 Notes:
 
-- `wl-clipboard` satisfies the Linux clipboard backend. `xclip` or `xsel` are valid alternatives.
-- `gnome-screenshot` restores a deterministic screenshot backend on this host. `scrot` or ImageMagick `import` are alternatives.
+- `wl-clipboard` and `xclip` cover the Wayland/X11 clipboard backends surfaced by the helper.
+- `grim` + `slurp`, `gnome-screenshot`, `scrot`, and ImageMagick `import` cover the Linux screenshot backends surfaced by the helper.
 - `xdotool` restores richer active-window metadata on X11-class sessions.
 - `tesseract-ocr` enables local screenshot OCR.
+- `ffmpeg` keeps local voice processing flexible when audio is not already WAV.
+
+Exact blocker on this host:
+
+- package installation still requires interactive `sudo`, so the generated `apt-get` command must be run manually on the Linux side.
 
 ## Install
 
@@ -70,15 +82,20 @@ App entry points after install:
 
 Optional local voice runtime for this laptop:
 
-1. For a real Whisper/Piper-style setup, start the resident STT/TTS services you actually have on this host:
+1. Start the rootless local STT server from the repo. This path works on this host without `sudo`:
 
 ```bash
-export STARLOG_LOCAL_WHISPER_MODEL='/ABS/PATH/ggml-base.en.bin'
-export STARLOG_LOCAL_WHISPER_GPU_LAYERS=999
-bash scripts/run_whisper_cpp_server.sh
+STARLOG_LOCAL_STT_MODEL='tiny.en' \
+STARLOG_LOCAL_STT_DEVICE='auto' \
+uv run --project services/ai-runtime --extra local-voice python scripts/local_stt_server.py
 ```
 
-2. Start the local TTS server wrapper:
+Notes:
+
+- On this host, auto mode initially sees the NVIDIA GPU but falls back to CPU because `libcublas.so.12` is not present in WSL.
+- If you already have a resident `whisper.cpp` server, you can keep using `scripts/run_whisper_cpp_server.sh` instead.
+
+2. TTS is still optional on this host. If you already have a working local TTS command, start the wrapper:
 
 ```bash
 export STARLOG_LOCAL_TTS_PROVIDER_NAME='vibevoice_community_fallback'
@@ -87,34 +104,22 @@ export STARLOG_LOCAL_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.on
 PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_tts_server.py
 ```
 
-3. If you only need to smoke the merged bridge path on this host, the exact local RC stack used on 2026-03-22 was:
-
-```bash
-services/api/.venv/bin/python scripts/mock_stt_server.py
-
-STARLOG_LOCAL_TTS_PROVIDER_NAME=wi580_debug \
-STARLOG_LOCAL_TTS_GPU_MODE=off \
-STARLOG_LOCAL_TTS_COMMAND='python3 scripts/write_debug_wav.py --output-path {output_path}' \
-PYTHONPATH=services/ai-runtime \
-uv run --project services/ai-runtime python scripts/local_tts_server.py
-```
-
-4. Start the bridge with server-backed voice env:
+3. Start the bridge with server-backed STT env:
 
 ```bash
 export STARLOG_BRIDGE_AUTH_TOKEN='bridge-secret'
 export STARLOG_BRIDGE_STT_SERVER_URL='http://127.0.0.1:8171/inference'
-export STARLOG_BRIDGE_TTS_SERVER_URL='http://127.0.0.1:8093/v1/tts/speak'
-export STARLOG_BRIDGE_CONTEXT_JSON='{"app_name":"Codex","window_title":"WI-580 RC Smoke","platform":"linux"}'
+export STARLOG_BRIDGE_CONTEXT_JSON='{"app_name":"Codex","window_title":"WI-585 Voice Smoke","platform":"linux"}'
 PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime uvicorn bridge.server:app --host 127.0.0.1 --port 8091
 ```
 
-5. Smoke it:
+4. Smoke it:
 
 ```bash
 STARLOG_LOCAL_BRIDGE_AUTH_TOKEN='bridge-secret' \
-STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=/tmp/starlog-wi580-smoke-input.wav \
-STARLOG_LOCAL_VOICE_SMOKE_TEXT_HINT='desktop helper rc smoke transcript' \
+STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/jfk.wav \
+STARLOG_LOCAL_VOICE_SMOKE_TEXT_HINT='and so my fellow Americans' \
+STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS=1 \
 PYTHONPATH=services/ai-runtime \
 uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py
 ```
@@ -186,9 +191,14 @@ If you need to clear the secure token after the app has already been removed, re
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-quick-popup.png`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/desktop-helper-rc-diagnostics.png`
   - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/rc-smoke.json`
-- Local voice smoke:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/local-voice-smoke.json`
-  - bridge auth passed, STT returned `desktop helper rc smoke transcript`, and the local TTS wrapper produced a WAV file
+- Runtime bootstrap + dependency probe:
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/runtime-dependency-probe.json`
+- Real local voice smoke:
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/jfk.wav`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-voice-smoke.json`
+  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-stt-direct.json`
+  - bridge auth passed, the rootless local STT server returned `and so my fellow Americans ask not what your country can do for you...`, and the direct STT response recorded `device=cpu` / `compute_type=int8`
 - Real local capture:
   - local API on `http://127.0.0.1:8010`
   - helper uploaded artifact `art_b40fadfafc55444897413ec4bdc59593`
@@ -199,4 +209,4 @@ If you need to clear the secure token after the app has already been removed, re
   - `ldd` confirmed the staged binary links against GTK/WebKit libraries on this host
   - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` passed after the RC smoke server was no longer bound on `127.0.0.1:4173`
 - Host blocker that still applies:
-  - native Linux clipboard, screenshot, and OCR binaries are not installed here yet, so native screenshot/OCR validation remains blocked on host setup rather than helper code
+  - native Linux clipboard, screenshot, and OCR binaries are not installed here yet, and installing them from this shell still requires interactive `sudo`, so native screenshot/OCR validation remains blocked on host setup rather than helper code
