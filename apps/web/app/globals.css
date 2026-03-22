@@ -2169,3 +2169,425 @@ a {
     padding: 0.54rem 0.58rem;
   }
 }
+
+.assistant-thread-shell .command-center-main {
+  min-width: 0;
+}
+
+.assistant-main-scroll {
+  display: grid;
+  gap: 1rem;
+}
+
+.assistant-side-column {
+  min-width: 0;
+}
+
+.assistant-side-stack {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.assistant-side-card {
+  padding: 1rem;
+  border-radius: 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 18%);
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+}
+
+.assistant-side-card-head,
+.assistant-composer-head,
+.assistant-thread-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.assistant-side-card-head h2,
+.assistant-composer-head h2,
+.assistant-thread-head h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.12rem;
+}
+
+.assistant-side-kicker,
+.assistant-empty-kicker,
+.assistant-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--primary-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.assistant-mini-feed {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.assistant-mini-feed-item {
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 42%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 10%);
+}
+
+.assistant-mini-feed-item.active {
+  border-color: color-mix(in srgb, var(--primary), transparent 25%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary), transparent 68%);
+}
+
+.assistant-mini-feed-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0.78rem 0.82rem;
+  display: grid;
+  gap: 0.32rem;
+  cursor: pointer;
+}
+
+.assistant-mini-feed-button strong {
+  font-size: 0.95rem;
+}
+
+.assistant-mini-feed-meta {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+.assistant-mini-feed-empty {
+  padding: 0.9rem 0.2rem 0.15rem;
+  color: var(--muted);
+}
+
+.assistant-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.assistant-chip-button {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 55%);
+  background: color-mix(in srgb, var(--chip), transparent 10%);
+  color: var(--text);
+  padding: 0.52rem 0.82rem;
+  cursor: pointer;
+  font: inherit;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.assistant-chip-button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary), transparent 22%);
+}
+
+.assistant-hero,
+.assistant-thread-panel,
+.assistant-composer {
+  padding: 1.1rem 1.15rem;
+  border-radius: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 15%);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--panel), transparent 12%), color-mix(in srgb, var(--panel-solid), transparent 2%)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--primary), transparent 85%), transparent 46%);
+  box-shadow: var(--shadow);
+}
+
+.assistant-hero {
+  display: grid;
+  gap: 1rem;
+}
+
+.assistant-hero-copy h1 {
+  margin: 0.2rem 0 0.45rem;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(1.8rem, 3vw, 2.75rem);
+}
+
+.assistant-hero-copy p {
+  margin: 0;
+  max-width: 62ch;
+  color: color-mix(in srgb, var(--text), var(--muted) 22%);
+}
+
+.assistant-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.assistant-hero-separator {
+  opacity: 0.5;
+}
+
+.assistant-hero-actions {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.assistant-hero-button-row,
+.assistant-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.assistant-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.assistant-stat-pill {
+  min-width: 124px;
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 30%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 6%);
+  padding: 0.7rem 0.82rem;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.assistant-stat-pill span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.69rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.assistant-stat-pill strong {
+  font-size: 1rem;
+}
+
+.assistant-voice-button {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 30%);
+  border-radius: 1.1rem;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--primary), transparent 68%), transparent 58%),
+    linear-gradient(160deg, color-mix(in srgb, var(--chip), transparent 4%), color-mix(in srgb, var(--panel-solid), transparent 0%));
+  color: var(--text);
+  padding: 1rem 1.05rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.28rem;
+  text-align: left;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.assistant-voice-button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary), transparent 12%);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--primary), transparent 82%);
+}
+
+.assistant-voice-button.recording {
+  border-color: color-mix(in srgb, var(--danger), transparent 15%);
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--danger), transparent 66%), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--danger), transparent 88%), color-mix(in srgb, var(--panel-solid), transparent 0%));
+}
+
+.assistant-voice-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.assistant-voice-button-label {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.assistant-voice-button-meta {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+}
+
+.assistant-thread-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.assistant-thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.assistant-thread-feed {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.assistant-empty-thread {
+  border: 1px dashed color-mix(in srgb, var(--panel-border), transparent 40%);
+  border-radius: 1rem;
+  padding: 1.2rem;
+  background: color-mix(in srgb, var(--panel-solid), transparent 14%);
+}
+
+.assistant-empty-thread h3 {
+  margin: 0.25rem 0 0.45rem;
+  font-size: 1.2rem;
+}
+
+.assistant-empty-thread p {
+  margin: 0 0 0.75rem;
+  color: color-mix(in srgb, var(--text), var(--muted) 26%);
+}
+
+.assistant-thread-message {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.assistant-thread-message.role-user {
+  justify-items: end;
+}
+
+.assistant-thread-message-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.assistant-role-chip {
+  border-radius: 999px;
+  padding: 0.18rem 0.52rem;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 52%);
+  background: color-mix(in srgb, var(--chip), transparent 12%);
+  color: var(--primary-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.assistant-thread-message.role-user .assistant-role-chip {
+  border-color: color-mix(in srgb, var(--success), transparent 55%);
+  color: color-mix(in srgb, var(--success), #ffffff 18%);
+}
+
+.assistant-thread-bubble {
+  width: min(100%, 760px);
+  border-radius: 1.15rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 36%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 4%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14);
+}
+
+.assistant-thread-message.role-user .assistant-thread-bubble {
+  background: color-mix(in srgb, var(--primary), transparent 82%);
+}
+
+.assistant-thread-bubble p {
+  margin: 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.assistant-inline-card {
+  margin-top: 0.9rem;
+  border-radius: 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 28%);
+  background: color-mix(in srgb, var(--bg-2), transparent 8%);
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.assistant-inline-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.assistant-inline-card-steps {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.assistant-inline-step {
+  border-radius: 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 35%);
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: color-mix(in srgb, var(--panel), transparent 16%);
+}
+
+.assistant-composer {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.assistant-voice-ready {
+  border-radius: 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--success), transparent 48%);
+  background: color-mix(in srgb, var(--success), transparent 90%);
+  padding: 0.85rem;
+}
+
+.assistant-voice-ready p {
+  margin: 0 0 0.55rem;
+}
+
+@media (max-width: 1100px) {
+  .assistant-thread-bubble {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .assistant-side-card-head,
+  .assistant-composer-head,
+  .assistant-thread-head {
+    flex-direction: column;
+  }
+
+  .assistant-hero,
+  .assistant-thread-panel,
+  .assistant-composer {
+    padding: 0.95rem;
+  }
+
+  .assistant-hero-button-row,
+  .assistant-toolbar,
+  .assistant-thread-actions {
+    flex-direction: column;
+  }
+
+  .assistant-stat-pill {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+}
