@@ -10,10 +10,12 @@ test("persists helper config across reloads", async ({ page }) => {
   await page.goto("/index.html");
 
   await page.getByLabel("API base").fill("https://starlog.example");
+  await page.getByLabel("Local bridge base").fill("http://127.0.0.1:8099");
   await page.getByLabel("Bearer token").fill("token-123");
   await page.reload();
 
   await expect(page.getByLabel("API base")).toHaveValue("https://starlog.example");
+  await expect(page.getByLabel("Local bridge base")).toHaveValue("http://127.0.0.1:8099");
   await expect(page.getByLabel("Bearer token")).toHaveValue("token-123");
 });
 
@@ -68,7 +70,48 @@ test("browser runtime diagnostics can refresh and copy a redacted snapshot", asy
   const copiedDiagnostics = await page.evaluate(() => window.__copiedDiagnostics);
   expect(copiedDiagnostics).toContain('"runtime": "browser"');
   expect(copiedDiagnostics).toContain('"apiBase": "http://localhost:8000"');
+  expect(copiedDiagnostics).toContain('"bridge"');
   expect(copiedDiagnostics).not.toContain("token-");
+});
+
+test("helper can probe a configured local bridge", async ({ page }) => {
+  await page.addInitScript(() => {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = String(input);
+      if (url === "http://127.0.0.1:8099/health") {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            service: "desktop_local_bridge",
+            base_url: "http://127.0.0.1:8099",
+            capabilities: {
+              stt: { status: "available", detail: "stt ready" },
+              tts: { status: "available", detail: "tts ready" },
+              context: { status: "available", detail: "context ready" },
+              clip: { status: "degraded", detail: "clip not wired yet" },
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+      return realFetch(input, init);
+    };
+  });
+
+  await page.goto("/index.html");
+  await page.getByLabel("Local bridge base").fill("http://127.0.0.1:8099");
+  await page.getByRole("button", { name: "Check Local Bridge" }).click();
+
+  await expect(page.locator("#status")).toHaveText("Local bridge diagnostics refreshed");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText("Local bridge reachable at http://127.0.0.1:8099");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText("STT: available");
+  await expect(page.locator("#runtimeDiagnostics")).toContainText("Service: desktop_local_bridge");
 });
 
 test("browser runtime diagnostics report clipboard unavailability clearly", async ({ page }) => {
@@ -224,6 +267,7 @@ test("copy setup checklist redacts the token and includes readiness guidance", a
 
   await page.goto("/index.html");
   await page.getByLabel("API base").fill("https://starlog.example");
+  await page.getByLabel("Local bridge base").fill("http://127.0.0.1:8099");
   await page.getByLabel("Bearer token").fill("token-123");
   await page.getByRole("button", { name: "Copy Setup Checklist" }).click();
 
@@ -232,6 +276,7 @@ test("copy setup checklist redacts the token and includes readiness guidance", a
   const copiedChecklist = await page.evaluate(() => window.__copiedDiagnostics || "");
   expect(copiedChecklist).toContain("Starlog Desktop Helper Setup Checklist");
   expect(copiedChecklist).toContain("API base: https://starlog.example");
+  expect(copiedChecklist).toContain("Bridge base: http://127.0.0.1:8099");
   expect(copiedChecklist).toContain("Bearer token configured: yes");
   expect(copiedChecklist).toContain("Reset Local State");
   expect(copiedChecklist).not.toContain("token-123");
@@ -257,6 +302,7 @@ test("reset local state clears config, recent captures, and quick surface prefer
   await page.goto("/index.html?mode=quick");
   await page.getByRole("button", { name: "Open Workspace" }).click();
   await page.getByLabel("API base").fill("https://starlog.example");
+  await page.getByLabel("Local bridge base").fill("http://127.0.0.1:8099");
   await page.getByLabel("Bearer token").fill("token-123");
   await expect(page.locator("#recentCaptures")).toContainText("artifact-reset");
 
@@ -264,6 +310,7 @@ test("reset local state clears config, recent captures, and quick surface prefer
 
   await expect(page.locator("#status")).toHaveText("Local setup reset to defaults");
   await expect(page.getByLabel("API base")).toHaveValue("http://localhost:8000");
+  await expect(page.getByLabel("Local bridge base")).toHaveValue("http://127.0.0.1:8091");
   await expect(page.getByLabel("Bearer token")).toHaveValue("");
   await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "workspace");
   await expect(page.locator("#recentCaptures")).toContainText("No captures yet.");

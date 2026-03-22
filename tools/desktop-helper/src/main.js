@@ -1,10 +1,12 @@
 const statusNode = document.getElementById("status");
 const apiBaseInput = document.getElementById("apiBase");
+const bridgeBaseInput = document.getElementById("bridgeBase");
 const tokenInput = document.getElementById("token");
 const clipSelectionButton = document.getElementById("clipSelection");
 const clipScreenshotButton = document.getElementById("clipScreenshot");
 const refreshDiagnosticsButton = document.getElementById("refreshDiagnostics");
 const copyDiagnosticsButton = document.getElementById("copyDiagnostics");
+const checkBridgeButton = document.getElementById("checkBridge");
 const copySetupChecklistButton = document.getElementById("copySetupChecklist");
 const resetLocalStateButton = document.getElementById("resetLocalState");
 const quickOpenWorkspaceButton = document.getElementById("quickOpenWorkspace");
@@ -19,6 +21,7 @@ const SURFACE_MODE_STORAGE_KEY = "starlog.desktop-helper.surface-mode.v1";
 const MAIN_WINDOW_LABEL = "main";
 const WORKSPACE_WINDOW_LABEL = "workspace";
 const DEFAULT_API_BASE = "http://localhost:8000";
+const DEFAULT_BRIDGE_BASE = "http://127.0.0.1:8091";
 const MAX_RECENT_CAPTURES = 6;
 const SCREENSHOT_PREVIEW_MAX_DIMENSION = 320;
 const WORKSPACE_SURFACE_WINDOW = { width: 1120, height: 760, minWidth: 940, minHeight: 620 };
@@ -27,6 +30,7 @@ const RUNTIME_DIAGNOSTIC_ITEMS = [
   ["screenshot", "Screenshot"],
   ["activeWindow", "Active window"],
   ["ocr", "OCR"],
+  ["bridge", "Local bridge"],
   ["shortcuts", "Shortcuts"],
 ];
 const GLOBAL_SHORTCUTS = [
@@ -239,6 +243,12 @@ function createBrowserRuntimeDiagnostics() {
       preferredBackend: null,
       availableBackends: [],
     },
+    bridge: {
+      status: "degraded",
+      detail: "No localhost bridge probe has completed yet. Set a local bridge base and refresh diagnostics.",
+      preferredBackend: "http",
+      availableBackends: ["http"],
+    },
     shortcuts: {
       status: "pending",
       detail: "Checking shortcut wiring.",
@@ -293,6 +303,10 @@ function normalizeRuntimeDiagnostics(source) {
       source?.ocr,
       fallback.ocr.detail,
     ),
+    bridge: normalizeCapability(
+      source?.bridge,
+      fallback.bridge.detail,
+    ),
     shortcuts: normalizeCapability(
       source?.shortcuts,
       fallback.shortcuts.detail,
@@ -311,6 +325,7 @@ function mergeRuntimeDiagnostics(patch) {
     screenshot: patch?.screenshot ? { ...base.screenshot, ...patch.screenshot } : base.screenshot,
     activeWindow: patch?.activeWindow ? { ...base.activeWindow, ...patch.activeWindow } : base.activeWindow,
     ocr: patch?.ocr ? { ...base.ocr, ...patch.ocr } : base.ocr,
+    bridge: patch?.bridge ? { ...base.bridge, ...patch.bridge } : base.bridge,
     shortcuts: patch?.shortcuts ? { ...base.shortcuts, ...patch.shortcuts } : base.shortcuts,
   });
   renderRuntimeDiagnostics(runtimeDiagnostics);
@@ -519,6 +534,7 @@ function buildRuntimeDiagnosticsSnapshot() {
       screenshot: runtimeDiagnostics.screenshot,
       activeWindow: runtimeDiagnostics.activeWindow,
       ocr: runtimeDiagnostics.ocr,
+      bridge: runtimeDiagnostics.bridge,
       shortcuts: runtimeDiagnostics.shortcuts,
     },
   }, null, 2);
@@ -532,17 +548,20 @@ function buildSetupChecklistSnapshot() {
     `Runtime: ${runtimeDiagnostics.runtime}`,
     `Platform: ${runtimeDiagnostics.platform}`,
     `API base: ${config.apiBase}`,
+    `Bridge base: ${config.bridgeBase}`,
     `Bearer token configured: ${config.token ? "yes" : "no"}`,
     "",
     "Checklist:",
     "1. Launch the packaged helper on this device.",
     `2. Set API base to ${config.apiBase}.`,
+    `3. Set local bridge base to ${config.bridgeBase}.`,
     config.token
-      ? "3. Bearer token is configured on this device. Keep using secure storage for daily use."
-      : "3. Paste a bearer token into the helper before testing live uploads.",
-    "4. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
-    "5. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
-    "6. Review Recent Captures to confirm upload IDs, metadata, and screenshot previews render.",
+      ? "4. Bearer token is configured on this device. Keep using secure storage for daily use."
+      : "4. Paste a bearer token into the helper before testing live uploads.",
+    "5. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
+    "6. Check Local Bridge to confirm STT/TTS/context routes are reachable on localhost.",
+    "7. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
+    "8. Review Recent Captures to confirm upload IDs, metadata, and screenshot previews render.",
     "",
     "Runtime readiness:",
   ];
@@ -616,6 +635,9 @@ function applyStoredConfig(config) {
   apiBaseInput.value = typeof config?.apiBase === "string" && config.apiBase.trim()
     ? config.apiBase
     : DEFAULT_API_BASE;
+  bridgeBaseInput.value = typeof config?.bridgeBase === "string" && config.bridgeBase.trim()
+    ? config.bridgeBase
+    : DEFAULT_BRIDGE_BASE;
   tokenInput.value = hasTauriRuntime()
     ? ""
     : (typeof config?.token === "string" ? config.token : "");
@@ -624,6 +646,7 @@ function applyStoredConfig(config) {
 function readConfig() {
   return {
     apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
+    bridgeBase: bridgeBaseInput.value.trim() || DEFAULT_BRIDGE_BASE,
     token: tokenInput.value.trim(),
   };
 }
@@ -631,6 +654,7 @@ function readConfig() {
 function persistConfig() {
   const nextConfig = {
     apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
+    bridgeBase: bridgeBaseInput.value.trim() || DEFAULT_BRIDGE_BASE,
   };
   if (!hasTauriRuntime()) {
     nextConfig.token = tokenInput.value.trim();
@@ -808,6 +832,7 @@ function persistRecentCaptures(entries) {
 
 async function resetLocalState() {
   apiBaseInput.value = DEFAULT_API_BASE;
+  bridgeBaseInput.value = DEFAULT_BRIDGE_BASE;
   tokenInput.value = "";
 
   try {
@@ -821,6 +846,77 @@ async function resetLocalState() {
   await persistToken();
   await applySurfaceMode(hasTauriRuntime() ? "quick" : "workspace");
   setStatus("Local setup reset to defaults");
+}
+
+function bridgeSummaryStatus(capabilities) {
+  const states = Object.values(capabilities).map((item) => item?.status || "unavailable");
+  if (states.every((status) => status === "available")) {
+    return "available";
+  }
+  if (states.some((status) => status === "available" || status === "degraded")) {
+    return "degraded";
+  }
+  return "unavailable";
+}
+
+async function loadBridgeDiagnostics() {
+  const { bridgeBase } = readConfig();
+  if (!bridgeBase) {
+    mergeRuntimeDiagnostics({
+      bridge: {
+        status: "unavailable",
+        detail: "Local bridge base is empty. Configure a localhost bridge URL first.",
+        preferredBackend: "http",
+        availableBackends: ["http"],
+      },
+    });
+    return;
+  }
+
+  const normalizedBase = bridgeBase.replace(/\/+$/, "");
+  try {
+    const response = await fetch(`${normalizedBase}/health`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    const capabilities = typeof payload?.capabilities === "object" && payload.capabilities ? payload.capabilities : {};
+    const detailParts = [];
+    for (const [key, label] of [
+      ["stt", "STT"],
+      ["tts", "TTS"],
+      ["context", "Context"],
+      ["clip", "Clip"],
+    ]) {
+      const item = capabilities[key];
+      if (!item) {
+        continue;
+      }
+      const status = typeof item.status === "string" ? item.status : "unknown";
+      detailParts.push(`${label}: ${status}`);
+    }
+    mergeRuntimeDiagnostics({
+      bridge: {
+        status: bridgeSummaryStatus(capabilities),
+        detail: detailParts.length > 0
+          ? `Local bridge reachable at ${normalizedBase}. ${detailParts.join(" · ")}.`
+          : `Local bridge reachable at ${normalizedBase}.`,
+        preferredBackend: "http",
+        availableBackends: ["http"],
+        note: typeof payload?.service === "string" ? `Service: ${payload.service}` : "",
+      },
+    });
+  } catch (error) {
+    mergeRuntimeDiagnostics({
+      bridge: {
+        status: "unavailable",
+        detail: `Local bridge probe failed for ${normalizedBase}.`,
+        preferredBackend: "http",
+        availableBackends: ["http"],
+        note: errorMessage(error, "Bridge unavailable"),
+      },
+    });
+  }
 }
 
 function rememberCapture(entry) {
@@ -1341,9 +1437,20 @@ async function refreshRuntimeDiagnostics() {
   setStatus("Refreshing diagnostics...");
   try {
     await loadRuntimeDiagnostics();
+    await loadBridgeDiagnostics();
     setStatus(window.__TAURI__ ? "Runtime diagnostics refreshed" : "Browser diagnostics refreshed");
   } catch (error) {
     setStatus(errorMessage(error, "Runtime diagnostics refresh failed"));
+  }
+}
+
+async function checkLocalBridge() {
+  setStatus("Checking local bridge...");
+  try {
+    await loadBridgeDiagnostics();
+    setStatus("Local bridge diagnostics refreshed");
+  } catch (error) {
+    setStatus(errorMessage(error, "Local bridge diagnostics failed"));
   }
 }
 
@@ -1370,6 +1477,7 @@ document.body.dataset.helperMode = currentSurfaceMode;
 renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
 apiBaseInput.addEventListener("input", persistConfig);
+bridgeBaseInput.addEventListener("input", persistConfig);
 tokenInput.addEventListener("input", () => {
   persistToken().catch(() => undefined);
 });
@@ -1390,6 +1498,10 @@ copyDiagnosticsButton.addEventListener("click", () => {
   copyRuntimeDiagnostics().catch(() => undefined);
 });
 
+checkBridgeButton?.addEventListener("click", () => {
+  checkLocalBridge().catch(() => undefined);
+});
+
 copySetupChecklistButton?.addEventListener("click", () => {
   copySetupChecklist().catch(() => undefined);
 });
@@ -1407,7 +1519,9 @@ workspaceReturnQuickButton?.addEventListener("click", () => {
 });
 
 wireWindowShortcuts();
-loadRuntimeDiagnostics().catch(() => undefined);
+loadRuntimeDiagnostics()
+  .then(() => loadBridgeDiagnostics())
+  .catch(() => undefined);
 wireGlobalShortcuts().catch(() => undefined);
 hydrateSecureTokenFromStorage().catch(() => undefined);
 applySurfaceMode(currentSurfaceMode, { persist: false }).catch(() => undefined);
