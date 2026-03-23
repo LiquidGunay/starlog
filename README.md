@@ -123,6 +123,7 @@ Guide: `docs/AI_VALIDATION_SMOKE_MATRIX.md`
 For the shortest install/test bundle across desktop, phone, and PWA, start here:
 
 - `docs/VNEXT_TEST_BUNDLE.md`
+- `docs/FINAL_PREVIEW_SIGNOFF.md`
 
 For web release candidates, run the heavier PWA release gate as well:
 

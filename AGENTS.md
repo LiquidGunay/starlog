@@ -117,6 +117,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` — current human-readable work queue for parallel agent execution.
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — daily-use install, prerequisite, config, smoke, and reset handoff for the desktop helper on the main laptop.
 - `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
+- `docs/FINAL_PREVIEW_SIGNOFF.md` — current preview release-decision handoff, including the merged baseline and the remaining phone-proof import needed for full closure.
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
