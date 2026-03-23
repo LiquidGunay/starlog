@@ -60,8 +60,8 @@ Last updated: 2026-03-22
   - `manifest.tsv`
   - `build-info.txt`
 - Checksums from this run:
-  - `.deb`: `2c022ceb315cb214f5da09a81db4a933c02b4720d75a1aa8764546792171cead`
-  - raw binary: `bcb87e6989c1ee940b602448bf64fa5dfb5c7b6c46ce5d69ee97ddb8b3318efc`
+  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
+  - raw binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
 
 ## Signing/notarization readiness (WI-322)
 
@@ -199,8 +199,8 @@ Last updated: 2026-03-22
 - Artifact folder:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/`
 - Checksums:
-  - `.deb`: `2c022ceb315cb214f5da09a81db4a933c02b4720d75a1aa8764546792171cead`
-  - binary: `bcb87e6989c1ee940b602448bf64fa5dfb5c7b6c46ce5d69ee97ddb8b3318efc`
+  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
+  - binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
 - Exact staged artifacts:
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
   - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`

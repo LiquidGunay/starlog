@@ -173,3 +173,35 @@ SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
 
 1. The current-master Android artifact is ready, but this Codex Linux shell still cannot execute Windows-host binaries (`powershell.exe`, `cmd.exe`, `adb.exe`) and Linux `adb` still sees no connected phone here.
    - Mitigation: run the documented native Windows `scripts/android_native_smoke_windows.ps1` command against the staged `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk` file, then capture the hold-to-talk and assistant/chat screenshots there.
+
+## WI-601 phone-proof import refresh
+
+Date: 2026-03-23
+Device target: OPPO CPH2381 (`9dd62e84`)
+Repo commit: `0e967da986b2590af9d497448a03678b7305cc25`
+Artifact under test: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+Installed package: `com.starlog.app.preview`
+Launcher component: `com.starlog.app.preview/com.starlog.app.dev.MainActivity`
+SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+
+## WI-601 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Windows-host `adb.exe devices -l` from the main Codex shell | PASS | `docs/evidence/mobile/wi-601-smoke-log.txt` |
+| RC APK streamed install from the Windows-visible `C:\Temp\...` path | PASS | `docs/evidence/mobile/wi-601-smoke-log.txt` |
+| Preview package launch after install | PASS | `docs/evidence/mobile/wi-601-smoke-log.txt` |
+| Android smoke script rerun (`launch + deep-link + text share`) | PASS | `docs/evidence/mobile/wi-601-smoke-log.txt` |
+| Assistant/chat-native shell on the installed preview package | PASS | `docs/evidence/mobile/wi-601-assistant-shell.png` |
+| Alarms / briefing surface on the installed preview package | PASS | `docs/evidence/mobile/wi-601-alarms-briefing.png` |
+| Foreground activity belongs to preview package after smoke | PASS | `docs/evidence/mobile/wi-601-smoke-log.txt` |
+| Live Railway-hosted deployment remains reachable for feedback use | PASS | `docs/PREVIEW_FEEDBACK_BUNDLE.md` |
+
+## WI-601 notes
+
+1. The working device path on this host is now the Windows platform-tools `adb.exe`, while Linux `adb` still reports no attached device.
+   - Mitigation: continue using the Windows ADB binary for physical-phone proof on this host.
+2. When the smoke script uses `adb.exe`, installs must target a native Windows path (`C:\Temp\...`), not a WSL path (`/mnt/c/...`).
+   - Mitigation: install with the Windows path first, then rerun `./scripts/android_native_smoke.sh` with `SKIP_INSTALL=1` for the scripted launch/deep-link/share flow.
+3. The alarms surface currently reports `No offline briefing cached yet` in this specific proof run.
+   - Interpretation: the installable preview and hosted integration are ready for feedback, but a fresh offline-audio cache artifact was not part of this evidence import.

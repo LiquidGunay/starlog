@@ -162,10 +162,9 @@ STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true \
 ./gradlew assembleRelease --console=plain
 ```
 
-For this host, a Codex Linux shell still cannot execute the Windows `adb.exe` that reaches the
-physical phone, and local WSL `adb devices -l` may stay empty even when earlier Windows-host
-validation succeeded. Use the Windows-host smoke flow below for the final install/screenshot
-pass against the connected phone.
+For this host, Linux `adb devices -l` may stay empty even when the physical phone is reachable
+through the Windows platform-tools `adb.exe`. Use the Windows-host path below for reproducible
+installs and keep the phone on that device path for the final screenshot proof.
 
 For the current RC proof pass, the APK has already been staged into a Windows-visible path:
 
@@ -203,13 +202,30 @@ The current preview artifact therefore remains:
 - staged host copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
 - SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
 
-The remaining blocker is environmental, not app-side:
+The remaining app-side artifact is unchanged, but the usable phone path on this host is now the
+Windows platform-tools `adb.exe`; Linux `adb devices -l` still returns no connected phone here.
 
-- this Codex Linux shell cannot execute `powershell.exe` or `cmd.exe` (`Exec format error`)
-- Linux `adb devices -l` still returns no connected phone on this host
+Use the native Windows-path install command above, then rerun the smoke via the note below when
+you want another fresh physical-phone screenshot pass.
 
-Use the native Windows PowerShell command above to complete the fresh physical-phone screenshots for
-hold-to-talk, assistant/chat, and offline briefing playback.
+## Post-proof refresh note (WI-601)
+
+On 2026-03-23, the main Codex shell on this host was again able to execute the Windows
+platform-tools `adb.exe` path directly and complete a real physical-phone install/launch/smoke
+pass against the current RC artifact.
+
+Important path constraint that still applies:
+
+- `adb.exe install` must use the native Windows APK path `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+- the same run can then use `./scripts/android_native_smoke.sh` with `SKIP_INSTALL=1` for launch,
+  deep-link, and text-share verification
+
+Fresh evidence from that pass is now tracked in:
+
+- `docs/evidence/mobile/wi-601-phone-proof.md`
+- `docs/evidence/mobile/wi-601-smoke-log.txt`
+- `docs/evidence/mobile/wi-601-assistant-shell.png`
+- `docs/evidence/mobile/wi-601-alarms-briefing.png`
 
 ## First-time setup
 

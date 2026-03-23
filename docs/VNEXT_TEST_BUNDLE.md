@@ -1,7 +1,7 @@
 # vNext Test Bundle
 
 This is the operator handoff for the next voice-native preview build on current `origin/master`
-(`c10a800`, merged Android blocker doc [#76](https://github.com/LiquidGunay/starlog/pull/76)).
+(`0e967da`, merged preview signoff/doc refresh [#82](https://github.com/LiquidGunay/starlog/pull/82)).
 
 ## Current green baseline
 
@@ -14,9 +14,8 @@ Validated locally from a fresh master worktree with shared-state linking:
 - PWA release gate: `bash ./scripts/pwa_release_gate.sh`
 - OpenAI runtime smoke with `.env` loaded: `cd services/ai-runtime && uv run --project . python scripts/openai_smoke.py`
 
-The current release baseline is good enough for the next preview handoff, but it is not yet a
-fully closed release proof because one phone step still has to be run from the Windows host and
-hosted-smoke drift still needs watching.
+The current release baseline is ready for the next preview feedback pass. The phone install/smoke
+proof has been refreshed, and one local preview bundle now exists for direct phone/laptop install.
 
 ## Install and test surfaces
 
@@ -49,6 +48,7 @@ What to judge:
 - Supporting docs:
   - `docs/PHONE_SETUP.md`
   - `docs/ANDROID_RELEASE_QA_MATRIX.md`
+  - `docs/PREVIEW_FEEDBACK_BUNDLE.md`
 - Current preview RC artifact:
   - `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
   - staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
@@ -56,10 +56,10 @@ What to judge:
 Core phone checks:
 
 - install and launch the preview RC,
-- verify one hold-to-talk turn,
-- verify one assistant/chat turn,
-- verify one offline briefing playback path,
-- capture screenshots/logs.
+- verify the assistant/chat shell,
+- verify the alarms / briefing surface,
+- use the live Railway deployment for real feedback,
+- capture any follow-up screenshots/logs you want from your own usage pass.
 
 ### Desktop helper
 
@@ -73,40 +73,24 @@ Core phone checks:
   - verify one capture path,
   - verify local voice diagnostics and local STT smoke if the host runtime is installed.
 
-## Required host-external phone step
+## Local preview bundle
 
-The remaining phone proof is blocked by host environment, not by the current app build. Per merged
-Android blocker doc [#76](https://github.com/LiquidGunay/starlog/pull/76), this Linux Codex shell
-still cannot execute `powershell.exe`, `cmd.exe`, or the Windows `adb.exe` that can actually reach
-the connected phone.
+Generated bundle path on this machine:
 
-Run this from a native Windows PowerShell session in the repo root:
+- `/home/ubuntu/starlog_preview_bundle`
 
-```powershell
-.\scripts\android_native_smoke_windows.ps1 `
-  -AdbPath "C:\Temp\android-platform-tools\platform-tools\adb.exe" `
-  -Serial 9dd62e84 `
-  -ApkPath "C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk" `
-  -AppPackage "com.starlog.app.preview" `
-  -AppActivity "com.starlog.app.preview/com.starlog.app.dev.MainActivity" `
-  -ReversePorts "8000"
-```
+Install from:
 
-Save:
-
-- a hold-to-talk screenshot,
-- an assistant/chat screenshot,
-- an offline briefing playback screenshot,
-- the Windows smoke log.
+- phone APK: `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc1-102.apk`
+- laptop `.deb`: `/home/ubuntu/starlog_preview_bundle/desktop/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
 
 ## Remaining drift to call out
 
 - Hosted smoke drift still exists operationally. The latest isolated rerun passed, but prior runs
   have drifted because overlapping or stale local `next build` / `next start` processes can poison
   `bash ./scripts/pwa_hosted_smoke.sh`. Treat hosted smoke as green only when run in isolation.
-- The phone proof is still host-external. The preview bundle is ready for user testing on web and
-  desktop immediately, but the final fresh physical-phone screenshots still require the Windows-side
-  operator step above.
+- Linux `adb` still does not see the phone on this host; the working physical-device path remains
+  the Windows platform-tools `adb.exe`.
 - The cross-surface host-local proof is now documented in `docs/CROSS_SURFACE_PROOF.md`; on the
   recorded run, the built PWA shell loaded and rendered the helper-uploaded artifact, but the
   seeded assistant-thread marker still required API-level evidence rather than a visible transcript
