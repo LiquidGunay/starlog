@@ -20,6 +20,7 @@ from app.api.routes import (
     ops,
     planning,
     plugins,
+    research,
     search,
     srs,
     sync,
@@ -43,6 +44,7 @@ api_router.include_router(calendar.router, tags=["calendar"])
 api_router.include_router(planning.router, tags=["planning"])
 api_router.include_router(srs.router, tags=["srs"])
 api_router.include_router(search.router, tags=["search"])
+api_router.include_router(research.router, tags=["research"])
 api_router.include_router(briefings.router, tags=["briefings"])
 api_router.include_router(events.router, tags=["events"])
 api_router.include_router(integrations.router, tags=["integrations"])
