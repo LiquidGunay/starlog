@@ -1,5 +1,10 @@
+from app.main import app
 from app.services import research_adapters
 from fastapi.testclient import TestClient
+
+
+def test_research_routes_are_registered() -> None:
+    assert any(route.path == "/v1/research/sources" for route in app.router.routes)
 
 
 def test_research_sources_bootstrap(client: TestClient, auth_headers: dict[str, str]) -> None:
