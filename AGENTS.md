@@ -120,6 +120,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/FINAL_PREVIEW_SIGNOFF.md` — current preview release-decision handoff, including the merged baseline and the remaining phone-proof import needed for full closure.
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
+- `docs/PREVIEW_FEEDBACK_BUNDLE.md` — exact local bundle paths and hosted endpoints for the current user-feedback install pass.
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
@@ -382,3 +383,4 @@ Troubleshooting checklist:
 - 2026-03-22: `scripts/pwa_hosted_smoke.sh` assumes `127.0.0.1:8000` is free; if another API is already bound there, the isolated smoke API fails to start and the hosted smoke can silently target the wrong local API unless `STARLOG_HOSTED_SMOKE_API_PORT` is overridden.
 - 2026-03-22: In the WI-593 isolated API proof, the built PWA artifact surface rendered the helper-uploaded `Desktop clip`, but the assistant surface did not render the seeded persistent-thread marker in the saved proof run even though `/v1/conversations/primary` returned it, so host-local cross-surface thread proof currently relies on API evidence plus PWA shell/artifact evidence rather than the assistant transcript UI alone.
 - 2026-03-23: Replaying stale doc-only proof PRs onto current `origin/master` can conflict in shared handoff docs like `AGENTS.md` and `docs/VNEXT_TEST_BUNDLE.md`; preserve the newer release-handoff baseline on `master` and reapply only the still-relevant proof references.
+- 2026-03-23: On this host, the main Codex shell can again execute the Windows platform-tools `adb.exe` and reach the physical phone, but `android_native_smoke.sh` still cannot install through a WSL-style `/mnt/c/...` APK path when using `adb.exe`; use a native Windows path like `C:\Temp\...` for installs, then rerun the smoke script with `SKIP_INSTALL=1`.

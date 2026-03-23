@@ -124,6 +124,7 @@ For the shortest install/test bundle across desktop, phone, and PWA, start here:
 
 - `docs/VNEXT_TEST_BUNDLE.md`
 - `docs/FINAL_PREVIEW_SIGNOFF.md`
+- `docs/PREVIEW_FEEDBACK_BUNDLE.md`
 
 For web release candidates, run the heavier PWA release gate as well:
 

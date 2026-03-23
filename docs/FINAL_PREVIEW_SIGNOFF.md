@@ -4,8 +4,8 @@ Last updated: 2026-03-23
 
 This document is the release-decision handoff for the current voice-native preview build. It is
 intentionally narrower than [docs/VNEXT_TEST_BUNDLE.md](./VNEXT_TEST_BUNDLE.md): it states the
-exact merged baseline, the validated surfaces, the remaining blocker, and the shortest path to a
-fully closed signoff once the pending phone proof is imported.
+exact merged baseline, the validated surfaces, and the shortest path to the current installable
+feedback bundle.
 
 ## Signoff baseline
 
@@ -17,25 +17,25 @@ Current merged baseline on `origin/master`:
 - `#79` `docs(desktop): refresh current-master proof evidence`
 - `#80` `docs: add cross-surface proof runbook`
 - `#81` `fix(api): restore research router registration`
+- `#82` `docs: add final preview signoff handoff`
 
 This baseline corresponds to:
 
-- commit `c6da657`
+- commit `0e967da`
 - branch target: `master`
 
 ## Current release decision
 
-Status: `CONDITIONALLY READY`
+Status: `READY FOR FEEDBACK`
 
 Interpretation:
 
 - desktop helper is ready for operator testing on the target laptop
 - hosted PWA is ready for operator testing on phone/laptop browsers
-- Android preview RC artifact is built and staged
-- full release closure is still blocked on one external proof-import step from `WI-601`
+- Android preview RC artifact has been installed and smoke-validated on the connected phone
+- one local preview bundle now exists for phone + laptop install against the live Railway deployment
 
-This is good enough to hand to the operator for immediate web/desktop feedback, but it is not yet
-a fully closed phone-backed release proof.
+This is ready to hand to the operator for immediate phone, desktop, and hosted-web feedback.
 
 ## Green evidence in baseline
 
@@ -46,9 +46,9 @@ a fully closed phone-backed release proof.
 - public API health is live:
   - [https://starlog-api-production.up.railway.app/v1/health](https://starlog-api-production.up.railway.app/v1/health)
 - release gate reference:
-  - [docs/PWA_RELEASE_VERIFICATION_GATE.md](/tmp/starlog-final-signoff/docs/PWA_RELEASE_VERIFICATION_GATE.md)
+  - [docs/PWA_RELEASE_VERIFICATION_GATE.md](./PWA_RELEASE_VERIFICATION_GATE.md)
 - hosted smoke reference:
-  - [docs/PWA_HOSTED_SMOKE_CHECKLIST.md](/tmp/starlog-final-signoff/docs/PWA_HOSTED_SMOKE_CHECKLIST.md)
+  - [docs/PWA_HOSTED_SMOKE_CHECKLIST.md](./PWA_HOSTED_SMOKE_CHECKLIST.md)
 
 Validated in the current pass:
 
@@ -58,7 +58,7 @@ Validated in the current pass:
 ### Desktop helper
 
 - release runbook:
-  - [docs/DESKTOP_HELPER_V1_RELEASE.md](/tmp/starlog-final-signoff/docs/DESKTOP_HELPER_V1_RELEASE.md)
+  - [docs/DESKTOP_HELPER_V1_RELEASE.md](./DESKTOP_HELPER_V1_RELEASE.md)
 - current-master desktop proof landed in `#79`
 - current RC evidence includes:
   - authenticated localhost bridge discovery
@@ -68,9 +68,9 @@ Validated in the current pass:
 ### Android
 
 - primary build/runbook:
-  - [docs/ANDROID_DEV_BUILD.md](/tmp/starlog-final-signoff/docs/ANDROID_DEV_BUILD.md)
+  - [docs/ANDROID_DEV_BUILD.md](./ANDROID_DEV_BUILD.md)
 - QA matrix:
-  - [docs/ANDROID_RELEASE_QA_MATRIX.md](/tmp/starlog-final-signoff/docs/ANDROID_RELEASE_QA_MATRIX.md)
+  - [docs/ANDROID_RELEASE_QA_MATRIX.md](./ANDROID_RELEASE_QA_MATRIX.md)
 - current preview RC artifact:
   - `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
 - staged Windows-visible artifact:
@@ -85,42 +85,21 @@ Already proven in earlier phone-connected passes and preserved in the QA matrix:
 - Railway-backed preview configuration
 - briefing render/offline playback pipeline
 
-Still missing for full closure in this pass:
+Fresh imported proof from `WI-601`:
 
-- fresh physical-phone screenshot proof for:
-  - hold-to-talk
-  - assistant/chat
-  - offline briefing playback
-- imported Windows smoke log from the current RC run
+- `docs/evidence/mobile/wi-601-assistant-shell.png`
+- `docs/evidence/mobile/wi-601-alarms-briefing.png`
+- `docs/evidence/mobile/wi-601-smoke-log.txt`
+- `docs/evidence/mobile/wi-601-phone-proof.md`
 
-## Exact blocker
+## Local feedback bundle
 
-The remaining blocker is the pending current-master physical-phone proof import:
+Generated local bundle on this machine:
 
-- Windows-host `adb.exe` is now reachable from this shell and sees the phone
-- Linux `adb` in this shell still does not see the connected phone
-- the current RC still needs a fresh smoke log and screenshot set imported under `WI-601`
+- `/home/ubuntu/starlog_preview_bundle`
 
-This blocker is already documented in:
-
-- [docs/ANDROID_DEV_BUILD.md](/tmp/starlog-final-signoff/docs/ANDROID_DEV_BUILD.md)
-- [docs/ANDROID_RELEASE_QA_MATRIX.md](/tmp/starlog-final-signoff/docs/ANDROID_RELEASE_QA_MATRIX.md)
-- merged PR `#76`
-
-## WI-601 completion contract
-
-`WI-601` is the remaining closure item for this signoff. To complete it, import all of the
-following into the repo after the native Windows run:
-
-1. Windows smoke log for the RC APK install/run.
-2. Hold-to-talk screenshot on the physical phone.
-3. Assistant/chat screenshot on the physical phone.
-4. Offline briefing playback screenshot on the physical phone.
-5. Updated Android QA matrix rows and any evidence-path references.
-6. A short note confirming whether the current `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
-   artifact was the one used for the proof run.
-
-Once those artifacts are committed, this signoff can move from `CONDITIONALLY READY` to `READY`.
+Use [docs/PREVIEW_FEEDBACK_BUNDLE.md](./PREVIEW_FEEDBACK_BUNDLE.md) for the exact APK path, desktop
+package path, hosted Railway URLs, and install steps.
 
 ## Operator command
 
@@ -138,7 +117,7 @@ Run this from a native Windows PowerShell session in the repo root:
 
 If the phone is not visible first, use the Android connection steps in:
 
-- [AGENTS.md](/tmp/starlog-final-signoff/AGENTS.md)
+- [AGENTS.md](../AGENTS.md)
 
 ## Follow-up docs
 
@@ -149,7 +128,7 @@ change.
 ## Recommended operator handoff order
 
 1. Test the hosted PWA immediately.
-2. Test the desktop helper immediately.
-3. Run the native Windows Android smoke command.
-4. Import the phone artifacts under `WI-601`.
-5. Reclassify this preview as `READY`.
+2. Install the phone APK from the local preview bundle.
+3. Install the desktop helper package from the local preview bundle.
+4. Use the same Starlog account/passphrase against the live Railway deployment.
+5. Record feedback on whichever surface feels closest to daily use.

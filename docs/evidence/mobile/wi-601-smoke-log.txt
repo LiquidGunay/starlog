@@ -1,0 +1,30 @@
+Date: 2026-03-23
+Serial: 9dd62e84
+Adb path: /mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+Repo commit: 0e967da986b2590af9d497448a03678b7305cc25
+APK under test: C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk
+
+1. Device listing
+List of devices attached
+9dd62e84               device product:CPH2381 model:CPH2381 device:OP535DL1 transport_id:1
+
+2. Preview package launcher resolution
+priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false
+com.starlog.app.preview/com.starlog.app.dev.MainActivity
+
+3. APK install
+Performing Streamed Install
+Success
+
+4. Android smoke script rerun after install
+[android-smoke] Waiting for adb device
+[android-smoke] Reversing tcp:8000
+[android-smoke] Skipping APK install
+[android-smoke] Launching app
+[android-smoke] Sending deep-link capture
+[android-smoke] Sending text share intent
+[android-smoke] Smoke flow completed. Inspect the device/emulator UI to confirm the Starlog quick-capture state.
+
+5. Foreground verification after smoke
+mCurrentFocus=Window{5cb2b52 u0 com.starlog.app.preview/com.starlog.app.dev.MainActivity}
+mFocusedApp=ActivityRecord{3da048c u0 com.starlog.app.preview/com.starlog.app.dev.MainActivity t9971}

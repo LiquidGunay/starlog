@@ -45,7 +45,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-401. Mobile companion UI dedupe + design cleanup
 - Branch: `codex/mobile-ui-dedupe-alignment`
-- Lock: `UNCLAIMED | Workitem: WI-401 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-401 | Owner: N/A | Claimed: 2026-03-15T19:05:06Z | Last heartbeat: 2026-03-15T19:12:51Z`
 - Goal: remove the duplicated admin-console feel from the mobile companion while preserving the current capabilities.
 - Scope:
   - collapse the advanced capture/review stacks into more compact secondary surfaces,
@@ -61,7 +61,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-402. Android installable build for the main phone
 - Branch: `codex/mobile-main-phone-installable`
-- Lock: `UNCLAIMED | Workitem: WI-402 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-402 | Owner: N/A | Claimed: 2026-03-16T09:19:05Z | Last heartbeat: 2026-03-16T09:45:40Z`
 - Goal: produce one installable Android artifact suitable for the user's main phone.
 - Scope:
   - choose the correct install path (`preview`/internal vs production-style RC),
@@ -78,7 +78,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-403. Main-phone Starlog setup pack
 - Branch: `codex/mobile-main-phone-setup-pack`
-- Lock: `UNCLAIMED | Workitem: WI-403 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-403 | Owner: N/A | Claimed: 2026-03-22T05:31:02Z | Last heartbeat: 2026-03-22T05:36:17Z`
 - Goal: leave the main phone ready for real use once the installable build exists.
 - Scope:
   - set API base/auth in the installed app,
@@ -96,7 +96,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-421. Desktop helper UI dedupe + studio alignment
 - Branch: `codex/desktop-studio-dedupe-alignment`
-- Lock: `UNCLAIMED | Workitem: WI-421 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-421 | Owner: N/A | Claimed: 2026-03-15T18:26:43Z | Last heartbeat: 2026-03-15T18:34:25Z`
 - Goal: separate the quick popup from the studio workspace more cleanly so the workspace is not just the popup re-embedded.
 - Scope:
   - keep the compact quick surface focused on immediate capture,
@@ -112,7 +112,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-422. Desktop installable artifact for the main laptop
 - Branch: `codex/desktop-main-laptop-installable`
-- Lock: `UNCLAIMED | Workitem: WI-422 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-422 | Owner: N/A | Claimed: 2026-03-15T18:37:32Z | Last heartbeat: 2026-03-15T18:40:42Z`
 - Goal: produce the host-appropriate installer/package that the user can actually install on the main laptop.
 - Scope:
   - choose the correct host artifact (`.deb`, `.msi`, `.nsis`, `.dmg`, etc.),
@@ -129,7 +129,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-423. Main-laptop helper setup pack
 - Branch: `codex/desktop-main-laptop-setup-pack`
-- Lock: `UNCLAIMED | Workitem: WI-423 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-423 | Owner: N/A | Claimed: 2026-03-15T18:51:13Z | Last heartbeat: 2026-03-15T19:02:35Z`
 - Goal: leave the main laptop helper fully configured for daily capture.
 - Scope:
   - configure API base/token,
@@ -147,7 +147,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-441. PWA session-controls consolidation
 - Branch: `codex/pwa-session-controls-consolidation`
-- Lock: `UNCLAIMED | Workitem: WI-441 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-441 | Owner: N/A | Claimed: 2026-03-15T17:49:37Z | Last heartbeat: 2026-03-15T17:56:46Z`
 - Goal: stop repeating the generic session/admin form across the canonical PWA shells.
 - Scope:
   - consolidate `SessionControls` into one secondary settings surface/pattern,
@@ -164,7 +164,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-442. PWA surface polish against `screen_design`
 - Branch: `codex/pwa-surface-polish`
-- Lock: `UNCLAIMED | Workitem: WI-442 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-442 | Owner: N/A | Claimed: 2026-03-15T18:13:53Z | Last heartbeat: 2026-03-15T18:22:21Z`
 - Goal: finish the stylistic cleanup after session-control consolidation.
 - Scope:
   - tighten assistant/artifact/sync/planner spacing, empty states, and panel hierarchy,
@@ -179,7 +179,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-446. Centralize provider + LLM configuration
 - Branch: `codex/pwa-central-llm-config`
-- Lock: `UNCLAIMED | Workitem: WI-446 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-446 | Owner: N/A | Claimed: 2026-03-15T17:57:28Z | Last heartbeat: 2026-03-15T17:59:43Z`
 - Goal: move provider/LLM configuration out of each tab and into one central configurable surface.
 - Scope:
   - identify every repeated provider/config block across the PWA tabs,
@@ -196,7 +196,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-447. Collapsible side panes across the PWA
 - Branch: `codex/pwa-collapsible-side-panes`
-- Lock: `UNCLAIMED | Workitem: WI-447 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `COMPLETED | Workitem: WI-447 | Owner: N/A | Claimed: 2026-03-15T18:01:00Z | Last heartbeat: 2026-03-15T18:12:50Z`
 - Goal: make the side panes across the main PWA surfaces collapsible so the workspace can focus on the primary content.
 - Scope:
   - identify the recurring side-panel pattern on the main PWA shells,
@@ -212,7 +212,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-443. Railway project/service setup
 - Branch: `codex/railway-project-service-setup`
-- Lock: `COMPLETED | Workitem: WI-443 | Owner: N/A | Claimed: 2026-03-15T16:26:08Z | Last heartbeat: 2026-03-15T16:31:40Z`
+- Lock: `HANDOFF | Workitem: WI-443 | Owner: N/A | Claimed: 2026-03-15T17:04:51Z | Last heartbeat: 2026-03-15T17:04:51Z`
 - Goal: create the actual Railway project state and first live deployments on the existing Railway project.
 - Scope:
   - create/select the correct Railway project,
@@ -231,7 +231,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-445. Railway GitHub source wiring + idle-sleep audit
 - Branch: `codex/railway-source-wiring-and-sleep-audit`
-- Lock: `COMPLETED | Workitem: WI-445 | Owner: N/A | Claimed: 2026-03-15T16:26:08Z | Last heartbeat: 2026-03-15T16:31:40Z`
+- Lock: `COMPLETED | Workitem: WI-445 | Owner: N/A | Claimed: 2026-03-15T17:36:15Z | Last heartbeat: 2026-03-15T17:42:42Z`
 - Goal: finish the hosted setup by wiring Starlog services to GitHub and verifying whether the web service can truly sleep to near-zero idle compute.
 - Scope:
   - connect `starlog-api` and `starlog-web` to `LiquidGunay/starlog` on the intended deploy branch,
@@ -267,7 +267,7 @@ Last queue reset: `2026-03-15`.
 
 ### WI-461. Shared worktree dependency + build-cache reuse bootstrap
 - Branch: `codex/shared-worktree-bootstrap`
-- Lock: `UNCLAIMED | Workitem: WI-461 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
+- Lock: `HANDOFF | Workitem: WI-461 | Owner: N/A | Claimed: 2026-03-15T18:45:29Z | Last heartbeat: 2026-03-15T18:48:18Z`
 - Goal: make fresh worktrees reuse the canonical checkout's dependency installs and compiler caches by default.
 - Scope:
   - document the reuse rules in `AGENTS.md`,
@@ -281,6 +281,38 @@ Last queue reset: `2026-03-15`.
 - Validation:
   - run `bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog` in a fresh worktree,
   - confirm linked state is sufficient for at least one web/mobile/desktop validation command without reinstalling everything.
+
+## Track J. Post-Phone-Proof Closeout
+
+### WI-601. Import physical-phone proof artifacts and refresh Android release docs
+- Branch: `codex/android-phone-proof-import`
+- Lock: `IN_PROGRESS | Workitem: WI-601 | Owner: Agent codex-main | Claimed: 2026-03-23T08:49:57Z | Last heartbeat: 2026-03-23T08:51:20Z`
+- Goal: once the latest phone smoke is complete, pull the resulting screenshots/logs into the repo and update the Android release docs.
+- Scope:
+  - ingest the fresh phone screenshots and smoke log into the documented evidence paths,
+  - update Android QA and bundle docs to reflect the completed proof,
+  - keep the edit limited to evidence/doc refresh rather than new app behavior.
+- Acceptance:
+  - the repo contains the final physical-phone proof artifacts for the current preview,
+  - Android docs no longer describe the phone proof as pending,
+  - the handoff bundle points to the imported evidence.
+- Validation:
+  - evidence files are present and referenced from the Android QA docs
+
+### WI-605. Export preview feedback bundle for phone and laptop install
+- Branch: `codex/release-feedback-bundle`
+- Lock: `IN_PROGRESS | Workitem: WI-605 | Owner: Agent codex-main | Claimed: 2026-03-23T08:49:57Z | Last heartbeat: 2026-03-23T08:51:20Z`
+- Goal: package one local preview bundle that the user can install on phone/laptop while pointing at the live Railway deployment.
+- Scope:
+  - collect the current preview APK, desktop helper package, checksums, and hosted Railway URLs into one local bundle folder,
+  - add one concise repo doc that points to the bundle paths and install flow,
+  - keep the bundle aligned with the latest merged phone-proof and release-signoff state.
+- Acceptance:
+  - one local preview bundle folder exists with exact installable artifacts and a short README,
+  - repo docs point to the bundle and hosted endpoints without requiring reconstruction from scattered notes,
+  - the bundle is suitable for the next real user feedback pass.
+- Validation:
+  - bundle files exist locally and the repo doc references the exact generated paths
 
 ## Suggested execution order
 
