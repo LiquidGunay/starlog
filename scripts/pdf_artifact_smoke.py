@@ -24,6 +24,8 @@ def parse_args() -> argparse.Namespace:
         help="Directory where smoke evidence should be written",
     )
     parser.add_argument("--notes", default="", help="Optional notes override for manual PDF ingest")
+    parser.add_argument("--ocr-server-url", default="", help="Optional OCR server URL for PDF extraction")
+    parser.add_argument("--ocr-language", default="en", help="Optional OCR language code")
     return parser.parse_args()
 
 
@@ -44,6 +46,9 @@ def main() -> int:
 
     os.environ["STARLOG_DB_PATH"] = str(run_dir / "smoke.db")
     os.environ["STARLOG_MEDIA_DIR"] = str(run_dir / "media")
+    if args.ocr_server_url.strip():
+        os.environ["STARLOG_PDF_OCR_SERVER_URL"] = args.ocr_server_url.strip()
+        os.environ["STARLOG_PDF_OCR_LANGUAGE"] = args.ocr_language.strip() or "en"
 
     sys.path.insert(0, str(repo_root / "services/api"))
 
@@ -146,7 +151,10 @@ def main() -> int:
                 f"- Artifact ID: `{artifact_id}`",
                 f"- Extraction provider: `{research_item['metadata'].get('pdf_extraction', {}).get('provider', 'unknown')}`",
                 f"- Extraction mode: `{research_item['metadata'].get('pdf_extraction', {}).get('mode', 'unknown')}`",
+                f"- Extraction usable: `{research_item['metadata'].get('pdf_extraction', {}).get('usable', False)}`",
+                f"- Extraction rejected_as_noise: `{research_item['metadata'].get('pdf_extraction', {}).get('rejected_as_noise', False)}`",
                 f"- Notes seed: `{args.notes or '(none)'}`",
+                f"- OCR server: `{args.ocr_server_url or '(disabled)'}`",
                 f"- Summary count: `{len(versions_payload['summaries'])}`",
                 f"- Card count: `{len(graph_payload['cards'])}`",
                 f"- Note count: `{len(graph_payload['notes'])}`",

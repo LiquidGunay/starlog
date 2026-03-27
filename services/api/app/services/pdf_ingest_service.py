@@ -1,15 +1,84 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import re
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 
 def _normalize_text(value: str) -> str:
     collapsed = re.sub(r"\s+", " ", value).strip()
     return collapsed
+
+
+def _ocr_server_url() -> str | None:
+    value = os.getenv("STARLOG_PDF_OCR_SERVER_URL", "").strip()
+    return value or None
+
+
+def _extract_with_ocr_server(path: Path) -> str | None:
+    server_url = _ocr_server_url()
+    if not server_url or importlib.util.find_spec("fitz") is None:
+        return None
+
+    import fitz  # type: ignore[import-not-found]
+
+    language = os.getenv("STARLOG_PDF_OCR_LANGUAGE", "en").strip() or "en"
+    dpi = max(110, int(os.getenv("STARLOG_PDF_OCR_DPI", "170")))
+    max_pages = max(1, min(int(os.getenv("STARLOG_PDF_OCR_MAX_PAGES", "12")), 24))
+    timeout = max(10, int(os.getenv("STARLOG_PDF_OCR_TIMEOUT_SECONDS", "90")))
+
+    try:
+        document = fitz.open(str(path))
+    except Exception:
+        return None
+
+    parts: list[str] = []
+    try:
+        for page_index in range(min(len(document), max_pages)):
+            page = document.load_page(page_index)
+            pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+            image_bytes = pixmap.tobytes("png")
+            boundary = f"starlog-{uuid.uuid4().hex}"
+            body = bytearray()
+            body.extend(f"--{boundary}\r\n".encode("utf-8"))
+            body.extend(b'Content-Disposition: form-data; name="file"; filename="page.png"\r\n')
+            body.extend(b"Content-Type: image/png\r\n\r\n")
+            body.extend(image_bytes)
+            body.extend(b"\r\n")
+            body.extend(f"--{boundary}\r\n".encode("utf-8"))
+            body.extend(b'Content-Disposition: form-data; name="language"\r\n\r\n')
+            body.extend(language.encode("utf-8"))
+            body.extend(b"\r\n")
+            body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+            request = Request(
+                server_url,
+                data=bytes(body),
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    "User-Agent": "Starlog/0.1 pdf-ocr",
+                },
+            )
+            with urlopen(request, timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            results = payload.get("results") or []
+            page_text = _normalize_text(" ".join(str(item.get("text") or "") for item in results))
+            if page_text:
+                parts.append(page_text)
+    except (OSError, ValueError, URLError, TimeoutError):
+        return None
+    finally:
+        document.close()
+
+    text = _normalize_text("\n".join(parts))
+    return text or None
 
 
 def _extract_with_pypdf(path: Path) -> str | None:
@@ -75,7 +144,7 @@ def _quality_flags(text: str) -> dict[str, Any]:
         and alpha_ratio >= 0.55
         and space_ratio >= 0.08
         and long_words >= 12
-        and unique_ratio >= 0.08
+        and unique_chars >= 24
     )
     return {
         "usable": usable,
@@ -83,12 +152,14 @@ def _quality_flags(text: str) -> dict[str, Any]:
         "alpha_ratio": round(alpha_ratio, 3),
         "space_ratio": round(space_ratio, 3),
         "unique_ratio": round(unique_ratio, 3),
+        "unique_characters": unique_chars,
         "long_word_count": long_words,
     }
 
 
 def extract_pdf_text(path: Path) -> dict[str, Any]:
     for provider_name, extractor, mode in (
+        ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
         ("strings", _extract_with_strings, "heuristic_fallback"),
     ):
@@ -111,5 +182,6 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
         "alpha_ratio": 0.0,
         "space_ratio": 0.0,
         "unique_ratio": 0.0,
+        "unique_characters": 0,
         "long_word_count": 0,
     }
