@@ -306,7 +306,7 @@ def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, int, int, int, int]:
 
 def extract_pdf_text(path: Path) -> dict[str, Any]:
     fallback_candidate: dict[str, Any] | None = None
-    fallback_rank: tuple[int, int, int] | None = None
+    fallback_rank: tuple[int, int, int, int, int] | None = None
     for provider_name, extractor, mode in (
         ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
