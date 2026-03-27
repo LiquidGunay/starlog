@@ -140,7 +140,8 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
   - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:16:56Z`
   - release gate build passes when run in isolation; a prior `Unexpected end of JSON input` failure came from overlapping Next builds during concurrent gate/smoke execution rather than a persistent app defect
 - Semi-stable refresh on `2026-03-27` produced a fresh Android preview RC2 artifact (`0.1.0-preview.rc2`, code `103`, SHA-256 `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`), a passing PWA release gate at `2026-03-27T18:17:09Z`, and a fresh Velvet validation bundle under `artifacts/velvet-validation/20260327T181800Z`.
-- The remaining semi-stable release blocker on this host is no longer the Android app build itself; it is the Windows ADB daemon path, which regressed on `2026-03-27` with `protocol fault (couldn't read status): connection reset` before a fresh installed-phone screenshot pass could be captured.
+- That 2026-03-27 Velvet validation bundle proved hosted smoke plus Windows helper smoke/probes/screenshots, but its `pwa_visual_proof`, `android_smoke`, and `android_screenshot` lanes were skipped because those optional lanes were disabled on that run.
+- The remaining semi-stable release blockers on this host are: a fresh PWA visual-proof rerun, and recovery of the Windows ADB daemon path, which regressed on `2026-03-27` with `protocol fault (couldn't read status): connection reset` before a fresh installed-phone screenshot pass could even be attempted.
 
 ## Validation run for this pass
 

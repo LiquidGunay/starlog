@@ -1,6 +1,6 @@
 # Final Preview Signoff
 
-Last updated: 2026-03-23
+Last updated: 2026-03-27
 
 This document is the release-decision handoff for the current voice-native preview build. It is
 intentionally narrower than [docs/VNEXT_TEST_BUNDLE.md](./VNEXT_TEST_BUNDLE.md): it states the
@@ -9,33 +9,27 @@ feedback bundle.
 
 ## Signoff baseline
 
-Current merged baseline on `origin/master`:
+Current merged baseline on `origin/master` includes the velvet UI rollout plus the semistable
+release-handoff refresh merged on 2026-03-27.
 
-- `#76` `docs(android): record current-master phone proof blocker`
-- `#77` `test(web): stabilize hosted smoke route assertions`
-- `#78` `docs: refresh next preview bundle`
-- `#79` `docs(desktop): refresh current-master proof evidence`
-- `#80` `docs: add cross-surface proof runbook`
-- `#81` `fix(api): restore research router registration`
-- `#82` `docs: add final preview signoff handoff`
+This baseline currently corresponds to:
 
-This baseline corresponds to:
-
-- commit `0e967da`
+- commit `0193c96`
 - branch target: `master`
 
 ## Current release decision
 
-Status: `READY FOR FEEDBACK`
+Status: `READY FOR LIMITED FEEDBACK`
 
 Interpretation:
 
 - desktop helper is ready for operator testing on the target laptop
 - hosted PWA is ready for operator testing on phone/laptop browsers
-- Android preview RC artifact has been installed and smoke-validated on the connected phone
+- Android preview RC2 artifact is built and staged for sideload, but fresh installed-phone proof on this host is currently blocked by the Windows ADB daemon regression
 - one local preview bundle now exists for phone + laptop install against the live Railway deployment
 
-This is ready to hand to the operator for immediate phone, desktop, and hosted-web feedback.
+This is ready to hand to the operator for immediate hosted-web and desktop feedback, plus Android
+sideload testing with the known phone-proof gap called out explicitly.
 
 ## Green evidence in baseline
 
@@ -72,11 +66,11 @@ Validated in the current pass:
 - QA matrix:
   - [docs/ANDROID_RELEASE_QA_MATRIX.md](./ANDROID_RELEASE_QA_MATRIX.md)
 - current preview RC artifact:
-  - `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+  - `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc2-103.apk`
 - staged Windows-visible artifact:
-  - `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+  - `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`
 - version:
-  - `0.1.0-preview.rc1 (102)`
+  - `0.1.0-preview.rc2 (103)`
 
 Already proven in earlier phone-connected passes and preserved in the QA matrix:
 
@@ -84,6 +78,9 @@ Already proven in earlier phone-connected passes and preserved in the QA matrix:
 - deep-link capture prefill
 - Railway-backed preview configuration
 - briefing render/offline playback pipeline
+
+Fresh RC2 install/launch proof from this host was not captured in the latest pass because the
+Windows `adb.exe` daemon regressed before the rerun could start.
 
 Fresh imported proof from `WI-601`:
 
@@ -109,7 +106,7 @@ Run this from a native Windows PowerShell session in the repo root:
 .\scripts\android_native_smoke_windows.ps1 `
   -AdbPath "C:\Temp\android-platform-tools\platform-tools\adb.exe" `
   -Serial 9dd62e84 `
-  -ApkPath "C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk" `
+  -ApkPath "C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk" `
   -AppPackage "com.starlog.app.preview" `
   -AppActivity "com.starlog.app.preview/com.starlog.app.dev.MainActivity" `
   -ReversePorts "8000"
