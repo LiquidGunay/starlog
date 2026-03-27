@@ -369,7 +369,7 @@ function renderRuntimeDiagnostics(diagnostics) {
   const health = overallDiagnosticStatus(diagnostics);
   if (studioHealthBadgeNode) {
     studioHealthBadgeNode.textContent = health.label;
-    studioHealthBadgeNode.className = `section-chip ${health.status === "available" ? "" : health.status}`.trim();
+    studioHealthBadgeNode.className = `section-chip mono ${health.status === "available" ? "" : health.status}`.trim();
   }
 
   for (const [key, label] of RUNTIME_DIAGNOSTIC_ITEMS) {

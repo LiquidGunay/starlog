@@ -7,40 +7,46 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <style>
       :root {
-        --surface-dim: #10141a;
-        --surface-container-lowest: #0a0e14;
-        --surface-container-low: #181c22;
-        --surface-container: #1c2026;
-        --surface-container-high: #262a31;
-        --surface-container-highest: #31353c;
-        --outline: #938e9e;
-        --outline-variant: #484553;
-        --primary: #c9beff;
-        --primary-container: #9c89ff;
-        --tertiary: #83d4d3;
-        --warning: #f6da6f;
-        --danger: #fbb3b3;
-        --on-surface: #dfe2eb;
-        --on-surface-variant: #c9c4d5;
+        --bg: #1b0d17;
+        --bg-2: #26121e;
+        --panel: rgba(77, 46, 64, 0.72);
+        --panel-strong: rgba(92, 54, 73, 0.86);
+        --panel-soft: rgba(58, 31, 47, 0.8);
+        --panel-outline: rgba(255, 236, 229, 0.08);
+        --text: #f9eee8;
+        --muted: #d6c0bb;
+        --subtle: #a98e8d;
+        --bronze: #d49a3b;
+        --bronze-soft: rgba(212, 154, 59, 0.22);
+        --rose: #7e5b71;
+        --danger: #ffb4b7;
+        --warning: #f3cf7a;
+        --success: #a6debf;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html,
+      body {
+        min-height: 100%;
+      }
+
       body {
         margin: 0;
-        min-height: 100vh;
-        font-family: "Manrope", system-ui, sans-serif;
-        color: var(--on-surface);
+        color: var(--text);
+        font-family: "Manrope", sans-serif;
         background:
-          radial-gradient(circle at 50% -24%, rgba(201, 190, 255, 0.17) 0%, transparent 50%),
-          linear-gradient(160deg, #0d1117, var(--surface-dim));
+          radial-gradient(circle at top right, rgba(212, 154, 59, 0.16), transparent 28%),
+          radial-gradient(circle at 15% 110%, rgba(126, 91, 113, 0.26), transparent 36%),
+          linear-gradient(180deg, #2c1521 0%, #180b14 100%);
       }
 
       body::before {
@@ -48,11 +54,10 @@
         position: fixed;
         inset: 0;
         pointer-events: none;
-        opacity: 0.2;
-        background-size: 52px 52px;
-        background-image:
-          linear-gradient(to right, rgba(201, 190, 255, 0.08) 1px, transparent 1px),
-          linear-gradient(to bottom, rgba(201, 190, 255, 0.08) 1px, transparent 1px);
+        background:
+          linear-gradient(120deg, rgba(255, 255, 255, 0.03), transparent 26%),
+          linear-gradient(transparent 0%, rgba(0, 0, 0, 0.08) 100%);
+        opacity: 0.6;
       }
 
       button,
@@ -60,23 +65,15 @@
         font: inherit;
       }
 
-      .headline {
-        font-family: "Space Grotesk", sans-serif;
+      .display {
+        font-family: "Cormorant Garamond", serif;
       }
 
       .mono {
-        font-family: "JetBrains Mono", monospace;
+        font-family: "IBM Plex Mono", monospace;
       }
 
-      .glass-panel {
-        background: rgba(201, 190, 255, 0.05);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(201, 190, 255, 0.1);
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
-      }
-
-      .helper-app {
+      .shell {
         position: relative;
         z-index: 1;
         min-height: 100vh;
@@ -93,385 +90,380 @@
         display: none;
       }
 
-      .studio-topbar {
-        min-height: 72px;
-        display: grid;
-        grid-template-columns: 220px minmax(280px, 1fr) auto;
-        align-items: center;
-        gap: 16px;
-        padding: 14px 18px;
-        border-bottom: 1px solid rgba(147, 142, 158, 0.22);
+      .velvet-panel {
+        border: 1px solid var(--panel-outline);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+          var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
       }
 
-      .topbar-brand {
+      .workspace-header {
         display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .brand-mark {
-        width: 34px;
-        height: 34px;
-        border-radius: 11px;
-        background: linear-gradient(140deg, var(--primary), var(--primary-container));
-        display: grid;
-        place-items: center;
-        color: #2c0c85;
-        font-weight: 700;
-      }
-
-      .topbar-title {
-        margin: 0;
-        color: var(--on-surface);
-        font-size: 26px;
-        font-weight: 500;
-      }
-
-      .studio-search {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        border-radius: 14px;
-        border: 1px solid rgba(147, 142, 158, 0.2);
-        background: rgba(10, 14, 20, 0.72);
-        padding: 10px 14px;
-        color: var(--outline);
-      }
-
-      .studio-search input {
-        width: 100%;
-        border: 0;
-        background: transparent;
-        color: var(--on-surface-variant);
-        padding: 0;
-      }
-
-      .studio-search input:focus {
-        outline: none;
-        box-shadow: none;
-      }
-
-      .studio-search input:disabled {
-        opacity: 1;
-        cursor: default;
-      }
-
-      .topbar-actions {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-      }
-
-      .topbar-chip {
-        border-left: 1px solid rgba(147, 142, 158, 0.18);
-        padding-left: 14px;
-        color: var(--on-surface-variant);
-        font-size: 13px;
-      }
-
-      .topbar-avatar {
-        width: 32px;
-        height: 32px;
-        border-radius: 999px;
-        border: 1px solid rgba(201, 190, 255, 0.25);
-        background: rgba(201, 190, 255, 0.12);
-        display: grid;
-        place-items: center;
-        font-size: 12px;
-        color: var(--primary);
-      }
-
-      .studio-layout {
-        flex: 1;
-        min-height: 0;
-        display: grid;
-        grid-template-columns: 220px 1fr;
-      }
-
-      .studio-sidebar {
-        border-right: 1px solid rgba(147, 142, 158, 0.22);
-        padding: 16px 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-      }
-
-      .sidebar-label {
-        margin: 0;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.2em;
-        color: var(--outline);
-      }
-
-      .sidebar-sub {
-        margin: 8px 0 0;
-        color: var(--tertiary);
-        font-size: 12px;
-      }
-
-      .sidebar-nav {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .sidebar-item {
-        border-radius: 14px;
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--on-surface-variant);
-        padding: 12px;
-        text-align: left;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 14px;
-        cursor: default;
-      }
-
-      .sidebar-item.active {
-        color: var(--primary);
-        background: rgba(201, 190, 255, 0.1);
-        border-color: rgba(201, 190, 255, 0.22);
-      }
-
-      .sidebar-spacer {
-        flex: 1;
-      }
-
-      .sidebar-launch {
-        width: 100%;
-        border-radius: 16px;
-        border: 1px solid rgba(201, 190, 255, 0.28);
-        background: linear-gradient(180deg, rgba(201, 190, 255, 0.22), rgba(156, 137, 255, 0.18));
-        color: #24104d;
-        padding: 12px 14px;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-      }
-
-      .studio-main {
-        min-height: 0;
-        overflow: auto;
-        padding: 24px;
-      }
-
-      .workspace-overview {
-        margin-bottom: 18px;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 22px 26px 16px;
       }
 
       .workspace-kicker {
-        margin: 0;
-        color: var(--outline);
-        font-size: 12px;
+        margin: 0 0 10px;
+        color: var(--bronze);
+        font-size: 11px;
         letter-spacing: 0.18em;
         text-transform: uppercase;
       }
 
       .workspace-title {
-        margin: 10px 0 0;
-        font-size: clamp(34px, 4vw, 48px);
-        font-weight: 500;
-        line-height: 1.05;
+        margin: 0;
+        font-size: clamp(42px, 5vw, 64px);
+        line-height: 0.92;
+        font-weight: 600;
       }
 
-      .workspace-title span {
-        color: rgba(201, 190, 255, 0.86);
+      .workspace-subtitle {
+        max-width: 520px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
       }
 
-      .workspace-accent {
-        width: 92px;
-        height: 3px;
-        margin-top: 10px;
+      .workspace-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
         border-radius: 999px;
-        background: linear-gradient(90deg, var(--primary), transparent);
+        border: 1px solid rgba(212, 154, 59, 0.18);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
 
-      .studio-grid {
+      .workspace-badge-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: radial-gradient(circle, #ffd597 0%, var(--bronze) 72%);
+        box-shadow: 0 0 18px rgba(212, 154, 59, 0.35);
+      }
+
+      .workspace-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.82fr);
+        grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.9fr);
+        gap: 18px;
+        padding: 0 24px 24px;
+      }
+
+      .column {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+
+      .panel {
+        border-radius: 28px;
+        padding: 22px;
+      }
+
+      .hero-panel {
+        overflow: hidden;
+        position: relative;
+        min-height: 260px;
+      }
+
+      .hero-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(212, 154, 59, 0.14), transparent 24%),
+          linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 45%);
+        pointer-events: none;
+      }
+
+      .hero-grid {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+        gap: 18px;
+      }
+
+      .hero-lead {
+        display: grid;
         gap: 16px;
       }
 
-      .section-card {
+      .section-label {
+        margin: 0;
+        color: var(--bronze);
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .hero-copy {
+        margin: 0;
+        max-width: 560px;
+        font-size: clamp(34px, 4vw, 56px);
+        line-height: 0.94;
+        font-weight: 500;
+      }
+
+      .hero-detail {
+        margin: 0;
+        max-width: 520px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .hero-aside {
+        border-radius: 24px;
+        background: rgba(29, 13, 22, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 18px;
+        display: grid;
+        gap: 16px;
+        align-content: start;
+      }
+
+      .hero-aside-card {
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 14px;
+      }
+
+      .hero-aside-title {
+        margin: 0;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .hero-aside-copy {
+        margin: 8px 0 0;
+        color: var(--text);
+        line-height: 1.6;
+        font-size: 13px;
+      }
+
+      .capture-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .capture-action {
         border-radius: 24px;
         padding: 18px;
+        background: rgba(26, 10, 18, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .capture-action-title {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .capture-action-copy {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .capture-action.highlight {
+        background:
+          linear-gradient(180deg, rgba(212, 154, 59, 0.8), rgba(176, 117, 36, 0.84));
+        color: #fff7ef;
+      }
+
+      .capture-action.highlight .section-label,
+      .capture-action.highlight .capture-action-copy {
+        color: rgba(255, 247, 239, 0.84);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
       }
 
       .section-title {
         margin: 0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .section-title-main {
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 28px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+        font-size: 30px;
+        line-height: 1;
       }
 
       .section-chip {
+        display: inline-flex;
+        align-items: center;
         border-radius: 999px;
-        border: 1px solid rgba(131, 212, 211, 0.38);
-        background: rgba(131, 212, 211, 0.1);
-        color: var(--tertiary);
+        border: 1px solid rgba(212, 154, 59, 0.18);
+        background: rgba(212, 154, 59, 0.08);
+        color: var(--bronze);
         padding: 5px 10px;
         font-size: 10px;
-        font-family: "JetBrains Mono", monospace;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
       }
 
       .section-chip.degraded {
-        border-color: rgba(246, 218, 111, 0.34);
-        background: rgba(246, 218, 111, 0.12);
         color: var(--warning);
+        border-color: rgba(243, 207, 122, 0.2);
+        background: rgba(243, 207, 122, 0.08);
       }
 
       .section-chip.unavailable {
-        border-color: rgba(251, 179, 179, 0.34);
-        background: rgba(251, 179, 179, 0.12);
         color: var(--danger);
+        border-color: rgba(255, 180, 183, 0.22);
+        background: rgba(255, 180, 183, 0.08);
       }
 
       .diagnostic-tiles {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 10px;
-        margin-top: 18px;
       }
 
       .diagnostic-tile {
+        min-height: 108px;
         border-radius: 18px;
-        border: 1px solid rgba(147, 142, 158, 0.14);
-        background: rgba(255, 255, 255, 0.03);
-        min-height: 92px;
-        padding: 12px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(23, 10, 17, 0.28);
+        display: grid;
         gap: 10px;
       }
 
       .diagnostic-tile-kicker {
-        font-family: "JetBrains Mono", monospace;
+        color: var(--subtle);
         font-size: 10px;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.11em;
         text-transform: uppercase;
-        color: var(--outline);
       }
 
-      .diagnostic-tile-badge {
+      .diagnostic-tile-badge,
+      .diagnostic-badge {
         display: inline-flex;
         align-items: center;
         width: fit-content;
         border-radius: 999px;
         padding: 4px 8px;
         font-size: 10px;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
-      .diagnostic-tile-badge.available {
-        background: rgba(52, 211, 153, 0.14);
-        color: #7af0be;
+      .diagnostic-tile-badge.available,
+      .diagnostic-badge.available {
+        background: rgba(166, 222, 191, 0.12);
+        color: var(--success);
       }
 
       .diagnostic-tile-badge.degraded,
-      .diagnostic-tile-badge.pending {
-        background: rgba(250, 204, 21, 0.16);
+      .diagnostic-tile-badge.pending,
+      .diagnostic-badge.degraded,
+      .diagnostic-badge.pending {
+        background: rgba(243, 207, 122, 0.12);
         color: var(--warning);
       }
 
-      .diagnostic-tile-badge.unavailable {
-        background: rgba(252, 165, 165, 0.16);
+      .diagnostic-tile-badge.unavailable,
+      .diagnostic-badge.unavailable {
+        background: rgba(255, 180, 183, 0.12);
         color: var(--danger);
       }
 
       .diagnostic-visual {
+        margin-top: 16px;
+        min-height: 160px;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.1)),
+          rgba(25, 10, 17, 0.34);
         display: grid;
         grid-template-columns: repeat(9, 1fr);
         align-items: end;
-        gap: 6px;
-        min-height: 140px;
-        margin-top: 18px;
-        border-radius: 18px;
-        border: 1px solid rgba(147, 142, 158, 0.14);
-        background: rgba(10, 14, 20, 0.48);
-        padding: 16px 14px 12px;
+        gap: 8px;
+        padding: 18px;
       }
 
       .diagnostic-bar {
-        border-radius: 10px 10px 4px 4px;
-        background: rgba(201, 190, 255, 0.32);
+        border-radius: 12px 12px 4px 4px;
+        background: linear-gradient(180deg, rgba(212, 154, 59, 0.95), rgba(116, 58, 33, 0.42));
       }
 
-      .diagnostic-bar:nth-child(1) { height: 36px; }
-      .diagnostic-bar:nth-child(2) { height: 54px; }
-      .diagnostic-bar:nth-child(3) { height: 74px; }
-      .diagnostic-bar:nth-child(4) { height: 24px; }
-      .diagnostic-bar:nth-child(5) { height: 68px; }
-      .diagnostic-bar:nth-child(6) { height: 96px; background: rgba(201, 190, 255, 0.56); }
-      .diagnostic-bar:nth-child(7) { height: 48px; }
-      .diagnostic-bar:nth-child(8) { height: 18px; }
-      .diagnostic-bar:nth-child(9) { height: 60px; }
+      .diagnostic-bar:nth-child(1) { height: 34px; opacity: 0.4; }
+      .diagnostic-bar:nth-child(2) { height: 66px; opacity: 0.52; }
+      .diagnostic-bar:nth-child(3) { height: 92px; opacity: 0.7; }
+      .diagnostic-bar:nth-child(4) { height: 48px; opacity: 0.3; }
+      .diagnostic-bar:nth-child(5) { height: 118px; }
+      .diagnostic-bar:nth-child(6) { height: 80px; opacity: 0.58; }
+      .diagnostic-bar:nth-child(7) { height: 136px; opacity: 0.92; }
+      .diagnostic-bar:nth-child(8) { height: 56px; opacity: 0.46; }
+      .diagnostic-bar:nth-child(9) { height: 108px; opacity: 0.68; }
 
-      .diagnostic-controls {
+      .diagnostic-controls,
+      .config-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 16px;
+        gap: 10px;
       }
 
-      .action-button {
+      .action-button,
+      .quick-link {
+        border: 1px solid rgba(212, 154, 59, 0.18);
+        background: rgba(212, 154, 59, 0.08);
+        color: var(--text);
         border-radius: 999px;
-        border: 1px solid rgba(201, 190, 255, 0.28);
-        background: rgba(201, 190, 255, 0.08);
-        color: var(--on-surface);
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 13px;
-        padding: 8px 12px;
+        padding: 9px 14px;
+        font-size: 12px;
         cursor: pointer;
       }
 
       .action-button:hover,
-      .sidebar-launch:hover,
-      .command-button:hover {
-        border-color: rgba(201, 190, 255, 0.5);
-        background: rgba(201, 190, 255, 0.16);
+      .quick-link:hover,
+      .command-button:hover,
+      .return-button:hover {
+        background: rgba(212, 154, 59, 0.14);
+        border-color: rgba(212, 154, 59, 0.32);
       }
 
       .action-button.danger {
-        border-color: rgba(251, 179, 179, 0.3);
-        background: rgba(251, 179, 179, 0.1);
+        border-color: rgba(255, 180, 183, 0.18);
+        background: rgba(255, 180, 183, 0.08);
         color: var(--danger);
       }
 
-      .action-button.danger:hover {
-        border-color: rgba(251, 179, 179, 0.54);
-        background: rgba(251, 179, 179, 0.18);
-      }
-
       .help {
-        color: var(--on-surface-variant);
-        font-size: 12px;
-        line-height: 1.55;
         margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
       }
 
       .diagnostic-detail-stack {
         display: grid;
-        gap: 10px;
+        gap: 12px;
       }
 
       .diagnostic-row {
-        border-top: 1px solid rgba(147, 142, 158, 0.22);
-        padding-top: 10px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        padding-top: 12px;
       }
 
       .diagnostic-heading {
@@ -486,30 +478,6 @@
         font-size: 14px;
       }
 
-      .diagnostic-badge {
-        border-radius: 999px;
-        padding: 2px 8px;
-        font-size: 11px;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-      }
-
-      .diagnostic-badge.available {
-        background: rgba(52, 211, 153, 0.14);
-        color: #7af0be;
-      }
-
-      .diagnostic-badge.degraded,
-      .diagnostic-badge.pending {
-        background: rgba(250, 204, 21, 0.16);
-        color: var(--warning);
-      }
-
-      .diagnostic-badge.unavailable {
-        background: rgba(252, 165, 165, 0.16);
-        color: var(--danger);
-      }
-
       .diagnostic-meta,
       .diagnostic-detail,
       .diagnostic-note {
@@ -518,97 +486,83 @@
       }
 
       .diagnostic-meta {
-        color: var(--on-surface-variant);
+        color: var(--subtle);
       }
 
       .diagnostic-detail {
-        color: var(--on-surface);
+        color: var(--text);
       }
 
       .diagnostic-note {
-        color: #cbc2ff;
+        color: #e8c7b9;
       }
 
-      .config-panel {
+      .config-stack {
         display: grid;
         gap: 14px;
-        align-content: start;
-      }
-
-      .label {
-        display: block;
-        margin: 0 0 6px;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 11px;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--outline);
       }
 
       .form-block {
-        margin-top: 0;
+        display: grid;
+        gap: 6px;
+      }
+
+      .label {
+        margin: 0;
+        color: var(--bronze);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
 
       input {
         width: 100%;
-        border-radius: 12px;
-        border: 1px solid rgba(147, 142, 158, 0.24);
-        background: rgba(10, 14, 20, 0.88);
-        color: var(--on-surface);
-        padding: 10px;
-        font-size: 13px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 12px 14px;
+        background: rgba(16, 6, 11, 0.42);
+        color: var(--text);
       }
 
       input:focus {
         outline: none;
-        border-color: rgba(201, 190, 255, 0.45);
-        box-shadow: 0 0 0 2px rgba(201, 190, 255, 0.15);
+        border-color: rgba(212, 154, 59, 0.36);
+        box-shadow: 0 0 0 2px rgba(212, 154, 59, 0.12);
       }
 
-      .config-divider {
-        height: 1px;
-        background: rgba(147, 142, 158, 0.2);
-      }
-
-      .config-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .config-help-stack {
+      .config-block {
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(22, 10, 17, 0.26);
+        padding: 14px;
         display: grid;
         gap: 8px;
       }
 
-      .toggle-row {
+      .status-pair {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 14px;
+        gap: 12px;
       }
 
       .toggle-switch {
-        width: 48px;
-        height: 28px;
+        width: 52px;
+        height: 30px;
+        border: 1px solid rgba(212, 154, 59, 0.26);
         border-radius: 999px;
-        border: 1px solid rgba(147, 142, 158, 0.28);
-        background: rgba(201, 190, 255, 0.18);
+        background: rgba(212, 154, 59, 0.14);
         padding: 3px;
         cursor: pointer;
       }
 
       .toggle-switch span {
         display: block;
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
         margin-left: auto;
         border-radius: 999px;
-        background: var(--primary);
-      }
-
-      .recent-wrap {
-        margin-top: 18px;
+        background: linear-gradient(180deg, #ffd39c, #c9892d);
       }
 
       .recent-grid {
@@ -619,20 +573,27 @@
 
       .recent-card,
       .recent-empty-card {
-        border-radius: 22px;
-        border: 1px solid rgba(147, 142, 158, 0.16);
-        background: rgba(255, 255, 255, 0.03);
-        padding: 14px;
-        min-height: 250px;
+        min-height: 238px;
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(24, 9, 16, 0.34);
+        padding: 16px;
         display: grid;
         gap: 10px;
         align-content: start;
       }
 
+      .recent-empty-card {
+        place-items: center;
+        text-align: center;
+        color: var(--subtle);
+        border-style: dashed;
+      }
+
       .recent-title {
         margin: 0;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 18px;
+        font-size: 24px;
+        line-height: 1;
       }
 
       .recent-artifact {
@@ -640,27 +601,28 @@
         align-items: center;
         width: fit-content;
         border-radius: 999px;
-        border: 1px solid rgba(201, 190, 255, 0.2);
-        background: rgba(201, 190, 255, 0.08);
-        color: var(--primary);
+        border: 1px solid rgba(212, 154, 59, 0.18);
+        background: rgba(212, 154, 59, 0.08);
+        color: var(--bronze);
         padding: 4px 8px;
         font-size: 10px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
-      .recent-meta {
+      .recent-meta,
+      .recent-summary {
         margin: 0;
-        color: var(--on-surface-variant);
         font-size: 12px;
-        line-height: 1.5;
+        line-height: 1.6;
+      }
+
+      .recent-meta {
+        color: var(--subtle);
       }
 
       .recent-summary {
-        margin: 0;
-        color: var(--on-surface);
-        font-size: 13px;
-        line-height: 1.55;
+        color: var(--muted);
       }
 
       .recent-tag-row {
@@ -671,149 +633,210 @@
 
       .recent-tag {
         border-radius: 999px;
-        background: rgba(10, 14, 20, 0.56);
-        border: 1px solid rgba(147, 142, 158, 0.2);
-        color: var(--outline);
-        padding: 3px 7px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--subtle);
+        padding: 3px 8px;
         font-size: 10px;
         letter-spacing: 0.06em;
         text-transform: uppercase;
       }
 
       .recent-preview-image {
-        display: block;
         width: 100%;
-        height: 164px;
-        border-radius: 16px;
-        border: 1px solid rgba(201, 190, 255, 0.24);
-        background: rgba(4, 4, 10, 0.84);
+        height: 160px;
         object-fit: cover;
+        display: block;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(0, 0, 0, 0.18);
       }
 
-      .recent-empty-card {
-        place-items: center;
-        border-style: dashed;
-        color: var(--outline);
-        text-align: center;
+      .quick-surface-panel {
+        width: min(350px, 100%);
+        border-radius: 30px;
+        overflow: hidden;
       }
 
-      .capture-console {
-        border-radius: 24px;
-        padding: 16px;
-      }
-
-      .quick-brand {
+      .quick-top {
+        padding: 14px 14px 10px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 12px;
       }
 
-      .quick-brand-left {
+      .quick-brand {
         display: flex;
+        gap: 12px;
         align-items: center;
-        gap: 10px;
+      }
+
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(180deg, #d49a3b, #9f6323);
+        color: #fff4e6;
+        font-size: 20px;
+        font-weight: 700;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
       }
 
       .quick-title {
         margin: 0;
-        font-size: 16px;
+        font-size: 22px;
+        line-height: 1;
       }
 
       .quick-subtitle {
-        margin: 2px 0 0;
-        font-size: 10px;
-        color: var(--on-surface-variant);
-        text-transform: uppercase;
+        margin: 4px 0 0;
+        color: var(--subtle);
+        font-size: 11px;
         letter-spacing: 0.1em;
+        text-transform: uppercase;
       }
 
-      .capture-kicker {
+      .quick-state {
+        border-radius: 999px;
+        padding: 5px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--muted);
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .quick-body {
+        padding: 0 14px 14px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .quick-hero {
+        border-radius: 24px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        display: grid;
+        gap: 8px;
+      }
+
+      .quick-line {
+        width: 100%;
+        height: 22px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+      }
+
+      .quick-copy {
         margin: 0;
-        color: var(--on-surface-variant);
-        font-size: 13px;
-        line-height: 1.55;
+        font-size: 16px;
+        line-height: 1.2;
+        color: var(--muted);
+      }
+
+      .quick-hero .help {
+        font-size: 11px;
+        line-height: 1.5;
       }
 
       .capture-actions {
-        margin-top: 14px;
         display: grid;
         gap: 8px;
       }
 
       .command-button {
-        border-radius: 16px;
-        border: 1px solid rgba(201, 190, 255, 0.2);
-        background: rgba(49, 53, 60, 0.34);
-        color: var(--on-surface);
+        width: 100%;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(23, 10, 17, 0.34);
+        color: var(--text);
+        padding: 11px 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        width: 100%;
-        padding: 12px;
         cursor: pointer;
+      }
+
+      .command-button.primary {
+        background: linear-gradient(180deg, rgba(212, 154, 59, 0.92), rgba(175, 117, 36, 0.88));
+        color: #fff7ef;
       }
 
       .command-left {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
       }
 
       .command-icon {
-        width: 34px;
-        height: 34px;
-        border-radius: 999px;
-        background: rgba(201, 190, 255, 0.12);
-        border: 1px solid rgba(201, 190, 255, 0.24);
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
         display: grid;
         place-items: center;
-        font-family: "JetBrains Mono", monospace;
-        color: var(--primary);
-        font-size: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 11px;
+      }
+
+      .command-button.primary .command-icon {
+        background: rgba(255, 255, 255, 0.12);
       }
 
       .command-label {
-        font-family: "Space Grotesk", sans-serif;
+        display: block;
         font-size: 15px;
+      }
+
+      .command-note {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .command-button.primary .command-note {
+        color: rgba(255, 247, 239, 0.86);
       }
 
       .command-meta {
         display: flex;
         gap: 4px;
-        color: var(--on-surface-variant);
       }
 
       kbd {
         border-radius: 6px;
-        border: 1px solid rgba(147, 142, 158, 0.35);
-        background: rgba(10, 14, 20, 0.82);
-        color: var(--on-surface-variant);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(9, 2, 7, 0.28);
+        color: var(--muted);
         padding: 2px 6px;
+        font-size: 10px;
       }
 
-      .quick-footer {
+      .quick-foot {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
-        margin-top: 12px;
-        padding-top: 12px;
-        border-top: 1px solid rgba(147, 142, 158, 0.22);
+        gap: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        padding-top: 10px;
       }
 
       .quick-sync {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        color: var(--outline);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        letter-spacing: 0.08em;
+        color: var(--subtle);
+        font-size: 10px;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
       }
 
@@ -821,29 +844,30 @@
         width: 8px;
         height: 8px;
         border-radius: 999px;
-        background: var(--tertiary);
-        box-shadow: 0 0 12px rgba(131, 212, 211, 0.45);
+        background: var(--bronze);
+        box-shadow: 0 0 14px rgba(212, 154, 59, 0.35);
       }
 
-      .quick-avatar {
+      .return-button {
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
         border-radius: 999px;
-        border: 1px solid rgba(201, 190, 255, 0.18);
-        background: rgba(201, 190, 255, 0.08);
-        color: var(--on-surface-variant);
-        padding: 4px 8px;
-        font-size: 11px;
+        padding: 9px 14px;
+        cursor: pointer;
       }
 
       .status-line {
-        margin: 0 24px 20px 244px;
-        color: var(--on-surface-variant);
+        margin: 0;
+        padding: 0 24px 24px;
+        color: var(--muted);
         font-size: 13px;
       }
 
       code {
-        background: rgba(201, 190, 255, 0.15);
-        border-radius: 4px;
-        padding: 2px 4px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 2px 5px;
       }
 
       body[data-helper-mode="quick"] .workspace-only {
@@ -858,124 +882,200 @@
         display: block;
       }
 
-      body[data-helper-mode="quick"] .helper-app {
-        min-height: 100vh;
+      body[data-helper-mode="quick"] .shell {
         align-items: center;
-        justify-content: center;
-        padding: 14px;
+        justify-content: flex-start;
+        padding: 10px 10px 8px;
       }
 
-      body[data-helper-mode="quick"] .capture-console {
-        width: min(360px, 100%);
-        box-shadow:
-          0 26px 48px rgba(0, 0, 0, 0.45),
-          0 0 20px rgba(201, 190, 255, 0.09);
+      body[data-helper-mode="quick"] .quick-surface-panel {
+        width: min(330px, 100%);
+        border-radius: 26px;
+      }
+
+      body[data-helper-mode="quick"] .quick-top {
+        padding: 11px 11px 8px;
+      }
+
+      body[data-helper-mode="quick"] .brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        font-size: 18px;
+      }
+
+      body[data-helper-mode="quick"] .quick-title {
+        font-size: 20px;
+      }
+
+      body[data-helper-mode="quick"] .quick-subtitle,
+      body[data-helper-mode="quick"] .quick-foot .quick-state,
+      body[data-helper-mode="quick"] .quick-hero .help,
+      body[data-helper-mode="quick"] .command-note {
+        display: none;
+      }
+
+      body[data-helper-mode="quick"] .quick-state {
+        padding: 4px 8px;
+        font-size: 8px;
+      }
+
+      body[data-helper-mode="quick"] .quick-body {
+        padding: 0 11px 11px;
+        gap: 8px;
+      }
+
+      body[data-helper-mode="quick"] .quick-hero {
+        padding: 11px;
+        gap: 7px;
+      }
+
+      body[data-helper-mode="quick"] .quick-line {
+        height: 16px;
+      }
+
+      body[data-helper-mode="quick"] .quick-copy {
+        font-size: 14px;
+        line-height: 1.05;
+      }
+
+      body[data-helper-mode="quick"] .capture-actions {
+        gap: 7px;
+      }
+
+      body[data-helper-mode="quick"] .command-button {
+        padding: 9px 10px;
+        border-radius: 18px;
+      }
+
+      body[data-helper-mode="quick"] .command-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        font-size: 10px;
+      }
+
+      body[data-helper-mode="quick"] .command-label {
+        font-size: 14px;
+      }
+
+      body[data-helper-mode="quick"] .quick-foot {
+        padding-top: 8px;
       }
 
       body[data-helper-mode="quick"] .status-line {
-        width: min(360px, 100%);
-        margin: 10px 0 0;
+        width: min(330px, 100%);
+        padding: 5px 2px 0;
+        font-size: 11px;
       }
 
       @media (max-width: 1180px) {
-        .studio-topbar {
-          grid-template-columns: 220px 1fr;
-        }
-
-        .topbar-actions {
-          grid-column: 1 / -1;
-          justify-content: flex-end;
+        .workspace-layout,
+        .hero-grid {
+          grid-template-columns: 1fr;
         }
 
         .diagnostic-tiles {
-          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
-        .studio-grid {
+        .capture-grid {
           grid-template-columns: 1fr;
         }
       }
 
-      @media (max-width: 900px) {
-        .studio-layout {
-          grid-template-columns: 1fr;
-        }
-
-        .studio-sidebar {
-          border-right: 0;
-          border-bottom: 1px solid rgba(147, 142, 158, 0.22);
-        }
-
+      @media (max-width: 720px) {
+        .workspace-header,
+        .workspace-layout,
         .status-line {
-          margin-left: 24px;
-        }
-      }
-
-      @media (max-width: 640px) {
-        .studio-topbar {
-          grid-template-columns: 1fr;
+          padding-left: 16px;
+          padding-right: 16px;
         }
 
-        .studio-main {
-          padding: 16px;
+        .diagnostic-tiles {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .status-line {
-          margin: 0 16px 16px;
-        }
-
-        .recent-grid {
-          grid-template-columns: 1fr;
+        .quick-surface-panel,
+        body[data-helper-mode="quick"] .status-line {
+          width: min(100%, 380px);
         }
       }
     </style>
   </head>
   <body data-helper-mode="workspace">
-    <main class="helper-app">
-      <header class="studio-topbar glass-panel workspace-only">
-        <div class="topbar-brand">
-          <div class="brand-mark headline">S</div>
-          <h1 class="topbar-title headline">Starlog</h1>
-        </div>
-        <label class="studio-search">
-          <span class="mono">&gt;_</span>
-          <input aria-label="Search system logs" placeholder="Search system logs..." disabled />
-        </label>
-        <div class="topbar-actions">
-          <span class="topbar-chip">Commander Profile</span>
-          <span class="topbar-avatar mono">A2</span>
-        </div>
-      </header>
-
-      <div class="studio-layout workspace-only">
-        <aside class="studio-sidebar glass-panel">
+    <main class="shell">
+      <section class="workspace-only">
+        <header class="workspace-header">
           <div>
-            <p class="sidebar-label">AI Command Center</p>
-            <p class="sidebar-sub">Active neural link</p>
+            <p class="workspace-kicker mono">Velvet Helper</p>
+            <h1 class="workspace-title display">Instrument<br />Control</h1>
+            <p class="workspace-subtitle">
+              A desk-bound capture instrument for quiet clipping, local bridge checks, and recent artifact review.
+              The popup stays ceremonial and compact; this workspace handles setup, diagnostics, and history.
+            </p>
           </div>
-          <nav class="sidebar-nav">
-            <button type="button" class="sidebar-item active">Tactical</button>
-            <button type="button" class="sidebar-item">Logs</button>
-            <button type="button" class="sidebar-item">Comms</button>
-          </nav>
-          <div class="sidebar-spacer"></div>
-          <button id="workspaceReturnQuick" type="button" class="sidebar-launch">New Capture Relay</button>
-        </aside>
-
-        <section class="studio-main">
-          <div class="workspace-overview">
-            <p class="workspace-kicker mono">AI Command Center</p>
-            <h2 class="workspace-title headline">Tactical <span>Overview</span></h2>
-            <div class="workspace-accent"></div>
+          <div class="workspace-badge mono">
+            <span class="workspace-badge-dot"></span>
+            Private surface
           </div>
+        </header>
 
-          <div class="studio-grid">
-            <article class="section-card glass-panel workspace-diagnostics">
-              <h2 class="section-title">
-                <span class="section-title-main">Runtime Diagnostics</span>
-                <span id="studioHealthBadge" class="section-chip">System Nominal</span>
-              </h2>
-              <div id="diagnosticTiles" class="diagnostic-tiles" style="margin-top: 18px"></div>
+        <div class="workspace-layout">
+          <div class="column">
+            <article class="panel velvet-panel hero-panel">
+              <div class="hero-grid">
+                <div class="hero-lead">
+                  <p class="section-label mono">Capture posture</p>
+                  <p class="hero-copy display">A polished little object for capture, not a neutral software popup.</p>
+                  <p class="hero-detail">
+                    Bronze light, plum lacquer, and restrained controls. The helper should feel deliberate whether it
+                    is clipping a screenshot, checking the local bridge, or handing you back the last few captures.
+                  </p>
+                  <div class="capture-grid">
+                    <div class="capture-action highlight">
+                      <p class="section-label mono">Clipboard</p>
+                      <h2 class="capture-action-title display">Lift text cleanly.</h2>
+                      <p class="capture-action-copy">Preserve the selected line and send it into the Starlog artifact stream.</p>
+                    </div>
+                    <div class="capture-action">
+                      <p class="section-label mono">Screenshot</p>
+                      <h2 class="capture-action-title display">Catch the frame.</h2>
+                      <p class="capture-action-copy">Run native capture, OCR when available, and keep the clip anchored to context.</p>
+                    </div>
+                  <div class="capture-action">
+                      <p class="section-label mono">Bridge</p>
+                      <h2 class="capture-action-title display">Keep it local.</h2>
+                      <p class="capture-action-copy">Probe the localhost bridge before you lean on STT, TTS, or desktop context.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="hero-aside">
+                  <div class="hero-aside-card">
+                    <p class="section-label mono">Workspace use</p>
+                    <h2 class="hero-aside-title">Diagnostics, config, and proof</h2>
+                    <p class="hero-aside-copy">
+                      Use this surface to verify the runtime, tune API and bridge settings, and inspect the latest capture trail.
+                    </p>
+                  </div>
+                  <div class="hero-aside-card">
+                    <p class="section-label mono">Bridge readiness</p>
+                    <h2 class="hero-aside-title">Local-first when available</h2>
+                    <p class="hero-aside-copy">
+                      Bronze marks the actions that matter now: clipping, health refresh, and confirming the localhost bridge.
+                    </p>
+                  </div>
+                </aside>
+              </div>
+            </article>
+
+            <article class="panel velvet-panel">
+              <div class="section-head">
+                <h2 class="section-title display">Runtime Diagnostics</h2>
+                <span id="studioHealthBadge" class="section-chip mono">System Nominal</span>
+              </div>
+              <div id="diagnosticTiles" class="diagnostic-tiles"></div>
               <div class="diagnostic-visual" aria-hidden="true">
                 <span class="diagnostic-bar"></span>
                 <span class="diagnostic-bar"></span>
@@ -987,140 +1087,160 @@
                 <span class="diagnostic-bar"></span>
                 <span class="diagnostic-bar"></span>
               </div>
-              <div class="diagnostic-controls">
+              <div class="diagnostic-controls" style="margin-top: 16px">
                 <button id="refreshDiagnostics" type="button" class="action-button">Refresh Diagnostics</button>
                 <button id="discoverBridge" type="button" class="action-button">Discover Local Bridge</button>
                 <button id="checkBridge" type="button" class="action-button">Check Local Bridge</button>
                 <button id="copyDiagnostics" type="button" class="action-button">Copy Diagnostics</button>
               </div>
-              <p class="help" style="margin-top: 8px">
-                Copy a redacted diagnostics snapshot after refresh when you need to report runtime issues.
+              <p class="help" style="margin-top: 10px">
+                Copy a redacted snapshot after a refresh when you need to report runtime issues or compare local bridge state.
               </p>
-              <div id="runtimeDiagnostics" class="diagnostic-detail-stack" style="margin-top: 10px">
+              <div id="runtimeDiagnostics" class="diagnostic-detail-stack" style="margin-top: 12px">
                 <p class="help">Checking runtime capabilities.</p>
               </div>
             </article>
 
-            <article class="section-card glass-panel config-panel">
-              <h2 class="section-title">
-                <span class="section-title-main">Interface Config</span>
-              </h2>
-              <div class="form-block">
-                <label class="label" for="apiBase">API base</label>
-                <input id="apiBase" value="http://localhost:8000" />
+            <article class="panel velvet-panel">
+              <div class="section-head">
+                <h2 class="section-title display">Recent Captures</h2>
+                <span class="section-chip mono">Artifact trail</span>
               </div>
-              <div class="form-block">
-                <label class="label" for="bridgeBase">Local bridge base</label>
-                <input id="bridgeBase" value="http://127.0.0.1:8091" />
-              </div>
-              <div class="form-block">
-                <label class="label" for="bridgeToken">Local bridge token</label>
-                <input id="bridgeToken" type="password" placeholder="optional localhost token" />
-              </div>
-              <div class="form-block">
-                <label class="label" for="token">Bearer token</label>
-                <input id="token" type="password" placeholder="paste token" />
-              </div>
-              <div class="config-divider"></div>
-              <div class="toggle-row">
-                <div>
-                  <p class="label">Deep neural uplink</p>
-                  <p class="help">Encryption active. All tactical telemetry is routed through the Orion relay network.</p>
-                </div>
-                <button type="button" class="toggle-switch" aria-pressed="true"><span></span></button>
-              </div>
-              <div class="config-divider"></div>
-              <div>
-                <p class="label">Quick capture relay</p>
-                <p class="help">
-                  Immediate capture lives in the compact popup. Keep the studio focused on diagnostics, config, and capture history.
-                </p>
-              </div>
-              <div class="config-divider"></div>
-              <div>
-                <p class="label">Desktop local bridge</p>
-                <p class="help">
-                  Point this at the Python localhost bridge when you want local STT, TTS, and desktop-context probes to stay on the machine. Use Discover Local Bridge to sweep common localhost bases, and add the bridge token only when the bridge reports auth is required.
-                </p>
-              </div>
-              <div class="config-divider"></div>
-              <div class="config-actions">
-                <button id="copySetupChecklist" type="button" class="action-button">Copy Setup Checklist</button>
-                <button id="resetLocalState" type="button" class="action-button danger">Reset Local State</button>
-              </div>
-              <div class="config-help-stack">
-                <p class="help">
-                  Copy a setup summary after you set the API base and tokens. The checklist redacts both the API bearer token and the local bridge token while keeping the current runtime readiness.
-                </p>
-                <p class="help">
-                  Reset clears the local API base, bridge token, secure/local API token, recent captures, and remembered surface mode on this device.
-                </p>
+              <div id="recentCaptures" class="recent-grid">
+                <article class="recent-empty-card">
+                  <p class="help">No captures yet.</p>
+                </article>
               </div>
             </article>
           </div>
 
-          <article class="section-card glass-panel recent-wrap">
-            <h2 class="section-title">
-              <span class="section-title-main">Recent Captures</span>
-            </h2>
-            <div id="recentCaptures" class="recent-grid" style="margin-top: 10px">
-              <article class="recent-empty-card">
-                <p class="help">No captures yet.</p>
-              </article>
-            </div>
-          </article>
-        </section>
-      </div>
+          <div class="column">
+            <article class="panel velvet-panel">
+              <div class="section-head">
+                <h2 class="section-title display">Instrument Config</h2>
+                <span class="section-chip mono">Local state</span>
+              </div>
 
-      <article class="section-card glass-panel capture-console quick-surface-panel">
-        <div class="quick-brand">
-          <div class="quick-brand-left">
-            <div class="brand-mark headline">S</div>
+              <div class="config-stack">
+                <div class="form-block">
+                  <label class="label mono" for="apiBase">API base</label>
+                  <input id="apiBase" value="http://localhost:8000" />
+                </div>
+                <div class="form-block">
+                  <label class="label mono" for="bridgeBase">Local bridge base</label>
+                  <input id="bridgeBase" value="http://127.0.0.1:8091" />
+                </div>
+                <div class="form-block">
+                  <label class="label mono" for="bridgeToken">Local bridge token</label>
+                  <input id="bridgeToken" type="password" placeholder="optional localhost token" />
+                </div>
+                <div class="form-block">
+                  <label class="label mono" for="token">Bearer token</label>
+                  <input id="token" type="password" placeholder="paste token" />
+                </div>
+
+                <div class="config-block">
+                  <div class="status-pair">
+                    <div>
+                      <p class="label mono">Capture posture</p>
+                      <p class="help">The popup should stay immediate. The workspace remains the place to tune and inspect.</p>
+                    </div>
+                    <button type="button" class="toggle-switch" aria-pressed="true"><span></span></button>
+                  </div>
+                </div>
+
+                <div class="config-block">
+                  <p class="label mono">Desktop local bridge</p>
+                  <p class="help">
+                    Point this at the Python localhost bridge when you want STT, TTS, and desktop context to stay on the machine.
+                    Use Discover Local Bridge to sweep common localhost bases, then keep a bridge token only if auth is required.
+                  </p>
+                </div>
+
+                <div class="config-actions">
+                  <button id="copySetupChecklist" type="button" class="action-button">Copy Setup Checklist</button>
+                  <button id="resetLocalState" type="button" class="action-button danger">Reset Local State</button>
+                </div>
+
+                <div class="config-block">
+                  <p class="label mono">Quick surface handoff</p>
+                  <p class="help">
+                    The quick helper is the first-class object. Reopen it when you want the smaller ceremonial capture surface back.
+                  </p>
+                  <button id="workspaceReturnQuick" type="button" class="quick-link">Return To Quick Surface</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <article class="quick-surface-panel velvet-panel">
+        <div class="quick-top">
+          <div class="quick-brand">
+            <div class="brand-mark display">S</div>
             <div>
-              <p class="quick-title headline">Starlog</p>
-              <p class="quick-subtitle">Aetheris Command</p>
+              <p class="quick-title display">Instrument</p>
+              <p class="quick-subtitle">Velvet helper</p>
             </div>
           </div>
-          <span class="section-chip">Popup</span>
+          <span class="quick-state mono">Ready</span>
         </div>
 
-        <p class="capture-kicker">Capture clipboard and screenshots from any desktop app into Starlog.</p>
+        <div class="quick-body">
+          <section class="quick-hero">
+            <div class="quick-line" aria-hidden="true"></div>
+            <p class="quick-copy display">A small instrument for capture.</p>
+            <p class="help">
+              Screen, URL, and spoken intent should feel like one composed gesture, not three separate utilities.
+            </p>
+          </section>
 
-        <div class="capture-actions">
-          <button id="clipSelection" class="command-button" type="button">
-            <span class="command-left">
-              <span class="command-icon mono">CLP</span>
-              <span class="command-label">Clip Clipboard</span>
-            </span>
-            <span class="command-meta quick-only">
-              <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd>
-            </span>
-          </button>
+          <div class="capture-actions">
+            <button id="clipSelection" class="command-button primary" type="button">
+              <span class="command-left">
+                <span class="command-icon mono">TXT</span>
+                <span>
+                  <span class="command-label">Clip Clipboard</span>
+                  <span class="command-note">Lift the selected line into Starlog.</span>
+                </span>
+              </span>
+              <span class="command-meta quick-only">
+                <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>C</kbd>
+              </span>
+            </button>
 
-          <button id="clipScreenshot" class="command-button" type="button">
-            <span class="command-left">
-              <span class="command-icon mono">IMG</span>
-              <span class="command-label">Clip Screenshot</span>
-            </span>
-            <span class="command-meta quick-only">
-              <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>S</kbd>
-            </span>
-          </button>
+            <button id="clipScreenshot" class="command-button" type="button">
+              <span class="command-left">
+                <span class="command-icon mono">IMG</span>
+                <span>
+                  <span class="command-label">Clip Screenshot</span>
+                  <span class="command-note">Capture the frame and keep context attached.</span>
+                </span>
+              </span>
+              <span class="command-meta quick-only">
+                <kbd>Cmd</kbd><kbd>Shift</kbd><kbd>S</kbd>
+              </span>
+            </button>
 
-          <button id="quickOpenWorkspace" type="button" class="command-button">
-            <span class="command-left">
-              <span class="command-icon mono">WRK</span>
-              <span class="command-label">Open Workspace</span>
-            </span>
-            <span class="command-meta quick-only">
-              <kbd>Cmd</kbd><kbd>W</kbd>
-            </span>
-          </button>
-        </div>
+            <button id="quickOpenWorkspace" type="button" class="command-button">
+              <span class="command-left">
+                <span class="command-icon mono">WRK</span>
+                <span>
+                  <span class="command-label">Open Workspace</span>
+                  <span class="command-note">Inspect diagnostics, config, and recent captures.</span>
+                </span>
+              </span>
+              <span class="command-meta quick-only">
+                <kbd>Cmd</kbd><kbd>W</kbd>
+              </span>
+            </button>
+          </div>
 
-        <div class="quick-footer">
-          <span class="quick-sync"><span class="quick-sync-dot"></span>Sync active</span>
-          <span class="quick-avatar mono">A2</span>
+          <div class="quick-foot">
+            <span class="quick-sync mono"><span class="quick-sync-dot"></span>Bridge watch</span>
+            <span class="quick-state mono">Local-first</span>
+          </div>
         </div>
       </article>
 
