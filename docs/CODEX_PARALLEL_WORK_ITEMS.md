@@ -6,12 +6,12 @@ Planning sources:
 
 - `AGENTS.md`
 - `docs/IMPLEMENTATION_STATUS.md`
-- `PLAN.md` on the current mainline direction for the voice-native Starlog migration
+- `docs/STARLOG_V1_PLAN.md` and `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` until the canonical root `PLAN.md` is restored to `master`
 
 ## Queue reset
 
-- Older distribution/setup workitems remain in the live registry for history, but they are not the active queue for this pass.
-- This refresh groups the current work around the Velvet redesign plus the supporting docs and PDF/OCR validation tracks requested on `2026-03-27`.
+- The Velvet redesign workitems (`WI-610` through `WI-615`) landed on `master` and are no longer the active queue.
+- This refresh groups the next release-prep work around turning the new `master` state into a semi-stable user-testable release.
 - Live lock state is authoritative under `$(git rev-parse --git-common-dir)/codex-workitems/`; this file is the human-readable mirror only.
 
 ## Working rules
@@ -36,79 +36,41 @@ Planning sources:
 
 ## Active queue
 
-### WI-610. Velvet PWA Salon Thread
+### WI-619. Semi-Stable Release Bundle Refresh
 
-- Branch: `codex/velvet-pwa-salon-thread`
-- Lock: `IN_PROGRESS | Workitem: WI-610 | Owner: worker-velvet-pwa | Claimed: 2026-03-27T08:10:32Z | Last heartbeat: 2026-03-27T08:12:40Z`
-- Goal: redesign the PWA around the Velvet direction so the thread-first workspace feels editorial, ritualistic, and premium instead of utility-heavy.
+- Branch: `codex/semi-stable-release-bundle`
+- Lock: `PENDING`
+- Goal: produce a fresh user-testable release bundle from current `master` so the updated PWA and Android app can be downloaded and judged as one release pass.
 - Scope:
-  - update the assistant shell and directly related shared PWA styling/components
-  - align the main chat surface with the Velvet moodboard and system mockups
-  - preserve the thread as the canonical operating surface
+  - build a fresh Android installable artifact from current `master`
+  - refresh the operator handoff doc with current commit, artifact paths, and install guidance
+  - record checksums and bundle locations for the downloadable surfaces
 - Validation:
-  - `cd apps/web && ./node_modules/.bin/tsc --noEmit`
-  - `cd apps/web && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
+  - `cd apps/mobile/android && ./gradlew assembleRelease`
+  - confirm the bundle paths in `docs/VNEXT_TEST_BUNDLE.md`
 
-### WI-611. Velvet Mobile Capture Gesture
+### WI-617. Semi-Stable Cross-Surface Validation Pass
 
-- Branch: `codex/velvet-mobile-capture-gesture`
-- Lock: `IN_PROGRESS | Workitem: WI-611 | Owner: worker-velvet-mobile | Claimed: 2026-03-27T08:08:32Z | Last heartbeat: 2026-03-27T08:12:32Z`
-- Goal: redesign the Android-first mobile companion so capture and briefing flows feel intentional, premium, and phone-native.
+- Branch: `codex/semi-stable-validation-pass`
+- Lock: `PENDING`
+- Goal: rerun the release evidence on current `master` so the semi-stable bundle has current UI proof instead of mixed older evidence.
 - Scope:
-  - update the main app shell, capture flow, and briefing-related presentation
-  - reduce the compressed-dashboard feel in favor of fewer, stronger surfaces
-  - preserve quick capture, alarms, offline playback, and review utility
+  - rerun `./scripts/pwa_release_gate.sh`
+  - rerun `./scripts/velvet_validation_artifacts.sh` with PWA, Android phone, and Windows helper coverage enabled
+  - store an authoritative artifact bundle and mark superseded bundles explicitly
 - Validation:
-  - `cd apps/mobile && ./node_modules/.bin/tsc --noEmit`
-  - connected-phone screenshot proof using the Android runbook in `AGENTS.md`
+  - `./scripts/pwa_release_gate.sh`
+  - `./scripts/velvet_validation_artifacts.sh`
 
-### WI-612. Velvet Desktop Helper Instrument
+### WI-618. Release Docs And Plan Alignment
 
-- Branch: `codex/velvet-desktop-helper-instrument`
-- Lock: `IN_PROGRESS | Workitem: WI-612 | Owner: worker-velvet-desktop | Claimed: 2026-03-27T08:09:53Z | Last heartbeat: 2026-03-27T08:17:19Z`
-- Goal: redesign the desktop helper so the quick popup feels like a polished capture instrument instead of a neutral utility dialog.
+- Branch: `codex/release-docs-plan-alignment`
+- Lock: `PENDING`
+- Goal: align release-facing docs with the current `master` snapshot and remove plan-doc drift before the next semi-stable handoff.
 - Scope:
-  - update the compact quick-capture popup
-  - keep the workspace/studio surface coherent but secondary to fast capture
-  - align helper styling with the Velvet moodboard and helper system mockup
+  - refresh `docs/IMPLEMENTATION_STATUS.md` and `docs/VNEXT_TEST_BUNDLE.md`
+  - ensure the canonical root `PLAN.md` exists on the release branch and does not conflict with older forward-looking docs
+  - keep `README.md`, release docs, and validation docs aligned with the same release snapshot
 - Validation:
-  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts`
-  - helper screenshot proof where practical
-
-### WI-613. Velvet Cross-Device Validation Matrix
-
-- Branch: `codex/velvet-cross-device-validation`
-- Lock: `COMPLETED | Workitem: WI-613 | Owner: N/A | Claimed: 2026-03-27T08:08:36Z | Last heartbeat: 2026-03-27T08:16:25Z`
-- Goal: define and partially execute the validation path for the Velvet rollout across browser, connected Android phone, and Windows helper host.
-- Scope:
-  - inventory the existing validation scripts/runbooks
-  - document pass criteria, commands, and evidence paths for the new UI rollout
-  - capture baseline validation evidence where possible before branch integration
-- Release note:
-  - committed docs update: `2be4584`
-
-### WI-614. Developer Docs And Product README Refresh
-
-- Branch: `codex/dev-docs-product-readme`
-- Lock: `IN_PROGRESS | Workitem: WI-614 | Owner: worker-devdocs-readme | Claimed: 2026-03-27T08:09:58Z | Last heartbeat: 2026-03-27T08:17:19Z`
-- Goal: add a human-readable developer code map, refresh the README to be product-first, and mirror the new queue in this file.
-- Scope:
-  - add `docs/CODEBASE_ORGANIZATION.md`
-  - rewrite `README.md` around product overview, capabilities, setup, and usage
-  - refresh this queue file to match the active Velvet rollout
-- Validation:
-  - lightweight docs sanity review
   - `git diff --check`
-
-### WI-615. PDF OCR Ingest And Card Smoke
-
-- Branch: `codex/pdf-ocr-card-smoke`
-- Lock: `IN_PROGRESS | Workitem: WI-615 | Owner: worker-pdf-ocr-smoke | Claimed: 2026-03-27T08:09:59Z | Last heartbeat: 2026-03-27T08:16:01Z`
-- Goal: harden the manual PDF ingest to summary/note/card/quiz path and evaluate an optional desktop-hosted OCR server flow.
-- Scope:
-  - inspect the current PDF/manual artifact pipeline
-  - test summary, note creation, and card/quiz generation using the supplied PDF
-  - evaluate liteparse + PaddleOCR as an optional dependency instead of a mandatory global requirement
-- Validation:
-  - relevant `services/api` and `services/ai-runtime` tests
-  - smoke evidence for PDF-backed artifact processing
+  - manual docs sanity review against current `master`
