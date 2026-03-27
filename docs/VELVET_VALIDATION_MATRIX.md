@@ -52,6 +52,56 @@ Reusable scaffolding for future passes now lives in:
 
 - `scripts/prepare_velvet_validation_bundle.sh`
 - `scripts/capture_velvet_windows_host_probe.sh`
+- `scripts/velvet_validation_artifacts.sh`
+
+## One-command artifact bundle
+
+The default supervisor entrypoint is now:
+
+```bash
+cd /home/ubuntu/starlog
+./scripts/velvet_validation_artifacts.sh
+```
+
+That command creates `artifacts/velvet-validation/<timestamp>/`, runs the ready-now PWA and Windows
+checks, and writes a per-step summary to:
+
+- `artifacts/velvet-validation/<timestamp>/RUN_SUMMARY.md`
+- `artifacts/velvet-validation/<timestamp>/run-summary.json`
+
+If you run it from a fresh linked worktree, attach the shared dependency state first:
+
+```bash
+cd /home/ubuntu/starlog-worktrees/<your-worktree>
+bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
+./scripts/velvet_validation_artifacts.sh
+```
+
+Optional paths stay explicit via environment variables:
+
+```bash
+cd /home/ubuntu/starlog
+STARLOG_VALIDATION_RUN_PWA_PROOF=1 \
+STARLOG_CROSS_SURFACE_API_BASE='http://127.0.0.1:8011' \
+STARLOG_CROSS_SURFACE_TOKEN='<token>' \
+STARLOG_VALIDATION_RUN_ANDROID_SMOKE=1 \
+STARLOG_VALIDATION_RUN_ANDROID_SCREENSHOT=1 \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=9dd62e84 \
+REVERSE_PORTS=8000 \
+SKIP_INSTALL=1 \
+./scripts/velvet_validation_artifacts.sh
+```
+
+Optional roots for split worktrees can also be overridden:
+
+```bash
+VALIDATION_ROOT=/home/ubuntu/starlog \
+PWA_ROOT=/home/ubuntu/starlog-worktrees/velvet-pwa-salon-thread \
+MOBILE_ROOT=/home/ubuntu/starlog-worktrees/velvet-mobile-capture-gesture \
+HELPER_ROOT=/home/ubuntu/starlog-worktrees/velvet-desktop-helper-instrument \
+./scripts/velvet_validation_artifacts.sh
+```
 
 ## Validation targets
 
