@@ -522,7 +522,7 @@ function ArtifactsPageContent() {
 
         {!filterHudPane.collapsed ? <aside className="artifact-filter-hud">
           <div className="artifact-pane-head">
-            <h2>Filter HUD</h2>
+            <h2>Reading Filters</h2>
             <PaneToggleButton label="Hide pane" onClick={filterHudPane.collapse} />
           </div>
           <label htmlFor="filter-raw">
@@ -602,16 +602,16 @@ function ArtifactsPageContent() {
             <span className="artifact-scene-tag">{selectedArtifact ? selectedArtifact.source_type : "graph.idle"}</span>
             <span>{selectedArtifact ? selectedArtifact.id : "Awaiting first clip"}</span>
           </div>
-          <h2>{selectedArtifact?.title || "Build the artifact graph"}</h2>
+          <h2>{selectedArtifact?.title || "Enter the reading room"}</h2>
           <p className="artifact-scene-copy">
             {selectedArtifact
-              ? "Preserve the raw capture, trace every derivative, and keep the active relations visible from this shared graph scene."
-              : "Create a clip or select an artifact to populate the graph, inspector metadata, and version chain."}
+              ? "Keep the raw source intact, let the distilled answer rise to the front, and preserve the lineage around it."
+              : "Create a clip or select an artifact to populate the room with source history, versions, and extraction lineage."}
           </p>
           {selectedArtifact ? (
             <div className="artifact-scene-stats">
               <span>Summaries {graph?.summaries.length ?? 0}</span>
-              <span>Tasks {graph?.tasks.length ?? 0}</span>
+              <span>Cards {graph?.cards.length ?? 0}</span>
               <span>Versions {versions?.actions.length ?? 0}</span>
             </div>
           ) : (
@@ -620,7 +620,7 @@ function ArtifactsPageContent() {
                 Create Clip
               </button>
               <button className="button" type="button" onClick={() => loadArtifacts()}>
-                Refresh Inbox
+                Refresh Room
               </button>
             </div>
           )}
@@ -640,7 +640,7 @@ function ArtifactsPageContent() {
             <div className="artifact-pane-head">
               <div>
                 <p className="eyebrow">Artifact Nexus</p>
-                <h1>Clip inbox and references</h1>
+                <h1>Reading room and lineage</h1>
                 <p className="status">{status}</p>
               </div>
               <PaneToggleButton label="Hide pane" onClick={inspectorPane.collapse} />
@@ -649,9 +649,9 @@ function ArtifactsPageContent() {
 
           <div className="artifact-inspector-body">
             <article className="artifact-card">
-              <h2>Inbox</h2>
+              <h2>Reading Stack</h2>
               {visibleItems.length === 0 ? (
-                <p className="console-copy">No artifacts yet.</p>
+                <p className="console-copy">No artifacts in the room yet.</p>
               ) : (
                 <ul className="artifact-inbox-list">
                   {visibleItems.map((artifact) => (
@@ -675,9 +675,9 @@ function ArtifactsPageContent() {
             </article>
 
             <article className="artifact-card">
-              <h2>Metadata</h2>
+              <h2>Source Notes</h2>
               {!selectedArtifact ? (
-                <p className="console-copy">Select an artifact to inspect metadata.</p>
+                <p className="console-copy">Select an artifact to inspect source notes.</p>
               ) : (
                 <dl className="artifact-metadata-grid">
                   <dt>Artifact</dt>
@@ -693,11 +693,11 @@ function ArtifactsPageContent() {
             </article>
 
             <article className="artifact-card">
-              <h2>Linked graph</h2>
+              <h2>Lineage</h2>
               {selectedId.startsWith("pending:") ? (
-                <p className="console-copy">Replay the queued capture before graph data is available.</p>
+                <p className="console-copy">Replay the queued capture before lineage is available.</p>
               ) : !graph ? (
-                <p className="console-copy">Select an artifact to inspect graph links.</p>
+                <p className="console-copy">Select an artifact to inspect linked lineage.</p>
               ) : (
                 <>
                   <p className="console-copy">Summaries: {graph.summaries.length}</p>
@@ -715,7 +715,7 @@ function ArtifactsPageContent() {
             </article>
 
             <article className="artifact-card">
-              <h2>Version history</h2>
+              <h2>Version History</h2>
               {selectedId.startsWith("pending:") ? (
                 <p className="console-copy">Replay the queued capture before version history is available.</p>
               ) : !versions ? (
@@ -737,12 +737,12 @@ function ArtifactsPageContent() {
             </article>
 
             <article className="artifact-card">
-              <h2>Action console</h2>
+              <h2>Curated Actions</h2>
               <div className="button-row">
-                <button className="button" type="button" onClick={() => runAction("summarize")}>Summarize</button>
-                <button className="button" type="button" onClick={() => runAction("cards")}>Create Cards</button>
+                <button className="button" type="button" onClick={() => runAction("summarize")}>Distill Summary</button>
+                <button className="button" type="button" onClick={() => runAction("cards")}>Make Cards</button>
                 <button className="button" type="button" onClick={() => runAction("tasks")}>Suggest Tasks</button>
-                <button className="button" type="button" onClick={() => runAction("append_note")}>Append Note</button>
+                <button className="button" type="button" onClick={() => runAction("append_note")}>Create Note</button>
                 <Link className="button" href="/ai-jobs">AI Jobs</Link>
               </div>
               <label className="label" htmlFor="defer-ai">
@@ -752,12 +752,12 @@ function ArtifactsPageContent() {
                   checked={deferAi}
                   onChange={(event) => setDeferAi(event.target.checked)}
                 />{" "}
-                Queue summarize/cards/tasks for local Codex runner instead of running now
+                Queue summarize/cards/tasks for the local Codex runner instead of running now
               </label>
             </article>
 
             <details className="artifact-quick-capture" open>
-              <summary>Quick capture controls</summary>
+              <summary>Quick capture</summary>
               <label className="label" htmlFor="quick-title">Title</label>
               <input
                 id="quick-title"

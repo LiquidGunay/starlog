@@ -1143,10 +1143,11 @@ a {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(rgba(156, 137, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(156, 137, 255, 0.05) 1px, transparent 1px),
+    radial-gradient(circle at top, rgba(247, 205, 135, 0.07), transparent 28%),
+    linear-gradient(rgba(211, 154, 58, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(211, 154, 58, 0.04) 1px, transparent 1px),
     linear-gradient(150deg, color-mix(in srgb, var(--bg), transparent 5%), color-mix(in srgb, var(--bg-2), transparent 6%));
-  background-size: 44px 44px, 44px 44px, auto;
+  background-size: auto, 44px 44px, 44px 44px, auto;
 }
 
 .artifact-filter-hud {
@@ -1155,9 +1156,11 @@ a {
   left: 1rem;
   width: min(280px, calc(100% - 2rem));
   z-index: 20;
-  border-radius: 1rem;
+  border-radius: 1.4rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 15%);
-  background: color-mix(in srgb, var(--panel), transparent 8%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
   backdrop-filter: blur(14px);
   padding: 0.9rem;
   box-shadow: var(--shadow);
@@ -1165,10 +1168,10 @@ a {
 
 .artifact-filter-hud h2 {
   margin: 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 0.88rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1;
   color: var(--primary-soft);
 }
 
@@ -1218,7 +1221,7 @@ a {
 .artifact-node.active circle {
   stroke: color-mix(in srgb, var(--primary), transparent 0%);
   stroke-width: 3px;
-  filter: drop-shadow(0 0 12px rgba(156, 137, 255, 0.48));
+  filter: drop-shadow(0 0 12px rgba(211, 154, 58, 0.4));
 }
 
 .artifact-scene-card {
@@ -1226,14 +1229,16 @@ a {
   left: 50%;
   bottom: 1rem;
   transform: translateX(-50%);
-  width: min(540px, calc(100% - 3rem));
+  width: min(680px, calc(100% - 3rem));
   z-index: 18;
-  border-radius: 1rem;
+  border-radius: 1.6rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 16%);
-  background: color-mix(in srgb, var(--panel), transparent 8%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
-  padding: 1rem 1.05rem;
+  padding: 1.2rem 1.25rem;
 }
 
 .artifact-scene-card.empty {
@@ -1264,17 +1269,18 @@ a {
 
 .artifact-scene-card h2 {
   margin: 0.72rem 0 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: clamp(1.55rem, 2.8vw, 2.35rem);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: clamp(2.5rem, 4vw, 4rem);
+  line-height: 0.94;
+  letter-spacing: -0.02em;
+  max-width: 12ch;
 }
 
 .artifact-scene-copy {
   margin: 0.75rem 0 0;
-  max-width: 36rem;
-  color: color-mix(in srgb, var(--text), var(--muted) 36%);
-  line-height: 1.6;
+  max-width: 44rem;
+  color: color-mix(in srgb, var(--text), var(--muted) 24%);
+  line-height: 1.7;
 }
 
 .artifact-scene-stats,
@@ -1305,9 +1311,11 @@ a {
   right: 1rem;
   bottom: 1rem;
   width: min(360px, calc(100% - 2rem));
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 10%);
-  background: color-mix(in srgb, var(--panel), transparent 7%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
   backdrop-filter: blur(14px);
   box-shadow: var(--shadow);
   z-index: 20;
@@ -1322,10 +1330,9 @@ a {
 
 .artifact-inspector-header h1 {
   margin: 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 2rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2.75rem;
+  line-height: 0.95;
 }
 
 .artifact-inspector-body {
@@ -1357,17 +1364,18 @@ a {
 
 .artifact-card {
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 18%);
-  background: color-mix(in srgb, var(--chip), transparent 20%);
-  border-radius: 0.82rem;
-  padding: 0.75rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--chip), transparent 12%);
+  border-radius: 1.15rem;
+  padding: 0.95rem;
 }
 
 .artifact-card h2 {
   margin: 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 0.84rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.55rem;
+  line-height: 1;
   color: var(--primary-soft);
 }
 
@@ -1385,10 +1393,9 @@ a {
 .artifact-quick-capture summary {
   cursor: pointer;
   list-style: none;
-  font-family: "Rajdhani", sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.8rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.45rem;
+  line-height: 1;
 }
 
 .artifact-quick-capture summary::-webkit-details-marker {
