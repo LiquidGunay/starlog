@@ -1,56 +1,125 @@
 # Starlog
 
-Starlog is a single-user, clip-first personal system for knowledge, scheduling, and learning loops.
+Starlog is a single-user, voice-native personal system for capture, knowledge management, scheduling,
+and learning workflows.
 
-This repository now includes working backend, web/PWA, mobile companion, and clipping surfaces
-(browser extension + desktop helper) for the approved v1 plan.
+The product is built around one persistent chat thread, with the PWA as the canonical synced workspace,
+the phone as the companion for capture and alarms, and the desktop helper as the fast path for clips and
+screen context.
 
-## Repository layout
+This README is product-first: what Starlog does, how the repo is organized, and how to run the main
+surfaces locally. For a developer-facing code map, use `docs/CODEBASE_ORGANIZATION.md`.
 
-- `apps/web` - modern "spacy" PWA workspace shell with light/dark theme.
-- `apps/mobile` - companion app shell for capture, alarms, and quick review.
-- `services/api` - FastAPI backend with SQLite storage, auth, sync, artifacts, SRS, tasks, calendar, planning, briefings, events, provider integration config, and export.
-- `packages/contracts` - shared TypeScript contract package.
-- `tools/browser-extension` - MV3 clipper scaffold for browser capture.
-- `tools/desktop-helper` - Tauri helper scaffold for non-browser clipping.
-- `docs` - plan and product docs.
+## What Starlog can do today
 
-## Quick start
+- capture text, URLs, files, voice notes, screenshots, and browser clips into artifacts
+- preserve artifact provenance across raw, normalized, and extracted content
+- generate summaries, cards, and follow-up actions from artifact content
+- keep notes, tasks, calendar events, review cards, and briefings in one system
+- run a synced web workspace, a native mobile companion, and a desktop helper
+- queue local AI jobs for voice transcription, assistant planning, and optional local speech output
+- support offline-friendly mobile/PWA flows with cached state and replay
 
-### Backend
+## Product surfaces
 
-```bash
-make bootstrap-api
-make dev-api
-```
+### PWA
 
-`make bootstrap-api` now uses `uv sync --project services/api --extra dev`.
+Primary synced workspace.
 
-### Web app
+- assistant/chat surface
+- artifacts and related summaries/cards/history
+- notes, tasks, calendar, review, search, sync, and portability
+
+Run it with:
 
 ```bash
 make bootstrap-web
 make dev-web-lan
 ```
 
-### Mobile app
+### Mobile companion
+
+Android-first native companion for quick capture, alarms, offline briefing playback, and review.
+
+- quick capture and share intake
+- voice note recording and deferred processing
+- alarm scheduling and cached briefing playback
+- artifact triage and phone-first review actions
+
+Run it with:
 
 ```bash
 pnpm --filter mobile start
 ```
 
-### Android dev build
+Android dev-build docs:
 
-The Android native build path is now configured in `apps/mobile` and the local build path is the primary one.
+- `docs/ANDROID_DEV_BUILD.md`
+- `docs/PHONE_SETUP.md`
 
-- guide: `docs/ANDROID_DEV_BUILD.md`
-- local Android install: `pnpm --filter mobile android:local`
-- dev client bundle: `pnpm --filter mobile start:dev-client`
-- optional hosted build: `cd apps/mobile && npx eas-cli build --platform android --profile development`
+### Desktop helper
+
+Cross-platform helper for fast desktop capture and local bridge-assisted workflows.
+
+- clipboard and screenshot capture
+- recent capture history and diagnostics
+- host-local bridge discovery and helper config
+
+Setup docs:
+
+- `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
+- `docs/DESKTOP_HELPER_V1_RELEASE.md`
+
+### Browser extension
+
+Chromium MV3 clipper for browser-first capture.
+
+- captures current selection and page metadata
+- preserves raw, normalized, and extracted capture layers
+- sends captures into the same artifact pipeline as the other surfaces
+
+Local setup:
+
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Load the unpacked extension from `tools/browser-extension`.
+
+Reference: `tools/browser-extension/README.md`
+
+## Architecture at a glance
+
+- `apps/web` — installable PWA and current primary workspace
+- `apps/mobile` — native mobile companion
+- `services/api` — FastAPI system of record for auth, sync, artifacts, notes, tasks, calendar, briefings, review, and tool execution
+- `services/ai-runtime` — Python AI runtime for prompts, orchestration, provider adapters, and evaluation-oriented workflows
+- `tools/browser-extension` — browser clipping surface
+- `tools/desktop-helper` — Tauri-based desktop helper
+- `packages/contracts` — shared TypeScript contracts
+
+More detail: `docs/CODEBASE_ORGANIZATION.md`
+
+## Local setup
+
+### API
+
+```bash
+make bootstrap-api
+make dev-api
+```
+
+`make bootstrap-api` uses `uv sync --project services/api --extra dev`.
+
+### AI runtime
+
+```bash
+cd services/ai-runtime
+uv sync --extra dev
+uv run uvicorn runtime_app.main:app --reload --port 8100
+```
 
 ### Local AI worker
 
-Run Codex and Whisper locally on your laptop while Starlog queues jobs through the API:
+Run local voice/assistant jobs against your API:
 
 ```bash
 export STARLOG_TOKEN=YOUR_BEARER_TOKEN
@@ -63,54 +132,85 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
-Guide: `docs/LOCAL_AI_WORKER.md`
-
-Shortcut target:
+Shortcut:
 
 ```bash
 STARLOG_TOKEN=YOUR_BEARER_TOKEN make dev-local-ai
 ```
 
-### Railway deploy
+Guide: `docs/LOCAL_AI_WORKER.md`
 
-Guide: `docs/RAILWAY_DEPLOY.md`
+## Bootstrap the app
 
-### Desktop helper install/setup
+1. Create the single user:
 
-Linux installable artifact and daily-use setup handoff:
+```bash
+curl -X POST http://localhost:8000/v1/auth/bootstrap \
+  -H 'Content-Type: application/json' \
+  -d '{"passphrase":"correct horse battery staple"}'
+```
 
-- distribution runbook: `docs/DESKTOP_HELPER_V1_RELEASE.md`
-- main-laptop setup pack: `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
+2. Login and get a bearer token:
 
-## View progress on phone
+```bash
+curl -X POST http://localhost:8000/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"passphrase":"correct horse battery staple"}'
+```
 
-Use the phone setup guide for both PWA and Expo companion flows:
+3. Configure that token in the web app, mobile app, or desktop helper.
 
-- `docs/PHONE_SETUP.md`
+## Main workflows
 
-Mobile companion currently supports SQLite-backed local state, queued text/voice capture retries,
-artifact inbox triage, quick SRS review sessions, daily alarm scheduling, local spoken playback,
-execution-policy-aware routing visibility, typed commands, queued Codex command planning, queued voice assistant commands,
-briefing-audio render queueing, Android native share-intent prefills, and deep-link capture prefill via `starlog://capture?...`.
+### Capture into artifacts
 
-PWA mutations now use a local browser outbox with replay on reconnect, plus a dedicated sync workspace
-at `/sync-center` that also surfaces recent server-recorded mutation activity and pull-by-cursor deltas.
+- `POST /v1/capture` ingests raw, normalized, and extracted capture layers
+- `POST /v1/capture/voice` ingests voice notes and queues transcription
+- browser and desktop helper flows both feed the same artifact system
 
-The PWA now also exposes an installable manifest/share-target flow so Android/browser shares can land
-in `/share-target`, plus a portability workspace for export/restore drills. Voice-note uploads now flow
-through `/v1/capture/voice` and queue `whisper_local` STT jobs for the local AI worker.
-Key PWA workspaces now also keep best-effort local entity snapshots so recent artifacts, notes, tasks,
-calendar state, and assistant history remain readable while the network is down.
+### Work from the assistant thread
 
-### Tests
+- `/assistant` is the current command/chat surface in the PWA
+- `GET /v1/agent/intents` exposes supported assistant intents/examples
+- `POST /v1/agent/command` plans or executes deterministic commands
+- `POST /v1/agent/command/assist` and `POST /v1/agent/command/voice` queue broader AI-assisted flows
+
+### Review artifacts and derived outputs
+
+- `/artifacts` exposes artifact graphs and version history
+- `GET /v1/artifacts/{artifact_id}/graph` shows linked summaries, cards, notes, tasks, and relations
+- `GET /v1/artifacts/{artifact_id}/versions` exposes summary/card/action history
+
+### Work across planning surfaces
+
+- `/notes`, `/tasks`, `/calendar`, `/planner`, `/review`, `/search`
+- sync and offline behavior surface through `/sync-center`
+- portability/export flows live under `/portability`
+
+## Key routes and pages
+
+- `/assistant` — primary assistant/chat workspace
+- `/artifacts` — artifact inbox, graph, and versioning
+- `/notes` — note editor
+- `/tasks` — task workspace
+- `/calendar` — calendar workspace
+- `/planner` — time-block planning
+- `/review` — due card review
+- `/search` — cross-workspace retrieval
+- `/sync-center` — mutation replay and sync history
+- `/portability` — export/restore workflows
+- `/share-target` — installable PWA share ingress
+- `/ai-jobs` — queued local AI job visibility
+
+## Testing and validation
+
+### API
 
 ```bash
 make test-api
 ```
 
-### PR smoke matrix
-
-Use the fast cross-surface PR gate for runtime/API/web/helper changes:
+### Fast PR smoke gate
 
 ```bash
 ./scripts/ci_smoke_matrix.sh
@@ -118,15 +218,7 @@ Use the fast cross-surface PR gate for runtime/API/web/helper changes:
 
 Guide: `docs/AI_VALIDATION_SMOKE_MATRIX.md`
 
-### Current vNext handoff
-
-For the shortest install/test bundle across desktop, phone, and PWA, start here:
-
-- `docs/VNEXT_TEST_BUNDLE.md`
-- `docs/FINAL_PREVIEW_SIGNOFF.md`
-- `docs/PREVIEW_FEEDBACK_BUNDLE.md`
-
-For web release candidates, run the heavier PWA release gate as well:
+### PWA release gate
 
 ```bash
 ./scripts/pwa_release_gate.sh
@@ -138,120 +230,12 @@ For web release candidates, run the heavier PWA release gate as well:
 make seed-api
 ```
 
-### Browser extension
+## High-value docs
 
-Load `tools/browser-extension` as unpacked extension in Chromium.
-
-## API bootstrap flow
-
-1. Create the single user:
-
-```bash
-curl -X POST http://localhost:8000/v1/auth/bootstrap \
-  -H 'Content-Type: application/json' \
-  -d '{"passphrase":"correct horse battery staple"}'
-```
-
-2. Login and get bearer token:
-
-```bash
-curl -X POST http://localhost:8000/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"passphrase":"correct horse battery staple"}'
-```
-
-3. Use token for protected endpoints.
-
-## Workspace pages
-
-- `/` - launch dashboard + API console
-- `/assistant` - command shell that plans/executes tool-backed Starlog commands, queues Codex planning jobs, and records browser voice commands
-- `/artifacts` - clip inbox viewer + artifact graph/version history
-- `/agent-tools` - tool catalog + executor surface for future voice/chat interfaces
-- `/notes` - primary note editor with optimistic queued updates
-- `/tasks` - task execution workspace with optimistic status/edit flows
-- `/calendar` - weekly board with create/update/delete event lifecycle controls
-- `/integrations` - provider config plus capability-level execution-policy ordering
-- `/ai-jobs` - queued local AI work (Codex + Whisper) visibility
-- `/planner` - time-block generation workspace
-- `/portability` - export/download/restore workspace for portability drills
-- `/review` - due card review queue
-- `/search` - cross-workspace retrieval across artifacts, notes, tasks, and calendar events
-- `/share-target` - installable PWA share ingress for browser/system share payloads
-- `/sync-center` - queued mutation replay, local replay log, and server sync history
-- `/mobile-share` - deep-link generator for mobile capture handoff
-
-## Clip-first API additions
-
-- Ingest capture with raw/normalized/extracted layers: `POST /v1/capture`
-- Ingest voice note + queue Whisper transcription: `POST /v1/capture/voice`
-- Upload/download protected media assets: `POST /v1/media/upload`, `GET /v1/media/{media_id}/content`
-- Discover/execute agent tool contracts: `GET /v1/agent/tools`, `POST /v1/agent/execute`
-- List assistant intents/examples: `GET /v1/agent/intents`
-- Plan/execute assistant commands: `POST /v1/agent/command`
-- Queue Codex-assisted assistant planning/execution: `POST /v1/agent/command/assist`
-- Queue voice assistant commands for Whisper + command execution: `POST /v1/agent/command/voice`
-- Queue briefing audio rendering for local TTS worker: `POST /v1/briefings/{briefing_id}/audio/render`
-- Read/update execution policy: `GET /v1/integrations/execution-policy`, `POST /v1/integrations/execution-policy`
-- Inspect artifact graph links: `GET /v1/artifacts/{artifact_id}/graph`
-- Inspect summary/card/action version history: `GET /v1/artifacts/{artifact_id}/versions`
-- Edit/fetch notes: `GET /v1/notes/{note_id}`, `PATCH /v1/notes/{note_id}`
-- Search across workspaces: `GET /v1/search?q=...`
-- Pull/upload sync state: `GET /v1/sync/pull`, `POST /v1/sync/push`
-- Inspect/upload sync activity history: `GET /v1/sync/activity`, `POST /v1/sync/activity`
-
-## Google calendar sync scaffold
-
-- Start OAuth intent: `POST /v1/calendar/sync/google/oauth/start`
-- Complete OAuth callback: `POST /v1/calendar/sync/google/oauth/callback`
-- Inspect OAuth connection mode/token state: `GET /v1/calendar/sync/google/oauth/status`
-- Run two-way delta sync: `POST /v1/calendar/sync/google/run`
-- Inspect remote mirror + conflicts:
-  - `GET /v1/calendar/sync/google/remote/events`
-  - `GET /v1/calendar/sync/google/conflicts`
-  - `POST /v1/calendar/sync/google/conflicts/{conflict_id}/resolve`
-  - `POST /v1/calendar/sync/google/conflicts/{conflict_id}/replay`
-
-Sync responses now include a `run_id` for conflict diagnostics correlation.
-
-When `STARLOG_GOOGLE_CLIENT_ID` and `STARLOG_GOOGLE_CLIENT_SECRET` are configured, callback performs a real Google token exchange and sync can pull/push/update/delete events against Google Calendar.
-
-## Calendar event lifecycle
-
-- Create event: `POST /v1/calendar/events`
-- Update event: `PATCH /v1/calendar/events/{event_id}`
-- Soft-delete event (sync-aware): `DELETE /v1/calendar/events/{event_id}`
-- List active events: `GET /v1/calendar/events`
-
-## Extensibility + import
-
-- Register/list plugins: `POST /v1/plugins`, `GET /v1/plugins`
-- Import markdown notes: `POST /v1/import/markdown`
-- Restore exported snapshot: `POST /v1/import/export`
-- Verify roundtrip portability locally: `make verify-export`
-
-## Provider config security
-
-- Sensitive provider fields (`api_key`, `token`, `secret`, etc.) are encrypted at rest.
-- API responses redact sensitive values as `__redacted__`.
-- Local-mode providers with `endpoint`/`base_url` now run localhost runtime probes.
-- Remote/API providers can opt into auth probes with `auth_probe_url`, Google OAuth health now performs a real Calendar API auth probe, and Codex bridge health derives `/v1/models` probes from configured bridge URLs.
-- Artifact summarize/cards/tasks actions now use the provider chain (`local_llm` -> `codex_bridge` -> `api_llm`) when those providers are configured.
-- Queued local AI work now supports laptop-local `codex exec`, Codex-assisted command planning, `whisper.cpp`, and optional local TTS audio rendering through `scripts/local_ai_worker.py`.
-- Capability-level execution policy now lets you prioritize `on_device`, `batch_local_bridge`, `server_local`, `codex_bridge`, and `api_fallback` per AI family.
-- Agent tools now also expose execution-policy read/update operations so future chat/voice layers can manage routing without going through the UI.
-- Agent tool coverage now includes artifact listing/graph inspection, note create/update/fetch, task listing, calendar listing, and time-block generation in addition to capture/review/briefing actions.
-- The `/assistant` workspace provides the first chat-style command surface on top of the same tool layer, with deterministic planning plus queued Codex-assisted fallback planning when you want broader command handling.
-- Voice commands now reuse the same assistant layer by queueing Whisper transcription jobs with `action=assistant_command`, then executing the parsed command when transcription completes.
-- The assistant now also exposes a machine-readable intent/examples catalog so PWA/mobile shells can stay aligned on supported commands.
-- Morning briefing packages can now queue local TTS audio rendering, attach the resulting media back onto the briefing, and let the mobile app cache/play pre-rendered audio offline.
-- Set `STARLOG_SECRETS_MASTER_KEY` in production to avoid fallback insecure key mode.
-
-## Ops endpoints
-
-- Runtime metrics snapshot: `GET /v1/ops/metrics`
-- Local backup snapshot export: `POST /v1/ops/backup`
-
-## Current status
-
-This is an active implementation pass toward the approved v1 plan in `docs/STARLOG_V1_PLAN.md`.
+- `docs/CODEBASE_ORGANIZATION.md` — developer code map
+- `docs/IMPLEMENTATION_STATUS.md` — current shipped snapshot and recent validation state
+- `docs/PHONE_SETUP.md` — phone/PWA/mobile setup and testing
+- `docs/ANDROID_DEV_BUILD.md` — Android dev-build flow
+- `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — helper setup handoff
+- `docs/RAILWAY_DEPLOY.md` — hosted deployment model
+- `docs/PWA_RELEASE_VERIFICATION_GATE.md` — heavier PWA release checklist

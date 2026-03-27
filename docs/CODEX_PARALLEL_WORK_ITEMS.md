@@ -1,334 +1,114 @@
 # Codex Parallel Work Items
 
-Base code baseline for this queue: `ab070a8` on `master`.
+Queue refresh date: `2026-03-27`
 
-Plan sources:
-- `AGENTS.md` (v1 preferences, markdown map, shared worktree rules)
-- `docs/STARLOG_V1_PLAN.md`
-- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md`
-- post-merge UI audit against `screen_design`
+Planning sources:
 
-Last queue reset: `2026-03-15`.
+- `AGENTS.md`
+- `docs/IMPLEMENTATION_STATUS.md`
+- `PLAN.md` on the current mainline direction for the voice-native Starlog migration
 
 ## Queue reset
 
-- Prior workitems (`WI-301` through `WI-346`) are retired as completed or superseded by the post-merge UI/setup queue.
-- This file now tracks the next v1-distribution pass split into three product categories plus one shared-agent tooling section.
-- iOS share-specific work is out of scope for v1 and is not part of this queue.
+- Older distribution/setup workitems remain in the live registry for history, but they are not the active queue for this pass.
+- This refresh groups the current work around the Velvet redesign plus the supporting docs and PDF/OCR validation tracks requested on `2026-03-27`.
+- Live lock state is authoritative under `$(git rev-parse --git-common-dir)/codex-workitems/`; this file is the human-readable mirror only.
 
 ## Working rules
 
 - Branch from latest `origin/master` using `codex/*` branch names only.
 - Every claimed workitem must ship via a PR to `master`.
-- Rebase onto latest `origin/master` before requesting merge if your branch is behind.
-- If a PR is merged, do not push more commits to it. Create a new branch and a new PR.
+- Rebase onto latest `origin/master` before final review if your branch is behind.
 - Do not deploy from a feature branch without explicit user approval.
-- Update `AGENTS.md` issue/preference log for newly discovered blockers/preferences.
-- Before reinstalling dependencies in a fresh worktree, run `bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog` and reuse shared state unless your task changes that surface's dependency/build inputs.
+- Before reinstalling dependencies in a fresh worktree, run `bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog`.
+- Update `AGENTS.md` when a new blocker, preference, or merge-conflict lesson is discovered.
 
 ## Claiming and locks
 
-- Live lock authority is the shared registry under `$(git rev-parse --git-common-dir)/codex-workitems/`.
-- This file is a human-readable mirror of lock state.
 - Claim before implementation:
   - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent-id>`
-- Heartbeat every 2 minutes while actively working:
+- Heartbeat while active:
   - `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent-id>`
-- Release on completion/handoff:
+- Release on completion or handoff:
   - `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent-id> --status completed`
-- Stale lock reclaim (TTL 10 minutes):
+- Stale lock reclaim:
   - `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent-id> --force-steal --reason "<reason>"`
-- Sync mirror lines:
-  - `python3 scripts/sync_workitem_mirror.py`
 
-## Mobile App (Android v1 distribution)
+## Active queue
 
-### WI-401. Mobile companion UI dedupe + design cleanup
-- Branch: `codex/mobile-ui-dedupe-alignment`
-- Lock: `HANDOFF | Workitem: WI-401 | Owner: N/A | Claimed: 2026-03-15T19:05:06Z | Last heartbeat: 2026-03-15T19:12:51Z`
-- Goal: remove the duplicated admin-console feel from the mobile companion while preserving the current capabilities.
+### WI-610. Velvet PWA Salon Thread
+
+- Branch: `codex/velvet-pwa-salon-thread`
+- Lock: `IN_PROGRESS | Workitem: WI-610 | Owner: worker-velvet-pwa | Claimed: 2026-03-27T08:10:32Z | Last heartbeat: 2026-03-27T08:12:40Z`
+- Goal: redesign the PWA around the Velvet direction so the thread-first workspace feels editorial, ritualistic, and premium instead of utility-heavy.
 - Scope:
-  - collapse the advanced capture/review stacks into more compact secondary surfaces,
-  - keep the hero/review/alarm shells as the primary UI,
-  - preserve command, capture, queue, and triage functionality without forcing them all into the main scroll stack.
-- Acceptance:
-  - each tab has one clear primary surface aligned to `screen_design`,
-  - existing mobile capabilities remain reachable,
-  - before/after screenshots are attached for the phone UI.
+  - update the assistant shell and directly related shared PWA styling/components
+  - align the main chat surface with the Velvet moodboard and system mockups
+  - preserve the thread as the canonical operating surface
+- Validation:
+  - `cd apps/web && ./node_modules/.bin/tsc --noEmit`
+  - `cd apps/web && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
+
+### WI-611. Velvet Mobile Capture Gesture
+
+- Branch: `codex/velvet-mobile-capture-gesture`
+- Lock: `IN_PROGRESS | Workitem: WI-611 | Owner: worker-velvet-mobile | Claimed: 2026-03-27T08:08:32Z | Last heartbeat: 2026-03-27T08:12:32Z`
+- Goal: redesign the Android-first mobile companion so capture and briefing flows feel intentional, premium, and phone-native.
+- Scope:
+  - update the main app shell, capture flow, and briefing-related presentation
+  - reduce the compressed-dashboard feel in favor of fewer, stronger surfaces
+  - preserve quick capture, alarms, offline playback, and review utility
 - Validation:
   - `cd apps/mobile && ./node_modules/.bin/tsc --noEmit`
-  - physical-phone screenshots for capture/review/alarms tabs.
+  - connected-phone screenshot proof using the Android runbook in `AGENTS.md`
 
-### WI-402. Android installable build for the main phone
-- Branch: `codex/mobile-main-phone-installable`
-- Lock: `HANDOFF | Workitem: WI-402 | Owner: N/A | Claimed: 2026-03-16T09:19:05Z | Last heartbeat: 2026-03-16T09:45:40Z`
-- Goal: produce one installable Android artifact suitable for the user's main phone.
+### WI-612. Velvet Desktop Helper Instrument
+
+- Branch: `codex/velvet-desktop-helper-instrument`
+- Lock: `IN_PROGRESS | Workitem: WI-612 | Owner: worker-velvet-desktop | Claimed: 2026-03-27T08:09:53Z | Last heartbeat: 2026-03-27T08:17:19Z`
+- Goal: redesign the desktop helper so the quick popup feels like a polished capture instrument instead of a neutral utility dialog.
 - Scope:
-  - choose the correct install path (`preview`/internal vs production-style RC),
-  - build the installable artifact,
-  - document exact install command/URL and required signing inputs,
-  - verify the chosen artifact installs cleanly on the main phone.
-- Acceptance:
-  - one named Android artifact is selected for daily use on the main phone,
-  - install steps are documented and reproducible,
-  - install verification evidence is attached.
-- Validation:
-  - chosen Android build command succeeds,
-  - installed app launches on the main phone without dev-only blocker dialogs.
-
-### WI-403. Main-phone Starlog setup pack
-- Branch: `codex/mobile-main-phone-setup-pack`
-- Lock: `COMPLETED | Workitem: WI-403 | Owner: N/A | Claimed: 2026-03-22T05:31:02Z | Last heartbeat: 2026-03-22T05:36:17Z`
-- Goal: leave the main phone ready for real use once the installable build exists.
-- Scope:
-  - set API base/auth in the installed app,
-  - verify Android share capture, deep links, alarms, and offline briefing playback,
-  - document reset/reinstall steps,
-  - capture screenshots for the final configured state.
-- Acceptance:
-  - main phone can capture/share/review/brief without additional supervisor setup,
-  - setup/reset notes are documented for future device replacement.
-- Validation:
-  - Android smoke flow on the installed build,
-  - screenshot proof of configured home/capture/alarm states.
-
-## Desktop App (main-laptop helper distribution)
-
-### WI-421. Desktop helper UI dedupe + studio alignment
-- Branch: `codex/desktop-studio-dedupe-alignment`
-- Lock: `HANDOFF | Workitem: WI-421 | Owner: N/A | Claimed: 2026-03-15T18:26:43Z | Last heartbeat: 2026-03-15T18:34:25Z`
-- Goal: separate the quick popup from the studio workspace more cleanly so the workspace is not just the popup re-embedded.
-- Scope:
-  - keep the compact quick surface focused on immediate capture,
-  - turn the studio workspace into a more distinct diagnostics/config/history surface,
-  - align the workspace layout more closely to the desktop `screen_design` reference.
-- Acceptance:
-  - quick popup and studio have clearly different responsibilities,
-  - duplicated capture-surface UI is reduced,
-  - updated screenshots show closer design alignment.
+  - update the compact quick-capture popup
+  - keep the workspace/studio surface coherent but secondary to fast capture
+  - align helper styling with the Velvet moodboard and helper system mockup
 - Validation:
   - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts`
-  - updated QA screenshots under `artifacts/desktop-helper/`.
+  - helper screenshot proof where practical
 
-### WI-422. Desktop installable artifact for the main laptop
-- Branch: `codex/desktop-main-laptop-installable`
-- Lock: `HANDOFF | Workitem: WI-422 | Owner: N/A | Claimed: 2026-03-15T18:37:32Z | Last heartbeat: 2026-03-15T18:40:42Z`
-- Goal: produce the host-appropriate installer/package that the user can actually install on the main laptop.
+### WI-613. Velvet Cross-Device Validation Matrix
+
+- Branch: `codex/velvet-cross-device-validation`
+- Lock: `COMPLETED | Workitem: WI-613 | Owner: N/A | Claimed: 2026-03-27T08:08:36Z | Last heartbeat: 2026-03-27T08:16:25Z`
+- Goal: define and partially execute the validation path for the Velvet rollout across browser, connected Android phone, and Windows helper host.
 - Scope:
-  - choose the correct host artifact (`.deb`, `.msi`, `.nsis`, `.dmg`, etc.),
-  - build it from the documented release pipeline,
-  - record the exact artifact path/checksum/version,
-  - verify installability on the target laptop OS.
-- Acceptance:
-  - one installable desktop artifact is selected for the main laptop,
-  - install path and checksum are documented,
-  - install smoke check passes on the target host.
-- Validation:
-  - `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh`
-  - host install smoke using the produced installer/package.
+  - inventory the existing validation scripts/runbooks
+  - document pass criteria, commands, and evidence paths for the new UI rollout
+  - capture baseline validation evidence where possible before branch integration
+- Release note:
+  - committed docs update: `2be4584`
 
-### WI-423. Main-laptop helper setup pack
-- Branch: `codex/desktop-main-laptop-setup-pack`
-- Lock: `HANDOFF | Workitem: WI-423 | Owner: N/A | Claimed: 2026-03-15T18:51:13Z | Last heartbeat: 2026-03-15T19:02:35Z`
-- Goal: leave the main laptop helper fully configured for daily capture.
+### WI-614. Developer Docs And Product README Refresh
+
+- Branch: `codex/dev-docs-product-readme`
+- Lock: `IN_PROGRESS | Workitem: WI-614 | Owner: worker-devdocs-readme | Claimed: 2026-03-27T08:09:58Z | Last heartbeat: 2026-03-27T08:17:19Z`
+- Goal: add a human-readable developer code map, refresh the README to be product-first, and mirror the new queue in this file.
 - Scope:
-  - configure API base/token,
-  - verify shortcut registration, screenshot path, OCR/tooling requirements, and active-window metadata,
-  - document upgrade/uninstall/reset steps,
-  - capture evidence from the installed helper.
-- Acceptance:
-  - the installed helper can clip clipboard/screenshots to Starlog on the main laptop,
-  - host-specific prerequisites and reset steps are documented.
+  - add `docs/CODEBASE_ORGANIZATION.md`
+  - rewrite `README.md` around product overview, capabilities, setup, and usage
+  - refresh this queue file to match the active Velvet rollout
 - Validation:
-  - installed-helper smoke for clipboard + screenshot + metadata,
-  - screenshot evidence from the installed helper UI.
+  - lightweight docs sanity review
+  - `git diff --check`
 
-## PWA (Railway + main-device setup)
+### WI-615. PDF OCR Ingest And Card Smoke
 
-### WI-441. PWA session-controls consolidation
-- Branch: `codex/pwa-session-controls-consolidation`
-- Lock: `COMPLETED | Workitem: WI-441 | Owner: N/A | Claimed: 2026-03-15T17:49:37Z | Last heartbeat: 2026-03-15T17:56:46Z`
-- Goal: stop repeating the generic session/admin form across the canonical PWA shells.
+- Branch: `codex/pdf-ocr-card-smoke`
+- Lock: `IN_PROGRESS | Workitem: WI-615 | Owner: worker-pdf-ocr-smoke | Claimed: 2026-03-27T08:09:59Z | Last heartbeat: 2026-03-27T08:16:01Z`
+- Goal: harden the manual PDF ingest to summary/note/card/quiz path and evaluate an optional desktop-hosted OCR server flow.
 - Scope:
-  - consolidate `SessionControls` into one secondary settings surface/pattern,
-  - remove it as a primary repeated card from `assistant`, `artifacts`, `sync-center`, and `planner`,
-  - keep the same runtime controls accessible without dominating the UI.
-- Acceptance:
-  - canonical PWA surfaces match `screen_design` more closely,
-  - session/admin controls remain reachable in a consistent secondary place,
-  - screenshots show the cleaner shells.
+  - inspect the current PDF/manual artifact pipeline
+  - test summary, note creation, and card/quiz generation using the supplied PDF
+  - evaluate liteparse + PaddleOCR as an optional dependency instead of a mandatory global requirement
 - Validation:
-  - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web exec tsc --noEmit`
-  - `cd apps/web && ./node_modules/.bin/next lint`
-  - `cd apps/web && ./node_modules/.bin/next build`
-
-### WI-442. PWA surface polish against `screen_design`
-- Branch: `codex/pwa-surface-polish`
-- Lock: `HANDOFF | Workitem: WI-442 | Owner: N/A | Claimed: 2026-03-15T18:13:53Z | Last heartbeat: 2026-03-15T18:22:21Z`
-- Goal: finish the stylistic cleanup after session-control consolidation.
-- Scope:
-  - tighten assistant/artifact/sync/planner spacing, empty states, and panel hierarchy,
-  - remove any remaining generic utility-panel feel from canonical surfaces,
-  - capture updated desktop/mobile screenshots for review.
-- Acceptance:
-  - the four canonical PWA surfaces look intentionally related to the design references,
-  - duplicate or off-plan utility components are no longer visually dominant.
-- Validation:
-  - `./node_modules/.bin/playwright test --config=playwright.web.config.ts`
-  - updated screenshots for the four canonical PWA pages.
-
-### WI-446. Centralize provider + LLM configuration
-- Branch: `codex/pwa-central-llm-config`
-- Lock: `COMPLETED | Workitem: WI-446 | Owner: N/A | Claimed: 2026-03-15T17:57:28Z | Last heartbeat: 2026-03-15T17:59:43Z`
-- Goal: move provider/LLM configuration out of each tab and into one central configurable surface.
-- Scope:
-  - identify every repeated provider/config block across the PWA tabs,
-  - replace those repeated per-tab controls with a single settings/config window or route,
-  - preserve all current provider/base-URL/model options without forcing users to reconfigure per surface.
-- Acceptance:
-  - tab-level repeated localhost/provider config panels are removed from canonical surfaces,
-  - one central config surface exists and controls the shared provider/runtime state,
-  - screenshots show the simplified tabs and the new central config surface.
-- Validation:
-  - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web exec tsc --noEmit`
-  - `cd apps/web && ./node_modules/.bin/next build`
-  - Playwright screenshots for the central config surface plus affected tabs.
-
-### WI-447. Collapsible side panes across the PWA
-- Branch: `codex/pwa-collapsible-side-panes`
-- Lock: `COMPLETED | Workitem: WI-447 | Owner: N/A | Claimed: 2026-03-15T18:01:00Z | Last heartbeat: 2026-03-15T18:12:50Z`
-- Goal: make the side panes across the main PWA surfaces collapsible so the workspace can focus on the primary content.
-- Scope:
-  - identify the recurring side-panel pattern on the main PWA shells,
-  - add a consistent collapse/expand interaction that works on desktop and mobile widths,
-  - preserve access to the side content without forcing it to remain permanently visible.
-- Acceptance:
-  - canonical side panes can be collapsed and restored consistently,
-  - collapsed state does not break navigation or core workflows,
-  - screenshots/video capture demonstrate the interaction on major surfaces.
-- Validation:
-  - `./node_modules/.bin/playwright test --config=playwright.web.config.ts`
-  - `cd apps/web && ./node_modules/.bin/next build`
-
-### WI-443. Railway project/service setup
-- Branch: `codex/railway-project-service-setup`
-- Lock: `HANDOFF | Workitem: WI-443 | Owner: N/A | Claimed: 2026-03-15T17:04:51Z | Last heartbeat: 2026-03-15T17:04:51Z`
-- Goal: create the actual Railway project state and first live deployments on the existing Railway project.
-- Scope:
-  - create/select the correct Railway project,
-  - create/configure `starlog-api` and `starlog-web` services,
-  - wire required env vars, persistent volume, domains, and secrets,
-  - complete the first approved production deploys,
-  - document the remaining auto-deploy/source gap.
-- Acceptance:
-  - Starlog API and web are live on Railway,
-  - generated Railway domains are serving,
-  - remaining GitHub-source gap is explicitly documented.
-- Validation:
-  - `https://starlog-api-production.up.railway.app/v1/health`
-  - `https://starlog-web-production.up.railway.app/`
-  - status captured in `docs/RAILWAY_PROJECT_SETUP_STATUS.md`
-
-### WI-445. Railway GitHub source wiring + idle-sleep audit
-- Branch: `codex/railway-source-wiring-and-sleep-audit`
-- Lock: `COMPLETED | Workitem: WI-445 | Owner: N/A | Claimed: 2026-03-15T17:36:15Z | Last heartbeat: 2026-03-15T17:42:42Z`
-- Goal: finish the hosted setup by wiring Starlog services to GitHub and verifying whether the web service can truly sleep to near-zero idle compute.
-- Scope:
-  - connect `starlog-api` and `starlog-web` to `LiquidGunay/starlog` on the intended deploy branch,
-  - verify future `master` deploy behavior from Railway service source instead of supervised CLI deploys,
-  - inspect why the web service still shows idle memory/usage and determine whether that can reach Railway sleep/zero-compute behavior in practice,
-  - document the actual floor if Railway still reports non-zero idle memory after sleep.
-- Acceptance:
-  - both Starlog services show the expected GitHub source/branch in Railway,
-  - automatic deploy path is documented and testable,
-  - idle-usage findings are documented with a clear conclusion about whether zero is achievable.
-- Validation:
-  - `railway status --json`
-  - `railway environment config --json`
-  - hosted idle verification after the configured sleep window.
-
-### WI-444. PWA install/setup on the main laptop and phone
-- Branch: `codex/pwa-main-device-setup`
-- Lock: `UNCLAIMED | Workitem: WI-444 | Owner: N/A | Claimed: N/A | Last heartbeat: N/A`
-- Goal: leave Starlog usable as an installed PWA on the user's daily devices.
-- Scope:
-  - install the PWA on the main laptop browser and the main phone browser,
-  - configure API base/auth,
-  - run offline warmup and confirm key routes open from the installed PWA,
-  - document reinstall/reset steps for both devices.
-- Acceptance:
-  - installed PWAs work on the main laptop and phone,
-  - offline warmup/setup steps are documented for repeat use.
-- Validation:
-  - installed-PWA smoke on both devices,
-  - offline route-open proof after warmup.
-
-## Shared Agent Tooling
-
-### WI-461. Shared worktree dependency + build-cache reuse bootstrap
-- Branch: `codex/shared-worktree-bootstrap`
-- Lock: `HANDOFF | Workitem: WI-461 | Owner: N/A | Claimed: 2026-03-15T18:45:29Z | Last heartbeat: 2026-03-15T18:48:18Z`
-- Goal: make fresh worktrees reuse the canonical checkout's dependency installs and compiler caches by default.
-- Scope:
-  - document the reuse rules in `AGENTS.md`,
-  - maintain the shared-state helper script,
-  - validate that a fresh worktree can link existing installs/caches instead of re-running full setup,
-  - document when a task must break out a local surface-specific install/build.
-- Acceptance:
-  - agents can start from shared deps/caches without unnecessary reinstalls,
-  - only changed surfaces need local setup,
-  - reuse instructions are explicit and reproducible.
-- Validation:
-  - run `bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog` in a fresh worktree,
-  - confirm linked state is sufficient for at least one web/mobile/desktop validation command without reinstalling everything.
-
-## Track J. Post-Phone-Proof Closeout
-
-### WI-601. Import physical-phone proof artifacts and refresh Android release docs
-- Branch: `codex/android-phone-proof-import`
-- Lock: `IN_PROGRESS | Workitem: WI-601 | Owner: Agent codex-main | Claimed: 2026-03-23T08:49:57Z | Last heartbeat: 2026-03-23T08:51:20Z`
-- Goal: once the latest phone smoke is complete, pull the resulting screenshots/logs into the repo and update the Android release docs.
-- Scope:
-  - ingest the fresh phone screenshots and smoke log into the documented evidence paths,
-  - update Android QA and bundle docs to reflect the completed proof,
-  - keep the edit limited to evidence/doc refresh rather than new app behavior.
-- Acceptance:
-  - the repo contains the final physical-phone proof artifacts for the current preview,
-  - Android docs no longer describe the phone proof as pending,
-  - the handoff bundle points to the imported evidence.
-- Validation:
-  - evidence files are present and referenced from the Android QA docs
-
-### WI-605. Export preview feedback bundle for phone and laptop install
-- Branch: `codex/release-feedback-bundle`
-- Lock: `IN_PROGRESS | Workitem: WI-605 | Owner: Agent codex-main | Claimed: 2026-03-23T08:49:57Z | Last heartbeat: 2026-03-23T08:51:20Z`
-- Goal: package one local preview bundle that the user can install on phone/laptop while pointing at the live Railway deployment.
-- Scope:
-  - collect the current preview APK, desktop helper package, checksums, and hosted Railway URLs into one local bundle folder,
-  - add one concise repo doc that points to the bundle paths and install flow,
-  - keep the bundle aligned with the latest merged phone-proof and release-signoff state.
-- Acceptance:
-  - one local preview bundle folder exists with exact installable artifacts and a short README,
-  - repo docs point to the bundle and hosted endpoints without requiring reconstruction from scattered notes,
-  - the bundle is suitable for the next real user feedback pass.
-- Validation:
-  - bundle files exist locally and the repo doc references the exact generated paths
-
-## Suggested execution order
-
-1. `WI-461` -> `WI-443` -> `WI-445`
-2. `WI-441` -> `WI-446` -> `WI-447` -> `WI-442`
-3. `WI-401` -> `WI-402` -> `WI-403`
-4. `WI-421` -> `WI-422` -> `WI-423`
-5. `WI-444` after the chosen hosted/local setup path is confirmed.
-
-Parallel-safe starters right now:
-- `WI-461`
-- `WI-401`
-- `WI-421`
-- `WI-445`
-- `WI-446`
-- `WI-447`
-
-Recommended immediate next workitem:
-- `WI-445` (Railway GitHub source wiring + idle-sleep audit)
+  - relevant `services/api` and `services/ai-runtime` tests
+  - smoke evidence for PDF-backed artifact processing
