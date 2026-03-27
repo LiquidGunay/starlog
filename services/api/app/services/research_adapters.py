@@ -11,6 +11,7 @@ from xml.etree import ElementTree
 from app.core.time import utc_now
 from app.services import capture_service, media_service
 from app.services.common import execute_fetchone, new_id
+from . import pdf_ingest_service
 
 ARXIV_FEED_URL = "https://export.arxiv.org/api/query?id_list={arxiv_id}"
 ARXIV_NAMESPACES = {
@@ -195,10 +196,20 @@ class ManualPdfResearchAdapter:
         if asset is None:
             raise LookupError(f"Media asset not found: {media_id}")
         resolved_title = payload.get("title") or asset.get("source_filename") or media_id
+        extraction = pdf_ingest_service.extract_pdf_text(media_service.media_asset_path(asset))
+        extracted_text = str(extraction.get("text") or "").strip()
+        notes_text = str(payload.get("notes") or "").strip()
+        normalized_text = notes_text or extracted_text or resolved_title
         metadata = {
             "source_kind": self.source_kind,
             "ingest_kind": self.source_kind,
             "media_id": media_id,
+            "pdf_extraction": {
+                "provider": extraction["provider"],
+                "mode": extraction["mode"],
+                "characters": extraction["characters"],
+                "used_notes_fallback": bool(notes_text) and not bool(extracted_text),
+            },
         }
         return _persist_research_item(
             conn,
@@ -207,7 +218,7 @@ class ManualPdfResearchAdapter:
             title=resolved_title,
             url=asset["content_url"],
             authors=[],
-            abstract=notes,
+            abstract=notes_text or extracted_text[:2000] or None,
             published_at=None,
             metadata=metadata,
             capture_title=resolved_title,
@@ -219,8 +230,8 @@ class ManualPdfResearchAdapter:
                 "mime_type": asset.get("content_type"),
                 "filename": asset.get("source_filename"),
             },
-            capture_normalized={"text": notes or resolved_title, "mime_type": "text/plain"},
-            capture_extracted=None,
+            capture_normalized={"text": normalized_text, "mime_type": "text/plain"},
+            capture_extracted={"text": extracted_text, "mime_type": "text/plain"} if extracted_text else None,
         )
 
 

@@ -35,7 +35,22 @@ def test_manual_research_url_ingest_creates_item(client: TestClient, auth_header
     assert items.json()[0]["id"] == payload["id"]
 
 
-def test_manual_research_pdf_ingest_creates_item(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_manual_research_pdf_ingest_creates_item(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        research_adapters.pdf_ingest_service,
+        "extract_pdf_text",
+        lambda _path: {
+            "text": "Lecture one covers diffusion models, denoising, and score matching.",
+            "provider": "test_extractor",
+            "mode": "text_layer",
+            "characters": 68,
+        },
+    )
+
     upload = client.post(
         "/v1/media/upload",
         files={"file": ("paper.pdf", b"%PDF-1.4 test payload", "application/pdf")},
@@ -57,6 +72,13 @@ def test_manual_research_pdf_ingest_creates_item(client: TestClient, auth_header
     payload = response.json()
     assert payload["title"] == "PDF paper"
     assert payload["metadata"]["ingest_kind"] == "manual_pdf"
+    assert payload["metadata"]["pdf_extraction"]["provider"] == "test_extractor"
+
+    artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
+    assert artifact_graph.status_code == 200
+    artifact = artifact_graph.json()["artifact"]
+    assert artifact["normalized_content"] == "Queue for deeper summary later."
+    assert artifact["extracted_content"] == "Lecture one covers diffusion models, denoising, and score matching."
 
 
 def test_arxiv_ingest_uses_adapter_and_persists_item(

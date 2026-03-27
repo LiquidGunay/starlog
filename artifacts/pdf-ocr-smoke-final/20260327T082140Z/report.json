@@ -1,0 +1,92 @@
+{
+  "run_id": "20260327T082140Z",
+  "pdf_url": "https://diffusion.csail.mit.edu/2026/docs/lecture_notes.pdf",
+  "pdf_path": "/home/ubuntu/starlog-worktrees/pdf-ocr-card-smoke/artifacts/pdf-ocr-smoke-final/20260327T082140Z/input.pdf",
+  "research_item_id": "ritm_05a6b395aada4dca8c05849f5189e4c0",
+  "artifact_id": "art_35b13cc9978548d3a9273a7ae22a8088",
+  "manual_pdf_metadata": {
+    "ingest_kind": "manual_pdf",
+    "media_id": "med_2c004dcddf0742e684deb1459aea8f4a",
+    "pdf_extraction": {
+      "characters": 8044,
+      "mode": "heuristic_fallback",
+      "provider": "strings",
+      "used_notes_fallback": false
+    },
+    "source_kind": "manual_pdf"
+  },
+  "notes_seed": "Lecture notes about diffusion models, denoising, and score matching.",
+  "artifact": {
+    "title": "MIT Diffusion Lecture Notes",
+    "normalized_excerpt": "Lecture notes about diffusion models, denoising, and score matching.",
+    "extracted_excerpt": "SbbbQQQMMMaaaZZZLLLPP MTdcrLsZ|kzb{fJWnZw~ ?JP```@@p``\\llNvvuEEG{ jNfAzJvJRFRBZb|JB|rB|R<h ^P\\FXJ^DZA\\FIBVYFAM^ESYMWU ~eyyYIIQaQnn^ffvJjzbRJBbr|BrL| `AugfiSJ~MbvElzIxbnH\\Vm ||dxzrR~vfIaAeyY]uuC]] accccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc ^HHHHHHHHHHHHHHHHHHHHHHHHHHHH|0L SEBBBBBBBBBBBBBBBBBBBBBBBBBBB GSBBBBBBBBBBBBBBBBBB T~fV^Ff]Eucu]iAI^znNj @cgrKWjkwz[wF{WVgWvOWn LYAyeqUcUS[][GCGWS'P]\\y6 BskKmcKMcce]YAIqNaRL2 Ai~XUqduITcy\\seB{U|G5 z}z||nrJAZZqFfQFF^JJNbbiv T_beQqGcSGccKmmsMMSMMcUU}EEY~~AVVwK @[uysEienv^RbNBBiff}II~r :')}^NKQYWMEOMYWUYWEQGINS^NC uya@GYdwETWYxgqH{aPS "
+  },
+  "actions": {
+    "summarize": {
+      "artifact_id": "art_35b13cc9978548d3a9273a7ae22a8088",
+      "action": "summarize",
+      "status": "completed",
+      "output_ref": "sum_c5176ec7995e44d199f1cc715962b282"
+    },
+    "cards": {
+      "artifact_id": "art_35b13cc9978548d3a9273a7ae22a8088",
+      "action": "cards",
+      "status": "completed",
+      "output_ref": "csv_75e8e70914934192abf34c08dd1b442e"
+    },
+    "append_note": {
+      "artifact_id": "art_35b13cc9978548d3a9273a7ae22a8088",
+      "action": "append_note",
+      "status": "completed",
+      "output_ref": "nte_a0e5bbd2b75146d98e9950d404fd8dee"
+    }
+  },
+  "summary": "Summary draft for MIT Diffusion Lecture Notes: Lecture notes about diffusion models, denoising, and score matching.",
+  "cards": [
+    {
+      "id": "crd_7c46ee5a73bc4fe893fa13891395d826",
+      "artifact_id": "art_35b13cc9978548d3a9273a7ae22a8088",
+      "prompt": "What is the core idea in MIT Diffusion Lecture Notes?",
+      "answer": "Lecture notes about diffusion models, denoising, and score matching.",
+      "card_type": "qa",
+      "due_at": "2026-03-28T08:21:49.081779Z",
+      "interval_days": 1,
+      "repetitions": 0,
+      "ease_factor": 2.5
+    },
+    {
+      "id": "crd_4ddf1875f3b5458a904dae5c528cf618",
+      "artifact_id": "art_35b13cc9978548d3a9273a7ae22a8088",
+      "prompt": "What detail from MIT Diffusion Lecture Notes is most worth revisiting?",
+      "answer": "Lecture notes about diffusion models, denoising, and score matching.",
+      "card_type": "qa",
+      "due_at": "2026-03-28T08:21:49.081779Z",
+      "interval_days": 1,
+      "repetitions": 0,
+      "ease_factor": 2.5
+    }
+  ],
+  "quiz_preview": [
+    {
+      "question": "What is the core idea in MIT Diffusion Lecture Notes?",
+      "answer": "Lecture notes about diffusion models, denoising, and score matching."
+    },
+    {
+      "question": "What detail from MIT Diffusion Lecture Notes is most worth revisiting?",
+      "answer": "Lecture notes about diffusion models, denoising, and score matching."
+    }
+  ],
+  "note_preview": [
+    {
+      "id": "nte_a0e5bbd2b75146d98e9950d404fd8dee",
+      "title": "MIT Diffusion Lecture Notes",
+      "body_md": "# Clip Notes\n\nSource: MIT Diffusion Lecture Notes\n\nSummary draft for MIT Diffusion Lecture Notes: Lecture notes about diffusion models, denoising, and score matching.\n\nLecture notes about diffusion models, denoising, and score matching.",
+      "version": 1
+    }
+  ],
+  "version_counts": {
+    "summaries": 1,
+    "card_sets": 1,
+    "actions": 3
+  }
+}
