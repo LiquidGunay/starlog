@@ -70,6 +70,22 @@ Setup docs:
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`
 - `docs/DESKTOP_HELPER_V1_RELEASE.md`
 
+### Browser extension
+
+Chromium MV3 clipper for browser-first capture.
+
+- captures current selection and page metadata
+- preserves raw, normalized, and extracted capture layers
+- sends captures into the same artifact pipeline as the other surfaces
+
+Local setup:
+
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Load the unpacked extension from `tools/browser-extension`.
+
+Reference: `tools/browser-extension/README.md`
+
 ## Architecture at a glance
 
 - `apps/web` — installable PWA and current primary workspace
@@ -223,9 +239,3 @@ make seed-api
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — helper setup handoff
 - `docs/RAILWAY_DEPLOY.md` — hosted deployment model
 - `docs/PWA_RELEASE_VERIFICATION_GATE.md` — heavier PWA release checklist
-
-## Current branch note
-
-This branch still carries older planning docs under `docs/` from an earlier pass. The README and the
-new codebase-organization doc are being refreshed to match the current voice-native direction and active
-parallel work queue.
