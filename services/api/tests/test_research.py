@@ -188,7 +188,14 @@ def test_manual_research_pdf_ingest_falls_back_from_noisy_ocr_to_readable_text(
     monkeypatch.setattr(
         research_adapters.pdf_ingest_service,
         "_extract_with_ocr_server",
-        lambda _path: "SbbbQQQMMMaaaZZZLLLPP MTdcrLsZ|kzb{fJWnZw~ ?JP```@@p``\\\\llNvvuEEG{",
+        lambda _path: (
+            "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+            "rhombex sylvatic tremblaq vortexium "
+            "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+            "rhombex sylvatic tremblaq vortexium "
+            "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+            "rhombex sylvatic tremblaq vortexium "
+        ),
     )
     monkeypatch.setattr(
         research_adapters.pdf_ingest_service,
@@ -219,8 +226,9 @@ def test_manual_research_pdf_ingest_falls_back_from_noisy_ocr_to_readable_text(
 
     artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
     artifact = artifact_graph.json()["artifact"]
-    assert artifact["normalized_content"] == "Fallback PDF text explains diffusion scoring and sampling."
-    assert artifact["extracted_content"] == "Fallback PDF text explains diffusion scoring and sampling."
+    expected = "Fallback PDF text explains diffusion scoring and sampling."
+    assert artifact["normalized_content"] == expected
+    assert artifact["extracted_content"] == expected
 
 
 def test_arxiv_ingest_uses_adapter_and_persists_item(

@@ -260,9 +260,44 @@ def _fallback_priority(provider_name: str) -> int:
     }.get(provider_name, -1)
 
 
-def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, int, int]:
+def _candidate_is_readable(candidate: dict[str, Any]) -> bool:
+    provider_name = str(candidate.get("provider") or "")
+    characters = int(candidate.get("characters") or 0)
+    alpha_ratio = float(candidate.get("alpha_ratio") or 0.0)
+    space_ratio = float(candidate.get("space_ratio") or 0.0)
+    long_word_count = int(candidate.get("long_word_count") or 0)
+    if provider_name != "ocr_server":
+        return (
+            characters >= 40
+            and alpha_ratio >= 0.55
+            and space_ratio >= 0.05
+            and long_word_count >= 4
+        )
+
+    if not candidate.get("usable"):
+        return False
+
+    word_count = int(candidate.get("word_count") or 0)
+    common_word_count = int(candidate.get("common_word_count") or 0)
+    sentence_mark_count = int(candidate.get("sentence_mark_count") or 0)
+    clause_mark_count = int(candidate.get("clause_mark_count") or 0)
+    repeated_token_count = int(candidate.get("repeated_token_count") or 0)
+    punctuation_marks = sentence_mark_count + clause_mark_count
+    repetition_limit = max(6, word_count // 5)
+    return (
+        repeated_token_count <= repetition_limit
+        and (
+            common_word_count >= max(3, min(8, word_count // 18))
+            or punctuation_marks >= 2
+        )
+    )
+
+
+def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, int, int, int, int]:
     provider_name = str(candidate.get("provider") or "")
     return (
+        int(_candidate_is_readable(candidate)),
+        int(candidate.get("usable", False)),
         int(candidate.get("readability_score", 0)),
         int(candidate.get("characters", 0)),
         _fallback_priority(provider_name),

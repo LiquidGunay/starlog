@@ -47,10 +47,14 @@ def test_extract_pdf_text_prefers_readable_pypdf_over_word_salad_ocr(monkeypatch
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 sample")
     word_salad_ocr = (
-        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
-        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
-        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
-        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+        "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+        "rhombex sylvatic tremblaq vortexium "
+        "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+        "rhombex sylvatic tremblaq vortexium "
+        "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+        "rhombex sylvatic tremblaq vortexium "
+        "abjurex cylophane dkwartz femgrin hijolux knavory puzzlent quixor "
+        "rhombex sylvatic tremblaq vortexium "
     )
     readable_pypdf = (
         "Fallback PDF text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
@@ -62,6 +66,7 @@ def test_extract_pdf_text_prefers_readable_pypdf_over_word_salad_ocr(monkeypatch
     monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: readable_pypdf)
     monkeypatch.setattr(pdf_ingest_service, "_extract_with_strings", lambda _path: None)
 
+    assert pdf_ingest_service._quality_flags(word_salad_ocr)["usable"] is True
     result = pdf_ingest_service.extract_pdf_text(pdf_path)
     assert result["provider"] == "pypdf"
     assert result["mode"] == "text_layer"
