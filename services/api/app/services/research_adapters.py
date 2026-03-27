@@ -200,7 +200,7 @@ class ManualPdfResearchAdapter:
         notes_text = str(payload.get("notes") or "").strip()
         extracted_text_usable = bool(extraction.get("usable")) and bool(extracted_text)
         preserve_extracted_text = bool(extracted_text) and (
-            extracted_text_usable or extraction.get("provider") != "ocr_server"
+            extracted_text_usable or _looks_like_human_readable_fallback(extraction)
         )
         canonical_extracted_text = extracted_text if preserve_extracted_text else ""
         normalized_text = notes_text or canonical_extracted_text or resolved_title
@@ -221,9 +221,7 @@ class ManualPdfResearchAdapter:
                 "long_word_count": extraction.get("long_word_count"),
                 "notes_override_extracted": notes_override_extracted,
                 "used_notes_fallback": used_notes_fallback,
-                "rejected_as_noise": bool(extracted_text)
-                and extraction.get("provider") == "ocr_server"
-                and not extracted_text_usable,
+                "rejected_as_noise": bool(extracted_text) and not preserve_extracted_text,
             },
         }
         return _persist_research_item(
@@ -248,6 +246,23 @@ class ManualPdfResearchAdapter:
             capture_normalized={"text": normalized_text, "mime_type": "text/plain"},
             capture_extracted={"text": canonical_extracted_text, "mime_type": "text/plain"} if canonical_extracted_text else None,
         )
+
+
+def _looks_like_human_readable_fallback(extraction: dict[str, Any]) -> bool:
+    if not extraction.get("text"):
+        return False
+    if extraction.get("provider") == "ocr_server":
+        return False
+    alpha_ratio = float(extraction.get("alpha_ratio") or 0.0)
+    space_ratio = float(extraction.get("space_ratio") or 0.0)
+    long_word_count = int(extraction.get("long_word_count") or 0)
+    character_count = int(extraction.get("characters") or 0)
+    return (
+        character_count >= 40
+        and alpha_ratio >= 0.55
+        and space_ratio >= 0.05
+        and long_word_count >= 4
+    )
 
 
 class ArxivResearchAdapter:
