@@ -54,7 +54,7 @@ def test_extract_pdf_text_prefers_readable_pypdf_over_word_salad_ocr(monkeypatch
     )
     readable_pypdf = (
         "Fallback PDF text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
-        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
+        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems."
     )
 
     monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
@@ -76,7 +76,7 @@ def test_extract_pdf_text_prefers_better_strings_fallback_over_stubby_pypdf(monk
     stubby_pypdf = "Appendix A"
     better_strings = (
         "Fallback strings text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
-        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
+        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems."
     )
 
     monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
