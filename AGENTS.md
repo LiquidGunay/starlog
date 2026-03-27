@@ -388,3 +388,7 @@ Troubleshooting checklist:
 - 2026-03-27: The primary mobile capture shell had a save action wired to text/shared-file capture even when a voice memo existed; the hero submit path now routes recorded voice notes correctly and exposes an explicit save button in the surface.
 - 2026-03-27: The Android phone-testing runbook now keeps the same LAN Expo dev-client URL through initial open and bundle-prime recovery so it no longer contradicts the working launcher scheme with a localhost reverse fallback.
 - 2026-03-27: Hosted smoke exposed a SQLite thread-affinity crash in the API artifact versions path; request-scoped SQLite connections now disable `check_same_thread` to match FastAPI's sync threading model.
+- 2026-03-27: Manual PDF ingest must prefer the best readable fallback when OCR returns noise and a later provider returns short-but-human text; preserve that extracted text instead of dropping it just because it misses the full usability threshold.
+- 2026-03-27: Rebase conflict resolution: keep the newer master AGENTS baseline and reapply branch-specific PDF ingest notes without dropping the mobile runbook updates.
+- 2026-03-27: PDF fallback ranking must also keep obviously unreadable high-alpha OCR garbage from outranking a readable pypdf text layer; provider priority should break that tie in favor of the text layer fallback.
+- 2026-03-27: Rebase conflict resolution: preserve both PDF-ingest issue-log notes when replaying this branch onto a newer master baseline.
