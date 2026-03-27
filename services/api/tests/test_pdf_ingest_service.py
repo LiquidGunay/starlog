@@ -43,41 +43,52 @@ def test_extract_pdf_text_falls_back_when_ocr_server_yields_nothing(monkeypatch,
     assert result["usable"] is True
 
 
-def test_extract_pdf_text_prefers_later_readable_fallback_over_noisy_ocr(monkeypatch, tmp_path: Path) -> None:
+def test_extract_pdf_text_prefers_readable_pypdf_over_word_salad_ocr(monkeypatch, tmp_path: Path) -> None:
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 sample")
-    noisy_ocr = "SbbbQQQMMMaaaZZZLLLPP MTdcrLsZ|kzb{fJWnZw~ ?JP```@@p``\\\\llNvvuEEG{"
-    readable_fallback = "Fallback PDF text explains diffusion scoring and sampling."
+    word_salad_ocr = (
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+    )
+    readable_pypdf = (
+        "Fallback PDF text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
+        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
+    )
 
     monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
-    monkeypatch.setattr(pdf_ingest_service, "_extract_with_ocr_server", lambda _path: noisy_ocr)
-    monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: readable_fallback)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_ocr_server", lambda _path: word_salad_ocr)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: readable_pypdf)
     monkeypatch.setattr(pdf_ingest_service, "_extract_with_strings", lambda _path: None)
 
     result = pdf_ingest_service.extract_pdf_text(pdf_path)
     assert result["provider"] == "pypdf"
     assert result["mode"] == "text_layer"
-    assert result["usable"] is False
-    assert result["text"] == readable_fallback
-    assert result["characters"] == len(readable_fallback)
+    assert result["usable"] is True
+    assert result["text"] == readable_pypdf
+    assert result["characters"] == len(readable_pypdf)
 
 
-def test_extract_pdf_text_prefers_text_layer_over_high_alpha_junk_ocr(monkeypatch, tmp_path: Path) -> None:
+def test_extract_pdf_text_prefers_better_strings_fallback_over_stubby_pypdf(monkeypatch, tmp_path: Path) -> None:
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 sample")
-    junk_ocr = ("ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA " * 4).strip()
-    readable_fallback = "Fallback PDF text explains diffusion scoring and sampling."
+    stubby_pypdf = "Appendix A"
+    better_strings = (
+        "Fallback strings text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
+        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
+    )
 
     monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
-    monkeypatch.setattr(pdf_ingest_service, "_extract_with_ocr_server", lambda _path: junk_ocr)
-    monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: readable_fallback)
-    monkeypatch.setattr(pdf_ingest_service, "_extract_with_strings", lambda _path: None)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_ocr_server", lambda _path: None)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: stubby_pypdf)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_strings", lambda _path: better_strings)
 
     result = pdf_ingest_service.extract_pdf_text(pdf_path)
-    assert result["provider"] == "pypdf"
-    assert result["mode"] == "text_layer"
-    assert result["text"] == readable_fallback
-    assert result["usable"] is False
+    assert result["provider"] == "strings"
+    assert result["mode"] == "heuristic_fallback"
+    assert result["text"] == better_strings
+    assert result["usable"] is True
 
 
 def test_extract_pdf_text_accepts_long_readable_ocr_text_with_low_unique_ratio(monkeypatch, tmp_path: Path) -> None:

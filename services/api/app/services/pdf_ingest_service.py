@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
@@ -142,6 +143,15 @@ def _extract_with_strings(path: Path) -> str | None:
 def _quality_flags(text: str) -> dict[str, Any]:
     stripped = text.strip()
     characters = len(stripped)
+    words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", stripped)
+    normalized_words = [word.lower() for word in words]
+    word_counts = Counter(normalized_words)
+    word_count = len(words)
+    unique_words = len(word_counts)
+    common_word_count = sum(word_counts[word] for word in word_counts if word in _COMMON_WORDS)
+    sentence_marks = sum(stripped.count(char) for char in ".!?")
+    clause_marks = stripped.count(",")
+    repeated_token_count = max(word_counts.values()) if word_counts else 0
     alpha = sum(char.isalpha() for char in stripped)
     spaces = sum(char.isspace() for char in stripped)
     unique_chars = len(set(stripped))
@@ -149,6 +159,18 @@ def _quality_flags(text: str) -> dict[str, Any]:
     alpha_ratio = alpha / characters if characters else 0.0
     space_ratio = spaces / characters if characters else 0.0
     unique_ratio = unique_chars / characters if characters else 0.0
+    readability_score = (
+        sentence_marks * 1000
+        + clause_marks * 120
+        + common_word_count * 50
+        + unique_words * 12
+        + min(word_count, 120) * 4
+        + long_words * 2
+        + min(characters, 400) // 5
+        + (20 if alpha_ratio >= 0.55 else 0)
+        + (10 if space_ratio >= 0.08 else 0)
+        - repeated_token_count * 10
+    )
     usable = (
         characters >= 120
         and alpha_ratio >= 0.55
@@ -164,31 +186,92 @@ def _quality_flags(text: str) -> dict[str, Any]:
         "unique_ratio": round(unique_ratio, 3),
         "unique_characters": unique_chars,
         "long_word_count": long_words,
+        "word_count": word_count,
+        "unique_word_count": unique_words,
+        "common_word_count": common_word_count,
+        "sentence_mark_count": sentence_marks,
+        "clause_mark_count": clause_marks,
+        "repeated_token_count": repeated_token_count,
+        "readability_score": readability_score,
     }
+
+
+_COMMON_WORDS = {
+    "a",
+    "about",
+    "after",
+    "also",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "because",
+    "but",
+    "by",
+    "can",
+    "do",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "how",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "more",
+    "not",
+    "of",
+    "on",
+    "or",
+    "our",
+    "out",
+    "so",
+    "than",
+    "that",
+    "the",
+    "their",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "to",
+    "use",
+    "we",
+    "what",
+    "when",
+    "which",
+    "with",
+    "you",
+}
 
 
 def _fallback_priority(provider_name: str) -> int:
     return {
-        "ocr_server": 0,
-        "strings": 1,
-        "pypdf": 2,
+        "pypdf": 3,
+        "strings": 2,
+        "ocr_server": 1,
     }.get(provider_name, -1)
 
 
-def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, float, float, int, int]:
+def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, int, int]:
     provider_name = str(candidate.get("provider") or "")
     return (
-        _fallback_priority(provider_name),
-        float(candidate.get("alpha_ratio", 0.0)),
-        float(candidate.get("space_ratio", 0.0)),
-        int(candidate.get("long_word_count", 0)),
+        int(candidate.get("readability_score", 0)),
         int(candidate.get("characters", 0)),
+        _fallback_priority(provider_name),
     )
 
 
 def extract_pdf_text(path: Path) -> dict[str, Any]:
     fallback_candidate: dict[str, Any] | None = None
-    fallback_rank: tuple[int, float, float, int, int] | None = None
+    fallback_rank: tuple[int, int, int] | None = None
     for provider_name, extractor, mode in (
         ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
@@ -206,8 +289,6 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
                 "mode": mode,
                 **quality,
             }
-            if quality["usable"]:
-                return candidate
             candidate_rank = _fallback_rank(candidate)
             if fallback_candidate is None or fallback_rank is None or candidate_rank > fallback_rank:
                 fallback_candidate = candidate
