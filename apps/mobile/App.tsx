@@ -1945,6 +1945,34 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await playCachedBriefing();
   }
 
+  async function playVoiceClip() {
+    if (!voiceClipUri) {
+      setStatus("Record a voice clip first");
+      return;
+    }
+
+    try {
+      const info = await FileSystem.getInfoAsync(voiceClipUri);
+      if (!info.exists) {
+        setStatus("Voice clip file not found");
+        return;
+      }
+      if (briefingSoundRef.current) {
+        await briefingSoundRef.current.unloadAsync();
+        briefingSoundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync({ uri: voiceClipUri }, { shouldPlay: true });
+      briefingSoundRef.current = sound;
+      setStatus(
+        voiceClipDurationMs > 0
+          ? `Playing recorded voice clip (${Math.round(voiceClipDurationMs / 1000)}s)`
+          : "Playing recorded voice clip",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to play recorded voice clip");
+    }
+  }
+
   async function generateAndCache() {
     try {
       if (!token) {
@@ -3554,6 +3582,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 placeholderTextColor={palette.muted}
                 multiline
               />
+              <Text style={styles.heroCardLabel}>Typed instruction</Text>
+              <TextInput
+                style={styles.composerInput}
+                value={assistantCommand}
+                onChangeText={setAssistantCommand}
+                placeholder="Save this and turn it into tonight's reading note."
+                placeholderTextColor={palette.muted}
+              />
             </View>
             <View style={styles.captureHeroActions}>
               <Pressable
@@ -3602,7 +3638,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </View>
             </View>
             <View style={styles.captureVoiceMemo}>
-              <TouchableOpacity style={styles.capturePlayButton} onPress={playBriefing}>
+              <TouchableOpacity style={styles.capturePlayButton} onPress={playVoiceClip}>
                 <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
