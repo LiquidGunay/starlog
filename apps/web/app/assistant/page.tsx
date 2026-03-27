@@ -799,14 +799,14 @@ export default function AssistantPage() {
         {!queuePane.collapsed ? (
           <aside className="command-center-column assistant-side-column">
             <div className="command-column-header">
-              <span className="command-column-title">Thread Activity</span>
+              <span className="command-column-title">Ritual Feed</span>
               <span className="command-footnote">{history.length} recent runs</span>
               <PaneToggleButton label="Hide pane" onClick={queuePane.collapse} />
             </div>
             <div className="assistant-side-stack">
               <section className="assistant-side-card glass">
                 <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Recent</span>
+                  <span className="assistant-side-kicker">Latest Turn</span>
                   <span className="command-footnote">{showcaseLabel}</span>
                 </div>
                 <ul className="assistant-mini-feed">
@@ -828,7 +828,7 @@ export default function AssistantPage() {
 
               <section className="assistant-side-card glass">
                 <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Prompt Starters</span>
+                  <span className="assistant-side-kicker">Invocation Library</span>
                   <span className="command-footnote">{exampleCommands.length} samples</span>
                 </div>
                 <div className="assistant-chip-grid">
@@ -866,10 +866,10 @@ export default function AssistantPage() {
                   <span className="assistant-hero-separator">/</span>
                   <span>{showcaseDate}</span>
                 </div>
-                <h1>Voice-native command thread</h1>
+                <h1>Turn the whole day into one brief and one next move.</h1>
                 <p>
-                  Keep the thread as the operating surface. Speak or type, inspect the structured cards inline,
-                  and treat the side panes as optional support rather than the primary UI.
+                  Keep the thread as the main room. Speak or type, let the answer arrive as a composed briefing,
+                  and use the side panes as supporting shelves instead of the primary stage.
                 </p>
               </div>
               <div className="assistant-hero-actions">
@@ -908,16 +908,16 @@ export default function AssistantPage() {
               </div>
               <div className="assistant-hero-stats">
                 <div className="assistant-stat-pill">
-                  <span>network</span>
-                  <strong>{isOnline ? "online" : "offline"}</strong>
+                  <span>Today</span>
+                  <strong>{isOnline ? "Thread in sync" : "Offline cache"}</strong>
                 </div>
                 <div className="assistant-stat-pill">
-                  <span>voice queue</span>
-                  <strong>{voiceUploadQueue.length}</strong>
+                  <span>Voice queue</span>
+                  <strong>{voiceUploadQueue.length} staged</strong>
                 </div>
                 <div className="assistant-stat-pill">
-                  <span>planner jobs</span>
-                  <strong>{assistJobs.length}</strong>
+                  <span>Planner jobs</span>
+                  <strong>{assistJobs.length} pending</strong>
                 </div>
               </div>
             </section>
@@ -932,8 +932,8 @@ export default function AssistantPage() {
             <section className="assistant-thread-panel glass">
               <div className="assistant-thread-head">
                 <div>
-                  <span className="assistant-side-kicker">Transcript</span>
-                  <h2>Persistent conversation</h2>
+                  <span className="assistant-side-kicker">Salon Transcript</span>
+                  <h2>Persistent conversation, arranged for rereading</h2>
                 </div>
                 <div className="assistant-thread-actions">
                   <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
@@ -960,10 +960,10 @@ export default function AssistantPage() {
                 {transcriptMessages.length === 0 ? (
                   <div className="assistant-empty-thread">
                     <p className="assistant-empty-kicker">No messages yet</p>
-                    <h3>Start with a spoken or typed command</h3>
+                    <h3>Begin with a spoken request or a typed instruction</h3>
                     <p>
-                      The thread will retain the structured agent output, while the side panes keep supporting detail
-                      like queues and background jobs.
+                      The thread will hold the composed answer, the next action, and the supporting context without
+                      turning the main room into a dashboard.
                     </p>
                     <ul className="command-story-list">
                       {showcaseActions.map((item) => (
@@ -1018,9 +1018,9 @@ export default function AssistantPage() {
               <div className="assistant-composer-head">
                 <div>
                   <span className="assistant-side-kicker">Composer</span>
-                  <h2>Speak or type the next turn</h2>
+                  <h2>Compose the next move</h2>
                 </div>
-                <p className="command-footnote">Buttons remain optional. Voice is the primary entry point.</p>
+                <p className="command-footnote">Voice leads. Buttons remain backup controls.</p>
               </div>
               <label className="label" htmlFor="assistant-command">Command</label>
               <textarea
@@ -1029,7 +1029,7 @@ export default function AssistantPage() {
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
                 rows={4}
-                placeholder="Ask Starlog to create notes, summarize artifacts, prepare a briefing, or clip what is on screen."
+                placeholder="Ask Starlog to distill what matters, create a note, make cards, prepare a briefing, or set up the next task."
               />
               <div className="assistant-toolbar">
                 <button className="button" type="button" onClick={() => runCommand(false)}>Plan</button>
