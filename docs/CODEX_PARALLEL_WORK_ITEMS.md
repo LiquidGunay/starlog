@@ -6,7 +6,7 @@ Planning sources:
 
 - `AGENTS.md`
 - `docs/IMPLEMENTATION_STATUS.md`
-- `docs/STARLOG_V1_PLAN.md` and `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` until the canonical root `PLAN.md` is restored to `master`
+- `PLAN.md` on the current mainline direction for the voice-native Starlog migration
 
 ## Queue reset
 

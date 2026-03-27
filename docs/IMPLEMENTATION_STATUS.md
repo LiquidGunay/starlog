@@ -139,6 +139,8 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
   - release gate passed via `bash ./scripts/pwa_release_gate.sh` on `2026-03-22T14:18:37Z`
   - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:16:56Z`
   - release gate build passes when run in isolation; a prior `Unexpected end of JSON input` failure came from overlapping Next builds during concurrent gate/smoke execution rather than a persistent app defect
+- Semi-stable refresh on `2026-03-27` produced a fresh Android preview RC2 artifact (`0.1.0-preview.rc2`, code `103`, SHA-256 `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`), a passing PWA release gate at `2026-03-27T18:17:09Z`, and a fresh Velvet validation bundle under `artifacts/velvet-validation/20260327T181800Z`.
+- The remaining semi-stable release blocker on this host is no longer the Android app build itself; it is the Windows ADB daemon path, which regressed on `2026-03-27` with `protocol fault (couldn't read status): connection reset` before a fresh installed-phone screenshot pass could be captured.
 
 ## Validation run for this pass
 
@@ -148,13 +150,17 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - `cd /home/ubuntu/starlog && ./node_modules/.bin/playwright test --config=playwright.web.config.ts`
 - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web exec tsc --noEmit`
 - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web lint`
+- `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle/apps/mobile/android && APP_VARIANT=preview STARLOG_VERSION_NAME=0.1.0-preview.rc2 STARLOG_ANDROID_VERSION_CODE=103 STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true ./gradlew assembleRelease --console=plain`
+- `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle && bash ./scripts/pwa_release_gate.sh`
+- `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle && bash ./scripts/velvet_validation_artifacts.sh 20260327T181800Z`
 
 ## Next implementation targets
 
-1. Finish `WI-580`, `WI-581`, and `WI-582` so the local PC helper path, connected-phone Android path, and hosted PWA path each have a current-master release-candidate pass.
-2. Recover the chat-surface assistant Playwright lanes so `apps/web/tests/assistant-*.spec.ts` can move back into the default PR smoke matrix.
-3. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
-4. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
-5. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
-6. Re-authenticate Railway CLI in the operator environment so live dashboard/start-command verification can be completed without falling back to public URL checks only.
-7. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
+1. Recover the Windows ADB daemon path on this host and rerun the fresh installed-phone proof against `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`.
+2. Finish the persistent conversation-thread foundation so the primary assistant thread has durable turns, session reset, tool traces, and in-chat card payloads end-to-end.
+3. Recover the chat-surface assistant Playwright lanes so `apps/web/tests/assistant-*.spec.ts` can move back into the default PR smoke matrix.
+4. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
+5. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
+6. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
+7. Re-authenticate Railway CLI in the operator environment so live dashboard/start-command verification can be completed without falling back to public URL checks only.
+8. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.

@@ -113,6 +113,7 @@ bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
 This section is the repo-local purpose map for markdown files so agents know which docs are authoritative before opening or editing them.
 
 - `AGENTS.md` — repo instructions, locked v1 preferences, lock protocol, runbooks, markdown map, preference log, and issue log.
+- `PLAN.md` — canonical forward-looking product and architecture direction for Starlog.
 - `README.md` — top-level repo overview, workspace layout, quick-start entrypoints, and release entrypoints.
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
@@ -326,6 +327,8 @@ Troubleshooting checklist:
 - 2026-03-10: This host currently has repo `node_modules` populated but no global `pnpm` or `corepack` on `PATH`, so local web validation had to invoke `node_modules/.bin/*` tooling directly.
 - 2026-03-27: Local branch sprawl accumulated because merged-branch cleanup was not enforced after each PR merge batch; `AGENTS.md` now requires immediate post-merge branch deletion plus a 14-day stale-branch presumption.
 - 2026-03-27: Current `master` still lacks the canonical root `PLAN.md` even though repo docs point to it, so release docs and planning docs are out of alignment until that file is restored or the references are corrected.
+- 2026-03-27: Shared `node_modules` links in surviving worktrees can point into deleted worktrees, so release-gate validation may require localizing JS installs before rerunning web checks.
+- 2026-03-27: On this host, Windows PnP can still show `ADB Interface` and the OPPO device while `adb.exe devices -l` fails with `protocol fault (couldn't read status): connection reset`; in that state the phone-proof blocker is host ADB daemon health, not the built APK.
 - 2026-03-10: Filtered task refreshes in the PWA were previously overwriting the shared cached task snapshot with only the active status subset; offline task/search caches now need merged writes when refreshing non-`all` task filters.
 - 2026-03-10: This shell image has Node and repo `node_modules`, but `pnpm`/`corepack` are not on the default `PATH`; helper validation here used `./node_modules/.bin/playwright` and workspace-local `./node_modules/.bin/tauri` instead of bare `pnpm` commands.
 - 2026-03-10: Fresh Codex worktrees do not inherit the repo's JS install state; Android native validation in a new worktree needs `npx pnpm@9.15.0 install` before `tsc` or Gradle's Node-based package resolution will work.

@@ -1,21 +1,26 @@
 # vNext Test Bundle
 
-This is the operator handoff for the next voice-native preview build on current `origin/master`
-(`0e967da`, merged preview signoff/doc refresh [#82](https://github.com/LiquidGunay/starlog/pull/82)).
+This is the operator handoff for the current semi-stable preview bundle on current `origin/master`
+baseline `cce6e0e` plus the release-handoff/doc refresh from 2026-03-27.
 
 ## Current green baseline
 
-Validated locally from a fresh master worktree with shared-state linking:
+Validated locally from the refreshed release worktree on 2026-03-27:
 
-- API baseline: `39 passed` on the current validation suite used for the release pass.
-- Web typecheck: `cd apps/web && ./node_modules/.bin/tsc --noEmit`
-- Mobile typecheck: `cd apps/mobile && ./node_modules/.bin/tsc --noEmit`
-- Desktop helper targeted smoke: `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep "quick popup can switch to workspace in browser fallback"`
-- PWA release gate: `bash ./scripts/pwa_release_gate.sh`
-- OpenAI runtime smoke with `.env` loaded: `cd services/ai-runtime && uv run --project . python scripts/openai_smoke.py`
+- Android preview APK build:
+  - `APP_VARIANT=preview STARLOG_VERSION_NAME=0.1.0-preview.rc2 STARLOG_ANDROID_VERSION_CODE=103 STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true ./gradlew assembleRelease --console=plain`
+- PWA release gate:
+  - `bash ./scripts/pwa_release_gate.sh`
+  - PASS at `2026-03-27T18:17:09Z`
+- Fresh validation bundle:
+  - `bash ./scripts/velvet_validation_artifacts.sh 20260327T181800Z`
+  - hosted smoke: passed
+  - Windows helper smoke/probes/screenshots: passed
+  - Android smoke/screenshots: not rerun in that bundle because the Windows ADB daemon was host-blocked on this pass
 
-The current release baseline is ready for the next preview feedback pass. The phone install/smoke
-proof has been refreshed, and one local preview bundle now exists for direct phone/laptop install.
+The current release baseline is ready for PWA testing now and for Android sideload testing from the
+fresh RC2 APK. The remaining gap is a fresh installed-phone proof run from this host after the
+Windows ADB daemon is healthy again.
 
 ## Install and test surfaces
 
@@ -49,13 +54,13 @@ What to judge:
   - `docs/PHONE_SETUP.md`
   - `docs/ANDROID_RELEASE_QA_MATRIX.md`
   - `docs/PREVIEW_FEEDBACK_BUNDLE.md`
-- Current preview RC artifact:
+- Current preview RC2 artifact:
   - `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
-  - staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
+  - staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`
 
 Core phone checks:
 
-- install and launch the preview RC,
+- install and launch the preview RC2,
 - verify the assistant/chat shell,
 - verify the alarms / briefing surface,
 - use the live Railway deployment for real feedback,
@@ -81,7 +86,7 @@ Generated bundle path on this machine:
 
 Install from:
 
-- phone APK: `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc1-102.apk`
+- phone APK: `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc2-103.apk`
 - laptop `.deb`: `/home/ubuntu/starlog_preview_bundle/desktop/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
 
 ## Remaining drift to call out
@@ -89,8 +94,11 @@ Install from:
 - Hosted smoke drift still exists operationally. The latest isolated rerun passed, but prior runs
   have drifted because overlapping or stale local `next build` / `next start` processes can poison
   `bash ./scripts/pwa_hosted_smoke.sh`. Treat hosted smoke as green only when run in isolation.
-- Linux `adb` still does not see the phone on this host; the working physical-device path remains
+- Linux `adb` still does not see the phone on this host; the intended physical-device path remains
   the Windows platform-tools `adb.exe`.
+- On the 2026-03-27 semistable pass, the Windows `adb.exe` path itself became unhealthy and returned
+  `protocol fault (couldn't read status): connection reset`, so a fresh installed-phone screenshot
+  proof was not captured from this host even though the RC2 APK built and staged successfully.
 - The cross-surface host-local proof is now documented in `docs/CROSS_SURFACE_PROOF.md`; on the
   recorded run, the built PWA shell loaded and rendered the helper-uploaded artifact, but the
   seeded assistant-thread marker still required API-level evidence rather than a visible transcript
