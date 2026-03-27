@@ -60,6 +60,33 @@ def _extract_with_strings(path: Path) -> str | None:
     return text or None
 
 
+def _quality_flags(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    characters = len(stripped)
+    alpha = sum(char.isalpha() for char in stripped)
+    spaces = sum(char.isspace() for char in stripped)
+    unique_chars = len(set(stripped))
+    long_words = sum(1 for token in stripped.split() if len(token) >= 4)
+    alpha_ratio = alpha / characters if characters else 0.0
+    space_ratio = spaces / characters if characters else 0.0
+    unique_ratio = unique_chars / characters if characters else 0.0
+    usable = (
+        characters >= 120
+        and alpha_ratio >= 0.55
+        and space_ratio >= 0.08
+        and long_words >= 12
+        and unique_ratio >= 0.08
+    )
+    return {
+        "usable": usable,
+        "characters": characters,
+        "alpha_ratio": round(alpha_ratio, 3),
+        "space_ratio": round(space_ratio, 3),
+        "unique_ratio": round(unique_ratio, 3),
+        "long_word_count": long_words,
+    }
+
+
 def extract_pdf_text(path: Path) -> dict[str, Any]:
     for provider_name, extractor, mode in (
         ("pypdf", _extract_with_pypdf, "text_layer"),
@@ -67,11 +94,12 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
     ):
         text = extractor(path)
         if text:
+            quality = _quality_flags(text[:20000])
             return {
                 "text": text[:20000],
                 "provider": provider_name,
                 "mode": mode,
-                "characters": len(text[:20000]),
+                **quality,
             }
 
     return {
@@ -79,4 +107,9 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
         "provider": "none",
         "mode": "unavailable",
         "characters": 0,
+        "usable": False,
+        "alpha_ratio": 0.0,
+        "space_ratio": 0.0,
+        "unique_ratio": 0.0,
+        "long_word_count": 0,
     }

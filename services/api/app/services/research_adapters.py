@@ -191,7 +191,6 @@ class ManualPdfResearchAdapter:
 
     def ingest(self, conn: Connection, payload: dict[str, Any]) -> str:
         media_id = str(payload["media_id"])
-        notes = payload.get("notes")
         asset = media_service.get_media_asset(conn, media_id)
         if asset is None:
             raise LookupError(f"Media asset not found: {media_id}")
@@ -199,7 +198,11 @@ class ManualPdfResearchAdapter:
         extraction = pdf_ingest_service.extract_pdf_text(media_service.media_asset_path(asset))
         extracted_text = str(extraction.get("text") or "").strip()
         notes_text = str(payload.get("notes") or "").strip()
-        normalized_text = notes_text or extracted_text or resolved_title
+        extracted_text_usable = bool(extraction.get("usable")) and bool(extracted_text)
+        canonical_extracted_text = extracted_text if extracted_text_usable else ""
+        normalized_text = notes_text or canonical_extracted_text or resolved_title
+        notes_override_extracted = bool(notes_text) and extracted_text_usable
+        used_notes_fallback = bool(notes_text) and not extracted_text_usable
         metadata = {
             "source_kind": self.source_kind,
             "ingest_kind": self.source_kind,
@@ -208,7 +211,14 @@ class ManualPdfResearchAdapter:
                 "provider": extraction["provider"],
                 "mode": extraction["mode"],
                 "characters": extraction["characters"],
-                "used_notes_fallback": bool(notes_text) and not bool(extracted_text),
+                "usable": extracted_text_usable,
+                "alpha_ratio": extraction.get("alpha_ratio"),
+                "space_ratio": extraction.get("space_ratio"),
+                "unique_ratio": extraction.get("unique_ratio"),
+                "long_word_count": extraction.get("long_word_count"),
+                "notes_override_extracted": notes_override_extracted,
+                "used_notes_fallback": used_notes_fallback,
+                "rejected_as_noise": bool(extracted_text) and not extracted_text_usable,
             },
         }
         return _persist_research_item(
@@ -218,7 +228,7 @@ class ManualPdfResearchAdapter:
             title=resolved_title,
             url=asset["content_url"],
             authors=[],
-            abstract=notes_text or extracted_text[:2000] or None,
+            abstract=notes_text or canonical_extracted_text[:2000] or None,
             published_at=None,
             metadata=metadata,
             capture_title=resolved_title,
@@ -231,7 +241,7 @@ class ManualPdfResearchAdapter:
                 "filename": asset.get("source_filename"),
             },
             capture_normalized={"text": normalized_text, "mime_type": "text/plain"},
-            capture_extracted={"text": extracted_text, "mime_type": "text/plain"} if extracted_text else None,
+            capture_extracted={"text": canonical_extracted_text, "mime_type": "text/plain"} if canonical_extracted_text else None,
         )
 
 

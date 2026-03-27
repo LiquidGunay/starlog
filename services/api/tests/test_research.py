@@ -48,6 +48,11 @@ def test_manual_research_pdf_ingest_creates_item(
             "provider": "test_extractor",
             "mode": "text_layer",
             "characters": 68,
+            "usable": True,
+            "alpha_ratio": 0.82,
+            "space_ratio": 0.13,
+            "unique_ratio": 0.24,
+            "long_word_count": 12,
         },
     )
 
@@ -73,12 +78,106 @@ def test_manual_research_pdf_ingest_creates_item(
     assert payload["title"] == "PDF paper"
     assert payload["metadata"]["ingest_kind"] == "manual_pdf"
     assert payload["metadata"]["pdf_extraction"]["provider"] == "test_extractor"
+    assert payload["metadata"]["pdf_extraction"]["notes_override_extracted"] is True
+    assert payload["metadata"]["pdf_extraction"]["used_notes_fallback"] is False
 
     artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
     assert artifact_graph.status_code == 200
     artifact = artifact_graph.json()["artifact"]
     assert artifact["normalized_content"] == "Queue for deeper summary later."
     assert artifact["extracted_content"] == "Lecture one covers diffusion models, denoising, and score matching."
+
+
+def test_manual_research_pdf_ingest_uses_extracted_text_when_no_notes(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        research_adapters.pdf_ingest_service,
+        "extract_pdf_text",
+        lambda _path: {
+            "text": "Diffusion notes explain forward noising, reverse denoising, and score-based training for image generation systems.",
+            "provider": "test_extractor",
+            "mode": "text_layer",
+            "characters": 112,
+            "usable": True,
+            "alpha_ratio": 0.85,
+            "space_ratio": 0.12,
+            "unique_ratio": 0.21,
+            "long_word_count": 14,
+        },
+    )
+
+    upload = client.post(
+        "/v1/media/upload",
+        files={"file": ("paper.pdf", b"%PDF-1.4 test payload", "application/pdf")},
+        headers=auth_headers,
+    )
+    media_id = upload.json()["id"]
+
+    response = client.post(
+        "/v1/research/manual-pdf",
+        json={"media_id": media_id, "title": "PDF without notes"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    extraction = payload["metadata"]["pdf_extraction"]
+    assert extraction["usable"] is True
+    assert extraction["notes_override_extracted"] is False
+    assert extraction["used_notes_fallback"] is False
+
+    artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
+    artifact = artifact_graph.json()["artifact"]
+    assert artifact["normalized_content"].startswith("Diffusion notes explain forward noising")
+    assert artifact["extracted_content"].startswith("Diffusion notes explain forward noising")
+
+
+def test_manual_research_pdf_ingest_rejects_unreadable_extraction_noise(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        research_adapters.pdf_ingest_service,
+        "extract_pdf_text",
+        lambda _path: {
+            "text": "SbbbQQQMMMaaaZZZLLLPP MTdcrLsZ|kzb{fJWnZw~ ?JP```@@p``\\\\llNvvuEEG{",
+            "provider": "strings",
+            "mode": "heuristic_fallback",
+            "characters": 76,
+            "usable": False,
+            "alpha_ratio": 0.34,
+            "space_ratio": 0.04,
+            "unique_ratio": 0.07,
+            "long_word_count": 1,
+        },
+    )
+
+    upload = client.post(
+        "/v1/media/upload",
+        files={"file": ("paper.pdf", b"%PDF-1.4 test payload", "application/pdf")},
+        headers=auth_headers,
+    )
+    media_id = upload.json()["id"]
+
+    response = client.post(
+        "/v1/research/manual-pdf",
+        json={"media_id": media_id, "title": "Unreadable PDF"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    extraction = payload["metadata"]["pdf_extraction"]
+    assert extraction["usable"] is False
+    assert extraction["rejected_as_noise"] is True
+    assert extraction["used_notes_fallback"] is False
+
+    artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
+    artifact = artifact_graph.json()["artifact"]
+    assert artifact["normalized_content"] == "Unreadable PDF"
+    assert artifact["extracted_content"] is None
 
 
 def test_arxiv_ingest_uses_adapter_and_persists_item(

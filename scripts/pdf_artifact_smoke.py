@@ -23,11 +23,7 @@ def parse_args() -> argparse.Namespace:
         default="artifacts/pdf-ocr-smoke",
         help="Directory where smoke evidence should be written",
     )
-    parser.add_argument(
-        "--notes",
-        default="Lecture notes about diffusion models, denoising, and score matching.",
-        help="Optional notes to seed normalized text when extraction quality is weak",
-    )
+    parser.add_argument("--notes", default="", help="Optional notes override for manual PDF ingest")
     return parser.parse_args()
 
 
@@ -83,7 +79,11 @@ def main() -> int:
         ingest = client.post(
             "/v1/research/manual-pdf",
             headers=headers,
-            json={"media_id": media["id"], "title": args.title, "notes": args.notes},
+            json={
+                "media_id": media["id"],
+                "title": args.title,
+                **({"notes": args.notes} if args.notes.strip() else {}),
+            },
         )
         ingest.raise_for_status()
         research_item = ingest.json()
@@ -146,7 +146,7 @@ def main() -> int:
                 f"- Artifact ID: `{artifact_id}`",
                 f"- Extraction provider: `{research_item['metadata'].get('pdf_extraction', {}).get('provider', 'unknown')}`",
                 f"- Extraction mode: `{research_item['metadata'].get('pdf_extraction', {}).get('mode', 'unknown')}`",
-                f"- Notes seed: `{args.notes}`",
+                f"- Notes seed: `{args.notes or '(none)'}`",
                 f"- Summary count: `{len(versions_payload['summaries'])}`",
                 f"- Card count: `{len(graph_payload['cards'])}`",
                 f"- Note count: `{len(graph_payload['notes'])}`",

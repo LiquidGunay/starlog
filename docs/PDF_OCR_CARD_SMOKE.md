@@ -50,7 +50,7 @@ The script:
 - boots the API in-process via `TestClient`,
 - uploads the PDF as media,
 - ingests it through `/v1/research/manual-pdf`,
-- seeds a short note prompt so the smoke still produces readable summaries/cards when extraction is weak,
+- leaves `notes` empty by default so the smoke reflects the real extracted-text or rejection path,
 - runs `summarize`, `cards`, and `append_note`,
 - writes JSON + Markdown evidence in `artifacts/pdf-ocr-smoke/<timestamp>/`.
 
