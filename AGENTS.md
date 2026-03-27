@@ -392,3 +392,4 @@ Troubleshooting checklist:
 - 2026-03-27: Rebase conflict resolution: keep the newer master AGENTS baseline and reapply branch-specific PDF ingest notes without dropping the mobile runbook updates.
 - 2026-03-27: PDF fallback ranking must also keep obviously unreadable high-alpha OCR garbage from outranking a readable pypdf text layer; provider priority should break that tie in favor of the text layer fallback.
 - 2026-03-27: Rebase conflict resolution: preserve both PDF-ingest issue-log notes when replaying this branch onto a newer master baseline.
+- 2026-03-27: The Velvet validation artifact wrapper can be invoked from non-login shells, so it must add `~/.local/bin` to `PATH` or hosted smoke may fail to find `uv` even when `uv` is installed on the host.
