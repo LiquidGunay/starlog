@@ -189,6 +189,16 @@ def get_primary_thread(
     )
 
 
+def get_session_state(conn: Connection) -> dict[str, Any]:
+    thread = ensure_primary_thread(conn)
+    row = execute_fetchone(
+        conn,
+        "SELECT state_json FROM conversation_session_state WHERE thread_id = ?",
+        (thread["id"],),
+    )
+    return row["state_json"] if row else {}
+
+
 def append_message(
     conn: Connection,
     *,
@@ -322,8 +332,60 @@ def update_session_state(conn: Connection, state: dict[str, Any]) -> dict[str, A
     return {"thread_id": thread["id"], "session_state": state, "updated_at": now}
 
 
+def merge_session_state(conn: Connection, state_patch: dict[str, Any]) -> dict[str, Any]:
+    next_state = dict(get_session_state(conn))
+    next_state.update(state_patch)
+    return update_session_state(conn, next_state)
+
+
 def reset_session_state(conn: Connection) -> dict[str, Any]:
     return update_session_state(conn, {})
+
+
+def record_chat_turn(
+    conn: Connection,
+    *,
+    content: str,
+    assistant_content: str,
+    cards: list[dict[str, Any]] | None = None,
+    request_metadata: dict[str, Any] | None = None,
+    assistant_metadata: dict[str, Any] | None = None,
+    session_state_patch: dict[str, Any] | None = None,
+    runtime_trace_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    user_message = append_message(
+        conn,
+        role="user",
+        content=content,
+        metadata=request_metadata or {},
+    )
+    assistant_message = append_message(
+        conn,
+        role="assistant",
+        content=assistant_content,
+        cards=cards or [],
+        metadata=assistant_metadata or {},
+    )
+    trace = record_tool_trace(
+        conn,
+        message_id=str(assistant_message["id"]),
+        tool_name="chat_turn_runtime",
+        arguments={"content": content},
+        status="completed",
+        result={
+            "response_text": assistant_content,
+            "cards": cards or [],
+        },
+        metadata=runtime_trace_metadata or {},
+    )
+    session_state = merge_session_state(conn, session_state_patch or {})
+    return {
+        "thread_id": assistant_message["thread_id"],
+        "user_message": user_message,
+        "assistant_message": assistant_message,
+        "trace": trace,
+        "session_state": session_state["session_state"],
+    }
 
 
 def build_chat_preview_request(
@@ -350,6 +412,7 @@ def build_chat_preview_request(
                 "role": message["role"],
                 "content": message["content"],
                 "cards": message["cards"],
+                "metadata": message.get("metadata", {}),
                 "created_at": message["created_at"],
             }
             for message in thread["messages"]

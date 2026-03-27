@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from runtime_app.prompt_loader import load_prompt, render_prompt
-from runtime_app.schemas import CapabilityExecutionResponse, RuntimeCapability, WorkflowPreviewResponse
+from runtime_app.schemas import (
+    CapabilityExecutionResponse,
+    ChatTurnExecutionResponse,
+    RuntimeCapability,
+    WorkflowPreviewResponse,
+)
 
 DEFAULT_MODEL = "gpt-5.4-nano"
 DEFAULT_PROVIDER = "runtime_prompt_fallback"
@@ -102,6 +107,17 @@ def _tool_lines(payload: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "- none provided"
 
 
+def _latest_tool_name(context: dict[str, Any]) -> str | None:
+    traces = context.get("recent_tool_traces")
+    if not isinstance(traces, list) or not traces:
+        return None
+    first = traces[0]
+    if not isinstance(first, dict):
+        return None
+    tool_name = str(first.get("tool_name") or "").strip()
+    return tool_name or None
+
+
 def _agent_plan_output(payload: dict[str, Any]) -> dict[str, Any]:
     command = str(payload.get("command") or _source_text(payload) or "").strip()
     tool_catalog = payload.get("tool_catalog")
@@ -176,6 +192,78 @@ def chat_preview(title: str | None, text: str, context: dict[str, Any]) -> Workf
             context=context,
         ),
         context=context,
+    )
+
+
+def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> ChatTurnExecutionResponse:
+    resolved_title = title or "Primary Starlog Thread"
+    excerpt = _excerpt(text, limit=180) or "No user message was provided."
+    session_state = context.get("session_state") if isinstance(context.get("session_state"), dict) else {}
+    last_intent = str(session_state.get("last_matched_intent") or "").strip()
+    latest_tool = _latest_tool_name(context)
+
+    response_parts = [f"Captured into {resolved_title}: {excerpt}"]
+    if last_intent:
+        response_parts.append(f"The latest tracked intent is {last_intent.replace('_', ' ')}.")
+    elif latest_tool:
+        response_parts.append(f"The latest execution trace is {latest_tool.replace('_', ' ')}.")
+    else:
+        response_parts.append("The persistent thread is ready for the next explicit action.")
+    response_text = " ".join(response_parts)
+
+    cards: list[dict[str, Any]] = [
+        {
+            "kind": "assistant_summary",
+            "version": 1,
+            "title": "Chat turn",
+            "body": response_text,
+            "metadata": {
+                "workflow": "chat_turn",
+                "provider": DEFAULT_PROVIDER,
+                "model": DEFAULT_MODEL,
+            },
+        }
+    ]
+    if last_intent or latest_tool:
+        cards.append(
+            {
+                "kind": "thread_context",
+                "version": 1,
+                "title": "Thread context",
+                "body": (
+                    f"Last intent: {last_intent.replace('_', ' ')}"
+                    if last_intent
+                    else f"Latest trace: {latest_tool.replace('_', ' ')}"
+                ),
+                "metadata": {
+                    "last_matched_intent": last_intent,
+                    "latest_tool_name": latest_tool,
+                },
+            }
+        )
+
+    return ChatTurnExecutionResponse(
+        provider_used=DEFAULT_PROVIDER,
+        model=DEFAULT_MODEL,
+        system_prompt=render_prompt("chat_turn.system.txt"),
+        user_prompt=render_prompt(
+            "chat_turn.user.txt",
+            title=resolved_title,
+            text=text,
+            context=context,
+        ),
+        response_text=response_text,
+        cards=cards,
+        session_state={
+            "last_turn_kind": "chat_turn",
+            "last_user_message": text,
+            "last_assistant_response": response_text,
+        },
+        metadata={
+            "title": resolved_title,
+            "recent_message_count": len(context.get("recent_messages") or []),
+            "recent_trace_count": len(context.get("recent_tool_traces") or []),
+        },
     )
 
 

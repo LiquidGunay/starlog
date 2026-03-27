@@ -65,6 +65,25 @@ class ConversationSessionResetResponse(BaseModel):
     updated_at: datetime
 
 
+class ConversationTurnRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    title: str | None = None
+    message_limit: int = Field(default=12, ge=1, le=50)
+    trace_limit: int = Field(default=10, ge=0, le=50)
+    input_mode: str = Field(default="text", min_length=1)
+    device_target: str = Field(default="web-pwa", min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    context_overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationTurnResponse(BaseModel):
+    thread_id: str
+    user_message: ConversationMessage
+    assistant_message: ConversationMessage
+    trace: ConversationToolTrace
+    session_state: dict[str, Any] = Field(default_factory=dict)
+
+
 class ConversationPreviewRequest(BaseModel):
     content: str = Field(..., min_length=1)
     title: str | None = None

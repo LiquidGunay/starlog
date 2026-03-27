@@ -9,6 +9,8 @@ from app.schemas.conversations import (
     ConversationPreviewRequest,
     ConversationPreviewResponse,
     ConversationSessionResetResponse,
+    ConversationTurnRequest,
+    ConversationTurnResponse,
     ConversationThreadSnapshot,
 )
 from app.services import ai_service, conversation_service
@@ -58,6 +60,62 @@ def reset_primary_conversation_session(
     db: Connection = Depends(get_db),
 ) -> ConversationSessionResetResponse:
     return ConversationSessionResetResponse.model_validate(conversation_service.reset_session_state(db))
+
+
+@router.post("/primary/chat", response_model=ConversationTurnResponse, status_code=status.HTTP_201_CREATED)
+def execute_primary_conversation_turn(
+    payload: ConversationTurnRequest,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> ConversationTurnResponse:
+    request_payload = conversation_service.build_chat_preview_request(
+        db,
+        content=payload.content,
+        title=payload.title,
+        message_limit=payload.message_limit,
+        trace_limit=payload.trace_limit,
+        metadata=payload.metadata,
+        context_overrides=payload.context_overrides,
+    )
+    try:
+        turn = ai_service.execute_chat_turn(request_payload)
+    except ai_service.ProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    response = conversation_service.record_chat_turn(
+        db,
+        content=payload.content,
+        assistant_content=str(turn.get("response_text") or ""),
+        cards=turn.get("cards") if isinstance(turn.get("cards"), list) else [],
+        request_metadata={
+            "input_mode": payload.input_mode,
+            "device_target": payload.device_target,
+            "request_metadata": payload.metadata,
+        },
+        assistant_metadata={
+            "chat_turn": {
+                "workflow": turn.get("workflow") or "chat_turn",
+                "provider_used": turn.get("provider_used") or "local_prompt_preview",
+                "model": turn.get("model") or "",
+                "metadata": turn.get("metadata") if isinstance(turn.get("metadata"), dict) else {},
+            },
+            "status": "completed",
+        },
+        session_state_patch={
+            **(turn.get("session_state") if isinstance(turn.get("session_state"), dict) else {}),
+            "last_chat_turn_provider": turn.get("provider_used") or "local_prompt_preview",
+            "last_chat_turn_model": turn.get("model") or "",
+        },
+        runtime_trace_metadata={
+            "workflow": turn.get("workflow") or "chat_turn",
+            "provider_used": turn.get("provider_used") or "local_prompt_preview",
+            "model": turn.get("model") or "",
+            "system_prompt": turn.get("system_prompt") or "",
+            "user_prompt": turn.get("user_prompt") or "",
+            "metadata": turn.get("metadata") if isinstance(turn.get("metadata"), dict) else {},
+        },
+    )
+    return ConversationTurnResponse.model_validate(response)
 
 
 @router.post("/primary/preview", response_model=ConversationPreviewResponse)

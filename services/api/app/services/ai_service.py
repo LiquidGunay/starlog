@@ -19,8 +19,11 @@ PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "ai-runtime" / "prompts"
 AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-nano"
 AI_RUNTIME_BASE_ENV = "STARLOG_AI_RUNTIME_BASE_URL"
 AI_RUNTIME_EXECUTE_PATH = "/v1/execute"
+AI_RUNTIME_CHAT_EXECUTE_PATH = "/v1/chat/execute"
 AI_RUNTIME_EXECUTE_TIMEOUT_SECONDS = 8.0
 AI_RUNTIME_EXECUTE_RETRIES = 2
+AI_RUNTIME_CHAT_EXECUTE_TIMEOUT_SECONDS = 8.0
+AI_RUNTIME_CHAT_EXECUTE_RETRIES = 2
 AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS = 5.0
 AI_RUNTIME_PREVIEW_RETRIES = 2
 
@@ -238,6 +241,10 @@ def _runtime_execute_url() -> str | None:
     return _runtime_preview_url(AI_RUNTIME_EXECUTE_PATH)
 
 
+def _runtime_chat_execute_url() -> str | None:
+    return _runtime_preview_url(AI_RUNTIME_CHAT_EXECUTE_PATH)
+
+
 def _invoke_runtime_preview(workflow: str, payload: dict) -> dict:
     config = PREVIEW_WORKFLOWS.get(workflow)
     if config is None:
@@ -298,6 +305,137 @@ def _invoke_runtime_preview(workflow: str, payload: dict) -> dict:
 
 def preview_workflow(workflow: str, payload: dict) -> dict:
     return _invoke_runtime_preview(workflow, payload)
+
+
+def _latest_tool_name(context: dict) -> str | None:
+    traces = context.get("recent_tool_traces")
+    if not isinstance(traces, list) or not traces:
+        return None
+    first = traces[0]
+    if not isinstance(first, dict):
+        return None
+    tool_name = str(first.get("tool_name") or "").strip()
+    return tool_name or None
+
+
+def _local_chat_turn_execution(payload: dict) -> dict:
+    title = str(payload.get("title") or "Primary Starlog Thread").strip() or "Primary Starlog Thread"
+    text = _text_source(payload)
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    session_state = context.get("session_state") if isinstance(context.get("session_state"), dict) else {}
+    last_intent = str(session_state.get("last_matched_intent") or "").strip()
+    latest_tool = _latest_tool_name(context)
+    excerpt = " ".join(text.split())[:180] if text else "No user message was provided."
+
+    response_parts = [f"Captured into {title}: {excerpt}"]
+    if last_intent:
+        response_parts.append(f"The latest tracked intent is {last_intent.replace('_', ' ')}.")
+    elif latest_tool:
+        response_parts.append(f"The latest execution trace is {latest_tool.replace('_', ' ')}.")
+    else:
+        response_parts.append("The persistent thread is ready for the next explicit action.")
+    response_text = " ".join(response_parts)
+
+    cards = [
+        {
+            "kind": "assistant_summary",
+            "version": 1,
+            "title": "Chat turn",
+            "body": response_text,
+            "metadata": {
+                "workflow": "chat_turn",
+                "provider": "local_prompt_preview",
+                "model": AI_RUNTIME_DEFAULT_MODEL,
+            },
+        }
+    ]
+    if last_intent or latest_tool:
+        cards.append(
+            {
+                "kind": "thread_context",
+                "version": 1,
+                "title": "Thread context",
+                "body": (
+                    f"Last intent: {last_intent.replace('_', ' ')}"
+                    if last_intent
+                    else f"Latest trace: {latest_tool.replace('_', ' ')}"
+                ),
+                "metadata": {
+                    "last_matched_intent": last_intent,
+                    "latest_tool_name": latest_tool,
+                },
+            }
+        )
+
+    return {
+        "workflow": "chat_turn",
+        "provider_used": "local_prompt_preview",
+        "model": AI_RUNTIME_DEFAULT_MODEL,
+        "system_prompt": _load_prompt("chat_turn.system.txt"),
+        "user_prompt": _render_prompt(
+            "chat_turn.user.txt",
+            title=title,
+            text=text,
+            context=_format_prompt_value(context),
+        ),
+        "response_text": response_text,
+        "cards": cards,
+        "session_state": {
+            "last_turn_kind": "chat_turn",
+            "last_user_message": text,
+            "last_assistant_response": response_text,
+        },
+        "metadata": {
+            "title": title,
+            "recent_message_count": len(context.get("recent_messages") or []),
+            "recent_trace_count": len(context.get("recent_tool_traces") or []),
+        },
+    }
+
+
+def execute_chat_turn(payload: dict) -> dict:
+    url = _runtime_chat_execute_url()
+    title = str(payload.get("title") or "Primary Starlog Thread").strip() or "Primary Starlog Thread"
+    text = _text_source(payload)
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+
+    if not url:
+        return _local_chat_turn_execution(payload)
+
+    request = Request(
+        url,
+        data=json.dumps({"title": title, "text": text, "context": context}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    last_error: Exception | None = None
+    for _attempt in range(AI_RUNTIME_CHAT_EXECUTE_RETRIES):
+        try:
+            with urlopen(request, timeout=AI_RUNTIME_CHAT_EXECUTE_TIMEOUT_SECONDS) as response:  # noqa: S310
+                body = response.read().decode("utf-8")
+            decoded = json.loads(body)
+            if not isinstance(decoded, dict):
+                raise ProviderError("AI runtime returned a non-object chat payload")
+            return {
+                "workflow": str(decoded.get("workflow") or "chat_turn"),
+                "provider_used": str(decoded.get("provider_used") or "ai_runtime"),
+                "model": str(decoded.get("model") or AI_RUNTIME_DEFAULT_MODEL),
+                "system_prompt": str(decoded.get("system_prompt") or ""),
+                "user_prompt": str(decoded.get("user_prompt") or ""),
+                "response_text": str(decoded.get("response_text") or ""),
+                "cards": decoded.get("cards") if isinstance(decoded.get("cards"), list) else [],
+                "session_state": decoded.get("session_state") if isinstance(decoded.get("session_state"), dict) else {},
+                "metadata": decoded.get("metadata") if isinstance(decoded.get("metadata"), dict) else {},
+            }
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise ProviderError(f"AI runtime HTTP {exc.code}: {detail or 'request failed'}") from exc
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise ProviderError(f"AI runtime chat request failed: {last_error}") from last_error
+    raise ProviderError("AI runtime chat request failed")
 
 
 def _local_runtime_execution(capability: str, payload: dict) -> dict:
