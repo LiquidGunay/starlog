@@ -205,3 +205,28 @@ SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
    - Mitigation: install with the Windows path first, then rerun `./scripts/android_native_smoke.sh` with `SKIP_INSTALL=1` for the scripted launch/deep-link/share flow.
 3. The alarms surface currently reports `No offline briefing cached yet` in this specific proof run.
    - Interpretation: the installable preview and hosted integration are ready for feedback, but a fresh offline-audio cache artifact was not part of this evidence import.
+
+## WI-619 semistable release refresh
+
+Date: 2026-03-27
+Device target: OPPO CPH2381 (`9dd62e84`)
+Artifact under test: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`
+Version: `0.1.0-preview.rc2 (103)`
+SHA-256: `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`
+
+## WI-619 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Preview RC2 APK assembly (`assembleRelease`) | PASS | local build log on 2026-03-27 |
+| Windows-visible APK staging (`C:\Temp\...`) | PASS | staged copy present |
+| Windows PnP device visibility (`oppointeraction`, `ADB Interface`) | PASS | PowerShell host probe on 2026-03-27 |
+| Windows `adb.exe devices -l` daemon health | BLOCKED | returned `protocol fault (couldn't read status): connection reset` |
+| Fresh installed-phone launch/smoke from this host | BLOCKED | blocked behind Windows ADB daemon health |
+| Fresh installed-phone screenshot proof from this host | BLOCKED | blocked behind Windows ADB daemon health |
+
+## WI-619 blocker
+
+1. The semistable RC2 APK itself built and staged successfully, but the current Windows ADB daemon on this host is unhealthy.
+   - Mitigation: restart/recover the Windows `adb.exe` path outside WSL, then rerun the install/launch/screenshot loop against `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`.

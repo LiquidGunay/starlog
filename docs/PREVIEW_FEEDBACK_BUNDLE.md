@@ -1,6 +1,6 @@
 # Preview Feedback Bundle
 
-Last updated: 2026-03-23
+Last updated: 2026-03-27
 
 This is the shortest path to install Starlog on your phone and laptop and point it at the live
 Railway deployment for real feedback.
@@ -10,13 +10,13 @@ Railway deployment for real feedback.
 Generated bundle root on this machine:
 
 - `/home/ubuntu/starlog_preview_bundle`
-- `/home/ubuntu/starlog-preview-feedback-bundle-20260323.tar.gz` (compressed copy of the same bundle)
+- `/home/ubuntu/starlog-preview-feedback-bundle-20260327.tar.gz` (compressed copy of the same bundle, if regenerated)
 
 Installable artifacts inside it:
 
 - Android preview APK:
-  - `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc1-102.apk`
-  - SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
+  - `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc2-103.apk`
+  - SHA-256: `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`
 - Linux desktop helper package:
   - `/home/ubuntu/starlog_preview_bundle/desktop/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
   - SHA-256: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
@@ -40,10 +40,10 @@ this deployment.
 
 ### Phone
 
-Fastest path on this machine:
+Fastest path on this machine when the Windows ADB daemon is healthy:
 
 1. Use `/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe`.
-2. Install `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`.
+2. Install `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`.
 3. Launch `com.starlog.app.preview/com.starlog.app.dev.MainActivity`.
 
 If you prefer manual sideloading, copy the APK from `/home/ubuntu/starlog_preview_bundle/android/`
@@ -74,9 +74,11 @@ Recommended feedback pass:
 
 ## Current proof status
 
-- Phone install/launch/deep-link/share: passed in the 2026-03-23 proof refresh
-- Assistant shell screenshot: imported
-- Alarms/briefing screenshot: imported
+- Fresh RC2 APK build: passed on 2026-03-27
+- Fresh PWA release gate: passed on 2026-03-27
+- Fresh hosted-smoke + Windows-helper validation bundle: passed on 2026-03-27
+- Fresh installed-phone proof on this host: blocked on 2026-03-27 by Windows `adb.exe` daemon failure (`protocol fault ... connection reset`)
+- Earlier phone assistant/alarms screenshots remain available from the prior proof import
 - Hosted Railway web/API: live
 - Desktop helper package: present and checksumed
 
