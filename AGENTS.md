@@ -62,6 +62,9 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
 - Every claimed agent task must be delivered through a PR to `master`; direct pushes to `master` are not allowed.
 - If a task branch is behind `origin/master`, rebase onto latest `origin/master` before final review/merge and rerun relevant validation after the rebase.
 - Once a PR is merged, do not add commits to that branch/PR. Start a fresh `codex/*` branch from current `master` and open a new PR for follow-up work.
+- As soon as a PR merge is confirmed, delete the associated local branch and remote branch in the same cleanup pass unless that branch is still attached to an active worktree for an explicit handoff.
+- During branch cleanup, any local branch with no commits in the last 14 days should be presumed stale and removed unless it is attached to an active worktree or still maps to the current plan.
+- Run `git fetch --prune` plus merged-branch cleanup at the end of each merge batch so local refs do not accumulate across sessions.
 - Lock timing rationale:
   - 2-minute heartbeat gives near-real-time liveness without overwhelming lock-file churn.
   - 10-minute stale timeout tolerates short command/test pauses but recovers quickly from crashed or abandoned sessions.
@@ -280,6 +283,7 @@ Troubleshooting checklist:
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
 - 2026-03-15: User wants fresh worktrees to reuse dependency installs/build caches from the canonical checkout unless a task changes that surface's dependency/build inputs.
 - 2026-03-15: User wants Starlog Railway services added to the existing Railway project that already hosts the personal website instead of creating a separate Railway project.
+- 2026-03-27: User wants merged branches cleaned up promptly, and any local branch older than 14 days treated as removable unless it is still active against the current plan.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -318,6 +322,7 @@ Troubleshooting checklist:
 - 2026-03-10: On this host, the newer Windows `adb` platform-tools can see the phone and set `adb reverse`, but WSL-driven `adb shell`/dev-client streaming is still flaky; the most promising local path is a Windows-side TCP relay to Metro plus `adb reverse`, or running the final device commands from a native Windows shell instead of WSL.
 - 2026-03-10: Real Windows helper validation from WSL showed the PowerShell foreground-window probe was incorrectly using `$pid`, which collides with PowerShell's read-only `$PID` variable; switching that script to a different variable restored Windows active-window metadata capture.
 - 2026-03-10: This host currently has repo `node_modules` populated but no global `pnpm` or `corepack` on `PATH`, so local web validation had to invoke `node_modules/.bin/*` tooling directly.
+- 2026-03-27: Local branch sprawl accumulated because merged-branch cleanup was not enforced after each PR merge batch; `AGENTS.md` now requires immediate post-merge branch deletion plus a 14-day stale-branch presumption.
 - 2026-03-10: Filtered task refreshes in the PWA were previously overwriting the shared cached task snapshot with only the active status subset; offline task/search caches now need merged writes when refreshing non-`all` task filters.
 - 2026-03-10: This shell image has Node and repo `node_modules`, but `pnpm`/`corepack` are not on the default `PATH`; helper validation here used `./node_modules/.bin/playwright` and workspace-local `./node_modules/.bin/tauri` instead of bare `pnpm` commands.
 - 2026-03-10: Fresh Codex worktrees do not inherit the repo's JS install state; Android native validation in a new worktree needs `npx pnpm@9.15.0 install` before `tsc` or Gradle's Node-based package resolution will work.
