@@ -126,3 +126,52 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
   await expect(page.getByText("Uploaded 1 queued voice command(s)", { exact: false })).toBeVisible();
   await expect(page.getByText("voice-job-1", { exact: false })).toBeVisible();
 });
+
+test("keyboard users can hold the velvet voice control to capture a voice clip", async ({ page }) => {
+  await seedSession(page);
+
+  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "thr_primary",
+        slug: "primary",
+        title: "Primary conversation",
+        mode: "voice_native",
+        session_state: {},
+        tool_traces: [],
+        created_at: "2026-03-22T09:00:00.000Z",
+        updated_at: "2026-03-22T09:00:00.000Z",
+        messages: [],
+      }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/ai/jobs*`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
+
+  await page.goto("/assistant");
+  const holdToTalk = page.locator(".assistant-voice-button");
+  await holdToTalk.focus();
+  await page.keyboard.down("Space");
+  await expect(page.getByText("Recording voice command...")).toBeVisible();
+  await page.keyboard.up("Space");
+  await expect(page.getByText("Voice command ready to upload")).toBeVisible();
+
+  await page.getByRole("button", { name: /Plan voice/i }).click();
+  await expect(page.getByText("Upload queue: 1", { exact: false })).toBeVisible();
+});

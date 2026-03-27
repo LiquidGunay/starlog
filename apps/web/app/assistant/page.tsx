@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
@@ -559,6 +559,22 @@ export default function AssistantPage() {
     stopRecordingOnceReadyRef.current = true;
   }
 
+  function handleHoldToTalkKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
+      return;
+    }
+    event.preventDefault();
+    beginHoldToTalk();
+  }
+
+  function handleHoldToTalkKeyUp(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== " " && event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    endHoldToTalk();
+  }
+
   function toggleSpokenReply() {
     if (!browserSupportsSpeech) {
       setStatus("This browser cannot play spoken replies");
@@ -880,6 +896,8 @@ export default function AssistantPage() {
                   onPointerUp={endHoldToTalk}
                   onPointerLeave={endHoldToTalk}
                   onPointerCancel={endHoldToTalk}
+                  onKeyDown={handleHoldToTalkKeyDown}
+                  onKeyUp={handleHoldToTalkKeyUp}
                   disabled={!browserSupportsRecording}
                 >
                   <span className="assistant-voice-button-label">
