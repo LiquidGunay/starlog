@@ -234,6 +234,7 @@ make seed-api
 
 - `docs/CODEBASE_ORGANIZATION.md` — developer code map
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped snapshot and recent validation state
+- `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable checklist for preview / semi-stable release prep
 - `docs/PHONE_SETUP.md` — phone/PWA/mobile setup and testing
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build flow
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — helper setup handoff
