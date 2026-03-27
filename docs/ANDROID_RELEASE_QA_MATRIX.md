@@ -210,7 +210,8 @@ SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
 
 Date: 2026-03-27
 Device target: OPPO CPH2381 (`9dd62e84`)
-Artifact under test: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Artifact under test: `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc2-103.apk`
+Fresh worktree build source: `/home/ubuntu/starlog-worktrees/validation-artifact-bundle/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
 Staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`
 Version: `0.1.0-preview.rc2 (103)`
 SHA-256: `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`

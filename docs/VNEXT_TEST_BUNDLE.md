@@ -1,7 +1,7 @@
 # vNext Test Bundle
 
 This is the operator handoff for the current semi-stable preview bundle on current `origin/master`
-baseline `cce6e0e` plus the release-handoff/doc refresh from 2026-03-27.
+baseline `0193c96` after the 2026-03-27 semistable release-handoff refresh.
 
 ## Current green baseline
 
@@ -16,11 +16,13 @@ Validated locally from the refreshed release worktree on 2026-03-27:
   - `bash ./scripts/velvet_validation_artifacts.sh 20260327T181800Z`
   - hosted smoke: passed
   - Windows helper smoke/probes/screenshots: passed
-  - Android smoke/screenshots: not rerun in that bundle because the Windows ADB daemon was host-blocked on this pass
+  - PWA visual proof: skipped because that lane was disabled for this run
+  - Android smoke/screenshots: skipped because those lanes were disabled for this run
+  - separate host checks then found the Windows ADB daemon unhealthy before a fresh installed-phone rerun could be attempted
 
 The current release baseline is ready for PWA testing now and for Android sideload testing from the
-fresh RC2 APK. The remaining gap is a fresh installed-phone proof run from this host after the
-Windows ADB daemon is healthy again.
+fresh RC2 APK. The remaining release-evidence gaps are a fresh PWA visual-proof rerun and a fresh
+installed-phone proof run from this host after the Windows ADB daemon is healthy again.
 
 ## Install and test surfaces
 
@@ -55,7 +57,8 @@ What to judge:
   - `docs/ANDROID_RELEASE_QA_MATRIX.md`
   - `docs/PREVIEW_FEEDBACK_BUNDLE.md`
 - Current preview RC2 artifact:
-  - `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+  - `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc2-103.apk`
+  - fresh worktree build source: `/home/ubuntu/starlog-worktrees/validation-artifact-bundle/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
   - staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`
 
 Core phone checks:
