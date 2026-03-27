@@ -62,6 +62,24 @@ def test_extract_pdf_text_prefers_later_readable_fallback_over_noisy_ocr(monkeyp
     assert result["characters"] == len(readable_fallback)
 
 
+def test_extract_pdf_text_prefers_text_layer_over_high_alpha_junk_ocr(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 sample")
+    junk_ocr = ("ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA ALPHA " * 4).strip()
+    readable_fallback = "Fallback PDF text explains diffusion scoring and sampling."
+
+    monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_ocr_server", lambda _path: junk_ocr)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: readable_fallback)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_strings", lambda _path: None)
+
+    result = pdf_ingest_service.extract_pdf_text(pdf_path)
+    assert result["provider"] == "pypdf"
+    assert result["mode"] == "text_layer"
+    assert result["text"] == readable_fallback
+    assert result["usable"] is False
+
+
 def test_extract_pdf_text_accepts_long_readable_ocr_text_with_low_unique_ratio(monkeypatch, tmp_path: Path) -> None:
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 sample")

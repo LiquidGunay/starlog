@@ -175,19 +175,20 @@ def _fallback_priority(provider_name: str) -> int:
     }.get(provider_name, -1)
 
 
-def _fallback_rank(candidate: dict[str, Any]) -> tuple[float, float, int, int, int]:
+def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, float, float, int, int]:
+    provider_name = str(candidate.get("provider") or "")
     return (
+        _fallback_priority(provider_name),
         float(candidate.get("alpha_ratio", 0.0)),
         float(candidate.get("space_ratio", 0.0)),
         int(candidate.get("long_word_count", 0)),
         int(candidate.get("characters", 0)),
-        _fallback_priority(str(candidate.get("provider") or "")),
     )
 
 
 def extract_pdf_text(path: Path) -> dict[str, Any]:
     fallback_candidate: dict[str, Any] | None = None
-    fallback_rank: tuple[float, float, int, int, int] | None = None
+    fallback_rank: tuple[int, float, float, int, int] | None = None
     for provider_name, extractor, mode in (
         ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
