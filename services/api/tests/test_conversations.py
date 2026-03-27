@@ -48,8 +48,8 @@ def test_reset_primary_conversation_session(
     auth_headers: dict[str, str],
 ) -> None:
     client.post(
-        "/v1/agent/command",
-        json={"command": "list tasks", "execute": False, "device_target": "web-pwa"},
+        "/v1/conversations/primary/chat",
+        json={"content": "Where did we leave off?", "device_target": "web-pwa"},
         headers=auth_headers,
     )
 
@@ -60,6 +60,33 @@ def test_reset_primary_conversation_session(
     conversation = client.get("/v1/conversations/primary", headers=auth_headers)
     assert conversation.status_code == 200
     assert conversation.json()["session_state"] == {}
+    assert len(conversation.json()["messages"]) == 2
+
+
+def test_chat_turn_persists_messages_cards_and_runtime_trace(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    response = client.post(
+        "/v1/conversations/primary/chat",
+        json={
+            "content": "Summarize the current thread state.",
+            "device_target": "web-pwa",
+            "metadata": {"surface": "assistant"},
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["user_message"]["role"] == "user"
+    assert payload["assistant_message"]["role"] == "assistant"
+    assert payload["assistant_message"]["metadata"]["chat_turn"]["workflow"] == "chat_turn"
+    assert payload["assistant_message"]["cards"][0]["kind"] == "assistant_summary"
+    assert payload["trace"]["tool_name"] == "chat_turn_runtime"
+    assert payload["trace"]["metadata"]["workflow"] == "chat_turn"
+    assert payload["session_state"]["last_turn_kind"] == "chat_turn"
+    assert payload["session_state"]["last_chat_turn_provider"] == "local_prompt_preview"
 
 
 def test_primary_conversation_supports_message_pagination(

@@ -1,4 +1,10 @@
-from runtime_app.workflows import briefing_preview, chat_preview, execute_capability, research_digest_preview
+from runtime_app.workflows import (
+    briefing_preview,
+    chat_preview,
+    execute_capability,
+    execute_chat_turn,
+    research_digest_preview,
+)
 
 
 def test_chat_preview_renders_prompts() -> None:
@@ -37,3 +43,21 @@ def test_execute_capability_generates_confirmation_ready_agent_plan() -> None:
     )
     assert payload.output["matched_intent"] == "create_task"
     assert payload.output["tool_calls"][0]["tool_name"] == "create_task"
+
+
+def test_execute_chat_turn_returns_structured_response() -> None:
+    payload = execute_chat_turn(
+        "Primary Starlog Thread",
+        "Summarize where we left off.",
+        {
+            "session_state": {"last_matched_intent": "create_task"},
+            "recent_messages": [{"role": "user", "content": "create a task"}],
+            "recent_tool_traces": [{"tool_name": "create_task"}],
+        },
+    )
+    assert payload.workflow == "chat_turn"
+    assert payload.provider_used == "runtime_prompt_fallback"
+    assert "Summarize where we left off." in payload.user_prompt
+    assert payload.cards[0]["kind"] == "assistant_summary"
+    assert payload.session_state["last_turn_kind"] == "chat_turn"
+    assert payload.session_state["last_user_message"] == "Summarize where we left off."
