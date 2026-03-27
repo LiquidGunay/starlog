@@ -212,8 +212,9 @@ powershell.exe -NoProfile -Command '$ver=$PSVersionTable.PSVersion.ToString(); W
 Bundle scaffolding plus host probe capture:
 
 ```bash
-cd "$HELPER_ROOT"
+VALIDATION_ROOT=/home/ubuntu/starlog-worktrees/velvet-cross-device-validation
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
+cd "$VALIDATION_ROOT"
 ./scripts/prepare_velvet_validation_bundle.sh "$STAMP"
 ./scripts/capture_velvet_windows_host_probe.sh "$STAMP"
 ```
