@@ -180,6 +180,52 @@ def test_manual_research_pdf_ingest_rejects_unreadable_extraction_noise(
     assert artifact["extracted_content"] is None
 
 
+def test_manual_research_pdf_ingest_falls_back_from_noisy_ocr_to_readable_text(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        research_adapters.pdf_ingest_service,
+        "_extract_with_ocr_server",
+        lambda _path: "SbbbQQQMMMaaaZZZLLLPP MTdcrLsZ|kzb{fJWnZw~ ?JP```@@p``\\\\llNvvuEEG{",
+    )
+    monkeypatch.setattr(
+        research_adapters.pdf_ingest_service,
+        "_extract_with_pypdf",
+        lambda _path: (
+            "Fallback PDF text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
+            "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
+        ),
+    )
+    monkeypatch.setattr(research_adapters.pdf_ingest_service, "_extract_with_strings", lambda _path: None)
+
+    upload = client.post(
+        "/v1/media/upload",
+        files={"file": ("paper.pdf", b"%PDF-1.4 test payload", "application/pdf")},
+        headers=auth_headers,
+    )
+    assert upload.status_code == 201
+    media_id = upload.json()["id"]
+
+    response = client.post(
+        "/v1/research/manual-pdf",
+        json={"media_id": media_id, "title": "Readable fallback PDF"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    extraction = payload["metadata"]["pdf_extraction"]
+    assert extraction["provider"] == "pypdf"
+    assert extraction["usable"] is True
+    assert extraction["rejected_as_noise"] is False
+
+    artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
+    artifact = artifact_graph.json()["artifact"]
+    assert artifact["normalized_content"].startswith("Fallback PDF text explains forward noising")
+    assert artifact["extracted_content"].startswith("Fallback PDF text explains forward noising")
+
+
 def test_arxiv_ingest_uses_adapter_and_persists_item(
     client: TestClient,
     auth_headers: dict[str, str],

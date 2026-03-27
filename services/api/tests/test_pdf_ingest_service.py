@@ -1,3 +1,5 @@
+import sys
+import types
 from pathlib import Path
 
 from app.services import pdf_ingest_service
@@ -60,3 +62,44 @@ def test_extract_pdf_text_accepts_long_readable_ocr_text_with_low_unique_ratio(m
     assert result["provider"] == "ocr_server"
     assert result["usable"] is True
     assert result["unique_ratio"] < 0.08
+
+
+def test_extract_pdf_text_skips_provider_exception_and_uses_fallback(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 sample")
+    fallback_text = (
+        "Fallback PDF text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
+        "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
+    )
+
+    def raise_ocr_unavailable(_path: Path) -> str | None:
+        raise RuntimeError("ocr unavailable")
+
+    monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_ocr_server", raise_ocr_unavailable)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_pypdf", lambda _path: fallback_text)
+    monkeypatch.setattr(pdf_ingest_service, "_extract_with_strings", lambda _path: None)
+
+    result = pdf_ingest_service.extract_pdf_text(pdf_path)
+    assert result["provider"] == "pypdf"
+    assert result["mode"] == "text_layer"
+    assert result["usable"] is True
+
+
+def test_extract_with_ocr_server_ignores_invalid_env_and_returns_none(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 sample")
+
+    fake_fitz = types.ModuleType("fitz")
+
+    def _unexpected_open(_path: str) -> None:
+        raise AssertionError("fitz.open should not be called when OCR env parsing fails")
+
+    fake_fitz.open = _unexpected_open  # type: ignore[attr-defined]
+
+    monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
+    monkeypatch.setenv("STARLOG_PDF_OCR_DPI", "not-an-integer")
+    monkeypatch.setattr(pdf_ingest_service.importlib.util, "find_spec", lambda name: object() if name == "fitz" else None)
+    monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
+
+    assert pdf_ingest_service._extract_with_ocr_server(pdf_path) is None

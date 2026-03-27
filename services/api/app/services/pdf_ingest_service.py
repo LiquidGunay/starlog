@@ -22,6 +22,16 @@ def _ocr_server_url() -> str | None:
     return value or None
 
 
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default
+
+
 def _extract_with_ocr_server(path: Path) -> str | None:
     server_url = _ocr_server_url()
     if not server_url or importlib.util.find_spec("fitz") is None:
@@ -30,9 +40,9 @@ def _extract_with_ocr_server(path: Path) -> str | None:
     import fitz  # type: ignore[import-not-found]
 
     language = os.getenv("STARLOG_PDF_OCR_LANGUAGE", "en").strip() or "en"
-    dpi = max(110, int(os.getenv("STARLOG_PDF_OCR_DPI", "170")))
-    max_pages = max(1, min(int(os.getenv("STARLOG_PDF_OCR_MAX_PAGES", "12")), 24))
-    timeout = max(10, int(os.getenv("STARLOG_PDF_OCR_TIMEOUT_SECONDS", "90")))
+    dpi = max(110, _env_int("STARLOG_PDF_OCR_DPI", 170))
+    max_pages = max(1, min(_env_int("STARLOG_PDF_OCR_MAX_PAGES", 12), 24))
+    timeout = max(10, _env_int("STARLOG_PDF_OCR_TIMEOUT_SECONDS", 90))
 
     try:
         document = fitz.open(str(path))
@@ -158,20 +168,31 @@ def _quality_flags(text: str) -> dict[str, Any]:
 
 
 def extract_pdf_text(path: Path) -> dict[str, Any]:
+    fallback_candidate: dict[str, Any] | None = None
     for provider_name, extractor, mode in (
         ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
         ("strings", _extract_with_strings, "heuristic_fallback"),
     ):
-        text = extractor(path)
+        try:
+            text = extractor(path)
+        except Exception:
+            continue
         if text:
             quality = _quality_flags(text[:20000])
-            return {
+            candidate = {
                 "text": text[:20000],
                 "provider": provider_name,
                 "mode": mode,
                 **quality,
             }
+            if quality["usable"]:
+                return candidate
+            if fallback_candidate is None:
+                fallback_candidate = candidate
+
+    if fallback_candidate is not None:
+        return fallback_candidate
 
     return {
         "text": "",
