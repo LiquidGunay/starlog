@@ -1710,6 +1710,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function submitPrimaryCapture() {
+    if (voiceClipUri) {
+      await submitVoiceCapture();
+      return;
+    }
+
+    await submitQuickCapture();
+  }
+
   async function startVoiceRecording() {
     if (voiceRecordingRef.current) {
       setStatus("Voice recording is already in progress");
@@ -3604,14 +3613,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={16} color={palette.onAccent} />
                 <Text style={styles.primaryActionText}>{holdToTalkLabel}</Text>
               </Pressable>
-              <TouchableOpacity style={styles.iconAction} onPress={submitQuickCapture}>
+              <TouchableOpacity style={styles.iconAction} onPress={submitPrimaryCapture}>
                 <MaterialCommunityIcons name="content-save-outline" size={16} color={palette.accent} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconAction} onPress={() => flushPendingCaptures("manual")}>
                 <MaterialCommunityIcons name="upload-outline" size={16} color={palette.accent} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then save or queue it.</Text>
+            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then save the voice note or queue text and files.</Text>
             <View style={styles.captureArtifactCard}>
               <Text style={styles.heroCardLabel}>Selected next move</Text>
               <Text style={styles.captureArtifactTitle}>{captureCommandPreview}</Text>
@@ -3644,6 +3653,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.inlineCardTitle}>Latest voice memo</Text>
                 <Text style={styles.subtle}>{voiceMemoPreview}</Text>
+                {voiceClipUri ? (
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
+                      <Text style={styles.buttonText}>Save Voice Note</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
             </View>
             <View style={styles.buttonRow}>

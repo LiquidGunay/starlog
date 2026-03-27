@@ -196,13 +196,12 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
-6a) If the dev client shows `Unable to load script` or a blank white screen, prime the first bundle explicitly:
+6a) If the dev client shows `Unable to load script` or a blank white screen, keep the same LAN dev-client URL flow, wait for Metro to finish the first bundle, and then rerun step 6. Do not switch to the localhost reverse path on this host:
 
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
-"$ADB_WIN" -s <SERIAL> reverse tcp:8081 tcp:8081
 "$ADB_WIN" -s <SERIAL> shell am force-stop com.starlog.app.dev
-"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081%2Findex.bundle%3Fplatform%3Dandroid%26dev%3Dtrue%26minify%3Dfalse'
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
 Expected checkpoint in Metro terminal:
@@ -211,7 +210,7 @@ Expected checkpoint in Metro terminal:
 Android Bundled ... index.js (...)
 ```
 
-After that first bundle completes, reopen the normal dev-client URL from step 6 and continue smoke/screenshots.
+After that first bundle completes, continue with the same step 6 dev-client URL and the smoke/screenshots.
 
 7) Run the Android smoke flow after the app loads:
 
@@ -357,7 +356,7 @@ Troubleshooting checklist:
 - 2026-03-15: Metro startup from this NTFS worktree can stall before binding `:8081`; using `/home/ubuntu/starlog` for long-running Metro/Gradle validation avoided the startup stall while edits remained in the worktree.
 - 2026-03-15: This host/phone pairing can still show a transient `Cannot connect to Metro...` toast even when localhost reverse transport (`tcp:8081`) bundles successfully; capture/test flows can proceed with that warning as a known dev-client transport quirk.
 - 2026-03-15: After separating the desktop helper popup from the studio workspace, browser tests that exercise capture buttons need to open `index.html?mode=quick`; the default workspace route no longer exposes popup-only capture controls.
-- 2026-03-15: First dev-client open on this host can fail with `Unable to load script` until Metro finishes an initial bundle compile; a one-time explicit `index.bundle` deep-link via `adb reverse tcp:8081` consistently primes the session, after which normal `exp+starlog://expo-development-client/?url=http://<LAN_IP>:8081` opens work again.
+- 2026-03-15: First dev-client open on this host can fail with `Unable to load script` until Metro finishes an initial bundle compile; once `Android Bundled ...` appears, reopen the same LAN `exp+starlog://expo-development-client/?url=http://<LAN_IP>:8081` URL instead of switching launcher schemes.
 - 2026-03-15: Mobile design-alignment pass introduced icon usage from `@expo/vector-icons`; the `apps/mobile` workspace must include that dependency (and lockfile update) or Metro fails with `Unable to resolve "@expo/vector-icons" from "App.tsx"`.
 - 2026-03-15: Post-merge UI audit found `SessionControls` repeated as a primary panel across canonical PWA surfaces; follow-up should consolidate session/admin controls into a secondary settings surface to stay aligned with `screen_design`.
 - 2026-03-15: Post-merge mobile UI audit found the advanced capture/review panels duplicate the focused companion shell with a second admin-console layer; follow-up should collapse those controls into more compact secondary surfaces.
@@ -386,3 +385,5 @@ Troubleshooting checklist:
 - 2026-03-23: Replaying stale doc-only proof PRs onto current `origin/master` can conflict in shared handoff docs like `AGENTS.md` and `docs/VNEXT_TEST_BUNDLE.md`; preserve the newer release-handoff baseline on `master` and reapply only the still-relevant proof references.
 - 2026-03-23: On this host, the main Codex shell can again execute the Windows platform-tools `adb.exe` and reach the physical phone, but `android_native_smoke.sh` still cannot install through a WSL-style `/mnt/c/...` APK path when using `adb.exe`; use a native Windows path like `C:\Temp\...` for installs, then rerun the smoke script with `SKIP_INSTALL=1`.
 - 2026-03-27: WI-612 review follow-up exposed two quick-mode regressions in the desktop helper: the status-pill hide rule was too broad and the runtime health badge lost its mono class on refresh; the quick-size regression test now documents the viewport budget it actually measures.
+- 2026-03-27: The primary mobile capture shell had a save action wired to text/shared-file capture even when a voice memo existed; the hero submit path now routes recorded voice notes correctly and exposes an explicit save button in the surface.
+- 2026-03-27: The Android phone-testing runbook now keeps the same LAN Expo dev-client URL through initial open and bundle-prime recovery so it no longer contradicts the working launcher scheme with a localhost reverse fallback.
