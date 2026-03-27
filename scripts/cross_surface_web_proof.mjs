@@ -81,7 +81,7 @@ try {
   await page.screenshot({ path: assistantPath, fullPage: true });
 
   await page.goto(`http://127.0.0.1:${webPort}/artifacts`);
-  await page.getByRole("button", { name: "Refresh Room" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("heading", { name: "Reading room and lineage" }).waitFor({ timeout: 15_000 });
   let artifactMarkerVisible = false;
   try {
     await page.getByText(artifactTitle).waitFor({ timeout: 5_000 });
