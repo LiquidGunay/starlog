@@ -13,6 +13,27 @@ It is intentionally narrower than the general release docs. The goal is to give 
 surface owners one concrete command/evidence bundle for the Velvet redesign across browser, phone,
 and Windows helper validation.
 
+## Validation roots
+
+Run the commands in this document against the code under review, not the canonical checkout unless
+that checkout is itself the branch under test.
+
+Preferred roots:
+
+- PWA branch root: `/home/ubuntu/starlog-worktrees/velvet-pwa-salon-thread`
+- Mobile branch root: `/home/ubuntu/starlog-worktrees/velvet-mobile-capture-gesture`
+- Desktop-helper branch root: `/home/ubuntu/starlog-worktrees/velvet-desktop-helper-instrument`
+- Optional combined validation root: a disposable worktree that contains the UI branches being
+  validated together
+
+Shell examples below use these environment variables:
+
+```bash
+PWA_ROOT=/home/ubuntu/starlog-worktrees/velvet-pwa-salon-thread
+MOBILE_ROOT=/home/ubuntu/starlog-worktrees/velvet-mobile-capture-gesture
+HELPER_ROOT=/home/ubuntu/starlog-worktrees/velvet-desktop-helper-instrument
+```
+
 ## Ready-now baseline on this host
 
 Observed on `2026-03-27` from `/home/ubuntu/starlog-worktrees/velvet-cross-device-validation`:
@@ -109,9 +130,10 @@ Suggested contents:
 
 ### PWA hosted smoke
 
-Run from repo root:
+Run from the PWA branch root or a combined validation worktree that includes the Velvet PWA changes:
 
 ```bash
+cd "$PWA_ROOT"
 bash ./scripts/pwa_hosted_smoke.sh
 ```
 
@@ -126,6 +148,7 @@ Run after the Velvet PWA branch is ready and you have a valid token for the loca
 proof:
 
 ```bash
+cd "$PWA_ROOT"
 STARLOG_CROSS_SURFACE_API_BASE='http://127.0.0.1:8011' \
 STARLOG_CROSS_SURFACE_TOKEN='<token>' \
 node scripts/cross_surface_web_proof.mjs artifacts/velvet-validation/<timestamp>/pwa-proof
@@ -136,25 +159,26 @@ node scripts/cross_surface_web_proof.mjs artifacts/velvet-validation/<timestamp>
 Use the runbook in `AGENTS.md` and `docs/PHONE_SETUP.md`. The shortest working path is:
 
 ```bash
+cd "$MOBILE_ROOT"
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" devices -l
 "$ADB_WIN" -s 9dd62e84 shell svc power stayon usb
 "$ADB_WIN" -s 9dd62e84 reverse tcp:8000 tcp:8000
-bash -x /home/ubuntu/starlog/scripts/android_windows_metro_relay.sh
+bash -x "$MOBILE_ROOT/scripts/android_windows_metro_relay.sh"
 powershell.exe -NoProfile -Command 'try { (Invoke-WebRequest -Uri "http://127.0.0.1:8081" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $_.Exception.Message; exit 1 }'
 ```
 
 Then, once Metro is serving the Velvet mobile branch:
 
 ```bash
-cd /home/ubuntu/starlog/apps/mobile
+cd "$MOBILE_ROOT/apps/mobile"
 APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
 ```
 
 And finally:
 
 ```bash
-cd /home/ubuntu/starlog
+cd "$MOBILE_ROOT"
 DEV_CLIENT_URL='exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
 ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
 ADB_SERIAL=9dd62e84 \
@@ -175,6 +199,7 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 Fast browser-fallback smoke:
 
 ```bash
+cd "$HELPER_ROOT"
 ./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep "quick popup can switch to workspace in browser fallback"
 ```
 
@@ -187,6 +212,7 @@ powershell.exe -NoProfile -Command '$ver=$PSVersionTable.PSVersion.ToString(); W
 Bundle scaffolding plus host probe capture:
 
 ```bash
+cd "$HELPER_ROOT"
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
 ./scripts/prepare_velvet_validation_bundle.sh "$STAMP"
 ./scripts/capture_velvet_windows_host_probe.sh "$STAMP"
@@ -195,7 +221,7 @@ STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
 After the Velvet helper branch is ready, run:
 
 ```bash
-cd tools/desktop-helper
+cd "$HELPER_ROOT/tools/desktop-helper"
 node ./scripts/capture_qa_screenshots.mjs
 ```
 
