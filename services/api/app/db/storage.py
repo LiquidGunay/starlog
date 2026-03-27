@@ -501,7 +501,10 @@ def _ensure_db_parent() -> None:
 def get_connection() -> Iterator[sqlite3.Connection]:
     _ensure_db_parent()
     settings = get_settings()
-    conn = sqlite3.connect(settings.db_path)
+    # FastAPI sync dependencies and route handlers can hop threads while keeping
+    # the same request-scoped connection alive. Disable SQLite's thread check so
+    # the request can safely use the same connection across that boundary.
+    conn = sqlite3.connect(settings.db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         yield conn

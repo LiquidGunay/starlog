@@ -47,9 +47,8 @@ Supporting PWA gate evidence:
 - `pwa-artifacts-desktop-clip.png` shows the PWA artifact surface rendering the `Desktop clip` uploaded by the helper
   into that same API.
 - `pwa-proof.json` records whether the seeded thread/artifact markers were visible from the PWA during the proof run.
-  On this run:
-  - `assistant_marker_visible=false`
-  - `artifact_marker_visible=false`
+  The proof script now writes an explicit `status` plus per-marker `checks` entries and exits non-zero when any
+  required marker is missing, so a missing marker can no longer false-pass as a successful proof run.
 - `pwa-assistant-thread.png` confirms the current assistant shell on the built PWA loads successfully against the same
   configured API base, even though the seeded conversation marker did not surface in the rendered transcript during this
   host-local proof run.

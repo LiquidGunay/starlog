@@ -1,37 +1,38 @@
-@import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap");
 
+/* Velvet PWA: editorial reading-room mood in plum and bronze, with the assistant treated as a composed ritual surface. */
 :root {
-  --bg: #070312;
-  --bg-2: #0f0821;
-  --panel: rgba(25, 18, 45, 0.78);
-  --panel-solid: #160f2b;
-  --panel-border: rgba(156, 137, 255, 0.24);
-  --text: #f0eeff;
-  --muted: #94a3b8;
-  --primary: #9c89ff;
-  --primary-soft: #b8acff;
-  --chip: rgba(156, 137, 255, 0.12);
-  --danger: #f97373;
-  --warning: #f59e0b;
-  --success: #22c55e;
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --bg: #180c12;
+  --bg-2: #27131d;
+  --panel: rgba(67, 39, 52, 0.82);
+  --panel-solid: #3b2430;
+  --panel-border: rgba(152, 111, 130, 0.3);
+  --text: #f8ede8;
+  --muted: #c6adad;
+  --primary: #d39a3a;
+  --primary-soft: #f0c778;
+  --chip: rgba(211, 154, 58, 0.12);
+  --danger: #ec8d7f;
+  --warning: #d39a3a;
+  --success: #94c1a1;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
 }
 
 html[data-theme="light"] {
-  --bg: #f3efff;
-  --bg-2: #ece5ff;
-  --panel: rgba(255, 255, 255, 0.8);
-  --panel-solid: #ffffff;
-  --panel-border: rgba(118, 92, 193, 0.24);
-  --text: #201937;
-  --muted: #5f537e;
-  --primary: #6f57ce;
-  --primary-soft: #8f7ee0;
-  --chip: rgba(111, 87, 206, 0.12);
-  --danger: #c84b4b;
-  --warning: #af6f08;
-  --success: #11834e;
-  --shadow: 0 18px 40px rgba(74, 53, 151, 0.2);
+  --bg: #f7efe7;
+  --bg-2: #f1e0d6;
+  --panel: rgba(255, 248, 242, 0.82);
+  --panel-solid: #fffaf5;
+  --panel-border: rgba(124, 83, 86, 0.2);
+  --text: #3a1e28;
+  --muted: #785f67;
+  --primary: #b97b1d;
+  --primary-soft: #d19842;
+  --chip: rgba(185, 123, 29, 0.12);
+  --danger: #bf665d;
+  --warning: #a86a12;
+  --success: #4e7a5a;
+  --shadow: 0 20px 48px rgba(77, 41, 39, 0.14);
 }
 
 * {
@@ -46,14 +47,15 @@ body {
 body {
   margin: 0;
   color: var(--text);
-  font-family: "Exo 2", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
   background:
-    radial-gradient(circle at 10% 8%, rgba(156, 137, 255, 0.18), transparent 30%),
-    radial-gradient(circle at 82% 4%, rgba(83, 55, 165, 0.3), transparent 35%),
-    linear-gradient(rgba(156, 137, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(156, 137, 255, 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 18% 12%, rgba(211, 154, 58, 0.16), transparent 28%),
+    radial-gradient(circle at 82% 4%, rgba(109, 57, 73, 0.32), transparent 34%),
+    radial-gradient(circle at 52% 0%, rgba(255, 236, 210, 0.05), transparent 26%),
+    linear-gradient(rgba(211, 154, 58, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(211, 154, 58, 0.03) 1px, transparent 1px),
     linear-gradient(150deg, var(--bg) 0%, var(--bg-2) 100%);
-  background-size: auto, auto, 42px 42px, 42px 42px, auto;
+  background-size: auto, auto, auto, 42px 42px, 42px 42px, auto;
 }
 
 a {
@@ -66,7 +68,7 @@ a {
   top: 0;
   z-index: 80;
   backdrop-filter: blur(8px);
-  background: color-mix(in srgb, var(--bg), transparent 24%);
+  background: color-mix(in srgb, var(--bg), transparent 18%);
   border-bottom: 1px solid color-mix(in srgb, var(--panel-border), transparent 32%);
 }
 
@@ -91,27 +93,26 @@ a {
 .brand-mark {
   width: 1rem;
   height: 1rem;
-  border-radius: 0.35rem;
-  background: linear-gradient(145deg, var(--primary-soft), var(--primary));
-  box-shadow: 0 0 14px rgba(156, 137, 255, 0.48);
+  border-radius: 999px;
+  background: linear-gradient(145deg, #f4d6a0, var(--primary));
+  box-shadow: 0 0 18px rgba(211, 154, 58, 0.38);
 }
 
 .brand-link {
   text-decoration: none;
   color: var(--text);
-  font-family: "Rajdhani", sans-serif;
-  font-weight: 700;
-  font-size: 1.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
+  font-family: "Cormorant Garamond", serif;
+  font-weight: 600;
+  font-size: 2.25rem;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
 }
 
 .brand-version {
-  color: var(--primary);
+  color: var(--primary-soft);
   font-family: "JetBrains Mono", monospace;
   font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -129,13 +130,11 @@ a {
   text-decoration: none;
   color: color-mix(in srgb, var(--muted), #ffffff 10%);
   border: 1px solid transparent;
-  border-radius: 0.58rem;
-  padding: 0.42rem 0.62rem;
-  font-family: "Rajdhani", sans-serif;
+  border-radius: 999px;
+  padding: 0.46rem 0.8rem;
   font-size: 0.86rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   transition: all 150ms ease;
   display: inline-flex;
   align-items: center;
@@ -158,9 +157,8 @@ a {
 .surface-link.active {
   color: var(--primary-soft);
   border-color: color-mix(in srgb, var(--primary), transparent 25%);
-  border-bottom-color: var(--primary);
   background: color-mix(in srgb, var(--chip), transparent 15%);
-  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--primary), transparent 12%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary), transparent 60%);
 }
 
 .system-chip-wrap {
@@ -298,8 +296,8 @@ a {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(12px);
-  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  border-radius: 24px;
 }
 
 .hero {
@@ -455,10 +453,10 @@ a {
 
 .button {
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 22%);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chip), transparent 15%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--chip), transparent 4%);
   color: var(--text);
-  padding: 0.42rem 0.78rem;
+  padding: 0.56rem 0.92rem;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.84rem;
@@ -477,7 +475,7 @@ a {
 
 .pane-toggle-button,
 .pane-restore-button {
-  border-radius: 999px;
+  border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 12%);
   background: color-mix(in srgb, var(--chip), transparent 16%);
   color: var(--text);
@@ -667,6 +665,9 @@ a {
   display: grid;
   grid-template-columns: minmax(250px, 22vw) minmax(420px, 1fr) minmax(300px, 23vw);
   min-height: calc(100vh - 123px);
+  background:
+    radial-gradient(circle at top, rgba(255, 228, 189, 0.04), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent 32%);
 }
 
 .command-center-layout.command-center-layout-left-collapsed {
@@ -683,7 +684,7 @@ a {
 
 .command-center-column {
   border-right: 1px solid color-mix(in srgb, var(--panel-border), transparent 30%);
-  background: color-mix(in srgb, var(--panel), transparent 8%);
+  background: color-mix(in srgb, var(--panel), transparent 6%);
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
@@ -708,7 +709,7 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.15em;
   font-size: 0.68rem;
-  color: var(--muted);
+  color: var(--primary-soft);
 }
 
 .command-center-search {
@@ -780,7 +781,7 @@ a {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: color-mix(in srgb, var(--bg), transparent 8%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0));
 }
 
 .command-scroll {
@@ -1142,10 +1143,11 @@ a {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(rgba(156, 137, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(156, 137, 255, 0.05) 1px, transparent 1px),
+    radial-gradient(circle at top, rgba(247, 205, 135, 0.07), transparent 28%),
+    linear-gradient(rgba(211, 154, 58, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(211, 154, 58, 0.04) 1px, transparent 1px),
     linear-gradient(150deg, color-mix(in srgb, var(--bg), transparent 5%), color-mix(in srgb, var(--bg-2), transparent 6%));
-  background-size: 44px 44px, 44px 44px, auto;
+  background-size: auto, 44px 44px, 44px 44px, auto;
 }
 
 .artifact-filter-hud {
@@ -1154,9 +1156,11 @@ a {
   left: 1rem;
   width: min(280px, calc(100% - 2rem));
   z-index: 20;
-  border-radius: 1rem;
+  border-radius: 1.4rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 15%);
-  background: color-mix(in srgb, var(--panel), transparent 8%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
   backdrop-filter: blur(14px);
   padding: 0.9rem;
   box-shadow: var(--shadow);
@@ -1164,10 +1168,10 @@ a {
 
 .artifact-filter-hud h2 {
   margin: 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 0.88rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1;
   color: var(--primary-soft);
 }
 
@@ -1217,7 +1221,7 @@ a {
 .artifact-node.active circle {
   stroke: color-mix(in srgb, var(--primary), transparent 0%);
   stroke-width: 3px;
-  filter: drop-shadow(0 0 12px rgba(156, 137, 255, 0.48));
+  filter: drop-shadow(0 0 12px rgba(211, 154, 58, 0.4));
 }
 
 .artifact-scene-card {
@@ -1225,14 +1229,16 @@ a {
   left: 50%;
   bottom: 1rem;
   transform: translateX(-50%);
-  width: min(540px, calc(100% - 3rem));
+  width: min(680px, calc(100% - 3rem));
   z-index: 18;
-  border-radius: 1rem;
+  border-radius: 1.6rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 16%);
-  background: color-mix(in srgb, var(--panel), transparent 8%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
-  padding: 1rem 1.05rem;
+  padding: 1.2rem 1.25rem;
 }
 
 .artifact-scene-card.empty {
@@ -1263,17 +1269,18 @@ a {
 
 .artifact-scene-card h2 {
   margin: 0.72rem 0 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: clamp(1.55rem, 2.8vw, 2.35rem);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: clamp(2.5rem, 4vw, 4rem);
+  line-height: 0.94;
+  letter-spacing: -0.02em;
+  max-width: 12ch;
 }
 
 .artifact-scene-copy {
   margin: 0.75rem 0 0;
-  max-width: 36rem;
-  color: color-mix(in srgb, var(--text), var(--muted) 36%);
-  line-height: 1.6;
+  max-width: 44rem;
+  color: color-mix(in srgb, var(--text), var(--muted) 24%);
+  line-height: 1.7;
 }
 
 .artifact-scene-stats,
@@ -1304,9 +1311,11 @@ a {
   right: 1rem;
   bottom: 1rem;
   width: min(360px, calc(100% - 2rem));
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 10%);
-  background: color-mix(in srgb, var(--panel), transparent 7%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
   backdrop-filter: blur(14px);
   box-shadow: var(--shadow);
   z-index: 20;
@@ -1321,10 +1330,9 @@ a {
 
 .artifact-inspector-header h1 {
   margin: 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 2rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2.75rem;
+  line-height: 0.95;
 }
 
 .artifact-inspector-body {
@@ -1356,17 +1364,18 @@ a {
 
 .artifact-card {
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 18%);
-  background: color-mix(in srgb, var(--chip), transparent 20%);
-  border-radius: 0.82rem;
-  padding: 0.75rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--chip), transparent 12%);
+  border-radius: 1.15rem;
+  padding: 0.95rem;
 }
 
 .artifact-card h2 {
   margin: 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: 0.84rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.55rem;
+  line-height: 1;
   color: var(--primary-soft);
 }
 
@@ -1384,10 +1393,9 @@ a {
 .artifact-quick-capture summary {
   cursor: pointer;
   list-style: none;
-  font-family: "Rajdhani", sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.8rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.45rem;
+  line-height: 1;
 }
 
 .artifact-quick-capture summary::-webkit-details-marker {
@@ -2189,10 +2197,12 @@ a {
 }
 
 .assistant-side-card {
-  padding: 1rem;
-  border-radius: 1.1rem;
+  padding: 1.05rem;
+  border-radius: 1.35rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 18%);
-  background: color-mix(in srgb, var(--panel), transparent 8%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel), transparent 4%);
 }
 
 .assistant-side-card-head,
@@ -2209,7 +2219,10 @@ a {
 .assistant-composer-head h2,
 .assistant-thread-head h2 {
   margin: 0.2rem 0 0;
-  font-size: 1.12rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .assistant-side-kicker,
@@ -2279,7 +2292,7 @@ a {
 }
 
 .assistant-chip-button {
-  border-radius: 999px;
+  border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--primary), transparent 55%);
   background: color-mix(in srgb, var(--chip), transparent 10%);
   color: var(--text);
@@ -2297,30 +2310,37 @@ a {
 .assistant-hero,
 .assistant-thread-panel,
 .assistant-composer {
-  padding: 1.1rem 1.15rem;
-  border-radius: 1.25rem;
+  padding: 1.3rem 1.4rem;
+  border-radius: 1.7rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 15%);
   background:
-    linear-gradient(155deg, color-mix(in srgb, var(--panel), transparent 12%), color-mix(in srgb, var(--panel-solid), transparent 2%)),
-    radial-gradient(circle at top right, color-mix(in srgb, var(--primary), transparent 85%), transparent 46%);
+    linear-gradient(160deg, rgba(255, 255, 255, 0.018), rgba(0, 0, 0, 0)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--primary), transparent 88%), transparent 46%),
+    color-mix(in srgb, var(--panel), transparent 4%);
   box-shadow: var(--shadow);
 }
 
 .assistant-hero {
   display: grid;
-  gap: 1rem;
+  gap: 1.15rem;
+  align-items: start;
 }
 
 .assistant-hero-copy h1 {
   margin: 0.2rem 0 0.45rem;
-  font-family: "Space Grotesk", sans-serif;
-  font-size: clamp(1.8rem, 3vw, 2.75rem);
+  font-family: "Cormorant Garamond", serif;
+  font-size: clamp(2.9rem, 5vw, 4.7rem);
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  max-width: 12ch;
 }
 
 .assistant-hero-copy p {
   margin: 0;
-  max-width: 62ch;
-  color: color-mix(in srgb, var(--text), var(--muted) 22%);
+  max-width: 48ch;
+  color: color-mix(in srgb, var(--text), var(--muted) 18%);
+  font-size: 1rem;
+  line-height: 1.7;
 }
 
 .assistant-hero-meta {
@@ -2341,6 +2361,8 @@ a {
 .assistant-hero-actions {
   display: grid;
   gap: 0.8rem;
+  grid-template-columns: minmax(0, 1.2fr) auto;
+  align-items: end;
 }
 
 .assistant-hero-button-row,
@@ -2357,11 +2379,11 @@ a {
 }
 
 .assistant-stat-pill {
-  min-width: 124px;
-  border-radius: 0.9rem;
+  min-width: 150px;
+  border-radius: 1.2rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 30%);
-  background: color-mix(in srgb, var(--panel-solid), transparent 6%);
-  padding: 0.7rem 0.82rem;
+  background: color-mix(in srgb, var(--panel-solid), transparent 2%);
+  padding: 0.85rem 0.95rem;
   display: grid;
   gap: 0.18rem;
 }
@@ -2375,18 +2397,21 @@ a {
 }
 
 .assistant-stat-pill strong {
-  font-size: 1rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .assistant-voice-button {
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--primary), transparent 30%);
-  border-radius: 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 18%);
+  border-radius: 1.4rem;
   background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--primary), transparent 68%), transparent 58%),
-    linear-gradient(160deg, color-mix(in srgb, var(--chip), transparent 4%), color-mix(in srgb, var(--panel-solid), transparent 0%));
+    linear-gradient(180deg, rgba(255, 229, 181, 0.13), rgba(187, 120, 24, 0.03)),
+    linear-gradient(160deg, color-mix(in srgb, var(--chip), transparent 0%), color-mix(in srgb, var(--panel-solid), transparent 0%));
   color: var(--text);
-  padding: 1rem 1.05rem;
+  padding: 1.15rem 1.1rem;
   cursor: pointer;
   display: grid;
   gap: 0.28rem;
@@ -2413,9 +2438,10 @@ a {
 }
 
 .assistant-voice-button-label {
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 1.05rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2rem;
   font-weight: 600;
+  line-height: 0.95;
 }
 
 .assistant-voice-button-meta {
@@ -2442,14 +2468,16 @@ a {
 
 .assistant-empty-thread {
   border: 1px dashed color-mix(in srgb, var(--panel-border), transparent 40%);
-  border-radius: 1rem;
-  padding: 1.2rem;
-  background: color-mix(in srgb, var(--panel-solid), transparent 14%);
+  border-radius: 1.3rem;
+  padding: 1.35rem;
+  background: color-mix(in srgb, var(--panel-solid), transparent 6%);
 }
 
 .assistant-empty-thread h3 {
   margin: 0.25rem 0 0.45rem;
-  font-size: 1.2rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2rem;
+  line-height: 0.98;
 }
 
 .assistant-empty-thread p {
@@ -2492,10 +2520,12 @@ a {
 
 .assistant-thread-bubble {
   width: min(100%, 760px);
-  border-radius: 1.15rem;
-  padding: 0.95rem 1rem;
+  border-radius: 1.35rem;
+  padding: 1.05rem 1.1rem;
   border: 1px solid color-mix(in srgb, var(--panel-border), transparent 36%);
-  background: color-mix(in srgb, var(--panel-solid), transparent 4%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(0, 0, 0, 0)),
+    color-mix(in srgb, var(--panel-solid), transparent 1%);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14);
 }
 
@@ -2550,6 +2580,11 @@ a {
   gap: 0.85rem;
 }
 
+.assistant-composer .textarea {
+  min-height: 168px;
+  border-radius: 18px;
+}
+
 .assistant-voice-ready {
   border-radius: 0.95rem;
   border: 1px solid color-mix(in srgb, var(--success), transparent 48%);
@@ -2584,6 +2619,10 @@ a {
   .assistant-toolbar,
   .assistant-thread-actions {
     flex-direction: column;
+  }
+
+  .assistant-hero-actions {
+    grid-template-columns: 1fr;
   }
 
   .assistant-stat-pill {

@@ -23,6 +23,7 @@ const artifactTitle = process.env.STARLOG_CROSS_SURFACE_ARTIFACT_TITLE?.trim() |
 const artifactMarker = process.env.STARLOG_CROSS_SURFACE_ARTIFACT_MARKER?.trim()
   || "WI-593 desktop clip marker for cross-surface proof";
 const webPort = process.env.STARLOG_CROSS_SURFACE_WEB_PORT?.trim() || "3007";
+const markerWaitMs = 30_000;
 
 if (!token) {
   throw new Error("Set STARLOG_CROSS_SURFACE_TOKEN before running cross_surface_web_proof.mjs");
@@ -54,10 +55,32 @@ async function waitFor(url) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
+async function waitForBodyText(page, expectedText, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const bodyText = await page.locator("body").innerText();
+    if (bodyText.includes(expectedText)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for body text to include "${expectedText}"`);
+}
+
+function markerRecord(name, expected, visible) {
+  return {
+    name,
+    expected,
+    visible,
+    passed: visible,
+  };
+}
+
+let browser;
 try {
   await waitFor(`http://127.0.0.1:${webPort}`);
 
-  const browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 
   await page.addInitScript(
@@ -69,10 +92,10 @@ try {
   );
 
   await page.goto(`http://127.0.0.1:${webPort}/assistant`);
-  await page.getByRole("heading", { name: "Voice-native command thread" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("heading", { name: "Turn the whole day into one brief and one next move." }).waitFor({ timeout: 15_000 });
   let assistantMarkerVisible = false;
   try {
-    await page.getByText(assistantMarker).waitFor({ timeout: 5_000 });
+    await waitForBodyText(page, assistantMarker, markerWaitMs);
     assistantMarkerVisible = true;
   } catch {
     assistantMarkerVisible = false;
@@ -81,11 +104,11 @@ try {
   await page.screenshot({ path: assistantPath, fullPage: true });
 
   await page.goto(`http://127.0.0.1:${webPort}/artifacts`);
-  await page.getByRole("heading", { name: "Clip inbox and references" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("heading", { name: "Reading room and lineage" }).waitFor({ timeout: 15_000 });
   let artifactMarkerVisible = false;
   try {
-    await page.getByText(artifactTitle).waitFor({ timeout: 5_000 });
-    await page.getByText(artifactMarker).waitFor({ timeout: 5_000 });
+    await waitForBodyText(page, artifactTitle, markerWaitMs);
+    await waitForBodyText(page, artifactMarker, markerWaitMs);
     artifactMarkerVisible = true;
   } catch {
     artifactMarkerVisible = false;
@@ -93,7 +116,12 @@ try {
   const artifactsPath = path.join(outputDir, "pwa-artifacts-desktop-clip.png");
   await page.screenshot({ path: artifactsPath, fullPage: true });
 
-  await browser.close();
+  const proofChecks = [
+    markerRecord("assistant_marker", assistantMarker, assistantMarkerVisible),
+    markerRecord("artifact_marker", artifactMarker, artifactMarkerVisible),
+  ];
+  const failedChecks = proofChecks.filter((check) => !check.passed);
+  const proofPassed = failedChecks.length === 0;
 
   const summaryPath = path.join(outputDir, "pwa-proof.json");
   await writeFile(
@@ -102,11 +130,14 @@ try {
       {
         generated_at_utc: new Date().toISOString(),
         api_base: apiBase,
+        status: proofPassed ? "passed" : "failed",
         assistant_marker: assistantMarker,
         assistant_marker_visible: assistantMarkerVisible,
         artifact_title: artifactTitle,
         artifact_marker: artifactMarker,
         artifact_marker_visible: artifactMarkerVisible,
+        proof_passed: proofPassed,
+        checks: proofChecks,
         screenshots: [assistantPath, artifactsPath],
       },
       null,
@@ -115,11 +146,20 @@ try {
     "utf-8",
   );
 
-  console.log(`Cross-surface PWA proof captured in ${outputDir}`);
+  if (!proofPassed) {
+    throw new Error(
+      `Cross-surface proof failed: ${failedChecks.map((check) => `${check.name} missing expected marker "${check.expected}"`).join("; ")}`,
+    );
+  }
+
+  console.log(`Cross-surface PWA proof passed in ${outputDir}`);
   console.log(` - ${assistantPath}`);
   console.log(` - ${artifactsPath}`);
   console.log(` - ${summaryPath}`);
 } finally {
+  if (browser) {
+    await browser.close();
+  }
   if (!server.killed) {
     server.kill("SIGTERM");
   }
