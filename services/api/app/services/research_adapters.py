@@ -199,10 +199,13 @@ class ManualPdfResearchAdapter:
         extracted_text = str(extraction.get("text") or "").strip()
         notes_text = str(payload.get("notes") or "").strip()
         extracted_text_usable = bool(extraction.get("usable")) and bool(extracted_text)
-        canonical_extracted_text = extracted_text if extracted_text_usable else ""
+        preserve_extracted_text = bool(extracted_text) and (
+            extracted_text_usable or extraction.get("provider") != "ocr_server"
+        )
+        canonical_extracted_text = extracted_text if preserve_extracted_text else ""
         normalized_text = notes_text or canonical_extracted_text or resolved_title
-        notes_override_extracted = bool(notes_text) and extracted_text_usable
-        used_notes_fallback = bool(notes_text) and not extracted_text_usable
+        notes_override_extracted = bool(notes_text) and bool(canonical_extracted_text)
+        used_notes_fallback = bool(notes_text) and not bool(canonical_extracted_text)
         metadata = {
             "source_kind": self.source_kind,
             "ingest_kind": self.source_kind,
@@ -218,7 +221,9 @@ class ManualPdfResearchAdapter:
                 "long_word_count": extraction.get("long_word_count"),
                 "notes_override_extracted": notes_override_extracted,
                 "used_notes_fallback": used_notes_fallback,
-                "rejected_as_noise": bool(extracted_text) and not extracted_text_usable,
+                "rejected_as_noise": bool(extracted_text)
+                and extraction.get("provider") == "ocr_server"
+                and not extracted_text_usable,
             },
         }
         return _persist_research_item(

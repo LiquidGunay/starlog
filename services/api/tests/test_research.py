@@ -193,10 +193,7 @@ def test_manual_research_pdf_ingest_falls_back_from_noisy_ocr_to_readable_text(
     monkeypatch.setattr(
         research_adapters.pdf_ingest_service,
         "_extract_with_pypdf",
-        lambda _path: (
-            "Fallback PDF text explains forward noising, reverse denoising, score estimation, and sampling procedures. "
-            "It also covers latent-space models, schedulers, and practical evaluation concerns for generative systems. "
-        ),
+        lambda _path: "Fallback PDF text explains diffusion scoring and sampling.",
     )
     monkeypatch.setattr(research_adapters.pdf_ingest_service, "_extract_with_strings", lambda _path: None)
 
@@ -217,13 +214,13 @@ def test_manual_research_pdf_ingest_falls_back_from_noisy_ocr_to_readable_text(
     payload = response.json()
     extraction = payload["metadata"]["pdf_extraction"]
     assert extraction["provider"] == "pypdf"
-    assert extraction["usable"] is True
+    assert extraction["usable"] is False
     assert extraction["rejected_as_noise"] is False
 
     artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
     artifact = artifact_graph.json()["artifact"]
-    assert artifact["normalized_content"].startswith("Fallback PDF text explains forward noising")
-    assert artifact["extracted_content"].startswith("Fallback PDF text explains forward noising")
+    assert artifact["normalized_content"] == "Fallback PDF text explains diffusion scoring and sampling."
+    assert artifact["extracted_content"] == "Fallback PDF text explains diffusion scoring and sampling."
 
 
 def test_arxiv_ingest_uses_adapter_and_persists_item(

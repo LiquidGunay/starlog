@@ -167,8 +167,27 @@ def _quality_flags(text: str) -> dict[str, Any]:
     }
 
 
+def _fallback_priority(provider_name: str) -> int:
+    return {
+        "ocr_server": 0,
+        "strings": 1,
+        "pypdf": 2,
+    }.get(provider_name, -1)
+
+
+def _fallback_rank(candidate: dict[str, Any]) -> tuple[float, float, int, int, int]:
+    return (
+        float(candidate.get("alpha_ratio", 0.0)),
+        float(candidate.get("space_ratio", 0.0)),
+        int(candidate.get("long_word_count", 0)),
+        int(candidate.get("characters", 0)),
+        _fallback_priority(str(candidate.get("provider") or "")),
+    )
+
+
 def extract_pdf_text(path: Path) -> dict[str, Any]:
     fallback_candidate: dict[str, Any] | None = None
+    fallback_rank: tuple[float, float, int, int, int] | None = None
     for provider_name, extractor, mode in (
         ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
@@ -188,8 +207,10 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
             }
             if quality["usable"]:
                 return candidate
-            if fallback_candidate is None:
+            candidate_rank = _fallback_rank(candidate)
+            if fallback_candidate is None or fallback_rank is None or candidate_rank > fallback_rank:
                 fallback_candidate = candidate
+                fallback_rank = candidate_rank
 
     if fallback_candidate is not None:
         return fallback_candidate
