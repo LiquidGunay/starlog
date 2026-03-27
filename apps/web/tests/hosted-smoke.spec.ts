@@ -42,7 +42,7 @@ test("loads core PWA routes with hosted API session state", async ({ page }) => 
     {
       path: "/artifacts",
       assertion: async () => {
-        await expect(page.getByRole("heading", { level: 1 })).toContainText("Clip inbox and references");
+        await expect(page.getByRole("heading", { level: 1 })).toContainText("Reading room and lineage");
       },
     },
     {
@@ -69,6 +69,6 @@ test("shows seeded hosted smoke entities", async ({ page }) => {
   await expect(page.getByText(`${SMOKE_LABEL} Task`)).toBeVisible();
 
   await page.goto("/artifacts");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Clip inbox and references");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Reading room and lineage");
   await expect(page.getByText(`${SMOKE_LABEL} Artifact`)).toBeVisible();
 });
