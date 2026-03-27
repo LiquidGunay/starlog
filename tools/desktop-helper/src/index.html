@@ -653,13 +653,13 @@
       }
 
       .quick-surface-panel {
-        width: min(380px, 100%);
-        border-radius: 36px;
+        width: min(350px, 100%);
+        border-radius: 30px;
         overflow: hidden;
       }
 
       .quick-top {
-        padding: 18px 18px 12px;
+        padding: 14px 14px 10px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -687,7 +687,7 @@
 
       .quick-title {
         margin: 0;
-        font-size: 24px;
+        font-size: 22px;
         line-height: 1;
       }
 
@@ -701,33 +701,33 @@
 
       .quick-state {
         border-radius: 999px;
-        padding: 6px 10px;
+        padding: 5px 9px;
         border: 1px solid rgba(255, 255, 255, 0.06);
         background: rgba(255, 255, 255, 0.03);
         color: var(--muted);
-        font-size: 10px;
+        font-size: 9px;
         letter-spacing: 0.12em;
         text-transform: uppercase;
       }
 
       .quick-body {
-        padding: 0 18px 18px;
+        padding: 0 14px 14px;
         display: grid;
-        gap: 14px;
+        gap: 10px;
       }
 
       .quick-hero {
-        border-radius: 28px;
-        padding: 18px;
+        border-radius: 24px;
+        padding: 14px;
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.05);
         display: grid;
-        gap: 12px;
+        gap: 8px;
       }
 
       .quick-line {
         width: 100%;
-        height: 28px;
+        height: 22px;
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.04);
@@ -735,27 +735,32 @@
 
       .quick-copy {
         margin: 0;
-        font-size: 18px;
-        line-height: 1.35;
+        font-size: 16px;
+        line-height: 1.2;
         color: var(--muted);
+      }
+
+      .quick-hero .help {
+        font-size: 11px;
+        line-height: 1.5;
       }
 
       .capture-actions {
         display: grid;
-        gap: 10px;
+        gap: 8px;
       }
 
       .command-button {
         width: 100%;
-        border-radius: 22px;
+        border-radius: 20px;
         border: 1px solid rgba(255, 255, 255, 0.06);
         background: rgba(23, 10, 17, 0.34);
         color: var(--text);
-        padding: 14px;
+        padding: 11px 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: 12px;
         cursor: pointer;
       }
 
@@ -771,14 +776,14 @@
       }
 
       .command-icon {
-        width: 42px;
-        height: 42px;
-        border-radius: 14px;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
         display: grid;
         place-items: center;
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.06);
-        font-size: 12px;
+        font-size: 11px;
       }
 
       .command-button.primary .command-icon {
@@ -787,14 +792,15 @@
 
       .command-label {
         display: block;
-        font-size: 16px;
+        font-size: 15px;
       }
 
       .command-note {
         display: block;
         margin-top: 3px;
         color: var(--muted);
-        font-size: 12px;
+        font-size: 11px;
+        line-height: 1.35;
       }
 
       .command-button.primary .command-note {
@@ -821,7 +827,7 @@
         justify-content: space-between;
         gap: 12px;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
-        padding-top: 12px;
+        padding-top: 10px;
       }
 
       .quick-sync {
@@ -878,13 +884,89 @@
 
       body[data-helper-mode="quick"] .shell {
         align-items: center;
-        justify-content: center;
-        padding: 18px;
+        justify-content: flex-start;
+        padding: 10px 10px 8px;
+      }
+
+      body[data-helper-mode="quick"] .quick-surface-panel {
+        width: min(330px, 100%);
+        border-radius: 26px;
+      }
+
+      body[data-helper-mode="quick"] .quick-top {
+        padding: 11px 11px 8px;
+      }
+
+      body[data-helper-mode="quick"] .brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        font-size: 18px;
+      }
+
+      body[data-helper-mode="quick"] .quick-title {
+        font-size: 20px;
+      }
+
+      body[data-helper-mode="quick"] .quick-subtitle,
+      body[data-helper-mode="quick"] .quick-state:last-child,
+      body[data-helper-mode="quick"] .quick-hero .help,
+      body[data-helper-mode="quick"] .command-note {
+        display: none;
+      }
+
+      body[data-helper-mode="quick"] .quick-state {
+        padding: 4px 8px;
+        font-size: 8px;
+      }
+
+      body[data-helper-mode="quick"] .quick-body {
+        padding: 0 11px 11px;
+        gap: 8px;
+      }
+
+      body[data-helper-mode="quick"] .quick-hero {
+        padding: 11px;
+        gap: 7px;
+      }
+
+      body[data-helper-mode="quick"] .quick-line {
+        height: 16px;
+      }
+
+      body[data-helper-mode="quick"] .quick-copy {
+        font-size: 14px;
+        line-height: 1.05;
+      }
+
+      body[data-helper-mode="quick"] .capture-actions {
+        gap: 7px;
+      }
+
+      body[data-helper-mode="quick"] .command-button {
+        padding: 9px 10px;
+        border-radius: 18px;
+      }
+
+      body[data-helper-mode="quick"] .command-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        font-size: 10px;
+      }
+
+      body[data-helper-mode="quick"] .command-label {
+        font-size: 14px;
+      }
+
+      body[data-helper-mode="quick"] .quick-foot {
+        padding-top: 8px;
       }
 
       body[data-helper-mode="quick"] .status-line {
-        width: min(380px, 100%);
-        padding: 10px 0 0;
+        width: min(330px, 100%);
+        padding: 5px 2px 0;
+        font-size: 11px;
       }
 
       @media (max-width: 1180px) {
@@ -944,7 +1026,7 @@
             <article class="panel velvet-panel hero-panel">
               <div class="hero-grid">
                 <div class="hero-lead">
-                  <p class="section-label mono">Visual Thesis</p>
+                  <p class="section-label mono">Capture posture</p>
                   <p class="hero-copy display">A polished little object for capture, not a neutral software popup.</p>
                   <p class="hero-detail">
                     Bronze light, plum lacquer, and restrained controls. The helper should feel deliberate whether it
@@ -961,7 +1043,7 @@
                       <h2 class="capture-action-title display">Catch the frame.</h2>
                       <p class="capture-action-copy">Run native capture, OCR when available, and keep the clip anchored to context.</p>
                     </div>
-                    <div class="capture-action">
+                  <div class="capture-action">
                       <p class="section-label mono">Bridge</p>
                       <h2 class="capture-action-title display">Keep it local.</h2>
                       <p class="capture-action-copy">Probe the localhost bridge before you lean on STT, TTS, or desktop context.</p>
@@ -971,17 +1053,17 @@
 
                 <aside class="hero-aside">
                   <div class="hero-aside-card">
-                    <p class="section-label mono">Content Plan</p>
-                    <h2 class="hero-aside-title">Hero, controls, proof</h2>
+                    <p class="section-label mono">Workspace use</p>
+                    <h2 class="hero-aside-title">Diagnostics, config, and proof</h2>
                     <p class="hero-aside-copy">
-                      One dominant message, one diagnostics field, one config stack, then recent captures as evidence.
+                      Use this surface to verify the runtime, tune API and bridge settings, and inspect the latest capture trail.
                     </p>
                   </div>
                   <div class="hero-aside-card">
-                    <p class="section-label mono">Interaction Thesis</p>
-                    <h2 class="hero-aside-title">Soft reveal, bright action</h2>
+                    <p class="section-label mono">Bridge readiness</p>
+                    <h2 class="hero-aside-title">Local-first when available</h2>
                     <p class="hero-aside-copy">
-                      Bronze is reserved for priority actions and active health, with quieter plum panels everywhere else.
+                      Bronze marks the actions that matter now: clipping, health refresh, and confirming the localhost bridge.
                     </p>
                   </div>
                 </aside>

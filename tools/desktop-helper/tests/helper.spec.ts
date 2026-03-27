@@ -29,6 +29,34 @@ test("quick popup can switch to workspace in browser fallback", async ({ page })
   await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "workspace");
 });
 
+test("quick popup fits within the native 390x430 helper window", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 430 });
+  await page.goto("/index.html?mode=quick");
+
+  await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "quick");
+  await expect(page.getByRole("button", { name: "Clip Clipboard" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clip Screenshot" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Workspace" })).toBeVisible();
+  await expect(page.locator("#status")).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const panel = document.querySelector(".quick-surface-panel");
+    const status = document.getElementById("status");
+    const panelRect = panel?.getBoundingClientRect();
+    const statusRect = status?.getBoundingClientRect();
+    return {
+      viewportHeight: window.innerHeight,
+      docHeight: document.documentElement.scrollHeight,
+      panelBottom: panelRect?.bottom ?? 0,
+      statusBottom: statusRect?.bottom ?? 0,
+    };
+  });
+
+  expect(metrics.docHeight).toBeLessThanOrEqual(metrics.viewportHeight);
+  expect(metrics.panelBottom).toBeLessThanOrEqual(metrics.viewportHeight);
+  expect(metrics.statusBottom).toBeLessThanOrEqual(metrics.viewportHeight);
+});
+
 test("browser runtime diagnostics show fallback capability state", async ({ page }) => {
   await page.goto("/index.html");
 
