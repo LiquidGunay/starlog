@@ -188,12 +188,12 @@ cd /home/ubuntu/starlog/apps/mobile
 APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
 ```
 
-6) Open the dev client using the explicit LAN URL:
+6) Open the dev client using the explicit Expo dev-launcher URL:
 
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" -s <SERIAL> reverse --remove tcp:8081 || true
-"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
 6a) If the dev client shows `Unable to load script` or a blank white screen, keep the same LAN dev-client URL flow, wait for Metro to finish the first bundle, and then rerun step 6. Do not switch to the localhost reverse path on this host:
@@ -201,7 +201,7 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" -s <SERIAL> shell am force-stop com.starlog.app.dev
-"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
 Expected checkpoint in Metro terminal:
@@ -216,7 +216,7 @@ After that first bundle completes, continue with the same step 6 dev-client URL 
 
 ```bash
 cd /home/ubuntu/starlog
-DEV_CLIENT_URL='exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
+DEV_CLIENT_URL='expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
 ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
 ADB_SERIAL=<SERIAL> \
 REVERSE_PORTS=8000 \
