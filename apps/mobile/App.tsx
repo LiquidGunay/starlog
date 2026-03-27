@@ -284,6 +284,7 @@ const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
 const MOBILE_SECURE_TOKEN_KEY = "starlog.api.token";
+const SERIF_FONT_FAMILY = Platform.select({ ios: "Georgia", android: "serif", default: undefined });
 const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
   llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
   stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
@@ -335,39 +336,39 @@ function usePalette(): Palette {
   return useMemo(() => {
     if (scheme === "light") {
       return {
-        bg: "#f2f5ff",
-        bgAlt: "#ffffff",
-        panel: "rgba(255,255,255,0.9)",
-        border: "rgba(71,49,164,0.16)",
-        text: "#1d2230",
-        muted: "#5c5f78",
-        accent: "#5f4bbe",
-        accentMuted: "rgba(95,75,190,0.12)",
-        secondary: "#b56624",
-        tertiary: "#197a79",
+        bg: "#f4ede8",
+        bgAlt: "#fcf6f1",
+        panel: "rgba(255,248,243,0.84)",
+        border: "rgba(94,58,70,0.18)",
+        text: "#2f1825",
+        muted: "#735866",
+        accent: "#b77b31",
+        accentMuted: "rgba(183,123,49,0.14)",
+        secondary: "#7c4a67",
+        tertiary: "#6d3d53",
         error: "#b33834",
-        onAccent: "#ffffff",
-        surfaceLow: "#eceffd",
-        surfaceHigh: "#e2e6fb",
-        surfaceHighest: "#d8ddf5",
+        onAccent: "#fff6ef",
+        surfaceLow: "#f5ece7",
+        surfaceHigh: "#eedfda",
+        surfaceHighest: "#e5d1c8",
       };
     }
     return {
-      bg: "#10141a",
-      bgAlt: "#0a0e14",
-      panel: "rgba(201,190,255,0.06)",
-      border: "rgba(201,190,255,0.18)",
-      text: "#dfe2eb",
-      muted: "#c9c4d5",
-      accent: "#c9beff",
-      accentMuted: "rgba(201,190,255,0.15)",
-      secondary: "#f1bc8e",
-      tertiary: "#83d4d3",
+      bg: "#1c0f19",
+      bgAlt: "#271621",
+      panel: "rgba(78,46,67,0.58)",
+      border: "rgba(189,149,114,0.18)",
+      text: "#f4e8e2",
+      muted: "#cfb9c2",
+      accent: "#c58a37",
+      accentMuted: "rgba(197,138,55,0.16)",
+      secondary: "#8e6278",
+      tertiary: "#694255",
       error: "#ffb4ab",
-      onAccent: "#30118e",
-      surfaceLow: "#181c22",
-      surfaceHigh: "#262a31",
-      surfaceHighest: "#31353c",
+      onAccent: "#fff5ed",
+      surfaceLow: "#352033",
+      surfaceHigh: "#47293f",
+      surfaceHighest: "#5a324b",
     };
   }, [scheme]);
 }
@@ -1709,6 +1710,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function submitPrimaryCapture() {
+    if (voiceClipUri) {
+      await submitVoiceCapture();
+      return;
+    }
+
+    await submitQuickCapture();
+  }
+
   async function startVoiceRecording() {
     if (voiceRecordingRef.current) {
       setStatus("Voice recording is already in progress");
@@ -1944,6 +1954,34 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await playCachedBriefing();
   }
 
+  async function playVoiceClip() {
+    if (!voiceClipUri) {
+      setStatus("Record a voice clip first");
+      return;
+    }
+
+    try {
+      const info = await FileSystem.getInfoAsync(voiceClipUri);
+      if (!info.exists) {
+        setStatus("Voice clip file not found");
+        return;
+      }
+      if (briefingSoundRef.current) {
+        await briefingSoundRef.current.unloadAsync();
+        briefingSoundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync({ uri: voiceClipUri }, { shouldPlay: true });
+      briefingSoundRef.current = sound;
+      setStatus(
+        voiceClipDurationMs > 0
+          ? `Playing recorded voice clip (${Math.round(voiceClipDurationMs / 1000)}s)`
+          : "Playing recorded voice clip",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to play recorded voice clip");
+    }
+  }
+
   async function generateAndCache() {
     try {
       if (!token) {
@@ -2007,6 +2045,25 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     briefingPlaybackPreference === "offline_first"
       ? "Playback preference: use the cached offline package first."
       : "Playback preference: refresh from the API, recache, then play.";
+  const captureCommandPreview = assistantCommand.trim() || "Save this and turn it into tonight's reading note.";
+  const captureSourcePreview = quickCaptureSourceUrl.trim() || "Attach a source URL, title, excerpt, or one spoken instruction.";
+  const captureBodyPreview =
+    quickCaptureText.trim()
+    || (sharedFileDrafts.length > 0
+      ? describeSharedDrafts(sharedFileDrafts)
+      : selectedArtifact?.title || "Article URL, title, excerpt, and one spoken instruction travel together.");
+  const captureQueuePreview =
+    pendingCaptures.length > 0 ? `${pendingCaptures.length} capture item(s) waiting to sync.` : "No queued captures right now.";
+  const routeNarrative =
+    sttResolution.active === "on_device"
+      ? "Phone-local STT/TTS first, then bridge or hosted fallback."
+      : sttFallbackReason(localSttAvailable);
+  const briefingHeroCopy = cachedPath
+    ? "Your day, condensed into one elegant ritual."
+    : "Cache the brief first, then let one next action carry the day.";
+  const nextActionPreview =
+    dueCards[0]?.prompt || selectedArtifact?.title || "Promote one note, one task, or one card after playback.";
+  const voiceMemoPreview = voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s voice memo ready` : "No voice memo recorded yet.";
 
   async function scheduleMorningAlarm() {
     try {
@@ -3418,13 +3475,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style={palette.bg === "#10141a" ? "light" : "dark"} />
+      <StatusBar style={palette.bg === "#1c0f19" ? "light" : "dark"} />
       <View pointerEvents="none" style={styles.bgOrbTop} />
       <View pointerEvents="none" style={styles.bgOrbCenter} />
       <View style={styles.topBar}>
         <View style={styles.topBarBrand}>
-          <View style={styles.topBarAvatar}>
-            <MaterialCommunityIcons name="radio-tower" size={14} color={palette.tertiary} />
+          <View style={styles.topBarPill}>
+            <Text style={styles.topBarPillText}>Velvet mobile</Text>
           </View>
           <Text style={styles.topBarTitle}>Starlog</Text>
         </View>
@@ -3445,37 +3502,24 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>{activeTab === "capture" ? "System Ready" : activeTab === "alarms" ? "Station Time" : "Current Session"}</Text>
+          <Text style={styles.eyebrow}>{activeTab === "capture" ? "Capture gesture" : activeTab === "alarms" ? "Ritual briefing" : "Quiet review"}</Text>
           <Text style={styles.title}>
-            {activeTab === "capture" ? "Awaiting Command" : activeTab === "alarms" ? `${toHourMinuteLabel(stationHour12, alarmMinute)} ${stationPeriod}` : "Neural Synchronization"}
+            {activeTab === "capture"
+              ? "Capture Gesture"
+              : activeTab === "alarms"
+                ? "Ritual Briefing"
+                : "Quiet Review"}
           </Text>
           {activeTab === "capture" ? (
             <>
               <Text style={styles.body}>
-                Capture fast. Triage quickly. Run alarms and offline briefing playback while deep editing stays in the PWA.
+                One spoken instruction, one source, and one deliberate save. The phone should feel like a composed companion object.
               </Text>
-              <TextInput
-                style={styles.heroInput}
-                value={assistantCommand}
-                onChangeText={setAssistantCommand}
-                placeholder="Specify objective..."
-                placeholderTextColor={palette.muted}
-              />
-              <View style={styles.routeGrid}>
-                <View style={[styles.routeCard, styles.routeCardPrimary]}>
-                  <Text style={styles.routeLabel}>Engine</Text>
-                  <Text style={styles.routeValue}>LLM-01</Text>
-                </View>
-                <View style={[styles.routeCard, styles.routeCardTertiary]}>
-                  <Text style={styles.routeLabel}>Audio</Text>
-                  <Text style={styles.routeValue}>VOICE STT</Text>
-                </View>
-                <View style={[styles.routeCard, styles.routeCardSecondary]}>
-                  <Text style={styles.routeLabel}>Output</Text>
-                  <Text style={styles.routeValue}>SPEECH</Text>
-                </View>
+              <View style={styles.intentHeroCard}>
+                <Text style={styles.heroCardLabelInverse}>Voice instruction</Text>
+                <Text style={styles.intentHeroCopy}>{captureCommandPreview}</Text>
               </View>
-              <Text style={styles.subtle}>Suggested Sub-routines</Text>
+              <Text style={styles.subtle}>Suggested instructions</Text>
               <View style={styles.chipRow}>
                 {assistantExampleCommands.map((example) => (
                   <TouchableOpacity key={`hero-${example}`} style={styles.chip} activeOpacity={0.8} onPress={() => setAssistantCommand(example)}>
@@ -3483,33 +3527,31 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   </TouchableOpacity>
                 ))}
               </View>
-              <View style={styles.dashboardWide}>
-                <Text style={styles.inlineCardTitle}>Environmental Logic</Text>
-                <Text style={styles.subtle}>Nominal state active</Text>
-                <Text style={styles.dashboardValue}>98%</Text>
-              </View>
-              <View style={styles.dashboardRow}>
-                <View style={styles.dashboardCell}>
-                  <Text style={styles.dashboardValueSmall}>{artifacts.length || 12}</Text>
-                  <Text style={styles.subtle}>Active Artifacts</Text>
-                </View>
-                <View style={styles.dashboardCell}>
-                  <Text style={styles.dashboardValueSmall}>4.2ms</Text>
-                  <Text style={styles.subtle}>Latent Response</Text>
+              <View style={styles.contextCard}>
+                <Text style={styles.heroCardLabel}>Incoming context</Text>
+                <Text style={styles.contextCardBody}>{captureBodyPreview}</Text>
+                <View style={styles.contextMetaRow}>
+                  <View style={styles.contextMetaPill}>
+                    <Text style={styles.contextMetaText}>{captureSourcePreview}</Text>
+                  </View>
+                  <View style={styles.contextMetaPill}>
+                    <Text style={styles.contextMetaText}>{routeNarrative}</Text>
+                  </View>
                 </View>
               </View>
             </>
           ) : null}
           {activeTab === "review" ? (
             <View style={styles.dashboardWide}>
-              <Text style={styles.inlineCardTitle}>Neural Synchronization: 42%</Text>
-              <Text style={styles.subtle}>Load due cards, reveal answers, and rate quickly.</Text>
+              <Text style={styles.inlineCardTitle}>Quick review, without the full desk.</Text>
+              <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to capture.</Text>
             </View>
           ) : null}
           {activeTab === "alarms" ? (
             <View style={styles.dashboardWide}>
-              <Text style={styles.inlineCardTitle}>Next Briefing</Text>
-              <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(alarmHour, alarmMinute)}</Text>
+              <Text style={styles.heroCardLabel}>Morning ritual</Text>
+              <Text style={styles.editorialCardCopy}>{briefingHeroCopy}</Text>
+              <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(alarmHour, alarmMinute)} {stationPeriod}</Text>
             </View>
           ) : null}
         </View>
@@ -3517,10 +3559,46 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         {activeTab === "capture" ? (
           <View style={styles.panel}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionKicker}>Recent Artifacts</Text>
+              <Text style={styles.sectionKicker}>Composed intake</Text>
               <View style={styles.pendingBadge}>
                 <Text style={styles.pendingBadgeText}>{pendingCaptures.length} Pending</Text>
               </View>
+            </View>
+            <View style={styles.captureComposerCard}>
+              <Text style={styles.heroCardLabel}>Capture title</Text>
+              <TextInput
+                style={styles.composerInput}
+                value={quickCaptureTitle}
+                onChangeText={setQuickCaptureTitle}
+                placeholder="Mobile capture"
+                placeholderTextColor={palette.muted}
+              />
+              <Text style={styles.heroCardLabel}>Source URL</Text>
+              <TextInput
+                style={styles.composerInput}
+                value={quickCaptureSourceUrl}
+                onChangeText={setQuickCaptureSourceUrl}
+                autoCapitalize="none"
+                placeholder="https://..."
+                placeholderTextColor={palette.muted}
+              />
+              <Text style={styles.heroCardLabel}>Capture text</Text>
+              <TextInput
+                style={[styles.composerInput, styles.composerInputLarge]}
+                value={quickCaptureText}
+                onChangeText={setQuickCaptureText}
+                placeholder="Clip text, ideas, or reminders..."
+                placeholderTextColor={palette.muted}
+                multiline
+              />
+              <Text style={styles.heroCardLabel}>Typed instruction</Text>
+              <TextInput
+                style={styles.composerInput}
+                value={assistantCommand}
+                onChangeText={setAssistantCommand}
+                placeholder="Save this and turn it into tonight's reading note."
+                placeholderTextColor={palette.muted}
+              />
             </View>
             <View style={styles.captureHeroActions}>
               <Pressable
@@ -3535,48 +3613,53 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={16} color={palette.onAccent} />
                 <Text style={styles.primaryActionText}>{holdToTalkLabel}</Text>
               </Pressable>
-              <TouchableOpacity style={styles.iconAction} onPress={submitQuickCapture}>
-                <MaterialCommunityIcons name="camera-outline" size={16} color={palette.accent} />
+              <TouchableOpacity style={styles.iconAction} onPress={submitPrimaryCapture}>
+                <MaterialCommunityIcons name="content-save-outline" size={16} color={palette.accent} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.iconAction} onPress={() => setQuickCaptureText((prev) => prev || "Quick note")}>
-                <MaterialCommunityIcons name="format-text" size={16} color={palette.accent} />
+              <TouchableOpacity style={styles.iconAction} onPress={() => flushPendingCaptures("manual")}>
+                <MaterialCommunityIcons name="upload-outline" size={16} color={palette.accent} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then upload or queue it from Mission Tools.</Text>
+            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then save the voice note or queue text and files.</Text>
             <View style={styles.captureArtifactCard}>
-              <Text style={styles.captureTrackLabel}>Science Track</Text>
-              <Text style={styles.captureArtifactTitle}>{selectedArtifact?.title || "Atmospheric Scan"}</Text>
-              <Text style={styles.body}>
-                {quickCaptureText.trim() ||
-                  "Detected trace amounts of Argon-40 near the sector 7 ridge. Suggests tectonic activity in the lower crust."}
-              </Text>
-              <View style={styles.chipRow}>
+              <Text style={styles.heroCardLabel}>Selected next move</Text>
+              <Text style={styles.captureArtifactTitle}>{captureCommandPreview}</Text>
+              <Text style={styles.body}>{captureQueuePreview}</Text>
+              <View style={styles.contextMetaRow}>
                 <View style={styles.miniTag}>
-                  <Text style={styles.miniTagText}>#TECTONIC</Text>
+                  <Text style={styles.miniTagText}>{voiceMemoPreview}</Text>
                 </View>
                 <View style={styles.miniTag}>
-                  <Text style={styles.miniTagText}>#S7_RIDGE</Text>
+                  <Text style={styles.miniTagText}>{sharedFileDrafts.length > 0 ? describeSharedDrafts(sharedFileDrafts) : "No shared files"}</Text>
                 </View>
               </View>
             </View>
             <View style={styles.captureMediaRow}>
               <View style={styles.captureMediaTile}>
-                <MaterialCommunityIcons name="image-outline" size={16} color={palette.accent} />
-                <Text style={styles.subtle}>Visual_LOG_01.png</Text>
+                <Text style={styles.heroCardLabel}>Incoming context</Text>
+                <Text style={styles.inlineCardTitle}>{selectedArtifact?.title || quickCaptureTitle || "Waiting for a chosen artifact"}</Text>
+                <Text style={styles.subtle}>{captureSourcePreview}</Text>
               </View>
               <View style={styles.captureAlertTile}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={16} color={palette.secondary} />
-                <Text style={styles.inlineCardTitle}>Power Flux</Text>
-                <Text style={styles.subtle}>Spike in reactor core telemetry.</Text>
+                <Text style={styles.heroCardLabel}>Routing</Text>
+                <Text style={styles.inlineCardTitle}>Voice + output path</Text>
+                <Text style={styles.subtle}>{routeNarrative}</Text>
               </View>
             </View>
             <View style={styles.captureVoiceMemo}>
-              <TouchableOpacity style={styles.capturePlayButton} onPress={playBriefing}>
+              <TouchableOpacity style={styles.capturePlayButton} onPress={playVoiceClip}>
                 <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inlineCardTitle}>Captain&apos;s Memo</Text>
-                <Text style={styles.subtle}>{voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s` : "42s"}</Text>
+                <Text style={styles.inlineCardTitle}>Latest voice memo</Text>
+                <Text style={styles.subtle}>{voiceMemoPreview}</Text>
+                {voiceClipUri ? (
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
+                      <Text style={styles.buttonText}>Save Voice Note</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
             </View>
             <View style={styles.buttonRow}>
@@ -3682,20 +3765,21 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               <Text style={styles.alarmClockText}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
               <Text style={styles.alarmClockPeriod}>{stationPeriod}</Text>
             </View>
-            <Text style={styles.alarmStationMeta}>Station Time • Sector 7G</Text>
+            <Text style={styles.alarmStationMeta}>Daily return point</Text>
             <View style={styles.alarmNextCard}>
               <View>
-                <Text style={styles.inlineCardTitle}>Next Briefing</Text>
+                <Text style={styles.heroCardLabel}>Morning ritual</Text>
+                <Text style={styles.captureArtifactTitle}>{briefingHeroCopy}</Text>
                 <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(stationHour12, alarmMinute)} {stationPeriod}</Text>
               </View>
               <View>
                 <Text style={styles.alarmCountdown}>{nextBriefingCountdown}</Text>
-                <Text style={styles.subtle}>Until Sync</Text>
+                <Text style={styles.subtle}>Until play</Text>
               </View>
             </View>
             <View style={styles.alarmPlayerCard}>
-              <Text style={styles.inlineCardTitle}>Daily Briefing</Text>
-              <Text style={styles.subtle}>Galactic Market Pulse • Neural Link 4.2</Text>
+              <Text style={styles.heroCardLabel}>Playback</Text>
+              <Text style={styles.inlineCardTitle}>Daily briefing</Text>
               <Text style={styles.subtle}>{offlineBriefingStatus}</Text>
               <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
               <View style={styles.alarmWaveRow}>
@@ -3721,12 +3805,32 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 </TouchableOpacity>
               </View>
             </View>
+            <View style={styles.alarmPlayerCard}>
+              <Text style={styles.heroCardLabel}>One next move</Text>
+              <Text style={styles.inlineCardTitle}>{nextActionPreview}</Text>
+              <Text style={styles.subtle}>After playback, continue in the PWA or in quick review.</Text>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.button} onPress={openPwa}>
+                  <Text style={styles.buttonText}>Open workspace</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.button}
+                  onPress={() => {
+                    setActiveTab("review");
+                    setStatus("Quick review surface active");
+                  }}
+                >
+                  <Text style={styles.buttonText}>Open review</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             <View style={styles.alarmCycleCard}>
-              <Text style={styles.inlineCardTitle}>Active Cycles</Text>
+              <Text style={styles.heroCardLabel}>Alarm schedule</Text>
+              <Text style={styles.inlineCardTitle}>Daily alarm</Text>
               <View style={styles.alarmCycleRow}>
                 <View>
                   <Text style={styles.alarmCycleTime}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
-                  <Text style={styles.subtle}>Morning Manifest</Text>
+                  <Text style={styles.subtle}>{alarmNotificationId ? "Alarm is scheduled" : "Alarm is not scheduled yet"}</Text>
                 </View>
                 <TouchableOpacity style={styles.toggleButton} onPress={alarmNotificationId ? clearMorningAlarm : scheduleMorningAlarm}>
                   <View style={[styles.toggleKnob, alarmNotificationId ? styles.toggleKnobOn : null]} />
@@ -3823,31 +3927,31 @@ function themedStyles(palette: Palette) {
     },
     bgOrbTop: {
       position: "absolute",
-      top: -120,
-      right: -120,
-      width: 260,
-      height: 260,
+      top: -80,
+      right: -60,
+      width: 220,
+      height: 220,
       borderRadius: 999,
       backgroundColor: palette.accentMuted,
     },
     bgOrbCenter: {
       position: "absolute",
-      top: 180,
-      left: -100,
-      width: 220,
-      height: 220,
+      top: 220,
+      left: -60,
+      width: 180,
+      height: 180,
       borderRadius: 999,
-      backgroundColor: "rgba(131,212,211,0.08)",
+      backgroundColor: "rgba(109,61,83,0.16)",
     },
     topBar: {
       paddingHorizontal: 20,
-      paddingVertical: 12,
+      paddingVertical: 14,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       borderBottomWidth: 1,
-      borderBottomColor: "rgba(201,190,255,0.1)",
-      backgroundColor: "rgba(16,20,26,0.84)",
+      borderBottomColor: palette.border,
+      backgroundColor: "rgba(28,15,25,0.72)",
     },
     topBarBrand: {
       flexDirection: "row",
@@ -3864,6 +3968,21 @@ function themedStyles(palette: Palette) {
       alignItems: "center",
       justifyContent: "center",
     },
+    topBarPill: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderWidth: 1,
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceLow,
+    },
+    topBarPillText: {
+      color: palette.accent,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+    },
     topBarAvatarText: {
       color: palette.accent,
       fontSize: 12,
@@ -3871,9 +3990,10 @@ function themedStyles(palette: Palette) {
     },
     topBarTitle: {
       color: palette.text,
-      fontSize: 20,
-      fontWeight: "700",
-      letterSpacing: 0.2,
+      fontSize: 24,
+      fontWeight: "600",
+      letterSpacing: 0.3,
+      fontFamily: SERIF_FONT_FAMILY,
     },
     topBarActions: {
       flexDirection: "row",
@@ -3909,15 +4029,15 @@ function themedStyles(palette: Palette) {
       paddingHorizontal: 20,
       paddingTop: 18,
       paddingBottom: 136,
-      gap: 14,
+      gap: 16,
     },
     hero: {
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.panel,
-      borderRadius: 20,
-      padding: 18,
-      gap: 10,
+      borderRadius: 28,
+      padding: 22,
+      gap: 12,
     },
     eyebrow: {
       textTransform: "uppercase",
@@ -3928,13 +4048,15 @@ function themedStyles(palette: Palette) {
     },
     title: {
       color: palette.text,
-      fontSize: 31,
-      fontWeight: "600",
+      fontSize: 52,
+      lineHeight: 58,
+      fontWeight: "400",
+      fontFamily: SERIF_FONT_FAMILY,
     },
     body: {
       color: palette.muted,
-      fontSize: 14,
-      lineHeight: 21,
+      fontSize: 15,
+      lineHeight: 24,
     },
     heroInput: {
       borderWidth: 1,
@@ -3988,11 +4110,76 @@ function themedStyles(palette: Palette) {
       alignItems: "center",
       justifyContent: "space-between",
     },
+    intentHeroCard: {
+      borderRadius: 24,
+      paddingHorizontal: 18,
+      paddingVertical: 18,
+      gap: 10,
+      backgroundColor: palette.accent,
+    },
+    heroCardLabel: {
+      color: palette.accent,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+    },
+    heroCardLabelInverse: {
+      color: palette.onAccent,
+      opacity: 0.76,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+    },
+    intentHeroCopy: {
+      color: palette.onAccent,
+      fontSize: 24,
+      lineHeight: 34,
+      fontWeight: "400",
+      fontFamily: SERIF_FONT_FAMILY,
+    },
+    editorialCardCopy: {
+      color: palette.text,
+      fontSize: 28,
+      lineHeight: 38,
+      fontWeight: "400",
+      fontFamily: SERIF_FONT_FAMILY,
+    },
+    contextCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 22,
+      padding: 16,
+      gap: 10,
+      backgroundColor: palette.surfaceLow,
+    },
+    contextCardBody: {
+      color: palette.text,
+      fontSize: 16,
+      lineHeight: 25,
+    },
+    contextMetaRow: {
+      gap: 8,
+    },
+    contextMetaPill: {
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: palette.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: palette.surfaceHigh,
+    },
+    contextMetaText: {
+      color: palette.muted,
+      fontSize: 12,
+      lineHeight: 18,
+    },
     pendingBadge: {
       borderRadius: 999,
       paddingHorizontal: 8,
       paddingVertical: 4,
-      backgroundColor: "rgba(201,190,255,0.12)",
+      backgroundColor: palette.accentMuted,
     },
     pendingBadgeText: {
       color: palette.accent,
@@ -4004,27 +4191,47 @@ function themedStyles(palette: Palette) {
       gap: 10,
       marginTop: 2,
     },
+    captureComposerCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 22,
+      backgroundColor: palette.surfaceLow,
+      padding: 16,
+      gap: 8,
+    },
+    composerInput: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 16,
+      color: palette.text,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      backgroundColor: palette.bgAlt,
+    },
+    composerInputLarge: {
+      minHeight: 110,
+      textAlignVertical: "top",
+    },
     primaryAction: {
       flex: 1,
-      borderWidth: 1,
-      borderColor: "rgba(49,17,142,0.18)",
+      borderWidth: 0,
       backgroundColor: palette.accent,
-      borderRadius: 12,
-      minHeight: 42,
+      borderRadius: 18,
+      minHeight: 56,
       alignItems: "center",
       justifyContent: "center",
       flexDirection: "row",
-      gap: 6,
+      gap: 8,
     },
     primaryActionText: {
       color: palette.onAccent,
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: "700",
     },
     iconAction: {
-      width: 42,
-      height: 42,
-      borderRadius: 12,
+      width: 56,
+      height: 56,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.surfaceHigh,
@@ -4034,10 +4241,10 @@ function themedStyles(palette: Palette) {
     captureArtifactCard: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
-      padding: 12,
+      borderRadius: 22,
+      padding: 16,
       backgroundColor: palette.surfaceLow,
-      gap: 6,
+      gap: 8,
     },
     captureTrackLabel: {
       color: palette.tertiary,
@@ -4048,9 +4255,10 @@ function themedStyles(palette: Palette) {
     },
     captureArtifactTitle: {
       color: palette.text,
-      fontSize: 30,
-      fontWeight: "600",
-      lineHeight: 36,
+      fontSize: 36,
+      fontWeight: "400",
+      lineHeight: 44,
+      fontFamily: SERIF_FONT_FAMILY,
     },
     miniTag: {
       borderWidth: 1,
@@ -4074,10 +4282,10 @@ function themedStyles(palette: Palette) {
       minHeight: 110,
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
-      backgroundColor: "rgba(6,11,22,0.65)",
-      padding: 10,
-      justifyContent: "flex-end",
+      borderRadius: 18,
+      backgroundColor: palette.surfaceLow,
+      padding: 12,
+      justifyContent: "space-between",
       gap: 4,
     },
     captureAlertTile: {
@@ -4085,17 +4293,17 @@ function themedStyles(palette: Palette) {
       minHeight: 110,
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
+      borderRadius: 18,
       backgroundColor: palette.surfaceLow,
-      padding: 10,
+      padding: 12,
       gap: 4,
     },
     captureVoiceMemo: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
+      borderRadius: 18,
       backgroundColor: palette.surfaceHigh,
-      padding: 10,
+      padding: 12,
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
@@ -4107,8 +4315,6 @@ function themedStyles(palette: Palette) {
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: palette.accent,
-      borderWidth: 1,
-      borderColor: "rgba(49,17,142,0.15)",
     },
     routeHint: {
       color: palette.muted,
@@ -4118,8 +4324,8 @@ function themedStyles(palette: Palette) {
     dashboardWide: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
-      padding: 12,
+      borderRadius: 22,
+      padding: 16,
       gap: 2,
       backgroundColor: palette.surfaceLow,
       marginTop: 8,
@@ -4180,7 +4386,7 @@ function themedStyles(palette: Palette) {
     reviewFlashcard: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
+      borderRadius: 20,
       padding: 14,
       backgroundColor: "rgba(16,20,26,0.66)",
       gap: 8,
@@ -4263,8 +4469,9 @@ function themedStyles(palette: Palette) {
     alarmClockText: {
       color: palette.text,
       fontSize: 50,
-      fontWeight: "300",
+      fontWeight: "400",
       lineHeight: 56,
+      fontFamily: SERIF_FONT_FAMILY,
     },
     alarmClockPeriod: {
       color: palette.accent,
@@ -4283,12 +4490,13 @@ function themedStyles(palette: Palette) {
     alarmNextCard: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
+      borderRadius: 22,
       backgroundColor: palette.surfaceLow,
-      padding: 12,
+      padding: 16,
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
+      alignItems: "flex-start",
+      gap: 12,
     },
     alarmCountdown: {
       color: palette.secondary,
@@ -4299,8 +4507,8 @@ function themedStyles(palette: Palette) {
     alarmPlayerCard: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
-      padding: 12,
+      borderRadius: 22,
+      padding: 16,
       gap: 8,
       backgroundColor: palette.surfaceLow,
     },
@@ -4324,8 +4532,8 @@ function themedStyles(palette: Palette) {
     alarmCycleCard: {
       borderWidth: 1,
       borderColor: palette.border,
-      borderRadius: 14,
-      padding: 12,
+      borderRadius: 22,
+      padding: 16,
       backgroundColor: palette.surfaceLow,
       gap: 10,
     },
@@ -4365,9 +4573,9 @@ function themedStyles(palette: Palette) {
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.panel,
-      borderRadius: 16,
-      padding: 14,
-      gap: 9,
+      borderRadius: 24,
+      padding: 18,
+      gap: 12,
     },
     sectionKicker: {
       color: palette.accent,
@@ -4380,6 +4588,7 @@ function themedStyles(palette: Palette) {
       color: palette.text,
       fontSize: 19,
       fontWeight: "600",
+      fontFamily: SERIF_FONT_FAMILY,
     },
     chipRow: {
       flexDirection: "row",
@@ -4553,11 +4762,9 @@ function themedStyles(palette: Palette) {
       bottom: 84,
       width: 64,
       height: 64,
-      borderRadius: 20,
+      borderRadius: 22,
       alignItems: "center",
       justifyContent: "center",
-      borderWidth: 1,
-      borderColor: "rgba(49,17,142,0.15)",
       backgroundColor: palette.accent,
     },
     fabText: {
@@ -4573,8 +4780,8 @@ function themedStyles(palette: Palette) {
       right: 0,
       bottom: 0,
       borderTopWidth: 1,
-      borderTopColor: "rgba(201,190,255,0.12)",
-      backgroundColor: "rgba(10,14,20,0.92)",
+      borderTopColor: palette.border,
+      backgroundColor: "rgba(28,15,25,0.92)",
       paddingHorizontal: 20,
       paddingTop: 10,
       paddingBottom: 12,

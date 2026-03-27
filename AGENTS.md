@@ -188,21 +188,20 @@ cd /home/ubuntu/starlog/apps/mobile
 APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
 ```
 
-6) Open the dev client using the explicit LAN URL:
+6) Open the dev client using the explicit Expo dev-launcher URL:
 
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" -s <SERIAL> reverse --remove tcp:8081 || true
-"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
-6a) If the dev client shows `Unable to load script` or a blank white screen, prime the first bundle explicitly:
+6a) If the dev client shows `Unable to load script` or a blank white screen, keep the same LAN dev-client URL flow, wait for Metro to finish the first bundle, and then rerun step 6. Do not switch to the localhost reverse path on this host:
 
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
-"$ADB_WIN" -s <SERIAL> reverse tcp:8081 tcp:8081
 "$ADB_WIN" -s <SERIAL> shell am force-stop com.starlog.app.dev
-"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081%2Findex.bundle%3Fplatform%3Dandroid%26dev%3Dtrue%26minify%3Dfalse'
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
 Expected checkpoint in Metro terminal:
@@ -211,13 +210,13 @@ Expected checkpoint in Metro terminal:
 Android Bundled ... index.js (...)
 ```
 
-After that first bundle completes, reopen the normal dev-client URL from step 6 and continue smoke/screenshots.
+After that first bundle completes, continue with the same step 6 dev-client URL and the smoke/screenshots.
 
 7) Run the Android smoke flow after the app loads:
 
 ```bash
 cd /home/ubuntu/starlog
-DEV_CLIENT_URL='exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
+DEV_CLIENT_URL='expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
 ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
 ADB_SERIAL=<SERIAL> \
 REVERSE_PORTS=8000 \
@@ -332,7 +331,7 @@ Troubleshooting checklist:
 - 2026-03-10: On this WSL + physical-phone setup, Expo dev-client transport is more reliable when Metro runs in LAN mode and a Windows-side TCP relay exposes `0.0.0.0:8081 -> <WSL_IP>:8081`; keeping `adb reverse tcp:8081` at the same time can trigger misleading mixed `localhost`/LAN Metro warnings even after the app renders.
 - 2026-03-10: Android `adb shell am start` deep links that include `&source_url=...` need remote-shell quoting; the repo smoke helpers now escape those payloads so Android does not split the URI at `&`.
 - 2026-03-10: This Windows host still had an obsolete `C:\adb\adb.exe` (ADB `1.0.31`) ahead of the newer platform-tools build; reliable Android phone validation here needs the newer `C:\Temp\android-platform-tools\platform-tools\adb.exe` to avoid daemon/version conflicts.
-- 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `exp+starlog://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
+- 2026-03-10: Physical-phone Expo dev-client validation is cleanest on this host when Metro runs in LAN mode behind the Windows relay, only `tcp:8000` is reversed for the API, and the phone is opened via the explicit `expo-dev-launcher://expo-development-client/?url=http://<WINDOWS_LAN_IP>:8081` URL instead of relying on the Dev Launcher home screen.
 - 2026-03-14: Added a concrete Android phone testing runbook in this file (ADB binary, relay validation, Metro LAN launch, explicit dev-client URL open, smoke command, screenshot capture) to make physical-device validation deterministic without repeated experimentation.
 - 2026-03-14: Running dependent `git checkout`/branch-creation commands in parallel can race and leave the worktree on `master`; branch-switch operations should be run sequentially to avoid accidental commits to local `master`.
 - 2026-03-15: `scripts/use_shared_worktree_state.sh` initially failed in linked git worktrees because `git rev-parse --git-common-dir` can return a relative `.git` path for the canonical checkout; resolve each common dir relative to its repo root before comparing.
@@ -357,7 +356,7 @@ Troubleshooting checklist:
 - 2026-03-15: Metro startup from this NTFS worktree can stall before binding `:8081`; using `/home/ubuntu/starlog` for long-running Metro/Gradle validation avoided the startup stall while edits remained in the worktree.
 - 2026-03-15: This host/phone pairing can still show a transient `Cannot connect to Metro...` toast even when localhost reverse transport (`tcp:8081`) bundles successfully; capture/test flows can proceed with that warning as a known dev-client transport quirk.
 - 2026-03-15: After separating the desktop helper popup from the studio workspace, browser tests that exercise capture buttons need to open `index.html?mode=quick`; the default workspace route no longer exposes popup-only capture controls.
-- 2026-03-15: First dev-client open on this host can fail with `Unable to load script` until Metro finishes an initial bundle compile; a one-time explicit `index.bundle` deep-link via `adb reverse tcp:8081` consistently primes the session, after which normal `exp+starlog://expo-development-client/?url=http://<LAN_IP>:8081` opens work again.
+- 2026-03-15: First dev-client open on this host can fail with `Unable to load script` until Metro finishes an initial bundle compile; once `Android Bundled ...` appears, reopen the same LAN `expo-dev-launcher://expo-development-client/?url=http://<LAN_IP>:8081` URL instead of switching launcher schemes.
 - 2026-03-15: Mobile design-alignment pass introduced icon usage from `@expo/vector-icons`; the `apps/mobile` workspace must include that dependency (and lockfile update) or Metro fails with `Unable to resolve "@expo/vector-icons" from "App.tsx"`.
 - 2026-03-15: Post-merge UI audit found `SessionControls` repeated as a primary panel across canonical PWA surfaces; follow-up should consolidate session/admin controls into a secondary settings surface to stay aligned with `screen_design`.
 - 2026-03-15: Post-merge mobile UI audit found the advanced capture/review panels duplicate the focused companion shell with a second admin-console layer; follow-up should collapse those controls into more compact secondary surfaces.
@@ -368,6 +367,7 @@ Troubleshooting checklist:
 - 2026-03-15: Main-laptop helper readiness on this Linux host still depends on installing clipboard, screenshot, active-window, and OCR helper packages; the setup-pack doc now records the concrete `apt-get` path plus built-in helper reset controls.
 - 2026-03-15: Mobile capture deep links previously loaded quick-capture content without forcing the companion back to the capture tab, so shared content could open while the user still saw review or alarms; deep-link capture handling now switches the active tab to `capture`.
 - 2026-03-15: The mobile next-briefing countdown was previously memoized only on alarm time changes, so it could sit stale on screen; it now re-ticks on a timer instead of waiting for unrelated state updates.
+- 2026-03-27: On the connected Android device, the installed dev build resolves correctly through `expo-dev-launcher://expo-development-client/?url=...`; direct `starlog://` and `exp+starlog://` opens fell through to the Android resolver, so launcher-based validation on this host should use the Expo dev-launcher scheme.
 - 2026-03-16: Android `assembleRelease` bundling under Expo + pnpm failed until `apps/mobile` declared `expo-asset` and `@react-native/assets-registry` directly; Expo CLI resolved both from the app root during `:app:createBundleReleaseJsAndAssets` instead of only through transitive dependencies.
 - 2026-03-16: On this host, Windows `adb.exe` can see the physical Android phone while WSL `adb` cannot, but Windows `adb.exe` also cannot install an APK from a WSL-only path; copy the APK into a Windows-visible path like `C:\Temp\...` before `adb install`.
 - 2026-03-16: Preview Android installs keep the launcher component class `com.starlog.app.dev.MainActivity` even when the installed package id is `com.starlog.app.preview`; resolve the launcher component from package manager instead of assuming `<package>/.MainActivity`.
@@ -385,3 +385,5 @@ Troubleshooting checklist:
 - 2026-03-23: Replaying stale doc-only proof PRs onto current `origin/master` can conflict in shared handoff docs like `AGENTS.md` and `docs/VNEXT_TEST_BUNDLE.md`; preserve the newer release-handoff baseline on `master` and reapply only the still-relevant proof references.
 - 2026-03-23: On this host, the main Codex shell can again execute the Windows platform-tools `adb.exe` and reach the physical phone, but `android_native_smoke.sh` still cannot install through a WSL-style `/mnt/c/...` APK path when using `adb.exe`; use a native Windows path like `C:\Temp\...` for installs, then rerun the smoke script with `SKIP_INSTALL=1`.
 - 2026-03-27: WI-612 review follow-up exposed two quick-mode regressions in the desktop helper: the status-pill hide rule was too broad and the runtime health badge lost its mono class on refresh; the quick-size regression test now documents the viewport budget it actually measures.
+- 2026-03-27: The primary mobile capture shell had a save action wired to text/shared-file capture even when a voice memo existed; the hero submit path now routes recorded voice notes correctly and exposes an explicit save button in the surface.
+- 2026-03-27: The Android phone-testing runbook now keeps the same LAN Expo dev-client URL through initial open and bundle-prime recovery so it no longer contradicts the working launcher scheme with a localhost reverse fallback.

@@ -34,7 +34,7 @@ Environment overrides:
   APK_PATH               APK to install
   APP_PACKAGE            Android package name (default: com.starlog.app.dev)
   APP_ACTIVITY           Fully qualified launch activity (default: com.starlog.app.dev/.MainActivity)
-  DEV_CLIENT_URL         Optional exp+starlog://... URL to open before app launch
+  DEV_CLIENT_URL         Optional expo-dev-launcher://... URL to open before app launch
   DEEP_LINK              Deep-link payload to open after launch
   SHARE_TITLE            android.intent.extra.SUBJECT for the text share
   SHARE_TEXT             android.intent.extra.TEXT for the text share
@@ -143,7 +143,7 @@ open_dev_client() {
     return
   fi
 
-  log "Opening dev client URL"
+  log "Opening dev launcher URL"
   local command
   command="am start -W -a android.intent.action.VIEW -d $(android_shell_escape "$DEV_CLIENT_URL")"
   adb_cmd shell "$command" >/dev/null
