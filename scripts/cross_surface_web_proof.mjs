@@ -69,7 +69,7 @@ try {
   );
 
   await page.goto(`http://127.0.0.1:${webPort}/assistant`);
-  await page.getByRole("heading", { name: "Voice-native command thread" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("heading", { name: "Turn the whole day into one brief and one next move." }).waitFor({ timeout: 15_000 });
   let assistantMarkerVisible = false;
   try {
     await page.getByText(assistantMarker).waitFor({ timeout: 5_000 });
@@ -81,7 +81,7 @@ try {
   await page.screenshot({ path: assistantPath, fullPage: true });
 
   await page.goto(`http://127.0.0.1:${webPort}/artifacts`);
-  await page.getByRole("heading", { name: "Clip inbox and references" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Refresh Room" }).waitFor({ timeout: 15_000 });
   let artifactMarkerVisible = false;
   try {
     await page.getByText(artifactTitle).waitFor({ timeout: 5_000 });
