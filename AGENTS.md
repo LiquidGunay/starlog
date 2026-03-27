@@ -393,3 +393,4 @@ Troubleshooting checklist:
 - 2026-03-27: PDF fallback ranking must also keep obviously unreadable high-alpha OCR garbage from outranking a readable pypdf text layer; provider priority should break that tie in favor of the text layer fallback.
 - 2026-03-27: Rebase conflict resolution: preserve both PDF-ingest issue-log notes when replaying this branch onto a newer master baseline.
 - 2026-03-27: The Velvet validation artifact wrapper can be invoked from non-login shells, so it must add `~/.local/bin` to `PATH` or hosted smoke may fail to find `uv` even when `uv` is installed on the host.
+- 2026-03-27: Android dev-client validation from a linked worktree can fail or hang when Metro resolves against shared symlinked installs; the mobile workspace now carries an explicit Metro config, and phone validation on this host is most reliable with `expo-dev-launcher://...`, `adb reverse tcp:8081`, and a localized JS install when needed.
