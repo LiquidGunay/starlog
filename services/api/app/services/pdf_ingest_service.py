@@ -261,35 +261,26 @@ def _fallback_priority(provider_name: str) -> int:
 
 
 def _candidate_is_readable(candidate: dict[str, Any]) -> bool:
-    provider_name = str(candidate.get("provider") or "")
     characters = int(candidate.get("characters") or 0)
     alpha_ratio = float(candidate.get("alpha_ratio") or 0.0)
     space_ratio = float(candidate.get("space_ratio") or 0.0)
     long_word_count = int(candidate.get("long_word_count") or 0)
-    if provider_name != "ocr_server":
-        return (
-            characters >= 40
-            and alpha_ratio >= 0.55
-            and space_ratio >= 0.05
-            and long_word_count >= 4
-        )
-
-    if not candidate.get("usable"):
+    if (
+        characters < 40
+        or alpha_ratio < 0.55
+        or space_ratio < 0.05
+        or long_word_count < 4
+    ):
         return False
 
     word_count = int(candidate.get("word_count") or 0)
     common_word_count = int(candidate.get("common_word_count") or 0)
-    sentence_mark_count = int(candidate.get("sentence_mark_count") or 0)
-    clause_mark_count = int(candidate.get("clause_mark_count") or 0)
     repeated_token_count = int(candidate.get("repeated_token_count") or 0)
-    punctuation_marks = sentence_mark_count + clause_mark_count
     repetition_limit = max(6, word_count // 5)
+    common_word_floor = max(1, min(4, word_count // 18))
     return (
         repeated_token_count <= repetition_limit
-        and (
-            common_word_count >= max(3, min(8, word_count // 18))
-            or punctuation_marks >= 2
-        )
+        and common_word_count >= common_word_floor
     )
 
 
@@ -324,6 +315,7 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
                 "mode": mode,
                 **quality,
             }
+            candidate["readable"] = _candidate_is_readable(candidate)
             candidate_rank = _fallback_rank(candidate)
             if fallback_candidate is None or fallback_rank is None or candidate_rank > fallback_rank:
                 fallback_candidate = candidate
@@ -338,6 +330,7 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
         "mode": "unavailable",
         "characters": 0,
         "usable": False,
+        "readable": False,
         "alpha_ratio": 0.0,
         "space_ratio": 0.0,
         "unique_ratio": 0.0,

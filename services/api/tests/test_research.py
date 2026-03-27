@@ -231,6 +231,56 @@ def test_manual_research_pdf_ingest_falls_back_from_noisy_ocr_to_readable_text(
     assert artifact["extracted_content"] == expected
 
 
+def test_manual_research_pdf_ingest_preserves_short_readable_ocr_fallback(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        research_adapters.pdf_ingest_service,
+        "extract_pdf_text",
+        lambda _path: {
+            "text": "Diffusion models use score matching and denoising.",
+            "provider": "ocr_server",
+            "mode": "ocr_server",
+            "characters": 49,
+            "usable": False,
+            "readable": True,
+            "alpha_ratio": 0.82,
+            "space_ratio": 0.13,
+            "unique_ratio": 0.31,
+            "long_word_count": 5,
+        },
+    )
+
+    upload = client.post(
+        "/v1/media/upload",
+        files={"file": ("paper.pdf", b"%PDF-1.4 test payload", "application/pdf")},
+        headers=auth_headers,
+    )
+    assert upload.status_code == 201
+    media_id = upload.json()["id"]
+
+    response = client.post(
+        "/v1/research/manual-pdf",
+        json={"media_id": media_id, "title": "Readable OCR fallback"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    extraction = payload["metadata"]["pdf_extraction"]
+    assert extraction["provider"] == "ocr_server"
+    assert extraction["usable"] is False
+    assert extraction["readable"] is True
+    assert extraction["rejected_as_noise"] is False
+
+    artifact_graph = client.get(f"/v1/artifacts/{payload['content_artifact_id']}/graph", headers=auth_headers)
+    artifact = artifact_graph.json()["artifact"]
+    expected = "Diffusion models use score matching and denoising."
+    assert artifact["normalized_content"] == expected
+    assert artifact["extracted_content"] == expected
+
+
 def test_arxiv_ingest_uses_adapter_and_persists_item(
     client: TestClient,
     auth_headers: dict[str, str],
