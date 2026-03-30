@@ -59,6 +59,8 @@ Current preview bundle on this machine:
 
 Release handoff docs:
 
+- [`docs/RELEASE_HANDOFF_RUNBOOK.md`](docs/RELEASE_HANDOFF_RUNBOOK.md)
+- [`docs/RELEASE_HANDOFF.md`](docs/RELEASE_HANDOFF.md)
 - [`docs/PREVIEW_FEEDBACK_BUNDLE.md`](docs/PREVIEW_FEEDBACK_BUNDLE.md)
 - [`docs/FINAL_PREVIEW_SIGNOFF.md`](docs/FINAL_PREVIEW_SIGNOFF.md)
 - [`docs/RELEASE_20260330.md`](docs/RELEASE_20260330.md)
@@ -76,6 +78,7 @@ Current preview baseline:
 - branch target: `master`
 - baseline commit: `f742097`
 - Android preview: `0.1.0-preview.rc3 (104)`
+- repeatable release entrypoint: `python3 scripts/release_handoff.py`
 - PWA release gate: passed on 2026-03-30
 - hosted smoke: passed on 2026-03-30
 - physical-phone install and launch proof: passed on 2026-03-30

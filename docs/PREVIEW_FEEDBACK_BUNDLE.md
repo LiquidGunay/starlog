@@ -1,6 +1,9 @@
 # Preview Feedback Bundle
 
-Last updated: 2026-03-27
+Last updated: 2026-03-30
+
+This bundle is refreshed and published through `python3 scripts/release_handoff.py`. The current
+release snapshot lives in [`docs/RELEASE_HANDOFF.md`](./RELEASE_HANDOFF.md).
 
 This is the shortest path to install Starlog on your phone and laptop and point it at the live
 Railway deployment for real feedback.
@@ -22,6 +25,8 @@ Installable artifacts inside it:
   - SHA-256: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
 - Desktop helper checksum file:
   - `/home/ubuntu/starlog_preview_bundle/desktop/checksums.sha256`
+- Bundle checksum file:
+  - `/home/ubuntu/starlog_preview_bundle/checksums.sha256`
 
 Phone proof artifacts copied into the same bundle:
 
@@ -84,6 +89,8 @@ Recommended feedback pass:
 
 Supporting references:
 
+- [docs/RELEASE_HANDOFF.md](./RELEASE_HANDOFF.md)
+- [docs/RELEASE_HANDOFF_RUNBOOK.md](./RELEASE_HANDOFF_RUNBOOK.md)
 - [docs/evidence/mobile/wi-601-phone-proof.md](./evidence/mobile/wi-601-phone-proof.md)
 - [docs/FINAL_PREVIEW_SIGNOFF.md](./FINAL_PREVIEW_SIGNOFF.md)
 - [docs/ANDROID_RELEASE_QA_MATRIX.md](./ANDROID_RELEASE_QA_MATRIX.md)
