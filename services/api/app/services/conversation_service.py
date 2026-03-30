@@ -339,7 +339,25 @@ def merge_session_state(conn: Connection, state_patch: dict[str, Any]) -> dict[s
 
 
 def reset_session_state(conn: Connection) -> dict[str, Any]:
-    return update_session_state(conn, {})
+    thread = ensure_primary_thread(conn)
+    previous_state = get_session_state(conn)
+    message_count_row = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM conversation_messages WHERE thread_id = ?",
+        (thread["id"],),
+    )
+    trace_count_row = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM conversation_tool_traces WHERE thread_id = ?",
+        (thread["id"],),
+    )
+    reset_payload = update_session_state(conn, {})
+    return {
+        **reset_payload,
+        "cleared_keys": sorted(previous_state.keys()),
+        "preserved_message_count": int(message_count_row["count"]) if message_count_row else 0,
+        "preserved_tool_trace_count": int(trace_count_row["count"]) if trace_count_row else 0,
+    }
 
 
 def record_chat_turn(

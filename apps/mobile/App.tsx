@@ -127,7 +127,7 @@ type VoiceRoutePreference = "shared_policy" | "on_device_first" | "bridge_first"
 type BriefingPlaybackPreference = "offline_first" | "refresh_then_cache";
 
 type PersistedState = {
-  version: 4;
+  version: 5;
   apiBase: string;
   pwaBase: string;
   token: string;
@@ -155,10 +155,22 @@ type PersistedState = {
   assistantHistory?: AssistantCommandResponse[];
   assistantVoiceJobs?: AssistantVoiceJob[];
   assistantAiJobs?: AssistantQueuedJob[];
+  conversationTitle?: string;
+  conversationSessionState?: Record<string, unknown>;
+  conversationMessages?: ConversationMessage[];
+  conversationToolTraces?: ConversationToolTrace[];
+  lastConversationReset?: ConversationSessionResetResponse | null;
+};
+
+type PersistedStateV4 = Omit<
+  PersistedState,
+  "version"
+> & {
+  version: 4;
 };
 
 type PersistedStateV3 = Omit<
-  PersistedState,
+  PersistedStateV4,
   "version" | "voiceRoutePreference" | "briefingPlaybackPreference"
 > & {
   version: 3;
@@ -276,6 +288,57 @@ type AssistantQueuedJob = {
 
 type AssistantVoiceJob = AssistantQueuedJob;
 
+type ConversationCard = {
+  kind: string;
+  version: number;
+  title?: string | null;
+  body?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+type ConversationMessage = {
+  id: string;
+  thread_id: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  cards: ConversationCard[];
+  metadata: {
+    assistant_command?: AssistantCommandResponse;
+  } & Record<string, unknown>;
+  created_at: string;
+};
+
+type ConversationToolTrace = {
+  id: string;
+  thread_id: string;
+  message_id?: string | null;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  result: unknown;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+type ConversationSnapshot = {
+  id: string;
+  slug: string;
+  title: string;
+  mode: string;
+  session_state: Record<string, unknown>;
+  messages: ConversationMessage[];
+  tool_traces: ConversationToolTrace[];
+};
+
+type ConversationSessionResetResponse = {
+  thread_id: string;
+  session_state: Record<string, unknown>;
+  cleared_keys?: string[];
+  preserved_message_count?: number;
+  preserved_tool_trace_count?: number;
+  updated_at: string;
+};
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 const DEFAULT_PWA_BASE = "http://localhost:3000";
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
@@ -296,6 +359,7 @@ const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
   stt: "whisper_local",
   tts: "piper_local",
 };
+const DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES = 12;
 
 function supportedSttTargets(localSttAvailable: boolean): ExecutionTarget[] {
   return localSttAvailable ? ["on_device", "batch_local_bridge"] : ["batch_local_bridge"];
@@ -656,6 +720,22 @@ function formatExecutionTarget(target: ExecutionTarget | "none"): string {
   return "Unavailable";
 }
 
+function summarizeTraceValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} item${value.length === 1 ? "" : "s"}`;
+  }
+  if (value && typeof value === "object") {
+    return `${Object.keys(value).length} field${Object.keys(value).length === 1 ? "" : "s"}`;
+  }
+  return "No structured payload";
+}
+
 function toHourMinuteLabel(hour: number, minute: number): string {
   const hh = String(hour).padStart(2, "0");
   const mm = String(minute).padStart(2, "0");
@@ -674,11 +754,11 @@ async function readPersistedState(): Promise<PersistedState | null> {
       MOBILE_STATE_KEY,
     );
     if (row?.value) {
-      const parsed = JSON.parse(row.value) as PersistedState | PersistedStateV3 | PersistedStateV2;
+      const parsed = JSON.parse(row.value) as PersistedState | PersistedStateV4 | PersistedStateV3 | PersistedStateV2;
       if (parsed.version === 2) {
         const migrated: PersistedState = {
           ...parsed,
-          version: 4,
+          version: 5,
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
@@ -689,6 +769,11 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
+          conversationTitle: "Primary Starlog Thread",
+          conversationSessionState: {},
+          conversationMessages: [],
+          conversationToolTraces: [],
+          lastConversationReset: null,
         };
         await writePersistedState(migrated);
         return migrated;
@@ -704,8 +789,13 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
+          conversationTitle: "Primary Starlog Thread",
+          conversationSessionState: {},
+          conversationMessages: [],
+          conversationToolTraces: [],
+          lastConversationReset: null,
           ...parsed,
-          version: 4,
+          version: 5,
         };
         if (normalized.token) {
           // Strip legacy plaintext token persistence from the local DB row.
@@ -713,7 +803,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
         }
         return normalized;
       }
-      if (parsed.version === 4) {
+      if (parsed.version === 4 || parsed.version === 5) {
         const normalized: PersistedState = {
           sharedFileDrafts: [],
           voiceClipUri: null,
@@ -722,9 +812,15 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
+          conversationTitle: "Primary Starlog Thread",
+          conversationSessionState: {},
+          conversationMessages: [],
+          conversationToolTraces: [],
+          lastConversationReset: null,
           ...parsed,
           voiceRoutePreference: normalizeVoiceRoutePreference(parsed.voiceRoutePreference),
           briefingPlaybackPreference: normalizeBriefingPlaybackPreference(parsed.briefingPlaybackPreference),
+          version: 5,
         };
         if (normalized.token) {
           // Strip legacy plaintext token persistence from the local DB row.
@@ -747,7 +843,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
 
     const migrated: PersistedState = {
       ...legacy,
-      version: 4,
+      version: 5,
       sharedFileDrafts: [],
       voiceClipUri: null,
       voiceClipDurationMs: 0,
@@ -763,6 +859,11 @@ async function readPersistedState(): Promise<PersistedState | null> {
       assistantHistory: [],
       assistantVoiceJobs: [],
       assistantAiJobs: [],
+      conversationTitle: "Primary Starlog Thread",
+      conversationSessionState: {},
+      conversationMessages: [],
+      conversationToolTraces: [],
+      lastConversationReset: null,
     };
     await writePersistedState(migrated);
     await FileSystem.deleteAsync(file, { idempotent: true });
@@ -1040,6 +1141,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
+  const [conversationTitle, setConversationTitle] = useState("Primary Starlog Thread");
+  const [conversationSessionState, setConversationSessionState] = useState<Record<string, unknown>>({});
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [conversationToolTraces, setConversationToolTraces] = useState<ConversationToolTrace[]>([]);
+  const [lastConversationReset, setLastConversationReset] = useState<ConversationSessionResetResponse | null>(null);
+  const [showFullConversationThread, setShowFullConversationThread] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
   const [status, setStatus] = useState("Ready");
@@ -1061,6 +1168,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const visibleConversationMessages = useMemo(() => {
+    if (showFullConversationThread) {
+      return conversationMessages;
+    }
+    return conversationMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
+  }, [conversationMessages, showFullConversationThread]);
+  const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
   const llmResolution = useMemo(
     () =>
@@ -2204,6 +2318,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       if (payload.matched_intent === "list_due_cards") {
         loadDueCards().catch(() => undefined);
       }
+      loadConversation("auto").catch(() => undefined);
       const sourceNote = sourceLabel ? ` from ${sourceLabel}` : "";
       setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}${sourceNote}`);
     } catch (error) {
@@ -2221,6 +2336,79 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       return;
     }
     setAssistantHistory((previous) => [entry, ...previous.filter((item) => item.command !== entry.command || item.planner !== entry.planner)].slice(0, 6));
+  }
+
+  async function loadConversation(origin: "auto" | "manual") {
+    if (!token) {
+      if (origin === "manual") {
+        setStatus("Add API token first");
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Conversation fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as ConversationSnapshot;
+      setConversationTitle(payload.title);
+      setConversationSessionState(payload.session_state);
+      setConversationMessages(payload.messages);
+      setConversationToolTraces(payload.tool_traces);
+      const completedCommand = [...payload.messages]
+        .reverse()
+        .map((message) => message.metadata?.assistant_command)
+        .find((message): message is AssistantCommandResponse => !!message);
+      if (completedCommand) {
+        recordAssistantHistory(completedCommand);
+      }
+      if (origin === "manual") {
+        setStatus(`Loaded ${payload.title}`);
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load conversation");
+      }
+    }
+  }
+
+  async function resetConversationSession() {
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary/session/reset`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Conversation reset failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as ConversationSessionResetResponse;
+      setConversationSessionState(payload.session_state);
+      setLastConversationReset(payload);
+      const clearedKeys = payload.cleared_keys ?? Object.keys(conversationSessionState);
+      const preservedMessageCount = payload.preserved_message_count ?? conversationMessages.length;
+      const preservedTraceCount = payload.preserved_tool_trace_count ?? conversationToolTraces.length;
+      const clearedLabel =
+        clearedKeys.length > 0 ? `${clearedKeys.length} key${clearedKeys.length === 1 ? "" : "s"} cleared` : "Session already empty";
+      setStatus(
+        `${clearedLabel}; kept ${preservedMessageCount} messages and ${preservedTraceCount} traces`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to clear conversation state");
+    }
   }
 
   async function loadAssistantVoiceJobs(origin: "auto" | "manual") {
@@ -2249,6 +2437,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const completed = payload.find((job) => job.output.assistant_command)?.output.assistant_command;
       if (completed) {
         recordAssistantHistory(completed);
+        loadConversation("auto").catch(() => undefined);
       }
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} voice command job(s)`);
@@ -2286,6 +2475,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const completed = payload.find((job) => job.output.assistant_command)?.output.assistant_command;
       if (completed) {
         recordAssistantHistory(completed);
+        loadConversation("auto").catch(() => undefined);
       }
       if (origin === "manual") {
         setStatus(`Loaded ${payload.length} queued Codex job(s)`);
@@ -2484,6 +2674,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
         setAssistantAiJobs(persisted.assistantAiJobs || []);
+        setConversationTitle(persisted.conversationTitle || "Primary Starlog Thread");
+        setConversationSessionState(persisted.conversationSessionState || {});
+        setConversationMessages(persisted.conversationMessages || []);
+        setConversationToolTraces(persisted.conversationToolTraces || []);
+        setLastConversationReset(persisted.lastConversationReset ?? null);
       } else if (active && recoveredToken) {
         setToken(recoveredToken);
       }
@@ -2693,6 +2888,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         if (pendingCaptures.length > 0) {
           flushPendingCaptures("auto").catch(() => undefined);
         }
+        loadConversation("auto").catch(() => undefined);
         loadAssistantVoiceJobs("auto").catch(() => undefined);
         loadAssistantAiJobs("auto").catch(() => undefined);
       }
@@ -2716,7 +2912,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     writePersistedState({
-      version: 4,
+      version: 5,
       apiBase,
       pwaBase,
       token,
@@ -2744,6 +2940,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       assistantHistory,
       assistantVoiceJobs,
       assistantAiJobs,
+      conversationTitle,
+      conversationSessionState,
+      conversationMessages,
+      conversationToolTraces,
+      lastConversationReset,
     }).catch(() => undefined);
   }, [
     alarmHour,
@@ -2754,6 +2955,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     assistantHistory,
     assistantVoiceJobs,
     assistantAiJobs,
+    conversationTitle,
+    conversationSessionState,
+    conversationMessages,
+    conversationToolTraces,
+    lastConversationReset,
     artifactGraph,
     artifactVersions,
     artifacts,
@@ -2795,6 +3001,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       return;
     }
     loadExecutionPolicy("auto").catch(() => undefined);
+  }, [hydrated, token, apiBase]);
+
+  useEffect(() => {
+    if (!hydrated || !token) {
+      return;
+    }
+    loadConversation("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -3040,11 +3253,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <TouchableOpacity
             style={styles.button}
             onPress={() => {
+              loadConversation("manual").catch(() => undefined);
               loadAssistantVoiceJobs("manual").catch(() => undefined);
               loadAssistantAiJobs("manual").catch(() => undefined);
             }}
           >
-            <Text style={styles.buttonText}>Refresh Jobs</Text>
+            <Text style={styles.buttonText}>Refresh Thread</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={resetConversationSession}>
+            <Text style={styles.buttonText}>Reset Session Memory</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.subtle}>On-device STT: {localSttProbeLabel(localSttAvailable)}</Text>
@@ -3057,6 +3274,97 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
           </Text>
         )}
+        <View style={styles.detailCard}>
+          <Text style={styles.inlineCardTitle}>{conversationTitle}</Text>
+          <Text style={styles.subtle}>
+            {Object.keys(conversationSessionState).length} live session keys | {conversationMessages.length} messages | {conversationToolTraces.length} traces
+          </Text>
+          <Text style={styles.subtle}>
+            Reset clears only short-term thread state. The transcript and runtime trace history stay attached for rereading.
+          </Text>
+          {lastConversationReset ? (
+            <View style={styles.inlineCard}>
+              <Text style={styles.inlineCardTitle}>Last reset</Text>
+              <Text style={styles.subtle}>
+                {(lastConversationReset.cleared_keys ?? []).length > 0
+                  ? `Cleared ${(lastConversationReset.cleared_keys ?? []).join(", ")}`
+                  : "No session keys needed clearing."}
+              </Text>
+            </View>
+          ) : null}
+          {visibleConversationMessages.length === 0 ? (
+            <Text style={styles.subtle}>No persistent thread messages loaded yet.</Text>
+          ) : (
+            <>
+              {hiddenConversationMessageCount > 0 ? (
+                <View style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>Earlier thread context is available</Text>
+                  <Text style={styles.subtle}>
+                    {hiddenConversationMessageCount} older message{hiddenConversationMessageCount === 1 ? "" : "s"} are hidden from the compact view.
+                  </Text>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(true)}>
+                      <Text style={styles.buttonText}>Show Full Thread</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+              {visibleConversationMessages.map((message) => {
+              const messageTraces = conversationToolTraces.filter((trace) => trace.message_id === message.id);
+              const body = message.content.trim() || message.metadata?.assistant_command?.summary || "No message body recorded.";
+              return (
+                <View key={message.id} style={styles.threadMessageCard}>
+                  <View style={styles.threadMessageMeta}>
+                    <Text style={styles.threadRoleChip}>{message.role}</Text>
+                    <Text style={styles.subtle}>{new Date(message.created_at).toLocaleTimeString()}</Text>
+                  </View>
+                  <Text style={styles.threadMessageBody}>{body}</Text>
+                  {message.cards.length > 0 ? (
+                    <View style={styles.inlineCard}>
+                      <Text style={styles.inlineCardTitle}>Attached cards</Text>
+                      {message.cards.map((card, index) => (
+                        <View key={`${message.id}-card-${index}`} style={styles.threadDetailRow}>
+                          <Text style={styles.threadDetailTitle}>{card.title || card.kind.replace(/_/g, " ")}</Text>
+                          {card.body ? <Text style={styles.subtle}>{card.body}</Text> : null}
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {messageTraces.length > 0 ? (
+                    <View style={styles.inlineCard}>
+                      <Text style={styles.inlineCardTitle}>Runtime traces</Text>
+                      {messageTraces.map((trace) => (
+                        <View key={trace.id} style={styles.threadDetailRow}>
+                          <Text style={styles.threadDetailTitle}>{trace.tool_name} [{trace.status}]</Text>
+                          <Text style={styles.subtle}>{summarizeTraceValue(trace.result)}</Text>
+                          {Object.keys(trace.arguments).length > 0 ? (
+                            <Text style={styles.mono}>{JSON.stringify(trace.arguments)}</Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {message.metadata?.assistant_command ? (
+                    <View style={styles.inlineCard}>
+                      <Text style={styles.inlineCardTitle}>
+                        {message.metadata.assistant_command.matched_intent} [{message.metadata.assistant_command.status}]
+                      </Text>
+                      <Text style={styles.subtle}>{message.metadata.assistant_command.summary}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+              })}
+              {showFullConversationThread && conversationMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(false)}>
+                    <Text style={styles.buttonText}>Collapse Thread</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.button} onPress={() => setShowDiagnostics((value) => !value)}>
             <Text style={styles.buttonText}>{showDiagnostics ? "Hide Diagnostics" : "Show Diagnostics"}</Text>
@@ -4680,6 +4988,41 @@ function themedStyles(palette: Palette) {
       gap: 8,
       backgroundColor: "rgba(16,20,26,0.55)",
       marginTop: 6,
+    },
+    threadMessageCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 14,
+      padding: 10,
+      gap: 8,
+      backgroundColor: palette.surfaceLow,
+    },
+    threadMessageMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    threadRoleChip: {
+      color: palette.secondary,
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1.2,
+      fontWeight: "700",
+    },
+    threadMessageBody: {
+      color: palette.text,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    threadDetailRow: {
+      gap: 4,
+      paddingTop: 4,
+    },
+    threadDetailTitle: {
+      color: palette.text,
+      fontSize: 12,
+      fontWeight: "700",
     },
     subtle: {
       color: palette.muted,

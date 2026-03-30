@@ -43,6 +43,9 @@ test("hydrates the assistant from the server conversation and clears session sta
       body: JSON.stringify({
         thread_id: "thr_primary",
         session_state: {},
+        cleared_keys: ["last_matched_intent"],
+        preserved_message_count: 2,
+        preserved_tool_trace_count: 1,
         updated_at: "2026-03-22T09:00:00.000Z",
       }),
     });
@@ -59,7 +62,19 @@ test("hydrates the assistant from the server conversation and clears session sta
         title: "Primary conversation",
         mode: "voice_native",
         session_state: sessionState,
-        tool_traces: [],
+        tool_traces: [
+          {
+            id: "trace_1",
+            thread_id: "thr_primary",
+            message_id: "msg_assistant_1",
+            tool_name: "list_tasks",
+            arguments: { status: "open" },
+            status: "completed",
+            result: { tasks: [{ id: "task_1" }] },
+            metadata: {},
+            created_at: "2026-03-22T08:01:02.000Z",
+          },
+        ],
         created_at: "2026-03-22T08:00:00.000Z",
         updated_at: "2026-03-22T08:05:00.000Z",
         messages: [
@@ -77,7 +92,15 @@ test("hydrates the assistant from the server conversation and clears session sta
             thread_id: "thr_primary",
             role: "assistant",
             content: "Loaded your tasks.",
-            cards: [],
+            cards: [
+              {
+                kind: "assistant_summary",
+                version: 1,
+                title: "Task queue",
+                body: "3 tasks need attention next.",
+                metadata: {},
+              },
+            ],
             metadata: {
               assistant_command: {
                 command: "list tasks",
@@ -104,11 +127,15 @@ test("hydrates the assistant from the server conversation and clears session sta
   ).toBeVisible();
   await expect(page.getByText("Session Context")).toBeVisible();
   await expect(page.getByText("Loaded your current tasks into the queue.").first()).toBeVisible();
+  await expect(page.getByText("Attached cards")).toBeVisible();
+  await expect(page.getByText("Task queue")).toBeVisible();
+  await expect(page.getByText("Runtime trace")).toBeVisible();
   await expect(page.getByText("1 live keys")).toBeVisible();
   await expect(page.getByText("No voice command jobs yet.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Clear session" }).click();
+  await page.getByRole("button", { name: "Reset session memory" }).click();
 
   await expect(page.getByText("0 live keys")).toBeVisible();
+  await expect(page.getByText("Cleared: last_matched_intent")).toBeVisible();
   await expect.poll(() => conversationLoads).toBe(1);
 });
