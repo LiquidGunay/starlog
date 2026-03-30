@@ -179,8 +179,10 @@ Suggested contents:
 
 - `helper-playwright.txt`
 - `windows-probes.txt`
-- `helper-popup.png`
-- `helper-workspace.png`
+- `desktop-helper-workspace-config.png`
+- `desktop-helper-quick-popup.png`
+- `desktop-helper-workspace-diagnostics.png`
+- `screenshots.json`
 
 ## Exact command bundles
 

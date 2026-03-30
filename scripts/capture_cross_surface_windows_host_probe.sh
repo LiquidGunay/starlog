@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="${1:-$(date -u +"%Y%m%dT%H%M%SZ")}"
-BUNDLE_ROOT="${CROSS_SURFACE_PROOF_ROOT:-$ROOT_DIR}"
+BUNDLE_ROOT="${CROSS_SURFACE_PROOF_ROOT:-${VALIDATION_ROOT:-$ROOT_DIR}}"
 BUNDLE_DIR="$BUNDLE_ROOT/artifacts/cross-surface-proof/$STAMP"
 WINDOWS_DIR="$BUNDLE_DIR/desktop-helper"
 ADB_WIN="${ADB_WIN:-/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe}"

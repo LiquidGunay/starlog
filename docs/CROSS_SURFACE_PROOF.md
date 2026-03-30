@@ -90,6 +90,12 @@ HELPER_ROOT=/home/ubuntu/starlog-worktrees/<helper-worktree> \
 ./scripts/cross_surface_proof_bundle.sh
 ```
 
+Legacy compatibility note:
+
+- `VALIDATION_ROOT` is still honored as a fallback bundle root for existing wrapper-driven flows.
+- `STARLOG_CROSS_SURFACE_WORKITEM_ID` can override the manifest workitem id; otherwise the bundle
+  records the generic `cross-surface-proof` identifier instead of a branch-specific WI value.
+
 ## Expected artifact structure
 
 Hosted PWA:
@@ -112,10 +118,10 @@ Desktop helper:
 - `desktop-helper/helper-playwright.txt`
 - `desktop-helper/windows-host-probes.txt`
 - `desktop-helper/windows-host-probes.json`
-- `desktop-helper/desktop-helper-rc-config.png`
-- `desktop-helper/desktop-helper-rc-quick-popup.png`
-- `desktop-helper/desktop-helper-rc-diagnostics.png`
-- `desktop-helper/rc-smoke.json`
+- `desktop-helper/desktop-helper-workspace-config.png`
+- `desktop-helper/desktop-helper-quick-popup.png`
+- `desktop-helper/desktop-helper-workspace-diagnostics.png`
+- `desktop-helper/screenshots.json`
 
 ## Manual phone step when the Linux host cannot complete it
 

@@ -4,11 +4,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="${1:-$(date -u +"%Y%m%dT%H%M%SZ")}"
-BUNDLE_ROOT="${CROSS_SURFACE_PROOF_ROOT:-$ROOT_DIR}"
+BUNDLE_ROOT="${CROSS_SURFACE_PROOF_ROOT:-${VALIDATION_ROOT:-$ROOT_DIR}}"
 BUNDLE_DIR="$BUNDLE_ROOT/artifacts/cross-surface-proof/$STAMP"
 BRANCH="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
 GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-WORKITEM_ID="${STARLOG_CROSS_SURFACE_WORKITEM_ID:-WI-623}"
+WORKITEM_ID="${STARLOG_CROSS_SURFACE_WORKITEM_ID:-cross-surface-proof}"
 
 mkdir -p \
   "$BUNDLE_DIR/hosted-pwa" \
@@ -51,10 +51,10 @@ cat >"$BUNDLE_DIR/manifest.json" <<EOF
         "windows-host-probes.txt",
         "windows-host-probes.json",
         "helper-playwright.txt",
-        "desktop-helper-rc-config.png",
-        "desktop-helper-rc-quick-popup.png",
-        "desktop-helper-rc-diagnostics.png",
-        "rc-smoke.json"
+        "desktop-helper-workspace-config.png",
+        "desktop-helper-quick-popup.png",
+        "desktop-helper-workspace-diagnostics.png",
+        "screenshots.json"
       ]
     }
   ]
