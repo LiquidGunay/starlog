@@ -243,7 +243,13 @@ def write_tarball(bundle_root: Path, tarball_path: Path, dry_run: bool) -> None:
             temp_path.unlink(missing_ok=True)
 
 
-def sync_bundle_docs(repo_root: Path, bundle_root: Path, docs_root: Path, dry_run: bool) -> list[Path]:
+def sync_bundle_docs(
+    repo_root: Path,
+    bundle_root: Path,
+    docs_root: Path,
+    runbook_doc_source: Path,
+    dry_run: bool,
+) -> list[Path]:
     targets = [
         ("README.md", "README.md"),
         ("PREVIEW_FEEDBACK_BUNDLE.md", "docs/PREVIEW_FEEDBACK_BUNDLE.md"),
@@ -251,7 +257,6 @@ def sync_bundle_docs(repo_root: Path, bundle_root: Path, docs_root: Path, dry_ru
         ("ANDROID_RELEASE_QA_MATRIX.md", "docs/ANDROID_RELEASE_QA_MATRIX.md"),
         ("evidence/mobile/wi-601-phone-proof.md", "docs/evidence/mobile/wi-601-phone-proof.md"),
         ("RELEASE_HANDOFF.md", "docs/RELEASE_HANDOFF.md"),
-        ("RELEASE_HANDOFF_RUNBOOK.md", "docs/RELEASE_HANDOFF_RUNBOOK.md"),
     ]
     copied: list[Path] = []
     for source_rel, dest_rel in targets:
@@ -264,6 +269,15 @@ def sync_bundle_docs(repo_root: Path, bundle_root: Path, docs_root: Path, dry_ru
             continue
         atomic_copy(source, destination)
         copied.append(destination)
+
+    runbook_destination = bundle_root / "docs/RELEASE_HANDOFF_RUNBOOK.md"
+    if not runbook_doc_source.is_file():
+        raise FileNotFoundError(f"runbook source not found: {runbook_doc_source}")
+    if dry_run:
+        copied.append(runbook_destination)
+    else:
+        atomic_copy(runbook_doc_source, runbook_destination)
+        copied.append(runbook_destination)
 
     return copied
 
@@ -283,7 +297,6 @@ def render_release_doc(manifest: dict[str, object]) -> str:
         "",
         f"- Bundle root: `{manifest['bundle_root']}`",
         f"- Tarball: `{manifest['tarball_path']}`",
-        f"- Tarball sha256: `{manifest['tarball_sha256']}`",
         f"- Tarball checksum: `{manifest['tarball_checksum_path']}`",
         f"- Checksums: `{manifest['checksums_path']}`",
         "",
@@ -300,15 +313,16 @@ def render_release_doc(manifest: dict[str, object]) -> str:
         )
     lines.extend(
         [
-            "",
-            "## Publication",
-            "",
-            f"- Git tag: `{manifest['tag']}`",
-            f"- GitHub release requested: `{str(manifest['publish_github_release']).lower()}`",
-            f"- Release doc sync: `{manifest['release_doc_path']}`",
-            f"- Runbook: `{manifest['runbook_doc_path']}`",
-            "",
-            "## Verification",
+        "",
+        "## Publication",
+        "",
+        f"- Git tag: `{manifest['tag']}`",
+        f"- GitHub release requested: `{str(manifest['publish_github_release']).lower()}`",
+        f"- Release doc sync: `{manifest['release_doc_path']}`",
+        f"- Runbook source: `{manifest['runbook_doc_source_path']}`",
+        f"- Runbook bundle path: `{manifest['runbook_doc_path']}`",
+        "",
+        "## Verification",
             "",
             "Run `sha256sum -c checksums.sha256` from the bundle root to verify the staged binaries.",
         ]
@@ -397,7 +411,7 @@ def main() -> int:
         prune_matching_assets(android_dir, staged_apk, "starlog-preview-*.apk")
         prune_matching_assets(desktop_dir, staged_deb, "*.deb")
 
-    copied_docs = sync_bundle_docs(repo_root, bundle_root, docs_root, args.dry_run)
+    copied_docs = sync_bundle_docs(repo_root, bundle_root, docs_root, runbook_doc_path, args.dry_run)
 
     assets_for_checksums = [
         ("android/" + staged_apk.name, staged_apk),
@@ -413,11 +427,11 @@ def main() -> int:
         "release_name": release_name,
         "bundle_root": str(bundle_root),
         "tarball_path": str(tarball_path),
-        "tarball_sha256": "<pending>",
         "checksums_path": str(bundle_root / "checksums.sha256"),
         "tarball_checksum_path": str(tarball_path) + ".sha256",
         "release_doc_path": str(release_doc_path),
-        "runbook_doc_path": str(runbook_doc_path),
+        "runbook_doc_source_path": str(runbook_doc_path),
+        "runbook_doc_path": str(bundle_root / "docs" / "RELEASE_HANDOFF_RUNBOOK.md"),
         "publish_github_release": bool(args.publish_github_release),
         "assets": [
             {
@@ -436,26 +450,22 @@ def main() -> int:
         "evidence_dir": str(evidence_dir),
     }
 
+    release_doc_text = render_release_doc(manifest)
+
     if args.dry_run:
         print(json.dumps(manifest, indent=2))
         return 0
 
     atomic_write_text(bundle_root / "release-manifest.json", json.dumps(manifest, indent=2) + "\n")
     atomic_write_text(bundle_root / "checksums.sha256", generate_checksums(assets_for_checksums))
-    write_tarball(bundle_root, tarball_path, dry_run=False)
-    tarball_sha256 = sha256_file(tarball_path)
-    atomic_write_text(Path(str(tarball_path) + ".sha256"), f"{tarball_sha256}  {tarball_path.name}\n")
-    manifest["tarball_sha256"] = tarball_sha256
-    atomic_write_text(bundle_root / "release-manifest.json", json.dumps(manifest, indent=2) + "\n")
-    release_doc_text = render_release_doc(manifest)
     atomic_write_text(release_doc_path, release_doc_text)
 
     bundle_release_doc = bundle_root / "docs" / "RELEASE_HANDOFF.md"
     atomic_write_text(bundle_release_doc, release_doc_text)
 
-    runbook_source = repo_root / "docs" / "RELEASE_HANDOFF_RUNBOOK.md"
-    if runbook_source.is_file():
-        atomic_copy(runbook_source, bundle_root / "docs" / "RELEASE_HANDOFF_RUNBOOK.md")
+    write_tarball(bundle_root, tarball_path, dry_run=False)
+    tarball_sha256 = sha256_file(tarball_path)
+    atomic_write_text(Path(str(tarball_path) + ".sha256"), f"{tarball_sha256}  {tarball_path.name}\n")
 
     if not args.skip_git_tag:
         create_or_verify_tag(repo_root, tag, commit, dry_run=False)
