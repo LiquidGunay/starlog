@@ -83,6 +83,7 @@ Current preview baseline:
 Release validation references:
 
 - [`docs/ANDROID_RELEASE_QA_MATRIX.md`](docs/ANDROID_RELEASE_QA_MATRIX.md)
+- [`docs/CROSS_SURFACE_PROOF.md`](docs/CROSS_SURFACE_PROOF.md)
 - [`docs/PWA_RELEASE_VERIFICATION_GATE.md`](docs/PWA_RELEASE_VERIFICATION_GATE.md)
 - [`docs/PWA_HOSTED_SMOKE_CHECKLIST.md`](docs/PWA_HOSTED_SMOKE_CHECKLIST.md)
 

@@ -21,6 +21,7 @@
     "test:web:hosted-smoke": "./scripts/pwa_hosted_smoke.sh",
     "verify:pwa:portability-drill": "./scripts/pwa_portability_drill.sh",
     "verify:pwa:release-gate": "./scripts/pwa_release_gate.sh",
+    "test:cross-surface:proof-bundle": "./scripts/cross_surface_proof_bundle.sh",
     "test:velvet:artifacts": "./scripts/velvet_validation_artifacts.sh",
     "test:desktop-helper": "playwright test",
     "test:android:smoke": "./scripts/android_native_smoke.sh",
