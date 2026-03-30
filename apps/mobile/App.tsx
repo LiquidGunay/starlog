@@ -359,6 +359,7 @@ const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
   stt: "whisper_local",
   tts: "piper_local",
 };
+const DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES = 12;
 
 function supportedSttTargets(localSttAvailable: boolean): ExecutionTarget[] {
   return localSttAvailable ? ["on_device", "batch_local_bridge"] : ["batch_local_bridge"];
@@ -1145,6 +1146,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationToolTraces, setConversationToolTraces] = useState<ConversationToolTrace[]>([]);
   const [lastConversationReset, setLastConversationReset] = useState<ConversationSessionResetResponse | null>(null);
+  const [showFullConversationThread, setShowFullConversationThread] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
   const [status, setStatus] = useState("Ready");
@@ -1166,7 +1168,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
-  const recentConversationMessages = useMemo(() => conversationMessages.slice(-6), [conversationMessages]);
+  const visibleConversationMessages = useMemo(() => {
+    if (showFullConversationThread) {
+      return conversationMessages;
+    }
+    return conversationMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
+  }, [conversationMessages, showFullConversationThread]);
+  const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
   const llmResolution = useMemo(
     () =>
@@ -3284,10 +3292,24 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </Text>
             </View>
           ) : null}
-          {recentConversationMessages.length === 0 ? (
+          {visibleConversationMessages.length === 0 ? (
             <Text style={styles.subtle}>No persistent thread messages loaded yet.</Text>
           ) : (
-            recentConversationMessages.map((message) => {
+            <>
+              {hiddenConversationMessageCount > 0 ? (
+                <View style={styles.inlineCard}>
+                  <Text style={styles.inlineCardTitle}>Earlier thread context is available</Text>
+                  <Text style={styles.subtle}>
+                    {hiddenConversationMessageCount} older message{hiddenConversationMessageCount === 1 ? "" : "s"} are hidden from the compact view.
+                  </Text>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(true)}>
+                      <Text style={styles.buttonText}>Show Full Thread</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+              {visibleConversationMessages.map((message) => {
               const messageTraces = conversationToolTraces.filter((trace) => trace.message_id === message.id);
               const body = message.content.trim() || message.metadata?.assistant_command?.summary || "No message body recorded.";
               return (
@@ -3332,7 +3354,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   ) : null}
                 </View>
               );
-            })
+              })}
+              {showFullConversationThread && conversationMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(false)}>
+                    <Text style={styles.buttonText}>Collapse Thread</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </>
           )}
         </View>
         <View style={styles.buttonRow}>
