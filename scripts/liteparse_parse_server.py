@@ -10,11 +10,25 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
-DEFAULT_PORT = int(os.getenv("STARLOG_LITEPARSE_PORT", "8830"))
+def _env_int(name: str, default: int, *, minimum: int | None = None) -> int:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        value = default
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = default
+    if minimum is not None:
+        return max(minimum, value)
+    return value
+
+
+DEFAULT_PORT = _env_int("STARLOG_LITEPARSE_PORT", 8830, minimum=1)
 DEFAULT_LITEPARSE_BIN = os.getenv("STARLOG_LITEPARSE_BIN", "lit").strip() or "lit"
-DEFAULT_MAX_PAGES = max(1, int(os.getenv("STARLOG_LITEPARSE_MAX_PAGES", "16")))
-DEFAULT_DPI = max(110, int(os.getenv("STARLOG_LITEPARSE_DPI", "170")))
-DEFAULT_TIMEOUT_SECONDS = max(10, int(os.getenv("STARLOG_LITEPARSE_TIMEOUT_SECONDS", "180")))
+DEFAULT_MAX_PAGES = _env_int("STARLOG_LITEPARSE_MAX_PAGES", 16, minimum=1)
+DEFAULT_DPI = _env_int("STARLOG_LITEPARSE_DPI", 170, minimum=110)
+DEFAULT_TIMEOUT_SECONDS = _env_int("STARLOG_LITEPARSE_TIMEOUT_SECONDS", 180, minimum=10)
 DEFAULT_LANGUAGE = os.getenv("STARLOG_LITEPARSE_LANGUAGE", "en").strip() or "en"
 DEFAULT_PADDLE_OCR_SERVER_URL = os.getenv("STARLOG_LITEPARSE_OCR_SERVER_URL", "").strip()
 DEFAULT_OCR_ENABLED = os.getenv("STARLOG_LITEPARSE_OCR_ENABLED", "1").strip().lower() not in {"0", "false", "no"}

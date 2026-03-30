@@ -69,7 +69,9 @@ def _page_values(page: Any, key: str) -> list[Any]:
         value = page.get(key)
     else:
         value = getattr(page, key, None)
-    return list(value or [])
+    if value is None:
+        return []
+    return list(value)
 
 
 @app.get("/healthz")
