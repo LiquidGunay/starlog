@@ -250,6 +250,7 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
 | Canonical production packaging script refuses implicit debug-keystore use by default | PASS | script guard in `scripts/android_prepare_production_release.sh` |
 | Signed production AAB build (`bundleRelease`) through canonical script | PASS | `/tmp/wi622-production-artifacts/starlog-0.1.0-105.aab` |
 | Signed production QA APK build (`assembleRelease`) through canonical script | PASS | `/tmp/wi622-production-artifacts/starlog-0.1.0-105-signed.apk` |
+| Smoke helpers resolve the signed-production QA target as `com.starlog.app/com.starlog.app.dev.MainActivity` when `APP_VARIANT=production` / `-AppVariant production` is used | PASS | `PRINT_CONFIG=1 ./scripts/android_native_smoke.sh`, `.\scripts\android_native_smoke_windows.ps1 -AppVariant production -PrintConfig` |
 | Production artifact metadata + checksums emitted | PASS | `/tmp/wi622-production-artifacts/starlog-0.1.0-105-release-metadata.json`, `/tmp/wi622-production-artifacts/checksums.sha256` |
 
 ## WI-622 notes
@@ -260,3 +261,4 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
 2. The tracked Android `main` manifest no longer carries `SYSTEM_ALERT_WINDOW`, `exp+starlog`, or `DevSettingsActivity`; those remain debug-only.
 3. This validation used the repo debug keystore only to exercise the script end-to-end in CI-like local conditions.
    - Real store uploads still require the actual Starlog upload keystore and a fresh signed-QA-APK phone smoke pass.
+4. The store checklist for this branch now matches the merged release manifest rather than the source manifest.

@@ -41,6 +41,12 @@ Date: 2026-03-30
   - `/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-release-metadata.json`
 - Optional Windows staging for physical-phone QA:
   - add `STARLOG_STAGE_WINDOWS_APK=1`
+- Signed production QA APK smoke commands:
+  - WSL/Linux: `APP_VARIANT=production APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-signed.apk ./scripts/android_native_smoke.sh`
+  - Windows: `.\scripts\android_native_smoke_windows.ps1 -AppVariant production -ApkPath "C:\Temp\starlog-<v>-<n>-signed.apk"`
+- Expected production launcher target for smoke/install validation:
+  - package: `com.starlog.app`
+  - activity: `com.starlog.app/com.starlog.app.dev.MainActivity`
 
 ## 3) Icon/screenshot asset audit
 
@@ -57,22 +63,39 @@ Date: 2026-03-30
 
 ## 4) Permissions + data safety inventory
 
-From `apps/mobile/android/app/src/main/AndroidManifest.xml`:
+From the packaged release manifest at `apps/mobile/android/app/build/intermediates/merged_manifests/release/AndroidManifest.xml`:
 
+- `android.permission.ACCESS_NETWORK_STATE`
 - `android.permission.INTERNET`
 - `android.permission.MODIFY_AUDIO_SETTINGS`
+- `android.permission.POST_NOTIFICATIONS`
 - `android.permission.READ_EXTERNAL_STORAGE`
+- `android.permission.RECEIVE_BOOT_COMPLETED`
 - `android.permission.RECORD_AUDIO`
-- `android.permission.SYSTEM_ALERT_WINDOW`
+- `android.permission.USE_BIOMETRIC`
+- `android.permission.USE_FINGERPRINT`
 - `android.permission.VIBRATE`
+- `android.permission.WAKE_LOCK`
 - `android.permission.WRITE_EXTERNAL_STORAGE`
+- `com.google.android.c2dm.permission.RECEIVE`
+- `com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE`
+- `com.starlog.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`
+- launcher badge/update permissions contributed by dependencies:
+  - Samsung / HTC / Sony / Huawei / OPPO / EverythingMe badge permission set present in the merged release manifest
+
+Release-manifest note:
+
+- `android.permission.SYSTEM_ALERT_WINDOW` is debug-only on this branch and must not be listed in production/store disclosure.
+- Review the exact merged release manifest before each store submission in case upstream libraries change the dependency-contributed badge/install-referrer permission set.
 
 Data-safety submission draft:
 
 - Data types handled by app flow:
   - User-provided text clips, URLs, uploaded/shared media, optional voice recordings.
+- Platform/device signals handled by release dependencies:
+  - notification delivery state and boot-complete restart hooks for alarms/briefing reminders.
 - Purpose:
-  - Capture/organization workflow, transcription/briefing/review features.
+  - Capture/organization workflow, transcription/briefing/review features, and scheduled notification/alarm continuity after reboot.
 - Transport/storage:
   - API transport to Starlog backend when online.
   - Local queued/offline persistence on-device.
@@ -85,6 +108,8 @@ Data-safety submission draft:
   - `docs/evidence/mobile/wi-303-smoke-log.txt`
 - Runtime UI loads after reinstall on the signed production QA APK:
   - collect fresh evidence alongside the release
+- Signed production QA APK smoke targets the packaged release component:
+  - `com.starlog.app/com.starlog.app.dev.MainActivity`
 - Known blocker list reviewed:
   - `docs/ANDROID_RELEASE_QA_MATRIX.md`
 - Go/No-Go:

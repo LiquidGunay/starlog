@@ -6,8 +6,9 @@ ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.local/android}}"
 ADB="${ADB:-$ANDROID_SDK_ROOT/platform-tools/adb}"
 ADB_SERIAL="${ADB_SERIAL:-}"
 APK_PATH="${APK_PATH:-$ROOT_DIR/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk}"
-APP_PACKAGE="${APP_PACKAGE:-com.starlog.app.dev}"
-APP_ACTIVITY="${APP_ACTIVITY:-$APP_PACKAGE/.MainActivity}"
+APP_VARIANT="${APP_VARIANT:-development}"
+APP_PACKAGE="${APP_PACKAGE:-}"
+APP_ACTIVITY="${APP_ACTIVITY:-}"
 DEV_CLIENT_URL="${DEV_CLIENT_URL:-}"
 DEEP_LINK="${DEEP_LINK:-starlog://capture?title=Smoke%20Clip&text=Hello%20from%20adb}"
 SHARE_TITLE="${SHARE_TITLE:-Starlog native share}"
@@ -19,12 +20,13 @@ SKIP_INSTALL="${SKIP_INSTALL:-0}"
 SKIP_LAUNCH="${SKIP_LAUNCH:-0}"
 SKIP_DEEP_LINK="${SKIP_DEEP_LINK:-0}"
 SKIP_TEXT_SHARE="${SKIP_TEXT_SHARE:-0}"
+PRINT_CONFIG="${PRINT_CONFIG:-0}"
 
 usage() {
   cat <<EOF
 Usage: $(basename "$0")
 
-Installs the current Starlog Android debug APK on a connected device/emulator,
+Installs the current Starlog Android APK on a connected device/emulator,
 launches the app, sends a deep-link capture, and sends a text share intent.
 
 Environment overrides:
@@ -32,8 +34,9 @@ Environment overrides:
   ADB                    Explicit adb path
   ADB_SERIAL             Explicit adb serial/device id
   APK_PATH               APK to install
-  APP_PACKAGE            Android package name (default: com.starlog.app.dev)
-  APP_ACTIVITY           Fully qualified launch activity (default: com.starlog.app.dev/.MainActivity)
+  APP_VARIANT            development | preview | production (default: development)
+  APP_PACKAGE            Android package name override
+  APP_ACTIVITY           Fully qualified launch activity override
   DEV_CLIENT_URL         Optional expo-dev-launcher://... URL to open before app launch
   DEEP_LINK              Deep-link payload to open after launch
   SHARE_TITLE            android.intent.extra.SUBJECT for the text share
@@ -45,6 +48,7 @@ Environment overrides:
   SKIP_LAUNCH            Set to 1 to skip the initial app launch
   SKIP_DEEP_LINK         Set to 1 to skip the deep-link capture
   SKIP_TEXT_SHARE        Set to 1 to skip the plain-text share intent
+  PRINT_CONFIG           Set to 1 to print resolved package/activity/apk config and exit
 EOF
 }
 
@@ -75,6 +79,30 @@ require_command_or_file() {
   fi
   printf '%s not found: %s\n' "$label" "$value" >&2
   exit 1
+}
+
+resolve_variant_defaults() {
+  if [[ -z "$APP_PACKAGE" ]]; then
+    case "$APP_VARIANT" in
+      production)
+        APP_PACKAGE="com.starlog.app"
+        ;;
+      preview)
+        APP_PACKAGE="com.starlog.app.preview"
+        ;;
+      development)
+        APP_PACKAGE="com.starlog.app.dev"
+        ;;
+      *)
+        printf 'Unsupported APP_VARIANT: %s\n' "$APP_VARIANT" >&2
+        exit 1
+        ;;
+    esac
+  fi
+
+  if [[ -z "$APP_ACTIVITY" ]]; then
+    APP_ACTIVITY="$APP_PACKAGE/com.starlog.app.dev.MainActivity"
+  fi
 }
 
 adb_cmd() {
@@ -186,6 +214,19 @@ install_apk() {
 
 if [[ "${1:-}" == "--help" ]]; then
   usage
+  exit 0
+fi
+
+resolve_variant_defaults
+
+if [[ "$PRINT_CONFIG" == "1" ]]; then
+  cat <<EOF
+APP_VARIANT=$APP_VARIANT
+APK_PATH=$APK_PATH
+APP_PACKAGE=$APP_PACKAGE
+APP_ACTIVITY=$APP_ACTIVITY
+DEV_CLIENT_URL=$DEV_CLIENT_URL
+EOF
   exit 0
 fi
 

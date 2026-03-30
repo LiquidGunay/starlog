@@ -349,6 +349,9 @@ Useful overrides for the shell smoke helper:
 ADB_SERIAL=<device-serial> pnpm test:android:smoke
 REVERSE_PORTS=8081,8000 pnpm test:android:smoke
 SKIP_INSTALL=1 SKIP_DEEP_LINK=1 pnpm test:android:smoke
+APP_VARIANT=production \
+APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-105-signed.apk \
+./scripts/android_native_smoke.sh
 ```
 
 If your deep-link payload includes `source_url=` or other query params, the repo smoke
@@ -394,6 +397,31 @@ Optional Windows overrides:
   -SkipInstall `
   -SkipDeepLink
 ```
+
+Production QA APK flow:
+
+```bash
+APP_VARIANT=production \
+APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-105-signed.apk \
+PRINT_CONFIG=1 \
+./scripts/android_native_smoke.sh
+```
+
+Expected production resolution:
+
+- package: `com.starlog.app`
+- launcher activity: `com.starlog.app/com.starlog.app.dev.MainActivity`
+
+Windows equivalent:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 `
+  -AppVariant production `
+  -ApkPath "C:\Temp\starlog-0.1.0-105-signed.apk" `
+  -PrintConfig
+```
+
+For an actual signed-production-QA smoke pass, remove `PRINT_CONFIG` / `-PrintConfig` and keep the same `APP_VARIANT` or `-AppVariant production` override.
 
 Use the Windows-host script when:
 
