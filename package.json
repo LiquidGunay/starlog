@@ -12,6 +12,8 @@
     "dev:web": "pnpm --filter web dev",
     "dev:mobile": "pnpm --filter mobile start",
     "dev:desktop-helper": "pnpm --filter starlog-desktop-helper dev",
+    "release:handoff": "python3 ./scripts/release_handoff.py",
+    "test:release:handoff": "python3 ./scripts/release_handoff_smoke.py",
     "android:emulator": "./scripts/android_emulator_boot.sh",
     "android:emulator:aosp": "AVD_NAME=starlog-api34-aosp ./scripts/android_emulator_boot.sh",
     "android:open:dev-client": "./scripts/android_open_dev_client.sh",

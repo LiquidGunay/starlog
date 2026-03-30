@@ -1,11 +1,14 @@
 # Final Preview Signoff
 
-Last updated: 2026-03-27
+Last updated: 2026-03-30
 
 This document is the release-decision handoff for the current voice-native preview build. It is
 intentionally narrower than [docs/VNEXT_TEST_BUNDLE.md](./VNEXT_TEST_BUNDLE.md): it states the
 exact merged baseline, the validated surfaces, and the shortest path to the current installable
 feedback bundle.
+
+The repeatable release entrypoint is `python3 scripts/release_handoff.py`; the current bundle
+snapshot is mirrored in [docs/RELEASE_HANDOFF.md](./RELEASE_HANDOFF.md).
 
 ## Signoff baseline
 

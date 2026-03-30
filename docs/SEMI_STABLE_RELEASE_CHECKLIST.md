@@ -59,6 +59,8 @@ Run additional targeted checks when the touched scope requires them:
 
 ## 4. Produce release artifacts
 
+- Use the single release driver to refresh the bundle, sync docs, and publish checksums:
+  - `python3 scripts/release_handoff.py`
 - Hosted PWA URL verified and reachable.
 - Android APK generated from the target commit if mobile changed.
 - Desktop helper package/generated binary refreshed if desktop helper changed.
