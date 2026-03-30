@@ -2549,6 +2549,10 @@ a {
   gap: 0.6rem;
 }
 
+.assistant-inline-card-stack {
+  background: color-mix(in srgb, var(--bg-2), transparent 3%);
+}
+
 .assistant-inline-card-head {
   display: flex;
   justify-content: space-between;
@@ -2573,6 +2577,38 @@ a {
   justify-content: space-between;
   gap: 0.5rem;
   background: color-mix(in srgb, var(--panel), transparent 16%);
+}
+
+.assistant-inline-step-copy {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.assistant-inline-step-copy p,
+.assistant-inline-step-copy code {
+  margin: 0;
+  color: color-mix(in srgb, var(--text), var(--muted) 22%);
+}
+
+.assistant-inline-step-copy code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.73rem;
+}
+
+.assistant-inline-step-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.assistant-inline-step-card p {
+  margin: 0.2rem 0 0;
+}
+
+.assistant-inline-step-trace {
+  align-items: start;
 }
 
 .assistant-composer {

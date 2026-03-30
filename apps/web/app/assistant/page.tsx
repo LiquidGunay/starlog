@@ -72,9 +72,30 @@ type ConversationMessage = {
   id: string;
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  cards: ConversationCard[];
   metadata: {
     assistant_command?: AgentCommandResponse;
   };
+  created_at: string;
+};
+
+type ConversationCard = {
+  kind: string;
+  version: number;
+  title?: string | null;
+  body?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+type ConversationToolTrace = {
+  id: string;
+  thread_id: string;
+  message_id?: string | null;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  result: unknown;
+  metadata: Record<string, unknown>;
   created_at: string;
 };
 
@@ -85,6 +106,16 @@ type ConversationSnapshot = {
   mode: string;
   session_state: Record<string, unknown>;
   messages: ConversationMessage[];
+  tool_traces: ConversationToolTrace[];
+};
+
+type ConversationSessionResetResponse = {
+  thread_id: string;
+  session_state: Record<string, unknown>;
+  cleared_keys?: string[];
+  preserved_message_count?: number;
+  preserved_tool_trace_count?: number;
+  updated_at: string;
 };
 
 const FALLBACK_EXAMPLES = [
@@ -181,6 +212,22 @@ function extensionForMime(mimeType: string): string {
   return "webm";
 }
 
+function summarizeTraceValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} item${value.length === 1 ? "" : "s"}`;
+  }
+  if (value && typeof value === "object") {
+    return `${Object.keys(value).length} field${Object.keys(value).length === 1 ? "" : "s"}`;
+  }
+  return "No structured payload";
+}
+
 function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueItem {
   if (!value || typeof value !== "object") {
     return false;
@@ -220,6 +267,8 @@ export default function AssistantPage() {
   const [sessionState, setSessionState] = useState<Record<string, unknown>>({});
   const [conversationTitle, setConversationTitle] = useState("Primary Thread");
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [conversationTraces, setConversationTraces] = useState<ConversationToolTrace[]>([]);
+  const [lastResetSummary, setLastResetSummary] = useState<ConversationSessionResetResponse | null>(null);
   const [speakingReply, setSpeakingReply] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -273,6 +322,7 @@ export default function AssistantPage() {
         id: "assistant-preview",
         role: "assistant" as const,
         content: latest.summary,
+        cards: [],
         metadata: { assistant_command: latest },
         created_at: new Date().toISOString(),
       },
@@ -335,6 +385,7 @@ export default function AssistantPage() {
       const derivedHistory = extractAssistantHistory(payload);
       setConversationTitle(payload.title);
       setConversationMessages(payload.messages);
+      setConversationTraces(payload.tool_traces);
       setSessionState(payload.session_state);
       setLatest(derivedHistory[0] ?? null);
       setHistory(derivedHistory);
@@ -763,14 +814,22 @@ export default function AssistantPage() {
 
   async function resetConversationSession() {
     try {
-      await apiRequest<{ thread_id: string; session_state: Record<string, unknown> }>(
+      const payload = await apiRequest<ConversationSessionResetResponse>(
         apiBase,
         token,
         "/v1/conversations/primary/session/reset",
         { method: "POST" },
       );
-      setSessionState({});
-      setStatus("Cleared short-term conversation state");
+      setSessionState(payload.session_state);
+      setLastResetSummary(payload);
+      const clearedKeys = payload.cleared_keys ?? Object.keys(sessionState);
+      const preservedMessageCount = payload.preserved_message_count ?? conversationMessages.length;
+      const preservedTraceCount = payload.preserved_tool_trace_count ?? conversationTraces.length;
+      const clearedLabel =
+        clearedKeys.length > 0 ? `${clearedKeys.length} key${clearedKeys.length === 1 ? "" : "s"} cleared` : "Session already empty";
+      setStatus(
+        `${clearedLabel}; kept ${preservedMessageCount} messages and ${preservedTraceCount} traces`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to clear conversation state");
     }
@@ -861,11 +920,25 @@ export default function AssistantPage() {
                   <span className="assistant-side-kicker">Session Context</span>
                   <span className="command-footnote">{Object.keys(sessionState).length} live keys</span>
                 </div>
+                <p className="command-footnote">Reset clears volatile context only. Messages and runtime traces stay attached to the thread.</p>
                 <p className="console-copy">
                   {Object.keys(sessionState).length > 0
                     ? JSON.stringify(sessionState, null, 2)
                     : "Short-term session state is empty."}
                 </p>
+                {lastResetSummary ? (
+                  <div className="assistant-inline-card">
+                    <div className="assistant-inline-card-head">
+                      <span>Last reset</span>
+                      <span>{new Date(lastResetSummary.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <p>
+                      {(lastResetSummary.cleared_keys ?? []).length > 0
+                        ? `Cleared: ${(lastResetSummary.cleared_keys ?? []).join(", ")}`
+                        : "No session keys needed clearing."}
+                    </p>
+                  </div>
+                ) : null}
               </section>
             </div>
           </aside>
@@ -958,7 +1031,7 @@ export default function AssistantPage() {
                     Load sample
                   </button>
                   <button className="button" type="button" onClick={() => resetConversationSession()}>
-                    Clear session
+                    Reset session memory
                   </button>
                   <button
                     className="button"
@@ -992,6 +1065,7 @@ export default function AssistantPage() {
                 ) : (
                   transcriptMessages.map((message) => {
                     const assistantCommand = message.metadata?.assistant_command;
+                    const messageTraces = conversationTraces.filter((trace) => trace.message_id === message.id);
                     const fallbackBody = assistantCommand?.summary || "No message content recorded.";
                     const body = message.content.trim() || fallbackBody;
                     return (
@@ -1002,6 +1076,47 @@ export default function AssistantPage() {
                         </div>
                         <div className="assistant-thread-bubble">
                           <p>{body}</p>
+                          {message.cards.length > 0 ? (
+                            <div className="assistant-inline-card assistant-inline-card-stack">
+                              <div className="assistant-inline-card-head">
+                                <span>Attached cards</span>
+                                <span>{message.cards.length}</span>
+                              </div>
+                              <div className="assistant-inline-card-steps">
+                                {message.cards.map((card, index) => (
+                                  <div key={`${message.id}-card-${card.kind}-${index}`} className="assistant-inline-step assistant-inline-step-card">
+                                    <div>
+                                      <strong>{card.title || card.kind.replace(/_/g, " ")}</strong>
+                                      {card.body ? <p>{card.body}</p> : null}
+                                    </div>
+                                    <span>v{card.version}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {messageTraces.length > 0 ? (
+                            <div className="assistant-inline-card assistant-inline-card-stack">
+                              <div className="assistant-inline-card-head">
+                                <span>Runtime trace</span>
+                                <span>{messageTraces.length}</span>
+                              </div>
+                              <div className="assistant-inline-card-steps">
+                                {messageTraces.map((trace) => (
+                                  <div key={trace.id} className="assistant-inline-step assistant-inline-step-trace">
+                                    <div className="assistant-inline-step-copy">
+                                      <strong>{trace.tool_name}</strong>
+                                      <p>{summarizeTraceValue(trace.result)}</p>
+                                      {Object.keys(trace.arguments).length > 0 ? (
+                                        <code>{JSON.stringify(trace.arguments)}</code>
+                                      ) : null}
+                                    </div>
+                                    <span>{trace.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           {assistantCommand ? (
                             <div className="assistant-inline-card">
                               <div className="assistant-inline-card-head">

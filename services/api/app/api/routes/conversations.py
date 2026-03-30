@@ -59,7 +59,9 @@ def reset_primary_conversation_session(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> ConversationSessionResetResponse:
-    return ConversationSessionResetResponse.model_validate(conversation_service.reset_session_state(db))
+    return ConversationSessionResetResponse.model_validate(
+        conversation_service.reset_session_state(db)
+    ).model_dump(mode="json")
 
 
 @router.post("/primary/chat", response_model=ConversationTurnResponse, status_code=status.HTTP_201_CREATED)

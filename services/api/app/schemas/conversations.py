@@ -62,6 +62,9 @@ class ConversationMessageCreateRequest(BaseModel):
 class ConversationSessionResetResponse(BaseModel):
     thread_id: str
     session_state: dict[str, Any] = Field(default_factory=dict)
+    cleared_keys: list[str] = Field(default_factory=list)
+    preserved_message_count: int = Field(default=0, ge=0)
+    preserved_tool_trace_count: int = Field(default=0, ge=0)
     updated_at: datetime
 
 
