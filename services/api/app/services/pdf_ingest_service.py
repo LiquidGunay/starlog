@@ -23,6 +23,11 @@ def _ocr_server_url() -> str | None:
     return value or None
 
 
+def _parse_server_url() -> str | None:
+    value = os.getenv("STARLOG_PDF_PARSE_SERVER_URL", "").strip()
+    return value or None
+
+
 def _env_int(name: str, default: int) -> int:
     raw_value = os.getenv(name, "").strip()
     if not raw_value:
@@ -31,6 +36,56 @@ def _env_int(name: str, default: int) -> int:
         return int(raw_value)
     except ValueError:
         return default
+
+
+def _extract_with_parse_server(path: Path) -> str | None:
+    server_url = _parse_server_url()
+    if not server_url:
+        return None
+
+    language = os.getenv("STARLOG_PDF_OCR_LANGUAGE", "en").strip() or "en"
+    dpi = max(110, _env_int("STARLOG_PDF_PARSE_DPI", _env_int("STARLOG_PDF_OCR_DPI", 170)))
+    max_pages = max(1, min(_env_int("STARLOG_PDF_PARSE_MAX_PAGES", 16), 48))
+    timeout = max(10, _env_int("STARLOG_PDF_PARSE_TIMEOUT_SECONDS", _env_int("STARLOG_PDF_OCR_TIMEOUT_SECONDS", 90)))
+    ocr_enabled = os.getenv("STARLOG_PDF_PARSE_OCR_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+    ocr_server_url = os.getenv("STARLOG_PDF_PARSE_OCR_SERVER_URL", "").strip() or _ocr_server_url() or ""
+
+    boundary = f"starlog-parse-{uuid.uuid4().hex}"
+    body = bytearray()
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'.encode("utf-8"))
+    body.extend(b"Content-Type: application/pdf\r\n\r\n")
+    body.extend(path.read_bytes())
+    body.extend(b"\r\n")
+    for field_name, field_value in (
+        ("language", language),
+        ("dpi", str(dpi)),
+        ("max_pages", str(max_pages)),
+        ("ocr_enabled", "true" if ocr_enabled else "false"),
+        ("ocr_server_url", ocr_server_url),
+    ):
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{field_name}"\r\n\r\n'.encode("utf-8"))
+        body.extend(field_value.encode("utf-8"))
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+    request = Request(
+        server_url,
+        data=bytes(body),
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "User-Agent": "Starlog/0.1 pdf-parse",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, URLError, TimeoutError):
+        return None
+
+    text = _normalize_text(str(payload.get("text") or ""))
+    return text or None
 
 
 def _extract_with_ocr_server(path: Path) -> str | None:
@@ -254,6 +309,7 @@ _COMMON_WORDS = {
 
 def _fallback_priority(provider_name: str) -> int:
     return {
+        "liteparse_server": 4,
         "pypdf": 3,
         "strings": 2,
         "ocr_server": 1,
@@ -299,6 +355,7 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
     fallback_candidate: dict[str, Any] | None = None
     fallback_rank: tuple[int, int, int, int, int] | None = None
     for provider_name, extractor, mode in (
+        ("liteparse_server", _extract_with_parse_server, "liteparse"),
         ("ocr_server", _extract_with_ocr_server, "ocr_server"),
         ("pypdf", _extract_with_pypdf, "text_layer"),
         ("strings", _extract_with_strings, "heuristic_fallback"),
