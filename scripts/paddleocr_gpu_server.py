@@ -46,6 +46,32 @@ def _get_ocr(language: str) -> PaddleOCR:
     return _ocr_cache[lang]
 
 
+def _bbox_from_polygon(value: Any) -> list[int]:
+    if not isinstance(value, (list, tuple)) or not value:
+        return [0, 0, 0, 0]
+    xs: list[float] = []
+    ys: list[float] = []
+    for point in value:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            xs.append(float(point[0]))
+            ys.append(float(point[1]))
+        except (TypeError, ValueError):
+            continue
+    if not xs or not ys:
+        return [0, 0, 0, 0]
+    return [int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))]
+
+
+def _page_values(page: Any, key: str) -> list[Any]:
+    if isinstance(page, dict):
+        value = page.get(key)
+    else:
+        value = getattr(page, key, None)
+    return list(value or [])
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
     return {"ok": True, "use_gpu": USE_GPU, "device": paddle.device.get_device(), "configured_device": PADDLE_DEVICE}
@@ -57,12 +83,17 @@ async def ocr(file: UploadFile = File(...), language: str = Form("en")) -> dict[
     result = _get_ocr(language).predict(np.array(image))
     results = []
     for page in result:
-        if isinstance(page, dict):
-            texts = page.get("rec_texts", []) or []
-        else:
-            texts = getattr(page, "rec_texts", []) or []
-        for item in texts:
-            results.append({"text": str(item), "bbox": [0, 0, 0, 0], "confidence": 1.0})
+        texts = _page_values(page, "rec_texts")
+        scores = _page_values(page, "rec_scores")
+        polygons = _page_values(page, "dt_polys")
+        for index, item in enumerate(texts):
+            bbox = _bbox_from_polygon(polygons[index]) if index < len(polygons) else [0, 0, 0, 0]
+            confidence_raw = scores[index] if index < len(scores) else 1.0
+            try:
+                confidence = float(confidence_raw)
+            except (TypeError, ValueError):
+                confidence = 1.0
+            results.append({"text": str(item), "bbox": bbox, "confidence": max(0.0, min(confidence, 1.0))})
     return {
         "results": results,
         "language": language,

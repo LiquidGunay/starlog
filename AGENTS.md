@@ -415,3 +415,4 @@ Troubleshooting checklist:
 - 2026-03-30: Preview-bundle refreshes can still copy stale release text even after the APK is replaced; after refresh, verify copied docs, APK names, version strings, and checksums inside `/home/ubuntu/starlog_preview_bundle` before handoff.
 - 2026-03-30: Do not store a tarball's own checksum inside files packed into that same tarball; write the tarball checksum as a sibling `.sha256` file outside the bundle to avoid self-invalidating release artifacts.
 - 2026-03-30: When using Windows `adb.exe` from WSL, install commands must point at a native Windows path like `C:\Temp\...`; `adb.exe` cannot read a WSL-style `/mnt/c/...` APK path even though both refer to the same file.
+- 2026-03-30: Shared `services/api/.venv` validation can import the editable `app` package from a different worktree; pin `PYTHONPATH` to the active worktree's `services/api` when running branch-local API tests from the shared venv.
