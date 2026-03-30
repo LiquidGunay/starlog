@@ -39,7 +39,7 @@ make test-api
 Run cross-surface validation when web/mobile/helper UI or capture flows changed:
 
 ```bash
-./scripts/velvet_validation_artifacts.sh
+./scripts/cross_surface_proof_bundle.sh
 ```
 
 Add the environment flags required for:
@@ -65,6 +65,7 @@ Run additional targeted checks when the touched scope requires them:
 - Android APK generated from the target commit if mobile changed.
 - Desktop helper package/generated binary refreshed if desktop helper changed.
 - Validation bundle path recorded under `artifacts/`.
+- Preferred unified proof path: `artifacts/cross-surface-proof/<timestamp>/`
 - SHA-256 or equivalent checksum recorded for downloadable binaries.
 
 ## 5. Check the evidence bundle

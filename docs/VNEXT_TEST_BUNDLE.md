@@ -13,7 +13,7 @@ Validated locally from the refreshed release worktree on 2026-03-27:
   - `bash ./scripts/pwa_release_gate.sh`
   - PASS at `2026-03-27T18:17:09Z`
 - Fresh validation bundle:
-  - `bash ./scripts/velvet_validation_artifacts.sh 20260327T181800Z`
+  - `bash ./scripts/cross_surface_proof_bundle.sh 20260327T181800Z`
   - hosted smoke: passed
   - Windows helper smoke/probes/screenshots: passed
   - PWA visual proof: skipped because that lane was disabled for this run
@@ -102,10 +102,10 @@ Install from:
 - On the 2026-03-27 semistable pass, the Windows `adb.exe` path itself became unhealthy and returned
   `protocol fault (couldn't read status): connection reset`, so a fresh installed-phone screenshot
   proof was not captured from this host even though the RC2 APK built and staged successfully.
-- The cross-surface host-local proof is now documented in `docs/CROSS_SURFACE_PROOF.md`; on the
-  recorded run, the built PWA shell loaded and rendered the helper-uploaded artifact, but the
-  seeded assistant-thread marker still required API-level evidence rather than a visible transcript
-  render.
+- The cross-surface host-local proof is now documented in `docs/CROSS_SURFACE_PROOF.md`; the
+  canonical bundle path is `artifacts/cross-surface-proof/<timestamp>/`, and on the recorded run,
+  the built PWA shell loaded and rendered the helper-uploaded artifact, but the seeded
+  assistant-thread marker still required API-level evidence rather than a visible transcript render.
 
 ## Fast pre-handoff verification
 

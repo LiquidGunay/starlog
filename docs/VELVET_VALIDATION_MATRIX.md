@@ -50,6 +50,12 @@ Observed on `2026-03-27` from `/home/ubuntu/starlog-worktrees/velvet-cross-devic
 
 Reusable scaffolding for future passes now lives in:
 
+- `scripts/prepare_cross_surface_proof_bundle.sh`
+- `scripts/capture_cross_surface_windows_host_probe.sh`
+- `scripts/cross_surface_proof_bundle.sh`
+
+Compatibility wrappers still exist:
+
 - `scripts/prepare_velvet_validation_bundle.sh`
 - `scripts/capture_velvet_windows_host_probe.sh`
 - `scripts/velvet_validation_artifacts.sh`
@@ -60,21 +66,21 @@ The default supervisor entrypoint is now:
 
 ```bash
 cd /home/ubuntu/starlog
-./scripts/velvet_validation_artifacts.sh
+./scripts/cross_surface_proof_bundle.sh
 ```
 
-That command creates `artifacts/velvet-validation/<timestamp>/`, runs the ready-now PWA and Windows
+That command creates `artifacts/cross-surface-proof/<timestamp>/`, runs the ready-now PWA and Windows
 checks, and writes a per-step summary to:
 
-- `artifacts/velvet-validation/<timestamp>/RUN_SUMMARY.md`
-- `artifacts/velvet-validation/<timestamp>/run-summary.json`
+- `artifacts/cross-surface-proof/<timestamp>/RUN_SUMMARY.md`
+- `artifacts/cross-surface-proof/<timestamp>/run-summary.json`
 
 If you run it from a fresh linked worktree, attach the shared dependency state first:
 
 ```bash
 cd /home/ubuntu/starlog-worktrees/<your-worktree>
 bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
-./scripts/velvet_validation_artifacts.sh
+./scripts/cross_surface_proof_bundle.sh
 ```
 
 Optional paths stay explicit via environment variables:
@@ -90,7 +96,7 @@ ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
 ADB_SERIAL=9dd62e84 \
 REVERSE_PORTS=8000 \
 SKIP_INSTALL=1 \
-./scripts/velvet_validation_artifacts.sh
+./scripts/cross_surface_proof_bundle.sh
 ```
 
 Optional roots for split worktrees can also be overridden:
@@ -100,7 +106,7 @@ VALIDATION_ROOT=/home/ubuntu/starlog \
 PWA_ROOT=/home/ubuntu/starlog-worktrees/velvet-pwa-salon-thread \
 MOBILE_ROOT=/home/ubuntu/starlog-worktrees/velvet-mobile-capture-gesture \
 HELPER_ROOT=/home/ubuntu/starlog-worktrees/velvet-desktop-helper-instrument \
-./scripts/velvet_validation_artifacts.sh
+./scripts/cross_surface_proof_bundle.sh
 ```
 
 ## Validation targets
@@ -108,7 +114,7 @@ HELPER_ROOT=/home/ubuntu/starlog-worktrees/velvet-desktop-helper-instrument \
 | Target | Branch dependency | Command(s) to run | Expected evidence | Current status |
 | --- | --- | --- | --- | --- |
 | PWA browser | `WI-610` | `bash ./scripts/pwa_hosted_smoke.sh` | log, API log, Playwright screenshots under `artifacts/pwa-hosted-smoke/` | Ready now; passed on `2026-03-27` |
-| PWA visual proof | `WI-610` | `STARLOG_CROSS_SURFACE_API_BASE=... STARLOG_CROSS_SURFACE_TOKEN=... node scripts/cross_surface_web_proof.mjs artifacts/velvet-validation/<stamp>/pwa-proof` | `pwa-assistant-thread.png`, `pwa-artifacts-desktop-clip.png`, `pwa-proof.json` | Blocked on Velvet UI branch being ready for proof capture |
+| PWA visual proof | `WI-610` | `STARLOG_CROSS_SURFACE_API_BASE=... STARLOG_CROSS_SURFACE_TOKEN=... node scripts/cross_surface_web_proof.mjs artifacts/cross-surface-proof/<stamp>/hosted-pwa` | `pwa-assistant-thread.png`, `pwa-artifacts-desktop-clip.png`, `pwa-proof.json` | Blocked on Velvet UI branch being ready for proof capture |
 | Android phone, native companion | `WI-611` | follow the phone flow below; final smoke command is `./scripts/android_native_smoke.sh` | phone screenshot(s), smoke terminal log, optionally Metro relay log | Phone is visible now; full Velvet proof blocked on mobile UI branch |
 | Android phone, installed PWA | `WI-610` | open PWA on phone browser against LAN web/API, then capture screenshots manually | one `/assistant` screenshot, one secondary workspace screenshot | Blocked on Velvet PWA branch |
 | Windows helper browser-fallback smoke | `WI-612` | `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts` | Playwright output and any `test-results/` assets | Ready now; quick popup smoke passed on `2026-03-27` |
@@ -131,7 +137,7 @@ Preferred evidence paths:
 - `artifacts/pwa-hosted-smoke/hosted-smoke-<timestamp>.log`
 - `artifacts/pwa-hosted-smoke/api-<timestamp>.log`
 - `artifacts/pwa-hosted-smoke/test-results/`
-- `artifacts/velvet-validation/<timestamp>/pwa-proof/`
+- `artifacts/cross-surface-proof/<timestamp>/hosted-pwa/`
 
 ### 2. Android phone
 
@@ -146,7 +152,7 @@ The phone path is ready when all of the following are true:
 
 Preferred evidence path:
 
-- `artifacts/velvet-validation/<timestamp>/android-phone/`
+- `artifacts/cross-surface-proof/<timestamp>/phone-app/`
 
 Suggested contents:
 
@@ -167,14 +173,16 @@ The Windows helper path is ready when all of the following are true:
 
 Preferred evidence path:
 
-- `artifacts/velvet-validation/<timestamp>/windows-helper/`
+- `artifacts/cross-surface-proof/<timestamp>/desktop-helper/`
 
 Suggested contents:
 
 - `helper-playwright.txt`
 - `windows-probes.txt`
-- `helper-popup.png`
-- `helper-workspace.png`
+- `desktop-helper-workspace-config.png`
+- `desktop-helper-quick-popup.png`
+- `desktop-helper-workspace-diagnostics.png`
+- `screenshots.json`
 
 ## Exact command bundles
 
@@ -201,7 +209,7 @@ proof:
 cd "$PWA_ROOT"
 STARLOG_CROSS_SURFACE_API_BASE='http://127.0.0.1:8011' \
 STARLOG_CROSS_SURFACE_TOKEN='<token>' \
-node scripts/cross_surface_web_proof.mjs artifacts/velvet-validation/<timestamp>/pwa-proof
+node scripts/cross_surface_web_proof.mjs artifacts/cross-surface-proof/<timestamp>/hosted-pwa
 ```
 
 ### Android phone flow on this host
@@ -265,8 +273,8 @@ Bundle scaffolding plus host probe capture:
 VALIDATION_ROOT=/home/ubuntu/starlog-worktrees/velvet-cross-device-validation
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
 cd "$VALIDATION_ROOT"
-./scripts/prepare_velvet_validation_bundle.sh "$STAMP"
-./scripts/capture_velvet_windows_host_probe.sh "$STAMP"
+./scripts/prepare_cross_surface_proof_bundle.sh "$STAMP"
+./scripts/capture_cross_surface_windows_host_probe.sh "$STAMP"
 ```
 
 After the Velvet helper branch is ready, run:
@@ -287,7 +295,7 @@ The supervisor can use this order for final proof capture:
 If all three UI branches are available at once, cherry-pick them into one disposable validation
 worktree and store the final evidence bundle under:
 
-- `artifacts/velvet-validation/<timestamp>/`
+- `artifacts/cross-surface-proof/<timestamp>/`
 
 ## Known blockers outside this branch
 

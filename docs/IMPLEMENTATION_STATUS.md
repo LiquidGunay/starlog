@@ -139,8 +139,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
   - release gate passed via `bash ./scripts/pwa_release_gate.sh` on `2026-03-22T14:18:37Z`
   - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:16:56Z`
   - release gate build passes when run in isolation; a prior `Unexpected end of JSON input` failure came from overlapping Next builds during concurrent gate/smoke execution rather than a persistent app defect
-- Semi-stable refresh on `2026-03-27` produced a fresh Android preview RC2 artifact (`0.1.0-preview.rc2`, code `103`, SHA-256 `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`), a passing PWA release gate at `2026-03-27T18:17:09Z`, and a fresh Velvet validation bundle under `artifacts/velvet-validation/20260327T181800Z`.
-- That 2026-03-27 Velvet validation bundle proved hosted smoke plus Windows helper smoke/probes/screenshots, but its `pwa_visual_proof`, `android_smoke`, and `android_screenshot` lanes were skipped because those optional lanes were disabled on that run.
+- Semi-stable refresh on `2026-03-27` produced a fresh Android preview RC2 artifact (`0.1.0-preview.rc2`, code `103`, SHA-256 `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`), a passing PWA release gate at `2026-03-27T18:17:09Z`, and a fresh cross-surface proof bundle under `artifacts/cross-surface-proof/20260327T181800Z`.
+- The unified proof runner is now `./scripts/cross_surface_proof_bundle.sh`, which bundles hosted PWA, installed phone-app, and desktop-helper evidence into one artifact tree while preserving the older Velvet-named entrypoint as a compatibility wrapper and continuing to honor `VALIDATION_ROOT` as a bundle-root fallback.
+- That 2026-03-27 proof bundle proved hosted smoke plus Windows helper smoke/probes/screenshots, but its optional PWA-visual-proof and phone-app lanes were skipped because those lanes were disabled on that run.
 - The remaining semi-stable release blockers on this host are: a fresh PWA visual-proof rerun, and recovery of the Windows ADB daemon path, which regressed on `2026-03-27` with `protocol fault (couldn't read status): connection reset` before a fresh installed-phone screenshot pass could even be attempted.
 
 ## Validation run for this pass
@@ -153,7 +154,7 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - `cd /home/ubuntu/starlog && npx pnpm@9.15.0 --filter web lint`
 - `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle/apps/mobile/android && APP_VARIANT=preview STARLOG_VERSION_NAME=0.1.0-preview.rc2 STARLOG_ANDROID_VERSION_CODE=103 STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true ./gradlew assembleRelease --console=plain`
 - `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle && bash ./scripts/pwa_release_gate.sh`
-- `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle && bash ./scripts/velvet_validation_artifacts.sh 20260327T181800Z`
+- `cd /home/ubuntu/starlog-worktrees/validation-artifact-bundle && bash ./scripts/cross_surface_proof_bundle.sh 20260327T181800Z`
 
 ## Next implementation targets
 
