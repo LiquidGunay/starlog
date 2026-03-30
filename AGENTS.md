@@ -114,7 +114,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 
 - `AGENTS.md` — repo instructions, locked v1 preferences, lock protocol, runbooks, markdown map, preference log, and issue log.
 - `PLAN.md` — canonical forward-looking product and architecture direction for Starlog.
-- `README.md` — top-level repo overview, workspace layout, quick-start entrypoints, and release entrypoints.
+- `README.md` — top-level user-facing product README for install, sign-in handoff, release status, and operator entrypoints; keep developer internals and secrets out of it.
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
@@ -287,6 +287,8 @@ Troubleshooting checklist:
 - 2026-03-15: User wants Starlog Railway services added to the existing Railway project that already hosts the personal website instead of creating a separate Railway project.
 - 2026-03-27: User wants merged branches cleaned up promptly, and any local branch older than 14 days treated as removable unless it is still active against the current plan.
 - 2026-03-27: User wants repeatable semi-stable release prep documented as a checklist, with remaining release blockers turned into explicit work items.
+- 2026-03-30: User wants `README.md` kept user-facing only and free of committed secret material; if a live credential must be shared, return it directly in chat instead of storing it in repo docs.
+- 2026-03-30: User wants GitHub tag/release objects created when a release pass is intentionally cut.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -407,3 +409,9 @@ Troubleshooting checklist:
 - 2026-03-27: The Velvet validation artifact wrapper can be invoked from non-login shells, so it must add `~/.local/bin` to `PATH` or hosted smoke may fail to find `uv` even when `uv` is installed on the host.
 - 2026-03-27: Android dev-client validation from a linked worktree can fail or hang when Metro resolves against shared symlinked installs; the mobile workspace now carries an explicit Metro config, and phone validation on this host is most reliable with `expo-dev-launcher://...`, `adb reverse tcp:8081`, and a localized JS install when needed.
 - 2026-03-27: The semistable preview-bundle refresh initially updated the root bundle README and new RC2 APK but left copied `docs/` payloads and an older RC1 APK in `/home/ubuntu/starlog_preview_bundle`, so future bundle refreshes must explicitly recopy release docs and prune stale preview APKs before handoff.
+- 2026-03-30: On this host, `ci_smoke_matrix.sh` can fail early when `.next/types/**` has not been generated yet; run a build-producing step such as `scripts/pwa_release_gate.sh` first, or ensure Next type generation already happened, before treating the smoke matrix as a product regression.
+- 2026-03-30: A fresh Railway redeploy can still show an older commit hash for a service when no files from that service changed; verify the diff by surface before assuming the deploy missed code.
+- 2026-03-30: `scripts/refresh_preview_feedback_bundle.sh` is not executable on this host, so invoke it with `bash` unless the file mode is explicitly fixed.
+- 2026-03-30: Preview-bundle refreshes can still copy stale release text even after the APK is replaced; after refresh, verify copied docs, APK names, version strings, and checksums inside `/home/ubuntu/starlog_preview_bundle` before handoff.
+- 2026-03-30: Do not store a tarball's own checksum inside files packed into that same tarball; write the tarball checksum as a sibling `.sha256` file outside the bundle to avoid self-invalidating release artifacts.
+- 2026-03-30: When using Windows `adb.exe` from WSL, install commands must point at a native Windows path like `C:\Temp\...`; `adb.exe` cannot read a WSL-style `/mnt/c/...` APK path even though both refer to the same file.
