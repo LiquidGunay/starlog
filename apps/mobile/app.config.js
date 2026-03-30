@@ -37,6 +37,34 @@ function variantSuffix(currentVariant) {
 
 const packageSuffix = variantSuffix(variant);
 const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || process.env.EAS_PROJECT_ID || "";
+const plugins = [
+  [
+    "expo-notifications",
+    {
+      icon: "./assets/icon.png",
+      color: "#1f315d",
+    },
+  ],
+  [
+    "expo-share-intent",
+    {
+      disableIOS: false,
+      iosActivationRules: {
+        NSExtensionActivationSupportsText: true,
+        NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+        NSExtensionActivationSupportsImageWithMaxCount: 8,
+        NSExtensionActivationSupportsMovieWithMaxCount: 8,
+        NSExtensionActivationSupportsFileWithMaxCount: 8,
+      },
+      androidIntentFilters: ["text/*", "image/*", "video/*", "*/*"],
+      androidMultiIntentFilters: ["image/*", "audio/*", "video/*", "*/*"],
+    },
+  ],
+];
+
+if (variant === "development") {
+  plugins.unshift("expo-dev-client");
+}
 
 const extra = projectId
   ? {
@@ -85,31 +113,7 @@ module.exports = {
         },
       ],
     },
-    plugins: [
-      "expo-dev-client",
-      [
-        "expo-notifications",
-        {
-          icon: "./assets/icon.png",
-          color: "#1f315d",
-        },
-      ],
-      [
-        "expo-share-intent",
-        {
-          disableIOS: false,
-          iosActivationRules: {
-            NSExtensionActivationSupportsText: true,
-            NSExtensionActivationSupportsWebURLWithMaxCount: 1,
-            NSExtensionActivationSupportsImageWithMaxCount: 8,
-            NSExtensionActivationSupportsMovieWithMaxCount: 8,
-            NSExtensionActivationSupportsFileWithMaxCount: 8,
-          },
-          androidIntentFilters: ["text/*", "image/*", "video/*", "*/*"],
-          androidMultiIntentFilters: ["image/*", "audio/*", "video/*", "*/*"],
-        },
-      ],
-    ],
+    plugins,
     extra,
   },
 };

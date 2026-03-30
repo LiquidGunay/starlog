@@ -18,6 +18,7 @@
     "android:emulator:aosp": "AVD_NAME=starlog-api34-aosp ./scripts/android_emulator_boot.sh",
     "android:open:dev-client": "./scripts/android_open_dev_client.sh",
     "android:metro:relay:windows": "./scripts/android_windows_metro_relay.sh",
+    "build:android:production": "./scripts/android_prepare_production_release.sh",
     "lint:web": "pnpm --filter web lint",
     "test:web:offline-cache": "playwright test --config=playwright.web.config.ts",
     "test:web:hosted-smoke": "./scripts/pwa_hosted_smoke.sh",

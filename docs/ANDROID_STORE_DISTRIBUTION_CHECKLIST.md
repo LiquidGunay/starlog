@@ -1,10 +1,10 @@
-# Android Store Distribution Checklist (WI-305)
+# Android Store Distribution Checklist (WI-622)
 
-Date: 2026-03-15
+Date: 2026-03-30
 
 ## 1) Release metadata template
 
-- Release name: `Starlog v1 RC __`
+- Release name: `Starlog v1 __`
 - Package: `com.starlog.app`
 - Version name: `STARLOG_VERSION_NAME` (example `0.1.0`)
 - Version code: `STARLOG_ANDROID_VERSION_CODE` (integer, monotonic)
@@ -18,7 +18,7 @@ Date: 2026-03-15
     - Secure token storage abstraction.
     - Native module/runtime hardening for Android dev builds.
   - Known issues:
-    - Dev-client Metro transport toast can appear during local debug sessions.
+    - Preview RC APK issues do not block the production AAB unless they reproduce on the signed production QA APK.
 
 ## 2) Build + signing checklist
 
@@ -32,10 +32,15 @@ Date: 2026-03-15
   - `STARLOG_ANDROID_VERSION_CODE`
 - Verify production config:
   - `cd apps/mobile && APP_VARIANT=production STARLOG_VERSION_NAME=<v> STARLOG_ANDROID_VERSION_CODE=<n> ./node_modules/.bin/expo config --json`
-- Build debug verification APK (device QA):
-  - `cd apps/mobile/android && ./gradlew assembleDebug`
-- Build production AAB path (store upload artifact):
-  - `cd apps/mobile/android && APP_VARIANT=production ./gradlew bundleRelease`
+- Build the signed production artifacts with the canonical script:
+  - `STARLOG_VERSION_NAME=<v> STARLOG_ANDROID_VERSION_CODE=<n> STARLOG_UPLOAD_STORE_FILE=/abs/path/starlog-upload.keystore STARLOG_UPLOAD_STORE_PASSWORD='***' STARLOG_UPLOAD_KEY_ALIAS=starlog_upload STARLOG_UPLOAD_KEY_PASSWORD='***' bash ./scripts/android_prepare_production_release.sh`
+- Expected outputs:
+  - `/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>.aab`
+  - `/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-signed.apk` (unless `STARLOG_BUILD_QA_APK=0`)
+  - `/home/ubuntu/starlog_production_bundle/android/checksums.sha256`
+  - `/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-release-metadata.json`
+- Optional Windows staging for physical-phone QA:
+  - add `STARLOG_STAGE_WINDOWS_APK=1`
 
 ## 3) Icon/screenshot asset audit
 
@@ -48,6 +53,7 @@ Date: 2026-03-15
   - `docs/evidence/mobile/wi-303-smoke-localhost-reverse.png`
   - `docs/evidence/mobile/wi-303-smoke-after-reinstall.png`
   - `docs/evidence/mobile/wi-303-smoke-final.png`
+  - production QA screenshots should come from the signed production APK, not the preview RC APK
 
 ## 4) Permissions + data safety inventory
 
@@ -77,9 +83,9 @@ Data-safety submission draft:
 
 - Device smoke script passes:
   - `docs/evidence/mobile/wi-303-smoke-log.txt`
-- Runtime UI loads after reinstall:
-  - `docs/evidence/mobile/wi-303-smoke-after-reinstall.png`
+- Runtime UI loads after reinstall on the signed production QA APK:
+  - collect fresh evidence alongside the release
 - Known blocker list reviewed:
   - `docs/ANDROID_RELEASE_QA_MATRIX.md`
 - Go/No-Go:
-  - `GO` only when production AAB is signed and Metro/dev-client-only warnings are absent from release runtime path.
+  - `GO` only when the production AAB is signed, the signed QA APK smoke pass is clean, and no dev-client-only manifest/runtime behavior leaks into the release path.
