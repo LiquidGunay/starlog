@@ -30,7 +30,8 @@ This is the active native-mobile path for Starlog. It keeps the Expo-managed app
   - uses `APP_VARIANT=preview`
   - package: `com.starlog.app.preview`
 - `production`
-  - app bundle
+  - signed app bundle for Play upload
+  - optional signed QA APK generated from the same signing inputs
   - uses `APP_VARIANT=production`
   - package: `com.starlog.app`
 
@@ -62,7 +63,34 @@ STARLOG_ANDROID_VERSION_CODE=1 \
 npx expo config --json
 ```
 
-Production release build example (AAB):
+Production release build example (signed AAB + signed QA APK):
+
+```bash
+STARLOG_VERSION_NAME=0.1.0 \
+STARLOG_ANDROID_VERSION_CODE=105 \
+STARLOG_UPLOAD_STORE_FILE=/abs/path/starlog-upload.keystore \
+STARLOG_UPLOAD_STORE_PASSWORD='***' \
+STARLOG_UPLOAD_KEY_ALIAS=starlog_upload \
+STARLOG_UPLOAD_KEY_PASSWORD='***' \
+bash ./scripts/android_prepare_production_release.sh
+```
+
+What the production script does:
+
+- verifies the resolved Expo production config is `Starlog` / `com.starlog.app`
+- requires real upload-keystore credentials before release tasks run
+- builds the Play-upload artifact at `app/build/outputs/bundle/release/app-release.aab`
+- also builds a signed release APK for device QA by default
+- copies renamed artifacts plus `checksums.sha256` and metadata into `/home/ubuntu/starlog_production_bundle/android` by default
+
+Useful overrides:
+
+- `STARLOG_RELEASE_ARTIFACT_ROOT=/abs/path/out`
+- `STARLOG_BUILD_QA_APK=0` to skip the signed QA APK
+- `STARLOG_STAGE_WINDOWS_APK=1` to copy the signed QA APK into `/mnt/c/Temp`
+- `STARLOG_WINDOWS_STAGE_DIR=/mnt/c/Temp/custom-dir`
+
+Manual Gradle equivalent for the store-upload artifact only:
 
 ```bash
 cd apps/mobile/android
@@ -76,6 +104,20 @@ STARLOG_UPLOAD_KEY_PASSWORD='***' \
 ./gradlew bundleRelease
 ```
 
+Manual Gradle equivalent for the signed QA APK:
+
+```bash
+cd apps/mobile/android
+APP_VARIANT=production \
+STARLOG_VERSION_NAME=0.1.0 \
+STARLOG_ANDROID_VERSION_CODE=1 \
+STARLOG_UPLOAD_STORE_FILE=/abs/path/starlog-upload.keystore \
+STARLOG_UPLOAD_STORE_PASSWORD='***' \
+STARLOG_UPLOAD_KEY_ALIAS=starlog_upload \
+STARLOG_UPLOAD_KEY_PASSWORD='***' \
+./gradlew assembleRelease
+```
+
 For local non-production troubleshooting only, you can temporarily allow debug signing in
 release tasks with:
 
@@ -84,6 +126,12 @@ STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true
 ```
 
 Do not use that override for production artifacts.
+
+## Production vs preview release paths
+
+- Preview / RC distribution remains the sideloadable APK path for feedback devices.
+- Production distribution now means a real signed `bundleRelease` AAB for Play Console plus an optional signed QA APK built from the same keystore inputs.
+- The tracked Android `main` manifest no longer carries dev-client-only schemes or `DevSettingsActivity`; those are now debug-only so release packaging stays closer to the store runtime.
 
 ## Main-phone installable preview artifact (WI-402)
 
@@ -301,6 +349,9 @@ Useful overrides for the shell smoke helper:
 ADB_SERIAL=<device-serial> pnpm test:android:smoke
 REVERSE_PORTS=8081,8000 pnpm test:android:smoke
 SKIP_INSTALL=1 SKIP_DEEP_LINK=1 pnpm test:android:smoke
+APP_VARIANT=production \
+APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-105-signed.apk \
+./scripts/android_native_smoke.sh
 ```
 
 If your deep-link payload includes `source_url=` or other query params, the repo smoke
@@ -346,6 +397,31 @@ Optional Windows overrides:
   -SkipInstall `
   -SkipDeepLink
 ```
+
+Production QA APK flow:
+
+```bash
+APP_VARIANT=production \
+APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-105-signed.apk \
+PRINT_CONFIG=1 \
+./scripts/android_native_smoke.sh
+```
+
+Expected production resolution:
+
+- package: `com.starlog.app`
+- launcher activity: `com.starlog.app/com.starlog.app.dev.MainActivity`
+
+Windows equivalent:
+
+```powershell
+.\scripts\android_native_smoke_windows.ps1 `
+  -AppVariant production `
+  -ApkPath "C:\Temp\starlog-0.1.0-105-signed.apk" `
+  -PrintConfig
+```
+
+For an actual signed-production-QA smoke pass, remove `PRINT_CONFIG` / `-PrintConfig` and keep the same `APP_VARIANT` or `-AppVariant production` override.
 
 Use the Windows-host script when:
 

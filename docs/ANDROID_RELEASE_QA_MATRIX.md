@@ -231,3 +231,34 @@ SHA-256: `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`
 
 1. The semistable RC2 APK itself built and staged successfully, but the current Windows ADB daemon on this host is unhealthy.
    - Mitigation: restart/recover the Windows `adb.exe` path outside WSL, then rerun the install/launch/screenshot loop against `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`.
+
+## WI-622 production packaging path
+
+Date: 2026-03-30
+Worktree: `/home/ubuntu/starlog-worktrees/android-production-release-path`
+Branch: `codex/android-production-release-path`
+Validated script: `scripts/android_prepare_production_release.sh`
+Validation artifact root: `/tmp/wi622-production-artifacts`
+Validation version: `0.1.0 (105)`
+Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DEBUG_KEYSTORE_FOR_VALIDATION=1` override
+
+## WI-622 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Production Expo config resolves to `Starlog` / `com.starlog.app` without `expo-dev-client` plugin entries | PASS | local `expo config --json` on 2026-03-30 |
+| Canonical production packaging script refuses implicit debug-keystore use by default | PASS | script guard in `scripts/android_prepare_production_release.sh` |
+| Signed production AAB build (`bundleRelease`) through canonical script | PASS | `/tmp/wi622-production-artifacts/starlog-0.1.0-105.aab` |
+| Signed production QA APK build (`assembleRelease`) through canonical script | PASS | `/tmp/wi622-production-artifacts/starlog-0.1.0-105-signed.apk` |
+| Smoke helpers resolve the signed-production QA target as `com.starlog.app/com.starlog.app.dev.MainActivity` when `APP_VARIANT=production` / `-AppVariant production` is used | PASS | `PRINT_CONFIG=1 ./scripts/android_native_smoke.sh`, `.\scripts\android_native_smoke_windows.ps1 -AppVariant production -PrintConfig` |
+| Production artifact metadata + checksums emitted | PASS | `/tmp/wi622-production-artifacts/starlog-0.1.0-105-release-metadata.json`, `/tmp/wi622-production-artifacts/checksums.sha256` |
+
+## WI-622 notes
+
+1. The production path is now distinct from preview RC packaging:
+   - preview remains the sideload feedback APK flow
+   - production is the signed Play-upload AAB plus optional signed QA APK flow
+2. The tracked Android `main` manifest no longer carries `SYSTEM_ALERT_WINDOW`, `exp+starlog`, or `DevSettingsActivity`; those remain debug-only.
+3. This validation used the repo debug keystore only to exercise the script end-to-end in CI-like local conditions.
+   - Real store uploads still require the actual Starlog upload keystore and a fresh signed-QA-APK phone smoke pass.
+4. The store checklist for this branch now matches the merged release manifest rather than the source manifest.

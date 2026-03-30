@@ -15,7 +15,9 @@
     "postinstall": "patch-package",
     "build:android:development": "eas build --platform android --profile development",
     "build:android:preview": "eas build --platform android --profile preview",
-    "build:android:production": "eas build --platform android --profile production"
+    "build:android:production": "eas build --platform android --profile production",
+    "verify:android:production-config": "APP_VARIANT=production ./node_modules/.bin/expo config --json",
+    "build:android:production:local": "../../scripts/android_prepare_production_release.sh"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.6",

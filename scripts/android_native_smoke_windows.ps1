@@ -2,8 +2,10 @@ param(
   [string]$AdbPath = $(if (Test-Path "C:\Temp\android-platform-tools\platform-tools\adb.exe") { "C:\Temp\android-platform-tools\platform-tools\adb.exe" } else { "adb.exe" }),
   [string]$Serial = "",
   [string]$ApkPath = (Join-Path (Split-Path -Parent $PSScriptRoot) "apps\mobile\android\app\build\outputs\apk\debug\app-debug.apk"),
-  [string]$AppPackage = "com.starlog.app.dev",
-  [string]$AppActivity = "com.starlog.app.dev/.MainActivity",
+  [ValidateSet("development", "preview", "production")]
+  [string]$AppVariant = "development",
+  [string]$AppPackage = "",
+  [string]$AppActivity = "",
   [string]$DevClientUrl = "",
   [string]$DeepLink = "starlog://capture?title=Smoke%20Clip&text=Hello%20from%20adb",
   [string]$ShareTitle = "Starlog native share",
@@ -14,7 +16,8 @@ param(
   [switch]$SkipInstall,
   [switch]$SkipLaunch,
   [switch]$SkipDeepLink,
-  [switch]$SkipTextShare
+  [switch]$SkipTextShare,
+  [switch]$PrintConfig
 )
 
 Set-StrictMode -Version Latest
@@ -82,6 +85,21 @@ function Invoke-AdbChecked {
 function ConvertTo-AndroidShellLiteral {
   param([string]$Value)
   return "'" + ($Value -replace "'", "'\\''") + "'"
+}
+
+function Resolve-VariantDefaults {
+  if (-not $AppPackage) {
+    switch ($AppVariant) {
+      "production" { $script:AppPackage = "com.starlog.app" }
+      "preview" { $script:AppPackage = "com.starlog.app.preview" }
+      "development" { $script:AppPackage = "com.starlog.app.dev" }
+      default { throw "Unsupported AppVariant: $AppVariant" }
+    }
+  }
+
+  if (-not $AppActivity) {
+    $script:AppActivity = "$AppPackage/com.starlog.app.dev.MainActivity"
+  }
 }
 
 function Wait-ForRuntime {
@@ -152,6 +170,19 @@ function Open-DevClient {
   $command = "am start -W -a android.intent.action.VIEW -d $(ConvertTo-AndroidShellLiteral $DevClientUrl)"
   Invoke-AdbChecked -Arguments @("shell", $command) | Out-Null
   Start-Sleep -Seconds 8
+}
+
+Resolve-VariantDefaults
+
+if ($PrintConfig) {
+  [pscustomobject]@{
+    AppVariant = $AppVariant
+    ApkPath = $ApkPath
+    AppPackage = $AppPackage
+    AppActivity = $AppActivity
+    DevClientUrl = $DevClientUrl
+  } | ConvertTo-Json -Depth 3
+  exit 0
 }
 
 Require-CommandOrFile -Value $AdbPath -Label "adb"
