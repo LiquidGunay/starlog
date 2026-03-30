@@ -47,16 +47,26 @@ def _get_ocr(language: str) -> PaddleOCR:
 
 
 def _bbox_from_polygon(value: Any) -> list[int]:
-    if not isinstance(value, (list, tuple)) or not value:
+    if value is None:
+        return [0, 0, 0, 0]
+    try:
+        points = list(value)
+    except TypeError:
+        return [0, 0, 0, 0]
+    if not points:
         return [0, 0, 0, 0]
     xs: list[float] = []
     ys: list[float] = []
-    for point in value:
-        if not isinstance(point, (list, tuple)) or len(point) < 2:
+    for point in points:
+        try:
+            coords = list(point)
+        except TypeError:
+            continue
+        if len(coords) < 2:
             continue
         try:
-            xs.append(float(point[0]))
-            ys.append(float(point[1]))
+            xs.append(float(coords[0]))
+            ys.append(float(coords[1]))
         except (TypeError, ValueError):
             continue
     if not xs or not ys:

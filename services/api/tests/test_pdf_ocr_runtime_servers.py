@@ -50,8 +50,22 @@ def test_paddleocr_page_values_accepts_numpy_backed_arrays(monkeypatch) -> None:
         def __bool__(self) -> bool:
             raise ValueError("truth value of an array is ambiguous")
 
+    class FakePoint:
+        def __init__(self, x: float, y: float) -> None:
+            self._coords = (x, y)
+
+        def __iter__(self):
+            return iter(self._coords)
+
+    class FakePolygon:
+        def __init__(self, points: list[FakePoint]) -> None:
+            self._points = points
+
+        def __iter__(self):
+            return iter(self._points)
+
     page = {
-        "dt_polys": FakeArray([[[1, 2], [5, 2], [5, 7], [1, 7]]]),
+        "dt_polys": FakeArray([FakePolygon([FakePoint(1, 2), FakePoint(5, 2), FakePoint(5, 7), FakePoint(1, 7)])]),
         "rec_scores": FakeArray([0.97]),
     }
 
