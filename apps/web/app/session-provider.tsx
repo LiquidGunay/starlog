@@ -51,6 +51,19 @@ type SessionConfig = {
 };
 
 const SessionContext = createContext<SessionConfig | null>(null);
+const LOCAL_API_BASE = "http://localhost:8000";
+const PRODUCTION_API_BASE = "https://starlog-api-production.up.railway.app";
+
+function inferDefaultApiBase(): string {
+  if (typeof window === "undefined") {
+    return LOCAL_API_BASE;
+  }
+  const host = window.location.hostname;
+  if (host.endsWith("railway.app") || host.includes("starlog-web")) {
+    return PRODUCTION_API_BASE;
+  }
+  return LOCAL_API_BASE;
+}
 
 type SyncActivityWrite = {
   id: string;
@@ -97,7 +110,7 @@ function toSyncActivity(
 }
 
 export function SessionProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [apiBase, setApiBaseState] = useState("http://localhost:8000");
+  const [apiBase, setApiBaseState] = useState(LOCAL_API_BASE);
   const [token, setTokenState] = useState("");
   const [clientId, setClientId] = useState("web_local");
   const [isOnline, setIsOnline] = useState(true);
@@ -112,6 +125,8 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
     const storedToken = window.localStorage.getItem("starlog-token");
     if (storedApi) {
       setApiBaseState(storedApi);
+    } else {
+      setApiBaseState(inferDefaultApiBase());
     }
     if (storedToken) {
       setTokenState(storedToken);

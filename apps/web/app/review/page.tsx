@@ -32,6 +32,9 @@ const REVIEW_SIDECAR_PANE_SNAPSHOT = "review.pane.sidecar";
 export default function ReviewPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const sidecarPane = usePaneCollapsed(REVIEW_SIDECAR_PANE_SNAPSHOT);
+  const missingToken = !token;
+  const missingApiBase = !apiBase;
+  const missingConfig = missingToken || missingApiBase;
   const [cards, setCards] = useState<Card[]>(() => readEntitySnapshot<Card[]>(REVIEW_CARDS_SNAPSHOT, []));
   const [showAnswer, setShowAnswer] = useState(
     () => readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
@@ -56,6 +59,12 @@ export default function ReviewPage() {
         : readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 })
     ));
   }, []);
+
+  useEffect(() => {
+    if (missingConfig) {
+      setStatus("Connect to the API to load the review queue.");
+    }
+  }, [missingConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +95,14 @@ export default function ReviewPage() {
   }, []);
 
   async function loadDue() {
+    if (missingApiBase) {
+      setStatus("API base missing. Set it in Runtime or Command Center.");
+      return;
+    }
+    if (missingToken) {
+      setStatus("Bearer token missing. Add it in Runtime or Command Center.");
+      return;
+    }
     try {
       const payload = await apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=20");
       setCards(payload);
@@ -217,25 +234,35 @@ export default function ReviewPage() {
             <>
               <span className="sync-tag">Tag: queue_empty</span>
               <div className="sync-prompt">No due cards.</div>
-              <p className="sync-reveal">Load due cards to resume review.</p>
+              <p className="sync-reveal">
+                {missingConfig
+                  ? "Connect to the API and load the queue to start reviewing."
+                  : "Load due cards to resume review."}
+              </p>
+              {missingConfig ? (
+                <div className="button-row">
+                  <Link className="button" href="/runtime">Open Runtime</Link>
+                  <Link className="button" href="/assistant">Open Command Center</Link>
+                </div>
+              ) : null}
             </>
           )}
         </div>
 
         <div className="sync-rating-row">
-          <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+          <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard || missingConfig}>
             <span>Again</span>
             <small>{"< 1m"}</small>
           </button>
-          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard || missingConfig}>
             <span>Hard</span>
             <small>1d</small>
           </button>
-          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
+          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard || missingConfig}>
             <span>Good</span>
             <small>3d</small>
           </button>
-          <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
+          <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard || missingConfig}>
             <span>Easy</span>
             <small>5d</small>
           </button>
@@ -260,12 +287,12 @@ export default function ReviewPage() {
             <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
           </div>
           <div className="button-row">
-            <button className="button" type="button" onClick={() => loadDue()}>Refresh Due Cards</button>
+            <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh Due Cards</button>
             <button
               className="button"
               type="button"
               onClick={() => setShowAnswer((previous) => !previous)}
-              disabled={!currentCard}
+              disabled={!currentCard || missingConfig}
             >
               {showAnswer ? "Hide Answer" : "Reveal Answer"}
             </button>
@@ -273,7 +300,9 @@ export default function ReviewPage() {
           <p className="status">{status}</p>
           <h2>Queue preview</h2>
           {duePreview.length === 0 ? (
-            <p className="console-copy">No queued cards.</p>
+            <p className="console-copy">
+              {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
+            </p>
           ) : (
             <div className="scroll-panel">
               {duePreview.map((card) => (
