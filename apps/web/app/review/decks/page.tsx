@@ -46,6 +46,9 @@ const DEFAULT_SCHEDULE: DeckSchedule = {
 
 export default function DeckBrowserPage() {
   const { apiBase, token } = useSessionConfig();
+  const missingToken = !token;
+  const missingApiBase = !apiBase;
+  const missingConfig = missingToken || missingApiBase;
   const [decks, setDecks] = useState<Deck[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [status, setStatus] = useState("Ready");
@@ -72,6 +75,10 @@ export default function DeckBrowserPage() {
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
 
   const loadDecks = useCallback(async () => {
+    if (missingConfig) {
+      setDecks([]);
+      return [];
+    }
     const payload = await apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks");
     setDecks(payload);
     if (!selectedDeckId && payload[0]) {
@@ -79,9 +86,13 @@ export default function DeckBrowserPage() {
       setCardDeckId(payload[0].id);
     }
     return payload;
-  }, [apiBase, selectedDeckId, token]);
+  }, [apiBase, missingConfig, selectedDeckId, token]);
 
   const loadCards = useCallback(async (nextDeckFilter = selectedDeckFilter) => {
+    if (missingConfig) {
+      setCards([]);
+      return [];
+    }
     const params = new URLSearchParams({ limit: "500" });
     if (nextDeckFilter !== "all") {
       params.set("deck_id", nextDeckFilter);
@@ -89,16 +100,22 @@ export default function DeckBrowserPage() {
     const payload = await apiRequest<Card[]>(apiBase, token, `/v1/cards?${params.toString()}`);
     setCards(payload);
     return payload;
-  }, [apiBase, selectedDeckFilter, token]);
+  }, [apiBase, missingConfig, selectedDeckFilter, token]);
 
   const reload = useCallback(async (nextDeckFilter = selectedDeckFilter) => {
+    if (missingConfig) {
+      setDecks([]);
+      setCards([]);
+      setStatus("Connect to the API to load decks and cards.");
+      return;
+    }
     try {
       const [nextDecks, nextCards] = await Promise.all([loadDecks(), loadCards(nextDeckFilter)]);
       setStatus(`Loaded ${nextDecks.length} decks and ${nextCards.length} cards`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load decks and cards");
     }
-  }, [loadCards, loadDecks, selectedDeckFilter]);
+  }, [loadCards, loadDecks, missingConfig, selectedDeckFilter]);
 
   useEffect(() => {
     void reload();
@@ -149,6 +166,10 @@ export default function DeckBrowserPage() {
   }
 
   async function createDeck() {
+    if (missingConfig) {
+      setStatus("Connect to the API before creating decks.");
+      return;
+    }
     try {
       const created = await apiRequest<Deck>(apiBase, token, "/v1/cards/decks", {
         method: "POST",
@@ -172,6 +193,10 @@ export default function DeckBrowserPage() {
       setStatus("Select a deck or create a new one");
       return;
     }
+    if (missingConfig) {
+      setStatus("Connect to the API before saving decks.");
+      return;
+    }
     try {
       const updated = await apiRequest<Deck>(apiBase, token, `/v1/cards/decks/${selectedDeckId}`, {
         method: "PATCH",
@@ -189,6 +214,10 @@ export default function DeckBrowserPage() {
   }
 
   async function createCard() {
+    if (missingConfig) {
+      setStatus("Connect to the API before creating cards.");
+      return;
+    }
     try {
       const created = await apiRequest<Card>(apiBase, token, "/v1/cards", {
         method: "POST",
@@ -215,6 +244,10 @@ export default function DeckBrowserPage() {
   async function saveCard() {
     if (!selectedCardId) {
       setStatus("Select a card or create a new one");
+      return;
+    }
+    if (missingConfig) {
+      setStatus("Connect to the API before saving cards.");
       return;
     }
     try {
@@ -252,9 +285,10 @@ export default function DeckBrowserPage() {
           </div>
           <div className="button-row">
             <Link className="button" href="/review">Due Queue</Link>
-            <button className="button" type="button" onClick={() => reload(selectedDeckFilter)}>Refresh</button>
-            <button className="button" type="button" onClick={() => clearDeckEditor()}>New Deck</button>
-            <button className="button" type="button" onClick={() => clearCardEditor()}>New Card</button>
+            <button className="button" type="button" onClick={() => reload(selectedDeckFilter)} disabled={missingConfig}>Refresh</button>
+            <button className="button" type="button" onClick={() => clearDeckEditor()} disabled={missingConfig}>New Deck</button>
+            <button className="button" type="button" onClick={() => clearCardEditor()} disabled={missingConfig}>New Card</button>
+            {missingConfig ? <Link className="button" href="/runtime">Open Runtime</Link> : null}
           </div>
           <p className="status">{status}</p>
         </div>
@@ -269,6 +303,7 @@ export default function DeckBrowserPage() {
                 setSelectedDeckFilter("all");
                 void reload("all");
               }}
+              disabled={missingConfig}
             >
               All decks
             </button>
@@ -283,6 +318,7 @@ export default function DeckBrowserPage() {
                   setCardDeckId(deck.id);
                   void reload(deck.id);
                 }}
+                disabled={missingConfig}
               >
                 {deck.name} ({deck.card_count})
               </button>
@@ -294,7 +330,9 @@ export default function DeckBrowserPage() {
           <div className="panel glass">
             <h2>Decks</h2>
             {decks.length === 0 ? (
-              <p className="console-copy">No decks loaded yet.</p>
+              <p className="console-copy">
+                {missingConfig ? "Connect to the API to load decks." : "No decks loaded yet."}
+              </p>
             ) : (
               <ul className="review-browser-list">
                 {decks.map((deck) => (
@@ -358,15 +396,17 @@ export default function DeckBrowserPage() {
               }))}
             />
             <div className="button-row">
-              <button className="button" type="button" onClick={() => createDeck()}>Create Deck</button>
-              <button className="button" type="button" onClick={() => saveDeck()}>Save Selected</button>
+              <button className="button" type="button" onClick={() => createDeck()} disabled={missingConfig}>Create Deck</button>
+              <button className="button" type="button" onClick={() => saveDeck()} disabled={missingConfig}>Save Selected</button>
             </div>
           </div>
 
           <div className="panel glass">
             <h2>Cards</h2>
             {cards.length === 0 ? (
-              <p className="console-copy">No cards loaded for this filter.</p>
+              <p className="console-copy">
+                {missingConfig ? "Connect to the API to load cards." : "No cards loaded for this filter."}
+              </p>
             ) : (
               <ul className="review-browser-list scroll-panel">
                 {cards.map((card) => (
@@ -420,8 +460,8 @@ export default function DeckBrowserPage() {
               Suspend this card
             </label>
             <div className="button-row">
-              <button className="button" type="button" onClick={() => createCard()}>Create Card</button>
-              <button className="button" type="button" onClick={() => saveCard()}>Save Selected</button>
+              <button className="button" type="button" onClick={() => createCard()} disabled={missingConfig}>Create Card</button>
+              <button className="button" type="button" onClick={() => saveCard()} disabled={missingConfig}>Save Selected</button>
             </div>
           </div>
         </div>
