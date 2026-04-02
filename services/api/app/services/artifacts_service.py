@@ -3,7 +3,7 @@ from datetime import timedelta
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import ai_service, events_service, integrations_service
+from app.services import ai_service, events_service, integrations_service, srs_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 DEFERRED_CAPABILITIES = {
@@ -220,6 +220,8 @@ def _create_card_set_record(conn: Connection, artifact: dict, cards: list[dict])
     set_id = new_id("csv")
     now = utc_now()
     now_iso = now.isoformat()
+    default_deck = srs_service.ensure_default_deck(conn)
+    schedule = default_deck["schedule"]
 
     conn.execute(
         "INSERT INTO card_set_versions (id, artifact_id, version, created_at) VALUES (?, ?, ?, ?)",
@@ -230,22 +232,26 @@ def _create_card_set_record(conn: Connection, artifact: dict, cards: list[dict])
         conn.execute(
             """
             INSERT INTO cards (
-              id, card_set_version_id, artifact_id, note_block_id, card_type, prompt, answer,
-              due_at, interval_days, repetitions, ease_factor, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+              tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 new_id("crd"),
                 set_id,
                 artifact["id"],
                 None,
+                default_deck["id"],
                 card["card_type"],
                 card["prompt"],
                 card["answer"],
-                (now + timedelta(days=1)).isoformat(),
-                1,
+                json.dumps([], sort_keys=True),
                 0,
-                2.5,
+                (now + timedelta(hours=int(schedule["new_cards_due_offset_hours"]))).isoformat(),
+                int(schedule["initial_interval_days"]),
+                0,
+                float(schedule["initial_ease_factor"]),
+                now_iso,
                 now_iso,
             ),
         )

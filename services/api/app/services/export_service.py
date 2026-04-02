@@ -16,6 +16,7 @@ TABLES = [
     "notes",
     "note_blocks",
     "card_set_versions",
+    "card_decks",
     "cards",
     "review_events",
     "tasks",

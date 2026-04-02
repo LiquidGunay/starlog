@@ -63,6 +63,7 @@ const CONTEXT_LINKS: Record<Surface["id"], UtilityLink[]> = {
   ],
   "neural-sync": [
     { href: "/review", label: "Review" },
+    { href: "/review/decks", label: "Decks" },
     { href: "/sync-center", label: "Sync Center" },
   ],
   "chronos-matrix": [
