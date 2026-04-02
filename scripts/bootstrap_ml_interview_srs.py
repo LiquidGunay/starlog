@@ -30,10 +30,40 @@ def load_cards(path: Path) -> list[dict[str, Any]]:
             for key in ("prompt", "answer", "source_url", "section", "question_index", "question"):
                 if not isinstance(record.get(key), str) or not record[key].strip():
                     raise ValueError(f"Line {line_number} missing required string field: {key}")
+            metadata = record.get("metadata")
+            if metadata is not None and not isinstance(metadata, dict):
+                raise ValueError(f"Line {line_number} metadata must be an object when present")
             cards.append(record)
     if not cards:
         raise ValueError("Deck file contained no cards")
     return cards
+
+
+def build_note_block_content(card: dict[str, Any]) -> str:
+    metadata = card.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    answer_source = str(metadata.get("answer_source") or "unknown").strip()
+    source_url = str(card.get("source_url") or metadata.get("source_url") or "").strip()
+    section = str(card.get("section") or metadata.get("section") or "").strip()
+    question_index = str(card.get("question_index") or metadata.get("question_index") or "").strip()
+    difficulty = str(card.get("difficulty") or metadata.get("difficulty") or "").strip()
+    question = str(card.get("question") or card.get("prompt") or "").strip()
+    answer = str(card.get("answer") or "").strip()
+
+    lines = [
+        f"Source URL: {source_url}",
+        f"Section: {section}",
+        f"Question Index: {question_index}",
+        f"Difficulty: {difficulty or 'unspecified'}",
+        f"Answer Source: {answer_source}",
+        "",
+        "Question:",
+        question,
+        "",
+        "Answer:",
+        answer,
+    ]
+    return "\n".join(lines).strip()
 
 
 def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
@@ -50,6 +80,7 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
     from app.db.storage import get_connection, init_storage  # noqa: E402
     from app.services import artifacts_service  # noqa: E402
     from app.services.common import new_id  # noqa: E402
+    from app.services import notes_service  # noqa: E402
 
     init_storage()
     now = utc_now()
@@ -69,12 +100,33 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
                 "card_count": len(cards),
             },
         )
+        deck_note = notes_service.create_note(
+            conn,
+            title="ML Interviews Book Part II SRS deck",
+            body_md=(
+                "# ML Interviews Book Part II SRS deck\n\n"
+                f"Source: {summary['source_url']}\n\n"
+                "Each card stores its provenance in the linked note block."
+            ),
+        )
         card_set_version_id = new_id("csv")
         conn.execute(
             "INSERT INTO card_set_versions (id, artifact_id, version, created_at) VALUES (?, ?, ?, ?)",
             (card_set_version_id, artifact["id"], 1, now_iso),
         )
         for card in cards:
+            note_block_id = new_id("blk")
+            conn.execute(
+                "INSERT INTO note_blocks (id, note_id, artifact_id, block_type, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    note_block_id,
+                    deck_note["id"],
+                    artifact["id"],
+                    "srs_card",
+                    build_note_block_content(card),
+                    now_iso,
+                ),
+            )
             conn.execute(
                 """
                 INSERT INTO cards (
@@ -86,7 +138,7 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
                     new_id("crd"),
                     card_set_version_id,
                     artifact["id"],
-                    None,
+                    note_block_id,
                     str(card.get("card_type") or "qa"),
                     card["prompt"],
                     card["answer"],
@@ -112,9 +164,25 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
                 now_iso,
             ),
         )
+        conn.execute(
+            """
+            INSERT INTO artifact_relations (
+              id, artifact_id, relation_type, target_type, target_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id("rel"),
+                artifact["id"],
+                "artifact.note",
+                "note",
+                deck_note["id"],
+                now_iso,
+            ),
+        )
         conn.commit()
     summary["artifact_id"] = artifact["id"]
     summary["card_set_version_id"] = card_set_version_id
+    summary["note_id"] = deck_note["id"]
     return summary
 
 
