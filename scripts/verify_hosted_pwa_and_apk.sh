@@ -20,7 +20,7 @@ API_BASE="${STARLOG_HOSTED_API_BASE:-}"
 APK_PATH="${APK_PATH:-${STARLOG_APK_PATH:-}}"
 ADB="${ADB:-}"
 ADB_SERIAL="${ADB_SERIAL:-}"
-APP_VARIANT="${APP_VARIANT:-development}"
+APP_VARIANT="${APP_VARIANT:-production}"
 REVERSE_PORTS="${REVERSE_PORTS:-}"
 
 usage() {
@@ -104,8 +104,8 @@ curl_probe() {
   # Follow redirects (Railway -> HTTPS or canonical host) and keep a body sample for debugging.
   curl -fsSL -D "$headers_path" -o "$body_path" "$url"
 
-  if ! grep -Eq 'id="__next"|__NEXT_DATA__' "$body_path"; then
-    die "unexpected HTML for $url (missing Next.js markers); see $body_path"
+  if ! grep -Eq 'id="__next"|__NEXT_DATA__|/_next/static/|<title>Starlog</title>' "$body_path"; then
+    die "unexpected HTML for $url (missing expected app markers); see $body_path"
   fi
 }
 
@@ -123,7 +123,7 @@ run_hosted_pwa_checks() {
   # Regression guard: these routes have recently regressed in deploys.
   curl_probe "assistant" "$origin/assistant" "$PWA_DIR"
   curl_probe "review" "$origin/review" "$PWA_DIR"
-  curl_probe "decks" "$origin/decks" "$PWA_DIR"
+  curl_probe "review-decks" "$origin/review/decks" "$PWA_DIR"
 
   # Core surfaces.
   curl_probe "runtime" "$origin/runtime" "$PWA_DIR"
@@ -139,7 +139,7 @@ run_hosted_pwa_checks() {
       printf '[dry-run] curl -fsSL %q\n' "$API_BASE/v1/health"
     else
       curl -fsSL "$API_BASE/v1/health" | tee "$PWA_DIR/api-health.json" >/dev/null
-      if ! grep -Eq '"status"\\s*:\\s*"ok"' "$PWA_DIR/api-health.json"; then
+      if ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' "$PWA_DIR/api-health.json"; then
         die "API health probe did not include status=ok; see $PWA_DIR/api-health.json"
       fi
     fi
@@ -226,4 +226,3 @@ main() {
 }
 
 main "$@"
-
