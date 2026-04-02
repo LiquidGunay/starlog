@@ -133,22 +133,36 @@ CREATE TABLE IF NOT EXISTS card_set_versions (
   UNIQUE(artifact_id, version)
 );
 
+CREATE TABLE IF NOT EXISTS card_decks (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  schedule_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cards (
   id TEXT PRIMARY KEY,
   card_set_version_id TEXT,
   artifact_id TEXT,
   note_block_id TEXT,
+  deck_id TEXT,
   card_type TEXT NOT NULL,
   prompt TEXT NOT NULL,
   answer TEXT NOT NULL,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  suspended INTEGER NOT NULL DEFAULT 0,
   due_at TEXT NOT NULL,
   interval_days INTEGER NOT NULL,
   repetitions INTEGER NOT NULL,
   ease_factor REAL NOT NULL,
   created_at TEXT NOT NULL,
+  updated_at TEXT,
   FOREIGN KEY (card_set_version_id) REFERENCES card_set_versions(id),
   FOREIGN KEY (artifact_id) REFERENCES artifacts(id),
-  FOREIGN KEY (note_block_id) REFERENCES note_blocks(id)
+  FOREIGN KEY (note_block_id) REFERENCES note_blocks(id),
+  FOREIGN KEY (deck_id) REFERENCES card_decks(id)
 );
 
 CREATE TABLE IF NOT EXISTS review_events (
@@ -462,6 +476,7 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_media_assets_created_at ON media_assets(created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
+CREATE INDEX IF NOT EXISTS idx_cards_deck_due_at ON cards(deck_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_starts ON calendar_events(starts_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_deleted ON calendar_events(deleted, starts_at);
@@ -535,8 +550,21 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "ai_jobs", "selected_target", "TEXT")
     _ensure_column(conn, "ai_jobs", "claimed_worker_class", "TEXT")
     _ensure_column(conn, "conversation_tool_traces", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "cards", "deck_id", "TEXT")
+    _ensure_column(conn, "cards", "tags_json", "TEXT NOT NULL DEFAULT '[]'")
+    _ensure_column(conn, "cards", "suspended", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "cards", "updated_at", "TEXT")
     conn.executescript(
         """
+        CREATE TABLE IF NOT EXISTS card_decks (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT,
+          schedule_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cards_deck_due_at ON cards(deck_id, due_at);
         CREATE TABLE IF NOT EXISTS worker_pairings (
           id TEXT PRIMARY KEY,
           pairing_token_hash TEXT NOT NULL UNIQUE,
@@ -680,6 +708,8 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
         """
     )
+    conn.execute("UPDATE cards SET tags_json = '[]' WHERE tags_json IS NULL OR tags_json = ''")
+    conn.execute("UPDATE cards SET updated_at = created_at WHERE updated_at IS NULL")
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:

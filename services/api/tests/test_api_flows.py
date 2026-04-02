@@ -70,6 +70,81 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
     assert "artifact.action_suggested" in event_types
 
 
+def test_card_deck_browser_api_flow(client: TestClient, auth_headers: dict[str, str]) -> None:
+    decks = client.get("/v1/cards/decks", headers=auth_headers)
+    assert decks.status_code == 200
+    inbox = decks.json()[0]
+    assert inbox["name"] == "Inbox"
+
+    created_deck = client.post(
+        "/v1/cards/decks",
+        json={
+            "name": "ML Interviews",
+            "description": "Bootstrap deck",
+            "schedule": {
+                "new_cards_due_offset_hours": 0,
+                "initial_interval_days": 2,
+                "initial_ease_factor": 2.7,
+            },
+        },
+        headers=auth_headers,
+    )
+    assert created_deck.status_code == 201
+    deck_id = created_deck.json()["id"]
+
+    created_card = client.post(
+        "/v1/cards",
+        json={
+            "deck_id": deck_id,
+            "prompt": "What is overfitting?",
+            "answer": "It is memorization that hurts generalization.",
+            "tags": ["ml", "interviews", "generalization"],
+        },
+        headers=auth_headers,
+    )
+    assert created_card.status_code == 201
+    card_payload = created_card.json()
+    assert card_payload["deck_id"] == deck_id
+    assert sorted(card_payload["tags"]) == ["generalization", "interviews", "ml"]
+
+    listed_cards = client.get(f"/v1/cards?deck_id={deck_id}", headers=auth_headers)
+    assert listed_cards.status_code == 200
+    assert len(listed_cards.json()) == 1
+
+    tagged_cards = client.get("/v1/cards?tag=ml", headers=auth_headers)
+    assert tagged_cards.status_code == 200
+    assert tagged_cards.json()[0]["id"] == card_payload["id"]
+
+    updated_card = client.patch(
+        f"/v1/cards/{card_payload['id']}",
+        json={
+            "tags": ["ml", "statistics"],
+            "suspended": True,
+            "due_at": "2026-04-02T00:00:00+00:00",
+        },
+        headers=auth_headers,
+    )
+    assert updated_card.status_code == 200
+    assert sorted(updated_card.json()["tags"]) == ["ml", "statistics"]
+    assert updated_card.json()["suspended"] is True
+
+    updated_deck = client.patch(
+        f"/v1/cards/decks/{deck_id}",
+        json={
+            "description": "Refined bootstrap deck",
+            "schedule": {
+                "new_cards_due_offset_hours": 6,
+                "initial_interval_days": 3,
+                "initial_ease_factor": 2.8,
+            },
+        },
+        headers=auth_headers,
+    )
+    assert updated_deck.status_code == 200
+    assert updated_deck.json()["description"] == "Refined bootstrap deck"
+    assert updated_deck.json()["schedule"]["initial_interval_days"] == 3
+
+
 def test_artifact_actions_use_ai_provider_outputs(
     client: TestClient,
     auth_headers: dict[str, str],
