@@ -61,10 +61,10 @@ export default function ReviewPage() {
   }, []);
 
   useEffect(() => {
-    if (missingConfig) {
+    if (missingConfig && cards.length === 0) {
       setStatus("Connect to the API to load the review queue.");
     }
-  }, [missingConfig]);
+  }, [cards.length, missingConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,19 +250,19 @@ export default function ReviewPage() {
         </div>
 
         <div className="sync-rating-row">
-          <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard || missingConfig}>
+          <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
             <span>Again</span>
             <small>{"< 1m"}</small>
           </button>
-          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard || missingConfig}>
+          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
             <span>Hard</span>
             <small>1d</small>
           </button>
-          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard || missingConfig}>
+          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
             <span>Good</span>
             <small>3d</small>
           </button>
-          <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard || missingConfig}>
+          <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
             <span>Easy</span>
             <small>5d</small>
           </button>
@@ -292,7 +292,7 @@ export default function ReviewPage() {
               className="button"
               type="button"
               onClick={() => setShowAnswer((previous) => !previous)}
-              disabled={!currentCard || missingConfig}
+              disabled={!currentCard}
             >
               {showAnswer ? "Hide Answer" : "Reveal Answer"}
             </button>
