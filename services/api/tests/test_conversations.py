@@ -124,7 +124,7 @@ def test_thread_context_cards_project_latest_session_state(
     card = cards[0]
     assert card["metadata"]["projection"] == "thread_context"
     assert "list tasks" in card["body"].lower()
-    assert card["version"] >= 1
+    assert card["version"] == 1
 
 
 def test_primary_conversation_supports_message_pagination(

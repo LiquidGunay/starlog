@@ -78,7 +78,7 @@ def _project_cards(
             previous_key = str(metadata.get("projection_key") or "")
             base_version = card.get("version")
             version = base_version if isinstance(base_version, int) and base_version > 0 else 1
-            if projection_key != previous_key:
+            if previous_key and projection_key != previous_key:
                 version = version + 1 if version >= 1 else 1
             next_metadata = {
                 **metadata,
