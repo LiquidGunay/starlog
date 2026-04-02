@@ -476,7 +476,6 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_media_assets_created_at ON media_assets(created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
-CREATE INDEX IF NOT EXISTS idx_cards_deck_due_at ON cards(deck_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_starts ON calendar_events(starts_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_deleted ON calendar_events(deleted, starts_at);
@@ -708,6 +707,7 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
         """
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_deck_due_at ON cards(deck_id, due_at)")
     conn.execute("UPDATE cards SET tags_json = '[]' WHERE tags_json IS NULL OR tags_json = ''")
     conn.execute("UPDATE cards SET updated_at = created_at WHERE updated_at IS NULL")
 
