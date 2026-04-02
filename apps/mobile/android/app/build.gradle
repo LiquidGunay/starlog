@@ -46,6 +46,7 @@ def getRNVersion() {
 }
 def rnVersion = getRNVersion()
 def appVariant = readBuildValue(project, "APP_VARIANT", "development")
+def appDisplayName = appVariant == "production" ? "Starlog" : appVariant == "preview" ? "Starlog Preview" : "Starlog Dev"
 def appIdSuffix = appVariant == "production" ? "" : appVariant == "preview" ? ".preview" : ".dev"
 def resolvedApplicationId = "com.starlog.app${appIdSuffix}"
 def resolvedVersionName = readBuildValue(project, "STARLOG_ANDROID_VERSION_NAME", readBuildValue(project, "STARLOG_VERSION_NAME", "0.1.0"))
@@ -152,6 +153,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode resolvedVersionCode
         versionName resolvedVersionName
+        resValue "string", "app_name", appDisplayName
     }
     signingConfigs {
         debug {

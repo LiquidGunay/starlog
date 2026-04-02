@@ -41,6 +41,11 @@ Date: 2026-03-30
   - `/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-release-metadata.json`
 - Optional Windows staging for physical-phone QA:
   - add `STARLOG_STAGE_WINDOWS_APK=1`
+- Packaging-time artifact assertions:
+  - `scripts/android_prepare_production_release.sh` now fails if the built QA APK does not report:
+    - package `com.starlog.app`
+    - requested `versionCode` / `versionName`
+    - `application-label:'Starlog'`
 - Signed production QA APK smoke commands:
   - WSL/Linux: `APP_VARIANT=production APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-signed.apk ./scripts/android_native_smoke.sh`
   - Windows: `.\scripts\android_native_smoke_windows.ps1 -AppVariant production -ApkPath "C:\Temp\starlog-<v>-<n>-signed.apk"`

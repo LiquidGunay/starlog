@@ -44,7 +44,8 @@ if (getRNMinorVersion() >= 75) {
   }
 }
 
-rootProject.name = 'Starlog Dev'
+def appVariant = System.getenv("APP_VARIANT") ?: "development"
+rootProject.name = appVariant == "production" ? "Starlog" : appVariant == "preview" ? "Starlog Preview" : "Starlog Dev"
 
 dependencyResolutionManagement {
   versionCatalogs {
