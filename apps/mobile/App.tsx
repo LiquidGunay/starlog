@@ -736,6 +736,23 @@ function summarizeTraceValue(value: unknown): string {
   return "No structured payload";
 }
 
+function cardMetaText(card: ConversationCard): string {
+  const parts = [`v${card.version}`];
+  const metadata = card.metadata ?? {};
+  const source = typeof metadata.projection_source === "string" ? metadata.projection_source : "";
+  const updatedAt = typeof metadata.projection_updated_at === "string" ? metadata.projection_updated_at : "";
+  if (updatedAt) {
+    const parsed = new Date(updatedAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      parts.push(`updated ${parsed.toLocaleString()}`);
+    }
+  }
+  if (source) {
+    parts.push(`source ${source.replace(/_/g, " ")}`);
+  }
+  return parts.join(" · ");
+}
+
 function toHourMinuteLabel(hour: number, minute: number): string {
   const hh = String(hour).padStart(2, "0");
   const mm = String(minute).padStart(2, "0");
@@ -1146,6 +1163,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationToolTraces, setConversationToolTraces] = useState<ConversationToolTrace[]>([]);
   const [lastConversationReset, setLastConversationReset] = useState<ConversationSessionResetResponse | null>(null);
+  const [expandedThreadCards, setExpandedThreadCards] = useState<Record<string, boolean>>({});
+  const [expandedThreadTraces, setExpandedThreadTraces] = useState<Record<string, boolean>>({});
   const [showFullConversationThread, setShowFullConversationThread] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("unknown");
@@ -3312,6 +3331,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               {visibleConversationMessages.map((message) => {
               const messageTraces = conversationToolTraces.filter((trace) => trace.message_id === message.id);
               const body = message.content.trim() || message.metadata?.assistant_command?.summary || "No message body recorded.";
+              const cardsExpanded = expandedThreadCards[message.id] ?? false;
+              const tracesExpanded = expandedThreadTraces[message.id] ?? false;
               return (
                 <View key={message.id} style={styles.threadMessageCard}>
                   <View style={styles.threadMessageMeta}>
@@ -3321,24 +3342,58 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   <Text style={styles.threadMessageBody}>{body}</Text>
                   {message.cards.length > 0 ? (
                     <View style={styles.inlineCard}>
-                      <Text style={styles.inlineCardTitle}>Attached cards</Text>
+                      <View style={styles.threadDetailHeader}>
+                        <Text style={styles.inlineCardTitle}>Attached cards</Text>
+                        <TouchableOpacity
+                          style={styles.threadDetailToggle}
+                          onPress={() =>
+                            setExpandedThreadCards((previous) => ({
+                              ...previous,
+                              [message.id]: !cardsExpanded,
+                            }))
+                          }
+                        >
+                          <Text style={styles.threadDetailToggleText}>
+                            {cardsExpanded ? "Collapse" : "Expand"} {message.cards.length}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                       {message.cards.map((card, index) => (
                         <View key={`${message.id}-card-${index}`} style={styles.threadDetailRow}>
                           <Text style={styles.threadDetailTitle}>{card.title || card.kind.replace(/_/g, " ")}</Text>
-                          {card.body ? <Text style={styles.subtle}>{card.body}</Text> : null}
+                          <Text style={styles.threadDetailMeta}>{cardMetaText(card)}</Text>
+                          {cardsExpanded && card.body ? <Text style={styles.subtle}>{card.body}</Text> : null}
+                          {cardsExpanded && card.metadata && Object.keys(card.metadata).length > 0 ? (
+                            <Text style={styles.mono}>{JSON.stringify(card.metadata, null, 2)}</Text>
+                          ) : null}
                         </View>
                       ))}
                     </View>
                   ) : null}
                   {messageTraces.length > 0 ? (
                     <View style={styles.inlineCard}>
-                      <Text style={styles.inlineCardTitle}>Runtime traces</Text>
+                      <View style={styles.threadDetailHeader}>
+                        <Text style={styles.inlineCardTitle}>Runtime traces</Text>
+                        <TouchableOpacity
+                          style={styles.threadDetailToggle}
+                          onPress={() =>
+                            setExpandedThreadTraces((previous) => ({
+                              ...previous,
+                              [message.id]: !tracesExpanded,
+                            }))
+                          }
+                        >
+                          <Text style={styles.threadDetailToggleText}>
+                            {tracesExpanded ? "Collapse" : "Expand"} {messageTraces.length}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                       {messageTraces.map((trace) => (
                         <View key={trace.id} style={styles.threadDetailRow}>
                           <Text style={styles.threadDetailTitle}>{trace.tool_name} [{trace.status}]</Text>
                           <Text style={styles.subtle}>{summarizeTraceValue(trace.result)}</Text>
-                          {Object.keys(trace.arguments).length > 0 ? (
-                            <Text style={styles.mono}>{JSON.stringify(trace.arguments)}</Text>
+                          {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
+                            <Text style={styles.mono}>{JSON.stringify(trace.arguments, null, 2)}</Text>
                           ) : null}
                         </View>
                       ))}
@@ -5015,6 +5070,26 @@ function themedStyles(palette: Palette) {
       fontSize: 14,
       lineHeight: 20,
     },
+    threadDetailHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    threadDetailToggle: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      backgroundColor: palette.surfaceHigh,
+    },
+    threadDetailToggleText: {
+      color: palette.muted,
+      fontSize: 10,
+      letterSpacing: 0.8,
+      textTransform: "uppercase",
+    },
     threadDetailRow: {
       gap: 4,
       paddingTop: 4,
@@ -5023,6 +5098,11 @@ function themedStyles(palette: Palette) {
       color: palette.text,
       fontSize: 12,
       fontWeight: "700",
+    },
+    threadDetailMeta: {
+      color: palette.muted,
+      fontSize: 10,
+      letterSpacing: 0.4,
     },
     subtle: {
       color: palette.muted,

@@ -10,10 +10,109 @@ from app.services.common import execute_fetchall, execute_fetchone, new_id
 PRIMARY_THREAD_SLUG = "primary"
 PRIMARY_THREAD_TITLE = "Primary Starlog Thread"
 PRIMARY_THREAD_MODE = "voice_native"
+PROJECTION_THREAD_CONTEXT = "thread_context"
 
 
 def _message_cursor_clause(created_at: str, message_id: str) -> tuple[str, tuple[str, str]]:
     return "AND (created_at < ? OR (created_at = ? AND id < ?))", (created_at, created_at, message_id)
+
+
+def _ensure_card_list(raw_cards: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_cards, list):
+        return []
+    return [item for item in raw_cards if isinstance(item, dict)]
+
+
+def _thread_context_payload(session_state: dict[str, Any], traces: list[dict[str, Any]]) -> tuple[str, str, dict[str, Any]]:
+    last_intent = str(session_state.get("last_matched_intent") or "").strip()
+    latest_trace = traces[0] if traces else {}
+    latest_tool = str(latest_trace.get("tool_name") or "").strip()
+    latest_status = str(latest_trace.get("status") or "").strip()
+    if last_intent:
+        body = f"Last intent: {last_intent.replace('_', ' ')}"
+    elif latest_tool:
+        body = f"Latest trace: {latest_tool.replace('_', ' ')}"
+    else:
+        body = "Thread context is still empty."
+    metadata = {
+        "last_matched_intent": last_intent,
+        "latest_tool_name": latest_tool,
+        "latest_tool_status": latest_status,
+    }
+    return "Thread context", body, metadata
+
+
+def _projection_key(session_state: dict[str, Any], traces: list[dict[str, Any]], session_updated_at: str | None) -> str:
+    last_intent = str(session_state.get("last_matched_intent") or "").strip()
+    latest_trace = traces[0] if traces else {}
+    latest_tool = str(latest_trace.get("tool_name") or "").strip()
+    latest_status = str(latest_trace.get("status") or "").strip()
+    return "|".join(
+        [
+            session_updated_at or "",
+            last_intent,
+            latest_tool,
+            latest_status,
+        ]
+    )
+
+
+def _project_cards(
+    cards: list[dict[str, Any]],
+    *,
+    session_state: dict[str, Any],
+    traces: list[dict[str, Any]],
+    session_updated_at: str | None,
+) -> list[dict[str, Any]]:
+    if not cards:
+        return []
+    projection_key = _projection_key(session_state, traces, session_updated_at)
+    projected: list[dict[str, Any]] = []
+    for card in cards:
+        kind = str(card.get("kind") or "").strip()
+        metadata = card.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        projection = str(metadata.get("projection") or "").strip()
+        if kind == PROJECTION_THREAD_CONTEXT or projection == PROJECTION_THREAD_CONTEXT:
+            title, body, projection_metadata = _thread_context_payload(session_state, traces)
+            previous_key = str(metadata.get("projection_key") or "")
+            base_version = card.get("version")
+            version = base_version if isinstance(base_version, int) and base_version > 0 else 1
+            if projection_key != previous_key:
+                version = version + 1 if version >= 1 else 1
+            next_metadata = {
+                **metadata,
+                **projection_metadata,
+                "projection": PROJECTION_THREAD_CONTEXT,
+                "projection_source": "session_state",
+                "projection_key": projection_key,
+                "projection_updated_at": session_updated_at,
+            }
+            projected.append(
+                {
+                    **card,
+                    "title": card.get("title") or title,
+                    "body": body,
+                    "metadata": next_metadata,
+                    "version": version,
+                }
+            )
+        else:
+            projected.append(card)
+    return projected
+
+
+def _normalize_cards_for_storage(cards: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    normalized = _ensure_card_list(cards)
+    output: list[dict[str, Any]] = []
+    for card in normalized:
+        kind = str(card.get("kind") or "").strip()
+        metadata = card.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        if kind == PROJECTION_THREAD_CONTEXT:
+            metadata = {**metadata, "projection": PROJECTION_THREAD_CONTEXT, "projection_source": "session_state"}
+        output.append({**card, "metadata": metadata})
+    return output
 
 
 def _thread_payload(
@@ -31,6 +130,8 @@ def _thread_payload(
         "SELECT state_json, updated_at FROM conversation_session_state WHERE thread_id = ?",
         (row["id"],),
     )
+    session_state = session_row["state_json"] if session_row else {}
+    session_updated_at = session_row["updated_at"] if session_row else None
     before_row = None
     cursor_sql = ""
     cursor_params: tuple[str, ...] = ()
@@ -108,7 +209,12 @@ def _thread_payload(
                 "thread_id": item["thread_id"],
                 "role": item["role"],
                 "content": item["content"],
-                "cards": item["cards_json"],
+                "cards": _project_cards(
+                    _ensure_card_list(item["cards_json"]),
+                    session_state=session_state,
+                    traces=traces,
+                    session_updated_at=session_updated_at,
+                ),
                 "metadata": item["metadata_json"],
                 "created_at": item["created_at"],
             }
@@ -210,6 +316,7 @@ def append_message(
     thread = ensure_primary_thread(conn)
     now = utc_now().isoformat()
     message_id = new_id("msg")
+    normalized_cards = _normalize_cards_for_storage(cards)
     conn.execute(
         """
         INSERT INTO conversation_messages (id, thread_id, role, content, cards_json, metadata_json, created_at)
@@ -220,7 +327,7 @@ def append_message(
             thread["id"],
             role,
             content,
-            json.dumps(cards or [], sort_keys=True),
+            json.dumps(normalized_cards, sort_keys=True),
             json.dumps(metadata or {}, sort_keys=True),
             now,
         ),
