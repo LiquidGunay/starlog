@@ -36,6 +36,10 @@ Date: 2026-03-15
   - `cd apps/mobile/android && ./gradlew assembleDebug`
 - Build production AAB path (store upload artifact):
   - `cd apps/mobile/android && APP_VARIANT=production ./gradlew bundleRelease`
+- Build sideload QA APK path:
+  - `cd apps/mobile/android && APP_VARIANT=production STARLOG_VERSION_NAME=<v> STARLOG_ANDROID_VERSION_CODE=<n> STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true ./gradlew assembleRelease --console=plain`
+- Run the release smoke gate before sideloading the APK onto a phone:
+  - `cd /home/ubuntu/starlog && APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-108.apk ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe ADB_SERIAL=9dd62e84 STAGE_TO_WINDOWS=1 pnpm test:android:release-smoke`
 
 ## 3) Icon/screenshot asset audit
 

@@ -90,3 +90,25 @@ Hosted PWA: `https://starlog-web-production.up.railway.app`
 
 1. Cold-start deep-link validation can still look like a false negative if the proof capture stops at the top hero section.
    - Mitigation: scroll down to the queued capture form before judging whether title/text/source prefill landed.
+
+## Production sideload guard
+
+When validating a production APK on a phone, do not treat a signed APK as good just because it installs.
+The broken `bundleRelease`-derived APK shape dropped the Hermes runtime libs and fell back to JSC on device,
+which crashed with `Unexpected token '?'`.
+
+- Use the direct `assembleRelease` APK for sideload QA.
+- Run `pnpm test:android:release-smoke` before sharing the APK with testers.
+- If the smoke script reports missing `libhermes.so` or `libhermes_executor.so`, rebuild the APK and do not sideload it.
+
+## 2026-04-02 release smoke pass
+
+Artifact: `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-108.apk`
+Device: OPPO CPH2381 (`9dd62e84`)
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Hermes preflight on broken `bundleRelease` APK | FAIL as expected | `scripts/android_release_phone_smoke.sh` precheck rejected `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-107-signed.apk` because `libhermes.so` and `libhermes_executor.so` were missing |
+| Hermes preflight on direct `assembleRelease` APK | PASS | `scripts/android_release_phone_smoke.sh` precheck accepted `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-108.apk` |
+| Windows-path install + launch smoke | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-108-release-smoke.png` |
+| Crash buffer after launch | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-108-release-crash.log` (empty) |

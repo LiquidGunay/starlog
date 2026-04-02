@@ -4,6 +4,8 @@
 Build Starlog as a single-user, low-cost, independent system for knowledge management, scheduling, alarms, and learning workflows.
 
 ## Locked v1 preferences
+- Voice/chat-first interaction is the canonical operating model; buttons and direct surface interactions are secondary.
+- One persistent user chat thread exists across clients, with durable long-term memory and clearable short-term session state.
 - Web-first PWA is the primary workspace.
 - Companion mobile app is focused on capture, alarms/offline briefing playback, quick review/triage.
 - Full note editing on mobile is done via the PWA.
@@ -14,14 +16,18 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 - Preserve source fidelity: raw + normalized + extracted.
 - OCR is strict on-device only.
 - STT/TTS is on-device first (local model spin-up allowed).
-- LLM flows are manual quick-action driven (suggest-first), with fallback providers.
+- LLM orchestration is OpenAI-primary for v1, with local-first voice runtimes and fallback providers.
+- Proactive behavior is limited to preparing suggestions; major writes still require explicit confirmation.
 - Calendar is internal model + two-way Google Calendar sync.
 - Include tasks + time blocking.
 - Morning alarm + spoken briefing with offline playback on phone.
+- Daily briefings unify schedule/task guidance with research digest output when relevant.
 - Minimize hosting cost; Railway hobby footprint preferred.
 
 ## AI provider policy
-- Prefer local/on-device providers when available.
+- Prefer local/on-device providers for voice when available.
+- Prefer a separate in-repo Python AI runtime for prompts, orchestration, provider adapters, and evals.
+- Use OpenAI as the primary hosted LLM provider for v1 orchestration and summarization flows.
 - Codex subscription bridge is best-effort/experimental.
 - Always keep fallback path (supported API-key provider/local alternative) for availability.
 
@@ -109,6 +115,7 @@ bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
 
 This section is the repo-local purpose map for markdown files so agents know which docs are authoritative before opening or editing them.
 
+- `PLAN.md` — canonical forward-looking product and architecture plan for Starlog.
 - `AGENTS.md` — repo instructions, locked v1 preferences, lock protocol, runbooks, markdown map, preference log, and issue log.
 - `README.md` — top-level repo overview, workspace layout, quick-start entrypoints, and release entrypoints.
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
@@ -127,8 +134,6 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md` — required Railway production config for API/web services.
 - `docs/PWA_RELEASE_VERIFICATION_GATE.md` — mandatory pre-release gate for PWA builds/tests.
 - `docs/RAILWAY_DEPLOY.md` — recommended Railway deployment model and supporting runbooks.
-- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — canonical architecture/workflow/design contract for current implementation direction.
-- `docs/STARLOG_V1_PLAN.md` — product-scope and architecture plan for Starlog v1.
 - `services/worker/README.md` — placeholder scope note for future dedicated worker-runtime code.
 - `tools/browser-extension/README.md` — browser clipper scaffold purpose and local load instructions.
 - `tools/desktop-helper/README.md` — desktop helper capabilities, validation matrix, and host evidence.
@@ -139,6 +144,38 @@ This section is the repo-local purpose map for markdown files so agents know whi
 ## Phone testing runbook (Android, this host)
 
 Use this sequence when validating the native mobile app on the connected Android phone from WSL. The phone must remain unlocked for the full run.
+
+### ADB connection quick-start
+
+Use this when the phone is not yet visible to the host before starting the full relay/dev-client flow.
+
+1) On the phone:
+
+- Enable Developer options.
+- Enable USB debugging.
+- Keep the phone unlocked.
+- Accept the RSA authorization prompt when it appears.
+
+2) On the Windows host side, use the newer platform-tools ADB, not any stale `C:\adb\adb.exe` copy:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+```
+
+3) Verify the phone is actually visible before continuing:
+
+```bash
+"$ADB_WIN" devices -l
+```
+
+Expected result: one `device` entry for the phone serial, not `unauthorized` and not an empty list.
+
+4) If the list is empty or `unauthorized`:
+
+- reconnect the USB cable once,
+- re-accept the RSA prompt on the phone,
+- rerun `"$ADB_WIN" devices -l`,
+- only continue to the runbook below once the device shows as `device`.
 
 0) Keep the device unlocked for the entire run:
 
@@ -194,13 +231,12 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 "$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
-6a) If the dev client shows `Unable to load script` or a blank white screen, prime the first bundle explicitly:
+6a) If the dev client shows `Unable to load script` or a blank white screen, keep the same Expo dev-launcher URL flow, wait for Metro to finish the first bundle, and then rerun step 6. Do not switch to the localhost reverse path on this host:
 
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
-"$ADB_WIN" -s <SERIAL> reverse tcp:8081 tcp:8081
 "$ADB_WIN" -s <SERIAL> shell am force-stop com.starlog.app.dev
-"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081%2Findex.bundle%3Fplatform%3Dandroid%26dev%3Dtrue%26minify%3Dfalse'
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'exp+starlog://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
 ```
 
 Expected checkpoint in Metro terminal:
@@ -209,7 +245,7 @@ Expected checkpoint in Metro terminal:
 Android Bundled ... index.js (...)
 ```
 
-After that first bundle completes, reopen the normal dev-client URL from step 6 and continue smoke/screenshots.
+After that first bundle completes, continue with the same step 6 dev-client URL and the smoke/screenshots.
 
 7) Run the Android smoke flow after the app loads:
 
@@ -279,6 +315,15 @@ Troubleshooting checklist:
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
 - 2026-03-15: User wants fresh worktrees to reuse dependency installs/build caches from the canonical checkout unless a task changes that surface's dependency/build inputs.
 - 2026-03-15: User wants Starlog Railway services added to the existing Railway project that already hosts the personal website instead of creating a separate Railway project.
+- 2026-03-22: User wants Starlog reimagined as a voice-native system with one persistent chat thread as the primary interface.
+- 2026-03-22: User wants other workspace surfaces to become inspectable/editable support views that can also surface their components inline inside chat.
+- 2026-03-22: User wants a separate in-repo Python AI runtime for prompts, orchestration, recommendation logic, and evals.
+- 2026-03-22: User wants OpenAI `gpt-5.4-nano` as the primary hosted LLM path, with local-first voice runtimes for STT/TTS.
+- 2026-03-22: User wants research ingestion to start with arXiv plus manual URL/PDF ingest via a pluggable source-adapter interface.
+- 2026-03-22: User wants the desktop path to use a localhost Python bridge daemon for assistive clipping and local AI capabilities.
+- 2026-03-22: User wants `PLAN.md` at repo root to be the only forward-looking plan document, with obsolete planning markdown removed instead of kept as duplicate stubs.
+- 2026-03-22: User wants the parallel queue regrouped into independent execution tracks so subagents can claim work without stepping on the same surfaces.
+- 2026-03-22: User wants `AGENTS.md` to include explicit ADB connection instructions before the phone testing flow.
 
 ## Issue log
 - 2026-03-04: Initial commit failed due to missing `git user.name/user.email`; used repo-only fallback author config to complete bootstrap commit.
@@ -375,3 +420,13 @@ Troubleshooting checklist:
 - 2026-03-16: Manual Android deep-link probes from `adb shell am start ... -d ...` can produce false negatives when `&text=` / `&source_url=` are not preserved by the remote shell; quote the full remote command so the URI reaches the app intact before judging deep-link behavior.
 - 2026-03-16: Preview Android deep-link capture now resolves through React initial props for cold starts plus a native `StarlogAppLink` device event for warm starts, which avoided the earlier startup timing gap between `MainActivity` and JS deep-link state hydration.
 - 2026-03-21: Fresh preview-build validation on the physical phone confirmed that `starlog://capture?...` prefill lands in the queued capture form, but the populated title/source/text fields sit below the initial hero section; scroll the capture surface before treating a top-of-screen dump as a deep-link failure.
+- 2026-03-22: The repo had multiple forward-looking plan documents (`docs/STARLOG_V1_PLAN.md` and `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md`) with overlapping but diverging product guidance; `PLAN.md` is now the canonical source and those superseded plan files were removed to prevent future drift.
+- 2026-03-22: `cd apps/web && ./node_modules/.bin/next build` now reaches static page generation but fails at export packaging with `ENOENT ... apps/web/.next/server/pages-manifest.json`; the chat-surface changes typecheck cleanly, so this appears to be a broader Next.js build pipeline issue rather than a local TS regression in `apps/web/app/assistant/page.tsx`.
+- 2026-03-22: Shared prompt templates can include optional placeholders (for example `recent_memories` and `recommendation_hints` in `briefing.user.txt`), so prompt renderers must tolerate missing keys instead of raising `KeyError` when a workflow omits optional context.
+- 2026-03-22: Research adapter ingestion can fail even for built-in source kinds if `ensure_default_sources()` has not run yet; adapter-backed ingest paths must bootstrap default sources before looking up `research_sources` rows.
+- 2026-03-22: Current `origin/master` dropped the `research` router registration from `services/api/app/api/router.py`; the route module still exists, but `/v1/research/*` returns 404 until that router is re-included.
+- 2026-04-02: SRS deck generation in branch worktrees must load secrets from the canonical `/home/ubuntu/starlog/.env` as well as the local worktree root, because the shared repo-level `.env` is not copied into each worktree checkout.
+- 2026-04-02: The ML Interviews Part II SRS deck now uses the public `zafstojano/ml-interview-questions-and-answers` repository for aligned answers when available, then retries missing cards with batched OpenAI fallbacks before falling back to a heuristic stub.
+- 2026-04-02: Dynamic assistant projection versions can advance more than once across a read/update/read flow, so tests should assert monotonic growth instead of an exact +1 increment.
+- 2026-04-02: The production Android `bundleRelease` -> signed APK flow dropped the Hermes runtime libs (`libhermes.so` / `libhermes_executor.so`) and fell back to JSC on device, which crashed with `Unexpected token '?'` on launch. For sideload QA on this host, use the direct `assembleRelease` APK instead and stage it to a Windows-visible path like `C:\Temp\...` before installing with Windows `adb.exe`.
+- 2026-04-02: When driving Windows `adb.exe` from WSL, the install path must be a Windows-form path (`C:/Temp/...`); `/mnt/c/...` paths are not accepted by `adb.exe`. The Android release smoke helper now stages the APK into a Windows-visible location and translates the install path automatically.

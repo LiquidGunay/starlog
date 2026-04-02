@@ -76,6 +76,36 @@ STARLOG_UPLOAD_KEY_PASSWORD='***' \
 ./gradlew bundleRelease
 ```
 
+If you need a sideloadable APK for phone QA, use the direct release APK path instead:
+
+```bash
+cd apps/mobile/android
+APP_VARIANT=production \
+STARLOG_VERSION_NAME=0.1.0 \
+STARLOG_ANDROID_VERSION_CODE=108 \
+STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true \
+./gradlew assembleRelease --console=plain
+```
+
+That `assembleRelease` APK is the build that includes the Hermes runtime libs and launches on the phone.
+On this host, the `bundleRelease` -> signed APK path produced a JSC fallback build that crashed with
+`Unexpected token '?'`, so keep it for store/AAB upload work only.
+
+To smoke-test a sideloadable release APK before you hand it to a phone, use the release gate script:
+
+```bash
+cd /home/ubuntu/starlog
+APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-108.apk \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=9dd62e84 \
+STAGE_TO_WINDOWS=1 \
+pnpm test:android:release-smoke
+```
+
+That command preflights the APK contents, verifies the device-specific Hermes runtime libs are present,
+copies the APK into a Windows-visible path if needed, installs it with Windows `adb.exe`, and captures
+a post-launch screenshot/crash buffer. Use `PRECHECK_ONLY=1` when you only want the APK-content check.
+
 For local non-production troubleshooting only, you can temporarily allow debug signing in
 release tasks with:
 
