@@ -444,12 +444,14 @@ def build_deck() -> list[dict[str, str | dict[str, str]]]:
     lookup = answer_lookup_entries(answer_pairs)
 
     cards: list[dict[str, str | dict[str, str]]] = []
+    fetch_failures: list[str] = []
     card_index = 1
 
     for path in paths:
         try:
             markdown = fetch_from_repo(path)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            fetch_failures.append(f"{path}: {exc}")
             continue
         title = first_heading(markdown) or path
         items = parse_list_items(markdown)
@@ -507,6 +509,10 @@ def build_deck() -> list[dict[str, str | dict[str, str]]]:
                 card["answer"] = answer
                 card["metadata"]["answer_source"] = answer_source
                 cards.append(card)
+
+    if fetch_failures:
+        failure_text = "; ".join(fetch_failures)
+        raise RuntimeError(f"Failed to fetch one or more chapter sources: {failure_text}")
 
     return cards
 
