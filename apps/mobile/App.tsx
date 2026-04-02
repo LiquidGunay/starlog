@@ -339,8 +339,11 @@ type ConversationSessionResetResponse = {
   updated_at: string;
 };
 
-const DEFAULT_API_BASE = "http://localhost:8000";
-const DEFAULT_PWA_BASE = "http://localhost:3000";
+const RUNTIME_ENV = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const DEFAULT_API_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_API_BASE?.trim()
+  || (__DEV__ ? "http://localhost:8000" : "https://starlog-api-production.up.railway.app");
+const DEFAULT_PWA_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_PWA_BASE?.trim()
+  || (__DEV__ ? "http://localhost:3000" : "https://starlog-web-production.up.railway.app");
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
 const DEFAULT_VOICE_MIME = "audio/x-m4a";
 const DEFAULT_FILE_MIME = "application/octet-stream";
@@ -2666,8 +2669,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       if (active && persisted) {
-        setApiBase(persisted.apiBase);
-        setPwaBase(persisted.pwaBase);
+        setApiBase(persisted.apiBase || DEFAULT_API_BASE);
+        setPwaBase(persisted.pwaBase || DEFAULT_PWA_BASE);
         setToken(recoveredToken);
         setQuickCaptureTitle(persisted.quickCaptureTitle);
         setQuickCaptureText(persisted.quickCaptureText);
