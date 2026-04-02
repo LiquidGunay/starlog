@@ -96,6 +96,19 @@ if (String(android?.versionCode ?? "") !== expectedVersionCode) {
 }
 EOF
 
+verify_release_apk_metadata() {
+  local apk_path="$1"
+  local aapt_bin="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS_VERSION:-34.0.0}/aapt"
+  [[ -x "${aapt_bin}" ]] || fail "Expected aapt at ${aapt_bin}"
+
+  local badging
+  badging="$("${aapt_bin}" dump badging "${apk_path}")"
+  grep -F "package: name='com.starlog.app'" <<<"${badging}" >/dev/null || fail "Release APK package is not com.starlog.app"
+  grep -F "versionCode='${VERSION_CODE}'" <<<"${badging}" >/dev/null || fail "Release APK versionCode drifted from ${VERSION_CODE}"
+  grep -F "versionName='${VERSION_NAME}'" <<<"${badging}" >/dev/null || fail "Release APK versionName drifted from ${VERSION_NAME}"
+  grep -F "application-label:'Starlog'" <<<"${badging}" >/dev/null || fail "Release APK app label is not Starlog"
+}
+
 log "Building signed production app bundle"
 (
   cd "${ANDROID_DIR}"
@@ -116,6 +129,7 @@ if [[ "${BUILD_QA_APK}" == "1" ]]; then
   )
   APK_SOURCE="${ANDROID_DIR}/app/build/outputs/apk/release/app-release.apk"
   [[ -f "${APK_SOURCE}" ]] || fail "Expected APK output missing: ${APK_SOURCE}"
+  verify_release_apk_metadata "${APK_SOURCE}"
   APK_TARGET="${ARTIFACT_ROOT}/starlog-${VERSION_NAME}-${VERSION_CODE}-signed.apk"
   install -m 0644 "${APK_SOURCE}" "${APK_TARGET}"
   if [[ "${STAGE_WINDOWS_APK}" == "1" ]]; then

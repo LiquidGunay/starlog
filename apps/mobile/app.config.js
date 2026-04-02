@@ -37,6 +37,12 @@ function variantSuffix(currentVariant) {
 
 const packageSuffix = variantSuffix(variant);
 const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || process.env.EAS_PROJECT_ID || "";
+const defaultApiBase =
+  process.env.EXPO_PUBLIC_STARLOG_API_BASE
+  || (variant === "development" ? "http://localhost:8000" : "https://starlog-api-production.up.railway.app");
+const defaultPwaBase =
+  process.env.EXPO_PUBLIC_STARLOG_PWA_BASE
+  || (variant === "development" ? "http://localhost:3000" : "https://starlog-web-production.up.railway.app");
 const plugins = [
   [
     "expo-notifications",
@@ -71,8 +77,19 @@ const extra = projectId
       eas: {
         projectId,
       },
+      starlogDefaults: {
+        apiBase: defaultApiBase,
+        pwaBase: defaultPwaBase,
+        variant,
+      },
     }
-  : {};
+  : {
+      starlogDefaults: {
+        apiBase: defaultApiBase,
+        pwaBase: defaultPwaBase,
+        variant,
+      },
+    };
 
 module.exports = {
   expo: {

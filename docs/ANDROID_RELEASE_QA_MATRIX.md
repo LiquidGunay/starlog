@@ -258,7 +258,38 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
 1. The production path is now distinct from preview RC packaging:
    - preview remains the sideload feedback APK flow
    - production is the signed Play-upload AAB plus optional signed QA APK flow
-2. The tracked Android `main` manifest no longer carries `SYSTEM_ALERT_WINDOW`, `exp+starlog`, or `DevSettingsActivity`; those remain debug-only.
-3. This validation used the repo debug keystore only to exercise the script end-to-end in CI-like local conditions.
+2. Production packaging must also validate the final APK label and package from the built artifact, not only the Expo config inputs.
+3. The tracked Android `main` manifest no longer carries `SYSTEM_ALERT_WINDOW`, `exp+starlog`, or `DevSettingsActivity`; those remain debug-only.
+4. This validation used the repo debug keystore only to exercise the script end-to-end in CI-like local conditions.
    - Real store uploads still require the actual Starlog upload keystore and a fresh signed-QA-APK phone smoke pass.
-4. The store checklist for this branch now matches the merged release manifest rather than the source manifest.
+5. The store checklist for this branch now matches the merged release manifest rather than the source manifest.
+
+## WI-630 latest production APK refresh
+
+Date: 2026-04-02
+Device target: OPPO CPH2381 (`9dd62e84`)
+Worktree: `/home/ubuntu/starlog-worktrees/latest-apk-release`
+Branch: `codex/latest-apk-release`
+Artifact under test: `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-signed.apk`
+Staged Windows copy: `C:\Temp\starlog-0.1.0-110-signed.apk`
+Package: `com.starlog.app`
+Launcher component: `com.starlog.app/com.starlog.app.dev.MainActivity`
+Version: `0.1.0 (110)`
+
+## WI-630 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Production Expo config resolves to hosted Railway defaults | PASS | `APP_VARIANT=production ./node_modules/.bin/expo config --json` |
+| Built production APK badging reports `application-label:'Starlog'` | PASS | `aapt dump badging /home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-signed.apk` |
+| Windows-host streamed install of `110` APK | PASS | `adb install -r C:\Temp\starlog-0.1.0-110-signed.apk` |
+| Installed package version is `110` on the connected phone | PASS | `adb shell dumpsys package com.starlog.app` |
+| Installed APK renders the latest Velvet capture shell | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-release-smoke.png` |
+| Installed APK renders the mobile mission-tools assistant surface | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-assistant-panel.png` |
+
+## WI-630 notes
+
+1. The previous production-style APK could still ship with the stale native label `Starlog Dev` because the checked-in Android resources had drifted from Expo config.
+   - Mitigation: define `app_name` from `APP_VARIANT` in Gradle and make `scripts/android_prepare_production_release.sh` assert the final APK package/version/label with `aapt dump badging`.
+2. Google Play Protect still prompts for sideloaded QA APKs on this device.
+   - Mitigation: dismiss the prompt once, then continue the validation flow; the prompt now correctly shows `Starlog`, which confirms the label fix made it into the packaged artifact.
