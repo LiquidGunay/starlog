@@ -89,6 +89,56 @@ def test_chat_turn_persists_messages_cards_and_runtime_trace(
     assert payload["session_state"]["last_chat_turn_provider"] == "local_prompt_preview"
 
 
+def test_thread_context_cards_project_latest_session_state(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    seed = client.post(
+        "/v1/agent/command",
+        json={"command": "create task Review chat projection", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert seed.status_code == 200
+
+    chat = client.post(
+        "/v1/conversations/primary/chat",
+        json={"content": "Check thread context", "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert chat.status_code == 201
+    assistant_id = chat.json()["assistant_message"]["id"]
+
+    initial = client.get("/v1/conversations/primary", headers=auth_headers)
+    assert initial.status_code == 200
+    initial_payload = initial.json()
+    initial_message = next(item for item in initial_payload["messages"] if item["id"] == assistant_id)
+    initial_cards = [card for card in initial_message["cards"] if card["kind"] == "thread_context"]
+    assert initial_cards, "expected thread_context card in assistant message"
+    initial_card = initial_cards[0]
+    assert initial_card["metadata"]["projection"] == "thread_context"
+    assert "create task" in initial_card["body"].lower()
+    initial_version = initial_card["version"]
+
+    update = client.post(
+        "/v1/agent/command",
+        json={"command": "list tasks", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert update.status_code == 200
+
+    conversation = client.get("/v1/conversations/primary?trace_limit=0", headers=auth_headers)
+    assert conversation.status_code == 200
+    payload = conversation.json()
+    message = next(item for item in payload["messages"] if item["id"] == assistant_id)
+    cards = [card for card in message["cards"] if card["kind"] == "thread_context"]
+    assert cards, "expected thread_context card in assistant message"
+    card = cards[0]
+    assert card["metadata"]["projection"] == "thread_context"
+    assert card["metadata"]["projection_version"] == card["version"]
+    assert "list tasks" in card["body"].lower()
+    assert card["version"] > initial_version
+
+
 def test_primary_conversation_supports_message_pagination(
     client: TestClient,
     auth_headers: dict[str, str],

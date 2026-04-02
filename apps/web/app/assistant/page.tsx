@@ -228,6 +228,23 @@ function summarizeTraceValue(value: unknown): string {
   return "No structured payload";
 }
 
+function cardMetaText(card: ConversationCard): string {
+  const parts = [`v${card.version}`];
+  const metadata = card.metadata ?? {};
+  const source = typeof metadata.projection_source === "string" ? metadata.projection_source : "";
+  const updatedAt = typeof metadata.projection_updated_at === "string" ? metadata.projection_updated_at : "";
+  if (updatedAt) {
+    const parsed = new Date(updatedAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      parts.push(`updated ${parsed.toLocaleString()}`);
+    }
+  }
+  if (source) {
+    parts.push(`source ${source.replace(/_/g, " ")}`);
+  }
+  return parts.join(" · ");
+}
+
 function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueItem {
   if (!value || typeof value !== "object") {
     return false;
@@ -269,6 +286,8 @@ export default function AssistantPage() {
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationTraces, setConversationTraces] = useState<ConversationToolTrace[]>([]);
   const [lastResetSummary, setLastResetSummary] = useState<ConversationSessionResetResponse | null>(null);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [expandedTraces, setExpandedTraces] = useState<Record<string, boolean>>({});
   const [speakingReply, setSpeakingReply] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -328,6 +347,14 @@ export default function AssistantPage() {
       },
     ];
   }, [conversationMessages, latest]);
+
+  const toggleExpandedCards = useCallback((key: string) => {
+    setExpandedCards((previous) => ({ ...previous, [key]: !previous[key] }));
+  }, []);
+
+  const toggleExpandedTraces = useCallback((key: string) => {
+    setExpandedTraces((previous) => ({ ...previous, [key]: !previous[key] }));
+  }, []);
 
   useEffect(() => {
     setHistory((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
@@ -1066,6 +1093,10 @@ export default function AssistantPage() {
                   transcriptMessages.map((message) => {
                     const assistantCommand = message.metadata?.assistant_command;
                     const messageTraces = conversationTraces.filter((trace) => trace.message_id === message.id);
+                    const cardToggleKey = `${message.id}-cards`;
+                    const traceToggleKey = `${message.id}-traces`;
+                    const cardsExpanded = !!expandedCards[cardToggleKey];
+                    const tracesExpanded = !!expandedTraces[traceToggleKey];
                     const fallbackBody = assistantCommand?.summary || "No message content recorded.";
                     const body = message.content.trim() || fallbackBody;
                     return (
@@ -1080,16 +1111,30 @@ export default function AssistantPage() {
                             <div className="assistant-inline-card assistant-inline-card-stack">
                               <div className="assistant-inline-card-head">
                                 <span>Attached cards</span>
-                                <span>{message.cards.length}</span>
+                                <span className="assistant-inline-card-actions">
+                                  <button
+                                    className="assistant-inline-card-toggle"
+                                    type="button"
+                                    onClick={() => toggleExpandedCards(cardToggleKey)}
+                                  >
+                                    {cardsExpanded ? "Collapse" : "Expand"}
+                                  </button>
+                                  <span>{message.cards.length}</span>
+                                </span>
                               </div>
                               <div className="assistant-inline-card-steps">
                                 {message.cards.map((card, index) => (
                                   <div key={`${message.id}-card-${card.kind}-${index}`} className="assistant-inline-step assistant-inline-step-card">
                                     <div>
                                       <strong>{card.title || card.kind.replace(/_/g, " ")}</strong>
-                                      {card.body ? <p>{card.body}</p> : null}
+                                      {cardsExpanded && card.body ? <p>{card.body}</p> : null}
+                                      {cardsExpanded && card.metadata && Object.keys(card.metadata).length > 0 ? (
+                                        <code className="assistant-inline-card-json">
+                                          {JSON.stringify(card.metadata, null, 2)}
+                                        </code>
+                                      ) : null}
                                     </div>
-                                    <span>v{card.version}</span>
+                                    <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -1099,7 +1144,16 @@ export default function AssistantPage() {
                             <div className="assistant-inline-card assistant-inline-card-stack">
                               <div className="assistant-inline-card-head">
                                 <span>Runtime trace</span>
-                                <span>{messageTraces.length}</span>
+                                <span className="assistant-inline-card-actions">
+                                  <button
+                                    className="assistant-inline-card-toggle"
+                                    type="button"
+                                    onClick={() => toggleExpandedTraces(traceToggleKey)}
+                                  >
+                                    {tracesExpanded ? "Collapse" : "Expand"}
+                                  </button>
+                                  <span>{messageTraces.length}</span>
+                                </span>
                               </div>
                               <div className="assistant-inline-card-steps">
                                 {messageTraces.map((trace) => (
@@ -1107,8 +1161,8 @@ export default function AssistantPage() {
                                     <div className="assistant-inline-step-copy">
                                       <strong>{trace.tool_name}</strong>
                                       <p>{summarizeTraceValue(trace.result)}</p>
-                                      {Object.keys(trace.arguments).length > 0 ? (
-                                        <code>{JSON.stringify(trace.arguments)}</code>
+                                      {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
+                                        <code>{JSON.stringify(trace.arguments, null, 2)}</code>
                                       ) : null}
                                     </div>
                                     <span>{trace.status}</span>

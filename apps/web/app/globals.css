@@ -2564,6 +2564,28 @@ a {
   text-transform: uppercase;
 }
 
+.assistant-inline-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.assistant-inline-card-toggle {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+}
+
+.assistant-inline-card-toggle:hover {
+  color: var(--text);
+}
+
 .assistant-inline-card-steps {
   display: grid;
   gap: 0.42rem;
@@ -2601,6 +2623,22 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
+}
+
+.assistant-inline-card-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.assistant-inline-card-json {
+  display: block;
+  margin-top: 0.35rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.73rem;
+  color: color-mix(in srgb, var(--text), var(--muted) 22%);
 }
 
 .assistant-inline-step-card p {
