@@ -129,7 +129,7 @@ test("hydrates the assistant from the server conversation and clears session sta
   await expect(page.getByText("Loaded your current tasks into the queue.").first()).toBeVisible();
   await expect(page.getByText("Attached cards")).toBeVisible();
   await expect(page.getByText("Task queue")).toBeVisible();
-  await expect(page.getByText("Runtime trace")).toBeVisible();
+  await expect(page.getByText("Runtime trace", { exact: true })).toBeVisible();
   await expect(page.getByText("1 live keys")).toBeVisible();
   await expect(page.getByText("No voice command jobs yet.")).toBeVisible();
 
