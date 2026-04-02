@@ -989,6 +989,21 @@ def test_worker_token_refresh_and_revocation_lifecycle(client: TestClient, auth_
 
 
 def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[str, str]) -> None:
+    deck = client.post(
+        "/v1/cards/decks",
+        json={
+            "name": "Export Deck",
+            "description": "Export me too",
+            "schedule": {
+                "new_cards_due_offset_hours": 0,
+                "initial_interval_days": 2,
+                "initial_ease_factor": 2.7,
+            },
+        },
+        headers=auth_headers,
+    )
+    assert deck.status_code == 201
+
     artifact = client.post(
         "/v1/artifacts",
         json={"source_type": "text", "raw_content": "Review cadence matters."},
@@ -1038,6 +1053,7 @@ def test_review_calendar_briefing_export(client: TestClient, auth_headers: dict[
     assert export_payload.status_code == 200
     manifest = export_payload.json()["manifest"]["table_counts"]
     assert manifest["artifacts"] >= 1
+    assert manifest["card_decks"] >= 2
     assert manifest["cards"] >= 1
     assert manifest["tasks"] >= 1
 

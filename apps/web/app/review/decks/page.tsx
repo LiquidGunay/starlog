@@ -82,8 +82,11 @@ export default function DeckBrowserPage() {
   }, [apiBase, selectedDeckId, token]);
 
   const loadCards = useCallback(async (nextDeckFilter = selectedDeckFilter) => {
-    const query = nextDeckFilter === "all" ? "" : `?deck_id=${encodeURIComponent(nextDeckFilter)}`;
-    const payload = await apiRequest<Card[]>(apiBase, token, `/v1/cards${query}`);
+    const params = new URLSearchParams({ limit: "500" });
+    if (nextDeckFilter !== "all") {
+      params.set("deck_id", nextDeckFilter);
+    }
+    const payload = await apiRequest<Card[]>(apiBase, token, `/v1/cards?${params.toString()}`);
     setCards(payload);
     return payload;
   }, [apiBase, selectedDeckFilter, token]);
