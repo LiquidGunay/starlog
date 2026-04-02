@@ -1,6 +1,6 @@
 # Codex Parallel Work Items
 
-Queue refresh date: `2026-03-27`
+Queue refresh date: `2026-04-02`
 
 Planning sources:
 
@@ -11,7 +11,7 @@ Planning sources:
 ## Queue reset
 
 - The Velvet redesign workitems (`WI-610` through `WI-615`) landed on `master` and are no longer the active queue.
-- This refresh groups the next release-prep work around turning the new `master` state into a semi-stable user-testable release.
+- The semi-stable release-prep workitems from the prior refresh are complete; the active queue now focuses on the remaining v1 product gaps.
 - Live lock state is authoritative under `$(git rev-parse --git-common-dir)/codex-workitems/`; this file is the human-readable mirror only.
 
 ## Working rules
@@ -36,41 +36,33 @@ Planning sources:
 
 ## Active queue
 
-### WI-619. Semi-Stable Release Bundle Refresh
+### WI-627. Dynamic Conversation Cards And Live Thread Projections
 
-- Branch: `codex/semi-stable-release-bundle`
+- Branch: `codex/dynamic-chat-card-projections`
 - Lock: `PENDING`
-- Goal: produce a fresh user-testable release bundle from current `master` so the updated PWA and Android app can be downloaded and judged as one release pass.
+- Goal: make the canonical chat render cards that update with thread state changes instead of behaving like static snapshots.
 - Scope:
-  - build a fresh Android installable artifact from current `master`
-  - refresh the operator handoff doc with current commit, artifact paths, and install guidance
-  - record checksums and bundle locations for the downloadable surfaces
+  - versioned card payload updates from the server-backed thread
+  - inline expand/collapse and drill-down for card detail
+  - sync visible card state across PWA and mobile thread views
 - Validation:
-  - `cd apps/mobile/android && ./gradlew assembleRelease`
-  - confirm the bundle paths in `docs/VNEXT_TEST_BUNDLE.md`
+  - `cd services/api && uv run --project . --extra dev pytest -s tests/test_conversations.py tests/test_api_flows.py`
+  - `cd apps/web && ./node_modules/.bin/playwright test --config=playwright.web.config.ts --grep "assistant|cards"`
 
-### WI-617. Semi-Stable Cross-Surface Validation Pass
+### WI-628. ML Interview Question Bank SRS Bootstrap Deck
 
-- Branch: `codex/semi-stable-validation-pass`
+- Branch: `codex/ml-interview-srs-bootstrap`
 - Lock: `PENDING`
-- Goal: rerun the release evidence on current `master` so the semi-stable bundle has current UI proof instead of mixed older evidence.
+- Goal: scrape the ML interviews book part II question list and turn each question into a reviewable QA card deck that can seed Starlog SRS.
 - Scope:
-  - rerun `./scripts/pwa_release_gate.sh`
-  - rerun `./scripts/velvet_validation_artifacts.sh` with PWA, Android phone, and Windows helper coverage enabled
-  - store an authoritative artifact bundle and mark superseded bundles explicitly
+  - scrape the question list with explicit source provenance
+  - generate concise paraphrased answers for each question
+  - store the deck in machine-readable form and, if practical, add a tiny seed/loader path for the current SRS tables
 - Validation:
-  - `./scripts/pwa_release_gate.sh`
-  - `./scripts/velvet_validation_artifacts.sh`
-
-### WI-618. Release Docs And Plan Alignment
-
-- Branch: `codex/release-docs-plan-alignment`
-- Lock: `PENDING`
-- Goal: align release-facing docs with the current `master` snapshot and remove plan-doc drift before the next semi-stable handoff.
-- Scope:
-  - refresh `docs/IMPLEMENTATION_STATUS.md` and `docs/VNEXT_TEST_BUNDLE.md`
-  - ensure the canonical root `PLAN.md` exists on the release branch and does not conflict with older forward-looking docs
-  - keep `README.md`, release docs, and validation docs aligned with the same release snapshot
+- Acceptance:
+  - one QA card exists per source question
+  - the deck is reviewable and importable
+  - provenance points back to the source URL and question section
 - Validation:
-  - `git diff --check`
-  - manual docs sanity review against current `master`
+  - deck generation or import script runs against the source page
+  - output parses cleanly and matches the current SRS card shape
