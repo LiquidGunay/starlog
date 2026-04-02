@@ -47,6 +47,16 @@ STARLOG_VERIFY_RUN_APK=0 \
 ./scripts/verify_hosted_pwa_and_apk.sh
 ```
 
+If you want the same command to verify that the hosted deck browser can actually load deck data, add a live bearer token:
+
+```bash
+STARLOG_HOSTED_WEB_ORIGIN=https://starlog-web-production.up.railway.app \
+STARLOG_HOSTED_API_BASE=https://starlog-api-production.up.railway.app \
+STARLOG_VERIFY_TOKEN=YOUR_BEARER_TOKEN \
+STARLOG_VERIFY_RUN_APK=0 \
+./scripts/verify_hosted_pwa_and_apk.sh
+```
+
 Manual checklist:
 
 1. PWA loads on `https://starlog-web-production.up.railway.app`.

@@ -13,9 +13,11 @@ RUN_PWA="${STARLOG_VERIFY_RUN_PWA:-1}"
 RUN_APK="${STARLOG_VERIFY_RUN_APK:-1}"
 DRY_RUN="${STARLOG_VERIFY_DRY_RUN:-0}"
 APK_MODE="${STARLOG_VERIFY_APK_MODE:-precheck}" # precheck | smoke
+RUN_BROWSER_PROBE="${STARLOG_VERIFY_BROWSER_PROBE:-1}"
 
 WEB_ORIGIN="${STARLOG_HOSTED_WEB_ORIGIN:-}"
 API_BASE="${STARLOG_HOSTED_API_BASE:-}"
+VERIFY_TOKEN="${STARLOG_VERIFY_TOKEN:-}"
 
 APK_PATH="${APK_PATH:-${STARLOG_APK_PATH:-}}"
 ADB="${ADB:-}"
@@ -33,6 +35,8 @@ Hosted PWA (curl probes):
   - checks availability for: /assistant, /review, /decks (regression guard)
   - also probes: /runtime, /notes, /tasks, /calendar, /artifacts, /sync-center
   - optional API health probe: \$STARLOG_HOSTED_API_BASE/v1/health
+  - optional browser probe verifies the hosted client writes the expected API base to localStorage
+    and, when STARLOG_VERIFY_TOKEN is provided, confirms the deck browser loads with deck data
 
 Android APK:
   - mode "precheck": validates required inputs and prints resolved config
@@ -43,10 +47,12 @@ Environment variables:
   STARLOG_VERIFY_RUN_APK        1 to run Android APK checks (default: 1)
   STARLOG_VERIFY_APK_MODE       precheck | smoke (default: precheck)
   STARLOG_VERIFY_DRY_RUN        1 to print commands without running them (default: 0)
+  STARLOG_VERIFY_BROWSER_PROBE  1 to run the Playwright-backed browser probe (default: 1)
   STARLOG_VERIFY_ARTIFACT_DIR   output dir override (default: artifacts/verify-hosted-pwa-and-apk/<stamp>/)
 
   STARLOG_HOSTED_WEB_ORIGIN     required when running PWA checks (example: https://starlog-web-production.up.railway.app)
   STARLOG_HOSTED_API_BASE       optional for API health probe (example: https://starlog-api-production.up.railway.app)
+  STARLOG_VERIFY_TOKEN          optional bearer token for authenticated deck-browser verification
 
   STARLOG_APK_PATH or APK_PATH  required when running APK checks (path to an .apk)
   ADB                           optional; passed through to android_native_smoke.sh
@@ -146,6 +152,104 @@ run_hosted_pwa_checks() {
   else
     log "API health probe: skipped (STARLOG_HOSTED_API_BASE unset)"
   fi
+
+  run_hosted_browser_probe "$origin"
+}
+
+run_hosted_browser_probe() {
+  local origin="$1"
+
+  if [[ "$RUN_BROWSER_PROBE" != "1" ]]; then
+    log "Hosted browser probe: skipped (STARLOG_VERIFY_BROWSER_PROBE=$RUN_BROWSER_PROBE)"
+    return 0
+  fi
+
+  local probe_json="$PWA_DIR/browser-probe.json"
+  local screenshot_path="$PWA_DIR/browser-probe-review-decks.png"
+
+  log "Hosted browser probe: $origin"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '[dry-run] node Playwright probe -> %q and %q\n' "$probe_json" "$screenshot_path"
+    return 0
+  fi
+
+  WEB_ORIGIN="$origin" \
+  API_BASE="$API_BASE" \
+  VERIFY_TOKEN="$VERIFY_TOKEN" \
+  PROBE_JSON="$probe_json" \
+  PROBE_SCREENSHOT="$screenshot_path" \
+  node <<'EOF'
+const fs = require("fs");
+const { chromium } = require("@playwright/test");
+
+async function main() {
+  const origin = process.env.WEB_ORIGIN;
+  const expectedApiBase = process.env.API_BASE || "";
+  const token = process.env.VERIFY_TOKEN || "";
+  const outPath = process.env.PROBE_JSON;
+  const screenshotPath = process.env.PROBE_SCREENSHOT;
+  if (!origin || !outPath || !screenshotPath) {
+    throw new Error("Browser probe missing required env");
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext();
+  await context.addInitScript(({ token }) => {
+    window.localStorage.removeItem("starlog-api-base");
+    if (token) {
+      window.localStorage.setItem("starlog-token", token);
+    } else {
+      window.localStorage.removeItem("starlog-token");
+    }
+  }, { token });
+
+  const reviewPage = await context.newPage();
+  await reviewPage.goto(`${origin}/review`, { waitUntil: "domcontentloaded" });
+  await reviewPage.waitForTimeout(1500);
+  const storedApiBase = await reviewPage.evaluate(() => window.localStorage.getItem("starlog-api-base") || "");
+  const reviewText = await reviewPage.textContent("body");
+
+  const decksPage = await context.newPage();
+  await decksPage.goto(`${origin}/review/decks`, { waitUntil: "domcontentloaded" });
+  await decksPage.waitForTimeout(2500);
+  await decksPage.screenshot({ path: screenshotPath, fullPage: true });
+  const decksText = await decksPage.textContent("body");
+
+  const result = {
+    storedApiBase,
+    expectedApiBase,
+    tokenProvided: Boolean(token),
+    reviewContainsNeuralSync: Boolean(reviewText && reviewText.includes("Neural Sync")),
+    reviewContainsMissingToken: Boolean(reviewText && reviewText.includes("Bearer token missing")),
+    decksContainsBrowser: Boolean(decksText && decksText.includes("Deck Browser")),
+    decksContainsInbox: Boolean(decksText && decksText.includes("Inbox")),
+    decksContainsConnectPrompt: Boolean(decksText && decksText.includes("Connect to the API")),
+  };
+  fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+
+  const failures = [];
+  if (expectedApiBase && storedApiBase !== expectedApiBase) {
+    failures.push(`expected hosted api base ${expectedApiBase} but browser stored ${storedApiBase || "<empty>"}`);
+  }
+  if (!result.decksContainsBrowser) {
+    failures.push("review/decks did not render the Deck Browser shell");
+  }
+  if (token && !result.decksContainsInbox) {
+    failures.push("authenticated browser probe did not show deck data");
+  }
+
+  await browser.close();
+
+  if (failures.length > 0) {
+    throw new Error(failures.join("; "));
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
+EOF
 }
 
 run_android_apk_checks() {
