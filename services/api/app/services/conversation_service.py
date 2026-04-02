@@ -42,9 +42,27 @@ def _thread_context_payload(session_state: dict[str, Any], traces: list[dict[str
     return "Thread context", body, metadata
 
 
-def _projection_key(session_state: dict[str, Any], traces: list[dict[str, Any]], session_updated_at: str | None) -> str:
+def _latest_trace_for_projection(conn: Connection, thread_id: str) -> dict[str, Any] | None:
+    return execute_fetchone(
+        conn,
+        """
+        SELECT id, thread_id, message_id, tool_name, arguments_json, status, result_json, metadata_json, created_at
+        FROM conversation_tool_traces
+        WHERE thread_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (thread_id,),
+    )
+
+
+def _projection_key(
+    session_state: dict[str, Any],
+    latest_trace: dict[str, Any] | None,
+    session_updated_at: str | None,
+) -> str:
     last_intent = str(session_state.get("last_matched_intent") or "").strip()
-    latest_trace = traces[0] if traces else {}
+    latest_trace = latest_trace or {}
     latest_tool = str(latest_trace.get("tool_name") or "").strip()
     latest_status = str(latest_trace.get("status") or "").strip()
     return "|".join(
@@ -61,23 +79,30 @@ def _project_cards(
     cards: list[dict[str, Any]],
     *,
     session_state: dict[str, Any],
-    traces: list[dict[str, Any]],
+    latest_trace: dict[str, Any] | None,
     session_updated_at: str | None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
     if not cards:
-        return []
-    projection_key = _projection_key(session_state, traces, session_updated_at)
+        return [], None
+    projection_key = _projection_key(session_state, latest_trace, session_updated_at)
     projected: list[dict[str, Any]] = []
+    stored_cards: list[dict[str, Any]] = []
+    needs_persist = False
     for card in cards:
         kind = str(card.get("kind") or "").strip()
         metadata = card.get("metadata")
         metadata = metadata if isinstance(metadata, dict) else {}
         projection = str(metadata.get("projection") or "").strip()
         if kind == PROJECTION_THREAD_CONTEXT or projection == PROJECTION_THREAD_CONTEXT:
-            title, body, projection_metadata = _thread_context_payload(session_state, traces)
+            title, body, projection_metadata = _thread_context_payload(session_state, [latest_trace] if latest_trace else [])
             previous_key = str(metadata.get("projection_key") or "")
             base_version = card.get("version")
-            version = base_version if isinstance(base_version, int) and base_version > 0 else 1
+            stored_version = metadata.get("projection_version")
+            version = base_version if isinstance(base_version, int) and base_version > 0 else 0
+            if version <= 0 and isinstance(stored_version, int) and stored_version > 0:
+                version = stored_version
+            if version <= 0:
+                version = 1
             if previous_key and projection_key != previous_key:
                 version = version + 1 if version >= 1 else 1
             next_metadata = {
@@ -86,20 +111,24 @@ def _project_cards(
                 "projection": PROJECTION_THREAD_CONTEXT,
                 "projection_source": "session_state",
                 "projection_key": projection_key,
+                "projection_version": version,
                 "projection_updated_at": session_updated_at,
             }
-            projected.append(
-                {
-                    **card,
-                    "title": card.get("title") or title,
-                    "body": body,
-                    "metadata": next_metadata,
-                    "version": version,
-                }
-            )
+            projected_card = {
+                **card,
+                "title": card.get("title") or title,
+                "body": body,
+                "metadata": next_metadata,
+                "version": version,
+            }
+            projected.append(projected_card)
+            stored_cards.append({**card, "metadata": next_metadata, "version": version})
+            if previous_key != projection_key or stored_version != version or base_version != version:
+                needs_persist = True
         else:
             projected.append(card)
-    return projected
+            stored_cards.append(card)
+    return projected, stored_cards if needs_persist else None
 
 
 def _normalize_cards_for_storage(cards: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -132,6 +161,7 @@ def _thread_payload(
     )
     session_state = session_row["state_json"] if session_row else {}
     session_updated_at = session_row["updated_at"] if session_row else None
+    projection_trace = _latest_trace_for_projection(conn, row["id"])
     before_row = None
     cursor_sql = ""
     cursor_params: tuple[str, ...] = ()
@@ -191,6 +221,37 @@ def _thread_payload(
         )
         has_more_messages = older_message is not None
         next_before_message_id = str(earliest_message["id"]) if has_more_messages else None
+    payload_messages: list[dict[str, Any]] = []
+    pending_card_updates: list[tuple[str, str]] = []
+    for item in messages:
+        projected_cards, stored_cards = _project_cards(
+            _ensure_card_list(item["cards_json"]),
+            session_state=session_state,
+            latest_trace=projection_trace,
+            session_updated_at=session_updated_at,
+        )
+        payload_messages.append(
+            {
+                "id": item["id"],
+                "thread_id": item["thread_id"],
+                "role": item["role"],
+                "content": item["content"],
+                "cards": projected_cards,
+                "metadata": item["metadata_json"],
+                "created_at": item["created_at"],
+            }
+        )
+        if stored_cards is not None:
+            pending_card_updates.append((json.dumps(stored_cards, sort_keys=True), item["id"]))
+
+    if pending_card_updates:
+        for cards_json, message_id in pending_card_updates:
+            conn.execute(
+                "UPDATE conversation_messages SET cards_json = ? WHERE id = ?",
+                (cards_json, message_id),
+            )
+        conn.commit()
+
     return {
         "id": row["id"],
         "slug": row["slug"],
@@ -203,23 +264,7 @@ def _thread_payload(
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "session_state": session_row["state_json"] if session_row else {},
-        "messages": [
-            {
-                "id": item["id"],
-                "thread_id": item["thread_id"],
-                "role": item["role"],
-                "content": item["content"],
-                "cards": _project_cards(
-                    _ensure_card_list(item["cards_json"]),
-                    session_state=session_state,
-                    traces=traces,
-                    session_updated_at=session_updated_at,
-                ),
-                "metadata": item["metadata_json"],
-                "created_at": item["created_at"],
-            }
-            for item in messages
-        ],
+        "messages": payload_messages,
         "tool_traces": [
             {
                 "id": item["id"],
