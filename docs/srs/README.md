@@ -28,4 +28,4 @@ cd /home/ubuntu/starlog-worktrees/ml-interview-srs-bootstrap
 python3 scripts/build_ml_interview_srs_deck.py --output data/ml_interviews_part_ii_qa_cards.jsonl
 ```
 
-The full deck is generated from the public Part II question index and aligned answers from the open `zafstojano/ml-interview-questions-and-answers` repository when available. If that repository does not cover a question, the generator falls back to a short study answer so the card set stays complete. Each imported card gets a linked note block with source URL, section, index, and answer provenance.
+The full deck is generated from the public Part II question index and aligned answers from the open `zafstojano/ml-interview-questions-and-answers` repository when available. Missing cards are retried with OpenAI-backed study answers, and only fall back to a short heuristic if both sources fail. Each imported card gets a linked note block with source URL, section, index, and answer provenance.
