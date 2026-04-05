@@ -4,6 +4,8 @@
 Build Starlog as a single-user, low-cost, independent system for knowledge management, scheduling, alarms, and learning workflows.
 
 ## Locked v1 preferences
+- Voice/chat-first interaction is the canonical operating model; buttons and direct surface interactions are secondary.
+- One persistent user chat thread exists across clients, with durable long-term memory and clearable short-term session state.
 - Web-first PWA is the primary workspace.
 - Companion mobile app is focused on capture, alarms/offline briefing playback, quick review/triage.
 - Full note editing on mobile is done via the PWA.
@@ -14,14 +16,18 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 - Preserve source fidelity: raw + normalized + extracted.
 - OCR is strict on-device only.
 - STT/TTS is on-device first (local model spin-up allowed).
-- LLM flows are manual quick-action driven (suggest-first), with fallback providers.
+- LLM orchestration is OpenAI-primary for v1, with local-first voice runtimes and fallback providers.
+- Proactive behavior is limited to preparing suggestions; major writes still require explicit confirmation.
 - Calendar is internal model + two-way Google Calendar sync.
 - Include tasks + time blocking.
 - Morning alarm + spoken briefing with offline playback on phone.
+- Daily briefings unify schedule/task guidance with research digest output when relevant.
 - Minimize hosting cost; Railway hobby footprint preferred.
 
 ## AI provider policy
-- Prefer local/on-device providers when available.
+- Prefer local/on-device providers for voice when available.
+- Prefer a separate in-repo Python AI runtime for prompts, orchestration, provider adapters, and evals.
+- Use OpenAI as the primary hosted LLM provider for v1 orchestration and summarization flows.
 - Codex subscription bridge is best-effort/experimental.
 - Always keep fallback path (supported API-key provider/local alternative) for availability.
 
@@ -37,6 +43,9 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
   - `workitems.json`
   - `locks/<workitem_id>.lock`
   - `audit.jsonl`
+  - `review_backlog.json`
+  - `branch_cleanup.json`
+  - `design_queue.json`
   - `.registry.lock` (used for atomic lock operations)
 - Lock protocol:
   - claim lock before implementation starts
@@ -58,18 +67,32 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
   4) While working, refresh `last_heartbeat_at` at least every 2 minutes (under `.registry.lock`), and keep `workitems.json` ownership/status aligned.
   5) On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
   6) Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
-- `docs/CODEX_PARALLEL_WORK_ITEMS.md` is human-readable planning context only; live lock authority is the shared `.git` registry.
+- `docs/CODEX_PARALLEL_WORK_ITEMS.md` is archived planning context only; live lock authority and live backlog state live in the shared `.git` registry.
 - Every claimed agent task must be delivered through a PR to `master`; direct pushes to `master` are not allowed.
 - If a task branch is behind `origin/master`, rebase onto latest `origin/master` before final review/merge and rerun relevant validation after the rebase.
 - Once a PR is merged, do not add commits to that branch/PR. Start a fresh `codex/*` branch from current `master` and open a new PR for follow-up work.
-- As soon as a PR merge is confirmed, delete the associated local branch and remote branch in the same cleanup pass unless that branch is still attached to an active worktree for an explicit handoff.
-- During branch cleanup, any local branch with no commits in the last 14 days should be presumed stale and removed unless it is attached to an active worktree or still maps to the current plan.
+- Capture backend/support review findings into `review_backlog.json` before deleting merged PR head branches.
+- During branch cleanup, quarantine unmerged or dirty local branches in `branch_cleanup.json` instead of deleting them blindly.
 - Run `git fetch --prune` plus merged-branch cleanup at the end of each merge batch so local refs do not accumulate across sessions.
 - Lock timing rationale:
   - 2-minute heartbeat gives near-real-time liveness without overwhelming lock-file churn.
   - 10-minute stale timeout tolerates short command/test pauses but recovers quickly from crashed or abandoned sessions.
   - Checking/refreshing at the 2-minute heartbeat cadence keeps takeover decisions consistent and deterministic.
 - Any merge-conflict resolution insight discovered while working must be appended to this file's **Issue log**.
+
+## Branch and worktree hygiene
+
+Keep branch/worktree count low enough that `master`, active task branches, and abandoned experiments are easy to distinguish.
+
+- Default to the canonical checkout at `/home/ubuntu/starlog`; create a new worktree only for parallel work, risky rebases, or a clearly isolated recovery pass.
+- Before creating a new worktree, inspect `git worktree list --porcelain` and reuse or delete an existing clean detached worktree if it is no longer tied to an active task.
+- Keep exactly one active `codex/*` task branch per worktree. Do not park multiple unfinished branches in the same checkout.
+- The canonical checkout should own local `master` whenever possible. Do not leave `master` pinned in a side worktree after the recovery or validation task that needed it is done.
+- If a branch/worktree falls out of the current plan, prefer deleting it. Only preserve it when it contains unsalvaged work that is still valuable against the current plan.
+- If preserved work is not ready to continue, store it as a clearly named stash (`git stash push -u -m "<branch> WIP"`) or record it in `branch_cleanup.json`, then remove the worktree.
+- After a branch merges or is intentionally abandoned, remove its worktree, run `git worktree prune`, and delete merged local/remote `codex/*` refs during the same cleanup pass.
+- Detached Codex app worktrees with no branch and no important local changes should be treated as disposable and removed during routine cleanup.
+- When salvage is needed from a stale branch, cherry-pick or patch-select only the pieces that still fit the current plan; do not revive the entire branch by default.
 
 ## Shared dependency/build reuse across worktrees
 
@@ -118,7 +141,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
-- `docs/CODEX_PARALLEL_WORK_ITEMS.md` — current human-readable work queue for parallel agent execution.
+- `docs/CODEX_PARALLEL_WORK_ITEMS.md` — archived human-readable queue snapshot; not the live coordination surface.
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — daily-use install, prerequisite, config, smoke, and reset handoff for the desktop helper on the main laptop.
 - `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
 - `docs/FINAL_PREVIEW_SIGNOFF.md` — current preview release-decision handoff, including the merged baseline and the remaining phone-proof import needed for full closure.
@@ -134,8 +157,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md` — required Railway production config for API/web services.
 - `docs/PWA_RELEASE_VERIFICATION_GATE.md` — mandatory pre-release gate for PWA builds/tests.
 - `docs/RAILWAY_DEPLOY.md` — recommended Railway deployment model and supporting runbooks.
-- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — canonical architecture/workflow/design contract for current implementation direction.
-- `docs/STARLOG_V1_PLAN.md` — product-scope and architecture plan for Starlog v1.
+- `docs/srs/README.md` — SRS deck/bootstrap references and import commands.
 - `services/worker/README.md` — placeholder scope note for future dedicated worker-runtime code.
 - `tools/browser-extension/README.md` — browser clipper scaffold purpose and local load instructions.
 - `tools/desktop-helper/README.md` — desktop helper capabilities, validation matrix, and host evidence.
@@ -278,8 +300,11 @@ Troubleshooting checklist:
 - 2026-03-15: User wants side panes across the main UI to be collapsible.
 - 2026-03-15: User wants the Railway-hosted web service to sleep to effectively zero idle compute usage if Railway allows it.
 - 2026-03-15: User wants desktop helper UI aligned to `screen_design` themes and expects a compact quick-capture popup plus a separate larger workspace surface for advanced controls.
-- 2026-03-15: User wants the PWA IA and visual language aligned to the `screen_design` references, with canonical surface naming (`Command Center`, `Artifact Nexus`, `Neural Sync`, `Chronos Matrix`).
-- 2026-03-15: User wants typography/chat styling to closely match the design HTML references and prefers contextual nav (Notes/Tasks under Command Center) without redundant `Calendar` links alongside `Chronos Matrix`.
+- 2026-03-15: User wanted the PWA IA and visual language aligned to the `screen_design` references, with clear naming across the main workspace, knowledge workspace, review workspace, and agenda workspace.
+- 2026-03-15: User wanted typography/chat styling to closely match the design HTML references and preferred contextual nav with Notes/Tasks grouped under the main workspace instead of redundant parallel links.
+- 2026-04-05: User wants the April observatory reset to replace the older velvet/command-center naming with `Main Room`, `Knowledge Base`, `SRS Review`, and `Agenda` while keeping route ids stable.
+- 2026-04-05: User wants volatile workitems, branch cleanup state, and PR review backlogs kept in the shared `.git` registry instead of repo-tracked markdown.
+- 2026-04-05: User wants stale branches and worktrees deleted aggressively unless they contain critical unsalvaged work that still matches the current plan.
 - 2026-03-15: User wants mobile implementation/testing runs to include stored screenshots as completion proof.
 - 2026-03-15: User clarified that iOS share status is out of scope for v1 and must not block v1 distribution work.
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
@@ -406,7 +431,7 @@ Troubleshooting checklist:
 - 2026-03-27: Rebase conflict resolution: keep the newer master AGENTS baseline and reapply branch-specific PDF ingest notes without dropping the mobile runbook updates.
 - 2026-03-27: PDF fallback ranking must also keep obviously unreadable high-alpha OCR garbage from outranking a readable pypdf text layer; provider priority should break that tie in favor of the text layer fallback.
 - 2026-03-27: Rebase conflict resolution: preserve both PDF-ingest issue-log notes when replaying this branch onto a newer master baseline.
-- 2026-03-27: The Velvet validation artifact wrapper can be invoked from non-login shells, so it must add `~/.local/bin` to `PATH` or hosted smoke may fail to find `uv` even when `uv` is installed on the host.
+- 2026-03-27: The legacy validation artifact wrapper can be invoked from non-login shells, so it must add `~/.local/bin` to `PATH` or hosted smoke may fail to find `uv` even when `uv` is installed on the host.
 - 2026-03-27: Android dev-client validation from a linked worktree can fail or hang when Metro resolves against shared symlinked installs; the mobile workspace now carries an explicit Metro config, and phone validation on this host is most reliable with `expo-dev-launcher://...`, `adb reverse tcp:8081`, and a localized JS install when needed.
 - 2026-03-27: The semistable preview-bundle refresh initially updated the root bundle README and new RC2 APK but left copied `docs/` payloads and an older RC1 APK in `/home/ubuntu/starlog_preview_bundle`, so future bundle refreshes must explicitly recopy release docs and prune stale preview APKs before handoff.
 - 2026-03-30: On this host, `ci_smoke_matrix.sh` can fail early when `.next/types/**` has not been generated yet; run a build-producing step such as `scripts/pwa_release_gate.sh` first, or ensure Next type generation already happened, before treating the smoke matrix as a product regression.
@@ -423,3 +448,5 @@ Troubleshooting checklist:
 - 2026-04-02: Non-dry-run SRS import must be exercised with the repo `services/api/.venv` because system Python on this host does not have `pydantic` installed, so temp-DB validation should use the shared venv instead of `/usr/bin/python3`.
 - 2026-04-02: Rebase conflict resolution: keep the queue-refresh notes and the SRS bootstrap notes together when replaying this branch onto a newer master baseline.
 - 2026-04-02: Production Android packaging can silently ship the wrong launcher label when the checked-in native `apps/mobile/android/app/src/main/res/values/strings.xml` drifts from Expo config; define `app_name` from `APP_VARIANT` in Gradle and assert the final APK label with `aapt dump badging` during release packaging.
+- 2026-04-05: Shared-worktree dependency symlinks such as `node_modules`, `.venv`, and Gradle/Tauri `target` paths are not ignored by trailing-slash `.gitignore` patterns alone; the repo now needs bare-name ignore entries too so `use_shared_worktree_state.sh` does not pollute branch status.
+- 2026-04-05: Leaving `master` checked out in a side worktree while the canonical checkout carries dirty branch state makes recovery confusing; free `master` back to `/home/ubuntu/starlog`, preserve salvageable work with a named branch or stash, then remove stale worktrees promptly.

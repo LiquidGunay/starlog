@@ -65,7 +65,13 @@ android_shell_escape() {
 require_file() {
   local path="$1"
   local label="$2"
-  if [[ ! -f "$path" ]]; then
+  local check_path="$path"
+  if [[ "$path" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+    local drive="${BASH_REMATCH[1],,}"
+    local rest="${BASH_REMATCH[2]//\\//}"
+    check_path="/mnt/${drive}/${rest}"
+  fi
+  if [[ ! -f "$check_path" ]]; then
     printf '%s not found: %s\n' "$label" "$path" >&2
     exit 1
   fi
@@ -190,7 +196,7 @@ EOF
 }
 
 install_apk() {
-  log "Installing debug APK"
+  log "Installing APK"
   local deadline=$((SECONDS + INSTALL_TIMEOUT_SECONDS))
   local output=""
 
@@ -240,7 +246,7 @@ maybe_reverse_ports
 open_dev_client
 
 if is_enabled "$SKIP_INSTALL"; then
-  log "Installing debug APK"
+  log "Installing APK"
   install_apk
 else
   log "Skipping APK install"

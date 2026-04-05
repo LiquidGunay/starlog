@@ -71,7 +71,10 @@ def update_card(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> CardResponse:
-    updated = srs_service.update_card(db, card_id=card_id, payload=payload.model_dump(exclude_unset=True))
+    try:
+        updated = srs_service.update_card(db, card_id=card_id, payload=payload.model_dump(exclude_unset=True))
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
     return CardResponse.model_validate(updated)

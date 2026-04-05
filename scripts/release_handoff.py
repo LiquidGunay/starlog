@@ -185,6 +185,7 @@ def select_or_stage_asset(
     target_dir: Path,
     pattern: str,
     dry_run: bool,
+    allow_existing_duplicates: bool = False,
 ) -> Path:
     target_dir.mkdir(parents=True, exist_ok=True)
     if source:
@@ -205,6 +206,12 @@ def select_or_stage_asset(
     if not matches:
         raise FileNotFoundError(f"no staged {asset_type} found under {target_dir}")
     if len(matches) > 1:
+        if target_name:
+            preferred = next((path for path in matches if path.name == target_name), None)
+            if preferred is not None:
+                return preferred
+        if allow_existing_duplicates:
+            return matches[0]
         names = ", ".join(path.name for path in matches)
         raise RuntimeError(
             f"multiple staged {asset_type}s found under {target_dir}; specify --{asset_type}-source or clean up first: {names}"
@@ -397,6 +404,7 @@ def main() -> int:
         target_dir=android_dir,
         pattern="starlog-preview-*.apk",
         dry_run=args.dry_run,
+        allow_existing_duplicates=args.prune_old_assets,
     )
     staged_deb = select_or_stage_asset(
         asset_type="desktop-package",
@@ -405,6 +413,7 @@ def main() -> int:
         target_dir=desktop_dir,
         pattern="*.deb",
         dry_run=args.dry_run,
+        allow_existing_duplicates=args.prune_old_assets,
     )
 
     if args.prune_old_assets and not args.dry_run:

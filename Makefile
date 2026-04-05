@@ -1,7 +1,7 @@
 UV ?= uv
 API_PROJECT ?= services/api
 
-.PHONY: bootstrap bootstrap-api bootstrap-web dev-api dev-web dev-web-lan dev-worker dev-local-ai test-api lint-api seed-api verify-export sync-workitem-mirror check-workitem-mirror test-workitem-mirror
+.PHONY: bootstrap bootstrap-api bootstrap-web dev-api dev-web dev-web-lan dev-worker dev-local-ai test-api lint-api seed-api verify-export sync-workitem-registry check-workitem-registry test-workitem-registry sync-workitem-mirror check-workitem-mirror test-workitem-mirror
 
 bootstrap: bootstrap-api bootstrap-web
 
@@ -39,11 +39,18 @@ seed-api:
 verify-export:
 	$(UV) run --project $(API_PROJECT) python -m app.verify_export_roundtrip
 
-sync-workitem-mirror:
-	python3 scripts/sync_workitem_mirror.py
+sync-workitem-registry:
+	python3 scripts/observatory_registry.py refresh
 
-check-workitem-mirror:
-	python3 scripts/sync_workitem_mirror.py --check
+check-workitem-registry:
+	python3 scripts/workitem_lock.py status >/dev/null
+	PYTHONPATH=scripts python3 -c "from pathlib import Path; from workitem_lock import Registry, git_common_dir; repo = Path('.').resolve(); registry = Registry(git_common_dir(repo) / 'codex-workitems'); registry.ensure(); required = [registry.workitems_file, registry.review_backlog_file, registry.branch_cleanup_file, registry.design_queue_file]; missing = [str(path) for path in required if not path.exists()]; assert not missing, f'Missing registry files: {missing}'"
 
-test-workitem-mirror:
-	python3 -m unittest scripts/tests/test_sync_workitem_mirror.py
+test-workitem-registry:
+	python3 -m unittest scripts/tests/test_observatory_registry.py
+
+sync-workitem-mirror: sync-workitem-registry
+
+check-workitem-mirror: check-workitem-registry
+
+test-workitem-mirror: test-workitem-registry

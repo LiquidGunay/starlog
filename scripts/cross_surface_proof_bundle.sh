@@ -127,16 +127,16 @@ execute_step() {
 
 prepare_bundle() {
   log "Preparing bundle at $BUNDLE_DIR"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    record_step "prepare_bundle" "dry-run" "$BUNDLE_DIR"
+    return 0
+  fi
   local bundle_tmp
   bundle_tmp="$(mktemp)"
   "$ROOT_DIR/scripts/prepare_cross_surface_proof_bundle.sh" "$STAMP" >"$bundle_tmp"
   local bundle_path
   bundle_path="$(cat "$bundle_tmp")"
   rm -f "$bundle_tmp"
-  if [[ "$DRY_RUN" == "1" ]]; then
-    record_step "prepare_bundle" "dry-run" "$bundle_path"
-    return 0
-  fi
   record_step "prepare_bundle" "passed" "$bundle_path"
 }
 
@@ -359,6 +359,11 @@ run_phone_smoke() {
 write_summary() {
   local now
   now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "Dry run summary would be written to $SUMMARY_MD"
+    return 0
+  fi
 
   cat >"$SUMMARY_JSON" <<EOF
 {

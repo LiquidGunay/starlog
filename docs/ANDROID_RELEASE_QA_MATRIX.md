@@ -258,6 +258,8 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
 1. The production path is now distinct from preview RC packaging:
    - preview remains the sideload feedback APK flow
    - production is the signed Play-upload AAB plus optional signed QA APK flow
+2. Production sideload QA should now run `pnpm test:android:release-smoke` before handoff.
+   - The release smoke gate rejects APKs that are missing `libhermes.so` or `libhermes_executor.so`, stages the APK into a Windows-visible path when required, and fails fast on post-launch crash-buffer evidence.
 2. Production packaging must also validate the final APK label and package from the built artifact, not only the Expo config inputs.
 3. The tracked Android `main` manifest no longer carries `SYSTEM_ALERT_WINDOW`, `exp+starlog`, or `DevSettingsActivity`; those remain debug-only.
 4. This validation used the repo debug keystore only to exercise the script end-to-end in CI-like local conditions.
@@ -284,7 +286,7 @@ Version: `0.1.0 (110)`
 | Built production APK badging reports `application-label:'Starlog'` | PASS | `aapt dump badging /home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-signed.apk` |
 | Windows-host streamed install of `110` APK | PASS | `adb install -r C:\Temp\starlog-0.1.0-110-signed.apk` |
 | Installed package version is `110` on the connected phone | PASS | `adb shell dumpsys package com.starlog.app` |
-| Installed APK renders the latest Velvet capture shell | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-release-smoke.png` |
+| Installed APK renders the latest mobile capture shell | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-release-smoke.png` |
 | Installed APK renders the mobile mission-tools assistant surface | PASS | `/home/ubuntu/starlog_production_bundle/android/starlog-0.1.0-110-assistant-panel.png` |
 
 ## WI-630 notes

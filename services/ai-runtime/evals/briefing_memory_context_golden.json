@@ -1,0 +1,39 @@
+{
+  "id": "briefing-memory-context",
+  "workflow": "briefing",
+  "input": {
+    "title": "Daily briefing with memory context",
+    "text": "Generate today's briefing using schedule, tasks, recent memories, and recommendation hints.",
+    "context": {
+      "date": "2026-04-05",
+      "recent_memories": [
+        "Yesterday's focus drifted after lunch."
+      ],
+      "recommendation_hints": [
+        "front-load review work",
+        "protect one uninterrupted block"
+      ],
+      "sources": [
+        "calendar",
+        "tasks",
+        "conversation_memory"
+      ]
+    }
+  },
+  "checks": {
+    "must_include": [
+      "recent memory",
+      "recommendation hint",
+      "schedule blocks"
+    ],
+    "must_not_include": [
+      "silent calendar write",
+      "memory context omitted"
+    ]
+  },
+  "threshold": 1.0,
+  "samples": {
+    "good": "Schedule blocks: protect the morning focus block. Recent memory: yesterday's focus drifted after lunch. Recommendation hint: front-load review work and keep one uninterrupted block.",
+    "bad": "Here is a generic update with tasks only. Memory context omitted. I will make a silent calendar write now."
+  }
+}

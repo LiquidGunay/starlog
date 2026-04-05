@@ -19,6 +19,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+AI_RUNTIME_ROOT = Path(__file__).resolve().parents[1] / "services" / "ai-runtime"
+if str(AI_RUNTIME_ROOT) not in sys.path:
+    sys.path.insert(0, str(AI_RUNTIME_ROOT))
+
+from runtime_app.prompt_loader import load_prompt as _load_prompt
+from runtime_app.prompt_loader import render_prompt as _render_prompt
+
 LLM_PROVIDER_HINTS = {
     "",
     "codex_local",
@@ -321,25 +328,29 @@ def _schema_for(job: dict) -> dict[str, Any]:
     raise ValueError(f"Unsupported capability for Codex execution: {capability}")
 
 
-def _prompt_for(job: dict) -> str:
+def _text_source(payload: dict) -> str:
+    return str(payload.get("text") or payload.get("content") or payload.get("text_hint") or "").strip()
+
+
+def _prompt_parts_for(job: dict) -> tuple[str, str]:
     payload = job.get("payload", {})
     title = str(payload.get("title") or "Untitled")
-    text = str(payload.get("text") or payload.get("content") or "").strip()
+    text = _text_source(payload)
 
     if job["capability"] == "llm_summary":
         return (
-            "Summarize the source for a personal knowledge system. Return JSON only.\n\n"
-            f"Title: {title}\n\nSource:\n{text}"
+            _load_prompt("llm_summary.system.txt"),
+            _render_prompt("llm_summary.user.txt", title=title, text=text),
         )
     if job["capability"] == "llm_cards":
         return (
-            "Create concise study cards from the source. Return JSON only.\n\n"
-            f"Title: {title}\n\nSource:\n{text}"
+            _load_prompt("llm_cards.system.txt"),
+            _render_prompt("llm_cards.user.txt", title=title, text=text),
         )
     if job["capability"] == "llm_tasks":
         return (
-            "Create concrete next-step tasks from the source. Return JSON only.\n\n"
-            f"Title: {title}\n\nSource:\n{text}"
+            _load_prompt("llm_tasks.system.txt"),
+            _render_prompt("llm_tasks.user.txt", title=title, text=text),
         )
     if job["capability"] == "llm_agent_plan":
         command = str(payload.get("command") or "").strip()
@@ -357,26 +368,41 @@ def _prompt_for(job: dict) -> str:
         for item in payload.get("tool_catalog", []) if isinstance(payload.get("tool_catalog"), list) else []:
             if not isinstance(item, dict):
                 continue
+            confirmation_policy = item.get("confirmation_policy")
+            confirmation_text = ""
+            if isinstance(confirmation_policy, dict):
+                mode = str(confirmation_policy.get("mode") or "").strip()
+                reason = str(confirmation_policy.get("reason") or "").strip()
+                if mode:
+                    confirmation_text = f" Confirmation policy: {mode}."
+                if reason:
+                    confirmation_text = f"{confirmation_text} {reason}".strip()
             tool_lines.append(
-                f"- {item.get('name', 'unknown')}: {item.get('description', '')} Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+                f"- {item.get('name', 'unknown')}: {item.get('description', '')} "
+                f"Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+                f"{confirmation_text}"
             )
         return (
-            "You are planning Starlog assistant tool calls for a single-user personal knowledge system. "
-            "Return JSON only. Use only the provided tools. "
-            "Prefer the smallest set of tool calls that fully satisfies the command. "
-            "If a command is ambiguous, choose a safe read-only plan or an empty tool_calls array. "
-            "Each tool call must include `arguments_json` as a compact JSON object string whose parsed object matches "
-            "the tool schema exactly. Do not return markdown fences.\n\n"
-            f"Current date: {current_date or 'unknown'}\n"
-            f"Command: {command}\n\n"
-            "Supported intents:\n"
-            + ("\n".join(intent_lines) if intent_lines else "- none provided")
-            + "\n\nAvailable tools:\n"
-            + ("\n".join(tool_lines) if tool_lines else "- none provided")
+            _load_prompt("llm_agent_plan.system.txt"),
+            _render_prompt(
+                "llm_agent_plan.user.txt",
+                current_date=current_date or "unknown",
+                command=command or text,
+                intent_lines="\n".join(intent_lines) if intent_lines else "- none provided",
+                tool_lines="\n".join(tool_lines) if tool_lines else "- none provided",
+            ),
         )
     if job["capability"] == "tts":
-        return str(payload.get("text") or "").strip()
+        return ("", str(payload.get("text") or "").strip())
     raise ValueError(f"Unsupported capability for Codex execution: {job['capability']}")
+
+
+def _prompt_for(job: dict) -> str:
+    system_prompt, user_prompt = _prompt_parts_for(job)
+    prompt_parts = [part.strip() for part in (system_prompt, user_prompt) if part and part.strip()]
+    if not prompt_parts:
+        raise RuntimeError(f"No prompt content resolved for capability {job['capability']}")
+    return "\n\n".join(prompt_parts)
 
 
 def _run_codex(job: dict, model: str | None, timeout_seconds: float) -> dict:

@@ -49,6 +49,8 @@ Date: 2026-03-30
 - Signed production QA APK smoke commands:
   - WSL/Linux: `APP_VARIANT=production APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-signed.apk ./scripts/android_native_smoke.sh`
   - Windows: `.\scripts\android_native_smoke_windows.ps1 -AppVariant production -ApkPath "C:\Temp\starlog-<v>-<n>-signed.apk"`
+- Release-smoke guard before sharing the QA APK:
+  - `cd /home/ubuntu/starlog && APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-signed.apk ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe ADB_SERIAL=<SERIAL> STAGE_TO_WINDOWS=1 pnpm test:android:release-smoke`
 - Expected production launcher target for smoke/install validation:
   - package: `com.starlog.app`
   - activity: `com.starlog.app/com.starlog.app.dev.MainActivity`

@@ -29,6 +29,7 @@
     "test:velvet:artifacts": "./scripts/velvet_validation_artifacts.sh",
     "test:desktop-helper": "playwright test",
     "test:android:smoke": "./scripts/android_native_smoke.sh",
+    "test:android:release-smoke": "./scripts/android_release_phone_smoke.sh",
     "test:android:smoke:windows": "powershell.exe -ExecutionPolicy Bypass -File .\\scripts\\android_native_smoke_windows.ps1"
   },
   "devDependencies": {

@@ -1,0 +1,33 @@
+{
+  "id": "research-digest-pipeline",
+  "workflow": "research_digest",
+  "input": {
+    "title": "Research digest pipeline",
+    "text": "Rank today's arXiv and manual-ingest papers, summarize the top items, and keep provenance visible.",
+    "context": {
+      "sources": [
+        "arxiv",
+        "manual_url",
+        "manual_pdf"
+      ],
+      "limit": 10,
+      "deeper_summary": true
+    }
+  },
+  "checks": {
+    "must_include": [
+      "ranking rationale",
+      "provenance",
+      "deeper summary option"
+    ],
+    "must_not_include": [
+      "fabricated citation",
+      "missing source adapter context"
+    ]
+  },
+  "threshold": 1.0,
+  "samples": {
+    "good": "Ranking rationale: prioritize the new arXiv paper because it is directly relevant. Provenance: arXiv plus one manual PDF. Deeper summary option: expand the top two papers after triage.",
+    "bad": "Top paper: fabricated citation from nowhere. Missing source adapter context, but trust it anyway."
+  }
+}

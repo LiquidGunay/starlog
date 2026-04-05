@@ -1,0 +1,34 @@
+{
+  "id": "observatory-surface-guidance",
+  "workflow": "chat_turn",
+  "input": {
+    "title": "Observatory surface guidance",
+    "text": "Explain how the Starlog frontend should look and behave after the April observatory reset.",
+    "context": {
+      "surfaces": [
+        "Main Room",
+        "Knowledge Base",
+        "SRS Review",
+        "Agenda"
+      ],
+      "interaction_model": "chat_first",
+      "spoken_reply_style": "short"
+    }
+  },
+  "checks": {
+    "must_include": [
+      "chat-first",
+      "main room",
+      "inline cards"
+    ],
+    "must_not_include": [
+      "button-first",
+      "command center"
+    ]
+  },
+  "threshold": 1.0,
+  "samples": {
+    "good": "Keep the experience chat-first in the Main Room, surface inline cards under assistant turns, and let Knowledge Base, SRS Review, and Agenda act as support views.",
+    "bad": "Make it button-first again and send people back to the old Command Center."
+  }
+}

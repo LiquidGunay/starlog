@@ -8,6 +8,7 @@ historical plans, but they must not compete with this document.
 
 - Starlog is a voice-native personal system with one persistent chat thread as the primary interface.
 - The PWA remains the canonical synced workspace, but chat and voice are the canonical interaction model.
+- The observatory surface language is `Main Room`, `Knowledge Base`, `SRS Review`, and `Agenda`; route ids and backend contracts stay stable while the UI copy shifts.
 - Native mobile stays in scope for voice capture, alarms, offline playback, and quick triage/review.
 - Desktop-local AI capability is exposed through a localhost Python bridge daemon for screen context,
   clipping, and local STT/TTS.
@@ -41,7 +42,8 @@ historical plans, but they must not compete with this document.
 ### PWA
 
 - Canonical synced client and primary chat workspace.
-- Deep editing, inspectable knowledge views, planner/calendar views, and full history remain here.
+- The `Main Room` is the canonical conversation surface.
+- Deep editing, inspectable `Knowledge Base` views, `SRS Review`, `Agenda` views, and full history remain here.
 
 ### Native mobile companion
 

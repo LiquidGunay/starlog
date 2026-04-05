@@ -156,3 +156,59 @@ def test_classify_failure_unsupported_provider_is_not_retryable() -> None:
     )
     assert category == "unsupported_provider"
     assert retryable is False
+
+
+def test_prompt_for_summary_uses_runtime_prompt_templates() -> None:
+    worker = _load_worker_module()
+
+    prompt = worker._prompt_for(
+        {
+            "capability": "llm_summary",
+            "payload": {
+                "title": "Orbit notes",
+                "text": "Summarize the latest observatory reset decisions.",
+            },
+        }
+    )
+
+    assert "Summarize the source for a personal knowledge system." in prompt
+    assert "Title: Orbit notes" in prompt
+    assert "Source:\nSummarize the latest observatory reset decisions." in prompt
+
+
+def test_prompt_for_agent_plan_includes_confirmation_policy() -> None:
+    worker = _load_worker_module()
+
+    prompt = worker._prompt_for(
+        {
+            "capability": "llm_agent_plan",
+            "payload": {
+                "command": "Delete the old export after review",
+                "current_date": "2026-04-05",
+                "intents": [
+                    {
+                        "name": "cleanup",
+                        "description": "Remove stale generated files.",
+                        "examples": ["delete old export"],
+                    }
+                ],
+                "tool_catalog": [
+                    {
+                        "name": "delete_export",
+                        "description": "Delete one generated export bundle.",
+                        "parameters_schema": {"export_id": {"type": "string"}},
+                        "confirmation_policy": {
+                            "mode": "confirm",
+                            "reason": "Deletes generated artifacts.",
+                        },
+                    }
+                ],
+            },
+        }
+    )
+
+    assert "Plan Starlog tool calls from the command." in prompt
+    assert "Current date: 2026-04-05" in prompt
+    assert "Confirmation policy: confirm." in prompt
+    assert "Deletes generated artifacts." in prompt
+    assert '"export_id": {"type": "string"}' in prompt
