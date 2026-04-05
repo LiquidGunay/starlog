@@ -124,11 +124,11 @@ Run that hosted smoke in isolation to avoid stale local web-server drift.
 
 ## Visual references
 
-- `docs/design/IMAGE_ASSETS.md`
-- `docs/design/assets/voice_native_moodboard_board.png`
-- `docs/design/assets/voice_native_pwa_chat_comp.png`
-- `docs/design/assets/voice_native_mobile_voice_comp.png`
-- `docs/design/assets/voice_native_desktop_helper_comp.png`
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/starlog_design_document_design.md`
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/main_room_chat/screen.png`
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/knowledge_base/screen.png`
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/srs_review/screen.png`
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/agenda_rituals/screen.png`
 
 ## Feedback to ask for
 

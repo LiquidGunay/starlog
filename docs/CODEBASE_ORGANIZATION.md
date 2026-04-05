@@ -45,7 +45,7 @@ Shared code used by more than one surface.
 - `docs` — runbooks, status docs, release checklists, and implementation guides.
 - `scripts` — local automation, smoke flows, helper tooling, and workitem coordination scripts.
 - `artifacts` — captured validation output, screenshots, release evidence, and proof bundles.
-- `screen_design` — older design references used during earlier UI passes.
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` — current external design source of truth for April 2026 observatory work; older in-repo design folders were intentionally removed.
 
 ## Frontend surfaces
 

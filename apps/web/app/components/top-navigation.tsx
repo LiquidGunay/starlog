@@ -94,9 +94,9 @@ export function TopNavigation() {
         <div className="app-brand">
           <span className="brand-mark" aria-hidden="true" />
           <Link href="/" className="brand-link">
-            Starlog
+            The Observatory
           </Link>
-          <span className="brand-version">v1.0</span>
+          <span className="brand-version">Stellar tier</span>
         </div>
         <nav className="surface-nav" aria-label="Primary surfaces">
           {SURFACES.map((surface) => {
@@ -114,7 +114,7 @@ export function TopNavigation() {
         <div className="system-chip-wrap">
           <span className="system-chip">
             <span className="system-dot" aria-hidden="true" />
-            SYS.READY
+            System optimal
           </span>
           <Link href="/runtime" className={pathname === "/runtime" ? "runtime-chip active" : "runtime-chip"}>
             <span
@@ -125,7 +125,7 @@ export function TopNavigation() {
             <span className="runtime-chip-meta">{outbox.length} queued</span>
           </Link>
           <span className="avatar-chip" aria-hidden="true">
-            ⦿
+            ◉
           </span>
         </div>
       </div>

@@ -34,6 +34,14 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 ## Repo process rule
 When an issue is discovered or a clear user preference appears, append it to this file in logs below.
 
+## External design source of truth
+
+Use the April 2026 design pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as the only active UI/design source of truth for current observatory work.
+
+- Treat `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/starlog_design_document_design.md` plus the per-surface `code.html` and `screen.png` files in that folder as the authoritative design references.
+- The deleted in-repo `docs/design` and `screen_design` folders were older halo/voice-native and violet-era references; do not recreate them or use them for new implementation decisions.
+- When design guidance conflicts across sources, prefer the April 2026 external pack over any older repo-tracked doc or screenshot.
+
 ## Shared workitem locking (`.git` common dir)
 
 Use a shared live lock registry under the common git dir so all worktrees/agents coordinate against the same source of truth.
@@ -84,7 +92,9 @@ Use a shared live lock registry under the common git dir so all worktrees/agents
 
 Keep branch/worktree count low enough that `master`, active task branches, and abandoned experiments are easy to distinguish.
 
-- Default to the canonical checkout at `/home/ubuntu/starlog`; create a new worktree only for parallel work, risky rebases, or a clearly isolated recovery pass.
+- Default to the canonical checkout at `/home/ubuntu/starlog`; do not create a new worktree for normal single-agent work.
+- Keep the main agent in the canonical checkout and switch branches there as needed instead of spawning extra local worktrees.
+- Additional worktrees are reserved for subagents that need isolated PR branches, risky rebases, or a clearly isolated recovery/salvage pass.
 - Before creating a new worktree, inspect `git worktree list --porcelain` and reuse or delete an existing clean detached worktree if it is no longer tied to an active task.
 - Keep exactly one active `codex/*` task branch per worktree. Do not park multiple unfinished branches in the same checkout.
 - The canonical checkout should own local `master` whenever possible. Do not leave `master` pinned in a side worktree after the recovery or validation task that needed it is done.
@@ -93,6 +103,7 @@ Keep branch/worktree count low enough that `master`, active task branches, and a
 - After a branch merges or is intentionally abandoned, remove its worktree, run `git worktree prune`, and delete merged local/remote `codex/*` refs during the same cleanup pass.
 - Detached Codex app worktrees with no branch and no important local changes should be treated as disposable and removed during routine cleanup.
 - When salvage is needed from a stale branch, cherry-pick or patch-select only the pieces that still fit the current plan; do not revive the entire branch by default.
+- Keep the PR discipline: use `master` as the clean base in the canonical checkout, but do implementation on a fresh `codex/*` branch before opening a PR back to `master`.
 
 ## Shared dependency/build reuse across worktrees
 
@@ -164,6 +175,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `apps/mobile/.expo/README.md` — Expo-generated explanation of local `.expo` state; informational only, not a planning source.
 - `services/api/.pytest_cache/README.md` — pytest-generated cache note; informational only, not a planning source.
 - Vendor markdown under `services/api/.venv/**` is third-party package/license material and is not part of Starlog repo guidance.
+- External markdown under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**` is the current cross-worktree design reference set; it is intentionally outside the repo so design iteration does not churn implementation branches.
 
 ## Phone testing runbook (Android, this host)
 
@@ -305,6 +317,8 @@ Troubleshooting checklist:
 - 2026-04-05: User wants the April observatory reset to replace the older velvet/command-center naming with `Main Room`, `Knowledge Base`, `SRS Review`, and `Agenda` while keeping route ids stable.
 - 2026-04-05: User wants volatile workitems, branch cleanup state, and PR review backlogs kept in the shared `.git` registry instead of repo-tracked markdown.
 - 2026-04-05: User wants stale branches and worktrees deleted aggressively unless they contain critical unsalvaged work that still matches the current plan.
+- 2026-04-05: User wants the April 2026 redesign sourced from `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026`, with the older in-repo `docs/design` and `screen_design` packs treated as obsolete.
+- 2026-04-05: User wants new worktrees avoided for normal work; use the canonical checkout by default and reserve extra worktrees for subagents or isolated recovery passes.
 - 2026-03-15: User wants mobile implementation/testing runs to include stored screenshots as completion proof.
 - 2026-03-15: User clarified that iOS share status is out of scope for v1 and must not block v1 distribution work.
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
@@ -450,3 +464,4 @@ Troubleshooting checklist:
 - 2026-04-02: Production Android packaging can silently ship the wrong launcher label when the checked-in native `apps/mobile/android/app/src/main/res/values/strings.xml` drifts from Expo config; define `app_name` from `APP_VARIANT` in Gradle and assert the final APK label with `aapt dump badging` during release packaging.
 - 2026-04-05: Shared-worktree dependency symlinks such as `node_modules`, `.venv`, and Gradle/Tauri `target` paths are not ignored by trailing-slash `.gitignore` patterns alone; the repo now needs bare-name ignore entries too so `use_shared_worktree_state.sh` does not pollute branch status.
 - 2026-04-05: Leaving `master` checked out in a side worktree while the canonical checkout carries dirty branch state makes recovery confusing; free `master` back to `/home/ubuntu/starlog`, preserve salvageable work with a named branch or stash, then remove stale worktrees promptly.
+- 2026-04-05: The in-repo `docs/design` and `screen_design` packs were outdated enough to misdirect current UI work; agents should use the external April 2026 pack under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` instead.
