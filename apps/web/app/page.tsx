@@ -33,11 +33,10 @@ export default function HomePage() {
       <div className="stars" aria-hidden="true" />
       <header className="hero glass">
         <div>
-          <p className="eyebrow">Command Center</p>
-          <h1>Clip-first personal system for knowledge and execution.</h1>
+          <p className="eyebrow">Main Room</p>
+          <h1>Conversation-first personal system for knowledge and execution.</h1>
           <p className="subcopy">
-            A modern, spacy workspace: capture anything, connect ideas, schedule what matters, and
-            wake up to an offline-ready spoken brief.
+            One persistent thread for the day, with Knowledge Base, Agenda, and Review surfaces supporting it when the conversation needs more structure.
           </p>
         </div>
         <ThemeToggle />
@@ -54,9 +53,9 @@ export default function HomePage() {
 
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Artifact Quick Actions</p>
-          <h2>Suggest-first automation</h2>
-          <p>AI only runs when you choose. Every output is versioned and linked back to source.</p>
+          <p className="eyebrow">Main Room Actions</p>
+          <h2>Suggest-first orchestration</h2>
+          <p>AI only runs when you choose. Every output stays versioned, traceable, and linked back to source.</p>
         </div>
         <div className="chips">
           {defaultActions.map((action) => (

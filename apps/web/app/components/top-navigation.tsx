@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSessionConfig } from "../session-provider";
 
 type Surface = {
-  id: "command-center" | "artifact-nexus" | "neural-sync" | "chronos-matrix";
+  id: "main-room" | "knowledge-base" | "srs-review" | "agenda";
   label: string;
   href: string;
   prefixes: string[];
@@ -19,29 +19,29 @@ type UtilityLink = {
 
 const SURFACES: Surface[] = [
   {
-    id: "command-center",
-    label: "Command Center",
+    id: "main-room",
+    label: "Main Room",
     href: "/assistant",
-    prefixes: ["/", "/notes", "/tasks", "/assistant", "/agent-tools", "/ai-jobs", "/mobile-share", "/share-target", "/runtime"],
+    prefixes: ["/", "/assistant", "/tasks", "/agent-tools", "/ai-jobs", "/mobile-share", "/share-target", "/runtime"],
     glyph: "◻",
   },
   {
-    id: "artifact-nexus",
-    label: "Artifact Nexus",
-    href: "/artifacts",
-    prefixes: ["/artifacts", "/search", "/portability"],
+    id: "knowledge-base",
+    label: "Knowledge Base",
+    href: "/notes",
+    prefixes: ["/notes", "/artifacts", "/search", "/portability"],
     glyph: "✦",
   },
   {
-    id: "neural-sync",
-    label: "Neural Sync",
+    id: "srs-review",
+    label: "SRS Review",
     href: "/review",
     prefixes: ["/review", "/sync-center"],
     glyph: "◉",
   },
   {
-    id: "chronos-matrix",
-    label: "Chronos Matrix",
+    id: "agenda",
+    label: "Agenda",
     href: "/planner",
     prefixes: ["/planner", "/calendar", "/integrations"],
     glyph: "▣",
@@ -49,25 +49,26 @@ const SURFACES: Surface[] = [
 ];
 
 const CONTEXT_LINKS: Record<Surface["id"], UtilityLink[]> = {
-  "command-center": [
-    { href: "/assistant", label: "Command" },
+  "main-room": [
+    { href: "/assistant", label: "Main Room" },
     { href: "/notes", label: "Notes" },
     { href: "/tasks", label: "Tasks" },
     { href: "/agent-tools", label: "Agent Tools" },
     { href: "/ai-jobs", label: "AI Jobs" },
   ],
-  "artifact-nexus": [
-    { href: "/artifacts", label: "Inbox" },
+  "knowledge-base": [
+    { href: "/notes", label: "Notes" },
+    { href: "/artifacts", label: "Artifacts" },
     { href: "/search", label: "Search" },
     { href: "/portability", label: "Portability" },
   ],
-  "neural-sync": [
+  "srs-review": [
     { href: "/review", label: "Review" },
     { href: "/review/decks", label: "Decks" },
     { href: "/sync-center", label: "Sync Center" },
   ],
-  "chronos-matrix": [
-    { href: "/planner", label: "Chronos Matrix" },
+  "agenda": [
+    { href: "/planner", label: "Agenda" },
     { href: "/integrations", label: "Integrations" },
   ],
 };

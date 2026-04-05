@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ObservatoryPageShell } from "../components/observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
@@ -486,16 +487,32 @@ export default function PlannerPage() {
   }, [cycleDays, endHour, rowHeight, startHour]);
 
   return (
-    <main className="chronos-shell">
+    <ObservatoryPageShell
+      eyebrow="Agenda"
+      title="Tasks, time blocks, and calendar drift in one agenda workspace."
+      description="Keep the planning grid stable while the observatory shell takes over the chrome. The timeline still runs on the existing planning and calendar contracts."
+      stats={[
+        { label: "Scheduled", value: String(timeline.length) },
+        { label: "Pool", value: String(unscheduledPool.length) },
+        { label: "Conflicts", value: String(conflicts.filter((conflict) => !conflict.resolved).length) },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
+          <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
+        </div>
+      }
+      className="chronos-shell"
+    >
       <section className={sidebarPane.collapsed ? "chronos-layout chronos-layout-sidebar-collapsed" : "chronos-layout"}>
         {!sidebarPane.collapsed ? <aside className="chronos-sidebar">
           <div className="chronos-sidebar-head">
             <div className="artifact-pane-head">
               <div>
-                <p className="eyebrow">Chronos Matrix</p>
-                <h1>Tactical Timeline</h1>
+                <p className="eyebrow">Agenda</p>
+                <h1>Three-cycle planner</h1>
                 <p className="chronos-subcopy">
-                  Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills forward.
+                  Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills into the day.
                 </p>
               </div>
               <PaneToggleButton label="Hide pane" onClick={sidebarPane.collapse} />
@@ -540,7 +557,7 @@ export default function PlannerPage() {
                   Add Event
                 </button>
                 <button className="button" type="button" onClick={() => runGoogleSync()}>
-                  Run Google Sync
+                  Run Google sync
                 </button>
               </div>
               <p className="status">{status}</p>
@@ -548,7 +565,7 @@ export default function PlannerPage() {
           </div>
 
           <div className="chronos-pool">
-            <h2>Unscheduled Task Pool</h2>
+            <h2>Unscheduled pool</h2>
             {unscheduledPool.length === 0 ? (
               <p className="console-copy">No unscheduled tasks or conflicts.</p>
             ) : (
@@ -683,6 +700,6 @@ export default function PlannerPage() {
           </div>
         </section>
       </section>
-    </main>
+    </ObservatoryPageShell>
   );
 }

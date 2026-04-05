@@ -25,6 +25,8 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
+import { mobileConversationCardLabel } from "./src/conversation-cards";
+import { MOBILE_TABS, mobileTabFromParam, type MobileTab } from "./src/navigation";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -337,6 +339,20 @@ type ConversationSessionResetResponse = {
   preserved_message_count?: number;
   preserved_tool_trace_count?: number;
   updated_at: string;
+};
+
+type ConversationTurnResponse = {
+  thread_id: string;
+  user_message: ConversationMessage;
+  assistant_message: ConversationMessage;
+  trace: ConversationToolTrace;
+  session_state: Record<string, unknown>;
+};
+
+type PendingConversationTurn = {
+  id: string;
+  content: string;
+  createdAt: string;
 };
 
 const RUNTIME_ENV = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
@@ -1103,23 +1119,20 @@ function parseCaptureDeepLink(rawUrl: string): { title: string; text: string; so
   };
 }
 
-function parseSurfaceTabDeepLink(rawUrl: string): "capture" | "alarms" | "review" | null {
+function parseSurfaceTabDeepLink(rawUrl: string): MobileTab | null {
   const parsedUrl = parseAppDeepLink(rawUrl);
   if (!parsedUrl || parsedUrl.route !== "surface") {
     return null;
   }
   const { params } = parsedUrl;
   const rawTab = (deepLinkParam(params, "tab") ?? "").trim().toLowerCase();
-  if (rawTab === "capture" || rawTab === "alarms" || rawTab === "review") {
-    return rawTab;
-  }
-  return null;
+  return mobileTabFromParam(rawTab);
 }
 
 export default function App({ initialIntentUrl = null }: AppProps) {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
-  const [activeTab, setActiveTab] = useState<"capture" | "alarms" | "review">("capture");
+  const [activeTab, setActiveTab] = useState<MobileTab>("home");
   const [countdownTick, setCountdownTick] = useState(() => Date.now());
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showAdvancedCapture, setShowAdvancedCapture] = useState(false);
@@ -1166,6 +1179,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationToolTraces, setConversationToolTraces] = useState<ConversationToolTrace[]>([]);
   const [lastConversationReset, setLastConversationReset] = useState<ConversationSessionResetResponse | null>(null);
+  const [pendingConversationTurn, setPendingConversationTurn] = useState<PendingConversationTurn | null>(null);
   const [expandedThreadCards, setExpandedThreadCards] = useState<Record<string, boolean>>({});
   const [expandedThreadTraces, setExpandedThreadTraces] = useState<Record<string, boolean>>({});
   const [showFullConversationThread, setShowFullConversationThread] = useState(false);
@@ -1190,13 +1204,39 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
-  const visibleConversationMessages = useMemo(() => {
-    if (showFullConversationThread) {
+  const threadMessages = useMemo(() => {
+    if (!pendingConversationTurn) {
       return conversationMessages;
     }
-    return conversationMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
-  }, [conversationMessages, showFullConversationThread]);
-  const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
+    return [
+      ...conversationMessages,
+      {
+        id: pendingConversationTurn.id,
+        thread_id: "primary",
+        role: "user" as const,
+        content: pendingConversationTurn.content,
+        cards: [],
+        metadata: { pending: true, submitted_via: "mobile_home" },
+        created_at: pendingConversationTurn.createdAt,
+      },
+      {
+        id: `${pendingConversationTurn.id}:assistant`,
+        thread_id: "primary",
+        role: "assistant" as const,
+        content: "",
+        cards: [],
+        metadata: { pending: true, status: "thinking" },
+        created_at: pendingConversationTurn.createdAt,
+      },
+    ];
+  }, [conversationMessages, pendingConversationTurn]);
+  const visibleConversationMessages = useMemo(() => {
+    if (showFullConversationThread) {
+      return threadMessages;
+    }
+    return threadMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
+  }, [showFullConversationThread, threadMessages]);
+  const hiddenConversationMessageCount = Math.max(0, threadMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
   const llmResolution = useMemo(
     () =>
@@ -2304,9 +2344,65 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function sendConversationTurn(command: string, sourceLabel = "typed composer") {
+    if (!command) {
+      setStatus("Enter a Main Room message first");
+      return;
+    }
+    if (pendingConversationTurn) {
+      setStatus("Wait for the current Main Room reply to finish");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    const pendingId = `pending_${Date.now()}`;
+    setPendingConversationTurn({
+      id: pendingId,
+      content: command,
+      createdAt: new Date().toISOString(),
+    });
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          content: command,
+          input_mode: sourceLabel === "voice" ? "voice" : "text",
+          device_target: "mobile-companion",
+          metadata: {
+            surface: "home_chat_mobile",
+            submitted_via: sourceLabel,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Main Room turn failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as ConversationTurnResponse;
+      setConversationMessages((previous) => [...previous, payload.user_message, payload.assistant_message]);
+      setConversationToolTraces((previous) => [payload.trace, ...previous].slice(0, 24));
+      setConversationSessionState(payload.session_state);
+      setAssistantCommand("");
+      setPendingConversationTurn(null);
+      setStatus("Main Room reply received");
+    } catch (error) {
+      setPendingConversationTurn(null);
+      setStatus(error instanceof Error ? error.message : "Main Room turn failed");
+    }
+  }
+
   async function submitAssistantCommand(command: string, execute: boolean, sourceLabel?: string) {
     if (!command) {
-      setStatus("Enter an assistant command first");
+      setStatus("Enter an operator command first");
       return;
     }
     if (!token) {
@@ -2351,6 +2447,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   async function runAssistantCommand(execute: boolean) {
     const command = assistantCommand.trim();
     await submitAssistantCommand(command, execute);
+  }
+
+  async function runMainRoomTurn() {
+    const command = assistantCommand.trim();
+    await sendConversationTurn(command);
   }
 
   function recordAssistantHistory(entry: AssistantCommandResponse | null | undefined) {
@@ -2512,7 +2613,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   async function queueAssistantAiCommand(execute: boolean) {
     const command = assistantCommand.trim();
     if (!command) {
-      setStatus("Enter an assistant command first");
+      setStatus("Enter an operator command first");
       return;
     }
     if (!token) {
@@ -3413,7 +3514,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 </View>
               );
               })}
-              {showFullConversationThread && conversationMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
+              {showFullConversationThread && threadMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
                 <View style={styles.buttonRow}>
                   <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(false)}>
                     <Text style={styles.buttonText}>Collapse Thread</Text>
@@ -3771,9 +3872,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return (
       <View style={styles.panel}>
         <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Capture support systems</Text>
+        <Text style={styles.panelTitle}>Notes support systems</Text>
         <Text style={styles.subtle}>
-          Keep the main capture shell focused on intake. Use the support systems below for queue control, AI routing, and triage.
+          Keep the main notes shell focused on intake. Use the support systems below for queue control, AI routing, and triage.
         </Text>
         <View style={styles.opsChipRow}>
           {renderOpsChip("Queue", captureOpsSection === "queue", () => setCaptureOpsSection("queue"))}
@@ -3823,7 +3924,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return (
       <View style={styles.panel}>
         <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Alarm + briefing support systems</Text>
+        <Text style={styles.panelTitle}>Agenda support systems</Text>
         <Text style={styles.subtle}>
           Keep the station clock and player front-and-center. Use the secondary panel for setup, caching, and phone-to-PWA linkage.
         </Text>
@@ -3847,7 +3948,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       <View style={styles.topBar}>
         <View style={styles.topBarBrand}>
           <View style={styles.topBarPill}>
-            <Text style={styles.topBarPillText}>Velvet mobile</Text>
+            <Text style={styles.topBarPillText}>Observatory mobile</Text>
           </View>
           <Text style={styles.topBarTitle}>Starlog</Text>
         </View>
@@ -3868,18 +3969,55 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>{activeTab === "capture" ? "Capture gesture" : activeTab === "alarms" ? "Ritual briefing" : "Quiet review"}</Text>
-          <Text style={styles.title}>
-            {activeTab === "capture"
-              ? "Capture Gesture"
-              : activeTab === "alarms"
-                ? "Ritual Briefing"
-                : "Quiet Review"}
+          <Text style={styles.eyebrow}>
+            {activeTab === "home"
+              ? "Main Room"
+              : activeTab === "capture"
+                ? "Notes"
+                : activeTab === "alarms"
+                  ? "Agenda"
+                  : "SRS Review"}
           </Text>
+          <Text style={styles.title}>
+            {activeTab === "home"
+              ? "Main Room"
+              : activeTab === "capture"
+                ? "Notes"
+                : activeTab === "alarms"
+                  ? "Agenda"
+                  : "Review"}
+          </Text>
+          {activeTab === "home" ? (
+            <>
+              <Text style={styles.body}>
+                Keep the phone on the same persistent thread as the web app. Use this surface for the next turn, then dip into Notes, Calendar, and Review only when the conversation needs support.
+              </Text>
+              <View style={styles.intentHeroCard}>
+                <Text style={styles.heroCardLabelInverse}>Latest prompt</Text>
+                <Text style={styles.intentHeroCopy}>{assistantCommand.trim() || "What should I focus on next?"}</Text>
+              </View>
+              <View style={styles.contextCard}>
+                <Text style={styles.heroCardLabel}>Thread state</Text>
+                <Text style={styles.contextCardBody}>
+                  {pendingConversationTurn
+                    ? "A reply is being composed for the Main Room."
+                    : `${threadMessages.length} message(s) synced with ${conversationToolTraces.length} trace(s).`}
+                </Text>
+                <View style={styles.contextMetaRow}>
+                  <View style={styles.contextMetaPill}>
+                    <Text style={styles.contextMetaText}>{pendingConversationTurn ? "Reply pending" : "Thread ready"}</Text>
+                  </View>
+                  <View style={styles.contextMetaPill}>
+                    <Text style={styles.contextMetaText}>{routeNarrative}</Text>
+                  </View>
+                </View>
+              </View>
+            </>
+          ) : null}
           {activeTab === "capture" ? (
             <>
               <Text style={styles.body}>
-                One spoken instruction, one source, and one deliberate save. The phone should feel like a composed companion object.
+                Capture text, files, and voice notes without leaving the observatory shell. This tab stays optimized for intake and artifact creation.
               </Text>
               <View style={styles.intentHeroCard}>
                 <Text style={styles.heroCardLabelInverse}>Voice instruction</Text>
@@ -3910,22 +4048,88 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           {activeTab === "review" ? (
             <View style={styles.dashboardWide}>
               <Text style={styles.inlineCardTitle}>Quick review, without the full desk.</Text>
-              <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to capture.</Text>
+              <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to the thread.</Text>
             </View>
           ) : null}
           {activeTab === "alarms" ? (
             <View style={styles.dashboardWide}>
-              <Text style={styles.heroCardLabel}>Morning ritual</Text>
+              <Text style={styles.heroCardLabel}>Daily agenda</Text>
               <Text style={styles.editorialCardCopy}>{briefingHeroCopy}</Text>
               <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(alarmHour, alarmMinute)} {stationPeriod}</Text>
             </View>
           ) : null}
         </View>
 
+        {activeTab === "home" ? (
+          <View style={styles.panel}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionKicker}>Conversation-first home</Text>
+              <View style={styles.pendingBadge}>
+                <Text style={styles.pendingBadgeText}>{pendingConversationTurn ? "Reply pending" : "Thread ready"}</Text>
+              </View>
+            </View>
+            <View style={styles.captureComposerCard}>
+              <Text style={styles.heroCardLabel}>Main Room message</Text>
+              <TextInput
+                style={[styles.composerInput, styles.composerInputLarge]}
+                value={assistantCommand}
+                onChangeText={setAssistantCommand}
+                placeholder="What should I focus on next?"
+                placeholderTextColor={palette.muted}
+                multiline
+              />
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.button} onPress={runMainRoomTurn}>
+                  <Text style={styles.buttonText}>{pendingConversationTurn ? "Sending..." : "Send to Main Room"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={() => loadConversation("manual").catch(() => undefined)}>
+                  <Text style={styles.buttonText}>Refresh thread</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={resetConversationSession}>
+                  <Text style={styles.buttonText}>Reset session</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.captureArtifactCard}>
+              <Text style={styles.heroCardLabel}>Recent thread</Text>
+              {visibleConversationMessages.length === 0 ? (
+                <Text style={styles.subtle}>No conversation turns yet. Start in the Main Room and the thread will appear here.</Text>
+              ) : (
+                visibleConversationMessages.map((message) => (
+                  <View key={message.id} style={styles.inlineCard}>
+                    <Text style={styles.heroCardLabel}>{message.role.toUpperCase()}</Text>
+                    <Text style={styles.inlineCardTitle}>
+                      {message.metadata?.pending && message.role === "assistant"
+                        ? "Observatory reply forming..."
+                        : message.content || "No message body"}
+                    </Text>
+                    {message.cards[0] ? (
+                      <Text style={styles.subtle}>
+                        {mobileConversationCardLabel(message.cards[0].kind, message.cards[0].title)} · {cardMetaText(message.cards[0])}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+              {hiddenConversationMessageCount > 0 ? (
+                <Text style={styles.subtle}>{hiddenConversationMessageCount} older message(s) hidden. Open the PWA for the full transcript.</Text>
+              ) : null}
+            </View>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
+                <Text style={styles.buttonText}>Open Main Room in PWA</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(false)}>
+                <Text style={styles.buttonText}>Preview command flow</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         {activeTab === "capture" ? (
           <View style={styles.panel}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionKicker}>Composed intake</Text>
+              <Text style={styles.sectionKicker}>Notes and capture</Text>
               <View style={styles.pendingBadge}>
                 <Text style={styles.pendingBadgeText}>{pendingCaptures.length} Pending</Text>
               </View>
@@ -4047,7 +4251,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             <View style={styles.reviewTopRow}>
               <View>
                 <Text style={styles.sectionKicker}>Current Session</Text>
-                <Text style={styles.subtle}>Neural Synchronization: 42%</Text>
+                <Text style={styles.subtle}>Knowledge health: 42%</Text>
               </View>
               <View style={styles.reviewPillRow}>
                 <View style={styles.reviewPill}>
@@ -4134,7 +4338,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             <Text style={styles.alarmStationMeta}>Daily return point</Text>
             <View style={styles.alarmNextCard}>
               <View>
-                <Text style={styles.heroCardLabel}>Morning ritual</Text>
+                <Text style={styles.heroCardLabel}>Agenda cycle</Text>
                 <Text style={styles.captureArtifactTitle}>{briefingHeroCopy}</Text>
                 <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(stationHour12, alarmMinute)} {stationPeriod}</Text>
               </View>
@@ -4238,48 +4442,25 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         <MaterialCommunityIcons name="waveform" size={20} color={palette.onAccent} />
       </TouchableOpacity>
       <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.bottomNavItem}
-          onPress={() => {
-            setActiveTab("capture");
-            setStatus("Capture surface active");
-          }}
-        >
-          <MaterialCommunityIcons
-            name="camera-iris"
-            size={17}
-            color={activeTab === "capture" ? palette.accent : palette.muted}
-          />
-          <Text style={[styles.bottomNavLabel, activeTab === "capture" ? styles.bottomNavLabelActive : null]}>Capture</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomNavItem}
-          onPress={() => {
-            setActiveTab("alarms");
-            setStatus("Alarm + briefing surface active");
-          }}
-        >
-          <MaterialCommunityIcons
-            name="bell-ring-outline"
-            size={17}
-            color={activeTab === "alarms" ? palette.accent : palette.muted}
-          />
-          <Text style={[styles.bottomNavLabel, activeTab === "alarms" ? styles.bottomNavLabelActive : null]}>Alarms</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomNavItem}
-          onPress={() => {
-            setActiveTab("review");
-            setStatus("Quick review surface active");
-          }}
-        >
-          <MaterialCommunityIcons
-            name="eye-outline"
-            size={17}
-            color={activeTab === "review" ? palette.accent : palette.muted}
-          />
-          <Text style={[styles.bottomNavLabel, activeTab === "review" ? styles.bottomNavLabelActive : null]}>Review</Text>
-        </TouchableOpacity>
+        {MOBILE_TABS.map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={styles.bottomNavItem}
+            onPress={() => {
+              setActiveTab(tab.id);
+              setStatus(`${tab.label} surface active`);
+            }}
+          >
+            <MaterialCommunityIcons
+              name={tab.icon as never}
+              size={17}
+              color={activeTab === tab.id ? palette.accent : palette.muted}
+            />
+            <Text style={[styles.bottomNavLabel, activeTab === tab.id ? styles.bottomNavLabelActive : null]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </SafeAreaView>
   );

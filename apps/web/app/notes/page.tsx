@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import { ObservatoryPageShell, ObservatoryPanel } from "../components/observatory-shell";
 import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -253,14 +254,28 @@ function NotesPageContent() {
   }, [selectedId]);
 
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <div>
-          <p className="eyebrow">Command Center</p>
-          <h1>Primary note workspace</h1>
-          <p className="console-copy">
-            Edit notes in the PWA and keep queued note mutations visible until replay completes.
-          </p>
+    <ObservatoryPageShell
+      eyebrow="Knowledge Base"
+      title="Notes, drafts, and reading context in one workspace."
+      description="Keep note editing anchored in the PWA, with queued mutations and recent note state visible without switching to an older dashboard shell."
+      stats={[
+        { label: "Notes", value: String(visibleNotes.length) },
+        { label: "Queued", value: String(outbox.length) },
+        { label: "Current", value: selectedNote ? `v${selectedNote.version}` : "Draft" },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+          <button className="button" type="button" onClick={() => clearEditor()}>New draft</button>
+        </div>
+      }
+    >
+      <section className="observatory-grid observatory-grid-wide">
+        <ObservatoryPanel
+          kicker="Editor"
+          title={selectedNote ? selectedNote.title : "Fresh note draft"}
+          meta="Edit note content directly here, then save or create a new note without leaving the Knowledge Base."
+        >
           <label className="label" htmlFor="note-title">Title</label>
           <input
             id="note-title"
@@ -276,16 +291,18 @@ function NotesPageContent() {
             onChange={(event) => setBody(event.target.value)}
           />
           <div className="button-row">
-            <button className="button" type="button" onClick={() => createNote()}>Create Note</button>
-            <button className="button" type="button" onClick={() => saveNote()}>Save Selected</button>
-            <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+            <button className="button" type="button" onClick={() => createNote()}>Create note</button>
+            <button className="button" type="button" onClick={() => saveNote()}>Save selected</button>
             <button className="button" type="button" onClick={() => clearEditor()}>Clear</button>
           </div>
           <p className="status">{status}</p>
-        </div>
+        </ObservatoryPanel>
 
-        <div className="panel glass">
-          <h2>Notes</h2>
+        <ObservatoryPanel
+          kicker="Library"
+          title="Recent notes"
+          meta="Pick a note to reopen it in the editor. Pending mutations stay visible until replay completes."
+        >
           {visibleNotes.length === 0 ? (
             <p className="console-copy">No notes yet.</p>
           ) : (
@@ -305,15 +322,15 @@ function NotesPageContent() {
               ))}
             </ul>
           )}
-        </div>
+        </ObservatoryPanel>
       </section>
-    </main>
+    </ObservatoryPageShell>
   );
 }
 
 export default function NotesPage() {
   return (
-    <Suspense fallback={<main className="shell"><section className="workspace glass"><p className="status">Loading notes...</p></section></main>}>
+    <Suspense fallback={<main className="shell"><section className="observatory-panel glass"><p className="status">Loading notes...</p></section></main>}>
       <NotesPageContent />
     </Suspense>
   );

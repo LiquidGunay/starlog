@@ -1,0 +1,268 @@
+import type { RefObject } from "react";
+
+type AgentCommandStep = {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: "planned" | "ok" | "dry_run" | "failed";
+  message?: string | null;
+  result: unknown;
+};
+
+type AgentCommandResponse = {
+  command: string;
+  planner: string;
+  matched_intent: string;
+  status: "planned" | "executed" | "failed";
+  summary: string;
+  steps: AgentCommandStep[];
+};
+
+type ConversationCard = {
+  kind: string;
+  version: number;
+  title?: string | null;
+  body?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+type ConversationMessage = {
+  id: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  cards: ConversationCard[];
+  metadata: {
+    assistant_command?: AgentCommandResponse;
+  } & Record<string, unknown>;
+  created_at: string;
+};
+
+type ConversationToolTrace = {
+  id: string;
+  thread_id: string;
+  message_id?: string | null;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  result: unknown;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+type MainRoomThreadProps = {
+  messages: ConversationMessage[];
+  traces: ConversationToolTrace[];
+  expandedCards: Record<string, boolean>;
+  expandedTraces: Record<string, boolean>;
+  onToggleCards: (key: string) => void;
+  onToggleTraces: (key: string) => void;
+  onReuseCommand: (command: string) => void;
+  emptyTitle: string;
+  emptyBody: string;
+  emptyActions: string[];
+  transcriptEndRef?: RefObject<HTMLDivElement | null>;
+};
+
+function summarizeTraceValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} item${value.length === 1 ? "" : "s"}`;
+  }
+  if (value && typeof value === "object") {
+    return `${Object.keys(value).length} field${Object.keys(value).length === 1 ? "" : "s"}`;
+  }
+  return "No structured payload";
+}
+
+function summarizeTraceArguments(argumentsValue: Record<string, unknown>): string {
+  const keys = Object.keys(argumentsValue);
+  if (keys.length === 0) {
+    return "No arguments";
+  }
+  const preview = keys.slice(0, 3).map((key) => `${key}: ${summarizeTraceValue(argumentsValue[key])}`);
+  return keys.length > 3 ? `${preview.join(" · ")} · +${keys.length - 3} more` : preview.join(" · ");
+}
+
+function cardMetaText(card: ConversationCard): string {
+  const parts = [`v${card.version}`];
+  const metadata = card.metadata ?? {};
+  const source = typeof metadata.projection_source === "string" ? metadata.projection_source : "";
+  const updatedAt = typeof metadata.projection_updated_at === "string" ? metadata.projection_updated_at : "";
+  if (updatedAt) {
+    const parsed = new Date(updatedAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      parts.push(`updated ${parsed.toLocaleString()}`);
+    }
+  }
+  if (source) {
+    parts.push(`source ${source.replace(/_/g, " ")}`);
+  }
+  return parts.join(" · ");
+}
+
+function cardPresentation(card: ConversationCard): { label: string; tone: string } {
+  const byKind: Record<string, { label: string; tone: string }> = {
+    assistant_summary: { label: "Observatory brief", tone: "brief" },
+    thread_context: { label: "Thread context", tone: "context" },
+    review_queue: { label: "Review queue", tone: "review" },
+    briefing: { label: "Briefing", tone: "brief" },
+    task_list: { label: "Task list", tone: "task" },
+    knowledge_note: { label: "Knowledge note", tone: "knowledge" },
+  };
+  return byKind[card.kind] ?? { label: card.title || card.kind.replace(/_/g, " "), tone: "default" };
+}
+
+export function MainRoomThread({
+  messages,
+  traces,
+  expandedCards,
+  expandedTraces,
+  onToggleCards,
+  onToggleTraces,
+  onReuseCommand,
+  emptyTitle,
+  emptyBody,
+  emptyActions,
+  transcriptEndRef,
+}: MainRoomThreadProps) {
+  return (
+    <div className="assistant-thread-feed">
+      {messages.length === 0 ? (
+        <div className="assistant-empty-thread">
+          <p className="assistant-empty-kicker">No messages yet</p>
+          <h3>{emptyTitle}</h3>
+          <p>{emptyBody}</p>
+          <ul className="command-story-list">
+            {emptyActions.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        messages.map((message) => {
+          const assistantCommand = message.metadata?.assistant_command;
+          const messageTraces = traces.filter((trace) => trace.message_id === message.id);
+          const cardToggleKey = `${message.id}-cards`;
+          const traceToggleKey = `${message.id}-traces`;
+          const cardsExpanded = !!expandedCards[cardToggleKey];
+          const tracesExpanded = !!expandedTraces[traceToggleKey];
+          const pendingMessage = Boolean(message.metadata?.pending);
+          const fallbackBody = assistantCommand?.summary || "No message content recorded.";
+          const body = pendingMessage && message.role === "assistant"
+            ? "Observatory reply forming..."
+            : message.content.trim() || fallbackBody;
+          return (
+            <article key={message.id} className={`assistant-thread-message role-${message.role}${pendingMessage ? " pending" : ""}`}>
+              <div className="assistant-thread-message-meta">
+                <span className="assistant-role-chip">{message.role}</span>
+                <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="assistant-thread-bubble">
+                <p>{body}</p>
+                {message.cards.length > 0 ? (
+                  <div className="assistant-inline-card assistant-inline-card-stack">
+                    <div className="assistant-inline-card-head">
+                      <span>{message.cards.length} card{message.cards.length === 1 ? "" : "s"} attached</span>
+                      <span className="assistant-inline-card-actions">
+                        <button
+                          className="assistant-inline-card-toggle"
+                          type="button"
+                          onClick={() => onToggleCards(cardToggleKey)}
+                        >
+                          {cardsExpanded ? "Collapse" : "Expand"}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="assistant-inline-card-steps">
+                      {message.cards.map((card, index) => {
+                        const presentation = cardPresentation(card);
+                        return (
+                          <div
+                            key={`${message.id}-card-${card.kind}-${index}`}
+                            className={`assistant-inline-step assistant-inline-step-card tone-${presentation.tone}`}
+                          >
+                            <div>
+                              <strong>{presentation.label}</strong>
+                              {cardsExpanded && card.body ? <p>{card.body}</p> : null}
+                              {cardsExpanded && Object.keys(card.metadata ?? {}).length > 0 ? (
+                                <code className="assistant-inline-card-json">
+                                  {JSON.stringify(card.metadata, null, 2)}
+                                </code>
+                              ) : null}
+                            </div>
+                            <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                {messageTraces.length > 0 ? (
+                  <div className="assistant-inline-card assistant-inline-card-stack">
+                    <div className="assistant-inline-card-head">
+                      <span>Used {messageTraces.length} tool{messageTraces.length === 1 ? "" : "s"}</span>
+                      <span className="assistant-inline-card-actions">
+                        <button
+                          className="assistant-inline-card-toggle"
+                          type="button"
+                          onClick={() => onToggleTraces(traceToggleKey)}
+                        >
+                          {tracesExpanded ? "Collapse" : "Expand"}
+                        </button>
+                      </span>
+                    </div>
+                    <div className="assistant-inline-card-steps">
+                      {messageTraces.map((trace) => (
+                        <div key={trace.id} className="assistant-inline-step assistant-inline-step-trace">
+                          <div className="assistant-inline-step-copy">
+                            <strong>{trace.tool_name}</strong>
+                            <p>{summarizeTraceArguments(trace.arguments)}</p>
+                            <p>Result: {summarizeTraceValue(trace.result)}</p>
+                            {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
+                              <code>{JSON.stringify(trace.arguments, null, 2)}</code>
+                            ) : null}
+                            {tracesExpanded ? (
+                              <code>{JSON.stringify(trace.result, null, 2)}</code>
+                            ) : null}
+                          </div>
+                          <span>{trace.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {assistantCommand ? (
+                  <div className="assistant-inline-card">
+                    <div className="assistant-inline-card-head">
+                      <span>{assistantCommand.matched_intent}</span>
+                      <span>{assistantCommand.status}</span>
+                    </div>
+                    <p>{assistantCommand.summary}</p>
+                    <div className="assistant-inline-card-steps">
+                      {assistantCommand.steps.slice(0, 3).map((step, index) => (
+                        <div key={`${assistantCommand.command}-${step.tool_name}-${index}`} className="assistant-inline-step">
+                          <strong>{step.tool_name}</strong>
+                          <span>{step.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="button-row">
+                      <button className="button" type="button" onClick={() => onReuseCommand(assistantCommand.command)}>
+                        Reuse command
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </article>
+          );
+        })
+      )}
+      {transcriptEndRef ? <div ref={transcriptEndRef} /> : null}
+    </div>
+  );
+}

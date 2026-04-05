@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
+import { MainRoomThread } from "../components/main-room-thread";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
@@ -75,7 +76,7 @@ type ConversationMessage = {
   cards: ConversationCard[];
   metadata: {
     assistant_command?: AgentCommandResponse;
-  };
+  } & Record<string, unknown>;
   created_at: string;
 };
 
@@ -116,6 +117,21 @@ type ConversationSessionResetResponse = {
   preserved_message_count?: number;
   preserved_tool_trace_count?: number;
   updated_at: string;
+};
+
+type ConversationTurnResponse = {
+  thread_id: string;
+  user_message: ConversationMessage;
+  assistant_message: ConversationMessage;
+  trace: ConversationToolTrace;
+  session_state: Record<string, unknown>;
+};
+
+type PendingTurn = {
+  id: string;
+  content: string;
+  inputMode: "text" | "voice";
+  createdAt: string;
 };
 
 const FALLBACK_EXAMPLES = [
@@ -212,39 +228,6 @@ function extensionForMime(mimeType: string): string {
   return "webm";
 }
 
-function summarizeTraceValue(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return `${value.length} item${value.length === 1 ? "" : "s"}`;
-  }
-  if (value && typeof value === "object") {
-    return `${Object.keys(value).length} field${Object.keys(value).length === 1 ? "" : "s"}`;
-  }
-  return "No structured payload";
-}
-
-function cardMetaText(card: ConversationCard): string {
-  const parts = [`v${card.version}`];
-  const metadata = card.metadata ?? {};
-  const source = typeof metadata.projection_source === "string" ? metadata.projection_source : "";
-  const updatedAt = typeof metadata.projection_updated_at === "string" ? metadata.projection_updated_at : "";
-  if (updatedAt) {
-    const parsed = new Date(updatedAt);
-    if (!Number.isNaN(parsed.getTime())) {
-      parts.push(`updated ${parsed.toLocaleString()}`);
-    }
-  }
-  if (source) {
-    parts.push(`source ${source.replace(/_/g, " ")}`);
-  }
-  return parts.join(" · ");
-}
-
 function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueItem {
   if (!value || typeof value !== "object") {
     return false;
@@ -289,11 +272,14 @@ export default function AssistantPage() {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [expandedTraces, setExpandedTraces] = useState<Record<string, boolean>>({});
   const [speakingReply, setSpeakingReply] = useState(false);
+  const [pendingTurn, setPendingTurn] = useState<PendingTurn | null>(null);
+  const [turnInFlight, setTurnInFlight] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const holdToTalkActiveRef = useRef(false);
   const stopRecordingOnceReadyRef = useRef(false);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const browserSupportsRecording = useMemo(
     () => typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia,
     [],
@@ -330,8 +316,27 @@ export default function AssistantPage() {
     return assistantMessage?.content?.trim() || "";
   }, [conversationMessages, latest]);
   const transcriptMessages = useMemo(() => {
-    if (conversationMessages.length > 0) {
-      return conversationMessages;
+    if (conversationMessages.length > 0 || pendingTurn) {
+      const messages = [...conversationMessages];
+      if (pendingTurn) {
+        messages.push({
+          id: pendingTurn.id,
+          role: "user",
+          content: pendingTurn.content,
+          cards: [],
+          metadata: { pending: true, input_mode: pendingTurn.inputMode },
+          created_at: pendingTurn.createdAt,
+        });
+        messages.push({
+          id: `${pendingTurn.id}:assistant`,
+          role: "assistant",
+          content: "",
+          cards: [],
+          metadata: { pending: true, status: "thinking" },
+          created_at: pendingTurn.createdAt,
+        });
+      }
+      return messages;
     }
     if (!latest) {
       return [];
@@ -346,7 +351,11 @@ export default function AssistantPage() {
         created_at: new Date().toISOString(),
       },
     ];
-  }, [conversationMessages, latest]);
+  }, [conversationMessages, latest, pendingTurn]);
+
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: turnInFlight ? "smooth" : "auto", block: "end" });
+  }, [transcriptMessages.length, turnInFlight]);
 
   const toggleExpandedCards = useCallback((key: string) => {
     setExpandedCards((previous) => ({ ...previous, [key]: !previous[key] }));
@@ -696,7 +705,7 @@ export default function AssistantPage() {
   async function runCommand(execute: boolean) {
     const trimmed = command.trim();
     if (!trimmed) {
-      setStatus("Enter a command first");
+      setStatus("Enter an operator command first");
       return;
     }
 
@@ -724,10 +733,59 @@ export default function AssistantPage() {
     }
   }
 
+  async function sendToMainRoom(inputMode: "text" | "voice" = "text") {
+    const trimmed = command.trim();
+    if (!trimmed) {
+      setStatus("Enter a message for the Main Room first");
+      return;
+    }
+
+    const pendingId =
+      typeof window !== "undefined" && window.crypto?.randomUUID
+        ? `pending_${window.crypto.randomUUID().replace(/-/g, "")}`
+        : `pending_${Date.now()}`;
+
+    setPendingTurn({
+      id: pendingId,
+      content: trimmed,
+      inputMode,
+      createdAt: new Date().toISOString(),
+    });
+    setTurnInFlight(true);
+    setStatus(inputMode === "voice" ? "Routing voice text into the Main Room..." : "Sending to the Main Room...");
+
+    try {
+      const payload = await apiRequest<ConversationTurnResponse>(apiBase, token, "/v1/conversations/primary/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          content: trimmed,
+          input_mode: inputMode,
+          device_target: "web-pwa",
+          metadata: {
+            surface: "main_room",
+            submitted_via: "assistant_page",
+          },
+        }),
+      });
+      setConversationMessages((previous) => [...previous, payload.user_message, payload.assistant_message]);
+      setConversationTraces((previous) => [payload.trace, ...previous].slice(0, 25));
+      setSessionState(payload.session_state);
+      setPendingTurn(null);
+      setCommand("");
+      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
+      setStatus("Main Room reply received");
+    } catch (error) {
+      setPendingTurn(null);
+      setStatus(error instanceof Error ? error.message : "Main Room turn failed");
+    } finally {
+      setTurnInFlight(false);
+    }
+  }
+
   async function queueAssistCommand(execute: boolean) {
     const trimmed = command.trim();
     if (!trimmed) {
-      setStatus("Enter a command first");
+      setStatus("Enter an operator command first");
       return;
     }
 
@@ -901,19 +959,19 @@ export default function AssistantPage() {
         {!queuePane.collapsed ? (
           <aside className="command-center-column assistant-side-column">
             <div className="command-column-header">
-              <span className="command-column-title">Ritual Feed</span>
+              <span className="command-column-title">Thread Activity</span>
               <span className="command-footnote">{history.length} recent runs</span>
               <PaneToggleButton label="Hide pane" onClick={queuePane.collapse} />
             </div>
             <div className="assistant-side-stack">
               <section className="assistant-side-card glass">
                 <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Latest Turn</span>
+                  <span className="assistant-side-kicker">Recent operator runs</span>
                   <span className="command-footnote">{showcaseLabel}</span>
                 </div>
                 <ul className="assistant-mini-feed">
                   {history.length === 0 ? (
-                    <li className="assistant-mini-feed-empty">No recent command runs yet.</li>
+                    <li className="assistant-mini-feed-empty">No recent operator runs yet.</li>
                   ) : (
                     history.map((entry, index) => (
                       <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
@@ -930,7 +988,7 @@ export default function AssistantPage() {
 
               <section className="assistant-side-card glass">
                 <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Invocation Library</span>
+                  <span className="assistant-side-kicker">Prompt Library</span>
                   <span className="command-footnote">{exampleCommands.length} samples</span>
                 </div>
                 <div className="assistant-chip-grid">
@@ -944,7 +1002,7 @@ export default function AssistantPage() {
 
               <section className="assistant-side-card glass">
                 <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Session Context</span>
+                  <span className="assistant-side-kicker">Session Memory</span>
                   <span className="command-footnote">{Object.keys(sessionState).length} live keys</span>
                 </div>
                 <p className="command-footnote">Reset clears volatile context only. Messages and runtime traces stay attached to the thread.</p>
@@ -974,18 +1032,18 @@ export default function AssistantPage() {
         <section className="command-center-main">
           <div className="command-scroll assistant-main-scroll">
             <section className="assistant-hero glass">
-              <div className="assistant-hero-copy">
-                <div className="assistant-hero-meta">
-                  <span className="assistant-hero-kicker">{conversationTitle}</span>
-                  <span className="assistant-hero-separator">/</span>
-                  <span>{showcasePlanner}</span>
+                <div className="assistant-hero-copy">
+                  <div className="assistant-hero-meta">
+                    <span className="assistant-hero-kicker">{conversationTitle}</span>
+                    <span className="assistant-hero-separator">/</span>
+                    <span>{showcasePlanner}</span>
                   <span className="assistant-hero-separator">/</span>
                   <span>{showcaseDate}</span>
                 </div>
-                <h1>Turn the whole day into one brief and one next move.</h1>
+                <h1>Keep the Main Room as the living thread for the day.</h1>
                 <p>
-                  Keep the thread as the main room. Speak or type, let the answer arrive as a composed briefing,
-                  and use the side panes as supporting shelves instead of the primary stage.
+                  Send typed or spoken turns into one persistent conversation. Tool work, cards, and session memory
+                  stay attached to each reply instead of taking over the workspace.
                 </p>
               </div>
               <div className="assistant-hero-actions">
@@ -1004,15 +1062,15 @@ export default function AssistantPage() {
                     {recording ? "Release to capture" : voiceBlob ? "Voice captured" : "Hold to talk"}
                   </span>
                   <span className="assistant-voice-button-meta">
-                    {browserSupportsRecording ? "local mic capture" : "browser capture unavailable"}
+                    {browserSupportsRecording ? "local mic capture for Main Room or operator lanes" : "browser capture unavailable"}
                   </span>
                 </button>
                 <div className="assistant-hero-button-row">
-                  <button className="button" type="button" onClick={() => runCommand(false)}>
-                    Plan flow
+                  <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
+                    {turnInFlight ? "Reply forming" : "Send to Main Room"}
                   </button>
-                  <button className="button" type="button" onClick={() => runCommand(true)}>
-                    Execute flow
+                  <button className="button" type="button" onClick={() => runCommand(false)}>
+                    Preview command flow
                   </button>
                   <button
                     className="button"
@@ -1034,8 +1092,8 @@ export default function AssistantPage() {
                   <strong>{voiceUploadQueue.length} staged</strong>
                 </div>
                 <div className="assistant-stat-pill">
-                  <span>Planner jobs</span>
-                  <strong>{assistJobs.length} pending</strong>
+                  <span>Main Room</span>
+                  <strong>{pendingTurn ? "Reply pending" : "Ready"}</strong>
                 </div>
               </div>
             </section>
@@ -1050,8 +1108,8 @@ export default function AssistantPage() {
             <section className="assistant-thread-panel glass">
               <div className="assistant-thread-head">
                 <div>
-                  <span className="assistant-side-kicker">Salon Transcript</span>
-                  <h2>Persistent conversation, arranged for rereading</h2>
+                  <span className="assistant-side-kicker">Main Room Transcript</span>
+                  <h2>Persistent conversation, with tools folded underneath each reply</h2>
                 </div>
                 <div className="assistant-thread-actions">
                   <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
@@ -1073,156 +1131,45 @@ export default function AssistantPage() {
                   </button>
                 </div>
               </div>
-
-              <div className="assistant-thread-feed">
-                {transcriptMessages.length === 0 ? (
-                  <div className="assistant-empty-thread">
-                    <p className="assistant-empty-kicker">No messages yet</p>
-                    <h3>Begin with a spoken request or a typed instruction</h3>
-                    <p>
-                      The thread will hold the composed answer, the next action, and the supporting context without
-                      turning the main room into a dashboard.
-                    </p>
-                    <ul className="command-story-list">
-                      {showcaseActions.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  transcriptMessages.map((message) => {
-                    const assistantCommand = message.metadata?.assistant_command;
-                    const messageTraces = conversationTraces.filter((trace) => trace.message_id === message.id);
-                    const cardToggleKey = `${message.id}-cards`;
-                    const traceToggleKey = `${message.id}-traces`;
-                    const cardsExpanded = !!expandedCards[cardToggleKey];
-                    const tracesExpanded = !!expandedTraces[traceToggleKey];
-                    const fallbackBody = assistantCommand?.summary || "No message content recorded.";
-                    const body = message.content.trim() || fallbackBody;
-                    return (
-                      <article key={message.id} className={`assistant-thread-message role-${message.role}`}>
-                        <div className="assistant-thread-message-meta">
-                          <span className="assistant-role-chip">{message.role}</span>
-                          <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                        <div className="assistant-thread-bubble">
-                          <p>{body}</p>
-                          {message.cards.length > 0 ? (
-                            <div className="assistant-inline-card assistant-inline-card-stack">
-                              <div className="assistant-inline-card-head">
-                                <span>Attached cards</span>
-                                <span className="assistant-inline-card-actions">
-                                  <button
-                                    className="assistant-inline-card-toggle"
-                                    type="button"
-                                    onClick={() => toggleExpandedCards(cardToggleKey)}
-                                  >
-                                    {cardsExpanded ? "Collapse" : "Expand"}
-                                  </button>
-                                  <span>{message.cards.length}</span>
-                                </span>
-                              </div>
-                              <div className="assistant-inline-card-steps">
-                                {message.cards.map((card, index) => (
-                                  <div key={`${message.id}-card-${card.kind}-${index}`} className="assistant-inline-step assistant-inline-step-card">
-                                    <div>
-                                      <strong>{card.title || card.kind.replace(/_/g, " ")}</strong>
-                                      {cardsExpanded && card.body ? <p>{card.body}</p> : null}
-                                      {cardsExpanded && card.metadata && Object.keys(card.metadata).length > 0 ? (
-                                        <code className="assistant-inline-card-json">
-                                          {JSON.stringify(card.metadata, null, 2)}
-                                        </code>
-                                      ) : null}
-                                    </div>
-                                    <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          {messageTraces.length > 0 ? (
-                            <div className="assistant-inline-card assistant-inline-card-stack">
-                              <div className="assistant-inline-card-head">
-                                <span>Runtime trace</span>
-                                <span className="assistant-inline-card-actions">
-                                  <button
-                                    className="assistant-inline-card-toggle"
-                                    type="button"
-                                    onClick={() => toggleExpandedTraces(traceToggleKey)}
-                                  >
-                                    {tracesExpanded ? "Collapse" : "Expand"}
-                                  </button>
-                                  <span>{messageTraces.length}</span>
-                                </span>
-                              </div>
-                              <div className="assistant-inline-card-steps">
-                                {messageTraces.map((trace) => (
-                                  <div key={trace.id} className="assistant-inline-step assistant-inline-step-trace">
-                                    <div className="assistant-inline-step-copy">
-                                      <strong>{trace.tool_name}</strong>
-                                      <p>{summarizeTraceValue(trace.result)}</p>
-                                      {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
-                                        <code>{JSON.stringify(trace.arguments, null, 2)}</code>
-                                      ) : null}
-                                    </div>
-                                    <span>{trace.status}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          {assistantCommand ? (
-                            <div className="assistant-inline-card">
-                              <div className="assistant-inline-card-head">
-                                <span>{assistantCommand.matched_intent}</span>
-                                <span>{assistantCommand.status}</span>
-                              </div>
-                              <p>{assistantCommand.summary}</p>
-                              <div className="assistant-inline-card-steps">
-                                {assistantCommand.steps.slice(0, 3).map((step, index) => (
-                                  <div key={`${assistantCommand.command}-${step.tool_name}-${index}`} className="assistant-inline-step">
-                                    <strong>{step.tool_name}</strong>
-                                    <span>{step.status}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="button-row">
-                                <button className="button" type="button" onClick={() => setCommand(assistantCommand.command)}>
-                                  Reuse command
-                                </button>
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
+              <MainRoomThread
+                messages={transcriptMessages}
+                traces={conversationTraces}
+                expandedCards={expandedCards}
+                expandedTraces={expandedTraces}
+                onToggleCards={toggleExpandedCards}
+                onToggleTraces={toggleExpandedTraces}
+                onReuseCommand={(nextCommand) => setCommand(nextCommand)}
+                emptyTitle="Begin with a typed turn or a held-to-talk request"
+                emptyBody="The Main Room keeps the answer, the next move, and the supporting tool details in one readable thread."
+                emptyActions={showcaseActions}
+                transcriptEndRef={transcriptEndRef}
+              />
             </section>
 
             <section className="assistant-composer glass">
               <div className="assistant-composer-head">
                 <div>
-                  <span className="assistant-side-kicker">Composer</span>
-                  <h2>Compose the next move</h2>
+                  <span className="assistant-side-kicker">Main Room Composer</span>
+                  <h2>Send the next turn into the persistent thread</h2>
                 </div>
-                <p className="command-footnote">Voice leads. Buttons remain backup controls.</p>
+                <p className="command-footnote">Conversation is primary. Operator controls stay available below.</p>
               </div>
-              <label className="label" htmlFor="assistant-command">Command</label>
+              <label className="label" htmlFor="assistant-command">Message</label>
               <textarea
                 id="assistant-command"
                 className="textarea"
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
                 rows={4}
-                placeholder="Ask Starlog to distill what matters, create a note, make cards, prepare a briefing, or set up the next task."
+                placeholder="Ask for a briefing, a next move, a recap of the current thread, or a card-backed reply."
               />
               <div className="assistant-toolbar">
-                <button className="button" type="button" onClick={() => runCommand(false)}>Plan</button>
-                <button className="button" type="button" onClick={() => runCommand(true)}>Execute</button>
-                <button className="button" type="button" onClick={() => queueAssistCommand(false)}>Queue planner</button>
-                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue execute</button>
+                <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
+                  {turnInFlight ? "Sending..." : "Send"}
+                </button>
+                <button className="button" type="button" onClick={() => runCommand(false)}>Preview command flow</button>
+                <button className="button" type="button" onClick={() => runCommand(true)}>Execute command flow</button>
+                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex execute</button>
               </div>
               {voiceBlob ? (
                 <div className="assistant-voice-ready">
@@ -1235,7 +1182,7 @@ export default function AssistantPage() {
                 </div>
               ) : (
                 <p className="command-footnote">
-                  Hold the mic button above, release to stage the clip, then choose whether to plan or execute it.
+                  Hold the mic button above, release to stage the clip, then route it through the voice-command operator lane.
                 </p>
               )}
               <p className="status">{status}</p>
@@ -1256,7 +1203,7 @@ export default function AssistantPage() {
               <div className="command-agent-scroll assistant-side-stack">
                 <section className="assistant-side-card glass">
                   <div className="assistant-side-card-head">
-                    <span className="assistant-side-kicker">Voice State</span>
+                    <span className="assistant-side-kicker">Operator Lanes</span>
                     <span className="command-footnote">{recording ? "recording" : voiceBlob ? "ready" : "idle"}</span>
                   </div>
                   <p className="console-copy">Upload queue: {voiceUploadQueue.length} {isOnline ? "(online)" : "(offline)"}</p>
