@@ -71,10 +71,16 @@ type MobileNotesSurfaceProps = SharedProps & {
 type MobileReviewSurfaceProps = SharedProps & {
   reviewPrompt: string;
   reviewAnswer: string;
+  reviewDueCount: number;
+  reviewCardType: string;
+  reviewMeta: string;
+  reviewStatus: string;
   showAnswer: boolean;
   revealAnswer: () => void;
+  loadDueCards: () => void;
   submitReview: (rating: number) => void;
   hasReviewCard: boolean;
+  openReviewWorkspace: () => void;
   showAdvancedReview: boolean;
   toggleMissionTools: () => void;
 };
@@ -343,10 +349,16 @@ export function MobileReviewSurface({
   styles,
   reviewPrompt,
   reviewAnswer,
+  reviewDueCount,
+  reviewCardType,
+  reviewMeta,
+  reviewStatus,
   showAnswer,
   revealAnswer,
+  loadDueCards,
   submitReview,
   hasReviewCard,
+  openReviewWorkspace,
   showAdvancedReview,
   toggleMissionTools,
 }: MobileReviewSurfaceProps) {
@@ -355,14 +367,16 @@ export function MobileReviewSurface({
       <View style={styles.reviewTopRow}>
         <View>
           <Text style={styles.sectionKicker}>Current Session</Text>
-          <Text style={styles.subtle}>Knowledge health: 42%</Text>
+          <Text style={styles.subtle}>
+            {hasReviewCard ? `${reviewDueCount} card(s) in the current queue` : "Load a due queue to start the next pass."}
+          </Text>
         </View>
         <View style={styles.reviewPillRow}>
           <View style={styles.reviewPill}>
-            <Text style={styles.reviewPillText}>12</Text>
+            <Text style={styles.reviewPillText}>{reviewDueCount}</Text>
           </View>
           <View style={styles.reviewPill}>
-            <Text style={styles.reviewPillText}>85</Text>
+            <Text style={styles.reviewPillText}>{showAnswer ? "OPEN" : "SEALED"}</Text>
           </View>
         </View>
       </View>
@@ -372,43 +386,54 @@ export function MobileReviewSurface({
           <Text style={styles.surfaceStatLabel}>Focused card</Text>
         </View>
         <View style={styles.surfaceStatCard}>
-          <Text style={styles.surfaceStatValue}>{showAnswer ? "OPEN" : "SEALED"}</Text>
-          <Text style={styles.surfaceStatLabel}>Answer state</Text>
+          <Text style={styles.surfaceStatValue}>{reviewDueCount}</Text>
+          <Text style={styles.surfaceStatLabel}>Queue due</Text>
         </View>
         <View style={styles.surfaceStatCard}>
-          <Text style={styles.surfaceStatValue}>89%</Text>
-          <Text style={styles.surfaceStatLabel}>Retention</Text>
+          <Text style={styles.surfaceStatValue}>{reviewCardType}</Text>
+          <Text style={styles.surfaceStatLabel}>Card type</Text>
         </View>
       </View>
       <View style={styles.reviewFlashcard}>
-        <Text style={styles.reviewMeta}>Last seen: 4 days ago</Text>
-        <Text style={styles.reviewCategory}>Scientific Nomenclature</Text>
+        <Text style={styles.reviewMeta}>{reviewMeta}</Text>
+        <Text style={styles.reviewCategory}>{reviewCardType}</Text>
         <Text style={styles.reviewPromptLarge}>{reviewPrompt}</Text>
         <View style={styles.reviewDivider} />
-        <Text style={styles.reviewAnswerLarge}>{showAnswer ? reviewAnswer : "Tap reveal to show answer"}</Text>
-        <TouchableOpacity style={styles.button} onPress={revealAnswer}>
-          <Text style={styles.buttonText}>Reveal Answer</Text>
-        </TouchableOpacity>
+        <Text style={styles.reviewAnswerLarge}>
+          {showAnswer ? reviewAnswer : "Keep the answer sealed until you commit to retrieval."}
+        </Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.button} onPress={hasReviewCard ? revealAnswer : loadDueCards}>
+            <Text style={styles.buttonText}>{hasReviewCard ? (showAnswer ? "Hide Answer" : "Reveal Answer") : "Load Due Cards"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={openReviewWorkspace}>
+            <Text style={styles.buttonText}>Open Deck Workspace</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.reviewRateRow}>
-        <TouchableOpacity style={styles.reviewRateButton} onPress={() => submitReview(1)}>
-          <Text style={styles.reviewRateLabel}>Again</Text>
-          <Text style={styles.reviewRateValue}>1m</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.reviewRateButton} onPress={() => submitReview(2)}>
-          <Text style={styles.reviewRateLabel}>Hard</Text>
-          <Text style={styles.reviewRateValue}>2d</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.reviewRateButton, styles.reviewRateButtonActive]} onPress={() => submitReview(4)}>
-          <Text style={[styles.reviewRateLabel, styles.reviewRateLabelActive]}>Good</Text>
-          <Text style={styles.reviewRateValue}>4d</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.reviewRateButton} onPress={() => submitReview(5)}>
-          <Text style={styles.reviewRateLabel}>Easy</Text>
-          <Text style={styles.reviewRateValue}>7d</Text>
-        </TouchableOpacity>
-      </View>
-      {!hasReviewCard ? <Text style={styles.subtle}>Load due cards first to start the focused review flow.</Text> : null}
+      {hasReviewCard ? (
+        <View style={styles.reviewRateRow}>
+          <TouchableOpacity style={styles.reviewRateButton} onPress={() => submitReview(1)}>
+            <Text style={styles.reviewRateLabel}>Again</Text>
+            <Text style={styles.reviewRateValue}>1m</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.reviewRateButton} onPress={() => submitReview(3)}>
+            <Text style={styles.reviewRateLabel}>Hard</Text>
+            <Text style={styles.reviewRateValue}>1d</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.reviewRateButton, styles.reviewRateButtonActive]} onPress={() => submitReview(4)}>
+            <Text style={[styles.reviewRateLabel, styles.reviewRateLabelActive]}>Good</Text>
+            <Text style={styles.reviewRateValue}>3d</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.reviewRateButton} onPress={() => submitReview(5)}>
+            <Text style={styles.reviewRateLabel}>Easy</Text>
+            <Text style={styles.reviewRateValue}>5d</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={styles.subtle}>Load due cards first to start the focused review flow.</Text>
+      )}
+      <Text style={styles.subtle}>{reviewStatus}</Text>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={toggleMissionTools}>
           <Text style={styles.buttonText}>{showAdvancedReview ? "Close Mission Tools" : "Open Mission Tools"}</Text>

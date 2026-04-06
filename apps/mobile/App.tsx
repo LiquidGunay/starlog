@@ -1316,6 +1316,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return `${hh}:${mm}`;
   }, [alarmHour, alarmMinute, countdownTick]);
   const reviewCard = dueCards[0];
+  const reviewCardTypeLabel = reviewCard ? reviewCard.card_type.replace(/_/g, " ").toUpperCase() : "QUEUE IDLE";
+  const reviewMetaLabel = reviewCard
+    ? `Due ${new Date(reviewCard.due_at).toLocaleString()}`
+    : (token ? "Load due cards to start a focused pass." : "Add API credentials to load the review queue.");
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -2360,6 +2364,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/assistant`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to open assistant in PWA");
+    }
+  }
+
+  async function openReviewWorkspaceInPwa() {
+    try {
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/review/decks`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to open review workspace in PWA");
     }
   }
 
@@ -3787,7 +3799,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             <Text style={styles.reviewPrompt}>{dueCards[0].prompt}</Text>
             {showAnswer ? <Text style={styles.reviewAnswer}>{dueCards[0].answer}</Text> : null}
             <View style={styles.buttonRow}>
-              {[1, 2, 3, 4, 5].map((rating) => (
+              {[1, 3, 4, 5].map((rating) => (
                 <TouchableOpacity key={rating} style={styles.button} onPress={() => submitReview(rating)}>
                   <Text style={styles.buttonText}>Rate {rating}</Text>
                 </TouchableOpacity>
@@ -4156,17 +4168,22 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <MobileReviewSurface
             styles={styles}
             palette={palette}
-            reviewPrompt={reviewCard?.prompt || "Nebular Nucleosynthesis"}
-            reviewAnswer={
-              reviewCard?.answer ||
-              "The process responsible for the formation of heavy elements within the core of collapsing stellar bodies."
-            }
+            reviewPrompt={reviewCard?.prompt || "Load the next due card to begin a focused SRS pass."}
+            reviewAnswer={reviewCard?.answer || "The answer stays sealed until you load a card and intentionally reveal it."}
+            reviewDueCount={dueCards.length}
+            reviewCardType={reviewCardTypeLabel}
+            reviewMeta={reviewMetaLabel}
+            reviewStatus={status}
             showAnswer={showAnswer}
             revealAnswer={() => {
               if (!reviewCard) {
                 loadDueCards().catch(() => undefined);
+                return;
               }
-              setShowAnswer(true);
+              setShowAnswer((value) => !value);
+            }}
+            loadDueCards={() => {
+              loadDueCards().catch(() => undefined);
             }}
             submitReview={(rating) => {
               if (!reviewCard) {
@@ -4176,6 +4193,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               submitReview(rating).catch(() => undefined);
             }}
             hasReviewCard={Boolean(reviewCard)}
+            openReviewWorkspace={() => {
+              openReviewWorkspaceInPwa().catch(() => undefined);
+            }}
             showAdvancedReview={showAdvancedReview}
             toggleMissionTools={() => {
               setReviewOpsSection("session");

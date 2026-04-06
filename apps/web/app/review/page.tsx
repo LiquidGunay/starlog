@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
@@ -21,6 +21,7 @@ type Card = {
 type SessionStats = {
   reviewed: number;
   again: number;
+  hard: number;
   good: number;
   easy: number;
 };
@@ -45,9 +46,10 @@ export default function ReviewPage() {
     () => readEntitySnapshot<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0),
   );
   const [stats, setStats] = useState<SessionStats>(
-    () => readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 }),
+    () => readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 }),
   );
   const [status, setStatus] = useState("Ready");
+  const [attemptedInitialLoad, setAttemptedInitialLoad] = useState(false);
   const contextPane = usePaneCollapsed(REVIEW_CONTEXT_PANE_SNAPSHOT);
   const currentCard = cards[currentIndex] ?? null;
   const duePreview = useMemo(() => cards.slice(0, 6), [cards]);
@@ -57,9 +59,9 @@ export default function ReviewPage() {
     setShowAnswer((previous) => previous || readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false));
     setCurrentIndex((previous) => previous || readEntitySnapshot<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0));
     setStats((previous) => (
-      previous.reviewed > 0 || previous.again > 0 || previous.good > 0 || previous.easy > 0
+      previous.reviewed > 0 || previous.again > 0 || previous.hard > 0 || previous.good > 0 || previous.easy > 0
         ? previous
-        : readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 })
+        : readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 })
     ));
   }, []);
 
@@ -77,7 +79,7 @@ export default function ReviewPage() {
         readEntitySnapshotAsync<Card[]>(REVIEW_CARDS_SNAPSHOT, []),
         readEntitySnapshotAsync<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
         readEntitySnapshotAsync<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0),
-        readEntitySnapshotAsync<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 }),
+        readEntitySnapshotAsync<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 }),
       ]);
 
       if (cancelled) {
@@ -97,7 +99,15 @@ export default function ReviewPage() {
     };
   }, []);
 
-  async function loadDue() {
+  useEffect(() => {
+    if (missingConfig || cards.length > 0 || attemptedInitialLoad) {
+      return;
+    }
+    setAttemptedInitialLoad(true);
+    void loadDue();
+  }, [attemptedInitialLoad, cards.length, loadDue, missingConfig]);
+
+  const loadDue = useCallback(async () => {
     if (missingApiBase) {
       setStatus("API base missing. Set it in Runtime or Main Room.");
       return;
@@ -111,7 +121,7 @@ export default function ReviewPage() {
       setCards(payload);
       setCurrentIndex(0);
       setShowAnswer(false);
-      const nextStats = { reviewed: 0, again: 0, good: 0, easy: 0 };
+      const nextStats = { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 };
       setStats(nextStats);
       writeEntitySnapshot(REVIEW_CARDS_SNAPSHOT, payload);
       writeEntitySnapshot(REVIEW_CURRENT_INDEX_SNAPSHOT, 0);
@@ -121,9 +131,9 @@ export default function ReviewPage() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load due cards");
     }
-  }
+  }, [apiBase, missingApiBase, missingToken, token]);
 
-  async function reviewCurrent(rating: 2 | 4 | 5) {
+  async function reviewCurrent(rating: 1 | 3 | 4 | 5) {
     if (!currentCard) {
       setStatus("No active card");
       return;
@@ -144,7 +154,8 @@ export default function ReviewPage() {
       );
       setStats((previous) => ({
         reviewed: previous.reviewed + 1,
-        again: previous.again + (rating === 2 ? 1 : 0),
+        again: previous.again + (rating === 1 ? 1 : 0),
+        hard: previous.hard + (rating === 3 ? 1 : 0),
         good: previous.good + (rating === 4 ? 1 : 0),
         easy: previous.easy + (rating === 5 ? 1 : 0),
       }));
@@ -198,11 +209,12 @@ export default function ReviewPage() {
       stats={[
         { label: "Due now", value: String(cards.length) },
         { label: "Reviewed", value: String(stats.reviewed) },
-        { label: "Again / Good", value: `${stats.again} / ${stats.good}` },
+        { label: "Again / Hard / Good", value: `${stats.again} / ${stats.hard} / ${stats.good}` },
       ]}
       actions={
         <div className="button-row">
           <Link className="button" href="/assistant">Open Main Room</Link>
+          <Link className="button" href="/review/decks">Open deck workspace</Link>
           <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
         </div>
       }
@@ -219,15 +231,15 @@ export default function ReviewPage() {
         },
         {
           kicker: "Session split",
-          title: `${stats.again} again · ${stats.good} good · ${stats.easy} easy`,
+          title: `${stats.again} again · ${stats.hard} hard · ${stats.good} good`,
           body: stats.reviewed > 0 ? "Current session response mix." : "Ratings will accumulate as soon as you review cards.",
         },
         {
-          kicker: "Main Room",
-          title: "Return to the shared thread",
-          body: "Use chat to inspect supporting context before jumping back into review.",
-          href: "/assistant",
-          actionLabel: "Open Main Room",
+          kicker: "Deck workspace",
+          title: "Open the fuller deck browser",
+          body: "Use the deck workspace for queue inspection, card edits, and deck management between focused review passes.",
+          href: "/review/decks",
+          actionLabel: "Open deck workspace",
         },
       ]}
     >
@@ -266,11 +278,11 @@ export default function ReviewPage() {
                 </div>
               ) : null}
               <div className="sync-rating-row">
-                <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+                <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(1)} disabled={!currentCard}>
                   <span>Again</span>
                   <small>{"< 1m"}</small>
                 </button>
-                <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+                <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(3)} disabled={!currentCard}>
                   <span>Hard</span>
                   <small>1d</small>
                 </button>
@@ -296,9 +308,15 @@ export default function ReviewPage() {
               {missingConfig ? (
                 <div className="button-row">
                   <Link className="button" href="/runtime">Open runtime</Link>
+                  <Link className="button" href="/review/decks">Open deck workspace</Link>
                   <Link className="button" href="/assistant">Open Main Room</Link>
                 </div>
-              ) : null}
+              ) : (
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => loadDue()}>Load due cards</button>
+                  <Link className="button" href="/review/decks">Open deck workspace</Link>
+                </div>
+              )}
             </>
           )}
           <p className="status">{status}</p>
@@ -324,8 +342,9 @@ export default function ReviewPage() {
               <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
             </div>
             <p className="console-copy">Queue remaining: {cards.length}</p>
-            <p className="console-copy">Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</p>
+            <p className="console-copy">Again: {stats.again} | Hard: {stats.hard} | Good: {stats.good} | Easy: {stats.easy}</p>
             <div className="button-row">
+              <Link className="button" href="/review/decks">Open deck workspace</Link>
               <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
               <button
                 className="button"
