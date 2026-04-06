@@ -238,14 +238,6 @@ export default function SyncCenterPage() {
     }
   }
 
-  const progressSegments = 5;
-  const progressActive = [
-    isOnline,
-    outbox.length === 0,
-    serverEntries.length > 0,
-    pulledEvents.length > 0,
-    Boolean(warmupResult),
-  ].filter(Boolean).length;
   const latestReplay = replayLog[0] ?? null;
   const latestServerEntry = serverEntries[0] ?? null;
   const warmupFailures = warmupResult?.steps.filter((step) => step.status === "failed").length ?? 0;
