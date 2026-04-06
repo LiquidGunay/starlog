@@ -1,3 +1,7 @@
+import importlib
+
+import pytest
+
 from app.services import ai_runtime_service
 
 
@@ -28,3 +32,22 @@ def test_local_execute_runtime_capability_uses_runtime_owned_prompts() -> None:
     assert payload["capability"] == "llm_summary"
     assert payload["output"]["summary"].startswith("Summary draft for Orbit clip")
     assert "Important details go here." in payload["user_prompt"]
+
+
+def test_runtime_import_is_lazy_until_local_fallback_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.reload(ai_runtime_service)
+    monkeypatch.setattr(module, "_RUNTIME_WORKFLOWS_MODULE", None)
+
+    real_import_module = importlib.import_module
+
+    def fake_import_module(name: str, package: str | None = None) -> object:
+        if name == "runtime_app.workflows":
+            raise ModuleNotFoundError("No module named 'runtime_app'")
+        return real_import_module(name, package)
+
+    monkeypatch.setattr(module.importlib, "import_module", fake_import_module)
+
+    assert module._runtime_url("/v1/chat/execute") is None
+
+    with pytest.raises(module.RuntimeServiceError, match="Local AI runtime workflows are unavailable"):
+        module.execute_chat_turn({"text": "hello"})

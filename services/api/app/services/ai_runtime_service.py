@@ -1,20 +1,16 @@
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 AI_RUNTIME_ROOT = Path(__file__).resolve().parents[3] / "ai-runtime"
-if str(AI_RUNTIME_ROOT) not in sys.path:
-    sys.path.insert(0, str(AI_RUNTIME_ROOT))
-
-from runtime_app.workflows import briefing_preview, capability_request_spec, chat_preview, execute_capability
-from runtime_app.workflows import execute_chat_turn as local_execute_chat_turn
-from runtime_app.workflows import research_digest_preview
 
 AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-nano"
 AI_RUNTIME_BASE_ENV = "STARLOG_AI_RUNTIME_BASE_URL"
@@ -26,10 +22,30 @@ AI_RUNTIME_CHAT_EXECUTE_TIMEOUT_SECONDS = 8.0
 AI_RUNTIME_CHAT_EXECUTE_RETRIES = 2
 AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS = 5.0
 AI_RUNTIME_PREVIEW_RETRIES = 2
+_RUNTIME_WORKFLOWS_MODULE: ModuleType | None = None
 
 
 class RuntimeServiceError(Exception):
     pass
+
+
+def _runtime_workflows() -> ModuleType:
+    global _RUNTIME_WORKFLOWS_MODULE
+
+    if _RUNTIME_WORKFLOWS_MODULE is not None:
+        return _RUNTIME_WORKFLOWS_MODULE
+
+    if str(AI_RUNTIME_ROOT) not in sys.path:
+        sys.path.insert(0, str(AI_RUNTIME_ROOT))
+
+    try:
+        _RUNTIME_WORKFLOWS_MODULE = importlib.import_module("runtime_app.workflows")
+    except ModuleNotFoundError as exc:
+        raise RuntimeServiceError(
+            "Local AI runtime workflows are unavailable. Configure "
+            f"{AI_RUNTIME_BASE_ENV} or ship services/ai-runtime with this deployment."
+        ) from exc
+    return _RUNTIME_WORKFLOWS_MODULE
 
 
 def _valid_url(value: object) -> bool:
@@ -47,19 +63,20 @@ def _runtime_url(path: str) -> str | None:
 
 
 def capability_prompts(capability: str, payload: dict) -> tuple[str, str]:
-    return capability_request_spec(capability, payload)
+    return _runtime_workflows().capability_request_spec(capability, payload)
 
 
 def _local_preview_workflow(workflow: str, payload: dict) -> dict:
+    workflows = _runtime_workflows()
     title = str(payload.get("title") or "").strip() or None
     text = str(payload.get("text") or payload.get("content") or payload.get("text_hint") or "").strip()
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     if workflow == "chat_turn":
-        preview = chat_preview(title, text, context)
+        preview = workflows.chat_preview(title, text, context)
     elif workflow == "briefing":
-        preview = briefing_preview(title, text, context)
+        preview = workflows.briefing_preview(title, text, context)
     elif workflow == "research_digest":
-        preview = research_digest_preview(title, text, context)
+        preview = workflows.research_digest_preview(title, text, context)
     else:
         raise RuntimeServiceError(f"Unsupported preview workflow: {workflow}")
     return {
@@ -124,7 +141,7 @@ def execute_chat_turn(payload: dict) -> dict:
     text = str(payload.get("text") or payload.get("content") or payload.get("text_hint") or "").strip()
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     if not url:
-        result = local_execute_chat_turn(title, text, context).model_dump(mode="json")
+        result = _runtime_workflows().execute_chat_turn(title, text, context).model_dump(mode="json")
         result["provider_used"] = "local_prompt_preview"
         return result
 
@@ -167,7 +184,7 @@ def execute_chat_turn(payload: dict) -> dict:
 def execute_runtime_capability(capability: str, payload: dict, prefer_local: bool) -> dict:
     url = _runtime_url(AI_RUNTIME_EXECUTE_PATH)
     if not url:
-        result = execute_capability(capability, payload).model_dump(mode="json")
+        result = _runtime_workflows().execute_capability(capability, payload).model_dump(mode="json")
         result["provider_used"] = "local_ai_runtime"
         return result
 
