@@ -279,7 +279,6 @@ export default function AssistantPage() {
   const [conversationTitle, setConversationTitle] = useState("Primary Thread");
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationTraces, setConversationTraces] = useState<ConversationToolTrace[]>([]);
-  const [lastResetSummary, setLastResetSummary] = useState<ConversationSessionResetResponse | null>(null);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [expandedTraces, setExpandedTraces] = useState<Record<string, boolean>>({});
   const [speakingReply, setSpeakingReply] = useState(false);
@@ -303,7 +302,6 @@ export default function AssistantPage() {
     const collected = intents.flatMap((intent) => intent.examples);
     return collected.length > 0 ? collected : FALLBACK_EXAMPLES;
   }, [intents]);
-  const showcaseLabel = latest?.matched_intent?.replace(/_/g, ".") || "command.draft";
   const showcasePlanner = latest?.planner || "preview_shell";
   const showcaseDate = useMemo(
     () => new Intl.DateTimeFormat([], { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
@@ -950,7 +948,6 @@ export default function AssistantPage() {
         { method: "POST" },
       );
       setSessionState(payload.session_state);
-      setLastResetSummary(payload);
       const clearedKeys = payload.cleared_keys ?? Object.keys(sessionState);
       const preservedMessageCount = payload.preserved_message_count ?? conversationMessages.length;
       const preservedTraceCount = payload.preserved_tool_trace_count ?? conversationTraces.length;
