@@ -1,9 +1,10 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
+import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -47,7 +48,6 @@ function cacheNotes(notes: Note[]): void {
 }
 
 function NotesPageContent() {
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const [notes, setNotes] = useState<Note[]>(() => readEntitySnapshot<Note[]>(NOTES_SNAPSHOT, []));
@@ -255,58 +255,53 @@ function NotesPageContent() {
   }, [selectedId]);
 
   return (
-    <ObservatoryWorkspaceShell
-      pathname={pathname}
-      surface="knowledge-base"
-      eyebrow="Vault explorer"
-      title="Knowledge Base"
-      description="A calm archive for notes, fragments, and connected context. Keep the editor central and let graph/backlink context orbit around it."
+    <AprilWorkspaceShell
+      activeSurface="knowledge-base"
       statusLabel={selectedNote ? `Editing v${selectedNote.version}` : "Draft ready"}
-      stats={[
-        { label: "Notes", value: String(visibleNotes.length) },
-        { label: "Queued", value: String(outbox.length) },
-        { label: "Current", value: selectedNote ? `v${selectedNote.version}` : "Draft" },
-      ]}
-      actions={
-        <div className="button-row">
-          <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
-          <button className="button" type="button" onClick={() => clearEditor()}>New entry</button>
-        </div>
-      }
-      sideNote={{
-        title: "Vault explorer",
-        body: selectedNote ? `Selected note: ${selectedNote.title}` : "Pick a note from the library or begin a fresh archival fragment.",
-        meta: `${visibleNotes.length} indexed note${visibleNotes.length === 1 ? "" : "s"}`,
-      }}
-      orbitCards={[
-        {
-          kicker: "Stellar graph",
-          title: selectedNote ? "Graph placeholder ready" : "Select a note",
-          body: selectedNote
-            ? "Graph and backlink surfaces can hang off the active note without moving editing out of the workspace."
-            : "Choose a note to inspect versions, backlinks, and future graph links.",
-        },
-        {
-          kicker: "Queue",
-          title: outbox.length > 0 ? `${outbox.length} queued mutation${outbox.length === 1 ? "" : "s"}` : "Queue clear",
-          body: outbox.length > 0 ? "Pending note creates and saves remain replayable." : "No pending note mutations right now.",
-        },
-        {
-          kicker: "Companion",
-          title: "Return to Main Room",
-          body: "Use the conversation when this note needs a summary, tasks, or a review pivot.",
-          href: "/assistant",
-          actionLabel: "Open Main Room",
-        },
-      ]}
+      queueLabel={`${outbox.length} queued`}
+      searchPlaceholder="Search archive..."
+      railSlot={(
+        <>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Vault explorer</span>
+            <div className="april-rail-metric-stack">
+              <div className="april-rail-metric-card">
+                <strong>{visibleNotes.length}</strong>
+                <span>Indexed notes</span>
+              </div>
+              <div className="april-rail-metric-card">
+                <strong>{outbox.length}</strong>
+                <span>Queued mutations</span>
+              </div>
+            </div>
+          </div>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Return points</span>
+            <div className="april-rail-link-stack">
+              <a href="#knowledge-editor">Editor</a>
+              <a href="#knowledge-graph">Graph</a>
+              <Link href="/assistant">Main Room</Link>
+            </div>
+          </div>
+        </>
+      )}
     >
-      <section className="observatory-three-pane">
-        <ObservatoryPanel
-          kicker="Explorer"
-          title="Recent notes"
-          meta="Vault tree"
-          className="observatory-pane-compact"
-        >
+      <section className="april-knowledge-shell">
+        <div className="april-page-heading">
+          <span className="april-page-kicker">Knowledge Base</span>
+          <h1>A calm archive and living graph.</h1>
+          <p>Keep the explorer, editor, and backlinks visible together so note editing never loses the surrounding context.</p>
+        </div>
+
+        <div className="april-knowledge-layout">
+          <AprilPanel className="april-knowledge-explorer">
+            <div className="april-panel-head">
+              <div>
+                <span className="april-panel-kicker">Vault explorer</span>
+                <h2>Recent notes</h2>
+              </div>
+              <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+            </div>
           {visibleNotes.length === 0 ? (
             <p className="console-copy">No notes yet.</p>
           ) : (
@@ -324,14 +319,19 @@ function NotesPageContent() {
               ))}
             </ul>
           )}
-        </ObservatoryPanel>
+          </AprilPanel>
 
-        <ObservatoryPanel
-          kicker="Editor"
-          title={selectedNote ? selectedNote.title : "Fresh note draft"}
-          meta="Calm editor"
-          className="observatory-pane-primary"
-        >
+          <AprilPanel className="april-knowledge-editor" id="knowledge-editor">
+            <div className="april-panel-head">
+              <div>
+                <span className="april-panel-kicker">Calm editor</span>
+                <h2>{selectedNote ? selectedNote.title : "Fresh note draft"}</h2>
+              </div>
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => clearEditor()}>New entry</button>
+                <Link className="button" href="/assistant">Open Main Room</Link>
+              </div>
+            </div>
           <label className="label" htmlFor="note-title">Title</label>
           <input
             id="note-title"
@@ -352,14 +352,21 @@ function NotesPageContent() {
             <button className="button" type="button" onClick={() => clearEditor()}>Clear</button>
           </div>
           <p className="status">{status}</p>
-        </ObservatoryPanel>
+          </AprilPanel>
 
-        <ObservatoryPanel
-          kicker="Inspector"
-          title={selectedNote ? "Backlinks and metadata" : "Knowledge inspector"}
-          meta="Graph sidecar"
-          className="observatory-pane-compact"
-        >
+          <AprilPanel className="april-knowledge-inspector" id="knowledge-graph">
+            <div className="april-panel-head">
+              <div>
+                <span className="april-panel-kicker">Stellar graph</span>
+                <h2>{selectedNote ? "Backlinks and metadata" : "Knowledge inspector"}</h2>
+              </div>
+            </div>
+            <div className="april-graph-visual">
+              <span className="april-graph-node active" />
+              <span className="april-graph-node node-a" />
+              <span className="april-graph-node node-b" />
+              <span className="april-graph-node node-c" />
+            </div>
           {selectedNote ? (
             <div className="observatory-inspector-stack">
               <div>
@@ -393,9 +400,10 @@ function NotesPageContent() {
                 : "No note mutations are waiting for replay."}
             </p>
           </div>
-        </ObservatoryPanel>
+          </AprilPanel>
+        </div>
       </section>
-    </ObservatoryWorkspaceShell>
+    </AprilWorkspaceShell>
   );
 }
 

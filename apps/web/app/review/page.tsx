@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
+import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { usePaneCollapsed } from "../lib/pane-state";
@@ -33,7 +32,6 @@ const REVIEW_STATS_SNAPSHOT = "review.stats";
 const REVIEW_CONTEXT_PANE_SNAPSHOT = "review.context_pane.collapsed";
 
 export default function ReviewPage() {
-  const pathname = usePathname();
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const missingToken = !token;
   const missingApiBase = !apiBase;
@@ -99,14 +97,6 @@ export default function ReviewPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (missingConfig || cards.length > 0 || attemptedInitialLoad) {
-      return;
-    }
-    setAttemptedInitialLoad(true);
-    void loadDue();
-  }, [attemptedInitialLoad, cards.length, loadDue, missingConfig]);
-
   const loadDue = useCallback(async () => {
     if (missingApiBase) {
       setStatus("API base missing. Set it in Runtime or Main Room.");
@@ -132,6 +122,14 @@ export default function ReviewPage() {
       setStatus(error instanceof Error ? error.message : "Failed to load due cards");
     }
   }, [apiBase, missingApiBase, missingToken, token]);
+
+  useEffect(() => {
+    if (missingConfig || cards.length > 0 || attemptedInitialLoad) {
+      return;
+    }
+    setAttemptedInitialLoad(true);
+    void loadDue();
+  }, [attemptedInitialLoad, cards.length, loadDue, missingConfig]);
 
   async function reviewCurrent(rating: 1 | 3 | 4 | 5) {
     if (!currentCard) {
@@ -199,98 +197,101 @@ export default function ReviewPage() {
   const progressActive = reviewedTotal === 0 ? 0 : Math.min(progressSegments, Math.round((stats.reviewed / reviewedTotal) * progressSegments));
 
   return (
-    <ObservatoryWorkspaceShell
-      pathname={pathname}
-      surface="srs-review"
-      eyebrow="SRS Review"
-      title="Hold one card in focus and keep the deck context quiet."
-      description="Keep the review surface immersive, but leave queue state, deck health, and the route back to the Main Room within one click."
+    <AprilWorkspaceShell
+      activeSurface="srs-review"
       statusLabel={currentCard ? "Review live" : "Queue waiting"}
-      stats={[
-        { label: "Due now", value: String(cards.length) },
-        { label: "Reviewed", value: String(stats.reviewed) },
-        { label: "Again / Hard / Good", value: `${stats.again} / ${stats.hard} / ${stats.good}` },
-      ]}
-      actions={
-        <div className="button-row">
-          <Link className="button" href="/assistant">Open Main Room</Link>
-          <Link className="button" href="/review/decks">Open deck workspace</Link>
-          <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
-        </div>
-      }
-      sideNote={{
-        title: "Review posture",
-        body: "Keep the answer hidden until you commit to retrieval. Deck state and progress stay peripheral.",
-        meta: currentCard ? `Card ${currentIndex + 1} of ${Math.max(cards.length, 1)}` : "Awaiting due queue",
-      }}
-      orbitCards={[
-        {
-          kicker: "Deck queue",
-          title: `${cards.length} cards due`,
-          body: duePreview[0]?.prompt || "Load due cards to start the next focused pass.",
-        },
-        {
-          kicker: "Session split",
-          title: `${stats.again} again · ${stats.hard} hard · ${stats.good} good`,
-          body: stats.reviewed > 0 ? "Current session response mix." : "Ratings will accumulate as soon as you review cards.",
-        },
-        {
-          kicker: "Deck workspace",
-          title: "Open the fuller deck browser",
-          body: "Use the deck workspace for queue inspection, card edits, and deck management between focused review passes.",
-          href: "/review/decks",
-          actionLabel: "Open deck workspace",
-        },
-      ]}
+      queueLabel={`${cards.length} due`}
+      searchPlaceholder="Search decks and prompts..."
+      railSlot={(
+        <>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Active decks</span>
+            <div className="april-rail-deck-list">
+              {duePreview.length === 0 ? (
+                <p className="console-copy">No active due queue.</p>
+              ) : (
+                duePreview.map((card) => (
+                  <div key={card.id} className="april-rail-deck-item">
+                    <strong>{card.prompt.slice(0, 32)}{card.prompt.length > 32 ? "..." : ""}</strong>
+                    <span>Due now</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Session split</span>
+            <div className="april-rail-metric-stack">
+              <div className="april-rail-metric-card">
+                <strong>{stats.reviewed}</strong>
+                <span>Reviewed</span>
+              </div>
+              <div className="april-rail-metric-card">
+                <strong>{stats.good}</strong>
+                <span>Good</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     >
-      <section className="observatory-grid observatory-grid-wide">
-        <ObservatoryPanel
-          kicker="Focus Session"
-          title={currentCard ? "Current review card" : "Review queue empty"}
-          meta="Reveal the answer, rate the card, and keep the rest of the deck out of the way until you need it."
-        >
+      <section className="april-review-layout">
+        <div className="april-page-heading">
+          <span className="april-page-kicker">SRS Review</span>
+          <h1>Hold one card in focus.</h1>
+          <p>
+            Keep the answer hidden until you commit to retrieval. Deck state and progress stay peripheral unless you
+            intentionally open them.
+          </p>
+        </div>
+
+        <div className="april-review-progress">
+          <div className="april-review-progress-head">
+            <div>
+              <span>Session progress</span>
+              <strong>{currentCard ? `Card ${currentIndex + 1} of ${Math.max(cards.length, 1)}` : "Awaiting queue"}</strong>
+            </div>
+            <span>{stats.reviewed} reviewed</span>
+          </div>
+          <div className="april-review-progress-bar">
+            <span style={{ width: `${reviewedTotal === 0 ? 0 : Math.min(100, (stats.reviewed / reviewedTotal) * 100)}%` }} />
+          </div>
+        </div>
+
+        <div className="april-review-grid">
+          <AprilPanel className="april-review-card-panel">
           {currentCard ? (
             <>
-              <span className="sync-tag">due now</span>
-              <div className="sync-prompt">
-                <span>
-                  {currentCard.prompt.split(" ").map((word, index) => (
-                    <span key={`${word}-${index}`} className={index % 7 === 0 ? "sync-highlight" : ""}>
-                      {word}
-                      {" "}
-                    </span>
-                  ))}
-                </span>
+              <div className="april-review-card-meta">
+                <span className="april-panel-kicker">Complexity: Tier 3</span>
+                <span className="console-copy">{reviewMetaText(currentCard.due_at)}</span>
               </div>
-              <div className="button-row">
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => setShowAnswer((previous) => !previous)}
-                >
+              <div className="april-review-question">{currentCard.prompt}</div>
+              <div className="april-review-reveal">
+                <button className="april-hero-button" type="button" onClick={() => setShowAnswer((previous) => !previous)}>
                   {showAnswer ? "Hide answer" : "Reveal answer"}
                 </button>
               </div>
               {showAnswer ? (
-                <div className="sync-answer">
+                <div className="april-review-answer">
                   <p className="console-copy">Due: {new Date(currentCard.due_at).toLocaleString()}</p>
                   <p>{currentCard.answer}</p>
                 </div>
               ) : null}
-              <div className="sync-rating-row">
-                <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(1)} disabled={!currentCard}>
+              <div className="april-review-ratings">
+                <button className="april-rating-button again" type="button" onClick={() => reviewCurrent(1)} disabled={!currentCard}>
                   <span>Again</span>
                   <small>{"< 1m"}</small>
                 </button>
-                <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(3)} disabled={!currentCard}>
+                <button className="april-rating-button" type="button" onClick={() => reviewCurrent(3)} disabled={!currentCard}>
                   <span>Hard</span>
                   <small>1d</small>
                 </button>
-                <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
+                <button className="april-rating-button primary" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
                   <span>Good</span>
                   <small>3d</small>
                 </button>
-                <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
+                <button className="april-rating-button easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
                   <span>Easy</span>
                   <small>5d</small>
                 </button>
@@ -298,40 +299,31 @@ export default function ReviewPage() {
             </>
           ) : (
             <>
-              <span className="sync-tag">queue empty</span>
-              <div className="sync-prompt">No due cards.</div>
-              <p className="console-copy">
-                {missingConfig
-                  ? "Connect to the API and load the queue to start reviewing."
-                  : "Load due cards to resume review."}
-              </p>
-              {missingConfig ? (
-                <div className="button-row">
-                  <Link className="button" href="/runtime">Open runtime</Link>
-                  <Link className="button" href="/review/decks">Open deck workspace</Link>
-                  <Link className="button" href="/assistant">Open Main Room</Link>
-                </div>
-              ) : (
-                <div className="button-row">
-                  <button className="button" type="button" onClick={() => loadDue()}>Load due cards</button>
-                  <Link className="button" href="/review/decks">Open deck workspace</Link>
-                </div>
-              )}
+              <div className="april-review-question">No due cards loaded.</div>
+              <p className="console-copy">{missingConfig ? "Connect runtime and load the queue." : "Load due cards to resume review."}</p>
+              <div className="button-row">
+                {missingConfig ? <Link className="button" href="/runtime">Open runtime</Link> : <button className="button" type="button" onClick={() => loadDue()}>Load due cards</button>}
+                <Link className="button" href="/review/decks">Open deck workspace</Link>
+                <Link className="button" href="/assistant">Open Main Room</Link>
+              </div>
             </>
           )}
           <p className="status">{status}</p>
-        </ObservatoryPanel>
+          </AprilPanel>
 
-        <PaneRestoreStrip
-          actions={contextPane.collapsed ? [{ id: "review-context", label: "Show deck context", onClick: contextPane.expand }] : []}
-        />
-        {!contextPane.collapsed ? (
-          <ObservatoryPanel
-            kicker="Deck Context"
-            title="Queue and session health"
-            meta="Keep a short preview of what is due next, plus current session progress."
-            actions={<PaneToggleButton label="Hide pane" onClick={contextPane.collapse} />}
-          >
+          <div className="april-review-side">
+            <PaneRestoreStrip
+              actions={contextPane.collapsed ? [{ id: "review-context", label: "Show deck context", onClick: contextPane.expand }] : []}
+            />
+            {!contextPane.collapsed ? (
+              <AprilPanel className="april-review-context">
+                <div className="april-panel-head">
+                  <div>
+                    <span className="april-panel-kicker">Deck context</span>
+                    <h2>Queue and session health</h2>
+                  </div>
+                  <PaneToggleButton label="Hide pane" onClick={contextPane.collapse} />
+                </div>
             <div className="neural-sync-progress">
               <span>Progress</span>
               <span className="sync-bars">
@@ -367,9 +359,15 @@ export default function ReviewPage() {
                 ))}
               </div>
             )}
-          </ObservatoryPanel>
-        ) : null}
+              </AprilPanel>
+            ) : null}
+          </div>
+        </div>
       </section>
-    </ObservatoryWorkspaceShell>
+    </AprilWorkspaceShell>
   );
+}
+
+function reviewMetaText(dueAt: string): string {
+  return `Last review target ${new Date(dueAt).toLocaleDateString()}`;
 }

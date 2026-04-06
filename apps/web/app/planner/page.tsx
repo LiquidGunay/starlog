@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
+import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
@@ -158,7 +157,6 @@ function isoDateFromOffset(baseDate: string, offset: number): string {
 }
 
 export default function PlannerPage() {
-  const pathname = usePathname();
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const initialDate = useMemo(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today), [today]);
@@ -489,121 +487,186 @@ export default function PlannerPage() {
   }, [cycleDays, endHour, rowHeight, startHour]);
 
   return (
-    <ObservatoryWorkspaceShell
-      pathname={pathname}
-      surface="agenda"
-      eyebrow="Agenda"
-      title="Tasks, time blocks, and calendar drift in one ritual workspace."
-      description="Keep the planning grid stable while the observatory shell takes over the chrome. The timeline still runs on the existing planning and calendar contracts."
+    <AprilWorkspaceShell
+      activeSurface="agenda"
       statusLabel={oauthStatus?.connected ? "Calendar sync connected" : "Internal agenda only"}
-      stats={[
-        { label: "Scheduled", value: String(timeline.length) },
-        { label: "Pool", value: String(unscheduledPool.length) },
-        { label: "Conflicts", value: String(conflicts.filter((conflict) => !conflict.resolved).length) },
-      ]}
-      actions={
-        <div className="button-row">
-          <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
-          <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
-        </div>
-      }
-      sideNote={{
-        title: "Ritual focus",
-        body: "The agenda view should bias toward the next cycle, briefing audio, and unresolved sync drift instead of behaving like a generic calendar.",
-        meta: `${date} · ${timeline.length} scheduled items`,
-      }}
-      orbitCards={[
-        {
-          kicker: "Briefing readiness",
-          title: oauthStatus?.connected ? "Calendar connected" : "Awaiting calendar sync",
-          body: oauthStatus?.detail || "Internal blocks can still guide the next ritual cycle.",
-        },
-        {
-          kicker: "Unscheduled pool",
-          title: `${unscheduledPool.length} items pending placement`,
-          body: unscheduledPool[0]?.title || "No unscheduled tasks or conflicts.",
-        },
-        {
-          kicker: "Main Room",
-          title: "Return to the shared thread",
-          body: "Use the Main Room for briefings, next actions, and follow-up confirmations.",
-          href: "/assistant",
-          actionLabel: "Open Main Room",
-        },
-      ]}
-    >
-      <section className="observatory-grid observatory-grid-wide">
-        <ObservatoryPanel
-          kicker="Cycle controls"
-          title="Three-cycle agenda board"
-          meta="Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills into the day."
-        >
-          <div className="chronos-sidebar-head">
-            <div>
-              <p className="observatory-eyebrow">Agenda ritual</p>
-              <h3 className="observatory-panel-title">Three-cycle planner</h3>
-              <p className="chronos-subcopy">
-                Hold the day in view while keeping the next two cycles ready for briefing playback and block generation.
-              </p>
-            </div>
-            <div className="chronos-controls">
-              <div className="chronos-cycle-switch">
-                <button className="active" type="button">3-Day Cycle</button>
-                <button type="button" disabled>7-Day Cycle</button>
+      queueLabel={`${timeline.length} scheduled`}
+      searchPlaceholder="Search agenda..."
+      railSlot={(
+        <>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Agenda rhythm</span>
+            <div className="april-rail-metric-stack">
+              <div className="april-rail-metric-card">
+                <strong>{timeline.length}</strong>
+                <span>Scheduled</span>
               </div>
-              <label className="label" htmlFor="planner-date">
-                Date
-              </label>
-              <input
-                id="planner-date"
-                type="date"
-                className="input"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-              />
-              <div className="chronos-summary-grid">
-                <article className="chronos-summary-card">
-                  <strong>{timeline.length}</strong>
-                  <span>scheduled items</span>
-                </article>
-                <article className="chronos-summary-card">
-                  <strong>{unscheduledPool.length}</strong>
-                  <span>pool items</span>
-                </article>
-                <article className="chronos-summary-card">
-                  <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
-                  <span>open conflicts</span>
-                </article>
+              <div className="april-rail-metric-card">
+                <strong>{unscheduledPool.length}</strong>
+                <span>Pool items</span>
               </div>
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => generate()}>
-                  Generate Blocks
-                </button>
-                <button className="button" type="button" onClick={() => load()}>
-                  Refresh
-                </button>
-                <button className="button" type="button" onClick={() => addSampleEvent()}>
-                  Add Event
-                </button>
-                <button className="button" type="button" onClick={() => runGoogleSync()}>
-                  Run Google sync
-                </button>
-              </div>
-              <p className="status">{status}</p>
             </div>
           </div>
-        </ObservatoryPanel>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Briefing readiness</span>
+            <p className="console-copy">{oauthStatus?.detail || "Internal blocks can still guide the next ritual cycle."}</p>
+          </div>
+        </>
+      )}
+    >
+      <section className="april-agenda-layout">
+        <div className="april-page-heading">
+          <span className="april-page-kicker">Agenda</span>
+          <h1>Rituals, time blocks, and daily drift.</h1>
+          <p>Bias the view toward briefing playback, the next cycle, and unresolved sync tension instead of acting like a generic calendar.</p>
+        </div>
 
-        <PaneRestoreStrip
-          actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
-        />
-        {!sidecarPane.collapsed ? (
-          <ObservatoryPanel
-            kicker="Ritual sidecar"
-            title="Unscheduled pool and sync drift"
-            meta="Keep the pool visible, but secondary to the agenda board."
-            actions={<PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />}
-          >
+        <div className="april-agenda-grid">
+          <div className="april-agenda-main">
+            <AprilPanel className="april-briefing-panel">
+              <div className="april-briefing-copy">
+                <span className="april-panel-kicker">System transmission</span>
+                <h2>Morning Briefing</h2>
+                <p>{oauthStatus?.detail || "Good morning. Today's forecast is clear for focus and synthesis."}</p>
+              </div>
+              <div className="april-briefing-controls">
+                <button className="april-icon-button" type="button">◂</button>
+                <button className="april-play-button" type="button">Play</button>
+                <button className="april-icon-button" type="button">▸</button>
+              </div>
+            </AprilPanel>
+
+            <AprilPanel className="april-calendar-panel">
+              <div className="april-panel-head">
+                <div>
+                  <span className="april-panel-kicker">Agenda ritual</span>
+                  <h2>Three-cycle planner</h2>
+                </div>
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
+                  <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
+                </div>
+              </div>
+              <div className="chronos-controls">
+                <div className="chronos-cycle-switch">
+                  <button className="active" type="button">3-Day Cycle</button>
+                  <button type="button" disabled>7-Day Cycle</button>
+                </div>
+                <label className="label" htmlFor="planner-date">
+                  Date
+                </label>
+                <input
+                  id="planner-date"
+                  type="date"
+                  className="input"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                />
+                <div className="chronos-summary-grid">
+                  <article className="chronos-summary-card">
+                    <strong>{timeline.length}</strong>
+                    <span>scheduled items</span>
+                  </article>
+                  <article className="chronos-summary-card">
+                    <strong>{unscheduledPool.length}</strong>
+                    <span>pool items</span>
+                  </article>
+                  <article className="chronos-summary-card">
+                    <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
+                    <span>open conflicts</span>
+                  </article>
+                </div>
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => generate()}>Generate Blocks</button>
+                  <button className="button" type="button" onClick={() => addSampleEvent()}>Add Event</button>
+                </div>
+                <p className="status">{status}</p>
+              </div>
+            </AprilPanel>
+
+            <AprilPanel className="april-timeline-panel">
+              <div className="april-panel-head">
+                <div>
+                  <span className="april-panel-kicker">Cycle schedule</span>
+                  <h2>Calendar board</h2>
+                </div>
+              </div>
+              <section className="chronos-layout chronos-layout-sidebar-collapsed">
+                <section className="chronos-grid-wrap">
+                  <div className="chronos-day-head">
+                    <span />
+                    {cycleDays.map((cycleDay) => (
+                      <span key={cycleDay.id}>
+                        <strong>{cycleDay.label}</strong>
+                        {cycleDay.offsetLabel}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="chronos-grid">
+                    <div className="chronos-grid-inner">
+                      <div className="chronos-hours">
+                        {hourSlots.map((hour) => (
+                          <div key={`hour-${hour}`} className="chronos-hour">{`${hour.toString().padStart(2, "0")}:00`}</div>
+                        ))}
+                      </div>
+                      {cycleDays.map((cycleDay, cycleIndex) => (
+                        <div key={cycleDay.id} className="chronos-day-col">
+                          {hourSlots.map((hour) => (
+                            <div key={`${cycleDay.id}-${hour}`} className="chronos-day-row" />
+                          ))}
+                          {timelineByCycle[cycleIndex].map((item) => {
+                            const startMinutes = Math.max(startHour * 60, toMinutes(item.startsAt));
+                            const endMinutes = Math.min((endHour + 1) * 60, toMinutes(item.endsAt));
+                            if (endMinutes <= startMinutes) {
+                              return null;
+                            }
+                            const top = ((startMinutes - startHour * 60) / 60) * rowHeight + 2;
+                            const height = Math.max(32, ((endMinutes - startMinutes) / 60) * rowHeight - 4);
+                            const taskClass = item.kind === "event" ? "chronos-task event" : "chronos-task";
+                            return (
+                              <article
+                                key={item.id}
+                                className={taskClass}
+                                style={{
+                                  left: "4px",
+                                  right: "4px",
+                                  top: `${top}px`,
+                                  height: `${height}px`,
+                                }}
+                              >
+                                <strong>{item.title}</strong>
+                                <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                    {nowLineOffset !== null ? <div className="chronos-now-line" style={{ top: `${nowLineOffset}px` }} /> : null}
+                  </div>
+                  <div className="chronos-foot-controls">
+                    <p className="console-copy">
+                      Day board: {timeline.length > 0 ? "timeline active" : "no timeline items for this day yet"}.
+                    </p>
+                  </div>
+                </section>
+              </section>
+            </AprilPanel>
+          </div>
+
+          <div className="april-agenda-side">
+            <PaneRestoreStrip
+              actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
+            />
+            {!sidecarPane.collapsed ? (
+              <AprilPanel className="april-ritual-panel">
+                <div className="april-panel-head">
+                  <div>
+                    <span className="april-panel-kicker">Daily rituals</span>
+                    <h2>Unscheduled pool and sync drift</h2>
+                  </div>
+                  <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
+                </div>
             <div className="chronos-pool">
               <h2>Unscheduled pool</h2>
               {unscheduledPool.length === 0 ? (
@@ -676,78 +739,11 @@ export default function PlannerPage() {
                 )}
               </details>
             </div>
-          </ObservatoryPanel>
-        ) : null}
+              </AprilPanel>
+            ) : null}
+          </div>
+        </div>
       </section>
-
-      <section className="observatory-grid">
-        <ObservatoryPanel
-          kicker="Timeline board"
-          title="Cycle schedule"
-          meta="The briefing rail can narrate this exact board without changing the underlying contracts."
-        >
-          <section className="chronos-layout chronos-layout-sidebar-collapsed">
-            <section className="chronos-grid-wrap">
-              <div className="chronos-day-head">
-                <span />
-                {cycleDays.map((cycleDay) => (
-                  <span key={cycleDay.id}>
-                    <strong>{cycleDay.label}</strong>
-                    {cycleDay.offsetLabel}
-                  </span>
-                ))}
-              </div>
-              <div className="chronos-grid">
-                <div className="chronos-grid-inner">
-                  <div className="chronos-hours">
-                    {hourSlots.map((hour) => (
-                      <div key={`hour-${hour}`} className="chronos-hour">{`${hour.toString().padStart(2, "0")}:00`}</div>
-                    ))}
-                  </div>
-                  {cycleDays.map((cycleDay, cycleIndex) => (
-                    <div key={cycleDay.id} className="chronos-day-col">
-                      {hourSlots.map((hour) => (
-                        <div key={`${cycleDay.id}-${hour}`} className="chronos-day-row" />
-                      ))}
-                      {timelineByCycle[cycleIndex].map((item) => {
-                        const startMinutes = Math.max(startHour * 60, toMinutes(item.startsAt));
-                        const endMinutes = Math.min((endHour + 1) * 60, toMinutes(item.endsAt));
-                        if (endMinutes <= startMinutes) {
-                          return null;
-                        }
-                        const top = ((startMinutes - startHour * 60) / 60) * rowHeight + 2;
-                        const height = Math.max(32, ((endMinutes - startMinutes) / 60) * rowHeight - 4);
-                        const taskClass = item.kind === "event" ? "chronos-task event" : "chronos-task";
-                        return (
-                          <article
-                            key={item.id}
-                            className={taskClass}
-                            style={{
-                              left: "4px",
-                              right: "4px",
-                              top: `${top}px`,
-                              height: `${height}px`,
-                            }}
-                          >
-                            <strong>{item.title}</strong>
-                            <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-                {nowLineOffset !== null ? <div className="chronos-now-line" style={{ top: `${nowLineOffset}px` }} /> : null}
-              </div>
-              <div className="chronos-foot-controls">
-                <p className="console-copy">
-                  Day board: {timeline.length > 0 ? "timeline active" : "no timeline items for this day yet"}.
-                </p>
-              </div>
-            </section>
-          </section>
-        </ObservatoryPanel>
-      </section>
-    </ObservatoryWorkspaceShell>
+    </AprilWorkspaceShell>
   );
 }

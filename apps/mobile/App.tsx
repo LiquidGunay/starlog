@@ -428,39 +428,39 @@ function usePalette(): Palette {
   return useMemo(() => {
     if (scheme === "light") {
       return {
-        bg: "#f4ede8",
-        bgAlt: "#fcf6f1",
-        panel: "rgba(255,248,243,0.84)",
-        border: "rgba(94,58,70,0.18)",
-        text: "#2f1825",
-        muted: "#735866",
-        accent: "#b77b31",
-        accentMuted: "rgba(183,123,49,0.14)",
-        secondary: "#7c4a67",
-        tertiary: "#6d3d53",
+        bg: "#faf4f6",
+        bgAlt: "#f5eaef",
+        panel: "rgba(255,248,250,0.84)",
+        border: "rgba(101,57,76,0.16)",
+        text: "#311820",
+        muted: "#6f5961",
+        accent: "#8d4860",
+        accentMuted: "rgba(141,72,96,0.12)",
+        secondary: "#7e7564",
+        tertiary: "#b97d97",
         error: "#b33834",
-        onAccent: "#fff6ef",
-        surfaceLow: "#f5ece7",
-        surfaceHigh: "#eedfda",
-        surfaceHighest: "#e5d1c8",
+        onAccent: "#fff6fa",
+        surfaceLow: "#fff7f9",
+        surfaceHigh: "#f2e4ea",
+        surfaceHighest: "#ead8e0",
       };
     }
     return {
-      bg: "#1c0f19",
-      bgAlt: "#271621",
-      panel: "rgba(78,46,67,0.58)",
-      border: "rgba(189,149,114,0.18)",
-      text: "#f4e8e2",
-      muted: "#cfb9c2",
-      accent: "#c58a37",
-      accentMuted: "rgba(197,138,55,0.16)",
-      secondary: "#8e6278",
-      tertiary: "#694255",
+      bg: "#1e0f16",
+      bgAlt: "#27171e",
+      panel: "rgba(71,52,60,0.4)",
+      border: "rgba(73,71,63,0.18)",
+      text: "#f8dbe6",
+      muted: "#cac6bb",
+      accent: "#f1b6cd",
+      accentMuted: "rgba(241,182,205,0.14)",
+      secondary: "#cbc7b3",
+      tertiary: "#65394c",
       error: "#ffb4ab",
-      onAccent: "#fff5ed",
-      surfaceLow: "#352033",
-      surfaceHigh: "#47293f",
-      surfaceHighest: "#5a324b",
+      onAccent: "#320f20",
+      surfaceLow: "#2b1b23",
+      surfaceHigh: "#37252d",
+      surfaceHighest: "#422f38",
     };
   }, [scheme]);
 }
@@ -3986,15 +3986,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style={palette.bg === "#1c0f19" ? "light" : "dark"} />
+      <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
       <View pointerEvents="none" style={styles.bgOrbTop} />
       <View pointerEvents="none" style={styles.bgOrbCenter} />
       <View style={styles.topBar}>
         <View style={styles.topBarBrand}>
-          <View style={styles.topBarPill}>
-            <Text style={styles.topBarPillText}>Observatory mobile</Text>
+          <View style={styles.topBarAvatar}>
+            <Text style={styles.topBarAvatarText}>◉</Text>
           </View>
-          <Text style={styles.topBarTitle}>Starlog</Text>
+          <Text style={styles.topBarTitle}>Obsidian Observatory</Text>
         </View>
         <View style={styles.topBarActions}>
           <TouchableOpacity
@@ -4012,103 +4012,6 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         </View>
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>
-            {activeTab === "home"
-              ? "Main Room"
-              : activeTab === "notes"
-                ? "Notes"
-                : activeTab === "calendar"
-                  ? "Calendar"
-                  : "SRS Review"}
-          </Text>
-          <Text style={styles.title}>
-            {activeTab === "home"
-              ? "Main Room"
-              : activeTab === "notes"
-                ? "Notes"
-                : activeTab === "calendar"
-                  ? "Calendar"
-                  : "Review"}
-          </Text>
-          {activeTab === "home" ? (
-            <>
-              <Text style={styles.body}>
-                Keep the phone on the same persistent thread as the web app. Use this surface for the next turn, then dip into Notes, Calendar, and Review only when the conversation needs support.
-              </Text>
-              <View style={styles.intentHeroCard}>
-                <Text style={styles.heroCardLabelInverse}>Latest prompt</Text>
-                <Text style={styles.intentHeroCopy}>{homeDraft.trim() || "What should I focus on next?"}</Text>
-              </View>
-              <View style={styles.contextCard}>
-                <Text style={styles.heroCardLabel}>Thread state</Text>
-                <Text style={styles.contextCardBody}>
-                  {pendingConversationTurn
-                    ? "A reply is being composed for the Main Room."
-                    : `${threadMessages.length} message(s) synced with ${conversationToolTraces.length} trace(s).`}
-                </Text>
-                <View style={styles.contextMetaRow}>
-                  <View style={styles.contextMetaPill}>
-                    <Text style={styles.contextMetaText}>{pendingConversationTurn ? "Reply pending" : "Thread ready"}</Text>
-                  </View>
-                  <View style={styles.contextMetaPill}>
-                    <Text style={styles.contextMetaText}>{routeNarrative}</Text>
-                  </View>
-                </View>
-              </View>
-            </>
-          ) : null}
-          {activeTab === "notes" ? (
-            <>
-              <Text style={styles.body}>
-                Capture text, files, and voice notes without leaving the observatory shell. This tab stays optimized for intake and artifact creation.
-              </Text>
-              <View style={styles.intentHeroCard}>
-                <Text style={styles.heroCardLabelInverse}>Voice instruction</Text>
-                <Text style={styles.intentHeroCopy}>{captureCommandPreview}</Text>
-              </View>
-              <Text style={styles.subtle}>Suggested instructions</Text>
-              <View style={styles.chipRow}>
-                {assistantExampleCommands.map((example) => (
-                  <TouchableOpacity
-                    key={`hero-${example}`}
-                    style={styles.chip}
-                    activeOpacity={0.8}
-                    onPress={() => setNotesInstructionDraft(example)}
-                  >
-                    <Text style={styles.chipText}>{example}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.contextCard}>
-                <Text style={styles.heroCardLabel}>Incoming context</Text>
-                <Text style={styles.contextCardBody}>{captureBodyPreview}</Text>
-                <View style={styles.contextMetaRow}>
-                  <View style={styles.contextMetaPill}>
-                    <Text style={styles.contextMetaText}>{captureSourcePreview}</Text>
-                  </View>
-                  <View style={styles.contextMetaPill}>
-                    <Text style={styles.contextMetaText}>{routeNarrative}</Text>
-                  </View>
-                </View>
-              </View>
-            </>
-          ) : null}
-          {activeTab === "review" ? (
-            <View style={styles.dashboardWide}>
-              <Text style={styles.inlineCardTitle}>Quick review, without the full desk.</Text>
-              <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to the thread.</Text>
-            </View>
-          ) : null}
-          {activeTab === "calendar" ? (
-            <View style={styles.dashboardWide}>
-              <Text style={styles.heroCardLabel}>Daily agenda</Text>
-              <Text style={styles.editorialCardCopy}>{briefingHeroCopy}</Text>
-              <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(alarmHour, alarmMinute)} {stationPeriod}</Text>
-            </View>
-          ) : null}
-        </View>
-
         {activeTab === "home" ? (
           <MobileHomeSurface
             styles={styles}
@@ -4238,27 +4141,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         {renderReviewOpsPanel()}
         {renderAlarmOpsPanel()}
       </ScrollView>
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => {
-          if (sttResolution.active === "on_device") {
-            submitLocalVoiceAssistantCommand(false).catch(() => undefined);
-            return;
-          }
-          if (voiceRecording) {
-            stopVoiceRecording().catch(() => undefined);
-            return;
-          }
-          startVoiceRecording().catch(() => undefined);
-        }}
-      >
-        <MaterialCommunityIcons name="waveform" size={20} color={palette.onAccent} />
-      </TouchableOpacity>
       <View style={styles.bottomNav}>
         {MOBILE_TABS.map((tab) => (
           <TouchableOpacity
             key={tab.id}
-            style={styles.bottomNavItem}
+            style={[styles.bottomNavItem, activeTab === tab.id ? styles.bottomNavItemActive : null]}
             onPress={() => {
               setActiveTab(tab.id);
               setStatus(`${tab.label} surface active`);
@@ -4266,8 +4153,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           >
             <MaterialCommunityIcons
               name={tab.icon as never}
-              size={17}
-              color={activeTab === tab.id ? palette.accent : palette.muted}
+              size={20}
+              color={activeTab === tab.id ? palette.accent : "#49473f"}
             />
             <Text style={[styles.bottomNavLabel, activeTab === tab.id ? styles.bottomNavLabelActive : null]}>
               {tab.label}
@@ -4309,9 +4196,7 @@ function themedStyles(palette: Palette) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      borderBottomWidth: 1,
-      borderBottomColor: palette.border,
-      backgroundColor: "rgba(28,15,25,0.72)",
+      backgroundColor: "rgba(30,15,22,0.82)",
     },
     topBarBrand: {
       flexDirection: "row",
@@ -4349,11 +4234,11 @@ function themedStyles(palette: Palette) {
       fontWeight: "700",
     },
     topBarTitle: {
-      color: palette.text,
-      fontSize: 24,
-      fontWeight: "600",
-      letterSpacing: 0.3,
-      fontFamily: SERIF_FONT_FAMILY,
+      color: palette.accent,
+      fontSize: 18,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
     },
     topBarActions: {
       flexDirection: "row",
@@ -4361,9 +4246,9 @@ function themedStyles(palette: Palette) {
       gap: 8,
     },
     topBarIconButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 12,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.surfaceLow,
@@ -4387,9 +4272,9 @@ function themedStyles(palette: Palette) {
     },
     scrollContent: {
       paddingHorizontal: 20,
-      paddingTop: 18,
-      paddingBottom: 136,
-      gap: 16,
+      paddingTop: 20,
+      paddingBottom: 120,
+      gap: 18,
     },
     hero: {
       borderWidth: 1,
@@ -5246,23 +5131,27 @@ function themedStyles(palette: Palette) {
       left: 0,
       right: 0,
       bottom: 0,
-      borderTopWidth: 1,
-      borderTopColor: palette.border,
-      backgroundColor: "rgba(28,15,25,0.92)",
-      paddingHorizontal: 20,
+      backgroundColor: "rgba(30,15,22,0.92)",
+      paddingHorizontal: 16,
       paddingTop: 10,
-      paddingBottom: 12,
+      paddingBottom: 14,
       flexDirection: "row",
       justifyContent: "space-around",
     },
     bottomNavItem: {
       alignItems: "center",
       justifyContent: "center",
-      minWidth: 72,
+      minWidth: 74,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+    },
+    bottomNavItemActive: {
+      backgroundColor: palette.surfaceHighest,
     },
     bottomNavLabel: {
-      color: palette.muted,
-      fontSize: 10,
+      color: "#49473f",
+      fontSize: 11,
       fontWeight: "600",
       textTransform: "uppercase",
       letterSpacing: 1,

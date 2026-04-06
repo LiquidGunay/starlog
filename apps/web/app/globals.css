@@ -222,6 +222,724 @@ a {
   font-size: 0.68rem;
 }
 
+.april-shell {
+  min-height: 100vh;
+  display: flex;
+  background:
+    radial-gradient(circle at 84% 8%, rgba(241, 182, 205, 0.08), transparent 24%),
+    radial-gradient(circle at 18% 22%, rgba(203, 199, 179, 0.06), transparent 22%),
+    linear-gradient(145deg, #1e0f16 0%, #27171e 62%, #180911 100%);
+}
+
+.april-rail {
+  width: 16rem;
+  min-height: 100vh;
+  padding: 5rem 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  background: linear-gradient(90deg, #2b1b23 0%, rgba(30, 15, 22, 0.94) 100%);
+  border-right: 1px solid rgba(73, 71, 63, 0.16);
+  position: sticky;
+  top: 0;
+}
+
+.april-rail-brand,
+.april-rail-section,
+.april-rail-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.april-rail-brand-mark,
+.april-page-kicker,
+.april-panel-kicker,
+.april-rail-section-label {
+  color: var(--primary);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.april-rail-brand-meta,
+.april-rail-metric-card span,
+.april-rail-deck-item span {
+  color: color-mix(in srgb, var(--muted), white 6%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.april-rail-nav,
+.april-rail-link-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.april-rail-link,
+.april-rail-footer-link {
+  color: color-mix(in srgb, var(--muted), white 6%);
+  text-decoration: none;
+  border-radius: 0.9rem;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: "Manrope", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.april-rail-link:hover,
+.april-rail-footer-link:hover {
+  color: var(--primary-soft);
+  background: rgba(71, 52, 60, 0.45);
+}
+
+.april-rail-link.active {
+  color: var(--primary);
+  background: #422f38;
+  box-shadow: inset -2px 0 0 0 var(--primary);
+}
+
+.april-rail-link-glyph {
+  font-family: "JetBrains Mono", monospace;
+  width: 1rem;
+  text-align: center;
+}
+
+.april-rail-metric-stack,
+.april-rail-deck-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.april-rail-metric-card,
+.april-rail-deck-item {
+  border-radius: 0.95rem;
+  padding: 0.85rem 0.95rem;
+  background: rgba(39, 23, 30, 0.88);
+  border: 1px solid rgba(73, 71, 63, 0.18);
+}
+
+.april-rail-metric-card strong,
+.april-rail-deck-item strong {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.april-rail-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border-top: 1px solid rgba(73, 71, 63, 0.16);
+  padding-top: 0.85rem;
+}
+
+.april-shell-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.april-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: 4rem;
+  padding: 0 1.5rem;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  backdrop-filter: blur(20px);
+  background: rgba(30, 15, 22, 0.84);
+  border-bottom: 1px solid rgba(73, 71, 63, 0.14);
+}
+
+.april-topbar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: color-mix(in srgb, var(--muted), white 12%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.april-topbar-status-dot {
+  width: 0.46rem;
+  height: 0.46rem;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 10px rgba(241, 182, 205, 0.55);
+}
+
+.april-topbar-search {
+  position: relative;
+  display: block;
+}
+
+.april-topbar-search-label {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.april-topbar-search-input,
+.april-knowledge-editor .input,
+.april-knowledge-editor .textarea,
+.april-main-room-composer .textarea,
+.chronos-controls .input {
+  width: 100%;
+  border: none;
+  outline: none;
+  border-radius: 999px;
+  padding: 0.85rem 1rem;
+  background: rgba(39, 23, 30, 0.92);
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+}
+
+.april-knowledge-editor .textarea,
+.april-main-room-composer .textarea {
+  min-height: 11rem;
+  border-radius: 1.2rem;
+  resize: vertical;
+  font-family: "Noto Serif", serif;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.april-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.april-topbar-chip,
+.april-chip-button,
+.april-hero-button,
+.april-icon-button,
+.april-play-button {
+  border: 1px solid rgba(73, 71, 63, 0.2);
+  background: rgba(43, 27, 35, 0.92);
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 0.72rem 1rem;
+  font-family: "Manrope", sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.april-topbar-chip.muted {
+  color: var(--muted);
+}
+
+.april-shell-content {
+  flex: 1;
+  padding: 1.75rem;
+}
+
+.april-page-heading {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  max-width: 56rem;
+}
+
+.april-page-heading h1,
+.april-panel-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(2rem, 3.4vw, 3.45rem);
+  line-height: 0.98;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.april-page-heading p,
+.april-briefing-copy p {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted), white 10%);
+  max-width: 52rem;
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.april-panel {
+  border-radius: 1.6rem;
+  border: 1px solid rgba(73, 71, 63, 0.16);
+  background: rgba(71, 52, 60, 0.4);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 40px rgba(50, 15, 32, 0.1);
+  padding: 1.4rem;
+}
+
+.april-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.april-panel-head h2 {
+  font-size: 1.35rem;
+}
+
+.april-main-room-layout,
+.april-review-layout,
+.april-knowledge-shell,
+.april-agenda-layout {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.april-main-room-layout {
+  grid-template-columns: minmax(0, 1.35fr) minmax(22rem, 0.8fr);
+  align-items: start;
+}
+
+.april-main-room-stage,
+.april-agenda-main,
+.april-review-grid,
+.april-knowledge-layout {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.april-main-room-support,
+.april-agenda-side {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.april-main-room-transcript {
+  min-height: 70vh;
+}
+
+.assistant-thread-feed {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.assistant-thread-message {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.assistant-thread-message.role-user {
+  justify-items: end;
+}
+
+.assistant-thread-message-meta {
+  display: inline-flex;
+  gap: 0.65rem;
+  align-items: center;
+  color: rgba(202, 198, 187, 0.58);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.assistant-thread-bubble {
+  max-width: 46rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: 1.35rem;
+  background: rgba(43, 27, 35, 0.94);
+  border: 1px solid rgba(73, 71, 63, 0.14);
+}
+
+.assistant-thread-message.role-user .assistant-thread-bubble {
+  background: rgba(39, 23, 30, 0.96);
+  border-top-right-radius: 0.35rem;
+}
+
+.assistant-thread-message.role-assistant .assistant-thread-bubble {
+  border-top-left-radius: 0.35rem;
+}
+
+.assistant-thread-bubble p,
+.assistant-inline-card p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.assistant-role-chip {
+  color: var(--primary);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.assistant-inline-card-stack,
+.assistant-mini-feed,
+.assistant-diagnostics-grid {
+  margin-top: 1rem;
+}
+
+.assistant-inline-card {
+  display: grid;
+  gap: 0.7rem;
+  border-radius: 1.1rem;
+  background: rgba(39, 23, 30, 0.84);
+  padding: 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.16);
+}
+
+.assistant-inline-card-head,
+.assistant-inline-step-head,
+.assistant-diagnostic-card,
+.assistant-thread-message-meta,
+.april-review-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.assistant-inline-step {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.assistant-inline-card-meta,
+.assistant-inline-card-preview,
+.console-copy,
+.status {
+  color: color-mix(in srgb, var(--muted), white 6%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.assistant-inline-card-toggle,
+.button,
+.thread-detail-toggle,
+.command-agent-detail summary,
+.pane-toggle-button {
+  cursor: pointer;
+}
+
+.assistant-inline-action-row,
+.assistant-toolbar,
+.assistant-toolbar-advanced,
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.assistant-voice-dock {
+  display: grid;
+  gap: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.assistant-voice-button {
+  width: 100%;
+  border: none;
+  border-radius: 1.3rem;
+  padding: 1rem 1.1rem;
+  background: linear-gradient(135deg, rgba(101, 57, 76, 0.8), rgba(75, 35, 54, 0.88));
+  color: var(--primary-soft);
+  text-align: left;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.assistant-voice-button.recording {
+  box-shadow: 0 0 0 1px rgba(241, 182, 205, 0.36), 0 0 34px rgba(241, 182, 205, 0.18);
+}
+
+.assistant-voice-button-label {
+  font-family: "Manrope", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.assistant-voice-button-meta {
+  color: rgba(248, 219, 230, 0.72);
+  font-size: 0.9rem;
+}
+
+.april-waveform {
+  height: 3.5rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: rgba(43, 27, 35, 0.82);
+}
+
+.april-waveform span {
+  width: 0.24rem;
+  border-radius: 999px;
+  background: rgba(241, 182, 205, 0.6);
+  display: block;
+}
+
+.april-waveform.active span {
+  background: var(--primary);
+}
+
+.april-chip-button,
+.button,
+.april-hero-button {
+  border-radius: 999px;
+  padding: 0.74rem 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.18);
+  background: rgba(43, 27, 35, 0.96);
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.april-review-progress {
+  max-width: 64rem;
+}
+
+.april-review-progress-head {
+  color: rgba(202, 198, 187, 0.68);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.55rem;
+}
+
+.april-review-progress-bar {
+  height: 0.32rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(39, 23, 30, 0.94);
+}
+
+.april-review-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.april-review-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(19rem, 0.65fr);
+  align-items: start;
+}
+
+.april-review-question {
+  font-family: "Noto Serif", serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.4;
+  text-align: center;
+  max-width: 36rem;
+  margin: 3rem auto 2rem;
+  color: #e7e3ce;
+}
+
+.april-review-answer {
+  max-width: 34rem;
+  margin: 1rem auto 0;
+  text-align: center;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.april-review-reveal {
+  display: flex;
+  justify-content: center;
+}
+
+.april-review-ratings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 2rem;
+}
+
+.april-rating-button {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+  border-radius: 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.18);
+  background: rgba(43, 27, 35, 0.94);
+  color: var(--muted);
+  padding: 1rem 0.55rem;
+  font-family: "Manrope", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.april-rating-button small {
+  font-family: "JetBrains Mono", monospace;
+}
+
+.april-rating-button.primary,
+.april-rating-button.easy,
+.april-rating-button.again {
+  color: var(--primary-soft);
+}
+
+.april-knowledge-layout {
+  grid-template-columns: 16rem minmax(0, 1fr) 19rem;
+  align-items: start;
+}
+
+.april-graph-visual {
+  min-height: 15rem;
+  border-radius: 1.1rem;
+  position: relative;
+  background: rgba(24, 9, 17, 0.9);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.april-graph-node {
+  position: absolute;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: rgba(202, 198, 187, 0.65);
+  top: 50%;
+  left: 50%;
+}
+
+.april-graph-node.active {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-left: -0.45rem;
+  margin-top: -0.45rem;
+  background: var(--primary);
+  box-shadow: 0 0 16px rgba(241, 182, 205, 0.45);
+}
+
+.april-graph-node.node-a { top: 28%; left: 32%; }
+.april-graph-node.node-b { top: 36%; left: 74%; }
+.april-graph-node.node-c { top: 74%; left: 58%; }
+
+.april-agenda-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(21rem, 0.72fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.april-briefing-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.april-briefing-copy h2 {
+  margin: 0.2rem 0 0.45rem;
+  font-family: "Manrope", sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.april-briefing-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.april-icon-button,
+.april-play-button {
+  min-width: 3rem;
+  min-height: 3rem;
+}
+
+.april-play-button {
+  background: var(--primary);
+  color: #320f20;
+}
+
+.april-calendar-panel,
+.april-timeline-panel,
+.april-ritual-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.april-ritual-panel {
+  position: sticky;
+  top: 5.6rem;
+}
+
+@media (max-width: 1180px) {
+  .april-main-room-layout,
+  .april-review-grid,
+  .april-knowledge-layout,
+  .april-agenda-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .april-ritual-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .april-shell {
+    display: block;
+  }
+
+  .april-rail {
+    display: none;
+  }
+
+  .april-topbar {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+
+  .april-shell-content {
+    padding: 1rem;
+  }
+
+  .april-review-ratings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .system-dot {
   width: 0.46rem;
   height: 0.46rem;
