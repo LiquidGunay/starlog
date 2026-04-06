@@ -162,6 +162,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable preview/semi-stable release checklist spanning docs, validation, artifacts, and signoff.
+- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped companion to `PLAN.md`; keeps the current observatory implementation sequence, system boundaries, and workstream ordering in one execution-focused plan.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
 - `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.
@@ -465,3 +466,7 @@ Troubleshooting checklist:
 - 2026-04-05: Shared-worktree dependency symlinks such as `node_modules`, `.venv`, and Gradle/Tauri `target` paths are not ignored by trailing-slash `.gitignore` patterns alone; the repo now needs bare-name ignore entries too so `use_shared_worktree_state.sh` does not pollute branch status.
 - 2026-04-05: Leaving `master` checked out in a side worktree while the canonical checkout carries dirty branch state makes recovery confusing; free `master` back to `/home/ubuntu/starlog`, preserve salvageable work with a named branch or stash, then remove stale worktrees promptly.
 - 2026-04-05: The in-repo `docs/design` and `screen_design` packs were outdated enough to misdirect current UI work; agents should use the external April 2026 pack under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` instead.
+- 2026-04-06: The first April mobile tab split reused one persisted draft across `Home` and `Notes`, which let Main Room sends wipe note instructions and made the tabs lossy; keep independent mobile drafts per surface instead of sharing one composer state.
+- 2026-04-06: Main Room inline-card actions must match their actual behavior; cards labeled as navigation (`Open review`, `Open agenda`, `Open note`) should route to those surfaces instead of mutating the current composer draft.
+- 2026-04-06: Observatory shell refactors must preserve collapsible side-pane behavior on core web surfaces; advanced lanes, review context, and agenda sidecars should remain hideable even when the chrome is redesigned.
+- 2026-04-06: The repo still requires a docs-scoped architecture/workflow plan under `docs/`; when the current plan changes, replace the file with an updated observatory-era version instead of dropping the document entirely.

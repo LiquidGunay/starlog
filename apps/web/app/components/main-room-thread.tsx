@@ -58,6 +58,7 @@ type MainRoomThreadProps = {
   onToggleCards: (key: string) => void;
   onToggleTraces: (key: string) => void;
   onReuseCommand: (command: string) => void;
+  onOpenSurface: (href: string) => void;
   emptyTitle: string;
   emptyBody: string;
   emptyActions: string[];
@@ -119,6 +120,7 @@ export function MainRoomThread({
   onToggleCards,
   onToggleTraces,
   onReuseCommand,
+  onOpenSurface,
   emptyTitle,
   emptyBody,
   emptyActions,
@@ -182,9 +184,12 @@ export function MainRoomThread({
                     </div>
                     <div className="assistant-inline-card-steps">
                       {message.cards.map((card, index) => {
+                        const entry = getConversationCardRegistryEntry(card.kind, card.title);
                         const presentation = cardPresentation(card);
-                        const actionLabel = getConversationCardRegistryEntry(card.kind, card.title).actionLabel;
+                        const actionLabel = entry.actionLabel;
                         const reusableText = card.body?.trim() || card.title?.trim() || "";
+                        const canReuse = entry.actionKind !== "navigate" && !!reusableText;
+                        const canNavigate = entry.actionKind === "navigate" && typeof entry.href === "string";
                         return (
                           <div
                             key={`${message.id}-card-${card.kind}-${index}`}
@@ -198,9 +203,21 @@ export function MainRoomThread({
                               {card.title ? <p className="assistant-inline-card-title">{card.title}</p> : null}
                               {!cardsExpanded && card.body ? <p className="assistant-inline-card-preview">{card.body}</p> : null}
                               {cardsExpanded && card.body ? <p>{card.body}</p> : null}
-                              {reusableText ? (
+                              {canReuse || canNavigate ? (
                                 <div className="assistant-inline-action-row">
-                                  <button className="assistant-inline-card-toggle" type="button" onClick={() => onReuseCommand(reusableText)}>
+                                  <button
+                                    className="assistant-inline-card-toggle"
+                                    type="button"
+                                    onClick={() => {
+                                      if (canNavigate && entry.href) {
+                                        onOpenSurface(entry.href);
+                                        return;
+                                      }
+                                      if (canReuse) {
+                                        onReuseCommand(reusableText);
+                                      }
+                                    }}
+                                  >
                                     {actionLabel || "Reuse in composer"}
                                   </button>
                                 </div>

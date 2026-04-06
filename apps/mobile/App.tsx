@@ -158,6 +158,8 @@ type PersistedState = {
   executionPolicy: ExecutionPolicy;
   voiceRoutePreference: VoiceRoutePreference;
   briefingPlaybackPreference: BriefingPlaybackPreference;
+  homeDraft?: string;
+  notesInstructionDraft?: string;
   assistantCommand?: string;
   assistantHistory?: AssistantCommandResponse[];
   assistantVoiceJobs?: AssistantVoiceJob[];
@@ -366,6 +368,8 @@ const DEFAULT_API_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_API_BASE?.trim()
 const DEFAULT_PWA_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_PWA_BASE?.trim()
   || (__DEV__ ? "http://localhost:3000" : "https://starlog-web-production.up.railway.app");
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
+const DEFAULT_HOME_DRAFT = "summarize latest artifact";
+const DEFAULT_NOTES_INSTRUCTION_DRAFT = "Save this and turn it into tonight's reading note.";
 const DEFAULT_VOICE_MIME = "audio/x-m4a";
 const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
@@ -806,7 +810,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
           executionPolicy: defaultExecutionPolicy(),
           voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
           briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
-          assistantCommand: "summarize latest artifact",
+          homeDraft: DEFAULT_HOME_DRAFT,
+          notesInstructionDraft: DEFAULT_NOTES_INSTRUCTION_DRAFT,
+          assistantCommand: DEFAULT_HOME_DRAFT,
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
@@ -826,7 +832,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
           voiceClipDurationMs: 0,
           voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
           briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
-          assistantCommand: "summarize latest artifact",
+          homeDraft: DEFAULT_HOME_DRAFT,
+          notesInstructionDraft: DEFAULT_NOTES_INSTRUCTION_DRAFT,
+          assistantCommand: DEFAULT_HOME_DRAFT,
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
@@ -849,7 +857,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
-          assistantCommand: "summarize latest artifact",
+          assistantCommand: DEFAULT_HOME_DRAFT,
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
@@ -859,6 +867,8 @@ async function readPersistedState(): Promise<PersistedState | null> {
           conversationToolTraces: [],
           lastConversationReset: null,
           ...parsed,
+          homeDraft: parsed.homeDraft ?? parsed.assistantCommand ?? DEFAULT_HOME_DRAFT,
+          notesInstructionDraft: parsed.notesInstructionDraft ?? parsed.assistantCommand ?? DEFAULT_NOTES_INSTRUCTION_DRAFT,
           voiceRoutePreference: normalizeVoiceRoutePreference(parsed.voiceRoutePreference),
           briefingPlaybackPreference: normalizeBriefingPlaybackPreference(parsed.briefingPlaybackPreference),
           version: 5,
@@ -896,7 +906,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
       executionPolicy: defaultExecutionPolicy(),
       voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
       briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
-      assistantCommand: "summarize latest artifact",
+      homeDraft: DEFAULT_HOME_DRAFT,
+      notesInstructionDraft: DEFAULT_NOTES_INSTRUCTION_DRAFT,
+      assistantCommand: DEFAULT_HOME_DRAFT,
       assistantHistory: [],
       assistantVoiceJobs: [],
       assistantAiJobs: [],
@@ -1175,7 +1187,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
-  const [assistantCommand, setAssistantCommand] = useState("summarize latest artifact");
+  const [homeDraft, setHomeDraft] = useState(DEFAULT_HOME_DRAFT);
+  const [notesInstructionDraft, setNotesInstructionDraft] = useState(DEFAULT_NOTES_INSTRUCTION_DRAFT);
+  const [assistantCommand, setAssistantCommand] = useState(DEFAULT_HOME_DRAFT);
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
@@ -2226,7 +2240,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     briefingPlaybackPreference === "offline_first"
       ? "Playback preference: use the cached offline package first."
       : "Playback preference: refresh from the API, recache, then play.";
-  const captureCommandPreview = assistantCommand.trim() || "Save this and turn it into tonight's reading note.";
+  const captureCommandPreview = notesInstructionDraft.trim() || DEFAULT_NOTES_INSTRUCTION_DRAFT;
   const captureSourcePreview = quickCaptureSourceUrl.trim() || "Attach a source URL, title, excerpt, or one spoken instruction.";
   const captureBodyPreview =
     quickCaptureText.trim()
@@ -2396,7 +2410,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setConversationMessages((previous) => [...previous, payload.user_message, payload.assistant_message]);
       setConversationToolTraces((previous) => [payload.trace, ...previous].slice(0, 24));
       setConversationSessionState(payload.session_state);
-      setAssistantCommand("");
+      setHomeDraft("");
       setPendingConversationTurn(null);
       setStatus("Main Room reply received");
     } catch (error) {
@@ -2455,8 +2469,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function runMainRoomTurn() {
-    const command = assistantCommand.trim();
+    const command = homeDraft.trim();
     await sendConversationTurn(command);
+  }
+
+  async function previewHomeDraftCommandFlow() {
+    const command = homeDraft.trim();
+    await submitAssistantCommand(command, false);
   }
 
   function recordAssistantHistory(entry: AssistantCommandResponse | null | undefined) {
@@ -2687,7 +2706,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         throw new Error("On-device STT returned no transcript");
       }
 
-      setAssistantCommand(transcript);
+      setHomeDraft(transcript);
       await submitAssistantCommand(transcript, execute, "on-device STT");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "On-device STT failed");
@@ -2798,7 +2817,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setArtifactVersions(persisted.artifactVersions);
         setDueCards(persisted.dueCards || []);
         setExecutionPolicy(persisted.executionPolicy || defaultExecutionPolicy());
-        setAssistantCommand(persisted.assistantCommand || "summarize latest artifact");
+        setHomeDraft(persisted.homeDraft || persisted.assistantCommand || DEFAULT_HOME_DRAFT);
+        setNotesInstructionDraft(
+          persisted.notesInstructionDraft || persisted.assistantCommand || DEFAULT_NOTES_INSTRUCTION_DRAFT,
+        );
+        setAssistantCommand(persisted.assistantCommand || DEFAULT_HOME_DRAFT);
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
         setAssistantAiJobs(persisted.assistantAiJobs || []);
@@ -3064,6 +3087,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       executionPolicy,
       voiceRoutePreference,
       briefingPlaybackPreference,
+      homeDraft,
+      notesInstructionDraft,
       assistantCommand,
       assistantHistory,
       assistantVoiceJobs,
@@ -3079,6 +3104,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     alarmMinute,
     alarmNotificationId,
     apiBase,
+    homeDraft,
+    notesInstructionDraft,
     assistantCommand,
     assistantHistory,
     assistantVoiceJobs,
@@ -3999,7 +4026,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </Text>
               <View style={styles.intentHeroCard}>
                 <Text style={styles.heroCardLabelInverse}>Latest prompt</Text>
-                <Text style={styles.intentHeroCopy}>{assistantCommand.trim() || "What should I focus on next?"}</Text>
+                <Text style={styles.intentHeroCopy}>{homeDraft.trim() || "What should I focus on next?"}</Text>
               </View>
               <View style={styles.contextCard}>
                 <Text style={styles.heroCardLabel}>Thread state</Text>
@@ -4031,7 +4058,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               <Text style={styles.subtle}>Suggested instructions</Text>
               <View style={styles.chipRow}>
                 {assistantExampleCommands.map((example) => (
-                  <TouchableOpacity key={`hero-${example}`} style={styles.chip} activeOpacity={0.8} onPress={() => setAssistantCommand(example)}>
+                  <TouchableOpacity
+                    key={`hero-${example}`}
+                    style={styles.chip}
+                    activeOpacity={0.8}
+                    onPress={() => setNotesInstructionDraft(example)}
+                  >
                     <Text style={styles.chipText}>{example}</Text>
                   </TouchableOpacity>
                 ))}
@@ -4070,15 +4102,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             styles={styles}
             palette={palette}
             pendingConversationTurn={Boolean(pendingConversationTurn)}
-            assistantCommand={assistantCommand}
-            setAssistantCommand={setAssistantCommand}
+            homeDraft={homeDraft}
+            setHomeDraft={setHomeDraft}
             runMainRoomTurn={runMainRoomTurn}
             refreshThread={() => loadConversation("manual").catch(() => undefined)}
             resetConversationSession={resetConversationSession}
             visibleConversationMessages={visibleConversationMessages}
             hiddenConversationMessageCount={hiddenConversationMessageCount}
             openAssistantInPwa={openAssistantInPwa}
-            previewCommandFlow={() => runAssistantCommand(false)}
+            previewCommandFlow={() => previewHomeDraftCommandFlow().catch(() => undefined)}
             formatCardMeta={cardMetaText}
           />
         ) : null}
@@ -4094,8 +4126,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             setQuickCaptureSourceUrl={setQuickCaptureSourceUrl}
             quickCaptureText={quickCaptureText}
             setQuickCaptureText={setQuickCaptureText}
-            assistantCommand={assistantCommand}
-            setAssistantCommand={setAssistantCommand}
+            notesInstructionDraft={notesInstructionDraft}
+            setNotesInstructionDraft={setNotesInstructionDraft}
             voiceRecording={Boolean(voiceRecording)}
             holdToTalkLabel={holdToTalkLabel}
             beginHoldToTalkCapture={() => beginHoldToTalkCapture().catch(() => undefined)}

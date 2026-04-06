@@ -26,8 +26,8 @@ type ConversationMessage = {
 
 type MobileHomeSurfaceProps = SharedProps & {
   pendingConversationTurn: boolean;
-  assistantCommand: string;
-  setAssistantCommand: (value: string) => void;
+  homeDraft: string;
+  setHomeDraft: (value: string) => void;
   runMainRoomTurn: () => void;
   refreshThread: () => void;
   resetConversationSession: () => void;
@@ -46,8 +46,8 @@ type MobileNotesSurfaceProps = SharedProps & {
   setQuickCaptureSourceUrl: (value: string) => void;
   quickCaptureText: string;
   setQuickCaptureText: (value: string) => void;
-  assistantCommand: string;
-  setAssistantCommand: (value: string) => void;
+  notesInstructionDraft: string;
+  setNotesInstructionDraft: (value: string) => void;
   voiceRecording: boolean;
   holdToTalkLabel: string;
   beginHoldToTalkCapture: () => void;
@@ -102,8 +102,8 @@ type MobileCalendarSurfaceProps = SharedProps & {
 export function MobileHomeSurface({
   styles,
   pendingConversationTurn,
-  assistantCommand,
-  setAssistantCommand,
+  homeDraft,
+  setHomeDraft,
   runMainRoomTurn,
   refreshThread,
   resetConversationSession,
@@ -139,8 +139,8 @@ export function MobileHomeSurface({
         <Text style={styles.heroCardLabel}>Main Room message</Text>
         <TextInput
           style={[styles.composerInput, styles.composerInputLarge]}
-          value={assistantCommand}
-          onChangeText={setAssistantCommand}
+          value={homeDraft}
+          onChangeText={setHomeDraft}
           placeholder="What should I focus on next?"
           placeholderTextColor={styles.subtle?.color}
           multiline
@@ -204,8 +204,8 @@ export function MobileNotesSurface({
   setQuickCaptureSourceUrl,
   quickCaptureText,
   setQuickCaptureText,
-  assistantCommand,
-  setAssistantCommand,
+  notesInstructionDraft,
+  setNotesInstructionDraft,
   voiceRecording,
   holdToTalkLabel,
   beginHoldToTalkCapture,
@@ -270,8 +270,8 @@ export function MobileNotesSurface({
         <Text style={styles.heroCardLabel}>Typed instruction</Text>
         <TextInput
           style={styles.composerInput}
-          value={assistantCommand}
-          onChangeText={setAssistantCommand}
+          value={notesInstructionDraft}
+          onChangeText={setNotesInstructionDraft}
           placeholder="Save this and turn it into tonight's reading note."
           placeholderTextColor={palette.muted}
         />

@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -27,6 +29,7 @@ const REVIEW_CARDS_SNAPSHOT = "review.cards";
 const REVIEW_SHOW_ANSWER_SNAPSHOT = "review.show_answer";
 const REVIEW_CURRENT_INDEX_SNAPSHOT = "review.current_index";
 const REVIEW_STATS_SNAPSHOT = "review.stats";
+const REVIEW_CONTEXT_PANE_SNAPSHOT = "review.context_pane.collapsed";
 
 export default function ReviewPage() {
   const pathname = usePathname();
@@ -45,6 +48,7 @@ export default function ReviewPage() {
     () => readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 }),
   );
   const [status, setStatus] = useState("Ready");
+  const contextPane = usePaneCollapsed(REVIEW_CONTEXT_PANE_SNAPSHOT);
   const currentCard = cards[currentIndex] ?? null;
   const duePreview = useMemo(() => cards.slice(0, 6), [cards]);
 
@@ -300,46 +304,52 @@ export default function ReviewPage() {
           <p className="status">{status}</p>
         </ObservatoryPanel>
 
-        <ObservatoryPanel
-          kicker="Deck Context"
-          title="Queue and session health"
-          meta="Keep a short preview of what is due next, plus current session progress."
-        >
-          <div className="neural-sync-progress">
-            <span>Progress</span>
-            <span className="sync-bars">
-              {Array.from({ length: progressSegments }).map((_, index) => (
-                <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
-              ))}
-            </span>
-            <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
-          </div>
-          <p className="console-copy">Queue remaining: {cards.length}</p>
-          <p className="console-copy">Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</p>
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
-            <button
-              className="button"
-              type="button"
-              onClick={() => setShowAnswer((previous) => !previous)}
-              disabled={!currentCard}
-            >
-              {showAnswer ? "Hide answer" : "Reveal answer"}
-            </button>
-          </div>
-          <h3 className="observatory-panel-title">Queue preview</h3>
-          {duePreview.length === 0 ? (
-            <p className="console-copy">
-              {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
-            </p>
-          ) : (
-            <div className="scroll-panel">
-              {duePreview.map((card) => (
-                <p key={card.id} className="console-copy">{card.prompt}</p>
-              ))}
+        <PaneRestoreStrip
+          actions={contextPane.collapsed ? [{ id: "review-context", label: "Show deck context", onClick: contextPane.expand }] : []}
+        />
+        {!contextPane.collapsed ? (
+          <ObservatoryPanel
+            kicker="Deck Context"
+            title="Queue and session health"
+            meta="Keep a short preview of what is due next, plus current session progress."
+            actions={<PaneToggleButton label="Hide pane" onClick={contextPane.collapse} />}
+          >
+            <div className="neural-sync-progress">
+              <span>Progress</span>
+              <span className="sync-bars">
+                {Array.from({ length: progressSegments }).map((_, index) => (
+                  <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
+                ))}
+              </span>
+              <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
             </div>
-          )}
-        </ObservatoryPanel>
+            <p className="console-copy">Queue remaining: {cards.length}</p>
+            <p className="console-copy">Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</p>
+            <div className="button-row">
+              <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => setShowAnswer((previous) => !previous)}
+                disabled={!currentCard}
+              >
+                {showAnswer ? "Hide answer" : "Reveal answer"}
+              </button>
+            </div>
+            <h3 className="observatory-panel-title">Queue preview</h3>
+            {duePreview.length === 0 ? (
+              <p className="console-copy">
+                {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
+              </p>
+            ) : (
+              <div className="scroll-panel">
+                {duePreview.map((card) => (
+                  <p key={card.id} className="console-copy">{card.prompt}</p>
+                ))}
+              </div>
+            )}
+          </ObservatoryPanel>
+        ) : null}
       </section>
     </ObservatoryWorkspaceShell>
   );

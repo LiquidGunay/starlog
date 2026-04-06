@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -14,6 +15,7 @@ import {
   readEntitySnapshotAsync,
   writeEntitySnapshot,
 } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -81,6 +83,7 @@ const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
 const PLANNER_EVENTS_ENTITY_SCOPE = "planner.events";
 const PLANNER_CONFLICTS_ENTITY_SCOPE = "planner.conflicts";
 const PLANNER_OAUTH_ENTITY_SCOPE = "planner.oauth";
+const PLANNER_SIDECAR_PANE_SNAPSHOT = "planner.sidecar_pane.collapsed";
 
 function cachePlannerBlocks(blocks: Block[]): void {
   void replaceEntityCacheScope(
@@ -167,6 +170,7 @@ export default function PlannerPage() {
     () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
   );
   const [status, setStatus] = useState("Ready");
+  const sidecarPane = usePaneCollapsed(PLANNER_SIDECAR_PANE_SNAPSHOT);
   const timeline = useMemo<TimelineItem[]>(() => {
     const blockItems = blocks
       .filter((block) => isSameDay(block.starts_at, date))
@@ -590,84 +594,90 @@ export default function PlannerPage() {
           </div>
         </ObservatoryPanel>
 
-        <ObservatoryPanel
-          kicker="Ritual sidecar"
-          title="Unscheduled pool and sync drift"
-          meta="Keep the pool visible, but secondary to the agenda board."
-        >
-          <div className="chronos-pool">
-            <h2>Unscheduled pool</h2>
-            {unscheduledPool.length === 0 ? (
-              <p className="console-copy">No unscheduled tasks or conflicts.</p>
-            ) : (
-              unscheduledPool.map((item) => (
-                <article key={item.id} className="chronos-pool-card">
-                  <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
-                    {item.type === "conflict" ? "sync conflict" : "event spillover"}
-                  </span>
-                  <strong>{item.title}</strong>
-                  <small>{item.subtitle}</small>
-                </article>
-              ))
-            )}
-
-            <article className="chronos-pool-card">
-              <strong>{timeline.length} scheduled item(s) on {date}</strong>
-              <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
-            </article>
-
-            <details>
-              <summary className="label">Sync conflicts</summary>
-              {conflicts.length === 0 ? (
-                <p className="console-copy">No conflicts.</p>
+        <PaneRestoreStrip
+          actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
+        />
+        {!sidecarPane.collapsed ? (
+          <ObservatoryPanel
+            kicker="Ritual sidecar"
+            title="Unscheduled pool and sync drift"
+            meta="Keep the pool visible, but secondary to the agenda board."
+            actions={<PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />}
+          >
+            <div className="chronos-pool">
+              <h2>Unscheduled pool</h2>
+              {unscheduledPool.length === 0 ? (
+                <p className="console-copy">No unscheduled tasks or conflicts.</p>
               ) : (
-                conflicts.map((conflict) => (
-                  <article key={conflict.id} className="chronos-pool-card">
-                    <strong>Remote {conflict.remote_id}</strong>
-                    <small>policy {conflict.strategy}</small>
-                    <div className="button-row">
-                      <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
-                        Replay Sync
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => resolveConflict(conflict.id, "local_wins")}
-                      >
-                        Local Wins
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => resolveConflict(conflict.id, "remote_wins")}
-                      >
-                        Remote Wins
-                      </button>
-                      <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
-                        Dismiss
-                      </button>
-                    </div>
+                unscheduledPool.map((item) => (
+                  <article key={item.id} className="chronos-pool-card">
+                    <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
+                      {item.type === "conflict" ? "sync conflict" : "event spillover"}
+                    </span>
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle}</small>
                   </article>
                 ))
               )}
-            </details>
 
-            <details>
-              <summary className="label">Google OAuth</summary>
-              {!oauthStatus ? (
-                <p className="console-copy">OAuth status not loaded.</p>
-              ) : (
-                <>
-                  <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
-                  <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
-                  <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
-                  <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
-                  <p className="console-copy">{oauthStatus.detail}</p>
-                </>
-              )}
-            </details>
-          </div>
-        </ObservatoryPanel>
+              <article className="chronos-pool-card">
+                <strong>{timeline.length} scheduled item(s) on {date}</strong>
+                <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
+              </article>
+
+              <details>
+                <summary className="label">Sync conflicts</summary>
+                {conflicts.length === 0 ? (
+                  <p className="console-copy">No conflicts.</p>
+                ) : (
+                  conflicts.map((conflict) => (
+                    <article key={conflict.id} className="chronos-pool-card">
+                      <strong>Remote {conflict.remote_id}</strong>
+                      <small>policy {conflict.strategy}</small>
+                      <div className="button-row">
+                        <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
+                          Replay Sync
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => resolveConflict(conflict.id, "local_wins")}
+                        >
+                          Local Wins
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => resolveConflict(conflict.id, "remote_wins")}
+                        >
+                          Remote Wins
+                        </button>
+                        <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
+                          Dismiss
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </details>
+
+              <details>
+                <summary className="label">Google OAuth</summary>
+                {!oauthStatus ? (
+                  <p className="console-copy">OAuth status not loaded.</p>
+                ) : (
+                  <>
+                    <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
+                    <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
+                    <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
+                    <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
+                    <p className="console-copy">{oauthStatus.detail}</p>
+                  </>
+                )}
+              </details>
+            </div>
+          </ObservatoryPanel>
+        ) : null}
       </section>
 
       <section className="observatory-grid">

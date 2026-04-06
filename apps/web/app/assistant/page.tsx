@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { MainRoomThread } from "../components/main-room-thread";
@@ -12,8 +12,10 @@ import {
   ObservatoryWaveform,
   ObservatoryWorkspaceShell,
 } from "../components/observatory-shell";
+import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
+import { usePaneCollapsed } from "../lib/pane-state";
 import { ApiError } from "../lib/starlog-client";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -161,6 +163,8 @@ const ASSISTANT_INTENTS_ENTITY_SCOPE = "assistant.intents";
 const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
 const ASSISTANT_VOICE_JOBS_ENTITY_SCOPE = "assistant.voice_jobs";
 const ASSISTANT_AI_JOBS_ENTITY_SCOPE = "assistant.ai_jobs";
+const ASSISTANT_HISTORY_PANE_SNAPSHOT = "assistant.history_pane.collapsed";
+const ASSISTANT_DIAGNOSTICS_PANE_SNAPSHOT = "assistant.diagnostics_pane.collapsed";
 
 function cacheAssistantIntents(intents: AgentIntent[]): void {
   const recordedAt = new Date().toISOString();
@@ -252,6 +256,7 @@ function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueIte
 
 export default function AssistantPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const { apiBase, token, isOnline } = useSessionConfig();
   const [command, setCommand] = useState("summarize latest artifact");
   const [status, setStatus] = useState("Ready");
@@ -264,6 +269,8 @@ export default function AssistantPage() {
   const [voiceJobs, setVoiceJobs] = useState<AssistantQueuedJob[]>(() => readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_VOICE_JOBS_SNAPSHOT, []));
   const [assistJobs, setAssistJobs] = useState<AssistantQueuedJob[]>(() => readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []));
   const [voiceUploadQueue, setVoiceUploadQueue] = useState<AssistantVoiceUploadQueueItem[]>([]);
+  const historyPane = usePaneCollapsed(ASSISTANT_HISTORY_PANE_SNAPSHOT);
+  const diagnosticsPane = usePaneCollapsed(ASSISTANT_DIAGNOSTICS_PANE_SNAPSHOT);
   const [voiceUploadQueueHydrated, setVoiceUploadQueueHydrated] = useState(false);
   const [voiceQueueReplayInFlight, setVoiceQueueReplayInFlight] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -1043,6 +1050,7 @@ export default function AssistantPage() {
             onToggleCards={toggleExpandedCards}
             onToggleTraces={toggleExpandedTraces}
             onReuseCommand={(nextCommand) => setCommand(nextCommand)}
+            onOpenSurface={(href) => router.push(href)}
             emptyTitle="Begin with a typed turn or a held-to-talk request"
             emptyBody="The Main Room keeps the answer, the next move, and the supporting tool details in one readable thread."
             emptyActions={showcaseActions}
@@ -1129,105 +1137,117 @@ export default function AssistantPage() {
       </section>
 
       <section className="observatory-grid observatory-grid-wide">
-        <ObservatoryPanel
-          kicker="Advanced lanes"
-          title="Operator history and reusable prompts"
-          meta="Keep planning/debug controls reachable, but subordinate to the thread."
-        >
-          <ul className="assistant-mini-feed">
-            {history.length === 0 ? (
-              <li className="assistant-mini-feed-empty">No recent operator runs yet.</li>
-            ) : (
-              history.map((entry, index) => (
-                <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
-                  <button type="button" className="assistant-mini-feed-button" onClick={() => setCommand(entry.command)}>
-                    <span className="assistant-mini-feed-meta">{entry.matched_intent} · {entry.status}</span>
-                    <strong>{entry.command}</strong>
-                    <span>{entry.summary}</span>
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-          <details className="command-agent-detail">
-            <summary>Command actions</summary>
-            <div className="assistant-toolbar assistant-toolbar-advanced">
-              <button className="button" type="button" onClick={() => runCommand(false)}>Preview flow</button>
-              <button className="button" type="button" onClick={() => runCommand(true)}>Execute flow</button>
-              <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex execute</button>
-            </div>
-          </details>
-        </ObservatoryPanel>
-
-        <ObservatoryPanel
-          kicker="Diagnostics"
-          title="Queue state and session memory"
-          meta="Raw queues and memory stay one click away rather than living in the transcript."
-        >
-          <div className="assistant-diagnostics-grid">
-            <article className="assistant-diagnostic-card">
-              <span className="observatory-eyebrow">Session memory</span>
-              <p className="console-copy">
-                {Object.keys(sessionState).length > 0
-                  ? JSON.stringify(sessionState, null, 2)
-                  : "Short-term session state is empty."}
-              </p>
-            </article>
-            <article className="assistant-diagnostic-card">
-              <span className="observatory-eyebrow">Queued voice uploads</span>
-              {voiceUploadQueue.length === 0 ? (
-                <p className="console-copy">No queued voice uploads.</p>
+        <PaneRestoreStrip
+          actions={[
+            ...(historyPane.collapsed ? [{ id: "assistant-history", label: "Show advanced lanes", onClick: historyPane.expand }] : []),
+            ...(diagnosticsPane.collapsed ? [{ id: "assistant-diagnostics", label: "Show diagnostics", onClick: diagnosticsPane.expand }] : []),
+          ]}
+        />
+        {!historyPane.collapsed ? (
+          <ObservatoryPanel
+            kicker="Advanced lanes"
+            title="Operator history and reusable prompts"
+            meta="Keep planning/debug controls reachable, but subordinate to the thread."
+            actions={<PaneToggleButton label="Hide pane" onClick={historyPane.collapse} />}
+          >
+            <ul className="assistant-mini-feed">
+              {history.length === 0 ? (
+                <li className="assistant-mini-feed-empty">No recent operator runs yet.</li>
               ) : (
-                voiceUploadQueue.map((item) => (
-                  <div key={item.id} className="assistant-queue-item">
-                    <p className="console-copy">
-                      <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
-                    </p>
-                    {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
-                    <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
-                      Drop upload
+                history.map((entry, index) => (
+                  <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
+                    <button type="button" className="assistant-mini-feed-button" onClick={() => setCommand(entry.command)}>
+                      <span className="assistant-mini-feed-meta">{entry.matched_intent} · {entry.status}</span>
+                      <strong>{entry.command}</strong>
+                      <span>{entry.summary}</span>
                     </button>
-                  </div>
+                  </li>
                 ))
               )}
-            </article>
-          </div>
-          <details className="command-agent-detail">
-            <summary>Voice jobs ({voiceJobs.length})</summary>
-            <div className="scroll-panel">
-              {voiceJobs.length === 0 ? (
-                <p className="console-copy">No voice command jobs yet.</p>
-              ) : (
-                voiceJobs.map((job) => (
-                  <div key={job.id} className="command-step-card">
-                    <p className="console-copy">
-                      <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                    </p>
-                    {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
-                    {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                  </div>
-                ))
-              )}
+            </ul>
+            <details className="command-agent-detail">
+              <summary>Command actions</summary>
+              <div className="assistant-toolbar assistant-toolbar-advanced">
+                <button className="button" type="button" onClick={() => runCommand(false)}>Preview flow</button>
+                <button className="button" type="button" onClick={() => runCommand(true)}>Execute flow</button>
+                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex execute</button>
+              </div>
+            </details>
+          </ObservatoryPanel>
+        ) : null}
+
+        {!diagnosticsPane.collapsed ? (
+          <ObservatoryPanel
+            kicker="Diagnostics"
+            title="Queue state and session memory"
+            meta="Raw queues and memory stay one click away rather than living in the transcript."
+            actions={<PaneToggleButton label="Hide pane" onClick={diagnosticsPane.collapse} />}
+          >
+            <div className="assistant-diagnostics-grid">
+              <article className="assistant-diagnostic-card">
+                <span className="observatory-eyebrow">Session memory</span>
+                <p className="console-copy">
+                  {Object.keys(sessionState).length > 0
+                    ? JSON.stringify(sessionState, null, 2)
+                    : "Short-term session state is empty."}
+                </p>
+              </article>
+              <article className="assistant-diagnostic-card">
+                <span className="observatory-eyebrow">Queued voice uploads</span>
+                {voiceUploadQueue.length === 0 ? (
+                  <p className="console-copy">No queued voice uploads.</p>
+                ) : (
+                  voiceUploadQueue.map((item) => (
+                    <div key={item.id} className="assistant-queue-item">
+                      <p className="console-copy">
+                        <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
+                      </p>
+                      {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
+                      <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
+                        Drop upload
+                      </button>
+                    </div>
+                  ))
+                )}
+              </article>
             </div>
-          </details>
-          <details className="command-agent-detail">
-            <summary>Planner jobs ({assistJobs.length})</summary>
-            <div className="scroll-panel">
-              {assistJobs.length === 0 ? (
-                <p className="console-copy">No queued planner jobs yet.</p>
-              ) : (
-                assistJobs.map((job) => (
-                  <div key={job.id} className="command-step-card">
-                    <p className="console-copy">
-                      <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                    </p>
-                    {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
-                  </div>
-                ))
-              )}
-            </div>
-          </details>
-        </ObservatoryPanel>
+            <details className="command-agent-detail">
+              <summary>Voice jobs ({voiceJobs.length})</summary>
+              <div className="scroll-panel">
+                {voiceJobs.length === 0 ? (
+                  <p className="console-copy">No voice command jobs yet.</p>
+                ) : (
+                  voiceJobs.map((job) => (
+                    <div key={job.id} className="command-step-card">
+                      <p className="console-copy">
+                        <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                      </p>
+                      {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
+                      {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+            <details className="command-agent-detail">
+              <summary>Planner jobs ({assistJobs.length})</summary>
+              <div className="scroll-panel">
+                {assistJobs.length === 0 ? (
+                  <p className="console-copy">No queued planner jobs yet.</p>
+                ) : (
+                  assistJobs.map((job) => (
+                    <div key={job.id} className="command-step-card">
+                      <p className="console-copy">
+                        <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                      </p>
+                      {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+          </ObservatoryPanel>
+        ) : null}
       </section>
     </ObservatoryWorkspaceShell>
   );
