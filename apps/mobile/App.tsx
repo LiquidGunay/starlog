@@ -28,6 +28,7 @@ import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, 
 import {
   MobileCalendarSurface,
   MobileHomeSurface,
+  MobileLoginSurface,
   MobileNotesSurface,
   MobileReviewSurface,
 } from "./src/mobile-surfaces";
@@ -201,10 +202,27 @@ type LegacyPersistedState = Omit<
 
 type DueCard = {
   id: string;
+  deck_id?: string | null;
   card_type: string;
   prompt: string;
   answer: string;
   due_at: string;
+};
+
+type CardDeckSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  card_count: number;
+  due_count: number;
+};
+
+type ReviewSessionStats = {
+  reviewed: number;
+  again: number;
+  hard: number;
+  good: number;
+  easy: number;
 };
 
 type ArtifactListItem = {
@@ -1186,7 +1204,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [artifactVersions, setArtifactVersions] = useState<ArtifactVersions | null>(null);
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
+  const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
+  const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
   const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
+  const [authPassphrase, setAuthPassphrase] = useState("");
+  const [authBusy, setAuthBusy] = useState<"login" | "bootstrap" | null>(null);
+  const [authRevealPassphrase, setAuthRevealPassphrase] = useState(false);
   const [homeDraft, setHomeDraft] = useState(DEFAULT_HOME_DRAFT);
   const [notesInstructionDraft, setNotesInstructionDraft] = useState(DEFAULT_NOTES_INSTRUCTION_DRAFT);
   const [assistantCommand, setAssistantCommand] = useState(DEFAULT_HOME_DRAFT);
@@ -1320,6 +1343,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const reviewMetaLabel = reviewCard
     ? `Due ${new Date(reviewCard.due_at).toLocaleString()}`
     : (token ? "Load due cards to start a focused pass." : "Add API credentials to load the review queue.");
+  const reviewRetentionLabel = reviewStats.reviewed > 0
+    ? `${Math.round(((reviewStats.good + reviewStats.easy) / reviewStats.reviewed) * 100)}%`
+    : "0%";
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -2034,6 +2060,89 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function loadReviewDecks() {
+    try {
+      if (!token) {
+        setReviewDecks([]);
+        return;
+      }
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/cards/decks`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Deck fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as CardDeckSummary[];
+      setReviewDecks(payload);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load review decks");
+    }
+  }
+
+  async function loginObservatorySession() {
+    if (authPassphrase.trim().length < 8) {
+      setStatus("Use at least 8 characters for the access cipher");
+      return;
+    }
+
+    setAuthBusy("login");
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ passphrase: authPassphrase.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Login failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as { access_token: string };
+      setToken(payload.access_token);
+      setStatus("Observatory link established on mobile");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Login failed");
+    } finally {
+      setAuthBusy(null);
+    }
+  }
+
+  async function bootstrapObservatorySession() {
+    if (authPassphrase.trim().length < 12) {
+      setStatus("Bootstrap requires a passphrase of at least 12 characters");
+      return;
+    }
+
+    setAuthBusy("bootstrap");
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/auth/bootstrap`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ passphrase: authPassphrase.trim() }),
+      });
+
+      if (response.status !== 201 && response.status !== 409) {
+        const errorBody = await response.text();
+        throw new Error(`Bootstrap failed: ${response.status} ${errorBody}`);
+      }
+
+      await loginObservatorySession();
+      setStatus(response.status === 201 ? "Station established and linked on mobile" : "Station already existed. Session refreshed.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Bootstrap failed");
+    } finally {
+      setAuthBusy(null);
+    }
+  }
+
   async function loadDueCards() {
     try {
       if (!token) {
@@ -2051,6 +2160,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
       const payload = (await response.json()) as DueCard[];
       setDueCards(payload);
+      void loadReviewDecks();
+      setReviewStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
       setShowAnswer(false);
       cardPromptStartedAt.current = payload.length > 0 ? Date.now() : null;
       setStatus(`Loaded ${payload.length} due card(s)`);
@@ -2092,8 +2203,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
       const remaining = dueCards.slice(1);
       setDueCards(remaining);
+      setReviewStats((previous) => ({
+        reviewed: previous.reviewed + 1,
+        again: previous.again + (rating === 1 ? 1 : 0),
+        hard: previous.hard + (rating === 3 ? 1 : 0),
+        good: previous.good + (rating === 4 ? 1 : 0),
+        easy: previous.easy + (rating === 5 ? 1 : 0),
+      }));
       setShowAnswer(false);
       cardPromptStartedAt.current = remaining.length > 0 ? Date.now() : null;
+      void loadReviewDecks();
       setStatus(`Recorded rating ${rating}. ${remaining.length} due card(s) left`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to submit review");
@@ -3179,6 +3298,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   useEffect(() => {
     if (!hydrated || !token) {
+      setReviewDecks([]);
+      return;
+    }
+    loadReviewDecks().catch(() => undefined);
+  }, [hydrated, token, apiBase]);
+
+  useEffect(() => {
+    if (!hydrated || !token) {
       return;
     }
     loadAssistantVoiceJobs("auto").catch(() => undefined);
@@ -3984,6 +4111,36 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     );
   }
 
+  if (!token) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+        <View pointerEvents="none" style={styles.bgOrbTop} />
+        <View pointerEvents="none" style={styles.bgOrbCenter} />
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <MobileLoginSurface
+            styles={styles}
+            palette={palette}
+            apiBase={apiBase}
+            setApiBase={setApiBase}
+            authPassphrase={authPassphrase}
+            setAuthPassphrase={setAuthPassphrase}
+            revealPassphrase={authRevealPassphrase}
+            setRevealPassphrase={setAuthRevealPassphrase}
+            authStatus={status}
+            authBusy={authBusy !== null}
+            login={() => {
+              loginObservatorySession().catch(() => undefined);
+            }}
+            bootstrap={() => {
+              bootstrapObservatorySession().catch(() => undefined);
+            }}
+          />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
@@ -4076,7 +4233,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewDueCount={dueCards.length}
             reviewCardType={reviewCardTypeLabel}
             reviewMeta={reviewMetaLabel}
+            reviewRetentionLabel={reviewRetentionLabel}
+            reviewReviewedCount={reviewStats.reviewed}
             reviewStatus={status}
+            reviewDecks={reviewDecks}
             showAnswer={showAnswer}
             revealAnswer={() => {
               if (!reviewCard) {

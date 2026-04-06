@@ -3,18 +3,24 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
-import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
-import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
-import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
 type Card = {
   id: string;
+  deck_id?: string | null;
+  card_type: string;
   prompt: string;
   answer: string;
   due_at: string;
+};
+
+type Deck = {
+  id: string;
+  name: string;
+  description?: string | null;
+  card_count: number;
+  due_count: number;
 };
 
 type SessionStats = {
@@ -25,131 +31,94 @@ type SessionStats = {
   easy: number;
 };
 
-const REVIEW_CARDS_SNAPSHOT = "review.cards";
-const REVIEW_SHOW_ANSWER_SNAPSHOT = "review.show_answer";
-const REVIEW_CURRENT_INDEX_SNAPSHOT = "review.current_index";
-const REVIEW_STATS_SNAPSHOT = "review.stats";
-const REVIEW_CONTEXT_PANE_SNAPSHOT = "review.context_pane.collapsed";
+const SURFACE_LINKS = [
+  { href: "/assistant", label: "Main Room", icon: "✦" },
+  { href: "/notes", label: "Knowledge Base", icon: "⌘" },
+  { href: "/review", label: "SRS Review", icon: "◎" },
+  { href: "/planner", label: "Agenda", icon: "◌" },
+];
+
+function emptyStats(): SessionStats {
+  return { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 };
+}
+
+function deckProgress(deck: Deck): number {
+  if (deck.card_count <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(((deck.card_count - deck.due_count) / deck.card_count) * 100)));
+}
 
 export default function ReviewPage() {
-  const { apiBase, token, mutateWithQueue } = useSessionConfig();
+  const { apiBase, token } = useSessionConfig();
+  const [cards, setCards] = useState<Card[]>([]);
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [status, setStatus] = useState("SRS queue idle.");
+  const [stats, setStats] = useState<SessionStats>(emptyStats);
+  const [attemptedInitialLoad, setAttemptedInitialLoad] = useState(false);
+  const [loading, setLoading] = useState(false);
+
   const missingToken = !token;
   const missingApiBase = !apiBase;
   const missingConfig = missingToken || missingApiBase;
-  const [cards, setCards] = useState<Card[]>(() => readEntitySnapshot<Card[]>(REVIEW_CARDS_SNAPSHOT, []));
-  const [showAnswer, setShowAnswer] = useState(
-    () => readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
+  const currentCard = cards[0] ?? null;
+  const currentDeck = currentCard ? decks.find((deck) => deck.id === currentCard.deck_id) ?? null : null;
+  const activeDecks = useMemo(
+    () => decks.filter((deck) => deck.card_count > 0).sort((left, right) => right.due_count - left.due_count),
+    [decks],
   );
-  const [currentIndex, setCurrentIndex] = useState(
-    () => readEntitySnapshot<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0),
-  );
-  const [stats, setStats] = useState<SessionStats>(
-    () => readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 }),
-  );
-  const [status, setStatus] = useState("Ready");
-  const [attemptedInitialLoad, setAttemptedInitialLoad] = useState(false);
-  const contextPane = usePaneCollapsed(REVIEW_CONTEXT_PANE_SNAPSHOT);
-  const currentCard = cards[currentIndex] ?? null;
-  const duePreview = useMemo(() => cards.slice(0, 6), [cards]);
+  const reviewedTotal = stats.reviewed + cards.length;
+  const sessionRetention = stats.reviewed > 0 ? Math.round(((stats.good + stats.easy) / stats.reviewed) * 100) : 0;
 
-  useEffect(() => {
-    setCards((previous) => previous.length > 0 ? previous : readEntitySnapshot<Card[]>(REVIEW_CARDS_SNAPSHOT, []));
-    setShowAnswer((previous) => previous || readEntitySnapshot<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false));
-    setCurrentIndex((previous) => previous || readEntitySnapshot<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0));
-    setStats((previous) => (
-      previous.reviewed > 0 || previous.again > 0 || previous.hard > 0 || previous.good > 0 || previous.easy > 0
-        ? previous
-        : readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 })
-    ));
-  }, []);
-
-  useEffect(() => {
-    if (missingConfig && cards.length === 0) {
-      setStatus("Connect to the API to load the review queue.");
-    }
-  }, [cards.length, missingConfig]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const [cachedCards, cachedShowAnswer, cachedCurrentIndex, cachedStats] = await Promise.all([
-        readEntitySnapshotAsync<Card[]>(REVIEW_CARDS_SNAPSHOT, []),
-        readEntitySnapshotAsync<boolean>(REVIEW_SHOW_ANSWER_SNAPSHOT, false),
-        readEntitySnapshotAsync<number>(REVIEW_CURRENT_INDEX_SNAPSHOT, 0),
-        readEntitySnapshotAsync<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 }),
-      ]);
-
-      if (cancelled) {
-        return;
-      }
-
-      if (cachedCards.length > 0) {
-        setCards(cachedCards);
-      }
-      setShowAnswer(cachedShowAnswer);
-      setCurrentIndex(cachedCurrentIndex);
-      setStats(cachedStats);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const loadDue = useCallback(async () => {
-    if (missingApiBase) {
-      setStatus("API base missing. Set it in Runtime or Main Room.");
+  const loadReviewData = useCallback(async () => {
+    if (missingConfig) {
+      setStatus("Open login and connect a station before starting review.");
       return;
     }
-    if (missingToken) {
-      setStatus("Bearer token missing. Add it in Runtime or Main Room.");
-      return;
-    }
+
+    setLoading(true);
     try {
-      const payload = await apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=20");
-      setCards(payload);
-      setCurrentIndex(0);
+      const [nextCards, nextDecks] = await Promise.all([
+        apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42"),
+        apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks"),
+      ]);
+      setCards(nextCards);
+      setDecks(nextDecks);
+      setStats(emptyStats());
       setShowAnswer(false);
-      const nextStats = { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 };
-      setStats(nextStats);
-      writeEntitySnapshot(REVIEW_CARDS_SNAPSHOT, payload);
-      writeEntitySnapshot(REVIEW_CURRENT_INDEX_SNAPSHOT, 0);
-      writeEntitySnapshot(REVIEW_SHOW_ANSWER_SNAPSHOT, false);
-      writeEntitySnapshot(REVIEW_STATS_SNAPSHOT, nextStats);
-      setStatus(`Loaded ${payload.length} due cards`);
+      setStatus(`Loaded ${nextCards.length} due card(s) across ${nextDecks.length} deck(s).`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load due cards");
+      setStatus(error instanceof Error ? error.message : "Failed to load the review queue");
+    } finally {
+      setLoading(false);
     }
-  }, [apiBase, missingApiBase, missingToken, token]);
+  }, [apiBase, missingConfig, token]);
 
   useEffect(() => {
-    if (missingConfig || cards.length > 0 || attemptedInitialLoad) {
+    if (attemptedInitialLoad || missingConfig) {
       return;
     }
     setAttemptedInitialLoad(true);
-    void loadDue();
-  }, [attemptedInitialLoad, cards.length, loadDue, missingConfig]);
+    void loadReviewData();
+  }, [attemptedInitialLoad, loadReviewData, missingConfig]);
 
   async function reviewCurrent(rating: 1 | 3 | 4 | 5) {
     if (!currentCard) {
-      setStatus("No active card");
+      setStatus("Load due cards to start reviewing.");
+      return;
+    }
+    if (missingConfig) {
+      setStatus("Open login and connect a station before submitting ratings.");
       return;
     }
 
     try {
-      const result = await mutateWithQueue(
-        "/v1/reviews",
-        {
-          method: "POST",
-          body: JSON.stringify({ card_id: currentCard.id, rating }),
-        },
-        {
-          label: `Review card ${currentCard.id}`,
-          entity: "review",
-          op: "create",
-        },
-      );
+      await apiRequest(apiBase, token, "/v1/reviews", {
+        method: "POST",
+        body: JSON.stringify({ card_id: currentCard.id, rating }),
+      });
+      setCards((previous) => previous.filter((card) => card.id !== currentCard.id));
       setStats((previous) => ({
         reviewed: previous.reviewed + 1,
         again: previous.again + (rating === 1 ? 1 : 0),
@@ -157,217 +126,208 @@ export default function ReviewPage() {
         good: previous.good + (rating === 4 ? 1 : 0),
         easy: previous.easy + (rating === 5 ? 1 : 0),
       }));
-      setCards((previous) => previous.filter((card) => card.id !== currentCard.id));
-      setCurrentIndex(0);
       setShowAnswer(false);
-      setStatus(
-        result.queued
-          ? `Queued review for ${currentCard.id} with rating ${rating}`
-          : `Reviewed card ${currentCard.id} with rating ${rating}`,
-      );
+      setDecks((previous) => previous.map((deck) => (
+        deck.id === currentCard.deck_id
+          ? { ...deck, due_count: Math.max(0, deck.due_count - 1) }
+          : deck
+      )));
+      setStatus(`Recorded ${rating === 1 ? "Again" : rating === 3 ? "Hard" : rating === 4 ? "Good" : "Easy"} for ${currentCard.id}.`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Review failed");
+      setStatus(error instanceof Error ? error.message : "Failed to submit review");
     }
   }
 
-  useEffect(() => {
-    if (cards.length > 0 && currentIndex >= cards.length) {
-      setCurrentIndex(0);
-    }
-  }, [cards.length, currentIndex]);
-
-  useEffect(() => {
-    writeEntitySnapshot(REVIEW_CARDS_SNAPSHOT, cards);
-  }, [cards]);
-
-  useEffect(() => {
-    writeEntitySnapshot(REVIEW_SHOW_ANSWER_SNAPSHOT, showAnswer);
-  }, [showAnswer]);
-
-  useEffect(() => {
-    writeEntitySnapshot(REVIEW_CURRENT_INDEX_SNAPSHOT, currentIndex);
-  }, [currentIndex]);
-
-  useEffect(() => {
-    writeEntitySnapshot(REVIEW_STATS_SNAPSHOT, stats);
-  }, [stats]);
-
-  const reviewedTotal = stats.reviewed + cards.length;
-  const progressSegments = 5;
-  const progressActive = reviewedTotal === 0 ? 0 : Math.min(progressSegments, Math.round((stats.reviewed / reviewedTotal) * progressSegments));
-
   return (
-    <AprilWorkspaceShell
-      activeSurface="srs-review"
-      statusLabel={currentCard ? "Review live" : "Queue waiting"}
-      queueLabel={`${cards.length} due`}
-      searchPlaceholder="Search decks and prompts..."
-      railSlot={(
-        <>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Active decks</span>
-            <div className="april-rail-deck-list">
-              {duePreview.length === 0 ? (
-                <p className="console-copy">No active due queue.</p>
-              ) : (
-                duePreview.map((card) => (
-                  <div key={card.id} className="april-rail-deck-item">
-                    <strong>{card.prompt.slice(0, 32)}{card.prompt.length > 32 ? "..." : ""}</strong>
-                    <span>Due now</span>
-                  </div>
-                ))
-              )}
-            </div>
+    <div className="review-station">
+      <header className="review-station-topbar">
+        <div className="review-topbar-brand">
+          <span>Starlog</span>
+        </div>
+        <nav className="review-topbar-nav" aria-label="Primary review routes">
+          <Link href="/artifacts">Archive</Link>
+          <Link href="/review" className="active">SRS Review</Link>
+          <Link href="/notes">Knowledge Base</Link>
+        </nav>
+        <div className="review-topbar-actions">
+          <Link href="/runtime">Runtime</Link>
+          <Link href="/login">{missingConfig ? "Login" : "Linked"}</Link>
+        </div>
+      </header>
+
+      <aside className="review-station-rail">
+        <div className="review-rail-profile">
+          <div className="review-rail-avatar">◉</div>
+          <div>
+            <strong>The Observatory</strong>
+            <span>Stellar Tier</span>
           </div>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Session split</span>
-            <div className="april-rail-metric-stack">
-              <div className="april-rail-metric-card">
-                <strong>{stats.reviewed}</strong>
-                <span>Reviewed</span>
-              </div>
-              <div className="april-rail-metric-card">
-                <strong>{stats.good}</strong>
-                <span>Good</span>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    >
-      <section className="april-review-layout">
-        <div className="april-page-heading">
-          <span className="april-page-kicker">SRS Review</span>
-          <h1>Hold one card in focus.</h1>
-          <p>
-            Keep the answer hidden until you commit to retrieval. Deck state and progress stay peripheral unless you
-            intentionally open them.
-          </p>
         </div>
 
-        <div className="april-review-progress">
-          <div className="april-review-progress-head">
+        <nav className="review-rail-nav" aria-label="Primary surfaces">
+          {SURFACE_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={link.href === "/review" ? "review-rail-link active" : "review-rail-link"}
+            >
+              <span>{link.icon}</span>
+              <span>{link.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        <section className="review-rail-section">
+          <span className="review-rail-label">Active Decks</span>
+          <div className="review-rail-decks">
+            {activeDecks.length === 0 ? (
+              <p className="review-copy">No active decks loaded yet.</p>
+            ) : (
+              activeDecks.slice(0, 6).map((deck) => (
+                <div key={deck.id} className={deck.id === currentCard?.deck_id ? "review-rail-deck active" : "review-rail-deck"}>
+                  <strong>{deck.name}</strong>
+                  <span>{deck.due_count > 0 ? `${deck.due_count} due` : "stable"}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <div className="review-rail-footer">
+          <Link href="/review/decks">Deck Workspace</Link>
+          <Link href="/runtime">Runtime</Link>
+        </div>
+      </aside>
+
+      <main className="review-station-main">
+        <section className="review-session-progress">
+          <div className="review-session-progress-head">
             <div>
-              <span>Session progress</span>
-              <strong>{currentCard ? `Card ${currentIndex + 1} of ${Math.max(cards.length, 1)}` : "Awaiting queue"}</strong>
+              <span>Session Progress</span>
+              <strong>
+                {currentCard ? `Card ${stats.reviewed + 1} of ${Math.max(reviewedTotal, 1)}` : "Awaiting queue"}
+              </strong>
             </div>
             <span>{stats.reviewed} reviewed</span>
           </div>
-          <div className="april-review-progress-bar">
-            <span style={{ width: `${reviewedTotal === 0 ? 0 : Math.min(100, (stats.reviewed / reviewedTotal) * 100)}%` }} />
+          <div className="review-session-progress-bar">
+            <span style={{ width: `${reviewedTotal > 0 ? (stats.reviewed / reviewedTotal) * 100 : 0}%` }} />
           </div>
-        </div>
+        </section>
 
-        <div className="april-review-grid">
-          <AprilPanel className="april-review-card-panel">
-          {currentCard ? (
-            <>
-              <div className="april-review-card-meta">
-                <span className="april-panel-kicker">Complexity: Tier 3</span>
-                <span className="console-copy">{reviewMetaText(currentCard.due_at)}</span>
-              </div>
-              <div className="april-review-question">{currentCard.prompt}</div>
-              <div className="april-review-reveal">
-                <button className="april-hero-button" type="button" onClick={() => setShowAnswer((previous) => !previous)}>
-                  {showAnswer ? "Hide answer" : "Reveal answer"}
-                </button>
-              </div>
-              {showAnswer ? (
-                <div className="april-review-answer">
-                  <p className="console-copy">Due: {new Date(currentCard.due_at).toLocaleString()}</p>
-                  <p>{currentCard.answer}</p>
+        <section className="review-focus-shell">
+          <article className="review-focus-card">
+            {currentCard ? (
+              <>
+                <div className="review-focus-meta">
+                  <span>{currentDeck ? currentDeck.name : "Focused review"}</span>
+                  <span>{currentCard.card_type.replace(/_/g, " ")}</span>
                 </div>
-              ) : null}
-              <div className="april-review-ratings">
-                <button className="april-rating-button again" type="button" onClick={() => reviewCurrent(1)} disabled={!currentCard}>
-                  <span>Again</span>
-                  <small>{"< 1m"}</small>
-                </button>
-                <button className="april-rating-button" type="button" onClick={() => reviewCurrent(3)} disabled={!currentCard}>
-                  <span>Hard</span>
-                  <small>1d</small>
-                </button>
-                <button className="april-rating-button primary" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
-                  <span>Good</span>
-                  <small>3d</small>
-                </button>
-                <button className="april-rating-button easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
-                  <span>Easy</span>
-                  <small>5d</small>
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="april-review-question">No due cards loaded.</div>
-              <p className="console-copy">{missingConfig ? "Connect runtime and load the queue." : "Load due cards to resume review."}</p>
-              <div className="button-row">
-                {missingConfig ? <Link className="button" href="/runtime">Open runtime</Link> : <button className="button" type="button" onClick={() => loadDue()}>Load due cards</button>}
-                <Link className="button" href="/review/decks">Open deck workspace</Link>
-                <Link className="button" href="/assistant">Open Main Room</Link>
-              </div>
-            </>
-          )}
-          <p className="status">{status}</p>
-          </AprilPanel>
-
-          <div className="april-review-side">
-            <PaneRestoreStrip
-              actions={contextPane.collapsed ? [{ id: "review-context", label: "Show deck context", onClick: contextPane.expand }] : []}
-            />
-            {!contextPane.collapsed ? (
-              <AprilPanel className="april-review-context">
-                <div className="april-panel-head">
-                  <div>
-                    <span className="april-panel-kicker">Deck context</span>
-                    <h2>Queue and session health</h2>
+                <div className="review-focus-question">
+                  {currentCard.prompt}
+                </div>
+                <div className="review-focus-actions">
+                  <button className="review-reveal-button" type="button" onClick={() => setShowAnswer((previous) => !previous)}>
+                    {showAnswer ? "Hide Answer" : "Reveal Answer"}
+                  </button>
+                </div>
+                {showAnswer ? (
+                  <div className="review-focus-answer">
+                    <p className="review-copy">Due {new Date(currentCard.due_at).toLocaleString()}</p>
+                    <p>{currentCard.answer}</p>
                   </div>
-                  <PaneToggleButton label="Hide pane" onClick={contextPane.collapse} />
+                ) : null}
+                <div className="review-rating-grid">
+                  {[
+                    { label: "Again", hint: "< 1m", rating: 1 as const },
+                    { label: "Hard", hint: "1d", rating: 3 as const },
+                    { label: "Good", hint: "3d", rating: 4 as const },
+                    { label: "Easy", hint: "5d", rating: 5 as const },
+                  ].map((option) => (
+                    <button
+                      key={option.label}
+                      className={option.label === "Good" ? "review-rating-button primary" : "review-rating-button"}
+                      type="button"
+                      disabled={!showAnswer}
+                      onClick={() => reviewCurrent(option.rating)}
+                    >
+                      <span>{option.label}</span>
+                      <small>{option.hint}</small>
+                    </button>
+                  ))}
                 </div>
-            <div className="neural-sync-progress">
-              <span>Progress</span>
-              <span className="sync-bars">
-                {Array.from({ length: progressSegments }).map((_, index) => (
-                  <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
-                ))}
-              </span>
-              <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
-            </div>
-            <p className="console-copy">Queue remaining: {cards.length}</p>
-            <p className="console-copy">Again: {stats.again} | Hard: {stats.hard} | Good: {stats.good} | Easy: {stats.easy}</p>
-            <div className="button-row">
-              <Link className="button" href="/review/decks">Open deck workspace</Link>
-              <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
-              <button
-                className="button"
-                type="button"
-                onClick={() => setShowAnswer((previous) => !previous)}
-                disabled={!currentCard}
-              >
-                {showAnswer ? "Hide answer" : "Reveal answer"}
-              </button>
-            </div>
-            <h3 className="observatory-panel-title">Queue preview</h3>
-            {duePreview.length === 0 ? (
-              <p className="console-copy">
-                {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
-              </p>
+              </>
             ) : (
-              <div className="scroll-panel">
-                {duePreview.map((card) => (
-                  <p key={card.id} className="console-copy">{card.prompt}</p>
-                ))}
+              <div className="review-empty-state">
+                <h1>{missingConfig ? "Access required" : "No due cards loaded."}</h1>
+                <p>
+                  {missingConfig
+                    ? "Open the login screen, link the observatory, then return to this focused review surface."
+                    : "The queue is empty until you load due cards or import a deck."}
+                </p>
+                <div className="review-inline-actions">
+                  <button className="review-inline-button primary" type="button" onClick={() => void loadReviewData()} disabled={missingConfig || loading}>
+                    {loading ? "Loading..." : "Load Due Cards"}
+                  </button>
+                  <Link className="review-inline-button" href={missingConfig ? "/login" : "/review/decks"}>
+                    {missingConfig ? "Open Login" : "Open Deck Workspace"}
+                  </Link>
+                </div>
               </div>
             )}
-              </AprilPanel>
-            ) : null}
-          </div>
-        </div>
-      </section>
-    </AprilWorkspaceShell>
-  );
-}
+          </article>
 
-function reviewMetaText(dueAt: string): string {
-  return `Last review target ${new Date(dueAt).toLocaleDateString()}`;
+          <aside className="review-focus-sidebar">
+            <section className="review-sidebar-card">
+              <span className="review-sidebar-kicker">Knowledge Health</span>
+              <div className="review-sidebar-metrics">
+                <div>
+                  <strong>{cards.length}</strong>
+                  <span>Cards Due</span>
+                </div>
+                <div>
+                  <strong>{sessionRetention}%</strong>
+                  <span>Retention</span>
+                </div>
+              </div>
+              <div className="review-sidebar-chart" aria-hidden="true">
+                {[40, 58, 52, 76, 84, 74, 90].map((height, index) => (
+                  <span key={`bar-${index}`} style={{ height: `${height}%` }} className={index >= 4 ? "active" : ""} />
+                ))}
+              </div>
+            </section>
+
+            <section className="review-sidebar-card">
+              <span className="review-sidebar-kicker">Session Split</span>
+              <p className="review-copy">
+                Again {stats.again} | Hard {stats.hard} | Good {stats.good} | Easy {stats.easy}
+              </p>
+              <p className="review-copy">{status}</p>
+              <div className="review-inline-actions stacked">
+                <button className="review-inline-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
+                  Refresh Queue
+                </button>
+                <Link className="review-inline-button" href="/review/decks">Deck Workspace</Link>
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <footer className="review-focus-footer">
+          <div>
+            <button className="review-footer-button" type="button" onClick={() => setShowAnswer((previous) => !previous)} disabled={!currentCard}>
+              {showAnswer ? "Hide answer" : "Reveal answer"}
+            </button>
+            <button className="review-footer-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
+              Reload queue
+            </button>
+          </div>
+          <div className="review-footer-shortcuts">
+            <span>Deck progress {currentDeck ? `${deckProgress(currentDeck)}%` : "0%"}</span>
+            <span>{currentCard ? `Due ${new Date(currentCard.due_at).toLocaleDateString()}` : "Queue idle"}</span>
+          </div>
+        </footer>
+      </main>
+    </div>
+  );
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
+import { AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -286,122 +286,128 @@ function NotesPageContent() {
         </>
       )}
     >
-      <section className="april-knowledge-shell">
-        <div className="april-page-heading">
-          <span className="april-page-kicker">Knowledge Base</span>
-          <h1>A calm archive and living graph.</h1>
-          <p>Keep the explorer, editor, and backlinks visible together so note editing never loses the surrounding context.</p>
-        </div>
-
-        <div className="april-knowledge-layout">
-          <AprilPanel className="april-knowledge-explorer">
-            <div className="april-panel-head">
-              <div>
-                <span className="april-panel-kicker">Vault explorer</span>
-                <h2>Recent notes</h2>
-              </div>
-              <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+      <section className="knowledge-base-station">
+        <aside className="knowledge-base-explorer">
+          <div className="knowledge-base-pane-head">
+            <div>
+              <span className="knowledge-base-kicker">Vault Explorer</span>
+              <h2>Living archive</h2>
             </div>
+            <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+          </div>
           {visibleNotes.length === 0 ? (
             <p className="console-copy">No notes yet.</p>
           ) : (
-            <ul className="observatory-list-stack">
+            <div className="knowledge-base-note-tree">
               {visibleNotes.map((note) => (
-                <li key={note.id} className="observatory-list-item">
-                  <button className="button" type="button" onClick={() => selectNote(note)}>
-                    {note.title}
-                  </button>
-                  <p className="console-copy">
-                    v{note.version} · updated {new Date(note.updated_at).toLocaleString()}
-                  </p>
-                  {note.pending ? <p className="console-copy">Pending: {note.pendingLabel || "queued mutation"}</p> : null}
-                </li>
+                <button
+                  key={note.id}
+                  type="button"
+                  className={note.id === selectedId ? "knowledge-base-tree-item active" : "knowledge-base-tree-item"}
+                  onClick={() => selectNote(note)}
+                >
+                  <strong>{note.title}</strong>
+                  <span>v{note.version} · {new Date(note.updated_at).toLocaleDateString()}</span>
+                  {note.pending ? <small>{note.pendingLabel || "queued mutation"}</small> : null}
+                </button>
               ))}
-            </ul>
-          )}
-          </AprilPanel>
-
-          <AprilPanel className="april-knowledge-editor" id="knowledge-editor">
-            <div className="april-panel-head">
-              <div>
-                <span className="april-panel-kicker">Calm editor</span>
-                <h2>{selectedNote ? selectedNote.title : "Fresh note draft"}</h2>
-              </div>
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => clearEditor()}>New entry</button>
-                <Link className="button" href="/assistant">Open Main Room</Link>
-              </div>
             </div>
-          <label className="label" htmlFor="note-title">Title</label>
-          <input
-            id="note-title"
-            className="input"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-          <label className="label" htmlFor="note-body">Body</label>
-          <textarea
-            id="note-body"
-            className="textarea textarea-longform"
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-          />
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => createNote()}>Create note</button>
-            <button className="button" type="button" onClick={() => saveNote()}>Save selected</button>
-            <button className="button" type="button" onClick={() => clearEditor()}>Clear</button>
+          )}
+          <div className="knowledge-base-explorer-footer">
+            <p>Disk usage: {visibleNotes.length} note objects</p>
+            <p>Sync queue: {outbox.length} pending</p>
           </div>
-          <p className="status">{status}</p>
-          </AprilPanel>
+        </aside>
 
-          <AprilPanel className="april-knowledge-inspector" id="knowledge-graph">
-            <div className="april-panel-head">
-              <div>
-                <span className="april-panel-kicker">Stellar graph</span>
-                <h2>{selectedNote ? "Backlinks and metadata" : "Knowledge inspector"}</h2>
-              </div>
+        <main className="knowledge-base-editor-pane" id="knowledge-editor">
+          <div className="knowledge-base-editor-head">
+            <div className="knowledge-base-editor-tags">
+              <span>{selectedNote ? "Research" : "Draft"}</span>
+              <span>{selectedNote ? "Tracked" : "Fresh Entry"}</span>
             </div>
-            <div className="april-graph-visual">
-              <span className="april-graph-node active" />
-              <span className="april-graph-node node-a" />
-              <span className="april-graph-node node-b" />
-              <span className="april-graph-node node-c" />
+            <div className="button-row">
+              <button className="button" type="button" onClick={() => clearEditor()}>New entry</button>
+              <button className="button" type="button" onClick={() => createNote()}>Create note</button>
+              <button className="button" type="button" onClick={() => saveNote()}>Save selected</button>
             </div>
+          </div>
+
+          <div className="knowledge-base-editor-meta">
+            <span>{selectedNote ? `Version ${selectedNote.version}` : "Draft buffer"}</span>
+            <span>{selectedNote ? `Updated ${new Date(selectedNote.updated_at).toLocaleString()}` : "Unsaved"}</span>
+            <span>{body.trim().split(/\s+/).filter(Boolean).length} words</span>
+          </div>
+
+          <label className="knowledge-base-field" htmlFor="note-title">
+            <span>Title</span>
+            <input
+              id="note-title"
+              className="input"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+
+          <label className="knowledge-base-field" htmlFor="note-body">
+            <span>Body</span>
+            <textarea
+              id="note-body"
+              className="textarea textarea-longform knowledge-base-editor-textarea"
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+            />
+          </label>
+
+          <div className="knowledge-base-editor-foot">
+            <p className="status">{status}</p>
+            <Link className="button" href="/assistant">Open Main Room</Link>
+          </div>
+        </main>
+
+        <aside className="knowledge-base-inspector" id="knowledge-graph">
+          <div className="knowledge-base-pane-head">
+            <div>
+              <span className="knowledge-base-kicker">Stellar Graph</span>
+              <h2>Backlinks and metadata</h2>
+            </div>
+          </div>
+          <div className="knowledge-base-graph">
+            <span className="knowledge-base-graph-node active" />
+            <span className="knowledge-base-graph-node node-a" />
+            <span className="knowledge-base-graph-node node-b" />
+            <span className="knowledge-base-graph-node node-c" />
+          </div>
           {selectedNote ? (
-            <div className="observatory-inspector-stack">
+            <dl className="knowledge-base-meta-list">
               <div>
-                <span className="observatory-eyebrow">Selected</span>
-                <p className="console-copy">{selectedNote.id}</p>
+                <dt>Selected</dt>
+                <dd>{selectedNote.id}</dd>
               </div>
               <div>
-                <span className="observatory-eyebrow">Version</span>
-                <p className="console-copy">v{selectedNote.version}</p>
+                <dt>Version</dt>
+                <dd>v{selectedNote.version}</dd>
               </div>
               <div>
-                <span className="observatory-eyebrow">Updated</span>
-                <p className="console-copy">{new Date(selectedNote.updated_at).toLocaleString()}</p>
+                <dt>Updated</dt>
+                <dd>{new Date(selectedNote.updated_at).toLocaleString()}</dd>
               </div>
               <div>
-                <span className="observatory-eyebrow">Word count</span>
-                <p className="console-copy">{body.trim().split(/\s+/).filter(Boolean).length}</p>
+                <dt>Word count</dt>
+                <dd>{body.trim().split(/\s+/).filter(Boolean).length}</dd>
               </div>
-            </div>
+            </dl>
           ) : (
-            <p className="console-copy">Select a note to inspect metadata and future graph links.</p>
+            <p className="console-copy">Select a note to inspect the connected graph and metadata.</p>
           )}
-          <div className="assistant-inline-card">
-            <div className="assistant-inline-card-head">
-              <span>Queue state</span>
-              <span>{outbox.length} pending</span>
-            </div>
+          <div className="knowledge-base-sidecard">
+            <span className="knowledge-base-kicker">Queue State</span>
             <p>
               {outbox.length > 0
-                ? "Queued note mutations stay replayable without losing editor context."
-                : "No note mutations are waiting for replay."}
+                ? "Queued mutations remain replayable without breaking the current editing session."
+                : "No queued note mutations are waiting for replay."}
             </p>
           </div>
-          </AprilPanel>
-        </div>
+        </aside>
       </section>
     </AprilWorkspaceShell>
   );

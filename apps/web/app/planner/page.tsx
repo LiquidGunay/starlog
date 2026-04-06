@@ -515,12 +515,6 @@ export default function PlannerPage() {
       )}
     >
       <section className="april-agenda-layout">
-        <div className="april-page-heading">
-          <span className="april-page-kicker">Agenda</span>
-          <h1>Rituals, time blocks, and daily drift.</h1>
-          <p>Bias the view toward briefing playback, the next cycle, and unresolved sync tension instead of acting like a generic calendar.</p>
-        </div>
-
         <div className="april-agenda-grid">
           <div className="april-agenda-main">
             <AprilPanel className="april-briefing-panel">
@@ -528,6 +522,20 @@ export default function PlannerPage() {
                 <span className="april-panel-kicker">System transmission</span>
                 <h2>Morning Briefing</h2>
                 <p>{oauthStatus?.detail || "Good morning. Today's forecast is clear for focus and synthesis."}</p>
+                <div className="chronos-summary-grid">
+                  <article className="chronos-summary-card">
+                    <strong>{timeline.length}</strong>
+                    <span>scheduled items</span>
+                  </article>
+                  <article className="chronos-summary-card">
+                    <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
+                    <span>open conflicts</span>
+                  </article>
+                  <article className="chronos-summary-card">
+                    <strong>{oauthStatus?.connected ? "Live" : "Local"}</strong>
+                    <span>calendar mode</span>
+                  </article>
+                </div>
               </div>
               <div className="april-briefing-controls">
                 <button className="april-icon-button" type="button">◂</button>
@@ -668,6 +676,11 @@ export default function PlannerPage() {
                   <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
                 </div>
             <div className="chronos-pool">
+              <article className="chronos-pool-card">
+                <span className="chronos-pool-tag">daily return point</span>
+                <strong>{date}</strong>
+                <small>{oauthStatus?.connected ? "Google sync connected" : "Internal agenda mode active"}</small>
+              </article>
               <h2>Unscheduled pool</h2>
               {unscheduledPool.length === 0 ? (
                 <p className="console-copy">No unscheduled tasks or conflicts.</p>

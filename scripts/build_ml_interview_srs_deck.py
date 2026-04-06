@@ -66,6 +66,23 @@ def fetch_from_repo(path: str) -> str:
     raise RuntimeError(f"Failed to fetch {path}")
 
 
+def fetch_chapter_source(path: str) -> str:
+    candidates = [path]
+    if path.endswith(".md"):
+        candidates.append(path[:-3])
+
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            return fetch_from_repo(candidate)
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+
+    if last_error is not None:
+        raise RuntimeError(f"Failed to fetch chapter source {path}: {last_error}") from last_error
+    raise RuntimeError(f"Failed to fetch chapter source {path}")
+
+
 def fetch_answer_source() -> str:
     last_error: Exception | None = None
     for base in ANSWER_BASES:
@@ -447,10 +464,7 @@ def build_deck() -> list[dict[str, str | dict[str, str]]]:
     card_index = 1
 
     for path in paths:
-        try:
-            markdown = fetch_from_repo(path)
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"Failed to fetch chapter source {path}: {exc}") from exc
+        markdown = fetch_chapter_source(path)
         title = first_heading(markdown) or path
         items = parse_list_items(markdown)
         questions = question_from_items(items)

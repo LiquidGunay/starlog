@@ -4,27 +4,26 @@ This directory stores reviewable card decks that can seed Starlog's spaced-repet
 
 Current deck:
 
-- [ML Interviews Book Part II, 5.2.1.2 Questions](/home/ubuntu/starlog-worktrees/ml-interview-srs-bootstrap/docs/srs/ml-interviews-part-ii-probability-deck.json)
-- [ML Interviews Book Part II, full question set](/home/ubuntu/starlog-worktrees/ml-interview-srs-bootstrap/data/ml_interviews_part_ii_qa_cards.jsonl)
+- `data/ml_interviews_part_ii_qa_cards.jsonl`
 
 Import the full Part II deck:
 
 ```bash
-cd /home/ubuntu/starlog-worktrees/ml-interview-srs-bootstrap
+cd /home/ubuntu/starlog
 python3 scripts/bootstrap_ml_interview_srs.py --deck data/ml_interviews_part_ii_qa_cards.jsonl
 ```
 
 Dry-run validation:
 
 ```bash
-cd /home/ubuntu/starlog-worktrees/ml-interview-srs-bootstrap
+cd /home/ubuntu/starlog
 python3 scripts/bootstrap_ml_interview_srs.py --deck data/ml_interviews_part_ii_qa_cards.jsonl --dry-run
 ```
 
 Regenerate the Part II deck:
 
 ```bash
-cd /home/ubuntu/starlog-worktrees/ml-interview-srs-bootstrap
+cd /home/ubuntu/starlog
 python3 scripts/build_ml_interview_srs_deck.py --output data/ml_interviews_part_ii_qa_cards.jsonl
 ```
 
