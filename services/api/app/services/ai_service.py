@@ -1,13 +1,11 @@
 import json
-import os
-from pathlib import Path
 from sqlite3 import Connection
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from app.services import integrations_service
+from app.services import ai_runtime_service, integrations_service
 
 
 class ProviderError(Exception):
@@ -15,58 +13,7 @@ class ProviderError(Exception):
 
 
 LLM_CAPABILITIES = {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}
-PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "ai-runtime" / "prompts"
 AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-nano"
-AI_RUNTIME_BASE_ENV = "STARLOG_AI_RUNTIME_BASE_URL"
-AI_RUNTIME_EXECUTE_PATH = "/v1/execute"
-AI_RUNTIME_CHAT_EXECUTE_PATH = "/v1/chat/execute"
-AI_RUNTIME_EXECUTE_TIMEOUT_SECONDS = 8.0
-AI_RUNTIME_EXECUTE_RETRIES = 2
-AI_RUNTIME_CHAT_EXECUTE_TIMEOUT_SECONDS = 8.0
-AI_RUNTIME_CHAT_EXECUTE_RETRIES = 2
-AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS = 5.0
-AI_RUNTIME_PREVIEW_RETRIES = 2
-
-PREVIEW_WORKFLOWS: dict[str, dict[str, str]] = {
-    "chat_turn": {
-        "path": "/v1/chat/preview",
-        "system_prompt": "chat_turn.system.txt",
-        "user_prompt": "chat_turn.user.txt",
-        "default_title": "Primary Starlog Thread",
-    },
-    "briefing": {
-        "path": "/v1/briefings/preview",
-        "system_prompt": "briefing.system.txt",
-        "user_prompt": "briefing.user.txt",
-        "default_title": "Daily briefing",
-    },
-    "research_digest": {
-        "path": "/v1/research/digests/preview",
-        "system_prompt": "research_digest.system.txt",
-        "user_prompt": "research_digest.user.txt",
-        "default_title": "Research digest",
-    },
-}
-
-
-class _SafePromptDict(dict[str, object]):
-    def __missing__(self, key: str) -> str:
-        return ""
-
-
-def _load_prompt(name: str) -> str:
-    return (PROMPTS_ROOT / name).read_text(encoding="utf-8").strip()
-
-
-def _render_prompt(name: str, **kwargs: object) -> str:
-    rendered_kwargs = {key: _format_prompt_value(value) for key, value in kwargs.items()}
-    return _load_prompt(name).format_map(_SafePromptDict(rendered_kwargs))
-
-
-def _format_prompt_value(value: object) -> object:
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, indent=2, sort_keys=True)
-    return value
 
 
 def _text_source(payload: dict) -> str:
@@ -162,401 +109,18 @@ def _parse_json_object(text: str) -> dict:
         return {}
 
 
-def _request_spec(capability: str, payload: dict) -> tuple[str, str]:
-    source_text = _text_source(payload)
-    title = str(payload.get("title") or "Untitled artifact").strip()
-
-    if capability == "llm_summary":
-        return (
-            _load_prompt("llm_summary.system.txt"),
-            _render_prompt("llm_summary.user.txt", title=title, text=source_text),
-        )
-
-    if capability == "llm_cards":
-        return (
-            _load_prompt("llm_cards.system.txt"),
-            _render_prompt("llm_cards.user.txt", title=title, text=source_text),
-        )
-
-    if capability == "llm_tasks":
-        return (
-            _load_prompt("llm_tasks.system.txt"),
-            _render_prompt("llm_tasks.user.txt", title=title, text=source_text),
-        )
-
-    if capability == "llm_agent_plan":
-        intents = payload.get("intents", [])
-        intent_lines = []
-        if isinstance(intents, list):
-            for item in intents:
-                if not isinstance(item, dict):
-                    continue
-                examples = item.get("examples")
-                examples_text = ", ".join(str(entry) for entry in examples) if isinstance(examples, list) else ""
-                intent_lines.append(
-                    f"- {item.get('name', 'unknown')}: {item.get('description', '')} Examples: {examples_text}"
-                )
-        tools = payload.get("tool_catalog", [])
-        tool_lines = []
-        if isinstance(tools, list):
-            for item in tools:
-                if not isinstance(item, dict):
-                    continue
-                confirmation_policy = item.get("confirmation_policy")
-                confirmation_text = ""
-                if isinstance(confirmation_policy, dict):
-                    mode = str(confirmation_policy.get("mode") or "").strip()
-                    reason = str(confirmation_policy.get("reason") or "").strip()
-                    if mode:
-                        confirmation_text = f" Confirmation policy: {mode}."
-                    if reason:
-                        confirmation_text = f"{confirmation_text} {reason}".strip()
-                tool_lines.append(
-                    f"- {item.get('name', 'unknown')}: {item.get('description', '')} "
-                    f"Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
-                    f"{confirmation_text}"
-                )
-        return (
-            _load_prompt("llm_agent_plan.system.txt"),
-            _render_prompt(
-                "llm_agent_plan.user.txt",
-                current_date=str(payload.get("current_date") or "unknown"),
-                command=str(payload.get("command") or source_text),
-                intent_lines="\n".join(intent_lines) if intent_lines else "- none provided",
-                tool_lines="\n".join(tool_lines) if tool_lines else "- none provided",
-            ),
-        )
-
-    return ("", source_text)
-
-
-def _runtime_preview_url(path: str) -> str | None:
-    base = os.environ.get(AI_RUNTIME_BASE_ENV, "").strip()
-    if not _valid_url(base):
-        return None
-    return f"{base.rstrip('/')}{path}"
-
-
-def _runtime_execute_url() -> str | None:
-    return _runtime_preview_url(AI_RUNTIME_EXECUTE_PATH)
-
-
-def _runtime_chat_execute_url() -> str | None:
-    return _runtime_preview_url(AI_RUNTIME_CHAT_EXECUTE_PATH)
-
-
-def _invoke_runtime_preview(workflow: str, payload: dict) -> dict:
-    config = PREVIEW_WORKFLOWS.get(workflow)
-    if config is None:
-        raise ProviderError(f"Unsupported preview workflow: {workflow}")
-
-    url = _runtime_preview_url(config["path"])
-    title = str(payload.get("title") or config["default_title"]).strip() or config["default_title"]
-    text = _text_source(payload)
-    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-
-    if not url:
-        return {
-            "workflow": workflow,
-            "provider_used": "local_prompt_preview",
-            "model": AI_RUNTIME_DEFAULT_MODEL,
-            "system_prompt": _load_prompt(config["system_prompt"]),
-            "user_prompt": _render_prompt(
-                config["user_prompt"],
-                title=title,
-                text=text,
-                context=_format_prompt_value(context),
-            ),
-            "context": context,
-        }
-
-    request = Request(
-        url,
-        data=json.dumps({"title": title, "text": text, "context": context}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    last_error: Exception | None = None
-    for _attempt in range(AI_RUNTIME_PREVIEW_RETRIES):
-        try:
-            with urlopen(request, timeout=AI_RUNTIME_PREVIEW_TIMEOUT_SECONDS) as response:  # noqa: S310
-                body = response.read().decode("utf-8")
-            decoded = json.loads(body)
-            if not isinstance(decoded, dict):
-                raise ProviderError("AI runtime returned a non-object preview payload")
-            return {
-                "provider_used": "ai_runtime",
-                "workflow": str(decoded.get("workflow") or workflow),
-                "model": str(decoded.get("model") or AI_RUNTIME_DEFAULT_MODEL),
-                "system_prompt": str(decoded.get("system_prompt") or ""),
-                "user_prompt": str(decoded.get("user_prompt") or ""),
-                "context": decoded.get("context") if isinstance(decoded.get("context"), dict) else context,
-            }
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise ProviderError(f"AI runtime HTTP {exc.code}: {detail or 'request failed'}") from exc
-        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-            last_error = exc
-
-    if last_error is not None:
-        raise ProviderError(f"AI runtime preview request failed: {last_error}") from last_error
-    raise ProviderError("AI runtime preview request failed")
-
-
 def preview_workflow(workflow: str, payload: dict) -> dict:
-    return _invoke_runtime_preview(workflow, payload)
-
-
-def _latest_tool_name(context: dict) -> str | None:
-    traces = context.get("recent_tool_traces")
-    if not isinstance(traces, list) or not traces:
-        return None
-    first = traces[0]
-    if not isinstance(first, dict):
-        return None
-    tool_name = str(first.get("tool_name") or "").strip()
-    return tool_name or None
-
-
-def _local_chat_turn_execution(payload: dict) -> dict:
-    title = str(payload.get("title") or "Primary Starlog Thread").strip() or "Primary Starlog Thread"
-    text = _text_source(payload)
-    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-    session_state = context.get("session_state") if isinstance(context.get("session_state"), dict) else {}
-    last_intent = str(session_state.get("last_matched_intent") or "").strip()
-    latest_tool = _latest_tool_name(context)
-    excerpt = " ".join(text.split())[:180] if text else "No user message was provided."
-
-    response_parts = [f"Captured into {title}: {excerpt}"]
-    if last_intent:
-        response_parts.append(f"The latest tracked intent is {last_intent.replace('_', ' ')}.")
-    elif latest_tool:
-        response_parts.append(f"The latest execution trace is {latest_tool.replace('_', ' ')}.")
-    else:
-        response_parts.append("The persistent thread is ready for the next explicit action.")
-    response_text = " ".join(response_parts)
-
-    cards = [
-        {
-            "kind": "assistant_summary",
-            "version": 1,
-            "title": "Chat turn",
-            "body": response_text,
-            "metadata": {
-                "workflow": "chat_turn",
-                "provider": "local_prompt_preview",
-                "model": AI_RUNTIME_DEFAULT_MODEL,
-            },
-        }
-    ]
-    if last_intent or latest_tool:
-        cards.append(
-            {
-                "kind": "thread_context",
-                "version": 1,
-                "title": "Thread context",
-                "body": (
-                    f"Last intent: {last_intent.replace('_', ' ')}"
-                    if last_intent
-                    else f"Latest trace: {latest_tool.replace('_', ' ')}"
-                ),
-                "metadata": {
-                    "last_matched_intent": last_intent,
-                    "latest_tool_name": latest_tool,
-                },
-            }
-        )
-
-    return {
-        "workflow": "chat_turn",
-        "provider_used": "local_prompt_preview",
-        "model": AI_RUNTIME_DEFAULT_MODEL,
-        "system_prompt": _load_prompt("chat_turn.system.txt"),
-        "user_prompt": _render_prompt(
-            "chat_turn.user.txt",
-            title=title,
-            text=text,
-            context=_format_prompt_value(context),
-        ),
-        "response_text": response_text,
-        "cards": cards,
-        "session_state": {
-            "last_turn_kind": "chat_turn",
-            "last_user_message": text,
-            "last_assistant_response": response_text,
-        },
-        "metadata": {
-            "title": title,
-            "recent_message_count": len(context.get("recent_messages") or []),
-            "recent_trace_count": len(context.get("recent_tool_traces") or []),
-        },
-    }
+    try:
+        return ai_runtime_service.preview_workflow(workflow, payload)
+    except ai_runtime_service.RuntimeServiceError as exc:
+        raise ProviderError(str(exc)) from exc
 
 
 def execute_chat_turn(payload: dict) -> dict:
-    url = _runtime_chat_execute_url()
-    title = str(payload.get("title") or "Primary Starlog Thread").strip() or "Primary Starlog Thread"
-    text = _text_source(payload)
-    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-
-    if not url:
-        return _local_chat_turn_execution(payload)
-
-    request = Request(
-        url,
-        data=json.dumps({"title": title, "text": text, "context": context}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    last_error: Exception | None = None
-    for _attempt in range(AI_RUNTIME_CHAT_EXECUTE_RETRIES):
-        try:
-            with urlopen(request, timeout=AI_RUNTIME_CHAT_EXECUTE_TIMEOUT_SECONDS) as response:  # noqa: S310
-                body = response.read().decode("utf-8")
-            decoded = json.loads(body)
-            if not isinstance(decoded, dict):
-                raise ProviderError("AI runtime returned a non-object chat payload")
-            return {
-                "workflow": str(decoded.get("workflow") or "chat_turn"),
-                "provider_used": str(decoded.get("provider_used") or "ai_runtime"),
-                "model": str(decoded.get("model") or AI_RUNTIME_DEFAULT_MODEL),
-                "system_prompt": str(decoded.get("system_prompt") or ""),
-                "user_prompt": str(decoded.get("user_prompt") or ""),
-                "response_text": str(decoded.get("response_text") or ""),
-                "cards": decoded.get("cards") if isinstance(decoded.get("cards"), list) else [],
-                "session_state": decoded.get("session_state") if isinstance(decoded.get("session_state"), dict) else {},
-                "metadata": decoded.get("metadata") if isinstance(decoded.get("metadata"), dict) else {},
-            }
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise ProviderError(f"AI runtime HTTP {exc.code}: {detail or 'request failed'}") from exc
-        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-            last_error = exc
-
-    if last_error is not None:
-        raise ProviderError(f"AI runtime chat request failed: {last_error}") from last_error
-    raise ProviderError("AI runtime chat request failed")
-
-
-def _local_runtime_execution(capability: str, payload: dict) -> dict:
-    system_prompt, user_prompt = _request_spec(capability, payload)
-    title = str(payload.get("title") or "Untitled").strip() or "Untitled"
-    source_text = _text_source(payload)
-    excerpt = " ".join(source_text.split())[:280] if source_text else ""
-
-    if capability == "llm_summary":
-        summary = (
-            f"Summary draft for {title}: {excerpt}"
-            if excerpt
-            else f"Summary draft for {title}: no source text was provided."
-        )
-        output = {"summary": summary, "text": summary}
-    elif capability == "llm_cards":
-        answer = excerpt or f"Review the key ideas from {title}."
-        output = {
-            "cards": [
-                {
-                    "prompt": f"What is the core idea in {title}?",
-                    "answer": answer,
-                    "card_type": "qa",
-                },
-                {
-                    "prompt": f"What detail from {title} is most worth revisiting?",
-                    "answer": answer[:120] or title,
-                    "card_type": "qa",
-                },
-            ]
-        }
-    elif capability == "llm_tasks":
-        output = {
-            "tasks": [
-                {
-                    "title": f"Review {title}",
-                    "estimate_min": 20,
-                    "priority": 3,
-                }
-            ]
-        }
-    elif capability == "llm_agent_plan":
-        command = str(payload.get("command") or source_text or "").strip()
-        tools = payload.get("tool_catalog")
-        available_tools = {
-            str(item.get("name"))
-            for item in tools
-            if isinstance(tools, list) and isinstance(item, dict)
-        }
-        if "create_task" in available_tools and "task" in command.lower():
-            output = {
-                "planner": "runtime_prompt_fallback",
-                "matched_intent": "create_task",
-                "summary": "Draft a follow-up task from the request and require confirmation before committing.",
-                "tool_calls": [
-                    {
-                        "tool_name": "create_task",
-                        "arguments": {"title": command[:120] or "Follow up", "priority": 3},
-                        "message": "Create a task from the assisted command",
-                    }
-                ],
-            }
-        else:
-            output = {
-                "planner": "runtime_prompt_fallback",
-                "matched_intent": "assistant_ai",
-                "summary": "No direct runtime fallback tool call matched the request.",
-                "tool_calls": [],
-            }
-    else:
-        raise ProviderError(f"Unsupported runtime capability: {capability}")
-
-    return {
-        "provider_used": "local_ai_runtime",
-        "capability": capability,
-        "model": AI_RUNTIME_DEFAULT_MODEL,
-        "system_prompt": system_prompt,
-        "user_prompt": user_prompt,
-        "output": output,
-    }
-
-
-def _invoke_runtime_execute(capability: str, payload: dict, prefer_local: bool) -> dict:
-    url = _runtime_execute_url()
-    if not url:
-        return _local_runtime_execution(capability, payload)
-
-    request = Request(
-        url,
-        data=json.dumps({"capability": capability, "payload": payload, "prefer_local": prefer_local}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    last_error: Exception | None = None
-    for _attempt in range(AI_RUNTIME_EXECUTE_RETRIES):
-        try:
-            with urlopen(request, timeout=AI_RUNTIME_EXECUTE_TIMEOUT_SECONDS) as response:  # noqa: S310
-                body = response.read().decode("utf-8")
-            decoded = json.loads(body)
-            if not isinstance(decoded, dict):
-                raise ProviderError("AI runtime returned a non-object execution payload")
-            output = decoded.get("output")
-            if not isinstance(output, dict):
-                output = {}
-            return {
-                "provider_used": str(decoded.get("provider_used") or "ai_runtime"),
-                "capability": str(decoded.get("capability") or capability),
-                "model": str(decoded.get("model") or AI_RUNTIME_DEFAULT_MODEL),
-                "system_prompt": str(decoded.get("system_prompt") or ""),
-                "user_prompt": str(decoded.get("user_prompt") or ""),
-                "output": output,
-            }
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise ProviderError(f"AI runtime HTTP {exc.code}: {detail or 'request failed'}") from exc
-        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-            last_error = exc
-
-    if last_error is not None:
-        raise ProviderError(f"AI runtime execution request failed: {last_error}") from last_error
-    raise ProviderError("AI runtime execution request failed")
+    try:
+        return ai_runtime_service.execute_chat_turn(payload)
+    except ai_runtime_service.RuntimeServiceError as exc:
+        raise ProviderError(str(exc)) from exc
 
 
 def _invoke_openai_compatible(provider_name: str, config: dict, capability: str, payload: dict) -> dict:
@@ -566,7 +130,7 @@ def _invoke_openai_compatible(provider_name: str, config: dict, capability: str,
 
     headers = {"Content-Type": "application/json", **integrations_service.build_auth_headers(config)}
     model = str(config.get("model") or payload.get("model") or "default").strip() or "default"
-    system_prompt, user_prompt = _request_spec(capability, payload)
+    system_prompt, user_prompt = ai_runtime_service.capability_prompts(capability, payload)
 
     request_payload = {
         "model": model,
@@ -666,7 +230,10 @@ def _api_provider(conn: Connection | None, capability: str, payload: dict) -> di
         raise ProviderError("OCR is strict on-device only")
 
     if capability in LLM_CAPABILITIES:
-        return _invoke_runtime_execute(capability, payload, prefer_local=True)
+        try:
+            return ai_runtime_service.execute_runtime_capability(capability, payload, prefer_local=True)
+        except ai_runtime_service.RuntimeServiceError as exc:
+            raise ProviderError(str(exc)) from exc
 
     if capability == "stt":
         return {"provider": "api_fallback", "transcript": payload.get("text_hint", "")}

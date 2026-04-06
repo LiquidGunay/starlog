@@ -118,6 +118,20 @@ STARLOG_UPLOAD_KEY_PASSWORD='***' \
 ./gradlew assembleRelease
 ```
 
+Before sharing a production QA APK with a phone tester, run the release smoke gate:
+
+```bash
+cd /home/ubuntu/starlog
+APK_PATH=/home/ubuntu/starlog_production_bundle/android/starlog-<v>-<n>-signed.apk \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=<SERIAL> \
+STAGE_TO_WINDOWS=1 \
+pnpm test:android:release-smoke
+```
+
+That preflight checks for the Hermes runtime libs, stages the APK into a Windows-visible path when
+needed, and reuses the normal Android smoke flow for launch/crash validation.
+
 For local non-production troubleshooting only, you can temporarily allow debug signing in
 release tasks with:
 

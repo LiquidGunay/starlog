@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -53,6 +55,19 @@ def test_build_deck_uses_answer_repo_when_available(monkeypatch) -> None:
     assert card["answer"] == "X is the first quantity."
     assert card["metadata"]["answer_source"] == "zafstojano/ml-interview-questions-and-answers"
     assert card["metadata"]["source_url"] == "https://huyenchip.com/ml-interviews-book/contents/test.html"
+
+
+def test_build_deck_raises_on_chapter_fetch_failure(monkeypatch) -> None:
+    def fake_fetch_from_repo(path: str) -> str:
+        if path == "SUMMARY.md":
+            return "## Part II: Questions\n- [1.1](contents/test.md)\n## Appendix"
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(build, "fetch_from_repo", fake_fetch_from_repo)
+    monkeypatch.setattr(build, "fetch_answer_source", lambda: "")
+
+    with pytest.raises(RuntimeError, match="Failed to fetch chapter source contents/test.md"):
+        build.build_deck()
 
 
 def test_build_note_block_content_contains_provenance() -> None:

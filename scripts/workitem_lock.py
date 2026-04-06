@@ -55,6 +55,9 @@ class Registry:
         self.root = root
         self.workitems_file = root / "workitems.json"
         self.audit_file = root / "audit.jsonl"
+        self.review_backlog_file = root / "review_backlog.json"
+        self.branch_cleanup_file = root / "branch_cleanup.json"
+        self.design_queue_file = root / "design_queue.json"
         self.locks_dir = root / "locks"
         self.registry_lock = root / ".registry.lock"
 
@@ -65,6 +68,13 @@ class Registry:
             self._write_json_atomic(self.workitems_file, {"items": []})
         if not self.audit_file.exists():
             self.audit_file.touch()
+        for path in (
+            self.review_backlog_file,
+            self.branch_cleanup_file,
+            self.design_queue_file,
+        ):
+            if not path.exists():
+                self._write_json_atomic(path, {"items": []})
         if not self.registry_lock.exists():
             self.registry_lock.touch()
 

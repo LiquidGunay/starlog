@@ -87,7 +87,7 @@ function ShareTargetContent() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Command Center</p>
+          <p className="eyebrow">Knowledge Base</p>
           <h1>PWA share capture</h1>
           <p className="console-copy">
             Installed PWA shares can land here, then you can capture them into the artifact inbox with provenance.

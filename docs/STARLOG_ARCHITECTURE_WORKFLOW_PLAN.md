@@ -1,112 +1,88 @@
-# Starlog Architecture + Workflow Plan (Security, Offline PWA, Shared Worktree Locking)
+# Starlog Architecture and Workflow Plan
 
-Last updated: 2026-03-14
+This document is the docs-scoped execution companion to [PLAN.md](/home/ubuntu/starlog/PLAN.md).
+`PLAN.md` remains the canonical product and architecture direction. This file exists to keep the
+current observatory implementation order, system boundaries, and workstream decomposition in one
+place under `docs/`, per the repo contract in `AGENTS.md`.
 
-## Summary
-- Keep `screen_design` as source of truth for all screens/components it explicitly shows.
-- Implement additional functionality (offline notes/voice queue, bridge routing, conflict tooling, proactive features) in the same visual language/tokens/layout style of `screen_design`.
-- Keep Railway as canonical control plane (sync, metadata, jobs, audit), with compute prioritized on bridges.
-- Adopt secure worker communication and key handling as first-class architecture requirements.
-- Replace repo-committed lock coordination with a shared live lock registry under common `.git` for all worktrees.
+## Current Direction
 
-## Implementation Changes
-### Design contract
-- Treat `screen_design` IA labels/surfaces as canonical for shown items (`Command Center`, `Artifact Nexus`, `Neural Sync`, `Chronos Matrix`, mobile companion surfaces).
-- New capabilities must be added as extensions of those surfaces (panels, cards, drawers, queue indicators), not as style-divergent standalone UIs.
+- The active UX language is `Main Room`, `Knowledge Base`, `SRS Review`, and `Agenda`.
+- Chat and voice are the canonical interaction model.
+- The PWA is the primary synced workspace.
+- Mobile is a focused companion for capture, alarms/offline briefing playback, and quick review.
+- The April 2026 design pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026`
+  is the only active design source of truth for this implementation pass.
 
-### Execution policy model (capability-specific)
-- Replace/extend execution targets for `llm`, `stt`, `tts` to: `mobile_bridge`, `desktop_bridge`, `api` (priority-ordered).
-- Keep OCR local-only semantics.
-- Default priority: `mobile_bridge -> desktop_bridge -> api`.
-- STT/TTS bridge runtimes host local models; LLM on bridges runs Codex integration.
-- API fallback remains OpenAI-compatible endpoint with configurable base URL/model.
+## System Boundaries
 
-### Canonical queue + bridge claiming
-- All jobs are created and stored in Railway (single source of truth).
-- Mobile/desktop workers only claim from Railway; no peer-to-peer queue sync in v1.
-- Server claim arbitration uses policy order + worker heartbeat availability so the highest available preferred target claims first.
+### `services/api`
 
-### Security model
-- Production transport: HTTPS-only for worker/API communication (localhost HTTP allowed for local dev only).
-- Worker auth flow: one-time pairing -> short-lived access token + refresh token -> periodic heartbeat.
-- Worker tokens are capability-scoped and revocable.
-- Provider/API keys remain encrypted at rest server-side and redacted in responses/logs.
-- Mobile and desktop tokens/secrets move to OS secure storage (not plain SQLite/file persistence).
-- Add audit trail for pairing, token refresh, worker claim/complete, and revocation events.
+- Owns auth, persistence, sync, calendar/task/review/artifact CRUD, queues, and tool execution.
+- Stores the canonical conversation thread, messages, tool traces, and session-state reset data.
+- Remains the stable backend contract for current web and mobile clients.
 
-### Offline-first PWA ("full offline prep pack")
-- Pre-cache app shell and critical route bundles for all main tabs.
-- Add explicit "Offline Warmup" flow to preload route data snapshots.
-- Ensure major tabs open/render offline using cached IndexedDB state even when API calls fail.
-- Add offline mutation queues for notes create/update and review submissions.
-- Add offline voice capture queue in PWA (persist media blob locally; upload/transcribe when online).
-- Keep visible sync/queue status per tab.
+### `services/ai-runtime`
 
-### Conflict defensibility
-- Add optimistic concurrency with entity `revision` and mutation `base_revision`.
-- On revision mismatch, return structured conflict (no silent overwrite).
-- Provide explicit resolution actions: `local_wins`, `remote_wins`, `merged_patch`.
-- Keep full mutation/conflict audit history for traceability.
+- Owns prompt templates, workflow assembly, provider adapters, and eval fixtures.
+- Should remain the single source of truth for chat-turn prompt construction and orchestration.
+- The API may proxy or fall back to local runtime helpers, but it should not accumulate duplicate
+  prompt/workflow logic over time.
 
-### Shared multi-agent workitem locking in `.git`
-- Canonical coordination root: `$(git rev-parse --git-common-dir)/codex-workitems/`.
-- Files:
-  - `workitems.json` (authoritative task list/status/owner metadata)
-  - `locks/<workitem_id>.lock` (active lock record)
-  - `audit.jsonl` (append-only lock lifecycle log)
-  - `.registry.lock` (file lock for atomic edits)
-- Lock protocol:
-  - claim before implementation starts,
-  - heartbeat every 2 minutes,
-  - stale lock TTL 10 minutes,
-  - release on completion/handoff,
-  - forced steal only with explicit reason recorded in audit.
-- Keep `docs/CODEX_PARALLEL_WORK_ITEMS.md` as human-readable backlog mirror; live lock authority is `.git` registry.
+### Web PWA
 
-## Public API / Interface Changes
-### Execution policy schema
-- Update policy targets and `available_targets` to include `mobile_bridge`, `desktop_bridge`, `api`.
-- Return resolved route metadata per capability for clients.
+- Hosts the canonical `Main Room` conversation surface.
+- Hosts the full `Knowledge Base`, `SRS Review`, and `Agenda` workspaces.
+- Keeps operator/debug lanes available but subordinate to the conversation and support views.
 
-### Worker management APIs
-- Add worker pairing/auth/refresh/heartbeat/list/revoke endpoints.
+### Mobile Companion
 
-### AI jobs
-- Add job routing metadata fields: requested target order, selected target, claimed worker class.
-- Enforce scoped claims by worker capability/target class.
+- Shares the same primary conversation thread as web.
+- Prioritizes Home chat, quick capture, alarms/briefings, and quick review.
+- Should keep per-surface draft state independent so each tab behaves like its own tool.
 
-### Conflict APIs
-- Add conflict list/get/resolve endpoints and conflict payload shape.
+## Current Workstream Order
 
-### Client storage interfaces
-- Add secure-token storage abstraction in mobile/desktop clients.
-- Extend PWA offline queue schema to support persisted voice media queue items.
+1. Runtime boundary cleanup
+   - Keep `services/ai-runtime` as the prompt/workflow owner.
+   - Reduce API-side duplication and keep fallback loading lazy and deployment-safe.
+2. Main Room transcript and tool-detail pattern
+   - Conversation first.
+   - Inline cards and tool traces stay attached to assistant turns.
+   - Navigation-style card actions should route to the correct workspace.
+3. Shared observatory component kit
+   - Reusable shell, panel, navigation, transcript, and card primitives.
+   - Preserve core interaction behaviors like collapsible side panes during redesign.
+4. Support-view redesign on stable routes
+   - `Knowledge Base` as the graph/editor/explorer workspace.
+   - `SRS Review` as a focused review surface with collapsible context.
+   - `Agenda` as the time-blocking and briefing workspace with collapsible sidecar context.
+5. Mobile decomposition and redesign
+   - Keep `Home / Notes / Calendar / Review`.
+   - Move shared logic out of `App.tsx` into screen modules over time.
+   - Maintain independent state for Home drafts, Notes capture instructions, and operator/debug commands.
 
-## Test Plan
-### Security
-- Verify HTTPS enforcement in production mode.
-- Verify token expiry/refresh/revoke behavior.
-- Verify secrets never appear unredacted in logs/UI responses.
+## Current UI Interaction Rules
 
-### Routing
-- Validate policy priority behavior (`mobile_bridge -> desktop_bridge -> api`) under varying worker availability.
-- Validate mobile-originated jobs can be processed by desktop bridge when mobile bridge unavailable.
+- Main transcript actions must do what they say.
+  - Reuse actions may populate the composer.
+  - Open actions must navigate to the target surface.
+- Side panes across core web surfaces must remain collapsible.
+- Mobile tabs must not share lossy composer state.
+- Operator and diagnostics controls stay reachable, but they are not the primary visual center.
 
-### Offline
-- Validate offline warmup enables all key tabs to open offline.
-- Validate offline note edits and offline voice capture queue replay successfully after reconnect.
-- Validate offline review queue replay for PWA.
+## Immediate Follow-up Work
 
-### Conflict
-- Simulate concurrent mobile/desktop updates to same entity and verify conflict creation + explicit resolution.
+- Complete the shared card-action model across more card kinds and surfaces.
+- Finish the April visual pass for mobile screens after the structural split.
+- Expand Playwright and screenshot proof for Main Room, support views, and mobile tabs.
+- Continue reducing API/runtime duplication after the current PR fixes land.
 
-### Locking
-- Concurrency test: two agents claim same workitem simultaneously; exactly one succeeds.
-- TTL/heartbeat test for stale lock reclaim.
-- Audit integrity test for claim/release/force-steal lifecycle.
+## Source Hierarchy
 
-## Assumptions and Defaults
-- All concurrent agents/worktrees share the same physical repository common `.git` directory.
-- Railway API runs behind HTTPS in production.
-- `screen_design` governs UI structure/style for shown surfaces; extra capabilities are integrated without breaking that design language.
-- Bridge Codex integration is treated as mandatory for `mobile_bridge` and `desktop_bridge`, with API fallback preserved for availability.
+When documents disagree, use this order:
+
+1. `PLAN.md`
+2. `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**`
+3. This file
+4. Current implementation/status/runbook docs

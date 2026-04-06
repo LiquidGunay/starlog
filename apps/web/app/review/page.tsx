@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { usePaneCollapsed } from "../lib/pane-state";
@@ -27,11 +29,11 @@ const REVIEW_CARDS_SNAPSHOT = "review.cards";
 const REVIEW_SHOW_ANSWER_SNAPSHOT = "review.show_answer";
 const REVIEW_CURRENT_INDEX_SNAPSHOT = "review.current_index";
 const REVIEW_STATS_SNAPSHOT = "review.stats";
-const REVIEW_SIDECAR_PANE_SNAPSHOT = "review.pane.sidecar";
+const REVIEW_CONTEXT_PANE_SNAPSHOT = "review.context_pane.collapsed";
 
 export default function ReviewPage() {
+  const pathname = usePathname();
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
-  const sidecarPane = usePaneCollapsed(REVIEW_SIDECAR_PANE_SNAPSHOT);
   const missingToken = !token;
   const missingApiBase = !apiBase;
   const missingConfig = missingToken || missingApiBase;
@@ -46,6 +48,7 @@ export default function ReviewPage() {
     () => readEntitySnapshot<SessionStats>(REVIEW_STATS_SNAPSHOT, { reviewed: 0, again: 0, good: 0, easy: 0 }),
   );
   const [status, setStatus] = useState("Ready");
+  const contextPane = usePaneCollapsed(REVIEW_CONTEXT_PANE_SNAPSHOT);
   const currentCard = cards[currentIndex] ?? null;
   const duePreview = useMemo(() => cards.slice(0, 6), [cards]);
 
@@ -96,11 +99,11 @@ export default function ReviewPage() {
 
   async function loadDue() {
     if (missingApiBase) {
-      setStatus("API base missing. Set it in Runtime or Command Center.");
+      setStatus("API base missing. Set it in Runtime or Main Room.");
       return;
     }
     if (missingToken) {
-      setStatus("Bearer token missing. Add it in Runtime or Command Center.");
+      setStatus("Bearer token missing. Add it in Runtime or Main Room.");
       return;
     }
     try {
@@ -185,27 +188,58 @@ export default function ReviewPage() {
   const progressActive = reviewedTotal === 0 ? 0 : Math.min(progressSegments, Math.round((stats.reviewed / reviewedTotal) * progressSegments));
 
   return (
-    <main className="neural-sync-shell">
-      <header className="neural-sync-header">
-        <Link className="neural-sync-back" href="/assistant">
-          ← Command Center
-        </Link>
-        <div className="neural-sync-progress">
-          <span>Sync Progress</span>
-          <span className="sync-bars">
-            {Array.from({ length: progressSegments }).map((_, index) => (
-              <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
-            ))}
-          </span>
-          <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="srs-review"
+      eyebrow="SRS Review"
+      title="Hold one card in focus and keep the deck context quiet."
+      description="Keep the review surface immersive, but leave queue state, deck health, and the route back to the Main Room within one click."
+      statusLabel={currentCard ? "Review live" : "Queue waiting"}
+      stats={[
+        { label: "Due now", value: String(cards.length) },
+        { label: "Reviewed", value: String(stats.reviewed) },
+        { label: "Again / Good", value: `${stats.again} / ${stats.good}` },
+      ]}
+      actions={
+        <div className="button-row">
+          <Link className="button" href="/assistant">Open Main Room</Link>
+          <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
         </div>
-      </header>
-
-      <section className="neural-sync-main">
-        <div className="sync-card">
+      }
+      sideNote={{
+        title: "Review posture",
+        body: "Keep the answer hidden until you commit to retrieval. Deck state and progress stay peripheral.",
+        meta: currentCard ? `Card ${currentIndex + 1} of ${Math.max(cards.length, 1)}` : "Awaiting due queue",
+      }}
+      orbitCards={[
+        {
+          kicker: "Deck queue",
+          title: `${cards.length} cards due`,
+          body: duePreview[0]?.prompt || "Load due cards to start the next focused pass.",
+        },
+        {
+          kicker: "Session split",
+          title: `${stats.again} again · ${stats.good} good · ${stats.easy} easy`,
+          body: stats.reviewed > 0 ? "Current session response mix." : "Ratings will accumulate as soon as you review cards.",
+        },
+        {
+          kicker: "Main Room",
+          title: "Return to the shared thread",
+          body: "Use chat to inspect supporting context before jumping back into review.",
+          href: "/assistant",
+          actionLabel: "Open Main Room",
+        },
+      ]}
+    >
+      <section className="observatory-grid observatory-grid-wide">
+        <ObservatoryPanel
+          kicker="Focus Session"
+          title={currentCard ? "Current review card" : "Review queue empty"}
+          meta="Reveal the answer, rate the card, and keep the rest of the deck out of the way until you need it."
+        >
           {currentCard ? (
             <>
-              <span className="sync-tag">Tag: active_queue</span>
+              <span className="sync-tag">due now</span>
               <div className="sync-prompt">
                 <span>
                   {currentCard.prompt.split(" ").map((word, index) => (
@@ -216,102 +250,107 @@ export default function ReviewPage() {
                   ))}
                 </span>
               </div>
-              <button
-                className="button sync-reveal"
-                type="button"
-                onClick={() => setShowAnswer((previous) => !previous)}
-              >
-                {showAnswer ? "Hide Answer" : "Tap to Reveal"}
-              </button>
+              <div className="button-row">
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => setShowAnswer((previous) => !previous)}
+                >
+                  {showAnswer ? "Hide answer" : "Reveal answer"}
+                </button>
+              </div>
               {showAnswer ? (
                 <div className="sync-answer">
                   <p className="console-copy">Due: {new Date(currentCard.due_at).toLocaleString()}</p>
                   <p>{currentCard.answer}</p>
                 </div>
               ) : null}
+              <div className="sync-rating-row">
+                <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+                  <span>Again</span>
+                  <small>{"< 1m"}</small>
+                </button>
+                <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
+                  <span>Hard</span>
+                  <small>1d</small>
+                </button>
+                <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
+                  <span>Good</span>
+                  <small>3d</small>
+                </button>
+                <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
+                  <span>Easy</span>
+                  <small>5d</small>
+                </button>
+              </div>
             </>
           ) : (
             <>
-              <span className="sync-tag">Tag: queue_empty</span>
+              <span className="sync-tag">queue empty</span>
               <div className="sync-prompt">No due cards.</div>
-              <p className="sync-reveal">
+              <p className="console-copy">
                 {missingConfig
                   ? "Connect to the API and load the queue to start reviewing."
                   : "Load due cards to resume review."}
               </p>
               {missingConfig ? (
                 <div className="button-row">
-                  <Link className="button" href="/runtime">Open Runtime</Link>
-                  <Link className="button" href="/assistant">Open Command Center</Link>
+                  <Link className="button" href="/runtime">Open runtime</Link>
+                  <Link className="button" href="/assistant">Open Main Room</Link>
                 </div>
               ) : null}
             </>
           )}
-        </div>
-
-        <div className="sync-rating-row">
-          <button className="sync-rating-btn again" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
-            <span>Again</span>
-            <small>{"< 1m"}</small>
-          </button>
-          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(2)} disabled={!currentCard}>
-            <span>Hard</span>
-            <small>1d</small>
-          </button>
-          <button className="sync-rating-btn" type="button" onClick={() => reviewCurrent(4)} disabled={!currentCard}>
-            <span>Good</span>
-            <small>3d</small>
-          </button>
-          <button className="sync-rating-btn easy" type="button" onClick={() => reviewCurrent(5)} disabled={!currentCard}>
-            <span>Easy</span>
-            <small>5d</small>
-          </button>
-        </div>
-
-        <div className="sync-status-bar">
-          <span>Queue remaining: {cards.length}</span>
-          <span>Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</span>
-          <span>{status}</span>
-        </div>
+          <p className="status">{status}</p>
+        </ObservatoryPanel>
 
         <PaneRestoreStrip
-          actions={sidecarPane.collapsed ? [{ id: "review-sidecar", label: "Show review sidecar", onClick: sidecarPane.expand }] : []}
+          actions={contextPane.collapsed ? [{ id: "review-context", label: "Show deck context", onClick: contextPane.expand }] : []}
         />
-
-        {!sidecarPane.collapsed ? <div className="sync-sidecar glass panel">
-          <div className="sync-sidecar-head">
-            <div>
-              <p className="eyebrow">Neural Sync</p>
-              <h2>Focused review session</h2>
+        {!contextPane.collapsed ? (
+          <ObservatoryPanel
+            kicker="Deck Context"
+            title="Queue and session health"
+            meta="Keep a short preview of what is due next, plus current session progress."
+            actions={<PaneToggleButton label="Hide pane" onClick={contextPane.collapse} />}
+          >
+            <div className="neural-sync-progress">
+              <span>Progress</span>
+              <span className="sync-bars">
+                {Array.from({ length: progressSegments }).map((_, index) => (
+                  <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
+                ))}
+              </span>
+              <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
             </div>
-            <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
-          </div>
-          <div className="button-row">
-            <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh Due Cards</button>
-            <button
-              className="button"
-              type="button"
-              onClick={() => setShowAnswer((previous) => !previous)}
-              disabled={!currentCard}
-            >
-              {showAnswer ? "Hide Answer" : "Reveal Answer"}
-            </button>
-          </div>
-          <p className="status">{status}</p>
-          <h2>Queue preview</h2>
-          {duePreview.length === 0 ? (
-            <p className="console-copy">
-              {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
-            </p>
-          ) : (
-            <div className="scroll-panel">
-              {duePreview.map((card) => (
-                <p key={card.id} className="console-copy">{card.prompt}</p>
-              ))}
+            <p className="console-copy">Queue remaining: {cards.length}</p>
+            <p className="console-copy">Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</p>
+            <div className="button-row">
+              <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => setShowAnswer((previous) => !previous)}
+                disabled={!currentCard}
+              >
+                {showAnswer ? "Hide answer" : "Reveal answer"}
+              </button>
             </div>
-          )}
-        </div> : null}
+            <h3 className="observatory-panel-title">Queue preview</h3>
+            {duePreview.length === 0 ? (
+              <p className="console-copy">
+                {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
+              </p>
+            ) : (
+              <div className="scroll-panel">
+                {duePreview.map((card) => (
+                  <p key={card.id} className="console-copy">{card.prompt}</p>
+                ))}
+              </div>
+            )}
+          </ObservatoryPanel>
+        ) : null}
       </section>
-    </main>
+    </ObservatoryWorkspaceShell>
   );
 }

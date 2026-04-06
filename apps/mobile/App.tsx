@@ -25,6 +25,13 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
+import {
+  MobileCalendarSurface,
+  MobileHomeSurface,
+  MobileNotesSurface,
+  MobileReviewSurface,
+} from "./src/mobile-surfaces";
+import { MOBILE_TABS, mobileTabFromParam, type MobileTab } from "./src/navigation";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -151,6 +158,8 @@ type PersistedState = {
   executionPolicy: ExecutionPolicy;
   voiceRoutePreference: VoiceRoutePreference;
   briefingPlaybackPreference: BriefingPlaybackPreference;
+  homeDraft?: string;
+  notesInstructionDraft?: string;
   assistantCommand?: string;
   assistantHistory?: AssistantCommandResponse[];
   assistantVoiceJobs?: AssistantVoiceJob[];
@@ -339,12 +348,28 @@ type ConversationSessionResetResponse = {
   updated_at: string;
 };
 
+type ConversationTurnResponse = {
+  thread_id: string;
+  user_message: ConversationMessage;
+  assistant_message: ConversationMessage;
+  trace: ConversationToolTrace;
+  session_state: Record<string, unknown>;
+};
+
+type PendingConversationTurn = {
+  id: string;
+  content: string;
+  createdAt: string;
+};
+
 const RUNTIME_ENV = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const DEFAULT_API_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_API_BASE?.trim()
   || (__DEV__ ? "http://localhost:8000" : "https://starlog-api-production.up.railway.app");
 const DEFAULT_PWA_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_PWA_BASE?.trim()
   || (__DEV__ ? "http://localhost:3000" : "https://starlog-web-production.up.railway.app");
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
+const DEFAULT_HOME_DRAFT = "summarize latest artifact";
+const DEFAULT_NOTES_INSTRUCTION_DRAFT = "Save this and turn it into tonight's reading note.";
 const DEFAULT_VOICE_MIME = "audio/x-m4a";
 const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
@@ -785,7 +810,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
           executionPolicy: defaultExecutionPolicy(),
           voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
           briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
-          assistantCommand: "summarize latest artifact",
+          homeDraft: DEFAULT_HOME_DRAFT,
+          notesInstructionDraft: DEFAULT_NOTES_INSTRUCTION_DRAFT,
+          assistantCommand: DEFAULT_HOME_DRAFT,
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
@@ -805,7 +832,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
           voiceClipDurationMs: 0,
           voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
           briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
-          assistantCommand: "summarize latest artifact",
+          homeDraft: DEFAULT_HOME_DRAFT,
+          notesInstructionDraft: DEFAULT_NOTES_INSTRUCTION_DRAFT,
+          assistantCommand: DEFAULT_HOME_DRAFT,
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
@@ -828,7 +857,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
-          assistantCommand: "summarize latest artifact",
+          assistantCommand: DEFAULT_HOME_DRAFT,
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
@@ -838,6 +867,8 @@ async function readPersistedState(): Promise<PersistedState | null> {
           conversationToolTraces: [],
           lastConversationReset: null,
           ...parsed,
+          homeDraft: parsed.homeDraft ?? parsed.assistantCommand ?? DEFAULT_HOME_DRAFT,
+          notesInstructionDraft: parsed.notesInstructionDraft ?? parsed.assistantCommand ?? DEFAULT_NOTES_INSTRUCTION_DRAFT,
           voiceRoutePreference: normalizeVoiceRoutePreference(parsed.voiceRoutePreference),
           briefingPlaybackPreference: normalizeBriefingPlaybackPreference(parsed.briefingPlaybackPreference),
           version: 5,
@@ -875,7 +906,9 @@ async function readPersistedState(): Promise<PersistedState | null> {
       executionPolicy: defaultExecutionPolicy(),
       voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
       briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
-      assistantCommand: "summarize latest artifact",
+      homeDraft: DEFAULT_HOME_DRAFT,
+      notesInstructionDraft: DEFAULT_NOTES_INSTRUCTION_DRAFT,
+      assistantCommand: DEFAULT_HOME_DRAFT,
       assistantHistory: [],
       assistantVoiceJobs: [],
       assistantAiJobs: [],
@@ -1103,23 +1136,20 @@ function parseCaptureDeepLink(rawUrl: string): { title: string; text: string; so
   };
 }
 
-function parseSurfaceTabDeepLink(rawUrl: string): "capture" | "alarms" | "review" | null {
+function parseSurfaceTabDeepLink(rawUrl: string): MobileTab | null {
   const parsedUrl = parseAppDeepLink(rawUrl);
   if (!parsedUrl || parsedUrl.route !== "surface") {
     return null;
   }
   const { params } = parsedUrl;
   const rawTab = (deepLinkParam(params, "tab") ?? "").trim().toLowerCase();
-  if (rawTab === "capture" || rawTab === "alarms" || rawTab === "review") {
-    return rawTab;
-  }
-  return null;
+  return mobileTabFromParam(rawTab);
 }
 
 export default function App({ initialIntentUrl = null }: AppProps) {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
-  const [activeTab, setActiveTab] = useState<"capture" | "alarms" | "review">("capture");
+  const [activeTab, setActiveTab] = useState<MobileTab>("home");
   const [countdownTick, setCountdownTick] = useState(() => Date.now());
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showAdvancedCapture, setShowAdvancedCapture] = useState(false);
@@ -1157,7 +1187,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
-  const [assistantCommand, setAssistantCommand] = useState("summarize latest artifact");
+  const [homeDraft, setHomeDraft] = useState(DEFAULT_HOME_DRAFT);
+  const [notesInstructionDraft, setNotesInstructionDraft] = useState(DEFAULT_NOTES_INSTRUCTION_DRAFT);
+  const [assistantCommand, setAssistantCommand] = useState(DEFAULT_HOME_DRAFT);
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
@@ -1166,6 +1198,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationToolTraces, setConversationToolTraces] = useState<ConversationToolTrace[]>([]);
   const [lastConversationReset, setLastConversationReset] = useState<ConversationSessionResetResponse | null>(null);
+  const [pendingConversationTurn, setPendingConversationTurn] = useState<PendingConversationTurn | null>(null);
   const [expandedThreadCards, setExpandedThreadCards] = useState<Record<string, boolean>>({});
   const [expandedThreadTraces, setExpandedThreadTraces] = useState<Record<string, boolean>>({});
   const [showFullConversationThread, setShowFullConversationThread] = useState(false);
@@ -1190,13 +1223,39 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
-  const visibleConversationMessages = useMemo(() => {
-    if (showFullConversationThread) {
+  const threadMessages = useMemo(() => {
+    if (!pendingConversationTurn) {
       return conversationMessages;
     }
-    return conversationMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
-  }, [conversationMessages, showFullConversationThread]);
-  const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
+    return [
+      ...conversationMessages,
+      {
+        id: pendingConversationTurn.id,
+        thread_id: "primary",
+        role: "user" as const,
+        content: pendingConversationTurn.content,
+        cards: [],
+        metadata: { pending: true, submitted_via: "mobile_home" },
+        created_at: pendingConversationTurn.createdAt,
+      },
+      {
+        id: `${pendingConversationTurn.id}:assistant`,
+        thread_id: "primary",
+        role: "assistant" as const,
+        content: "",
+        cards: [],
+        metadata: { pending: true, status: "thinking" },
+        created_at: pendingConversationTurn.createdAt,
+      },
+    ];
+  }, [conversationMessages, pendingConversationTurn]);
+  const visibleConversationMessages = useMemo(() => {
+    if (showFullConversationThread) {
+      return threadMessages;
+    }
+    return threadMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
+  }, [showFullConversationThread, threadMessages]);
+  const hiddenConversationMessageCount = Math.max(0, threadMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
   const llmResolution = useMemo(
     () =>
@@ -1270,7 +1329,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [voiceRecording]);
 
   function applyDeepCapture(deepCapture: { title: string; text: string; sourceUrl: string }) {
-    setActiveTab("capture");
+    setActiveTab("notes");
     setShowAdvancedCapture(true);
     setQuickCaptureTitle(deepCapture.title);
     setQuickCaptureText(deepCapture.text);
@@ -2181,7 +2240,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     briefingPlaybackPreference === "offline_first"
       ? "Playback preference: use the cached offline package first."
       : "Playback preference: refresh from the API, recache, then play.";
-  const captureCommandPreview = assistantCommand.trim() || "Save this and turn it into tonight's reading note.";
+  const captureCommandPreview = notesInstructionDraft.trim() || DEFAULT_NOTES_INSTRUCTION_DRAFT;
   const captureSourcePreview = quickCaptureSourceUrl.trim() || "Attach a source URL, title, excerpt, or one spoken instruction.";
   const captureBodyPreview =
     quickCaptureText.trim()
@@ -2304,9 +2363,65 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function sendConversationTurn(command: string, sourceLabel = "typed composer") {
+    if (!command) {
+      setStatus("Enter a Main Room message first");
+      return;
+    }
+    if (pendingConversationTurn) {
+      setStatus("Wait for the current Main Room reply to finish");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    const pendingId = `pending_${Date.now()}`;
+    setPendingConversationTurn({
+      id: pendingId,
+      content: command,
+      createdAt: new Date().toISOString(),
+    });
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          content: command,
+          input_mode: sourceLabel === "voice" ? "voice" : "text",
+          device_target: "mobile-companion",
+          metadata: {
+            surface: "home_chat_mobile",
+            submitted_via: sourceLabel,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Main Room turn failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as ConversationTurnResponse;
+      setConversationMessages((previous) => [...previous, payload.user_message, payload.assistant_message]);
+      setConversationToolTraces((previous) => [payload.trace, ...previous].slice(0, 24));
+      setConversationSessionState(payload.session_state);
+      setHomeDraft("");
+      setPendingConversationTurn(null);
+      setStatus("Main Room reply received");
+    } catch (error) {
+      setPendingConversationTurn(null);
+      setStatus(error instanceof Error ? error.message : "Main Room turn failed");
+    }
+  }
+
   async function submitAssistantCommand(command: string, execute: boolean, sourceLabel?: string) {
     if (!command) {
-      setStatus("Enter an assistant command first");
+      setStatus("Enter an operator command first");
       return;
     }
     if (!token) {
@@ -2351,6 +2466,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   async function runAssistantCommand(execute: boolean) {
     const command = assistantCommand.trim();
     await submitAssistantCommand(command, execute);
+  }
+
+  async function runMainRoomTurn() {
+    const command = homeDraft.trim();
+    await sendConversationTurn(command);
+  }
+
+  async function previewHomeDraftCommandFlow() {
+    const command = homeDraft.trim();
+    await submitAssistantCommand(command, false);
   }
 
   function recordAssistantHistory(entry: AssistantCommandResponse | null | undefined) {
@@ -2512,7 +2637,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   async function queueAssistantAiCommand(execute: boolean) {
     const command = assistantCommand.trim();
     if (!command) {
-      setStatus("Enter an assistant command first");
+      setStatus("Enter an operator command first");
       return;
     }
     if (!token) {
@@ -2581,7 +2706,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         throw new Error("On-device STT returned no transcript");
       }
 
-      setAssistantCommand(transcript);
+      setHomeDraft(transcript);
       await submitAssistantCommand(transcript, execute, "on-device STT");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "On-device STT failed");
@@ -2692,7 +2817,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setArtifactVersions(persisted.artifactVersions);
         setDueCards(persisted.dueCards || []);
         setExecutionPolicy(persisted.executionPolicy || defaultExecutionPolicy());
-        setAssistantCommand(persisted.assistantCommand || "summarize latest artifact");
+        setHomeDraft(persisted.homeDraft || persisted.assistantCommand || DEFAULT_HOME_DRAFT);
+        setNotesInstructionDraft(
+          persisted.notesInstructionDraft || persisted.assistantCommand || DEFAULT_NOTES_INSTRUCTION_DRAFT,
+        );
+        setAssistantCommand(persisted.assistantCommand || DEFAULT_HOME_DRAFT);
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
         setAssistantAiJobs(persisted.assistantAiJobs || []);
@@ -2958,6 +3087,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       executionPolicy,
       voiceRoutePreference,
       briefingPlaybackPreference,
+      homeDraft,
+      notesInstructionDraft,
       assistantCommand,
       assistantHistory,
       assistantVoiceJobs,
@@ -2973,6 +3104,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     alarmMinute,
     alarmNotificationId,
     apiBase,
+    homeDraft,
+    notesInstructionDraft,
     assistantCommand,
     assistantHistory,
     assistantVoiceJobs,
@@ -3413,7 +3546,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 </View>
               );
               })}
-              {showFullConversationThread && conversationMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
+              {showFullConversationThread && threadMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
                 <View style={styles.buttonRow}>
                   <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(false)}>
                     <Text style={styles.buttonText}>Collapse Thread</Text>
@@ -3764,16 +3897,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   function renderCaptureOpsPanel() {
-    if (activeTab !== "capture" || !showAdvancedCapture) {
+  if (activeTab !== "notes" || !showAdvancedCapture) {
       return null;
     }
 
     return (
       <View style={styles.panel}>
         <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Capture support systems</Text>
+        <Text style={styles.panelTitle}>Notes support systems</Text>
         <Text style={styles.subtle}>
-          Keep the main capture shell focused on intake. Use the support systems below for queue control, AI routing, and triage.
+          Keep the main notes shell focused on intake. Use the support systems below for queue control, AI routing, and triage.
         </Text>
         <View style={styles.opsChipRow}>
           {renderOpsChip("Queue", captureOpsSection === "queue", () => setCaptureOpsSection("queue"))}
@@ -3816,14 +3949,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   function renderAlarmOpsPanel() {
-    if (activeTab !== "alarms" || !showAdvancedAlarms) {
+  if (activeTab !== "calendar" || !showAdvancedAlarms) {
       return null;
     }
 
     return (
       <View style={styles.panel}>
         <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Alarm + briefing support systems</Text>
+        <Text style={styles.panelTitle}>Agenda support systems</Text>
         <Text style={styles.subtle}>
           Keep the station clock and player front-and-center. Use the secondary panel for setup, caching, and phone-to-PWA linkage.
         </Text>
@@ -3847,7 +3980,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       <View style={styles.topBar}>
         <View style={styles.topBarBrand}>
           <View style={styles.topBarPill}>
-            <Text style={styles.topBarPillText}>Velvet mobile</Text>
+            <Text style={styles.topBarPillText}>Observatory mobile</Text>
           </View>
           <Text style={styles.topBarTitle}>Starlog</Text>
         </View>
@@ -3868,18 +4001,55 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>{activeTab === "capture" ? "Capture gesture" : activeTab === "alarms" ? "Ritual briefing" : "Quiet review"}</Text>
-          <Text style={styles.title}>
-            {activeTab === "capture"
-              ? "Capture Gesture"
-              : activeTab === "alarms"
-                ? "Ritual Briefing"
-                : "Quiet Review"}
+          <Text style={styles.eyebrow}>
+            {activeTab === "home"
+              ? "Main Room"
+              : activeTab === "notes"
+                ? "Notes"
+                : activeTab === "calendar"
+                  ? "Calendar"
+                  : "SRS Review"}
           </Text>
-          {activeTab === "capture" ? (
+          <Text style={styles.title}>
+            {activeTab === "home"
+              ? "Main Room"
+              : activeTab === "notes"
+                ? "Notes"
+                : activeTab === "calendar"
+                  ? "Calendar"
+                  : "Review"}
+          </Text>
+          {activeTab === "home" ? (
             <>
               <Text style={styles.body}>
-                One spoken instruction, one source, and one deliberate save. The phone should feel like a composed companion object.
+                Keep the phone on the same persistent thread as the web app. Use this surface for the next turn, then dip into Notes, Calendar, and Review only when the conversation needs support.
+              </Text>
+              <View style={styles.intentHeroCard}>
+                <Text style={styles.heroCardLabelInverse}>Latest prompt</Text>
+                <Text style={styles.intentHeroCopy}>{homeDraft.trim() || "What should I focus on next?"}</Text>
+              </View>
+              <View style={styles.contextCard}>
+                <Text style={styles.heroCardLabel}>Thread state</Text>
+                <Text style={styles.contextCardBody}>
+                  {pendingConversationTurn
+                    ? "A reply is being composed for the Main Room."
+                    : `${threadMessages.length} message(s) synced with ${conversationToolTraces.length} trace(s).`}
+                </Text>
+                <View style={styles.contextMetaRow}>
+                  <View style={styles.contextMetaPill}>
+                    <Text style={styles.contextMetaText}>{pendingConversationTurn ? "Reply pending" : "Thread ready"}</Text>
+                  </View>
+                  <View style={styles.contextMetaPill}>
+                    <Text style={styles.contextMetaText}>{routeNarrative}</Text>
+                  </View>
+                </View>
+              </View>
+            </>
+          ) : null}
+          {activeTab === "notes" ? (
+            <>
+              <Text style={styles.body}>
+                Capture text, files, and voice notes without leaving the observatory shell. This tab stays optimized for intake and artifact creation.
               </Text>
               <View style={styles.intentHeroCard}>
                 <Text style={styles.heroCardLabelInverse}>Voice instruction</Text>
@@ -3888,7 +4058,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               <Text style={styles.subtle}>Suggested instructions</Text>
               <View style={styles.chipRow}>
                 {assistantExampleCommands.map((example) => (
-                  <TouchableOpacity key={`hero-${example}`} style={styles.chip} activeOpacity={0.8} onPress={() => setAssistantCommand(example)}>
+                  <TouchableOpacity
+                    key={`hero-${example}`}
+                    style={styles.chip}
+                    activeOpacity={0.8}
+                    onPress={() => setNotesInstructionDraft(example)}
+                  >
                     <Text style={styles.chipText}>{example}</Text>
                   </TouchableOpacity>
                 ))}
@@ -3910,311 +4085,133 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           {activeTab === "review" ? (
             <View style={styles.dashboardWide}>
               <Text style={styles.inlineCardTitle}>Quick review, without the full desk.</Text>
-              <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to capture.</Text>
+              <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to the thread.</Text>
             </View>
           ) : null}
-          {activeTab === "alarms" ? (
+          {activeTab === "calendar" ? (
             <View style={styles.dashboardWide}>
-              <Text style={styles.heroCardLabel}>Morning ritual</Text>
+              <Text style={styles.heroCardLabel}>Daily agenda</Text>
               <Text style={styles.editorialCardCopy}>{briefingHeroCopy}</Text>
               <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(alarmHour, alarmMinute)} {stationPeriod}</Text>
             </View>
           ) : null}
         </View>
 
-        {activeTab === "capture" ? (
-          <View style={styles.panel}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionKicker}>Composed intake</Text>
-              <View style={styles.pendingBadge}>
-                <Text style={styles.pendingBadgeText}>{pendingCaptures.length} Pending</Text>
-              </View>
-            </View>
-            <View style={styles.captureComposerCard}>
-              <Text style={styles.heroCardLabel}>Capture title</Text>
-              <TextInput
-                style={styles.composerInput}
-                value={quickCaptureTitle}
-                onChangeText={setQuickCaptureTitle}
-                placeholder="Mobile capture"
-                placeholderTextColor={palette.muted}
-              />
-              <Text style={styles.heroCardLabel}>Source URL</Text>
-              <TextInput
-                style={styles.composerInput}
-                value={quickCaptureSourceUrl}
-                onChangeText={setQuickCaptureSourceUrl}
-                autoCapitalize="none"
-                placeholder="https://..."
-                placeholderTextColor={palette.muted}
-              />
-              <Text style={styles.heroCardLabel}>Capture text</Text>
-              <TextInput
-                style={[styles.composerInput, styles.composerInputLarge]}
-                value={quickCaptureText}
-                onChangeText={setQuickCaptureText}
-                placeholder="Clip text, ideas, or reminders..."
-                placeholderTextColor={palette.muted}
-                multiline
-              />
-              <Text style={styles.heroCardLabel}>Typed instruction</Text>
-              <TextInput
-                style={styles.composerInput}
-                value={assistantCommand}
-                onChangeText={setAssistantCommand}
-                placeholder="Save this and turn it into tonight's reading note."
-                placeholderTextColor={palette.muted}
-              />
-            </View>
-            <View style={styles.captureHeroActions}>
-              <Pressable
-                style={styles.primaryAction}
-                onPressIn={() => {
-                  beginHoldToTalkCapture().catch(() => undefined);
-                }}
-                onPressOut={() => {
-                  endHoldToTalkCapture().catch(() => undefined);
-                }}
-              >
-                <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={16} color={palette.onAccent} />
-                <Text style={styles.primaryActionText}>{holdToTalkLabel}</Text>
-              </Pressable>
-              <TouchableOpacity style={styles.iconAction} onPress={submitPrimaryCapture}>
-                <MaterialCommunityIcons name="content-save-outline" size={16} color={palette.accent} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconAction} onPress={() => flushPendingCaptures("manual")}>
-                <MaterialCommunityIcons name="upload-outline" size={16} color={palette.accent} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then save the voice note or queue text and files.</Text>
-            <View style={styles.captureArtifactCard}>
-              <Text style={styles.heroCardLabel}>Selected next move</Text>
-              <Text style={styles.captureArtifactTitle}>{captureCommandPreview}</Text>
-              <Text style={styles.body}>{captureQueuePreview}</Text>
-              <View style={styles.contextMetaRow}>
-                <View style={styles.miniTag}>
-                  <Text style={styles.miniTagText}>{voiceMemoPreview}</Text>
-                </View>
-                <View style={styles.miniTag}>
-                  <Text style={styles.miniTagText}>{sharedFileDrafts.length > 0 ? describeSharedDrafts(sharedFileDrafts) : "No shared files"}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.captureMediaRow}>
-              <View style={styles.captureMediaTile}>
-                <Text style={styles.heroCardLabel}>Incoming context</Text>
-                <Text style={styles.inlineCardTitle}>{selectedArtifact?.title || quickCaptureTitle || "Waiting for a chosen artifact"}</Text>
-                <Text style={styles.subtle}>{captureSourcePreview}</Text>
-              </View>
-              <View style={styles.captureAlertTile}>
-                <Text style={styles.heroCardLabel}>Routing</Text>
-                <Text style={styles.inlineCardTitle}>Voice + output path</Text>
-                <Text style={styles.subtle}>{routeNarrative}</Text>
-              </View>
-            </View>
-            <View style={styles.captureVoiceMemo}>
-              <TouchableOpacity style={styles.capturePlayButton} onPress={playVoiceClip}>
-                <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineCardTitle}>Latest voice memo</Text>
-                <Text style={styles.subtle}>{voiceMemoPreview}</Text>
-                {voiceClipUri ? (
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
-                      <Text style={styles.buttonText}>Save Voice Note</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setCaptureOpsSection("queue");
-                  setShowAdvancedCapture((value) => !value);
-                }}
-              >
-                <Text style={styles.buttonText}>{showAdvancedCapture ? "Close Mission Tools" : "Open Mission Tools"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        {activeTab === "home" ? (
+          <MobileHomeSurface
+            styles={styles}
+            palette={palette}
+            pendingConversationTurn={Boolean(pendingConversationTurn)}
+            homeDraft={homeDraft}
+            setHomeDraft={setHomeDraft}
+            runMainRoomTurn={runMainRoomTurn}
+            refreshThread={() => loadConversation("manual").catch(() => undefined)}
+            resetConversationSession={resetConversationSession}
+            visibleConversationMessages={visibleConversationMessages}
+            hiddenConversationMessageCount={hiddenConversationMessageCount}
+            openAssistantInPwa={openAssistantInPwa}
+            previewCommandFlow={() => previewHomeDraftCommandFlow().catch(() => undefined)}
+            formatCardMeta={cardMetaText}
+          />
+        ) : null}
+
+        {activeTab === "notes" ? (
+          <MobileNotesSurface
+            styles={styles}
+            palette={palette}
+            pendingCaptures={pendingCaptures.length}
+            quickCaptureTitle={quickCaptureTitle}
+            setQuickCaptureTitle={setQuickCaptureTitle}
+            quickCaptureSourceUrl={quickCaptureSourceUrl}
+            setQuickCaptureSourceUrl={setQuickCaptureSourceUrl}
+            quickCaptureText={quickCaptureText}
+            setQuickCaptureText={setQuickCaptureText}
+            notesInstructionDraft={notesInstructionDraft}
+            setNotesInstructionDraft={setNotesInstructionDraft}
+            voiceRecording={Boolean(voiceRecording)}
+            holdToTalkLabel={holdToTalkLabel}
+            beginHoldToTalkCapture={() => beginHoldToTalkCapture().catch(() => undefined)}
+            endHoldToTalkCapture={() => endHoldToTalkCapture().catch(() => undefined)}
+            submitPrimaryCapture={() => submitPrimaryCapture().catch(() => undefined)}
+            flushPendingCaptures={() => flushPendingCaptures("manual").catch(() => undefined)}
+            captureCommandPreview={captureCommandPreview}
+            captureQueuePreview={captureQueuePreview}
+            voiceMemoPreview={voiceMemoPreview}
+            sharedDraftSummary={sharedFileDrafts.length > 0 ? describeSharedDrafts(sharedFileDrafts) : "No shared files"}
+            selectedArtifactTitle={selectedArtifact?.title || quickCaptureTitle || "Waiting for a chosen artifact"}
+            captureSourcePreview={captureSourcePreview}
+            routeNarrative={routeNarrative}
+            voiceClipReady={Boolean(voiceClipUri)}
+            playVoiceClip={playVoiceClip}
+            submitVoiceCapture={() => submitVoiceCapture().catch(() => undefined)}
+            showAdvancedCapture={showAdvancedCapture}
+            toggleMissionTools={() => {
+              setCaptureOpsSection("queue");
+              setShowAdvancedCapture((value) => !value);
+            }}
+          />
         ) : null}
 
         {activeTab === "review" ? (
-          <View style={styles.panel}>
-            <View style={styles.reviewTopRow}>
-              <View>
-                <Text style={styles.sectionKicker}>Current Session</Text>
-                <Text style={styles.subtle}>Neural Synchronization: 42%</Text>
-              </View>
-              <View style={styles.reviewPillRow}>
-                <View style={styles.reviewPill}>
-                  <Text style={styles.reviewPillText}>12</Text>
-                </View>
-                <View style={styles.reviewPill}>
-                  <Text style={styles.reviewPillText}>85</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.reviewFlashcard}>
-              <Text style={styles.reviewMeta}>Last seen: 4 days ago</Text>
-              <Text style={styles.reviewCategory}>Scientific Nomenclature</Text>
-              <Text style={styles.reviewPromptLarge}>{reviewCard?.prompt || "Nebular Nucleosynthesis"}</Text>
-              <View style={styles.reviewDivider} />
-              <Text style={styles.reviewAnswerLarge}>
-                {showAnswer
-                  ? reviewCard?.answer ||
-                    "The process responsible for the formation of heavy elements within the core of collapsing stellar bodies."
-                  : "Tap reveal to show answer"}
-              </Text>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  if (!reviewCard) {
-                    loadDueCards().catch(() => undefined);
-                  }
-                  setShowAnswer(true);
-                }}
-              >
-                <Text style={styles.buttonText}>Reveal Answer</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.reviewRateRow}>
-              <TouchableOpacity
-                style={styles.reviewRateButton}
-                onPress={() => (reviewCard ? submitReview(1) : setStatus("Load due cards first"))}
-              >
-                <Text style={styles.reviewRateLabel}>Again</Text>
-                <Text style={styles.reviewRateValue}>1m</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.reviewRateButton}
-                onPress={() => (reviewCard ? submitReview(2) : setStatus("Load due cards first"))}
-              >
-                <Text style={styles.reviewRateLabel}>Hard</Text>
-                <Text style={styles.reviewRateValue}>2d</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reviewRateButton, styles.reviewRateButtonActive]}
-                onPress={() => (reviewCard ? submitReview(4) : setStatus("Load due cards first"))}
-              >
-                <Text style={[styles.reviewRateLabel, styles.reviewRateLabelActive]}>Good</Text>
-                <Text style={styles.reviewRateValue}>4d</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.reviewRateButton}
-                onPress={() => (reviewCard ? submitReview(5) : setStatus("Load due cards first"))}
-              >
-                <Text style={styles.reviewRateLabel}>Easy</Text>
-                <Text style={styles.reviewRateValue}>7d</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setReviewOpsSection("session");
-                  setShowAdvancedReview((value) => !value);
-                }}
-              >
-                <Text style={styles.buttonText}>{showAdvancedReview ? "Close Mission Tools" : "Open Mission Tools"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <MobileReviewSurface
+            styles={styles}
+            palette={palette}
+            reviewPrompt={reviewCard?.prompt || "Nebular Nucleosynthesis"}
+            reviewAnswer={
+              reviewCard?.answer ||
+              "The process responsible for the formation of heavy elements within the core of collapsing stellar bodies."
+            }
+            showAnswer={showAnswer}
+            revealAnswer={() => {
+              if (!reviewCard) {
+                loadDueCards().catch(() => undefined);
+              }
+              setShowAnswer(true);
+            }}
+            submitReview={(rating) => {
+              if (!reviewCard) {
+                setStatus("Load due cards first");
+                return;
+              }
+              submitReview(rating).catch(() => undefined);
+            }}
+            hasReviewCard={Boolean(reviewCard)}
+            showAdvancedReview={showAdvancedReview}
+            toggleMissionTools={() => {
+              setReviewOpsSection("session");
+              setShowAdvancedReview((value) => !value);
+            }}
+          />
         ) : null}
 
-        {activeTab === "alarms" ? (
-          <View style={styles.panel}>
-            <View style={styles.alarmClockRow}>
-              <Text style={styles.alarmClockText}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
-              <Text style={styles.alarmClockPeriod}>{stationPeriod}</Text>
-            </View>
-            <Text style={styles.alarmStationMeta}>Daily return point</Text>
-            <View style={styles.alarmNextCard}>
-              <View>
-                <Text style={styles.heroCardLabel}>Morning ritual</Text>
-                <Text style={styles.captureArtifactTitle}>{briefingHeroCopy}</Text>
-                <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(stationHour12, alarmMinute)} {stationPeriod}</Text>
-              </View>
-              <View>
-                <Text style={styles.alarmCountdown}>{nextBriefingCountdown}</Text>
-                <Text style={styles.subtle}>Until play</Text>
-              </View>
-            </View>
-            <View style={styles.alarmPlayerCard}>
-              <Text style={styles.heroCardLabel}>Playback</Text>
-              <Text style={styles.inlineCardTitle}>Daily briefing</Text>
-              <Text style={styles.subtle}>{offlineBriefingStatus}</Text>
-              <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
-              <View style={styles.alarmWaveRow}>
-                {[4, 10, 6, 14, 5, 11, 13, 4, 8, 12].map((height, index) => (
-                  <View key={index} style={[styles.alarmWaveBar, { height }]} />
-                ))}
-              </View>
-              <View style={styles.alarmPlayerButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.iconAction,
-                    !cachedPath && briefingPlaybackPreference === "offline_first" ? { opacity: 0.45 } : null,
-                  ]}
-                  onPress={playBriefing}
-                >
-                  <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.iconAction} onPress={queueBriefingAudio}>
-                  <MaterialCommunityIcons name="text-to-speech" size={18} color={palette.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.iconAction} onPress={generateAndCache}>
-                  <MaterialCommunityIcons name="download-outline" size={18} color={palette.accent} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.alarmPlayerCard}>
-              <Text style={styles.heroCardLabel}>One next move</Text>
-              <Text style={styles.inlineCardTitle}>{nextActionPreview}</Text>
-              <Text style={styles.subtle}>After playback, continue in the PWA or in quick review.</Text>
-              <View style={styles.buttonRow}>
-                <TouchableOpacity style={styles.button} onPress={openPwa}>
-                  <Text style={styles.buttonText}>Open workspace</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={() => {
-                    setActiveTab("review");
-                    setStatus("Quick review surface active");
-                  }}
-                >
-                  <Text style={styles.buttonText}>Open review</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.alarmCycleCard}>
-              <Text style={styles.heroCardLabel}>Alarm schedule</Text>
-              <Text style={styles.inlineCardTitle}>Daily alarm</Text>
-              <View style={styles.alarmCycleRow}>
-                <View>
-                  <Text style={styles.alarmCycleTime}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
-                  <Text style={styles.subtle}>{alarmNotificationId ? "Alarm is scheduled" : "Alarm is not scheduled yet"}</Text>
-                </View>
-                <TouchableOpacity style={styles.toggleButton} onPress={alarmNotificationId ? clearMorningAlarm : scheduleMorningAlarm}>
-                  <View style={[styles.toggleKnob, alarmNotificationId ? styles.toggleKnobOn : null]} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setAlarmOpsSection("briefing");
-                  setShowAdvancedAlarms((value) => !value);
-                }}
-              >
-                <Text style={styles.buttonText}>{showAdvancedAlarms ? "Close Mission Tools" : "Open Mission Tools"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        {activeTab === "calendar" ? (
+          <MobileCalendarSurface
+            styles={styles}
+            palette={palette}
+            stationTimeLabel={toHourMinuteLabel(stationHour12, alarmMinute)}
+            stationPeriod={stationPeriod}
+            briefingHeroCopy={briefingHeroCopy}
+            nextBriefingCountdown={nextBriefingCountdown}
+            offlineBriefingStatus={offlineBriefingStatus}
+            briefingPlaybackStatus={briefingPlaybackStatus}
+            playBriefing={playBriefing}
+            queueBriefingAudio={() => queueBriefingAudio().catch(() => undefined)}
+            generateAndCache={() => generateAndCache().catch(() => undefined)}
+            canPlayOffline={Boolean(cachedPath || briefingPlaybackPreference !== "offline_first")}
+            nextActionPreview={nextActionPreview}
+            openPwa={openPwa}
+            openReview={() => {
+              setActiveTab("review");
+              setStatus("Quick review surface active");
+            }}
+            alarmScheduled={Boolean(alarmNotificationId)}
+            toggleAlarm={() => (alarmNotificationId ? clearMorningAlarm().catch(() => undefined) : scheduleMorningAlarm().catch(() => undefined))}
+            showAdvancedAlarms={showAdvancedAlarms}
+            toggleMissionTools={() => {
+              setAlarmOpsSection("briefing");
+              setShowAdvancedAlarms((value) => !value);
+            }}
+          />
         ) : null}
 
         {renderCaptureOpsPanel()}
@@ -4238,48 +4235,25 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         <MaterialCommunityIcons name="waveform" size={20} color={palette.onAccent} />
       </TouchableOpacity>
       <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.bottomNavItem}
-          onPress={() => {
-            setActiveTab("capture");
-            setStatus("Capture surface active");
-          }}
-        >
-          <MaterialCommunityIcons
-            name="camera-iris"
-            size={17}
-            color={activeTab === "capture" ? palette.accent : palette.muted}
-          />
-          <Text style={[styles.bottomNavLabel, activeTab === "capture" ? styles.bottomNavLabelActive : null]}>Capture</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomNavItem}
-          onPress={() => {
-            setActiveTab("alarms");
-            setStatus("Alarm + briefing surface active");
-          }}
-        >
-          <MaterialCommunityIcons
-            name="bell-ring-outline"
-            size={17}
-            color={activeTab === "alarms" ? palette.accent : palette.muted}
-          />
-          <Text style={[styles.bottomNavLabel, activeTab === "alarms" ? styles.bottomNavLabelActive : null]}>Alarms</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomNavItem}
-          onPress={() => {
-            setActiveTab("review");
-            setStatus("Quick review surface active");
-          }}
-        >
-          <MaterialCommunityIcons
-            name="eye-outline"
-            size={17}
-            color={activeTab === "review" ? palette.accent : palette.muted}
-          />
-          <Text style={[styles.bottomNavLabel, activeTab === "review" ? styles.bottomNavLabelActive : null]}>Review</Text>
-        </TouchableOpacity>
+        {MOBILE_TABS.map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={styles.bottomNavItem}
+            onPress={() => {
+              setActiveTab(tab.id);
+              setStatus(`${tab.label} surface active`);
+            }}
+          >
+            <MaterialCommunityIcons
+              name={tab.icon as never}
+              size={17}
+              color={activeTab === tab.id ? palette.accent : palette.muted}
+            />
+            <Text style={[styles.bottomNavLabel, activeTab === tab.id ? styles.bottomNavLabelActive : null]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </SafeAreaView>
   );
@@ -4725,6 +4699,53 @@ function themedStyles(palette: Palette) {
       fontSize: 24,
       fontWeight: "700",
       lineHeight: 28,
+    },
+    surfaceLeadCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 22,
+      padding: 16,
+      gap: 6,
+      backgroundColor: palette.surfaceLow,
+    },
+    surfaceLeadTitle: {
+      color: palette.text,
+      fontSize: 26,
+      lineHeight: 32,
+      fontFamily: SERIF_FONT_FAMILY,
+      fontWeight: "400",
+    },
+    surfaceLeadCopy: {
+      color: palette.muted,
+      fontSize: 13,
+      lineHeight: 20,
+    },
+    surfaceStatsRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    surfaceStatCard: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 18,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      backgroundColor: palette.surfaceLow,
+      gap: 2,
+    },
+    surfaceStatValue: {
+      color: palette.secondary,
+      fontSize: 22,
+      lineHeight: 26,
+      fontWeight: "800",
+      fontFamily: "Manrope",
+    },
+    surfaceStatLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      letterSpacing: 0.9,
+      textTransform: "uppercase",
     },
     reviewTopRow: {
       flexDirection: "row",

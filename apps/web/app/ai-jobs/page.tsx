@@ -188,7 +188,7 @@ export default function AIJobsPage() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Command Center</p>
+          <p className="eyebrow">Main Room</p>
           <h1>Queued local AI work</h1>
           <p className="console-copy">
             Queue Codex, Whisper, and local TTS work, then inspect, cancel, or retry those jobs from one place.

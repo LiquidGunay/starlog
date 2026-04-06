@@ -1,4 +1,5 @@
 import json
+from sqlite3 import IntegrityError
 
 import pytest
 from fastapi.testclient import TestClient
@@ -128,6 +129,14 @@ def test_card_deck_browser_api_flow(client: TestClient, auth_headers: dict[str, 
     assert sorted(updated_card.json()["tags"]) == ["ml", "statistics"]
     assert updated_card.json()["suspended"] is True
 
+    rejected_null_due = client.patch(
+        f"/v1/cards/{card_payload['id']}",
+        json={"due_at": None},
+        headers=auth_headers,
+    )
+    assert rejected_null_due.status_code == 422
+    assert rejected_null_due.json()["detail"] == "due_at cannot be null"
+
     updated_deck = client.patch(
         f"/v1/cards/decks/{deck_id}",
         json={
@@ -143,6 +152,59 @@ def test_card_deck_browser_api_flow(client: TestClient, auth_headers: dict[str, 
     assert updated_deck.status_code == 200
     assert updated_deck.json()["description"] == "Refined bootstrap deck"
     assert updated_deck.json()["schedule"]["initial_interval_days"] == 3
+
+
+def test_default_deck_bootstrap_recovers_from_insert_race(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import srs_service
+
+    existing_default_deck = {
+        "id": "cdk_existing",
+        "name": srs_service.DEFAULT_DECK_NAME,
+        "description": "Default deck for imported and generated cards.",
+        "schedule_json": dict(srs_service.DEFAULT_SCHEDULE),
+        "created_at": "2026-04-02T00:00:00+00:00",
+        "updated_at": "2026-04-02T00:00:00+00:00",
+    }
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.insert_attempted = False
+            self.rollback_called = False
+            self.reassigned_deck_id: str | None = None
+
+        def execute(self, query: str, params: tuple | None = None):
+            normalized = " ".join(query.split())
+            if normalized.startswith("INSERT INTO card_decks"):
+                self.insert_attempted = True
+                raise IntegrityError("UNIQUE constraint failed: card_decks.name")
+            if normalized.startswith("UPDATE cards SET deck_id = ?"):
+                self.reassigned_deck_id = str((params or ("",))[0])
+                return None
+            raise AssertionError(f"Unexpected query: {normalized}")
+
+        def commit(self) -> None:
+            return None
+
+        def rollback(self) -> None:
+            self.rollback_called = True
+
+    fake_conn = FakeConnection()
+
+    def fake_fetchone(_conn, query: str, params: tuple):
+        normalized = " ".join(query.split())
+        if "WHERE name = ?" in normalized:
+            return existing_default_deck if fake_conn.insert_attempted else None
+        if "WHERE id = ?" in normalized:
+            return existing_default_deck
+        raise AssertionError(f"Unexpected fetchone query: {normalized}")
+
+    monkeypatch.setattr(srs_service, "execute_fetchone", fake_fetchone)
+
+    payload = srs_service.ensure_default_deck(fake_conn)  # type: ignore[arg-type]
+
+    assert payload["id"] == existing_default_deck["id"]
+    assert fake_conn.rollback_called is True
+    assert fake_conn.reassigned_deck_id == existing_default_deck["id"]
 
 
 def test_artifact_actions_use_ai_provider_outputs(

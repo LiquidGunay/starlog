@@ -277,7 +277,7 @@ export default function DeckBrowserPage() {
       <section className="workspace glass">
         <div className="panel glass review-browser-hero">
           <div>
-            <p className="eyebrow">Neural Sync</p>
+            <p className="eyebrow">SRS Review</p>
             <h1>Deck Browser</h1>
             <p className="console-copy">
               Browse every card, create focused decks, tag items, and tune the initial schedule without waiting for cards to become due.

@@ -2,90 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import {
+  OBSERVATORY_CONTEXT_LINKS,
+  OBSERVATORY_SURFACES,
+  matchesObservatoryPath,
+  resolveObservatorySurface,
+} from "./observatory-navigation";
 import { useSessionConfig } from "../session-provider";
-
-type Surface = {
-  id: "command-center" | "artifact-nexus" | "neural-sync" | "chronos-matrix";
-  label: string;
-  href: string;
-  prefixes: string[];
-  glyph: string;
-};
-
-type UtilityLink = {
-  href: string;
-  label: string;
-};
-
-const SURFACES: Surface[] = [
-  {
-    id: "command-center",
-    label: "Command Center",
-    href: "/assistant",
-    prefixes: ["/", "/notes", "/tasks", "/assistant", "/agent-tools", "/ai-jobs", "/mobile-share", "/share-target", "/runtime"],
-    glyph: "◻",
-  },
-  {
-    id: "artifact-nexus",
-    label: "Artifact Nexus",
-    href: "/artifacts",
-    prefixes: ["/artifacts", "/search", "/portability"],
-    glyph: "✦",
-  },
-  {
-    id: "neural-sync",
-    label: "Neural Sync",
-    href: "/review",
-    prefixes: ["/review", "/sync-center"],
-    glyph: "◉",
-  },
-  {
-    id: "chronos-matrix",
-    label: "Chronos Matrix",
-    href: "/planner",
-    prefixes: ["/planner", "/calendar", "/integrations"],
-    glyph: "▣",
-  },
-];
-
-const CONTEXT_LINKS: Record<Surface["id"], UtilityLink[]> = {
-  "command-center": [
-    { href: "/assistant", label: "Command" },
-    { href: "/notes", label: "Notes" },
-    { href: "/tasks", label: "Tasks" },
-    { href: "/agent-tools", label: "Agent Tools" },
-    { href: "/ai-jobs", label: "AI Jobs" },
-  ],
-  "artifact-nexus": [
-    { href: "/artifacts", label: "Inbox" },
-    { href: "/search", label: "Search" },
-    { href: "/portability", label: "Portability" },
-  ],
-  "neural-sync": [
-    { href: "/review", label: "Review" },
-    { href: "/review/decks", label: "Decks" },
-    { href: "/sync-center", label: "Sync Center" },
-  ],
-  "chronos-matrix": [
-    { href: "/planner", label: "Chronos Matrix" },
-    { href: "/integrations", label: "Integrations" },
-  ],
-};
-
-function matchesPath(pathname: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => {
-    if (prefix === "/") {
-      return pathname === "/";
-    }
-    return pathname === prefix || pathname.startsWith(`${prefix}/`);
-  });
-}
 
 export function TopNavigation() {
   const pathname = usePathname();
   const { isOnline, outbox } = useSessionConfig();
-  const activeSurface = SURFACES.find((surface) => matchesPath(pathname, surface.prefixes)) ?? SURFACES[0];
-  const utilityLinks = CONTEXT_LINKS[activeSurface.id];
+  const activeSurface = resolveObservatorySurface(pathname);
+  const utilityLinks = OBSERVATORY_CONTEXT_LINKS[activeSurface.id];
 
   return (
     <header className="app-header">
@@ -93,19 +23,19 @@ export function TopNavigation() {
         <div className="app-brand">
           <span className="brand-mark" aria-hidden="true" />
           <Link href="/" className="brand-link">
-            Starlog
+            The Observatory
           </Link>
-          <span className="brand-version">v1.0</span>
+          <span className="brand-version">Stellar tier</span>
         </div>
         <nav className="surface-nav" aria-label="Primary surfaces">
-          {SURFACES.map((surface) => {
-            const active = matchesPath(pathname, surface.prefixes);
+          {OBSERVATORY_SURFACES.map((surface) => {
+            const active = matchesObservatoryPath(pathname, surface.prefixes);
             return (
               <Link key={surface.id} href={surface.href} className={active ? "surface-link active" : "surface-link"}>
                 <span className="surface-link-glyph" aria-hidden="true">
                   {surface.glyph}
                 </span>
-                {surface.label}
+                {surface.shortLabel}
               </Link>
             );
           })}
@@ -113,7 +43,7 @@ export function TopNavigation() {
         <div className="system-chip-wrap">
           <span className="system-chip">
             <span className="system-dot" aria-hidden="true" />
-            SYS.READY
+            System optimal
           </span>
           <Link href="/runtime" className={pathname === "/runtime" ? "runtime-chip active" : "runtime-chip"}>
             <span
@@ -124,7 +54,7 @@ export function TopNavigation() {
             <span className="runtime-chip-meta">{outbox.length} queued</span>
           </Link>
           <span className="avatar-chip" aria-hidden="true">
-            ⦿
+            ◉
           </span>
         </div>
       </div>

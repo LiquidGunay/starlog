@@ -1,7 +1,9 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
@@ -81,7 +83,7 @@ const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
 const PLANNER_EVENTS_ENTITY_SCOPE = "planner.events";
 const PLANNER_CONFLICTS_ENTITY_SCOPE = "planner.conflicts";
 const PLANNER_OAUTH_ENTITY_SCOPE = "planner.oauth";
-const PLANNER_SIDEBAR_PANE_SNAPSHOT = "planner.pane.sidebar";
+const PLANNER_SIDECAR_PANE_SNAPSHOT = "planner.sidecar_pane.collapsed";
 
 function cachePlannerBlocks(blocks: Block[]): void {
   void replaceEntityCacheScope(
@@ -156,8 +158,8 @@ function isoDateFromOffset(baseDate: string, offset: number): string {
 }
 
 export default function PlannerPage() {
+  const pathname = usePathname();
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
-  const sidebarPane = usePaneCollapsed(PLANNER_SIDEBAR_PANE_SNAPSHOT);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const initialDate = useMemo(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today), [today]);
   const [date, setDate] = useState(initialDate);
@@ -168,6 +170,7 @@ export default function PlannerPage() {
     () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
   );
   const [status, setStatus] = useState("Ready");
+  const sidecarPane = usePaneCollapsed(PLANNER_SIDECAR_PANE_SNAPSHOT);
   const timeline = useMemo<TimelineItem[]>(() => {
     const blockItems = blocks
       .filter((block) => isSameDay(block.starts_at, date))
@@ -486,19 +489,62 @@ export default function PlannerPage() {
   }, [cycleDays, endHour, rowHeight, startHour]);
 
   return (
-    <main className="chronos-shell">
-      <section className={sidebarPane.collapsed ? "chronos-layout chronos-layout-sidebar-collapsed" : "chronos-layout"}>
-        {!sidebarPane.collapsed ? <aside className="chronos-sidebar">
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="agenda"
+      eyebrow="Agenda"
+      title="Tasks, time blocks, and calendar drift in one ritual workspace."
+      description="Keep the planning grid stable while the observatory shell takes over the chrome. The timeline still runs on the existing planning and calendar contracts."
+      statusLabel={oauthStatus?.connected ? "Calendar sync connected" : "Internal agenda only"}
+      stats={[
+        { label: "Scheduled", value: String(timeline.length) },
+        { label: "Pool", value: String(unscheduledPool.length) },
+        { label: "Conflicts", value: String(conflicts.filter((conflict) => !conflict.resolved).length) },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
+          <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
+        </div>
+      }
+      sideNote={{
+        title: "Ritual focus",
+        body: "The agenda view should bias toward the next cycle, briefing audio, and unresolved sync drift instead of behaving like a generic calendar.",
+        meta: `${date} · ${timeline.length} scheduled items`,
+      }}
+      orbitCards={[
+        {
+          kicker: "Briefing readiness",
+          title: oauthStatus?.connected ? "Calendar connected" : "Awaiting calendar sync",
+          body: oauthStatus?.detail || "Internal blocks can still guide the next ritual cycle.",
+        },
+        {
+          kicker: "Unscheduled pool",
+          title: `${unscheduledPool.length} items pending placement`,
+          body: unscheduledPool[0]?.title || "No unscheduled tasks or conflicts.",
+        },
+        {
+          kicker: "Main Room",
+          title: "Return to the shared thread",
+          body: "Use the Main Room for briefings, next actions, and follow-up confirmations.",
+          href: "/assistant",
+          actionLabel: "Open Main Room",
+        },
+      ]}
+    >
+      <section className="observatory-grid observatory-grid-wide">
+        <ObservatoryPanel
+          kicker="Cycle controls"
+          title="Three-cycle agenda board"
+          meta="Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills into the day."
+        >
           <div className="chronos-sidebar-head">
-            <div className="artifact-pane-head">
-              <div>
-                <p className="eyebrow">Chronos Matrix</p>
-                <h1>Tactical Timeline</h1>
-                <p className="chronos-subcopy">
-                  Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills forward.
-                </p>
-              </div>
-              <PaneToggleButton label="Hide pane" onClick={sidebarPane.collapse} />
+            <div>
+              <p className="observatory-eyebrow">Agenda ritual</p>
+              <h3 className="observatory-panel-title">Three-cycle planner</h3>
+              <p className="chronos-subcopy">
+                Hold the day in view while keeping the next two cycles ready for briefing playback and block generation.
+              </p>
             </div>
             <div className="chronos-controls">
               <div className="chronos-cycle-switch">
@@ -540,149 +586,168 @@ export default function PlannerPage() {
                   Add Event
                 </button>
                 <button className="button" type="button" onClick={() => runGoogleSync()}>
-                  Run Google Sync
+                  Run Google sync
                 </button>
               </div>
               <p className="status">{status}</p>
             </div>
           </div>
+        </ObservatoryPanel>
 
-          <div className="chronos-pool">
-            <h2>Unscheduled Task Pool</h2>
-            {unscheduledPool.length === 0 ? (
-              <p className="console-copy">No unscheduled tasks or conflicts.</p>
-            ) : (
-              unscheduledPool.map((item) => (
-                <article key={item.id} className="chronos-pool-card">
-                  <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
-                    {item.type === "conflict" ? "sync conflict" : "event spillover"}
-                  </span>
-                  <strong>{item.title}</strong>
-                  <small>{item.subtitle}</small>
-                </article>
-              ))
-            )}
-
-            <article className="chronos-pool-card">
-              <strong>{timeline.length} scheduled item(s) on {date}</strong>
-              <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
-            </article>
-
-            <details>
-              <summary className="label">Sync conflicts</summary>
-              {conflicts.length === 0 ? (
-                <p className="console-copy">No conflicts.</p>
+        <PaneRestoreStrip
+          actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
+        />
+        {!sidecarPane.collapsed ? (
+          <ObservatoryPanel
+            kicker="Ritual sidecar"
+            title="Unscheduled pool and sync drift"
+            meta="Keep the pool visible, but secondary to the agenda board."
+            actions={<PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />}
+          >
+            <div className="chronos-pool">
+              <h2>Unscheduled pool</h2>
+              {unscheduledPool.length === 0 ? (
+                <p className="console-copy">No unscheduled tasks or conflicts.</p>
               ) : (
-                conflicts.map((conflict) => (
-                  <article key={conflict.id} className="chronos-pool-card">
-                    <strong>Remote {conflict.remote_id}</strong>
-                    <small>policy {conflict.strategy}</small>
-                    <div className="button-row">
-                      <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
-                        Replay Sync
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => resolveConflict(conflict.id, "local_wins")}
-                      >
-                        Local Wins
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => resolveConflict(conflict.id, "remote_wins")}
-                      >
-                        Remote Wins
-                      </button>
-                      <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
-                        Dismiss
-                      </button>
-                    </div>
+                unscheduledPool.map((item) => (
+                  <article key={item.id} className="chronos-pool-card">
+                    <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
+                      {item.type === "conflict" ? "sync conflict" : "event spillover"}
+                    </span>
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle}</small>
                   </article>
                 ))
               )}
-            </details>
 
-            <details>
-              <summary className="label">Google OAuth</summary>
-              {!oauthStatus ? (
-                <p className="console-copy">OAuth status not loaded.</p>
-              ) : (
-                <>
-                  <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
-                  <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
-                  <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
-                  <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
-                  <p className="console-copy">{oauthStatus.detail}</p>
-                </>
-              )}
-            </details>
-          </div>
-        </aside> : null}
+              <article className="chronos-pool-card">
+                <strong>{timeline.length} scheduled item(s) on {date}</strong>
+                <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
+              </article>
 
-        <section className="chronos-grid-wrap">
-          <PaneRestoreStrip
-            actions={sidebarPane.collapsed ? [{ id: "planner-sidebar", label: "Show timeline controls", onClick: sidebarPane.expand }] : []}
-          />
-          <div className="chronos-day-head">
-            <span />
-            {cycleDays.map((cycleDay) => (
-              <span key={cycleDay.id}>
-                <strong>{cycleDay.label}</strong>
-                {cycleDay.offsetLabel}
-              </span>
-            ))}
-          </div>
-          <div className="chronos-grid">
-            <div className="chronos-grid-inner">
-              <div className="chronos-hours">
-                {hourSlots.map((hour) => (
-                  <div key={`hour-${hour}`} className="chronos-hour">{`${hour.toString().padStart(2, "0")}:00`}</div>
+              <details>
+                <summary className="label">Sync conflicts</summary>
+                {conflicts.length === 0 ? (
+                  <p className="console-copy">No conflicts.</p>
+                ) : (
+                  conflicts.map((conflict) => (
+                    <article key={conflict.id} className="chronos-pool-card">
+                      <strong>Remote {conflict.remote_id}</strong>
+                      <small>policy {conflict.strategy}</small>
+                      <div className="button-row">
+                        <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
+                          Replay Sync
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => resolveConflict(conflict.id, "local_wins")}
+                        >
+                          Local Wins
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => resolveConflict(conflict.id, "remote_wins")}
+                        >
+                          Remote Wins
+                        </button>
+                        <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
+                          Dismiss
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </details>
+
+              <details>
+                <summary className="label">Google OAuth</summary>
+                {!oauthStatus ? (
+                  <p className="console-copy">OAuth status not loaded.</p>
+                ) : (
+                  <>
+                    <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
+                    <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
+                    <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
+                    <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
+                    <p className="console-copy">{oauthStatus.detail}</p>
+                  </>
+                )}
+              </details>
+            </div>
+          </ObservatoryPanel>
+        ) : null}
+      </section>
+
+      <section className="observatory-grid">
+        <ObservatoryPanel
+          kicker="Timeline board"
+          title="Cycle schedule"
+          meta="The briefing rail can narrate this exact board without changing the underlying contracts."
+        >
+          <section className="chronos-layout chronos-layout-sidebar-collapsed">
+            <section className="chronos-grid-wrap">
+              <div className="chronos-day-head">
+                <span />
+                {cycleDays.map((cycleDay) => (
+                  <span key={cycleDay.id}>
+                    <strong>{cycleDay.label}</strong>
+                    {cycleDay.offsetLabel}
+                  </span>
                 ))}
               </div>
-              {cycleDays.map((cycleDay, cycleIndex) => (
-                <div key={cycleDay.id} className="chronos-day-col">
-                  {hourSlots.map((hour) => (
-                    <div key={`${cycleDay.id}-${hour}`} className="chronos-day-row" />
+              <div className="chronos-grid">
+                <div className="chronos-grid-inner">
+                  <div className="chronos-hours">
+                    {hourSlots.map((hour) => (
+                      <div key={`hour-${hour}`} className="chronos-hour">{`${hour.toString().padStart(2, "0")}:00`}</div>
+                    ))}
+                  </div>
+                  {cycleDays.map((cycleDay, cycleIndex) => (
+                    <div key={cycleDay.id} className="chronos-day-col">
+                      {hourSlots.map((hour) => (
+                        <div key={`${cycleDay.id}-${hour}`} className="chronos-day-row" />
+                      ))}
+                      {timelineByCycle[cycleIndex].map((item) => {
+                        const startMinutes = Math.max(startHour * 60, toMinutes(item.startsAt));
+                        const endMinutes = Math.min((endHour + 1) * 60, toMinutes(item.endsAt));
+                        if (endMinutes <= startMinutes) {
+                          return null;
+                        }
+                        const top = ((startMinutes - startHour * 60) / 60) * rowHeight + 2;
+                        const height = Math.max(32, ((endMinutes - startMinutes) / 60) * rowHeight - 4);
+                        const taskClass = item.kind === "event" ? "chronos-task event" : "chronos-task";
+                        return (
+                          <article
+                            key={item.id}
+                            className={taskClass}
+                            style={{
+                              left: "4px",
+                              right: "4px",
+                              top: `${top}px`,
+                              height: `${height}px`,
+                            }}
+                          >
+                            <strong>{item.title}</strong>
+                            <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
+                          </article>
+                        );
+                      })}
+                    </div>
                   ))}
-                  {timelineByCycle[cycleIndex].map((item) => {
-                    const startMinutes = Math.max(startHour * 60, toMinutes(item.startsAt));
-                    const endMinutes = Math.min((endHour + 1) * 60, toMinutes(item.endsAt));
-                    if (endMinutes <= startMinutes) {
-                      return null;
-                    }
-                    const top = ((startMinutes - startHour * 60) / 60) * rowHeight + 2;
-                    const height = Math.max(32, ((endMinutes - startMinutes) / 60) * rowHeight - 4);
-                    const taskClass = item.kind === "event" ? "chronos-task event" : "chronos-task";
-                    return (
-                      <article
-                        key={item.id}
-                        className={taskClass}
-                        style={{
-                          left: "4px",
-                          right: "4px",
-                          top: `${top}px`,
-                          height: `${height}px`,
-                        }}
-                      >
-                        <strong>{item.title}</strong>
-                        <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
-                      </article>
-                    );
-                  })}
                 </div>
-              ))}
-            </div>
-            {nowLineOffset !== null ? <div className="chronos-now-line" style={{ top: `${nowLineOffset}px` }} /> : null}
-          </div>
-          <div className="chronos-foot-controls">
-            <p className="console-copy">
-              Day board: {timeline.length > 0 ? "timeline active" : "no timeline items for this day yet"}.
-            </p>
-          </div>
-        </section>
+                {nowLineOffset !== null ? <div className="chronos-now-line" style={{ top: `${nowLineOffset}px` }} /> : null}
+              </div>
+              <div className="chronos-foot-controls">
+                <p className="console-copy">
+                  Day board: {timeline.length > 0 ? "timeline active" : "no timeline items for this day yet"}.
+                </p>
+              </div>
+            </section>
+          </section>
+        </ObservatoryPanel>
       </section>
-    </main>
+    </ObservatoryWorkspaceShell>
   );
 }

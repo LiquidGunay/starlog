@@ -66,21 +66,24 @@ def ensure_default_deck(conn: Connection) -> dict:
     if existing is None:
         now = utc_now().isoformat()
         deck_id = new_id("cdk")
-        conn.execute(
-            """
-            INSERT INTO card_decks (id, name, description, schedule_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                deck_id,
-                DEFAULT_DECK_NAME,
-                "Default deck for imported and generated cards.",
-                json.dumps(DEFAULT_SCHEDULE, sort_keys=True),
-                now,
-                now,
-            ),
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                """
+                INSERT INTO card_decks (id, name, description, schedule_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    deck_id,
+                    DEFAULT_DECK_NAME,
+                    "Default deck for imported and generated cards.",
+                    json.dumps(DEFAULT_SCHEDULE, sort_keys=True),
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        except IntegrityError:
+            conn.rollback()
         existing = execute_fetchone(
             conn,
             """
@@ -323,6 +326,8 @@ def update_card(conn: Connection, card_id: str, payload: dict) -> dict | None:
     next_prompt = (payload.get("prompt") or card["prompt"]).strip()
     next_answer = (payload.get("answer") or card["answer"]).strip()
     next_tags = _normalize_tags(payload["tags"]) if "tags" in payload and payload["tags"] is not None else _normalize_tags(card.get("tags_json", []))
+    if "due_at" in payload and payload["due_at"] is None:
+        raise ValueError("due_at cannot be null")
     next_due_at = payload["due_at"] if "due_at" in payload else card["due_at"]
     next_interval_days = payload["interval_days"] if payload.get("interval_days") is not None else int(card["interval_days"])
     next_repetitions = payload["repetitions"] if payload.get("repetitions") is not None else int(card["repetitions"])

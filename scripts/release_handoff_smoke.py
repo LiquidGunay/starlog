@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tarfile
@@ -84,6 +85,43 @@ def main() -> int:
         assert "<pending>" not in release_text
         assert "<pending>" not in manifest_text
         assert "tarball_sha256" not in manifest_text
+
+        bundle_root_prune = tmp_root / "bundle-prune"
+        tarball_prune = tmp_root / "out-prune.tar.gz"
+        (bundle_root_prune / "android").mkdir(parents=True)
+        (bundle_root_prune / "desktop").mkdir(parents=True)
+        old_apk = bundle_root_prune / "android" / "starlog-preview-older.apk"
+        new_apk = bundle_root_prune / "android" / "starlog-preview-newer.apk"
+        old_deb = bundle_root_prune / "desktop" / "starlog-helper-older.deb"
+        new_deb = bundle_root_prune / "desktop" / "starlog-helper-newer.deb"
+        old_apk.write_text("old apk\n", encoding="utf-8")
+        new_apk.write_text("new apk\n", encoding="utf-8")
+        old_deb.write_text("old deb\n", encoding="utf-8")
+        new_deb.write_text("new deb\n", encoding="utf-8")
+        os.utime(old_apk, (old_apk.stat().st_atime, old_apk.stat().st_mtime - 10))
+        os.utime(old_deb, (old_deb.stat().st_atime, old_deb.stat().st_mtime - 10))
+
+        subprocess.run(
+            [
+                "python3",
+                str(repo_root / "scripts" / "release_handoff.py"),
+                "--skip-git-tag",
+                "--prune-old-assets",
+                "--bundle-root",
+                str(bundle_root_prune),
+                "--tarball",
+                str(tarball_prune),
+                "--release-doc",
+                str(tmp_root / "release-handoff-prune.md"),
+                "--runbook-doc",
+                str(runbook_source),
+            ],
+            cwd=repo_root,
+            check=True,
+        )
+
+        assert sorted(path.name for path in (bundle_root_prune / "android").glob("*.apk")) == ["starlog-preview-newer.apk"]
+        assert sorted(path.name for path in (bundle_root_prune / "desktop").glob("*.deb")) == ["starlog-helper-newer.deb"]
 
         print("release-handoff-smoke-ok")
         return 0

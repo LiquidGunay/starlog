@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from runtime_app.prompt_loader import load_prompt, render_prompt
@@ -102,7 +103,8 @@ def _tool_lines(payload: dict[str, Any]) -> str:
                 confirmation_text = f"{confirmation_text} {reason}".strip()
         lines.append(
             f"- {item.get('name', 'unknown')}: {item.get('description', '')} "
-            f"Parameters schema: {item.get('parameters_schema', {})!r}{confirmation_text}"
+            f"Parameters schema: {json.dumps(item.get('parameters_schema', {}), sort_keys=True)}"
+            f"{confirmation_text}"
         )
     return "\n".join(lines) if lines else "- none provided"
 
@@ -148,26 +150,36 @@ def _agent_plan_output(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def capability_request_spec(capability: RuntimeCapability, payload: dict[str, Any]) -> tuple[str, str]:
+    title = str(payload.get("title") or "Untitled").strip() or "Untitled"
+    if capability == "llm_agent_plan":
+        return (
+            load_prompt("llm_agent_plan.system.txt"),
+            render_prompt(
+                "llm_agent_plan.user.txt",
+                current_date=str(payload.get("current_date") or "unknown"),
+                command=str(payload.get("command") or _source_text(payload)),
+                intent_lines=payload.get("intent_lines") or _intent_lines(payload),
+                tool_lines=payload.get("tool_lines") or _tool_lines(payload),
+            ),
+        )
+    return (
+        load_prompt(f"{capability}.system.txt"),
+        render_prompt(f"{capability}.user.txt", title=title, text=_source_text(payload)),
+    )
+
+
 def execute_capability(capability: RuntimeCapability, payload: dict[str, Any]) -> CapabilityExecutionResponse:
     title = str(payload.get("title") or "Untitled").strip() or "Untitled"
-    system_prompt = load_prompt(f"{capability}.system.txt")
+    system_prompt, user_prompt = capability_request_spec(capability, payload)
     if capability == "llm_agent_plan":
-        user_prompt = render_prompt(
-            "llm_agent_plan.user.txt",
-            current_date=str(payload.get("current_date") or "unknown"),
-            command=str(payload.get("command") or _source_text(payload)),
-            intent_lines=payload.get("intent_lines") or _intent_lines(payload),
-            tool_lines=payload.get("tool_lines") or _tool_lines(payload),
-        )
         output = _agent_plan_output(payload)
+    elif capability == "llm_summary":
+        output = _summary_output(title, payload)
+    elif capability == "llm_cards":
+        output = _cards_output(title, payload)
     else:
-        user_prompt = render_prompt(f"{capability}.user.txt", title=title, text=_source_text(payload))
-        if capability == "llm_summary":
-            output = _summary_output(title, payload)
-        elif capability == "llm_cards":
-            output = _cards_output(title, payload)
-        else:
-            output = _tasks_output(title, payload)
+        output = _tasks_output(title, payload)
 
     return CapabilityExecutionResponse(
         capability=capability,

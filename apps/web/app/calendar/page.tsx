@@ -1,8 +1,9 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -112,6 +113,7 @@ function cacheCalendarEvents(events: CalendarEvent[]): void {
 }
 
 function CalendarPageContent() {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const initialDay = useMemo(() => readEntitySnapshot<string>(CALENDAR_SELECTED_DAY_SNAPSHOT, isoDate(new Date())), []);
@@ -439,14 +441,50 @@ function CalendarPageContent() {
   }, [searchParams, visibleEvents]);
 
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <div>
-          <p className="eyebrow">Chronos Matrix</p>
-          <h1>Weekly board and event lifecycle</h1>
-          <p className="console-copy">
-            Create, update, delete, and sync events while keeping conflict visibility in one workspace.
-          </p>
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="agenda"
+      eyebrow="Agenda"
+      title="Weekly board and event lifecycle."
+      description="Create, update, delete, and sync events while keeping conflict visibility inside the observatory agenda shell."
+      statusLabel={lastSync ? "Calendar sync active" : "Awaiting sync run"}
+      stats={[
+        { label: "Events", value: String(visibleEvents.length) },
+        { label: "Conflicts", value: String(conflicts.length) },
+        { label: "Anchor day", value: selectedDay },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => refresh()}>Refresh</button>
+          <button className="button" type="button" onClick={() => runSync()}>Run Google Sync</button>
+        </div>
+      }
+      sideNote={{
+        title: "Calendar posture",
+        body: "This route should stay focused on event maintenance and conflict handling, while the planner remains the ritual-first surface.",
+        meta: lastSync ? `Last sync ${lastSync.run_id}` : "No sync run recorded yet",
+      }}
+      orbitCards={[
+        {
+          kicker: "Planner",
+          title: "Return to agenda rituals",
+          body: "Use the ritual workspace for the multi-cycle planning view.",
+          href: "/planner",
+          actionLabel: "Open agenda",
+        },
+        {
+          kicker: "Sync",
+          title: conflicts.length > 0 ? `${conflicts.length} unresolved conflict(s)` : "No unresolved conflicts",
+          body: conflicts[0] ? `${conflicts[0].remote_id} using ${conflicts[0].strategy}` : "Calendar sync is clear.",
+        },
+      ]}
+    >
+      <section className="observatory-grid observatory-grid-wide">
+        <ObservatoryPanel
+          kicker="Calendar editor"
+          title="Anchor day and event form"
+          meta="Keep direct event edits available without leaving the agenda family of routes."
+        >
           <label className="label" htmlFor="calendar-day">Anchor day</label>
           <input
             id="calendar-day"
@@ -489,10 +527,13 @@ function CalendarPageContent() {
             <button className="button" type="button" onClick={() => runSync()}>Run Google Sync</button>
           </div>
           <p className="status">{status}</p>
-        </div>
+        </ObservatoryPanel>
 
-        <div className="panel glass">
-          <h2>Week board</h2>
+        <ObservatoryPanel
+          kicker="Week board"
+          title="Weekly board and sync summary"
+          meta="Read the week, then inspect the last sync and unresolved conflicts without leaving the same panel stack."
+        >
           <div className="calendar-board">
             {weekDays.map((day) => {
               const dayEvents = eventsByDay.get(day) || [];
@@ -564,9 +605,9 @@ function CalendarPageContent() {
               ))}
             </ul>
           )}
-        </div>
+        </ObservatoryPanel>
       </section>
-    </main>
+    </ObservatoryWorkspaceShell>
   );
 }
 

@@ -389,7 +389,7 @@ export default function IntegrationsPage() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Chronos Matrix</p>
+          <p className="eyebrow">Agenda</p>
           <h1>Provider configs and runtime health</h1>
           <p className="console-copy">
             Configure local/API providers, keep secrets redacted, and inspect runtime probe status.
