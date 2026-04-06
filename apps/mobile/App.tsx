@@ -25,7 +25,12 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
-import { mobileConversationCardLabel } from "./src/conversation-cards";
+import {
+  MobileCalendarSurface,
+  MobileHomeSurface,
+  MobileNotesSurface,
+  MobileReviewSurface,
+} from "./src/mobile-surfaces";
 import { MOBILE_TABS, mobileTabFromParam, type MobileTab } from "./src/navigation";
 
 Notifications.setNotificationHandler({
@@ -1310,7 +1315,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [voiceRecording]);
 
   function applyDeepCapture(deepCapture: { title: string; text: string; sourceUrl: string }) {
-    setActiveTab("capture");
+    setActiveTab("notes");
     setShowAdvancedCapture(true);
     setQuickCaptureTitle(deepCapture.title);
     setQuickCaptureText(deepCapture.text);
@@ -3865,7 +3870,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   function renderCaptureOpsPanel() {
-    if (activeTab !== "capture" || !showAdvancedCapture) {
+  if (activeTab !== "notes" || !showAdvancedCapture) {
       return null;
     }
 
@@ -3917,7 +3922,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   function renderAlarmOpsPanel() {
-    if (activeTab !== "alarms" || !showAdvancedAlarms) {
+  if (activeTab !== "calendar" || !showAdvancedAlarms) {
       return null;
     }
 
@@ -3972,19 +3977,19 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <Text style={styles.eyebrow}>
             {activeTab === "home"
               ? "Main Room"
-              : activeTab === "capture"
+              : activeTab === "notes"
                 ? "Notes"
-                : activeTab === "alarms"
-                  ? "Agenda"
+                : activeTab === "calendar"
+                  ? "Calendar"
                   : "SRS Review"}
           </Text>
           <Text style={styles.title}>
             {activeTab === "home"
               ? "Main Room"
-              : activeTab === "capture"
+              : activeTab === "notes"
                 ? "Notes"
-                : activeTab === "alarms"
-                  ? "Agenda"
+                : activeTab === "calendar"
+                  ? "Calendar"
                   : "Review"}
           </Text>
           {activeTab === "home" ? (
@@ -4014,7 +4019,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               </View>
             </>
           ) : null}
-          {activeTab === "capture" ? (
+          {activeTab === "notes" ? (
             <>
               <Text style={styles.body}>
                 Capture text, files, and voice notes without leaving the observatory shell. This tab stays optimized for intake and artifact creation.
@@ -4051,7 +4056,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               <Text style={styles.subtle}>Load due cards, reveal answers, and rate them before returning to the thread.</Text>
             </View>
           ) : null}
-          {activeTab === "alarms" ? (
+          {activeTab === "calendar" ? (
             <View style={styles.dashboardWide}>
               <Text style={styles.heroCardLabel}>Daily agenda</Text>
               <Text style={styles.editorialCardCopy}>{briefingHeroCopy}</Text>
@@ -4061,364 +4066,120 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         </View>
 
         {activeTab === "home" ? (
-          <View style={styles.panel}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionKicker}>Conversation-first home</Text>
-              <View style={styles.pendingBadge}>
-                <Text style={styles.pendingBadgeText}>{pendingConversationTurn ? "Reply pending" : "Thread ready"}</Text>
-              </View>
-            </View>
-            <View style={styles.captureComposerCard}>
-              <Text style={styles.heroCardLabel}>Main Room message</Text>
-              <TextInput
-                style={[styles.composerInput, styles.composerInputLarge]}
-                value={assistantCommand}
-                onChangeText={setAssistantCommand}
-                placeholder="What should I focus on next?"
-                placeholderTextColor={palette.muted}
-                multiline
-              />
-              <View style={styles.buttonRow}>
-                <TouchableOpacity style={styles.button} onPress={runMainRoomTurn}>
-                  <Text style={styles.buttonText}>{pendingConversationTurn ? "Sending..." : "Send to Main Room"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={() => loadConversation("manual").catch(() => undefined)}>
-                  <Text style={styles.buttonText}>Refresh thread</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={resetConversationSession}>
-                  <Text style={styles.buttonText}>Reset session</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.captureArtifactCard}>
-              <Text style={styles.heroCardLabel}>Recent thread</Text>
-              {visibleConversationMessages.length === 0 ? (
-                <Text style={styles.subtle}>No conversation turns yet. Start in the Main Room and the thread will appear here.</Text>
-              ) : (
-                visibleConversationMessages.map((message) => (
-                  <View key={message.id} style={styles.inlineCard}>
-                    <Text style={styles.heroCardLabel}>{message.role.toUpperCase()}</Text>
-                    <Text style={styles.inlineCardTitle}>
-                      {message.metadata?.pending && message.role === "assistant"
-                        ? "Observatory reply forming..."
-                        : message.content || "No message body"}
-                    </Text>
-                    {message.cards[0] ? (
-                      <Text style={styles.subtle}>
-                        {mobileConversationCardLabel(message.cards[0].kind, message.cards[0].title)} · {cardMetaText(message.cards[0])}
-                      </Text>
-                    ) : null}
-                  </View>
-                ))
-              )}
-              {hiddenConversationMessageCount > 0 ? (
-                <Text style={styles.subtle}>{hiddenConversationMessageCount} older message(s) hidden. Open the PWA for the full transcript.</Text>
-              ) : null}
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
-                <Text style={styles.buttonText}>Open Main Room in PWA</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(false)}>
-                <Text style={styles.buttonText}>Preview command flow</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <MobileHomeSurface
+            styles={styles}
+            palette={palette}
+            pendingConversationTurn={Boolean(pendingConversationTurn)}
+            assistantCommand={assistantCommand}
+            setAssistantCommand={setAssistantCommand}
+            runMainRoomTurn={runMainRoomTurn}
+            refreshThread={() => loadConversation("manual").catch(() => undefined)}
+            resetConversationSession={resetConversationSession}
+            visibleConversationMessages={visibleConversationMessages}
+            hiddenConversationMessageCount={hiddenConversationMessageCount}
+            openAssistantInPwa={openAssistantInPwa}
+            previewCommandFlow={() => runAssistantCommand(false)}
+            formatCardMeta={cardMetaText}
+          />
         ) : null}
 
-        {activeTab === "capture" ? (
-          <View style={styles.panel}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionKicker}>Notes and capture</Text>
-              <View style={styles.pendingBadge}>
-                <Text style={styles.pendingBadgeText}>{pendingCaptures.length} Pending</Text>
-              </View>
-            </View>
-            <View style={styles.captureComposerCard}>
-              <Text style={styles.heroCardLabel}>Capture title</Text>
-              <TextInput
-                style={styles.composerInput}
-                value={quickCaptureTitle}
-                onChangeText={setQuickCaptureTitle}
-                placeholder="Mobile capture"
-                placeholderTextColor={palette.muted}
-              />
-              <Text style={styles.heroCardLabel}>Source URL</Text>
-              <TextInput
-                style={styles.composerInput}
-                value={quickCaptureSourceUrl}
-                onChangeText={setQuickCaptureSourceUrl}
-                autoCapitalize="none"
-                placeholder="https://..."
-                placeholderTextColor={palette.muted}
-              />
-              <Text style={styles.heroCardLabel}>Capture text</Text>
-              <TextInput
-                style={[styles.composerInput, styles.composerInputLarge]}
-                value={quickCaptureText}
-                onChangeText={setQuickCaptureText}
-                placeholder="Clip text, ideas, or reminders..."
-                placeholderTextColor={palette.muted}
-                multiline
-              />
-              <Text style={styles.heroCardLabel}>Typed instruction</Text>
-              <TextInput
-                style={styles.composerInput}
-                value={assistantCommand}
-                onChangeText={setAssistantCommand}
-                placeholder="Save this and turn it into tonight's reading note."
-                placeholderTextColor={palette.muted}
-              />
-            </View>
-            <View style={styles.captureHeroActions}>
-              <Pressable
-                style={styles.primaryAction}
-                onPressIn={() => {
-                  beginHoldToTalkCapture().catch(() => undefined);
-                }}
-                onPressOut={() => {
-                  endHoldToTalkCapture().catch(() => undefined);
-                }}
-              >
-                <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={16} color={palette.onAccent} />
-                <Text style={styles.primaryActionText}>{holdToTalkLabel}</Text>
-              </Pressable>
-              <TouchableOpacity style={styles.iconAction} onPress={submitPrimaryCapture}>
-                <MaterialCommunityIcons name="content-save-outline" size={16} color={palette.accent} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconAction} onPress={() => flushPendingCaptures("manual")}>
-                <MaterialCommunityIcons name="upload-outline" size={16} color={palette.accent} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.subtle}>Press and hold to capture a voice note. Release to stop, then save the voice note or queue text and files.</Text>
-            <View style={styles.captureArtifactCard}>
-              <Text style={styles.heroCardLabel}>Selected next move</Text>
-              <Text style={styles.captureArtifactTitle}>{captureCommandPreview}</Text>
-              <Text style={styles.body}>{captureQueuePreview}</Text>
-              <View style={styles.contextMetaRow}>
-                <View style={styles.miniTag}>
-                  <Text style={styles.miniTagText}>{voiceMemoPreview}</Text>
-                </View>
-                <View style={styles.miniTag}>
-                  <Text style={styles.miniTagText}>{sharedFileDrafts.length > 0 ? describeSharedDrafts(sharedFileDrafts) : "No shared files"}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.captureMediaRow}>
-              <View style={styles.captureMediaTile}>
-                <Text style={styles.heroCardLabel}>Incoming context</Text>
-                <Text style={styles.inlineCardTitle}>{selectedArtifact?.title || quickCaptureTitle || "Waiting for a chosen artifact"}</Text>
-                <Text style={styles.subtle}>{captureSourcePreview}</Text>
-              </View>
-              <View style={styles.captureAlertTile}>
-                <Text style={styles.heroCardLabel}>Routing</Text>
-                <Text style={styles.inlineCardTitle}>Voice + output path</Text>
-                <Text style={styles.subtle}>{routeNarrative}</Text>
-              </View>
-            </View>
-            <View style={styles.captureVoiceMemo}>
-              <TouchableOpacity style={styles.capturePlayButton} onPress={playVoiceClip}>
-                <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineCardTitle}>Latest voice memo</Text>
-                <Text style={styles.subtle}>{voiceMemoPreview}</Text>
-                {voiceClipUri ? (
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
-                      <Text style={styles.buttonText}>Save Voice Note</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setCaptureOpsSection("queue");
-                  setShowAdvancedCapture((value) => !value);
-                }}
-              >
-                <Text style={styles.buttonText}>{showAdvancedCapture ? "Close Mission Tools" : "Open Mission Tools"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        {activeTab === "notes" ? (
+          <MobileNotesSurface
+            styles={styles}
+            palette={palette}
+            pendingCaptures={pendingCaptures.length}
+            quickCaptureTitle={quickCaptureTitle}
+            setQuickCaptureTitle={setQuickCaptureTitle}
+            quickCaptureSourceUrl={quickCaptureSourceUrl}
+            setQuickCaptureSourceUrl={setQuickCaptureSourceUrl}
+            quickCaptureText={quickCaptureText}
+            setQuickCaptureText={setQuickCaptureText}
+            assistantCommand={assistantCommand}
+            setAssistantCommand={setAssistantCommand}
+            voiceRecording={Boolean(voiceRecording)}
+            holdToTalkLabel={holdToTalkLabel}
+            beginHoldToTalkCapture={() => beginHoldToTalkCapture().catch(() => undefined)}
+            endHoldToTalkCapture={() => endHoldToTalkCapture().catch(() => undefined)}
+            submitPrimaryCapture={() => submitPrimaryCapture().catch(() => undefined)}
+            flushPendingCaptures={() => flushPendingCaptures("manual").catch(() => undefined)}
+            captureCommandPreview={captureCommandPreview}
+            captureQueuePreview={captureQueuePreview}
+            voiceMemoPreview={voiceMemoPreview}
+            sharedDraftSummary={sharedFileDrafts.length > 0 ? describeSharedDrafts(sharedFileDrafts) : "No shared files"}
+            selectedArtifactTitle={selectedArtifact?.title || quickCaptureTitle || "Waiting for a chosen artifact"}
+            captureSourcePreview={captureSourcePreview}
+            routeNarrative={routeNarrative}
+            voiceClipReady={Boolean(voiceClipUri)}
+            playVoiceClip={playVoiceClip}
+            submitVoiceCapture={() => submitVoiceCapture().catch(() => undefined)}
+            showAdvancedCapture={showAdvancedCapture}
+            toggleMissionTools={() => {
+              setCaptureOpsSection("queue");
+              setShowAdvancedCapture((value) => !value);
+            }}
+          />
         ) : null}
 
         {activeTab === "review" ? (
-          <View style={styles.panel}>
-            <View style={styles.reviewTopRow}>
-              <View>
-                <Text style={styles.sectionKicker}>Current Session</Text>
-                <Text style={styles.subtle}>Knowledge health: 42%</Text>
-              </View>
-              <View style={styles.reviewPillRow}>
-                <View style={styles.reviewPill}>
-                  <Text style={styles.reviewPillText}>12</Text>
-                </View>
-                <View style={styles.reviewPill}>
-                  <Text style={styles.reviewPillText}>85</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.reviewFlashcard}>
-              <Text style={styles.reviewMeta}>Last seen: 4 days ago</Text>
-              <Text style={styles.reviewCategory}>Scientific Nomenclature</Text>
-              <Text style={styles.reviewPromptLarge}>{reviewCard?.prompt || "Nebular Nucleosynthesis"}</Text>
-              <View style={styles.reviewDivider} />
-              <Text style={styles.reviewAnswerLarge}>
-                {showAnswer
-                  ? reviewCard?.answer ||
-                    "The process responsible for the formation of heavy elements within the core of collapsing stellar bodies."
-                  : "Tap reveal to show answer"}
-              </Text>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  if (!reviewCard) {
-                    loadDueCards().catch(() => undefined);
-                  }
-                  setShowAnswer(true);
-                }}
-              >
-                <Text style={styles.buttonText}>Reveal Answer</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.reviewRateRow}>
-              <TouchableOpacity
-                style={styles.reviewRateButton}
-                onPress={() => (reviewCard ? submitReview(1) : setStatus("Load due cards first"))}
-              >
-                <Text style={styles.reviewRateLabel}>Again</Text>
-                <Text style={styles.reviewRateValue}>1m</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.reviewRateButton}
-                onPress={() => (reviewCard ? submitReview(2) : setStatus("Load due cards first"))}
-              >
-                <Text style={styles.reviewRateLabel}>Hard</Text>
-                <Text style={styles.reviewRateValue}>2d</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reviewRateButton, styles.reviewRateButtonActive]}
-                onPress={() => (reviewCard ? submitReview(4) : setStatus("Load due cards first"))}
-              >
-                <Text style={[styles.reviewRateLabel, styles.reviewRateLabelActive]}>Good</Text>
-                <Text style={styles.reviewRateValue}>4d</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.reviewRateButton}
-                onPress={() => (reviewCard ? submitReview(5) : setStatus("Load due cards first"))}
-              >
-                <Text style={styles.reviewRateLabel}>Easy</Text>
-                <Text style={styles.reviewRateValue}>7d</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setReviewOpsSection("session");
-                  setShowAdvancedReview((value) => !value);
-                }}
-              >
-                <Text style={styles.buttonText}>{showAdvancedReview ? "Close Mission Tools" : "Open Mission Tools"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <MobileReviewSurface
+            styles={styles}
+            palette={palette}
+            reviewPrompt={reviewCard?.prompt || "Nebular Nucleosynthesis"}
+            reviewAnswer={
+              reviewCard?.answer ||
+              "The process responsible for the formation of heavy elements within the core of collapsing stellar bodies."
+            }
+            showAnswer={showAnswer}
+            revealAnswer={() => {
+              if (!reviewCard) {
+                loadDueCards().catch(() => undefined);
+              }
+              setShowAnswer(true);
+            }}
+            submitReview={(rating) => {
+              if (!reviewCard) {
+                setStatus("Load due cards first");
+                return;
+              }
+              submitReview(rating).catch(() => undefined);
+            }}
+            hasReviewCard={Boolean(reviewCard)}
+            showAdvancedReview={showAdvancedReview}
+            toggleMissionTools={() => {
+              setReviewOpsSection("session");
+              setShowAdvancedReview((value) => !value);
+            }}
+          />
         ) : null}
 
-        {activeTab === "alarms" ? (
-          <View style={styles.panel}>
-            <View style={styles.alarmClockRow}>
-              <Text style={styles.alarmClockText}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
-              <Text style={styles.alarmClockPeriod}>{stationPeriod}</Text>
-            </View>
-            <Text style={styles.alarmStationMeta}>Daily return point</Text>
-            <View style={styles.alarmNextCard}>
-              <View>
-                <Text style={styles.heroCardLabel}>Agenda cycle</Text>
-                <Text style={styles.captureArtifactTitle}>{briefingHeroCopy}</Text>
-                <Text style={styles.subtle}>Scheduled for {toHourMinuteLabel(stationHour12, alarmMinute)} {stationPeriod}</Text>
-              </View>
-              <View>
-                <Text style={styles.alarmCountdown}>{nextBriefingCountdown}</Text>
-                <Text style={styles.subtle}>Until play</Text>
-              </View>
-            </View>
-            <View style={styles.alarmPlayerCard}>
-              <Text style={styles.heroCardLabel}>Playback</Text>
-              <Text style={styles.inlineCardTitle}>Daily briefing</Text>
-              <Text style={styles.subtle}>{offlineBriefingStatus}</Text>
-              <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
-              <View style={styles.alarmWaveRow}>
-                {[4, 10, 6, 14, 5, 11, 13, 4, 8, 12].map((height, index) => (
-                  <View key={index} style={[styles.alarmWaveBar, { height }]} />
-                ))}
-              </View>
-              <View style={styles.alarmPlayerButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.iconAction,
-                    !cachedPath && briefingPlaybackPreference === "offline_first" ? { opacity: 0.45 } : null,
-                  ]}
-                  onPress={playBriefing}
-                >
-                  <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.iconAction} onPress={queueBriefingAudio}>
-                  <MaterialCommunityIcons name="text-to-speech" size={18} color={palette.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.iconAction} onPress={generateAndCache}>
-                  <MaterialCommunityIcons name="download-outline" size={18} color={palette.accent} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.alarmPlayerCard}>
-              <Text style={styles.heroCardLabel}>One next move</Text>
-              <Text style={styles.inlineCardTitle}>{nextActionPreview}</Text>
-              <Text style={styles.subtle}>After playback, continue in the PWA or in quick review.</Text>
-              <View style={styles.buttonRow}>
-                <TouchableOpacity style={styles.button} onPress={openPwa}>
-                  <Text style={styles.buttonText}>Open workspace</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={() => {
-                    setActiveTab("review");
-                    setStatus("Quick review surface active");
-                  }}
-                >
-                  <Text style={styles.buttonText}>Open review</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.alarmCycleCard}>
-              <Text style={styles.heroCardLabel}>Alarm schedule</Text>
-              <Text style={styles.inlineCardTitle}>Daily alarm</Text>
-              <View style={styles.alarmCycleRow}>
-                <View>
-                  <Text style={styles.alarmCycleTime}>{toHourMinuteLabel(stationHour12, alarmMinute)}</Text>
-                  <Text style={styles.subtle}>{alarmNotificationId ? "Alarm is scheduled" : "Alarm is not scheduled yet"}</Text>
-                </View>
-                <TouchableOpacity style={styles.toggleButton} onPress={alarmNotificationId ? clearMorningAlarm : scheduleMorningAlarm}>
-                  <View style={[styles.toggleKnob, alarmNotificationId ? styles.toggleKnobOn : null]} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setAlarmOpsSection("briefing");
-                  setShowAdvancedAlarms((value) => !value);
-                }}
-              >
-                <Text style={styles.buttonText}>{showAdvancedAlarms ? "Close Mission Tools" : "Open Mission Tools"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        {activeTab === "calendar" ? (
+          <MobileCalendarSurface
+            styles={styles}
+            palette={palette}
+            stationTimeLabel={toHourMinuteLabel(stationHour12, alarmMinute)}
+            stationPeriod={stationPeriod}
+            briefingHeroCopy={briefingHeroCopy}
+            nextBriefingCountdown={nextBriefingCountdown}
+            offlineBriefingStatus={offlineBriefingStatus}
+            briefingPlaybackStatus={briefingPlaybackStatus}
+            playBriefing={playBriefing}
+            queueBriefingAudio={() => queueBriefingAudio().catch(() => undefined)}
+            generateAndCache={() => generateAndCache().catch(() => undefined)}
+            canPlayOffline={Boolean(cachedPath || briefingPlaybackPreference !== "offline_first")}
+            nextActionPreview={nextActionPreview}
+            openPwa={openPwa}
+            openReview={() => {
+              setActiveTab("review");
+              setStatus("Quick review surface active");
+            }}
+            alarmScheduled={Boolean(alarmNotificationId)}
+            toggleAlarm={() => (alarmNotificationId ? clearMorningAlarm().catch(() => undefined) : scheduleMorningAlarm().catch(() => undefined))}
+            showAdvancedAlarms={showAdvancedAlarms}
+            toggleMissionTools={() => {
+              setAlarmOpsSection("briefing");
+              setShowAdvancedAlarms((value) => !value);
+            }}
+          />
         ) : null}
 
         {renderCaptureOpsPanel()}
@@ -4906,6 +4667,53 @@ function themedStyles(palette: Palette) {
       fontSize: 24,
       fontWeight: "700",
       lineHeight: 28,
+    },
+    surfaceLeadCard: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 22,
+      padding: 16,
+      gap: 6,
+      backgroundColor: palette.surfaceLow,
+    },
+    surfaceLeadTitle: {
+      color: palette.text,
+      fontSize: 26,
+      lineHeight: 32,
+      fontFamily: SERIF_FONT_FAMILY,
+      fontWeight: "400",
+    },
+    surfaceLeadCopy: {
+      color: palette.muted,
+      fontSize: 13,
+      lineHeight: 20,
+    },
+    surfaceStatsRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    surfaceStatCard: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 18,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      backgroundColor: palette.surfaceLow,
+      gap: 2,
+    },
+    surfaceStatValue: {
+      color: palette.secondary,
+      fontSize: 22,
+      lineHeight: 26,
+      fontWeight: "800",
+      fontFamily: "Manrope",
+    },
+    surfaceStatLabel: {
+      color: palette.muted,
+      fontSize: 10,
+      letterSpacing: 0.9,
+      textTransform: "uppercase",
     },
     reviewTopRow: {
       flexDirection: "row",

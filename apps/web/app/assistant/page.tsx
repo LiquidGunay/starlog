@@ -1,12 +1,19 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { MainRoomThread } from "../components/main-room-thread";
-import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
+import {
+  ObservatoryActionChip,
+  ObservatoryFloatingAction,
+  ObservatoryPanel,
+  ObservatoryWaveform,
+  ObservatoryWorkspaceShell,
+} from "../components/observatory-shell";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
-import { usePaneCollapsed } from "../lib/pane-state";
 import { ApiError } from "../lib/starlog-client";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
@@ -154,8 +161,6 @@ const ASSISTANT_INTENTS_ENTITY_SCOPE = "assistant.intents";
 const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
 const ASSISTANT_VOICE_JOBS_ENTITY_SCOPE = "assistant.voice_jobs";
 const ASSISTANT_AI_JOBS_ENTITY_SCOPE = "assistant.ai_jobs";
-const ASSISTANT_QUEUE_PANE_SNAPSHOT = "assistant.pane.queue";
-const ASSISTANT_AGENT_PANE_SNAPSHOT = "assistant.pane.agent";
 
 function cacheAssistantIntents(intents: AgentIntent[]): void {
   const recordedAt = new Date().toISOString();
@@ -246,9 +251,8 @@ function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueIte
 }
 
 export default function AssistantPage() {
+  const pathname = usePathname();
   const { apiBase, token, isOnline } = useSessionConfig();
-  const queuePane = usePaneCollapsed(ASSISTANT_QUEUE_PANE_SNAPSHOT);
-  const agentPane = usePaneCollapsed(ASSISTANT_AGENT_PANE_SNAPSHOT);
   const [command, setCommand] = useState("summarize latest artifact");
   const [status, setStatus] = useState("Ready");
   const [latest, setLatest] = useState<AgentCommandResponse | null>(() => {
@@ -315,6 +319,39 @@ export default function AssistantPage() {
     const assistantMessage = [...conversationMessages].reverse().find((message) => message.role === "assistant");
     return assistantMessage?.content?.trim() || "";
   }, [conversationMessages, latest]);
+  const recentToolNames = useMemo(
+    () => [...new Set(conversationTraces.slice(0, 4).map((trace) => trace.tool_name.replace(/_/g, " ")))],
+    [conversationTraces],
+  );
+  const orbitCards = useMemo(() => ([
+    {
+      kicker: "Thread state",
+      title: pendingTurn ? "Reply underway" : "Ready for the next turn",
+      body: pendingTurn
+        ? `Main Room is working on ${pendingTurn.inputMode === "voice" ? "a voiced" : "a typed"} turn.`
+        : `${conversationMessages.length} messages and ${conversationTraces.length} recent traces remain attached to the thread.`,
+      href: "/assistant",
+      actionLabel: "Stay in Main Room",
+    },
+    {
+      kicker: "Research",
+      title: recentToolNames[0] ? `Latest tool: ${recentToolNames[0]}` : "Tool detail stays subordinate",
+      body: recentToolNames.length > 0
+        ? `Recent trace context: ${recentToolNames.join(", ")}.`
+        : "Tool calls appear inline under replies until you deliberately expand them.",
+      href: "/notes",
+      actionLabel: "Inspect notes",
+    },
+    {
+      kicker: "Memory",
+      title: Object.keys(sessionState).length > 0 ? "Short-term context live" : "Session memory clear",
+      body: Object.keys(sessionState).length > 0
+        ? `${Object.keys(sessionState).length} live session key${Object.keys(sessionState).length === 1 ? "" : "s"} remain resettable without clearing the thread.`
+        : "Long-term thread history persists while session context stays explainable and resettable.",
+      href: "/runtime",
+      actionLabel: "Open runtime",
+    },
+  ]), [conversationMessages.length, conversationTraces.length, pendingTurn, recentToolNames, sessionState]);
   const transcriptMessages = useMemo(() => {
     if (conversationMessages.length > 0 || pendingTurn) {
       const messages = [...conversationMessages];
@@ -948,367 +985,250 @@ export default function AssistantPage() {
   ]);
 
   return (
-    <main className="command-center-shell assistant-thread-shell">
-      <section
-        className={[
-          "command-center-layout",
-          queuePane.collapsed ? "command-center-layout-left-collapsed" : "",
-          agentPane.collapsed ? "command-center-layout-right-collapsed" : "",
-        ].filter(Boolean).join(" ")}
-      >
-        {!queuePane.collapsed ? (
-          <aside className="command-center-column assistant-side-column">
-            <div className="command-column-header">
-              <span className="command-column-title">Thread Activity</span>
-              <span className="command-footnote">{history.length} recent runs</span>
-              <PaneToggleButton label="Hide pane" onClick={queuePane.collapse} />
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="main-room"
+      eyebrow={conversationTitle}
+      title="Speak, inspect, confirm."
+      description="Send typed or spoken turns into one persistent thread. Tool work, cards, and session memory stay attached to each reply instead of taking over the workspace."
+      statusLabel={isOnline ? "System optimal" : "Offline cache"}
+      stats={[
+        { label: "Main Room", value: pendingTurn ? "Reply pending" : "Ready" },
+        { label: "Voice queue", value: String(voiceUploadQueue.length) },
+        { label: "Recent runs", value: String(history.length) },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => loadConversation("manual").catch(() => undefined)}>
+            Refresh thread
+          </button>
+          <Link className="button" href="/review">Open review</Link>
+        </div>
+      }
+      sideNote={{
+        title: "Operational cycle",
+        body: showcaseActions[0] || "The thread is ready for note lookup, agenda planning, and review pivots.",
+        meta: `${showcasePlanner} · ${showcaseDate}`,
+      }}
+      orbitCards={orbitCards}
+      footer={
+        <ObservatoryFloatingAction
+          label="Jump"
+          detail="Composer"
+          onClick={() => document.getElementById("assistant-command")?.focus()}
+        />
+      }
+    >
+      <section className="observatory-grid observatory-grid-wide">
+        <ObservatoryPanel
+          kicker="Observatory intelligence"
+          title="Main Room transcript"
+          meta="Cards and tool detail stay folded under the reply so the conversation remains primary."
+          actions={
+            <div className="button-row">
+              <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
+                Load sample
+              </button>
+              <button className="button" type="button" onClick={() => resetConversationSession()}>
+                Reset session
+              </button>
             </div>
-            <div className="assistant-side-stack">
-              <section className="assistant-side-card glass">
-                <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Recent operator runs</span>
-                  <span className="command-footnote">{showcaseLabel}</span>
-                </div>
-                <ul className="assistant-mini-feed">
-                  {history.length === 0 ? (
-                    <li className="assistant-mini-feed-empty">No recent operator runs yet.</li>
-                  ) : (
-                    history.map((entry, index) => (
-                      <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
-                        <button type="button" className="assistant-mini-feed-button" onClick={() => setCommand(entry.command)}>
-                          <span className="assistant-mini-feed-meta">{entry.matched_intent} · {entry.status}</span>
-                          <strong>{entry.command}</strong>
-                          <span>{entry.summary}</span>
-                        </button>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </section>
+          }
+        >
+          <MainRoomThread
+            messages={transcriptMessages}
+            traces={conversationTraces}
+            expandedCards={expandedCards}
+            expandedTraces={expandedTraces}
+            onToggleCards={toggleExpandedCards}
+            onToggleTraces={toggleExpandedTraces}
+            onReuseCommand={(nextCommand) => setCommand(nextCommand)}
+            emptyTitle="Begin with a typed turn or a held-to-talk request"
+            emptyBody="The Main Room keeps the answer, the next move, and the supporting tool details in one readable thread."
+            emptyActions={showcaseActions}
+            transcriptEndRef={transcriptEndRef}
+          />
+        </ObservatoryPanel>
 
-              <section className="assistant-side-card glass">
-                <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Prompt Library</span>
-                  <span className="command-footnote">{exampleCommands.length} samples</span>
-                </div>
-                <div className="assistant-chip-grid">
-                  {exampleCommands.slice(0, 8).map((example) => (
-                    <button key={example} type="button" className="assistant-chip-button" onClick={() => setCommand(example)}>
-                      {example}
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="assistant-side-card glass">
-                <div className="assistant-side-card-head">
-                  <span className="assistant-side-kicker">Session Memory</span>
-                  <span className="command-footnote">{Object.keys(sessionState).length} live keys</span>
-                </div>
-                <p className="command-footnote">Reset clears volatile context only. Messages and runtime traces stay attached to the thread.</p>
-                <p className="console-copy">
-                  {Object.keys(sessionState).length > 0
-                    ? JSON.stringify(sessionState, null, 2)
-                    : "Short-term session state is empty."}
-                </p>
-                {lastResetSummary ? (
-                  <div className="assistant-inline-card">
-                    <div className="assistant-inline-card-head">
-                      <span>Last reset</span>
-                      <span>{new Date(lastResetSummary.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    </div>
-                    <p>
-                      {(lastResetSummary.cleared_keys ?? []).length > 0
-                        ? `Cleared: ${(lastResetSummary.cleared_keys ?? []).join(", ")}`
-                        : "No session keys needed clearing."}
-                    </p>
-                  </div>
-                ) : null}
-              </section>
-            </div>
-          </aside>
-        ) : null}
-
-        <section className="command-center-main">
-          <div className="command-scroll assistant-main-scroll">
-            <section className="assistant-hero glass">
-                <div className="assistant-hero-copy">
-                  <div className="assistant-hero-meta">
-                    <span className="assistant-hero-kicker">{conversationTitle}</span>
-                    <span className="assistant-hero-separator">/</span>
-                    <span>{showcasePlanner}</span>
-                  <span className="assistant-hero-separator">/</span>
-                  <span>{showcaseDate}</span>
-                </div>
-                <h1>Keep the Main Room as the living thread for the day.</h1>
-                <p>
-                  Send typed or spoken turns into one persistent conversation. Tool work, cards, and session memory
-                  stay attached to each reply instead of taking over the workspace.
-                </p>
-              </div>
-              <div className="assistant-hero-actions">
-                <button
-                  className={recording ? "assistant-voice-button recording" : "assistant-voice-button"}
-                  type="button"
-                  onPointerDown={beginHoldToTalk}
-                  onPointerUp={endHoldToTalk}
-                  onPointerLeave={endHoldToTalk}
-                  onPointerCancel={endHoldToTalk}
-                  onKeyDown={handleHoldToTalkKeyDown}
-                  onKeyUp={handleHoldToTalkKeyUp}
-                  disabled={!browserSupportsRecording}
-                >
-                  <span className="assistant-voice-button-label">
-                    {recording ? "Release to capture" : voiceBlob ? "Voice captured" : "Hold to talk"}
-                  </span>
-                  <span className="assistant-voice-button-meta">
-                    {browserSupportsRecording ? "local mic capture for Main Room or operator lanes" : "browser capture unavailable"}
-                  </span>
-                </button>
-                <div className="assistant-hero-button-row">
-                  <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
-                    {turnInFlight ? "Reply forming" : "Send to Main Room"}
-                  </button>
-                  <button className="button" type="button" onClick={() => runCommand(false)}>
-                    Preview command flow
-                  </button>
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={toggleSpokenReply}
-                    disabled={!browserSupportsSpeech || !latestSpokenReply}
-                  >
-                    {speakingReply ? "Stop spoken reply" : "Speak latest reply"}
-                  </button>
-                </div>
-              </div>
-              <div className="assistant-hero-stats">
-                <div className="assistant-stat-pill">
-                  <span>Today</span>
-                  <strong>{isOnline ? "Thread in sync" : "Offline cache"}</strong>
-                </div>
-                <div className="assistant-stat-pill">
-                  <span>Voice queue</span>
-                  <strong>{voiceUploadQueue.length} staged</strong>
-                </div>
-                <div className="assistant-stat-pill">
-                  <span>Main Room</span>
-                  <strong>{pendingTurn ? "Reply pending" : "Ready"}</strong>
-                </div>
-              </div>
-            </section>
-
-            <PaneRestoreStrip
-              actions={[
-                ...(queuePane.collapsed ? [{ id: "queue", label: "Show thread activity", onClick: queuePane.expand }] : []),
-                ...(agentPane.collapsed ? [{ id: "agent", label: "Show voice and jobs", onClick: agentPane.expand }] : []),
-              ]}
+        <ObservatoryPanel
+          kicker="Voice dock"
+          title={voiceBlob ? "Voice clip staged" : recording ? "Listening now" : "Composer and mic"}
+          meta="Use typed turns for deliberate prompts, or hold the voice control for a short spoken request."
+        >
+          <div className="assistant-voice-dock">
+            <button
+              className={recording ? "assistant-voice-button recording" : "assistant-voice-button"}
+              type="button"
+              onPointerDown={beginHoldToTalk}
+              onPointerUp={endHoldToTalk}
+              onPointerLeave={endHoldToTalk}
+              onPointerCancel={endHoldToTalk}
+              onKeyDown={handleHoldToTalkKeyDown}
+              onKeyUp={handleHoldToTalkKeyUp}
+              disabled={!browserSupportsRecording}
+            >
+              <span className="assistant-voice-button-label">
+                {recording ? "Release to capture" : voiceBlob ? "Voice captured" : "Hold to talk"}
+              </span>
+              <span className="assistant-voice-button-meta">
+                {browserSupportsRecording ? "Local mic capture for Main Room turns" : "Browser capture unavailable"}
+              </span>
+            </button>
+            <ObservatoryWaveform
+              label={recording ? "Capture active" : voiceBlob ? "Voice staged" : "Voice ready"}
+              detail={
+                recording
+                  ? "Release to preserve the transcript."
+                  : voiceBlob
+                    ? "Route this clip into the Main Room or operator lanes."
+                    : "Short reply mode. Interruptible. Transcript preserved."
+              }
+              active={recording}
             />
-
-            <section className="assistant-thread-panel glass">
-              <div className="assistant-thread-head">
-                <div>
-                  <span className="assistant-side-kicker">Main Room Transcript</span>
-                  <h2>Persistent conversation, with tools folded underneath each reply</h2>
-                </div>
-                <div className="assistant-thread-actions">
-                  <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
-                    Load sample
-                  </button>
-                  <button className="button" type="button" onClick={() => resetConversationSession()}>
-                    Reset session memory
-                  </button>
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={() => {
-                      loadConversation("manual").catch(() => undefined);
-                      loadVoiceJobs("manual").catch(() => undefined);
-                      loadAssistJobs("manual").catch(() => undefined);
-                    }}
-                  >
-                    Refresh
-                  </button>
-                </div>
-              </div>
-              <MainRoomThread
-                messages={transcriptMessages}
-                traces={conversationTraces}
-                expandedCards={expandedCards}
-                expandedTraces={expandedTraces}
-                onToggleCards={toggleExpandedCards}
-                onToggleTraces={toggleExpandedTraces}
-                onReuseCommand={(nextCommand) => setCommand(nextCommand)}
-                emptyTitle="Begin with a typed turn or a held-to-talk request"
-                emptyBody="The Main Room keeps the answer, the next move, and the supporting tool details in one readable thread."
-                emptyActions={showcaseActions}
-                transcriptEndRef={transcriptEndRef}
-              />
-            </section>
-
-            <section className="assistant-composer glass">
-              <div className="assistant-composer-head">
-                <div>
-                  <span className="assistant-side-kicker">Main Room Composer</span>
-                  <h2>Send the next turn into the persistent thread</h2>
-                </div>
-                <p className="command-footnote">Conversation is primary. Operator controls stay available below.</p>
-              </div>
-              <label className="label" htmlFor="assistant-command">Message</label>
-              <textarea
-                id="assistant-command"
-                className="textarea"
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                rows={4}
-                placeholder="Ask for a briefing, a next move, a recap of the current thread, or a card-backed reply."
-              />
-              <div className="assistant-toolbar">
-                <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
-                  {turnInFlight ? "Sending..." : "Send"}
-                </button>
-                <button className="button" type="button" onClick={() => runCommand(false)}>Preview command flow</button>
-                <button className="button" type="button" onClick={() => runCommand(true)}>Execute command flow</button>
-                <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex execute</button>
-              </div>
-              {voiceBlob ? (
-                <div className="assistant-voice-ready">
-                  <p className="console-copy">Voice clip captured and ready for upload.</p>
-                  <div className="button-row">
-                    <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan voice</button>
-                    <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute voice</button>
-                    <button className="button" type="button" onClick={() => discardVoiceCapture()}>Discard clip</button>
-                  </div>
-                </div>
-              ) : (
-                <p className="command-footnote">
-                  Hold the mic button above, release to stage the clip, then route it through the voice-command operator lane.
-                </p>
-              )}
-              <p className="status">{status}</p>
-            </section>
           </div>
-        </section>
 
-        {!agentPane.collapsed ? (
-          <aside className="command-agent-panel assistant-side-column">
-            <div className="command-agent-head">
-              <div className="command-agent-tabs">
-                <div className="command-agent-tab active">Voice</div>
-                <div className="command-agent-tab">Jobs</div>
+          <label className="label" htmlFor="assistant-command">Message</label>
+          <textarea
+            id="assistant-command"
+            className="textarea"
+            value={command}
+            onChange={(event) => setCommand(event.target.value)}
+            rows={5}
+            placeholder="Ask for a briefing, a next move, a recap of the current thread, or a card-backed reply."
+          />
+          <div className="assistant-toolbar">
+            <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
+              {turnInFlight ? "Sending..." : "Send to Main Room"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={toggleSpokenReply}
+              disabled={!browserSupportsSpeech || !latestSpokenReply}
+            >
+              {speakingReply ? "Stop spoken reply" : "Speak latest reply"}
+            </button>
+          </div>
+          <div className="assistant-chip-grid">
+            {exampleCommands.slice(0, 6).map((example) => (
+              <ObservatoryActionChip key={example} label={example} onClick={() => setCommand(example)} />
+            ))}
+          </div>
+          {voiceBlob ? (
+            <div className="assistant-voice-ready">
+              <p className="console-copy">Voice clip captured and ready for upload.</p>
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan voice</button>
+                <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute voice</button>
+                <button className="button" type="button" onClick={() => discardVoiceCapture()}>Discard clip</button>
               </div>
-              <PaneToggleButton label="Hide pane" onClick={agentPane.collapse} />
             </div>
-            <div className="command-agent-body">
-              <div className="command-agent-scroll assistant-side-stack">
-                <section className="assistant-side-card glass">
-                  <div className="assistant-side-card-head">
-                    <span className="assistant-side-kicker">Operator Lanes</span>
-                    <span className="command-footnote">{recording ? "recording" : voiceBlob ? "ready" : "idle"}</span>
-                  </div>
-                  <p className="console-copy">Upload queue: {voiceUploadQueue.length} {isOnline ? "(online)" : "(offline)"}</p>
-                  <p className="console-copy">Speech playback: {speakingReply ? "speaking" : "idle"}</p>
-                  <div className="button-row">
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => {
-                        replayVoiceUploadQueue("manual").catch(() => undefined);
-                      }}
-                      disabled={voiceUploadQueue.length === 0 || voiceQueueReplayInFlight}
-                    >
-                      {voiceQueueReplayInFlight ? "Replaying..." : "Replay queued voice"}
+          ) : null}
+          <p className="status">{status}</p>
+        </ObservatoryPanel>
+      </section>
+
+      <section className="observatory-grid observatory-grid-wide">
+        <ObservatoryPanel
+          kicker="Advanced lanes"
+          title="Operator history and reusable prompts"
+          meta="Keep planning/debug controls reachable, but subordinate to the thread."
+        >
+          <ul className="assistant-mini-feed">
+            {history.length === 0 ? (
+              <li className="assistant-mini-feed-empty">No recent operator runs yet.</li>
+            ) : (
+              history.map((entry, index) => (
+                <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
+                  <button type="button" className="assistant-mini-feed-button" onClick={() => setCommand(entry.command)}>
+                    <span className="assistant-mini-feed-meta">{entry.matched_intent} · {entry.status}</span>
+                    <strong>{entry.command}</strong>
+                    <span>{entry.summary}</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+          <details className="command-agent-detail">
+            <summary>Command actions</summary>
+            <div className="assistant-toolbar assistant-toolbar-advanced">
+              <button className="button" type="button" onClick={() => runCommand(false)}>Preview flow</button>
+              <button className="button" type="button" onClick={() => runCommand(true)}>Execute flow</button>
+              <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex execute</button>
+            </div>
+          </details>
+        </ObservatoryPanel>
+
+        <ObservatoryPanel
+          kicker="Diagnostics"
+          title="Queue state and session memory"
+          meta="Raw queues and memory stay one click away rather than living in the transcript."
+        >
+          <div className="assistant-diagnostics-grid">
+            <article className="assistant-diagnostic-card">
+              <span className="observatory-eyebrow">Session memory</span>
+              <p className="console-copy">
+                {Object.keys(sessionState).length > 0
+                  ? JSON.stringify(sessionState, null, 2)
+                  : "Short-term session state is empty."}
+              </p>
+            </article>
+            <article className="assistant-diagnostic-card">
+              <span className="observatory-eyebrow">Queued voice uploads</span>
+              {voiceUploadQueue.length === 0 ? (
+                <p className="console-copy">No queued voice uploads.</p>
+              ) : (
+                voiceUploadQueue.map((item) => (
+                  <div key={item.id} className="assistant-queue-item">
+                    <p className="console-copy">
+                      <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
+                    </p>
+                    {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
+                    <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
+                      Drop upload
                     </button>
                   </div>
-                </section>
-
-                <details className="command-agent-detail" open>
-                  <summary>Queued voice uploads ({voiceUploadQueue.length})</summary>
-                  {voiceUploadQueue.length === 0 ? (
-                    <p className="console-copy">No queued voice uploads.</p>
-                  ) : (
-                    <div className="scroll-panel">
-                      {voiceUploadQueue.map((item) => (
-                        <div key={item.id} className="command-step-card">
-                          <p className="console-copy">
-                            <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
-                          </p>
-                          <p className="console-copy">
-                            captured: {new Date(item.created_at).toLocaleString()}
-                            {item.last_attempt_at ? ` | last replay: ${new Date(item.last_attempt_at).toLocaleString()}` : ""}
-                          </p>
-                          {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
-                          <div className="button-row">
-                            <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
-                              Drop upload
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </details>
-
-                <details className="command-agent-detail" open>
-                  <summary>Voice jobs ({voiceJobs.length})</summary>
-                  {voiceJobs.length === 0 ? (
-                    <p className="console-copy">No voice command jobs yet.</p>
-                  ) : (
-                    <div className="scroll-panel">
-                      {voiceJobs.map((job) => (
-                        <div key={job.id} className="command-step-card">
-                          <p className="console-copy">
-                            <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                          </p>
-                          <p className="console-copy">
-                            created: {new Date(job.created_at).toLocaleString()}
-                            {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
-                          </p>
-                          {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
-                          {job.output.assistant_command ? (
-                            <p className="console-copy">
-                              command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                            </p>
-                          ) : null}
-                          {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </details>
-
-                <details className="command-agent-detail" open>
-                  <summary>Queued planner jobs ({assistJobs.length})</summary>
-                  {assistJobs.length === 0 ? (
-                    <p className="console-copy">No queued planner jobs yet.</p>
-                  ) : (
-                    <div className="scroll-panel">
-                      {assistJobs.map((job) => (
-                        <div key={job.id} className="command-step-card">
-                          <p className="console-copy">
-                            <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                          </p>
-                          {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
-                          <p className="console-copy">
-                            created: {new Date(job.created_at).toLocaleString()}
-                            {job.finished_at ? ` | finished: ${new Date(job.finished_at).toLocaleString()}` : ""}
-                          </p>
-                          {job.output.assistant_command ? (
-                            <p className="console-copy">
-                              command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                            </p>
-                          ) : null}
-                          {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </details>
-              </div>
+                ))
+              )}
+            </article>
+          </div>
+          <details className="command-agent-detail">
+            <summary>Voice jobs ({voiceJobs.length})</summary>
+            <div className="scroll-panel">
+              {voiceJobs.length === 0 ? (
+                <p className="console-copy">No voice command jobs yet.</p>
+              ) : (
+                voiceJobs.map((job) => (
+                  <div key={job.id} className="command-step-card">
+                    <p className="console-copy">
+                      <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                    </p>
+                    {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
+                    {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
+                  </div>
+                ))
+              )}
             </div>
-          </aside>
-        ) : null}
+          </details>
+          <details className="command-agent-detail">
+            <summary>Planner jobs ({assistJobs.length})</summary>
+            <div className="scroll-panel">
+              {assistJobs.length === 0 ? (
+                <p className="console-copy">No queued planner jobs yet.</p>
+              ) : (
+                assistJobs.map((job) => (
+                  <div key={job.id} className="command-step-card">
+                    <p className="console-copy">
+                      <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
+                    </p>
+                    {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
+                  </div>
+                ))
+              )}
+            </div>
+          </details>
+        </ObservatoryPanel>
       </section>
-    </main>
+    </ObservatoryWorkspaceShell>
   );
 }

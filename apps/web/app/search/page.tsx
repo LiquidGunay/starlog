@@ -118,7 +118,7 @@ export default function SearchPage() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Artifact Nexus</p>
+          <p className="eyebrow">Knowledge Base</p>
           <h1>Cross-workspace retrieval</h1>
           <p className="console-copy">
             Search notes, artifacts, tasks, planner blocks, integrations, assistant history, and calendar events

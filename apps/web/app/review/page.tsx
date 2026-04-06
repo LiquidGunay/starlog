@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { ObservatoryPageShell, ObservatoryPanel } from "../components/observatory-shell";
-import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
+import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
-import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -28,11 +27,10 @@ const REVIEW_CARDS_SNAPSHOT = "review.cards";
 const REVIEW_SHOW_ANSWER_SNAPSHOT = "review.show_answer";
 const REVIEW_CURRENT_INDEX_SNAPSHOT = "review.current_index";
 const REVIEW_STATS_SNAPSHOT = "review.stats";
-const REVIEW_SIDECAR_PANE_SNAPSHOT = "review.pane.sidecar";
 
 export default function ReviewPage() {
+  const pathname = usePathname();
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
-  const sidecarPane = usePaneCollapsed(REVIEW_SIDECAR_PANE_SNAPSHOT);
   const missingToken = !token;
   const missingApiBase = !apiBase;
   const missingConfig = missingToken || missingApiBase;
@@ -186,10 +184,13 @@ export default function ReviewPage() {
   const progressActive = reviewedTotal === 0 ? 0 : Math.min(progressSegments, Math.round((stats.reviewed / reviewedTotal) * progressSegments));
 
   return (
-    <ObservatoryPageShell
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="srs-review"
       eyebrow="SRS Review"
-      title="Focus on one card at a time, with deck context off to the side."
+      title="Hold one card in focus and keep the deck context quiet."
       description="Keep the review surface immersive, but leave queue state, deck health, and the route back to the Main Room within one click."
+      statusLabel={currentCard ? "Review live" : "Queue waiting"}
       stats={[
         { label: "Due now", value: String(cards.length) },
         { label: "Reviewed", value: String(stats.reviewed) },
@@ -201,11 +202,31 @@ export default function ReviewPage() {
           <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
         </div>
       }
+      sideNote={{
+        title: "Review posture",
+        body: "Keep the answer hidden until you commit to retrieval. Deck state and progress stay peripheral.",
+        meta: currentCard ? `Card ${currentIndex + 1} of ${Math.max(cards.length, 1)}` : "Awaiting due queue",
+      }}
+      orbitCards={[
+        {
+          kicker: "Deck queue",
+          title: `${cards.length} cards due`,
+          body: duePreview[0]?.prompt || "Load due cards to start the next focused pass.",
+        },
+        {
+          kicker: "Session split",
+          title: `${stats.again} again · ${stats.good} good · ${stats.easy} easy`,
+          body: stats.reviewed > 0 ? "Current session response mix." : "Ratings will accumulate as soon as you review cards.",
+        },
+        {
+          kicker: "Main Room",
+          title: "Return to the shared thread",
+          body: "Use chat to inspect supporting context before jumping back into review.",
+          href: "/assistant",
+          actionLabel: "Open Main Room",
+        },
+      ]}
     >
-      <PaneRestoreStrip
-        actions={sidecarPane.collapsed ? [{ id: "review-sidecar", label: "Show deck sidecar", onClick: sidecarPane.expand }] : []}
-      />
-
       <section className="observatory-grid observatory-grid-wide">
         <ObservatoryPanel
           kicker="Focus Session"
@@ -279,50 +300,47 @@ export default function ReviewPage() {
           <p className="status">{status}</p>
         </ObservatoryPanel>
 
-        {!sidecarPane.collapsed ? (
-          <ObservatoryPanel
-            kicker="Deck Sidecar"
-            title="Queue and session health"
-            meta="Keep a short preview of what is due next, plus current session progress."
-            actions={<PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />}
-          >
-            <div className="neural-sync-progress">
-              <span>Progress</span>
-              <span className="sync-bars">
-                {Array.from({ length: progressSegments }).map((_, index) => (
-                  <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
-                ))}
-              </span>
-              <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
+        <ObservatoryPanel
+          kicker="Deck Context"
+          title="Queue and session health"
+          meta="Keep a short preview of what is due next, plus current session progress."
+        >
+          <div className="neural-sync-progress">
+            <span>Progress</span>
+            <span className="sync-bars">
+              {Array.from({ length: progressSegments }).map((_, index) => (
+                <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
+              ))}
+            </span>
+            <strong>{stats.reviewed}/{Math.max(reviewedTotal, 1)}</strong>
+          </div>
+          <p className="console-copy">Queue remaining: {cards.length}</p>
+          <p className="console-copy">Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</p>
+          <div className="button-row">
+            <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
+            <button
+              className="button"
+              type="button"
+              onClick={() => setShowAnswer((previous) => !previous)}
+              disabled={!currentCard}
+            >
+              {showAnswer ? "Hide answer" : "Reveal answer"}
+            </button>
+          </div>
+          <h3 className="observatory-panel-title">Queue preview</h3>
+          {duePreview.length === 0 ? (
+            <p className="console-copy">
+              {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
+            </p>
+          ) : (
+            <div className="scroll-panel">
+              {duePreview.map((card) => (
+                <p key={card.id} className="console-copy">{card.prompt}</p>
+              ))}
             </div>
-            <p className="console-copy">Queue remaining: {cards.length}</p>
-            <p className="console-copy">Again: {stats.again} | Good: {stats.good} | Easy: {stats.easy}</p>
-            <div className="button-row">
-              <button className="button" type="button" onClick={() => loadDue()} disabled={missingConfig}>Refresh due cards</button>
-              <button
-                className="button"
-                type="button"
-                onClick={() => setShowAnswer((previous) => !previous)}
-                disabled={!currentCard}
-              >
-                {showAnswer ? "Hide answer" : "Reveal answer"}
-              </button>
-            </div>
-            <h3 className="observatory-panel-title">Queue preview</h3>
-            {duePreview.length === 0 ? (
-              <p className="console-copy">
-                {missingConfig ? "Connect to the API to load the review queue." : "No queued cards."}
-              </p>
-            ) : (
-              <div className="scroll-panel">
-                {duePreview.map((card) => (
-                  <p key={card.id} className="console-copy">{card.prompt}</p>
-                ))}
-              </div>
-            )}
-          </ObservatoryPanel>
-        ) : null}
+          )}
+        </ObservatoryPanel>
       </section>
-    </ObservatoryPageShell>
+    </ObservatoryWorkspaceShell>
   );
 }

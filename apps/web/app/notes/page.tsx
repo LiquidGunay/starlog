@@ -1,9 +1,9 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { ObservatoryPageShell, ObservatoryPanel } from "../components/observatory-shell";
+import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { readEntityCacheScope, replaceEntityCacheScope } from "../lib/entity-cache";
 import {
   ENTITY_CACHE_INVALIDATION_EVENT,
@@ -47,6 +47,7 @@ function cacheNotes(notes: Note[]): void {
 }
 
 function NotesPageContent() {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const [notes, setNotes] = useState<Note[]>(() => readEntitySnapshot<Note[]>(NOTES_SNAPSHOT, []));
@@ -254,10 +255,13 @@ function NotesPageContent() {
   }, [selectedId]);
 
   return (
-    <ObservatoryPageShell
-      eyebrow="Knowledge Base"
-      title="Notes, drafts, and reading context in one workspace."
-      description="Keep note editing anchored in the PWA, with queued mutations and recent note state visible without switching to an older dashboard shell."
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="knowledge-base"
+      eyebrow="Vault explorer"
+      title="Knowledge Base"
+      description="A calm archive for notes, fragments, and connected context. Keep the editor central and let graph/backlink context orbit around it."
+      statusLabel={selectedNote ? `Editing v${selectedNote.version}` : "Draft ready"}
       stats={[
         { label: "Notes", value: String(visibleNotes.length) },
         { label: "Queued", value: String(outbox.length) },
@@ -266,15 +270,67 @@ function NotesPageContent() {
       actions={
         <div className="button-row">
           <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
-          <button className="button" type="button" onClick={() => clearEditor()}>New draft</button>
+          <button className="button" type="button" onClick={() => clearEditor()}>New entry</button>
         </div>
       }
+      sideNote={{
+        title: "Vault explorer",
+        body: selectedNote ? `Selected note: ${selectedNote.title}` : "Pick a note from the library or begin a fresh archival fragment.",
+        meta: `${visibleNotes.length} indexed note${visibleNotes.length === 1 ? "" : "s"}`,
+      }}
+      orbitCards={[
+        {
+          kicker: "Stellar graph",
+          title: selectedNote ? "Graph placeholder ready" : "Select a note",
+          body: selectedNote
+            ? "Graph and backlink surfaces can hang off the active note without moving editing out of the workspace."
+            : "Choose a note to inspect versions, backlinks, and future graph links.",
+        },
+        {
+          kicker: "Queue",
+          title: outbox.length > 0 ? `${outbox.length} queued mutation${outbox.length === 1 ? "" : "s"}` : "Queue clear",
+          body: outbox.length > 0 ? "Pending note creates and saves remain replayable." : "No pending note mutations right now.",
+        },
+        {
+          kicker: "Companion",
+          title: "Return to Main Room",
+          body: "Use the conversation when this note needs a summary, tasks, or a review pivot.",
+          href: "/assistant",
+          actionLabel: "Open Main Room",
+        },
+      ]}
     >
-      <section className="observatory-grid observatory-grid-wide">
+      <section className="observatory-three-pane">
+        <ObservatoryPanel
+          kicker="Explorer"
+          title="Recent notes"
+          meta="Vault tree"
+          className="observatory-pane-compact"
+        >
+          {visibleNotes.length === 0 ? (
+            <p className="console-copy">No notes yet.</p>
+          ) : (
+            <ul className="observatory-list-stack">
+              {visibleNotes.map((note) => (
+                <li key={note.id} className="observatory-list-item">
+                  <button className="button" type="button" onClick={() => selectNote(note)}>
+                    {note.title}
+                  </button>
+                  <p className="console-copy">
+                    v{note.version} · updated {new Date(note.updated_at).toLocaleString()}
+                  </p>
+                  {note.pending ? <p className="console-copy">Pending: {note.pendingLabel || "queued mutation"}</p> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </ObservatoryPanel>
+
         <ObservatoryPanel
           kicker="Editor"
           title={selectedNote ? selectedNote.title : "Fresh note draft"}
-          meta="Edit note content directly here, then save or create a new note without leaving the Knowledge Base."
+          meta="Calm editor"
+          className="observatory-pane-primary"
         >
           <label className="label" htmlFor="note-title">Title</label>
           <input
@@ -286,7 +342,7 @@ function NotesPageContent() {
           <label className="label" htmlFor="note-body">Body</label>
           <textarea
             id="note-body"
-            className="textarea"
+            className="textarea textarea-longform"
             value={body}
             onChange={(event) => setBody(event.target.value)}
           />
@@ -299,32 +355,47 @@ function NotesPageContent() {
         </ObservatoryPanel>
 
         <ObservatoryPanel
-          kicker="Library"
-          title="Recent notes"
-          meta="Pick a note to reopen it in the editor. Pending mutations stay visible until replay completes."
+          kicker="Inspector"
+          title={selectedNote ? "Backlinks and metadata" : "Knowledge inspector"}
+          meta="Graph sidecar"
+          className="observatory-pane-compact"
         >
-          {visibleNotes.length === 0 ? (
-            <p className="console-copy">No notes yet.</p>
+          {selectedNote ? (
+            <div className="observatory-inspector-stack">
+              <div>
+                <span className="observatory-eyebrow">Selected</span>
+                <p className="console-copy">{selectedNote.id}</p>
+              </div>
+              <div>
+                <span className="observatory-eyebrow">Version</span>
+                <p className="console-copy">v{selectedNote.version}</p>
+              </div>
+              <div>
+                <span className="observatory-eyebrow">Updated</span>
+                <p className="console-copy">{new Date(selectedNote.updated_at).toLocaleString()}</p>
+              </div>
+              <div>
+                <span className="observatory-eyebrow">Word count</span>
+                <p className="console-copy">{body.trim().split(/\s+/).filter(Boolean).length}</p>
+              </div>
+            </div>
           ) : (
-            <ul>
-              {visibleNotes.map((note) => (
-                <li key={note.id}>
-                  <button className="button" type="button" onClick={() => selectNote(note)}>
-                    {note.title}
-                  </button>
-                  <p className="console-copy">
-                    v{note.version} | updated {new Date(note.updated_at).toLocaleString()}
-                  </p>
-                  {note.pending ? (
-                    <p className="console-copy">Pending: {note.pendingLabel || "queued mutation"}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <p className="console-copy">Select a note to inspect metadata and future graph links.</p>
           )}
+          <div className="assistant-inline-card">
+            <div className="assistant-inline-card-head">
+              <span>Queue state</span>
+              <span>{outbox.length} pending</span>
+            </div>
+            <p>
+              {outbox.length > 0
+                ? "Queued note mutations stay replayable without losing editor context."
+                : "No note mutations are waiting for replay."}
+            </p>
+          </div>
         </ObservatoryPanel>
       </section>
-    </ObservatoryPageShell>
+    </ObservatoryWorkspaceShell>
   );
 }
 

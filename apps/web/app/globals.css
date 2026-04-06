@@ -2866,13 +2866,410 @@ a {
   margin: 0 0 0.55rem;
 }
 
+.observatory-workspace {
+  width: 100%;
+  max-width: 1600px;
+  min-height: calc(100vh - 123px);
+  margin: 0 auto;
+  padding: 1rem 1.15rem 2rem;
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr) minmax(240px, 300px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.observatory-side-rail,
+.observatory-orbit-rail {
+  position: sticky;
+  top: 6.8rem;
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.observatory-side-brand h2,
+.observatory-orbit-card h3 {
+  margin: 0.3rem 0 0;
+  font-family: "Manrope", sans-serif;
+  letter-spacing: -0.04em;
+}
+
+.observatory-side-nav,
+.observatory-orbit-stack,
+.observatory-list-stack,
+.observatory-inspector-stack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.observatory-side-link,
+.observatory-context-link,
+.observatory-orbit-link {
+  text-decoration: none;
+  border-radius: 1rem;
+  transition: all 140ms ease;
+}
+
+.observatory-side-link {
+  padding: 0.78rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: color-mix(in srgb, var(--muted), white 8%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 8%);
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 70%);
+  font-family: "Manrope", sans-serif;
+  font-weight: 700;
+}
+
+.observatory-side-link.active,
+.observatory-side-link:hover {
+  color: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary), transparent 74%);
+  transform: translateY(-1px);
+}
+
+.observatory-side-link-glyph {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+}
+
+.observatory-side-note,
+.observatory-orbit-card,
+.observatory-list-item {
+  border-radius: 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 70%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 8%);
+  padding: 0.9rem;
+}
+
+.observatory-side-note h3,
+.observatory-list-item strong {
+  margin: 0 0 0.35rem;
+  font-family: "Manrope", sans-serif;
+}
+
+.observatory-side-note p,
+.observatory-orbit-card p,
+.observatory-list-item span {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.observatory-side-footer {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.observatory-context-link,
+.observatory-orbit-link {
+  padding: 0.65rem 0.78rem;
+  background: color-mix(in srgb, var(--chip), transparent 8%);
+  color: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 82%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.observatory-context-link:hover,
+.observatory-orbit-link:hover {
+  border-color: color-mix(in srgb, var(--primary), transparent 68%);
+}
+
+.observatory-center-column {
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.observatory-hero-shell {
+  padding: 1.5rem;
+}
+
+.observatory-hero-status {
+  display: grid;
+  justify-items: end;
+  gap: 0.65rem;
+}
+
+.observatory-status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.38rem 0.7rem;
+  background: color-mix(in srgb, var(--chip), transparent 4%);
+  color: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 80%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.observatory-main-stack,
+.assistant-diagnostics-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.observatory-footer-slot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.observatory-action-chip {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 78%);
+  background: color-mix(in srgb, var(--chip), transparent 6%);
+  color: var(--text);
+  padding: 0.46rem 0.72rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.observatory-action-chip.active,
+.observatory-action-chip:hover {
+  color: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary), transparent 72%);
+}
+
+.observatory-waveform {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 72%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 8%);
+}
+
+.observatory-waveform.active {
+  border-color: color-mix(in srgb, var(--primary), transparent 66%);
+}
+
+.observatory-waveform-orb {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--primary), transparent 44%);
+}
+
+.observatory-waveform-bars {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(8px, 1fr));
+  gap: 0.26rem;
+  align-items: end;
+  min-height: 1.45rem;
+}
+
+.observatory-waveform-bars span {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--primary-soft), color-mix(in srgb, var(--primary), transparent 24%));
+}
+
+.observatory-waveform-bars span:nth-child(1) { height: 35%; }
+.observatory-waveform-bars span:nth-child(2) { height: 72%; }
+.observatory-waveform-bars span:nth-child(3) { height: 100%; }
+.observatory-waveform-bars span:nth-child(4) { height: 58%; }
+.observatory-waveform-bars span:nth-child(5) { height: 42%; }
+
+.observatory-waveform-copy {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.observatory-waveform-copy strong {
+  font-family: "Manrope", sans-serif;
+}
+
+.observatory-fab {
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 72%);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--chip), transparent 2%), color-mix(in srgb, var(--panel-solid), transparent 2%));
+  color: var(--text);
+  border-radius: 1rem;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.15rem;
+  min-width: 140px;
+  text-align: left;
+}
+
+.observatory-fab span {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+
+.observatory-fab strong {
+  font-family: "Manrope", sans-serif;
+}
+
+.observatory-three-pane {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 1.25fr) minmax(230px, 0.8fr);
+  gap: 1rem;
+}
+
+.observatory-pane-compact,
+.observatory-pane-primary {
+  min-width: 0;
+}
+
+.observatory-list-item small {
+  display: block;
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+}
+
+.textarea-longform {
+  min-height: 460px;
+  font-family: "Noto Serif", serif;
+  line-height: 1.7;
+}
+
+.assistant-thinking-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.assistant-thinking-pill,
+.assistant-trace-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.assistant-thinking-pill {
+  color: var(--primary-soft);
+  background: color-mix(in srgb, var(--chip), transparent 6%);
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 78%);
+}
+
+.assistant-inline-step-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.assistant-inline-card-title {
+  font-family: "Manrope", sans-serif;
+  font-weight: 700;
+}
+
+.assistant-inline-card-preview {
+  color: var(--muted);
+}
+
+.assistant-inline-action-row,
+.assistant-toolbar-advanced,
+.assistant-voice-dock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.assistant-trace-status-ok { background: color-mix(in srgb, var(--success), transparent 88%); }
+.assistant-trace-status-failed { background: color-mix(in srgb, var(--danger), transparent 86%); }
+.assistant-trace-status-planned { background: color-mix(in srgb, var(--warning), transparent 84%); }
+.assistant-trace-status-dry_run { background: color-mix(in srgb, var(--chip), transparent 10%); }
+
+.assistant-voice-button {
+  flex: 1 1 240px;
+  min-height: 110px;
+  border-radius: 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 72%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 8%);
+  color: var(--text);
+  padding: 1rem;
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assistant-voice-button.recording {
+  border-color: color-mix(in srgb, var(--primary), transparent 60%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary), transparent 76%);
+}
+
+.assistant-voice-button-label {
+  font-family: "Manrope", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.assistant-voice-button-meta {
+  color: var(--muted);
+}
+
+.assistant-diagnostic-card,
+.assistant-queue-item {
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 72%);
+  background: color-mix(in srgb, var(--panel-solid), transparent 8%);
+  padding: 0.9rem;
+}
+
+@media (max-width: 1240px) {
+  .observatory-workspace {
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  }
+
+  .observatory-orbit-rail {
+    grid-column: 1 / -1;
+    position: static;
+  }
+
+  .observatory-three-pane {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1100px) {
+  .observatory-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .observatory-side-rail,
+  .observatory-orbit-rail {
+    position: static;
+  }
+
   .assistant-thread-bubble {
     width: 100%;
   }
 }
 
 @media (max-width: 760px) {
+  .observatory-workspace,
+  .observatory-hero-status,
+  .assistant-voice-dock,
+  .assistant-inline-step-head {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
   .observatory-hero-head,
   .observatory-panel-head,
   .assistant-side-card-head,
@@ -2883,6 +3280,10 @@ a {
 
   .observatory-grid-wide {
     grid-template-columns: 1fr;
+  }
+
+  .observatory-workspace {
+    padding: 0.85rem 0.85rem 1.5rem;
   }
 
   .assistant-hero,

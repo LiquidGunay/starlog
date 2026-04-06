@@ -1,9 +1,10 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import { ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import {
   readEntityCacheScope,
@@ -191,6 +192,7 @@ function buildArtifactGraphNodes(artifacts: Artifact[]): ArtifactGraphNode[] {
 }
 
 function ArtifactsPageContent() {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const filterHudPane = usePaneCollapsed(ARTIFACT_FILTER_HUD_PANE_SNAPSHOT);
@@ -510,8 +512,55 @@ function ArtifactsPageContent() {
   }, [selectedId]);
 
   return (
-    <main className="artifact-nexus-shell">
-      <section className="artifact-nexus-canvas">
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="knowledge-base"
+      eyebrow="Knowledge Base"
+      title="Reading room, provenance, and artifact lineage."
+      description="Keep the graph-native artifact scene intact while the surrounding chrome aligns with the Main Room-era observatory shell."
+      statusLabel={selectedArtifact ? "Artifact selected" : "Room idle"}
+      stats={[
+        { label: "Visible nodes", value: String(graphNodes.length) },
+        { label: "Inbox", value: String(visibleItems.length) },
+        { label: "Relations", value: String(graph?.relations.length ?? 0) },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => createArtifact()}>
+            Create clip
+          </button>
+          <button className="button" type="button" onClick={() => loadArtifacts()}>
+            Refresh room
+          </button>
+        </div>
+      }
+      sideNote={{
+        title: "Knowledge posture",
+        body: "Raw source, extracted structure, and generated summaries should stay visibly connected instead of being flattened into one note view.",
+        meta: selectedArtifact ? `${selectedArtifact.source_type} · ${selectedArtifact.id}` : "Awaiting first artifact",
+      }}
+      orbitCards={[
+        {
+          kicker: "Selection",
+          title: selectedArtifact?.title || "No artifact selected",
+          body: selectedArtifact ? "Use the graph room and inspector together to preserve provenance context." : "Create or select an artifact to populate the room.",
+        },
+        {
+          kicker: "Lineage",
+          title: `${graph?.summaries.length ?? 0} summaries · ${graph?.cards.length ?? 0} cards`,
+          body: versions ? `${versions.actions.length} action runs preserved in version history.` : "Version history appears once artifact context is loaded.",
+        },
+        {
+          kicker: "Main Room",
+          title: "Return to the persistent thread",
+          body: "Bring artifact findings back into conversation without losing the provenance trail.",
+          href: "/assistant",
+          actionLabel: "Open Main Room",
+        },
+      ]}
+      className="artifact-room-shell"
+    >
+      <section className="artifact-nexus-canvas artifact-room-canvas">
         <PaneRestoreStrip
           className="pane-restore-strip-floating"
           actions={[
@@ -639,7 +688,7 @@ function ArtifactsPageContent() {
           <header className="artifact-inspector-header">
             <div className="artifact-pane-head">
               <div>
-                <p className="eyebrow">Artifact Nexus</p>
+                <p className="eyebrow">Knowledge Base</p>
                 <h1>Reading room and lineage</h1>
                 <p className="status">{status}</p>
               </div>
@@ -788,7 +837,7 @@ function ArtifactsPageContent() {
           </div>
         </aside> : null}
       </section>
-    </main>
+    </ObservatoryWorkspaceShell>
   );
 }
 

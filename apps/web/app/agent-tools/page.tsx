@@ -140,7 +140,7 @@ export default function AgentToolsPage() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Command Center</p>
+          <p className="eyebrow">Main Room</p>
           <h1>LLM-control surface</h1>
           <p className="console-copy">
             This exposes Starlog actions as explicit tool schemas so chat/voice interfaces can call them without UI clicks.

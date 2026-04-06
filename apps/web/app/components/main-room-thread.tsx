@@ -1,5 +1,7 @@
 import type { RefObject } from "react";
 
+import { getConversationCardRegistryEntry } from "./conversation-card-registry";
+
 type AgentCommandStep = {
   tool_name: string;
   arguments: Record<string, unknown>;
@@ -105,15 +107,8 @@ function cardMetaText(card: ConversationCard): string {
 }
 
 function cardPresentation(card: ConversationCard): { label: string; tone: string } {
-  const byKind: Record<string, { label: string; tone: string }> = {
-    assistant_summary: { label: "Observatory brief", tone: "brief" },
-    thread_context: { label: "Thread context", tone: "context" },
-    review_queue: { label: "Review queue", tone: "review" },
-    briefing: { label: "Briefing", tone: "brief" },
-    task_list: { label: "Task list", tone: "task" },
-    knowledge_note: { label: "Knowledge note", tone: "knowledge" },
-  };
-  return byKind[card.kind] ?? { label: card.title || card.kind.replace(/_/g, " "), tone: "default" };
+  const entry = getConversationCardRegistryEntry(card.kind, card.title);
+  return { label: entry.label, tone: entry.tone };
 }
 
 export function MainRoomThread({
@@ -152,6 +147,7 @@ export function MainRoomThread({
           const tracesExpanded = !!expandedTraces[traceToggleKey];
           const pendingMessage = Boolean(message.metadata?.pending);
           const fallbackBody = assistantCommand?.summary || "No message content recorded.";
+          const thinkingMessage = pendingMessage && message.role === "assistant";
           const body = pendingMessage && message.role === "assistant"
             ? "Observatory reply forming..."
             : message.content.trim() || fallbackBody;
@@ -162,7 +158,14 @@ export function MainRoomThread({
                 <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
               </div>
               <div className="assistant-thread-bubble">
-                <p>{body}</p>
+                {thinkingMessage ? (
+                  <div className="assistant-thinking-block">
+                    <span className="assistant-thinking-pill">Latent thinking</span>
+                    <p>{body}</p>
+                  </div>
+                ) : (
+                  <p>{body}</p>
+                )}
                 {message.cards.length > 0 ? (
                   <div className="assistant-inline-card assistant-inline-card-stack">
                     <div className="assistant-inline-card-head">
@@ -180,21 +183,34 @@ export function MainRoomThread({
                     <div className="assistant-inline-card-steps">
                       {message.cards.map((card, index) => {
                         const presentation = cardPresentation(card);
+                        const actionLabel = getConversationCardRegistryEntry(card.kind, card.title).actionLabel;
+                        const reusableText = card.body?.trim() || card.title?.trim() || "";
                         return (
                           <div
                             key={`${message.id}-card-${card.kind}-${index}`}
                             className={`assistant-inline-step assistant-inline-step-card tone-${presentation.tone}`}
                           >
                             <div>
-                              <strong>{presentation.label}</strong>
+                              <div className="assistant-inline-step-head">
+                                <strong>{presentation.label}</strong>
+                                <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
+                              </div>
+                              {card.title ? <p className="assistant-inline-card-title">{card.title}</p> : null}
+                              {!cardsExpanded && card.body ? <p className="assistant-inline-card-preview">{card.body}</p> : null}
                               {cardsExpanded && card.body ? <p>{card.body}</p> : null}
+                              {reusableText ? (
+                                <div className="assistant-inline-action-row">
+                                  <button className="assistant-inline-card-toggle" type="button" onClick={() => onReuseCommand(reusableText)}>
+                                    {actionLabel || "Reuse in composer"}
+                                  </button>
+                                </div>
+                              ) : null}
                               {cardsExpanded && Object.keys(card.metadata ?? {}).length > 0 ? (
                                 <code className="assistant-inline-card-json">
                                   {JSON.stringify(card.metadata, null, 2)}
                                 </code>
                               ) : null}
                             </div>
-                            <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
                           </div>
                         );
                       })}
@@ -219,7 +235,10 @@ export function MainRoomThread({
                       {messageTraces.map((trace) => (
                         <div key={trace.id} className="assistant-inline-step assistant-inline-step-trace">
                           <div className="assistant-inline-step-copy">
-                            <strong>{trace.tool_name}</strong>
+                            <div className="assistant-inline-step-head">
+                              <strong>{trace.tool_name}</strong>
+                              <span className={`assistant-trace-status assistant-trace-status-${trace.status}`}>{trace.status}</span>
+                            </div>
                             <p>{summarizeTraceArguments(trace.arguments)}</p>
                             <p>Result: {summarizeTraceValue(trace.result)}</p>
                             {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
@@ -229,7 +248,6 @@ export function MainRoomThread({
                               <code>{JSON.stringify(trace.result, null, 2)}</code>
                             ) : null}
                           </div>
-                          <span>{trace.status}</span>
                         </div>
                       ))}
                     </div>

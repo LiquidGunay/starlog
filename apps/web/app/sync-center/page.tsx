@@ -1,7 +1,9 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { ObservatoryWorkspaceShell } from "../components/observatory-shell";
 import { readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { runOfflineWarmup, type OfflineWarmupResult } from "../lib/offline-warmup";
 import { apiRequest } from "../lib/starlog-client";
@@ -50,6 +52,7 @@ const SYNC_CENTER_PULLED_EVENTS_SNAPSHOT = "sync_center.pulled_events";
 const LEGACY_SYNC_CURSOR_KEY = "starlog-sync-cursor";
 
 export default function SyncCenterPage() {
+  const pathname = usePathname();
   const {
     apiBase,
     token,
@@ -248,20 +251,49 @@ export default function SyncCenterPage() {
   const warmupFailures = warmupResult?.steps.filter((step) => step.status === "failed").length ?? 0;
 
   return (
-    <main className="neural-sync-shell">
-      <header className="neural-sync-header">
-        <span className="neural-sync-back">← Command Center</span>
-        <div className="neural-sync-progress">
-          <span>Sync Progress</span>
-          <span className="sync-bars">
-            {Array.from({ length: progressSegments }).map((_, index) => (
-              <span key={`segment-${index}`} className={index < progressActive ? "active" : ""} />
-            ))}
-          </span>
-          <strong>{progressActive}/{progressSegments}</strong>
+    <ObservatoryWorkspaceShell
+      pathname={pathname}
+      surface="srs-review"
+      eyebrow="SRS Review"
+      title="Sync diagnostics, replay edge, and offline cache readiness."
+      description="Keep the specialized replay and offline tooling intact, but frame it as a support surface for review and shared state reliability."
+      statusLabel={isOnline ? "Online replay available" : "Offline mode"}
+      stats={[
+        { label: "Queued", value: String(outbox.length) },
+        { label: "Server entries", value: String(serverEntries.length) },
+        { label: "Delta events", value: String(pulledEvents.length) },
+      ]}
+      actions={
+        <div className="button-row">
+          <button className="button" type="button" onClick={() => flushOutbox()} disabled={flushInFlight}>
+            {flushInFlight ? "Replaying..." : "Replay queued mutations"}
+          </button>
+          <button className="button" type="button" onClick={() => runWarmup()} disabled={warmupInFlight}>
+            {warmupInFlight ? "Warming cache..." : "Offline warmup"}
+          </button>
         </div>
-      </header>
-
+      }
+      sideNote={{
+        title: "Support posture",
+        body: "This route exists to keep shared state healthy across devices, not to become the default path for ordinary review work.",
+        meta: `Scope ${serverScope === "client" ? "this device" : "all devices"} · cursor ${pullCursor}`,
+      }}
+      orbitCards={[
+        {
+          kicker: "Review",
+          title: "Return to focus review",
+          body: "Use the main SRS review route for card work and deck flow.",
+          href: "/review",
+          actionLabel: "Open review",
+        },
+        {
+          kicker: "Warmup",
+          title: warmupResult ? `${warmupResult.warmed_snapshots} snapshots warmed` : "Offline warmup idle",
+          body: warmupFailures > 0 ? `${warmupFailures} warmup step(s) failed.` : "Run warmup before going offline.",
+        },
+      ]}
+      className="sync-observatory-shell"
+    >
       <section className="neural-sync-main sync-center-main">
         <article className="sync-card sync-center-hero-card">
           <span className="sync-tag">Scope: {serverScope === "client" ? "this_device" : "all_devices"}</span>
@@ -487,6 +519,6 @@ export default function SyncCenterPage() {
           </section>
         </div>
       </section>
-    </main>
+    </ObservatoryWorkspaceShell>
   );
 }

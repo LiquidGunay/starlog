@@ -1,9 +1,9 @@
-export type MobileTab = "home" | "capture" | "alarms" | "review";
+export type MobileTab = "home" | "notes" | "calendar" | "review";
 
 export const MOBILE_TABS: Array<{ id: MobileTab; label: string; icon: string }> = [
   { id: "home", label: "Home", icon: "home-variant-outline" },
-  { id: "capture", label: "Notes", icon: "notebook-outline" },
-  { id: "alarms", label: "Calendar", icon: "calendar-clock-outline" },
+  { id: "notes", label: "Notes", icon: "notebook-outline" },
+  { id: "calendar", label: "Calendar", icon: "calendar-clock-outline" },
   { id: "review", label: "Review", icon: "eye-outline" },
 ];
 
@@ -13,10 +13,10 @@ export function mobileTabFromParam(rawTab: string): MobileTab | null {
     return "home";
   }
   if (normalized === "capture" || normalized === "notes") {
-    return "capture";
+    return "notes";
   }
   if (normalized === "alarms" || normalized === "calendar") {
-    return "alarms";
+    return "calendar";
   }
   if (normalized === "review") {
     return "review";
