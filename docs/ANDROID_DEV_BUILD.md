@@ -222,14 +222,57 @@ What this loop does:
 - bootstraps/imports the ML Interviews SRS deck into that fresh local DB
 - builds a fresh `development` release APK from current source
 - stages it into `C:\Temp\...`
+- writes the latest staged-build metadata at `.localdata/android-local-validation/builds/latest.json`
 - uninstalls prior Starlog phone packages before install
 - installs the new APK with Windows `adb.exe install --no-streaming -r`
 - launches the April login UI, establishes the fresh local station, opens the review tab, loads due cards, reveals an answer, and records one `Good` rating
+- mirrors the latest installable APK at `.localdata/android-local-validation/builds/latest.apk`
+
+Performance defaults for this loop:
+
+- it now defaults `REACT_NATIVE_ARCHITECTURES` to the connected device ABI, so the main phone on this host builds only `arm64-v8a` unless you override it
+- it skips `gradlew clean` by default to avoid paying the full native rebuild cost on every validation run
+- use `CLEAN_BUILD=1` when you intentionally need a cold rebuild
+
+Examples:
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> CLEAN_BUILD=1 REACT_NATIVE_ARCHITECTURES=arm64-v8a \
+  bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+If the build already succeeded and only the install/UI phase needs to be retried, reuse the
+existing APK instead of rebuilding. The canonical reuse target is usually the tracked latest APK:
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> SKIP_BUILD=1 \
+  EXISTING_APK_PATH=/home/ubuntu/starlog/.localdata/android-local-validation/builds/latest.apk \
+  bash ./scripts/android_fresh_local_srs_validation.sh
+```
 
 Artifact naming for this loop:
 
 - APK: `starlog-dev-<UTCSTAMP>-<versionCode>.apk`
 - `versionCode`: `1<YY><day-of-year><HH><MM>` so it stays below Android's signed-int max
+- latest metadata pointer: `.localdata/android-local-validation/builds/latest.json`
+- latest APK pointer: `.localdata/android-local-validation/builds/latest.apk`
+
+Phone-state rules for this loop:
+
+- keep the phone unlocked from install through the last screenshot; the script now fails fast if the OPPO keyguard is still active
+- the script now also performs that lock check before booting the fresh local station/import work, so a locked phone does not waste a full rebuild/import cycle
+- the script keeps USB power stay-awake enabled during validation, but that does not bypass a secure lock screen
+- the installed mobile app can retain an older passphrase in its auth field across reinstalls, so the validation loop now clears the password field before typing the test passphrase
+- dismiss the software keyboard before tapping `Initiate Neural Sync`; otherwise the CTA tap can be lost even though the field contents look correct
+- if Google Play Protect appears during sideload install, the script will try the common `More details` -> `Install anyway` path automatically
+- if Play Protect still blocks the install, accept the dialog manually on-device and rerun with `SKIP_BUILD=1` against the latest APK instead of paying for another Gradle build
 - `versionName`: `0.1.0-april.devtest.<UTCSTAMP>`
 
 The script writes `latest.json`, screenshots, API logs, and import/build evidence into the same

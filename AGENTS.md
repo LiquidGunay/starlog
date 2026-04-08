@@ -290,11 +290,18 @@ Use the scripted local-validation loop when the goal is to prove the current Apr
   - APK: `starlog-dev-<UTCSTAMP>-<versionCode>.apk`
   - Metadata: `/home/ubuntu/starlog/.localdata/android-local-validation/builds/<UTCSTAMP>/latest.json`
   - Screenshots live beside that metadata under `screens/`
+  - Latest metadata pointer: `/home/ubuntu/starlog/.localdata/android-local-validation/builds/latest.json`
+  - Latest APK pointer: `/home/ubuntu/starlog/.localdata/android-local-validation/builds/latest.apk`
 - Versioning rule for these fresh validation builds:
   - `versionCode` defaults to `1<YY><day-of-year><HH><MM>` so it stays under Android's signed-int limit
   - `versionName` defaults to `0.1.0-april.devtest.<UTCSTAMP>`
 - The script intentionally removes older Starlog packages from the phone (`com.starlog.app.dev`, `com.starlog.app.preview`, `com.starlog.app`) and wipes prior local validation builds/runtime state under `.localdata/android-local-validation/` before rebuilding.
 - On this host, the install step must use Windows `adb.exe install --no-streaming -r C:\\Temp\\...`; the default streamed install can push the APK and then silently fail to materialize the package.
+- The phone must remain manually unlocked from install through final screenshot capture; the script now fails fast if the OPPO keyguard is active and will not brute-force a secure device password screen.
+- The script now checks that unlocked state before it starts the fresh local API/import/build work as well, so a locked phone should fail immediately instead of wasting a rebuild.
+- When Play Protect appears during sideload install, the script will attempt the common `More details` -> `Install anyway` path automatically. If it still blocks, accept it manually on-device and rerun with `SKIP_BUILD=1 EXISTING_APK_PATH=/home/ubuntu/starlog/.localdata/android-local-validation/builds/latest.apk`.
+- The installed Android app can preserve an older passphrase in the auth field across reinstalls; the validation loop now clears the password field before typing the current test passphrase.
+- Dismiss the Android soft keyboard before tapping `Initiate Neural Sync`; on this device the CTA tap can be swallowed while the keyboard is still open.
 - The script keeps the secret itself out of the repo; only the file path is documented here.
 
 ## Preference log
@@ -339,6 +346,7 @@ Use the scripted local-validation loop when the goal is to prove the current Apr
 - 2026-04-05: User wants the April 2026 redesign sourced from `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026`, with the older in-repo `docs/design` and `screen_design` packs treated as obsolete.
 - 2026-04-05: User wants new worktrees avoided for normal work; use the canonical checkout by default and reserve extra worktrees for subagents or isolated recovery passes.
 - 2026-04-08: User wants Android build/test loops to remove older phone installs and local staged builds, generate a non-repo test passphrase, and follow one documented repeatable automation path instead of rediscovering host quirks.
+- 2026-04-08: User wants the Android parity-validation loop optimized while preserving correctness; default to the connected phone ABI and avoid full clean rebuilds unless a cold rebuild is explicitly needed.
 - 2026-03-15: User wants mobile implementation/testing runs to include stored screenshots as completion proof.
 - 2026-03-15: User clarified that iOS share status is out of scope for v1 and must not block v1 distribution work.
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
@@ -494,8 +502,14 @@ Use the scripted local-validation loop when the goal is to prove the current Apr
 - 2026-04-06: This OPPO Android 14 phone can remain visible to `adb.exe` while the vendor keyguard still owns the window; `wm dismiss-keyguard`, `KEYCODE_MENU`, and swipe gestures were insufficient for unattended UI proof, so the physical device must be manually unlocked before mobile screenshot/input validation.
 - 2026-04-06: This OPPO build rejects `adb shell pm clear com.starlog.app.dev` with `android.permission.CLEAR_APP_USER_DATA`; use uninstall/reinstall when a clean-state mobile login test is required.
 - 2026-04-06: The April mobile login/SRS flow on the physical `com.starlog.app.dev` release build reached the new login UI but failed local-API login with `Network request failed` until a main-manifest `networkSecurityConfig` override was added for `localhost` and `127.0.0.1` cleartext.
+- 2026-04-08: The connected OPPO validation phone reports `ro.product.cpu.abi=arm64-v8a`; future local parity runs should pass `-PreactNativeArchitectures=arm64-v8a` (or let the fresh validation script auto-detect it) instead of rebuilding all four ABIs by default.
+- 2026-04-08: The fresh local Android SRS validation loop was spending most of its time in `gradlew clean assembleRelease` across all ABIs; the script now defaults to no `clean` and a device-ABI-only build, with `CLEAN_BUILD=1` reserved for explicit cold rebuilds.
+- 2026-04-08: Windows `adb install --no-streaming` on this OPPO can exceed a 240s timeout after the APK is already pushed; the local validation loop now uses a longer install timeout and supports `SKIP_BUILD=1` + `EXISTING_APK_PATH=...` to retry install/UI validation without paying for another release build.
 - 2026-04-06: This WSL host currently lacks a usable local JDK path for rebuilding the Android APK in-place; Windows-side Gradle invocation against the `\\wsl.localhost\\Ubuntu\\...` checkout returned without refreshing release outputs, so physical retest of native manifest changes requires a host with a working Android build JDK or a Windows-native build run from a path Gradle can materialize correctly.
 - 2026-04-08: The documented Linux Android build path on this host is actually usable when `JAVA_HOME=$HOME/.local/jdks/temurin-17` and `ANDROID_SDK_ROOT=$HOME/.local/android` are exported first; Windows interop is still needed for `adb.exe` install/phone control, but not for the Gradle build itself.
 - 2026-04-08: Fresh Android validation builds need a bounded `versionCode`; a raw UTC `YYMMDDHHMM` scheme can exceed Android's signed-int max, so the repeatable local-validation loop now uses `1<YY><day-of-year><HH><MM>` instead.
 - 2026-04-08: For this OPPO/Windows-ADB path, `adb.exe install --no-streaming -r C:\\Temp\\...` succeeds reliably while the default streamed `adb.exe install -r` path can hang or finish without actually installing the package.
 - 2026-04-08: The April mobile Review screen can render instructional copy before the actionable buttons enter view; automated phone proof should scroll the review card and tap exact labels like `Load due cards` / `Reveal answer` instead of tapping the first partial text match.
+- 2026-04-08: The first `SKIP_BUILD=1` retry path was deleting `.localdata/android-local-validation/builds/latest.apk` before reuse and then comparing the reused APK against a newly generated timestamped version; the validation loop now preserves in-tree reused APKs across cleanup and reads the actual versionCode/versionName from the APK in reuse mode.
+- 2026-04-08: The installed Android app can retain an older masked passphrase across reinstalls, so a naive validation run may append the fresh passphrase and trigger false `401 Invalid credentials` failures unless the auth field is cleared first.
+- 2026-04-08: On this OPPO/Windows-ADB path, physical-device proof can stall at two external gates: the secure keyguard and Google Play Protect sideload prompts. The repeatable local-validation script now records `latest.json` / `latest.apk`, fails fast if the phone is locked, and attempts the common Play Protect confirm path before giving up.

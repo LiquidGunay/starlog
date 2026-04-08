@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
@@ -31,22 +32,26 @@ type SessionStats = {
   easy: number;
 };
 
-const SURFACE_LINKS = [
-  { href: "/assistant", label: "Main Room", icon: "✦" },
-  { href: "/notes", label: "Knowledge Base", icon: "⌘" },
-  { href: "/review", label: "SRS Review", icon: "◎" },
-  { href: "/planner", label: "Agenda", icon: "◌" },
+const REVIEW_OPTIONS = [
+  { label: "Again", hint: "< 1m", rating: 1 as const, tone: "again" },
+  { label: "Hard", hint: "1d", rating: 3 as const, tone: "hard" },
+  { label: "Good", hint: "3d", rating: 4 as const, tone: "primary" },
+  { label: "Easy", hint: "5d", rating: 5 as const, tone: "easy" },
 ];
 
 function emptyStats(): SessionStats {
   return { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 };
 }
 
-function deckProgress(deck: Deck): number {
-  if (deck.card_count <= 0) {
+function deckProgress(deck: Deck | null): number {
+  if (!deck || deck.card_count <= 0) {
     return 0;
   }
   return Math.max(0, Math.min(100, Math.round(((deck.card_count - deck.due_count) / deck.card_count) * 100)));
+}
+
+function humanizeCardType(cardType: string): string {
+  return cardType.replace(/_/g, " ");
 }
 
 export default function ReviewPage() {
@@ -69,7 +74,9 @@ export default function ReviewPage() {
     [decks],
   );
   const reviewedTotal = stats.reviewed + cards.length;
+  const sessionProgress = reviewedTotal > 0 ? (stats.reviewed / reviewedTotal) * 100 : 0;
   const sessionRetention = stats.reviewed > 0 ? Math.round(((stats.good + stats.easy) / stats.reviewed) * 100) : 0;
+  const focusTier = currentDeck ? Math.min(4, Math.max(1, Math.ceil(currentDeck.due_count / 6))) : 1;
 
   const loadReviewData = useCallback(async () => {
     if (missingConfig) {
@@ -139,69 +146,48 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="review-station">
-      <header className="review-station-topbar">
-        <div className="review-topbar-brand">
-          <span>Starlog</span>
-        </div>
-        <nav className="review-topbar-nav" aria-label="Primary review routes">
-          <Link href="/artifacts">Archive</Link>
-          <Link href="/review" className="active">SRS Review</Link>
-          <Link href="/notes">Knowledge Base</Link>
-        </nav>
-        <div className="review-topbar-actions">
-          <Link href="/runtime">Runtime</Link>
-          <Link href="/login">{missingConfig ? "Login" : "Linked"}</Link>
-        </div>
-      </header>
-
-      <aside className="review-station-rail">
-        <div className="review-rail-profile">
-          <div className="review-rail-avatar">◉</div>
-          <div>
-            <strong>The Observatory</strong>
-            <span>Stellar Tier</span>
+    <AprilWorkspaceShell
+      activeSurface="srs-review"
+      statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${cards.length} due` : "Focused review ready"}
+      queueLabel={`${cards.length} due`}
+      searchPlaceholder="Search decks..."
+      railSlot={(
+        <>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Active Decks</span>
+            <div className="april-review-rail-decks">
+              {activeDecks.length === 0 ? (
+                <p className="console-copy">No active decks loaded yet.</p>
+              ) : (
+                activeDecks.slice(0, 6).map((deck) => (
+                  <div
+                    key={deck.id}
+                    className={deck.id === currentCard?.deck_id ? "april-review-rail-deck active" : "april-review-rail-deck"}
+                  >
+                    <div>
+                      <strong>{deck.name}</strong>
+                      <span>{deck.description || "Focused study set"}</span>
+                    </div>
+                    <small>{deck.due_count > 0 ? `${deck.due_count} due` : "stable"}</small>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
-
-        <nav className="review-rail-nav" aria-label="Primary surfaces">
-          {SURFACE_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={link.href === "/review" ? "review-rail-link active" : "review-rail-link"}
-            >
-              <span>{link.icon}</span>
-              <span>{link.label}</span>
-            </Link>
-          ))}
-        </nav>
-
-        <section className="review-rail-section">
-          <span className="review-rail-label">Active Decks</span>
-          <div className="review-rail-decks">
-            {activeDecks.length === 0 ? (
-              <p className="review-copy">No active decks loaded yet.</p>
-            ) : (
-              activeDecks.slice(0, 6).map((deck) => (
-                <div key={deck.id} className={deck.id === currentCard?.deck_id ? "review-rail-deck active" : "review-rail-deck"}>
-                  <strong>{deck.name}</strong>
-                  <span>{deck.due_count > 0 ? `${deck.due_count} due` : "stable"}</span>
-                </div>
-              ))
-            )}
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Return Points</span>
+            <div className="april-rail-link-stack">
+              <Link href="/review/decks">Deck Workspace</Link>
+              <Link href="/notes">Knowledge Base</Link>
+              <Link href={missingConfig ? "/login" : "/runtime"}>{missingConfig ? "Open Login" : "Runtime"}</Link>
+            </div>
           </div>
-        </section>
-
-        <div className="review-rail-footer">
-          <Link href="/review/decks">Deck Workspace</Link>
-          <Link href="/runtime">Runtime</Link>
-        </div>
-      </aside>
-
-      <main className="review-station-main">
-        <section className="review-session-progress">
-          <div className="review-session-progress-head">
+        </>
+      )}
+    >
+      <section className="april-review-surface">
+        <div className="april-review-progress">
+          <div className="april-review-progress-head">
             <div>
               <span>Session Progress</span>
               <strong>
@@ -210,43 +196,48 @@ export default function ReviewPage() {
             </div>
             <span>{stats.reviewed} reviewed</span>
           </div>
-          <div className="review-session-progress-bar">
-            <span style={{ width: `${reviewedTotal > 0 ? (stats.reviewed / reviewedTotal) * 100 : 0}%` }} />
+          <div className="april-review-progress-bar">
+            <span style={{ width: `${sessionProgress}%` }} />
           </div>
-        </section>
+        </div>
 
-        <section className="review-focus-shell">
-          <article className="review-focus-card">
+        <div className="april-review-grid">
+          <AprilPanel className="april-review-focus-panel">
             {currentCard ? (
               <>
-                <div className="review-focus-meta">
-                  <span>{currentDeck ? currentDeck.name : "Focused review"}</span>
-                  <span>{currentCard.card_type.replace(/_/g, " ")}</span>
+                <div className="april-review-focus-meta">
+                  <span>Complexity: Tier {focusTier}</span>
+                  <span>{humanizeCardType(currentCard.card_type)}</span>
                 </div>
-                <div className="review-focus-question">
-                  {currentCard.prompt}
-                </div>
-                <div className="review-focus-actions">
-                  <button className="review-reveal-button" type="button" onClick={() => setShowAnswer((previous) => !previous)}>
-                    {showAnswer ? "Hide Answer" : "Reveal Answer"}
-                  </button>
-                </div>
-                {showAnswer ? (
-                  <div className="review-focus-answer">
-                    <p className="review-copy">Due {new Date(currentCard.due_at).toLocaleString()}</p>
-                    <p>{currentCard.answer}</p>
+                <div className="april-review-card-body">
+                  <div className="april-review-question">
+                    {currentCard.prompt}
                   </div>
-                ) : null}
-                <div className="review-rating-grid">
-                  {[
-                    { label: "Again", hint: "< 1m", rating: 1 as const },
-                    { label: "Hard", hint: "1d", rating: 3 as const },
-                    { label: "Good", hint: "3d", rating: 4 as const },
-                    { label: "Easy", hint: "5d", rating: 5 as const },
-                  ].map((option) => (
+                  <div className="april-review-reveal">
+                    <button
+                      className="april-chip-button april-review-reveal-button"
+                      type="button"
+                      onClick={() => setShowAnswer((previous) => !previous)}
+                    >
+                      {showAnswer ? "Hide Answer" : "Reveal Answer"}
+                    </button>
+                  </div>
+                  {showAnswer ? (
+                    <div className="april-review-answer">
+                      <p className="status">Due {new Date(currentCard.due_at).toLocaleString()}</p>
+                      <p>{currentCard.answer}</p>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="april-review-card-footer">
+                  <span>Card ID: {currentCard.id}</span>
+                  <span>Last review window: due {new Date(currentCard.due_at).toLocaleDateString()}</span>
+                </div>
+                <div className="april-review-ratings">
+                  {REVIEW_OPTIONS.map((option) => (
                     <button
                       key={option.label}
-                      className={option.label === "Good" ? "review-rating-button primary" : "review-rating-button"}
+                      className={`april-rating-button ${option.tone}`}
                       type="button"
                       disabled={!showAnswer}
                       onClick={() => reviewCurrent(option.rating)}
@@ -258,29 +249,34 @@ export default function ReviewPage() {
                 </div>
               </>
             ) : (
-              <div className="review-empty-state">
-                <h1>{missingConfig ? "Access required" : "No due cards loaded."}</h1>
+              <div className="april-review-empty">
+                <h2>{missingConfig ? "Access required" : "No due cards loaded."}</h2>
                 <p>
                   {missingConfig
-                    ? "Open the login screen, link the observatory, then return to this focused review surface."
+                    ? "Open login, link the observatory, then return to this focused review surface."
                     : "The queue is empty until you load due cards or import a deck."}
                 </p>
-                <div className="review-inline-actions">
-                  <button className="review-inline-button primary" type="button" onClick={() => void loadReviewData()} disabled={missingConfig || loading}>
+                <div className="assistant-inline-action-row">
+                  <button
+                    className="april-chip-button"
+                    type="button"
+                    onClick={() => void loadReviewData()}
+                    disabled={missingConfig || loading}
+                  >
                     {loading ? "Loading..." : "Load Due Cards"}
                   </button>
-                  <Link className="review-inline-button" href={missingConfig ? "/login" : "/review/decks"}>
+                  <Link className="april-chip-button muted" href={missingConfig ? "/login" : "/review/decks"}>
                     {missingConfig ? "Open Login" : "Open Deck Workspace"}
                   </Link>
                 </div>
               </div>
             )}
-          </article>
+          </AprilPanel>
 
-          <aside className="review-focus-sidebar">
-            <section className="review-sidebar-card">
+          <div className="april-review-side">
+            <AprilPanel className="april-review-side-card">
               <span className="review-sidebar-kicker">Knowledge Health</span>
-              <div className="review-sidebar-metrics">
+              <div className="april-review-side-metrics">
                 <div>
                   <strong>{cards.length}</strong>
                   <span>Cards Due</span>
@@ -295,39 +291,43 @@ export default function ReviewPage() {
                   <span key={`bar-${index}`} style={{ height: `${height}%` }} className={index >= 4 ? "active" : ""} />
                 ))}
               </div>
-            </section>
+            </AprilPanel>
 
-            <section className="review-sidebar-card">
+            <AprilPanel className="april-review-side-card">
               <span className="review-sidebar-kicker">Session Split</span>
               <p className="review-copy">
                 Again {stats.again} | Hard {stats.hard} | Good {stats.good} | Easy {stats.easy}
               </p>
               <p className="review-copy">{status}</p>
-              <div className="review-inline-actions stacked">
-                <button className="review-inline-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
+              <div className="april-review-side-actions">
+                <button className="april-chip-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
                   Refresh Queue
                 </button>
-                <Link className="review-inline-button" href="/review/decks">Deck Workspace</Link>
+                <Link className="april-chip-button muted" href="/review/decks">Deck Workspace</Link>
               </div>
-            </section>
-          </aside>
-        </section>
+            </AprilPanel>
+          </div>
+        </div>
 
-        <footer className="review-focus-footer">
-          <div>
-            <button className="review-footer-button" type="button" onClick={() => setShowAnswer((previous) => !previous)} disabled={!currentCard}>
-              {showAnswer ? "Hide answer" : "Reveal answer"}
+        <div className="april-review-control-bar">
+          <div className="april-review-control-actions">
+            <button className="april-icon-button" type="button" onClick={() => setShowAnswer((previous) => !previous)} disabled={!currentCard}>
+              {showAnswer ? "Hide" : "Reveal"}
             </button>
-            <button className="review-footer-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
-              Reload queue
+            <button className="april-icon-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
+              Reload Queue
             </button>
           </div>
-          <div className="review-footer-shortcuts">
-            <span>Deck progress {currentDeck ? `${deckProgress(currentDeck)}%` : "0%"}</span>
-            <span>{currentCard ? `Due ${new Date(currentCard.due_at).toLocaleDateString()}` : "Queue idle"}</span>
+          <div className="april-review-shortcuts">
+            <span><kbd>Space</kbd> to reveal</span>
+            <span><kbd>1-4</kbd> to rate</span>
+            <span>Deck progress {deckProgress(currentDeck)}%</span>
           </div>
-        </footer>
-      </main>
-    </div>
+          <Link className="april-icon-button" href={missingConfig ? "/login" : "/runtime"}>
+            {missingConfig ? "Open Login" : "Session Settings"}
+          </Link>
+        </div>
+      </section>
+    </AprilWorkspaceShell>
   );
 }

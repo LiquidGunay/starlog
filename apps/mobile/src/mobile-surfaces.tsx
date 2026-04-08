@@ -178,7 +178,43 @@ function mapRecentMessages(messages: ConversationMessage[]) {
   return messages.slice(-4);
 }
 
+function findLatestAssistantMessage(messages: ConversationMessage[]): ConversationMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "assistant") {
+      return messages[index];
+    }
+  }
+  return undefined;
+}
+
+function artifactCard(
+  palette: Record<string, string>,
+  title: string,
+  detail: string,
+  metaA: string,
+  metaB: string,
+) {
+  return (
+    <View key={`${title}-${metaA}`} style={cardBase(palette)}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <Text style={{ flex: 1, color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "800" }}>{title}</Text>
+        <MaterialCommunityIcons name="dots-vertical" size={18} color={palette.muted} />
+      </View>
+      <Text style={bodyStyle(palette)}>{detail}</Text>
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        <View style={pillStyle(palette)}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>{metaA}</Text>
+        </View>
+        <View style={pillStyle(palette)}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>{metaB}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export function MobileHomeSurface({
+  styles,
   palette,
   pendingConversationTurn,
   homeDraft,
@@ -193,30 +229,21 @@ export function MobileHomeSurface({
   formatCardMeta,
 }: MobileHomeSurfaceProps) {
   const recentMessages = mapRecentMessages(visibleConversationMessages);
+  const leadAssistant = findLatestAssistantMessage(recentMessages);
+  const leadCard = leadAssistant?.cards[0];
 
   return (
-    <View style={{ gap: 20 }}>
-      <View style={{ gap: 8 }}>
-        <Text style={kickerStyle(palette)}>Home</Text>
-        <Text style={headingStyle(palette)}>Persistent thread, reduced to one return point.</Text>
-        <Text style={bodyStyle(palette)}>
-          The mobile Home tab keeps the conversation first. Tool work and dynamic cards stay inside the thread instead
-          of becoming a separate console.
-        </Text>
-      </View>
-
-      <View style={{ gap: 16 }}>
+    <View style={{ gap: 24 }}>
+      <View style={{ gap: 18 }}>
         {recentMessages.length === 0 ? (
           <View style={cardBase(palette)}>
-            <Text style={kickerStyle(palette)}>Main Room</Text>
-            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>No synced turns yet.</Text>
-            <Text style={bodyStyle(palette)}>Start the next turn here and the shared thread will fill in.</Text>
+            <Text style={kickerStyle(palette)}>Operational Briefing</Text>
+            <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>No synced turns yet.</Text>
+            <Text style={bodyStyle(palette)}>Start the next command and the shared thread will fill in here.</Text>
           </View>
         ) : (
           recentMessages.map((message, index) => {
             const isUser = message.role === "user";
-            const isAssistant = message.role === "assistant";
-            const card = message.cards[0];
             return (
               <View
                 key={message.id}
@@ -225,18 +252,18 @@ export function MobileHomeSurface({
                   maxWidth: "92%",
                   marginLeft: isUser ? 48 : 0,
                   marginRight: isUser ? 0 : 24,
-                  borderRadius: 24,
-                  borderTopLeftRadius: isUser ? 24 : 8,
-                  borderTopRightRadius: isUser ? 8 : 24,
-                  backgroundColor: isUser ? palette.surfaceHigh : palette.surfaceLow,
-                  borderWidth: 1,
+                  borderRadius: 22,
+                  borderTopLeftRadius: isUser ? 22 : 10,
+                  borderTopRightRadius: isUser ? 10 : 22,
+                  backgroundColor: isUser ? palette.surfaceHigh : "transparent",
+                  borderWidth: isUser ? 1 : 0,
                   borderColor: palette.border,
-                  padding: 18,
+                  padding: isUser ? 18 : 0,
                   gap: 10,
                 }}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  {!isUser ? (
+                {!isUser ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 2 }}>
                     <View
                       style={{
                         width: 24,
@@ -249,33 +276,40 @@ export function MobileHomeSurface({
                     >
                       <MaterialCommunityIcons name="star-four-points-outline" size={14} color={palette.accent} />
                     </View>
-                  ) : null}
-                  <Text style={[kickerStyle(palette), { color: isUser ? palette.secondary : palette.accent }]}>
-                    {isUser ? "Observer" : isAssistant ? "Operational Briefing" : message.role}
-                  </Text>
-                </View>
-                <Text style={{ color: palette.text, fontSize: 18, lineHeight: 28, fontStyle: isUser ? "italic" : "normal" }}>
+                    <Text style={[kickerStyle(palette), { color: palette.secondary }]}>Operational Briefing</Text>
+                  </View>
+                ) : null}
+                <Text
+                  style={{
+                    color: palette.text,
+                    fontSize: isUser ? 18 : 17,
+                    lineHeight: isUser ? 28 : 27,
+                    fontStyle: isUser ? "italic" : "normal",
+                    paddingHorizontal: isUser ? 0 : 4,
+                  }}
+                >
                   {message.content || (pendingConversationTurn && index === recentMessages.length - 1 ? "Observatory reply forming..." : "No content")}
                 </Text>
-                {card ? (
+                {!isUser && leadAssistant?.id === message.id && leadCard ? (
                   <View
                     style={{
-                      borderRadius: 18,
+                      borderRadius: 22,
                       overflow: "hidden",
-                      backgroundColor: palette.surfaceHigh,
+                      backgroundColor: palette.surfaceLow,
                       borderWidth: 1,
                       borderColor: palette.border,
+                      marginTop: 6,
                     }}
                   >
-                    <View style={{ height: 140, backgroundColor: palette.surfaceHighest }} />
-                    <View style={{ padding: 14, gap: 8 }}>
+                    <View style={{ height: 160, backgroundColor: palette.surfaceHighest }} />
+                    <View style={{ padding: 18, gap: 8 }}>
                       <Text style={[kickerStyle(palette), { color: palette.secondary }]}>
-                        {mobileConversationCardLabel(card.kind, card.title)}
+                        {mobileConversationCardLabel(leadCard.kind, leadCard.title)}
                       </Text>
-                      <Text style={{ color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "700" }}>
-                        {card.title || "Dynamic card"}
+                      <Text style={{ color: palette.text, fontSize: 24, lineHeight: 30, fontWeight: "800" }}>
+                        {leadCard.title || "Operational artifact"}
                       </Text>
-                      <Text style={bodyStyle(palette)}>{card.body || formatCardMeta(card)}</Text>
+                      <Text style={bodyStyle(palette)}>{leadCard.body || formatCardMeta(leadCard)}</Text>
                     </View>
                   </View>
                 ) : null}
@@ -285,33 +319,30 @@ export function MobileHomeSurface({
         )}
       </View>
 
-      <View style={{ ...cardBase(palette), gap: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={kickerStyle(palette)}>Speak or type command</Text>
-          <View style={pillStyle(palette, pendingConversationTurn)}>
-            <Text style={{ color: pendingConversationTurn ? palette.accent : palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase" }}>
-              {pendingConversationTurn ? "Reply pending" : "Thread ready"}
-            </Text>
-          </View>
+      <View style={{ alignItems: "center", gap: 4 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, height: 18 }}>
+          {[4, 10, 6, 14, 5].map((height, index) => (
+            <View key={index} style={{ width: 4, height, borderRadius: 999, backgroundColor: palette.accent }} />
+          ))}
         </View>
-        <View
-          style={{
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: palette.border,
-            backgroundColor: palette.surfaceHighest,
-            paddingHorizontal: 18,
-            paddingVertical: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
+      </View>
+
+      <View
+        style={{
+          ...cardBase(palette),
+          backgroundColor: "rgba(66, 47, 56, 0.64)",
+          borderRadius: 999,
+          paddingHorizontal: 18,
+          paddingVertical: 14,
+          gap: 12,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <TextInput
-            style={{ flex: 1, color: palette.text, fontSize: 14 }}
+            style={{ flex: 1, color: palette.text, fontSize: 14, fontWeight: "600" }}
             value={homeDraft}
             onChangeText={setHomeDraft}
-            placeholder="Speak or type command..."
+            placeholder="Speak or Type Command..."
             placeholderTextColor={palette.muted}
             multiline
           />
@@ -328,8 +359,8 @@ export function MobileHomeSurface({
             }}
             onPress={runMainRoomTurn}
           >
-            <Text style={{ color: palette.text, fontWeight: "700", textTransform: "uppercase", fontSize: 12, letterSpacing: 1 }}>
-              Send
+            <Text style={{ color: palette.text, fontWeight: "700", textTransform: "uppercase", fontSize: 12, letterSpacing: 1.2 }}>
+              {pendingConversationTurn ? "Reply pending" : "Send"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -351,7 +382,7 @@ export function MobileHomeSurface({
             <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Refresh</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ ...pillStyle(palette), flex: 1, alignItems: "center" }} onPress={resetConversationSession}>
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Reset session</Text>
+            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Reset</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ ...pillStyle(palette), flex: 1, alignItems: "center" }} onPress={openAssistantInPwa}>
             <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Open PWA</Text>
@@ -397,8 +428,8 @@ export function MobileNotesSurface({
   toggleMissionTools,
 }: MobileNotesSurfaceProps) {
   return (
-    <View style={{ gap: 20 }}>
-      <View style={{ ...cardBase(palette), overflow: "hidden" }}>
+    <View style={{ gap: 24 }}>
+      <View style={{ ...cardBase(palette), overflow: "hidden", backgroundColor: palette.surfaceLow }}>
         <View
           style={{
             position: "absolute",
@@ -428,35 +459,39 @@ export function MobileNotesSurface({
           placeholderTextColor={palette.muted}
           multiline
         />
-        <TextInput
-          style={{
-            borderRadius: 16,
-            backgroundColor: palette.surfaceHigh,
-            color: palette.text,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            fontSize: 14,
-          }}
-          value={quickCaptureTitle}
-          onChangeText={setQuickCaptureTitle}
-          placeholder="Capture title"
-          placeholderTextColor={palette.muted}
-        />
-        <TextInput
-          style={{
-            borderRadius: 16,
-            backgroundColor: palette.surfaceHigh,
-            color: palette.text,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            fontSize: 14,
-          }}
-          value={quickCaptureSourceUrl}
-          onChangeText={setQuickCaptureSourceUrl}
-          placeholder="https://source"
-          placeholderTextColor={palette.muted}
-          autoCapitalize="none"
-        />
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <TextInput
+            style={{
+              flex: 1,
+              borderRadius: 16,
+              backgroundColor: palette.surfaceHigh,
+              color: palette.text,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 14,
+            }}
+            value={quickCaptureTitle}
+            onChangeText={setQuickCaptureTitle}
+            placeholder="Capture title"
+            placeholderTextColor={palette.muted}
+          />
+          <TextInput
+            style={{
+              flex: 1,
+              borderRadius: 16,
+              backgroundColor: palette.surfaceHigh,
+              color: palette.text,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 14,
+            }}
+            value={quickCaptureSourceUrl}
+            onChangeText={setQuickCaptureSourceUrl}
+            placeholder="https://source"
+            placeholderTextColor={palette.muted}
+            autoCapitalize="none"
+          />
+        </View>
         <TextInput
           style={{
             borderRadius: 16,
@@ -487,12 +522,12 @@ export function MobileNotesSurface({
               paddingHorizontal: 22,
               paddingVertical: 13,
               flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-          }}
-          onPressIn={beginHoldToTalkCapture}
-          onPressOut={endHoldToTalkCapture}
-        >
+              alignItems: "center",
+              gap: 8,
+            }}
+            onPressIn={beginHoldToTalkCapture}
+            onPressOut={endHoldToTalkCapture}
+          >
             <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={18} color={palette.onAccent} />
             <Text style={{ color: palette.onAccent, fontWeight: "800", fontSize: 13 }}>
               {voiceRecording ? holdToTalkLabel : "Record"}
@@ -504,28 +539,28 @@ export function MobileNotesSurface({
       <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Pinned Notes</Text>
-          <Text style={{ color: palette.secondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
+          <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.2 }}>
             {pendingCaptures} pending
           </Text>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
           {[selectedArtifactTitle || "Lunar Surface Crystallization Patterns", captureCommandPreview, routeNarrative].map((item, index) => (
             <View
               key={`${item}-${index}`}
               style={{
-                width: 240,
-                borderRadius: 20,
+                width: 248,
+                borderRadius: 22,
                 backgroundColor: palette.surfaceLow,
                 borderWidth: 1,
                 borderColor: palette.border,
-                padding: 16,
+                padding: 18,
                 gap: 10,
               }}
             >
               <Text style={[kickerStyle(palette), { color: palette.muted }]}>
                 {index === 0 ? "Research" : index === 1 ? "Capture" : "Routing"}
               </Text>
-              <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "700" }}>{item}</Text>
+              <Text style={{ color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "800" }}>{item}</Text>
               <Text style={bodyStyle(palette)}>
                 {index === 0 ? captureSourcePreview : index === 1 ? captureQueuePreview : sharedDraftSummary}
               </Text>
@@ -534,80 +569,60 @@ export function MobileNotesSurface({
         </ScrollView>
       </View>
 
-      <View style={{ gap: 12 }}>
+      <View style={{ gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Recent Artifacts</Text>
           <Text style={{ color: palette.secondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
-            Archive browse
+            Filter
           </Text>
         </View>
-        <View style={cardBase(palette)}>
-          <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "700" }}>{captureCommandPreview}</Text>
-          <Text style={bodyStyle(palette)}>{captureQueuePreview}</Text>
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            <View style={pillStyle(palette)}>
-              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>{voiceMemoPreview}</Text>
-            </View>
-            <View style={pillStyle(palette)}>
-              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>{sharedDraftSummary}</Text>
-            </View>
-          </View>
-        </View>
-        <View style={cardBase(palette)}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
+        {artifactCard(palette, captureCommandPreview, captureQueuePreview, "DATA-STREAM", "4H AGO")}
+        {artifactCard(palette, selectedArtifactTitle, captureSourcePreview, "AUDIO-LOG", "YESTERDAY")}
+        <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+          <View style={{ flexDirection: "row", gap: 14 }}>
             <View style={{ flex: 1 }}>
-              <Text style={kickerStyle(palette)}>Incoming context</Text>
-              <Text style={{ color: palette.text, fontSize: 16, lineHeight: 22, fontWeight: "700" }}>{selectedArtifactTitle}</Text>
-              <Text style={bodyStyle(palette)}>{captureSourcePreview}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={kickerStyle(palette)}>Routing</Text>
-              <Text style={{ color: palette.text, fontSize: 16, lineHeight: 22, fontWeight: "700" }}>Voice + output path</Text>
-              <Text style={bodyStyle(palette)}>{routeNarrative}</Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6 }}>
-            <TouchableOpacity
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: palette.accent,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              onPress={playVoiceClip}
-            >
-              <MaterialCommunityIcons name="play" size={20} color={palette.onAccent} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: palette.text, fontSize: 16, fontWeight: "700" }}>Latest voice memo</Text>
+              <Text style={kickerStyle(palette)}>Voice memo</Text>
+              <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Latest capture</Text>
               <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
+              <Text style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
             </View>
             {voiceClipReady ? (
-              <TouchableOpacity style={{ ...pillStyle(palette, true) }} onPress={submitVoiceCapture}>
-                <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Save voice</Text>
+              <TouchableOpacity
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: palette.accent,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onPress={playVoiceClip}
+              >
+                <MaterialCommunityIcons name="play" size={18} color={palette.onAccent} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+            <TouchableOpacity style={styles.button} onPress={submitPrimaryCapture}>
+              <Text style={styles.buttonText}>Save capture</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={flushPendingCaptures}>
+              <Text style={styles.buttonText}>Flush queue</Text>
+            </TouchableOpacity>
+            {voiceClipReady ? (
+              <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
+                <Text style={styles.buttonText}>Save voice</Text>
               </TouchableOpacity>
             ) : null}
           </View>
         </View>
       </View>
 
-      <View style={{ gap: 10, alignItems: "center" }}>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={submitPrimaryCapture}>
-            <Text style={styles.buttonText}>Save capture</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={flushPendingCaptures}>
-            <Text style={styles.buttonText}>Flush queue</Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity onPress={toggleMissionTools}>
-          <Text style={[kickerStyle(palette), { fontSize: 11 }]}>
-            {showAdvancedCapture ? "Close mission tools" : "Mission tools"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
+        <Text style={[kickerStyle(palette), { fontSize: 11 }]}>
+          {showAdvancedCapture ? "Close mission tools" : "Mission tools"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -825,7 +840,6 @@ export function MobileReviewSurface({
 }
 
 export function MobileLoginSurface({
-  styles,
   palette,
   apiBase,
   setApiBase,
@@ -858,7 +872,7 @@ export function MobileLoginSurface({
         <View style={{ alignItems: "center", gap: 8 }}>
           <Text style={{ color: palette.accent, fontSize: 40, fontWeight: "800", letterSpacing: 6 }}>STARLOG</Text>
           <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.3 }}>
-            Obsidian Observatory
+            The Celestial Archive
           </Text>
         </View>
       </View>
@@ -972,13 +986,13 @@ export function MobileCalendarSurface({
   toggleMissionTools,
 }: MobileCalendarSurfaceProps) {
   return (
-    <View style={{ gap: 20 }}>
+    <View style={{ gap: 24 }}>
       <View
         style={{
           ...cardBase(palette),
           alignItems: "center",
           backgroundColor: palette.surfaceLow,
-          paddingVertical: 28,
+          paddingVertical: 30,
         }}
       >
         <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", letterSpacing: 2.8, textTransform: "uppercase" }}>
@@ -1012,13 +1026,23 @@ export function MobileCalendarSurface({
         </View>
       </View>
 
-      <View style={cardBase(palette)}>
-        <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>Today's Agenda</Text>
+      <View style={{ gap: 14 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <View>
+            <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>Today's Agenda</Text>
+            <Text style={{ color: palette.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2 }}>
+              {alarmScheduled ? `${nextBriefingCountdown} until briefing` : "Alarm unscheduled"}
+            </Text>
+          </View>
+          <TouchableOpacity style={pillStyle(palette)} onPress={openPwa}>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Grid</Text>
+          </TouchableOpacity>
+        </View>
         {[
-          { time: "09:30", title: "Archive Review", detail: nextActionPreview, active: true },
-          { time: "12:00", title: "Solar Noon Calibration", detail: "Align the day around one quiet reset.", active: false },
-          { time: "15:45", title: "Council Manifest", detail: "Critical handoff before evening synthesis.", active: true },
-        ].map((item) => (
+          { time: "09:30", title: "Archive Review", detail: nextActionPreview, active: true, critical: false },
+          { time: "12:00", title: "Solar Noon Calibration", detail: "Align the day around one quiet reset.", active: false, critical: false },
+          { time: "15:45", title: "Council Manifest", detail: "Critical handoff before evening synthesis.", active: true, critical: true },
+        ].map((item, index, items) => (
           <View key={item.time} style={{ flexDirection: "row", gap: 14 }}>
             <View style={{ alignItems: "center" }}>
               <View
@@ -1028,17 +1052,17 @@ export function MobileCalendarSurface({
                   borderRadius: 999,
                   backgroundColor: item.active ? palette.accent : "transparent",
                   borderWidth: item.active ? 0 : 2,
-                  borderColor: palette.border,
+                  borderColor: item.critical ? palette.accent : palette.border,
                   marginTop: 5,
                 }}
               />
-              <View style={{ width: 1, flex: 1, backgroundColor: palette.border, marginTop: 6 }} />
+              {index < items.length - 1 ? <View style={{ width: 1, flex: 1, backgroundColor: palette.border, marginTop: 6 }} /> : null}
             </View>
             <View
               style={{
                 flex: 1,
                 borderRadius: 18,
-                backgroundColor: item.active ? palette.surfaceHighest : palette.surfaceLow,
+                backgroundColor: item.critical ? palette.surfaceHighest : palette.surfaceLow,
                 borderWidth: 1,
                 borderColor: palette.border,
                 padding: 14,
@@ -1046,9 +1070,16 @@ export function MobileCalendarSurface({
                 marginBottom: 10,
               }}
             >
-              <Text style={{ color: item.active ? palette.accent : palette.muted, fontSize: 11, fontWeight: "700", fontFamily: "monospace" }}>
-                {item.time}
-              </Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <Text style={{ color: item.active ? palette.accent : palette.muted, fontSize: 11, fontWeight: "700", fontFamily: "monospace" }}>
+                  {item.time}
+                </Text>
+                {item.critical ? (
+                  <View style={{ ...pillStyle(palette, true), paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ color: palette.accent, fontSize: 9, fontWeight: "800", textTransform: "uppercase" }}>Critical</Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{item.title}</Text>
               <Text style={bodyStyle(palette)}>{item.detail}</Text>
             </View>
