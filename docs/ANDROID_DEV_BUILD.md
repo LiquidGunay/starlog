@@ -278,6 +278,98 @@ Phone-state rules for this loop:
 The script writes `latest.json`, screenshots, API logs, and import/build evidence into the same
 build folder so the latest proof is obvious without manually sorting old APKs.
 
+## Physical phone dev-client runbook (this host)
+
+Use this sequence when validating the native mobile app on the connected Android phone from WSL.
+Keep the phone unlocked for the full run.
+
+1. Use the newer Windows ADB binary:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" devices -l
+```
+
+2. Keep the phone awake and prepare API reverse:
+
+```bash
+"$ADB_WIN" -s <SERIAL> shell svc power stayon usb
+"$ADB_WIN" -s <SERIAL> reverse tcp:8000 tcp:8000
+```
+
+3. Start the Windows relay in a dedicated terminal and keep it running:
+
+```bash
+bash -x /home/ubuntu/starlog/scripts/android_windows_metro_relay.sh
+```
+
+Expected relay checkpoint:
+
+```text
+[android-metro-relay] listening 0.0.0.0:8081 -> <WSL_IP>:8081
+```
+
+4. Validate relay reachability from Windows before opening the app:
+
+```bash
+powershell.exe -NoProfile -Command 'try { (Invoke-WebRequest -Uri "http://127.0.0.1:8081" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $_.Exception.Message; exit 1 }'
+```
+
+Expected output: `200`
+
+5. Start Metro in LAN mode:
+
+```bash
+cd /home/ubuntu/starlog/apps/mobile
+APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
+```
+
+6. Open the dev client using the explicit Expo dev-launcher URL:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> reverse --remove tcp:8081 || true
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+```
+
+If the dev client shows `Unable to load script` or a blank white screen, keep the same LAN
+dev-client URL flow, wait for Metro to finish the first bundle, and then rerun the same launcher
+command. Do not switch to the localhost reverse path on this host.
+
+Expected checkpoint in the Metro terminal:
+
+```text
+Android Bundled ... index.js (...)
+```
+
+7. Run the Android smoke flow after the app loads:
+
+```bash
+cd /home/ubuntu/starlog
+DEV_CLIENT_URL='expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=<SERIAL> \
+REVERSE_PORTS=8000 \
+SKIP_INSTALL=1 \
+./scripts/android_native_smoke.sh
+```
+
+8. Capture a screenshot from the phone:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> exec-out screencap -p > /tmp/starlog-phone.png
+```
+
+Host-specific troubleshooting:
+
+- `failed to connect to /192.168.0.102 (port 8081)`: relay is not reachable; re-check the relay and Windows probe steps.
+- `unexpected end of stream on http://127.0.0.1:8081/...`: avoid the localhost reverse path for Metro on this host; keep the LAN URL flow.
+- `Unable to load script` after opening the dev client: let the first bundle finish, then reopen the same dev-launcher URL.
+- White screen for ~20-40s on first open: keep the phone unlocked and wait for the first bundle compile to finish before retrying.
+- `adb devices` empty but the phone appears in Device Manager: unlock the phone, enable USB debugging, and accept the authorization prompt.
+- `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying the wireless flow.
+
 ## Current voice-native RC artifact (WI-581)
 
 Current preview release-candidate artifact:
