@@ -40,104 +40,16 @@ Use the April 2026 design pack in `/home/ubuntu/starlog_extras/starlog_unified_d
 - Treat `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/starlog_design_document_design.md` plus the per-surface `code.html` and `screen.png` files in that folder as the authoritative design references.
 - When design guidance conflicts across sources, prefer the April 2026 external pack over any older repo-tracked doc or screenshot.
 
-## Shared workitem locking (`.git` common dir)
+## Default execution mode
 
-Use a shared live lock registry under the common git dir so all worktrees/agents coordinate against the same source of truth.
+Use the canonical checkout at `/home/ubuntu/starlog` for normal single-agent work.
 
-- Registry root: `$(git rev-parse --git-common-dir)/codex-workitems/`
-- Authoritative files:
-  - `workitems.json`
-  - `locks/<workitem_id>.lock`
-  - `audit.jsonl`
-  - `review_backlog.json`
-  - `branch_cleanup.json`
-  - `design_queue.json`
-  - `.registry.lock` (used for atomic lock operations)
-- Lock protocol:
-  - claim lock before implementation starts
-  - every lock record must include owner identity through a stable, human-readable `agent_id`
-  - heartbeat every 2 minutes while actively working
-  - stale lock timeout is 10 minutes
-  - release lock on completion or handoff
-  - forced lock steal requires an explicit reason and must be appended to `audit.jsonl`
-- Preferred command helper:
-  - Initialize registry: `python3 scripts/workitem_lock.py init`
-  - Claim: `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --title "<short title>" --force-steal --reason "<reason>"` (omit `--force-steal` for normal claim; `--title` is optional but preferred when claiming a new item)
-  - Heartbeat: `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent>`
-  - Release: `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
-  - Inspect status: `python3 scripts/workitem_lock.py status [--workitem-id <id>]`
-- Required usage flow for every agent:
-  1) Identify the `workitem_id` in `workitems.json`, then acquire `.registry.lock` before reading/updating lock state.
-  2) On claim, verify `locks/<workitem_id>.lock` is absent or stale (`last_heartbeat_at` older than 10 minutes). If active and not stale, do not proceed.
-  3) Write/update `locks/<workitem_id>.lock` with owner metadata (`agent_id`, `worktree`, `branch`, `claimed_at`, `last_heartbeat_at`), keep the workitem `title` current when known, set workitem status/owner in `workitems.json`, and append a `claim` event to `audit.jsonl`.
-  4) While working, refresh `last_heartbeat_at` at least every 2 minutes (under `.registry.lock`), and keep `workitems.json` ownership/status aligned.
-  5) On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
-  6) Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
-- `docs/CODEX_PARALLEL_WORK_ITEMS.md` is archived planning context only; live lock authority and live backlog state live in the shared `.git` registry.
-- Every claimed agent task must be delivered through a PR to `master`; direct pushes to `master` are not allowed.
-- If a task branch is behind `origin/master`, rebase onto latest `origin/master` before final review/merge and rerun relevant validation after the rebase.
-- Once a PR is merged, do not add commits to that branch/PR. Start a fresh `codex/*` branch from current `master` and open a new PR for follow-up work.
-- Capture backend/support review findings into `review_backlog.json` before deleting merged PR head branches.
-- During branch cleanup, quarantine unmerged or dirty local branches in `branch_cleanup.json` instead of deleting them blindly.
-- Run `git fetch --prune` plus merged-branch cleanup at the end of each merge batch so local refs do not accumulate across sessions.
-- Lock timing rationale:
-  - 2-minute heartbeat gives near-real-time liveness without overwhelming lock-file churn.
-  - 10-minute stale timeout tolerates short command/test pauses but recovers quickly from crashed or abandoned sessions.
-  - Checking/refreshing at the 2-minute heartbeat cadence keeps takeover decisions consistent and deterministic.
-- Any merge-conflict resolution insight discovered while working must be distilled into a durable guardrail here and, if useful for chronology, appended to `docs/ENGINEERING_ISSUE_HISTORY.md`.
+- Work on one task at a time on a fresh `codex/*` branch from current `master`.
+- Do not create extra worktrees or claim shared workitem locks unless the task actually involves parallel agents, subagents, isolated recovery, or explicit multi-branch coordination.
+- After a PR merges, switch back to `master`, prune stale refs, and start the next task from a fresh branch.
+- If a merge-conflict lesson or process failure repeats, distill the durable takeaway into this file and archive the dated incident detail in `docs/ENGINEERING_ISSUE_HISTORY.md`.
 
-## Branch and worktree hygiene
-
-Keep branch/worktree count low enough that `master`, active task branches, and abandoned experiments are easy to distinguish.
-
-- Default to the canonical checkout at `/home/ubuntu/starlog`; do not create a new worktree for normal single-agent work.
-- Keep the main agent in the canonical checkout and switch branches there as needed instead of spawning extra local worktrees.
-- Additional worktrees are reserved for subagents that need isolated PR branches, risky rebases, or a clearly isolated recovery/salvage pass.
-- Before creating a new worktree, inspect `git worktree list --porcelain` and reuse or delete an existing clean detached worktree if it is no longer tied to an active task.
-- Keep exactly one active `codex/*` task branch per worktree. Do not park multiple unfinished branches in the same checkout.
-- The canonical checkout should own local `master` whenever possible. Do not leave `master` pinned in a side worktree after the recovery or validation task that needed it is done.
-- If a branch/worktree falls out of the current plan, prefer deleting it. Only preserve it when it contains unsalvaged work that is still valuable against the current plan.
-- If preserved work is not ready to continue, store it as a clearly named stash (`git stash push -u -m "<branch> WIP"`) or record it in `branch_cleanup.json`, then remove the worktree.
-- After a branch merges or is intentionally abandoned, remove its worktree, run `git worktree prune`, and delete merged local/remote `codex/*` refs during the same cleanup pass.
-- Detached Codex app worktrees with no branch and no important local changes should be treated as disposable and removed during routine cleanup.
-- When salvage is needed from a stale branch, cherry-pick or patch-select only the pieces that still fit the current plan; do not revive the entire branch by default.
-
-## Shared dependency/build reuse across worktrees
-
-Fresh worktrees should reuse existing dependency installs and compiler caches from the canonical checkout instead of re-running full setup by default.
-
-- Canonical checkout for this host: `/home/ubuntu/starlog`
-- Before running installs in a fresh worktree, link shared state:
-
-```bash
-cd <your-worktree>
-bash scripts/use_shared_worktree_state.sh --source /home/ubuntu/starlog
-```
-
-- The helper links these shared paths when they are absent locally:
-  - `node_modules`
-  - `apps/web/node_modules`
-  - `apps/mobile/node_modules`
-  - `tools/desktop-helper/node_modules`
-  - `services/api/.venv`
-  - `apps/mobile/android/.gradle`
-  - `tools/desktop-helper/src-tauri/target`
-- Fresh-worktree validation on this host succeeded without reinstalling after running the helper:
-  - `npx pnpm@9.15.0 --filter web exec tsc --noEmit`
-  - `cd apps/mobile && ./node_modules/.bin/tsc --noEmit`
-  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep "quick popup can switch to workspace in browser fallback"`
-- Default rule: reuse shared state for dependencies/caches; only localize a surface if your task changes that surface's dependency or build inputs.
-- Localize a surface before reinstall/rebuild if you modify any of:
-  - `package.json`
-  - `pnpm-lock.yaml`
-  - `services/api/pyproject.toml`
-  - `services/api/uv.lock`
-  - `apps/mobile/android/**`
-  - `apps/mobile/app.config.js`
-  - `tools/desktop-helper/src-tauri/Cargo.toml`
-  - `tools/desktop-helper/src-tauri/Cargo.lock`
-- If a worktree needs different state for one surface, keep only that surface local and continue reusing shared state for the rest.
-- For long-running Metro/Gradle mobile validation on this host, prefer the canonical checkout if the NTFS worktree path stalls before binding `:8081`.
+For parallel-agent coordination, workitem locks, worktree hygiene, and shared dependency reuse, use [docs/PARALLEL_AGENT_WORKFLOW.md](/home/ubuntu/starlog/docs/PARALLEL_AGENT_WORKFLOW.md).
 
 ## Markdown map
 
@@ -151,6 +63,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` — archived human-readable queue snapshot; not the live coordination surface.
 - `docs/ENGINEERING_ISSUE_HISTORY.md` — archived dated issue chronology and host-specific debugging history that should not live inline in `AGENTS.md`.
+- `docs/PARALLEL_AGENT_WORKFLOW.md` — subagent-only workflow for workitem locking, extra worktrees, branch cleanup, and shared dependency reuse.
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — daily-use install, prerequisite, config, smoke, and reset handoff for the desktop helper on the main laptop.
 - `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
 - `docs/FINAL_PREVIEW_SIGNOFF.md` — latest preview release-decision handoff, baseline, and validation evidence for the current signoff pass.
