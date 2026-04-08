@@ -200,6 +200,41 @@ Launch verification command on this host:
   shell am start -W -n com.starlog.app.preview/com.starlog.app.dev.MainActivity
 ```
 
+## Fresh local April validation loop
+
+When the goal is to prove the current April mobile implementation from current source, use the
+fresh local loop instead of an older preview bundle:
+
+```bash
+cd /home/ubuntu/starlog
+bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+What this loop does:
+
+- exports the documented Linux build prerequisites:
+  - `JAVA_HOME=$HOME/.local/jdks/temurin-17`
+  - `ANDROID_HOME=$HOME/.local/android`
+  - `ANDROID_SDK_ROOT=$HOME/.local/android`
+- wipes prior local validation runtime/build state under `.localdata/android-local-validation/`
+- generates or reuses a non-repo test passphrase from `/home/ubuntu/.config/starlog/android-local-srs-passphrase.txt`
+- starts a fresh local API on `127.0.0.1:8000`
+- bootstraps/imports the ML Interviews SRS deck into that fresh local DB
+- builds a fresh `development` release APK from current source
+- stages it into `C:\Temp\...`
+- uninstalls prior Starlog phone packages before install
+- installs the new APK with Windows `adb.exe install --no-streaming -r`
+- launches the April login UI, establishes the fresh local station, opens the review tab, loads due cards, reveals an answer, and records one `Good` rating
+
+Artifact naming for this loop:
+
+- APK: `starlog-dev-<UTCSTAMP>-<versionCode>.apk`
+- `versionCode`: `1<YY><day-of-year><HH><MM>` so it stays below Android's signed-int max
+- `versionName`: `0.1.0-april.devtest.<UTCSTAMP>`
+
+The script writes `latest.json`, screenshots, API logs, and import/build evidence into the same
+build folder so the latest proof is obvious without manually sorting old APKs.
+
 ## Current voice-native RC artifact (WI-581)
 
 Current preview release-candidate artifact:

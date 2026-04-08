@@ -279,6 +279,24 @@ Troubleshooting checklist:
 - `adb devices` empty but phone appears in Device Manager: unlock phone, enable USB debugging, accept authorization prompt.
 - `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying wireless flow.
 
+## Fresh local April phone validation
+
+Use the scripted local-validation loop when the goal is to prove the current April mobile build end-to-end instead of reinstalling an older preview artifact.
+
+- Canonical script: `bash /home/ubuntu/starlog/scripts/android_fresh_local_srs_validation.sh`
+- Test passphrase location: `/home/ubuntu/.config/starlog/android-local-srs-passphrase.txt`
+- Local validation artifacts: `/home/ubuntu/starlog/.localdata/android-local-validation/`
+- Build naming scheme:
+  - APK: `starlog-dev-<UTCSTAMP>-<versionCode>.apk`
+  - Metadata: `/home/ubuntu/starlog/.localdata/android-local-validation/builds/<UTCSTAMP>/latest.json`
+  - Screenshots live beside that metadata under `screens/`
+- Versioning rule for these fresh validation builds:
+  - `versionCode` defaults to `1<YY><day-of-year><HH><MM>` so it stays under Android's signed-int limit
+  - `versionName` defaults to `0.1.0-april.devtest.<UTCSTAMP>`
+- The script intentionally removes older Starlog packages from the phone (`com.starlog.app.dev`, `com.starlog.app.preview`, `com.starlog.app`) and wipes prior local validation builds/runtime state under `.localdata/android-local-validation/` before rebuilding.
+- On this host, the install step must use Windows `adb.exe install --no-streaming -r C:\\Temp\\...`; the default streamed install can push the APK and then silently fail to materialize the package.
+- The script keeps the secret itself out of the repo; only the file path is documented here.
+
 ## Preference log
 - 2026-03-04: User prefers clip-first workflow with strong provenance/versioning.
 - 2026-03-04: User prefers manual AI action buttons over automatic pipelines.
@@ -320,6 +338,7 @@ Troubleshooting checklist:
 - 2026-04-05: User wants stale branches and worktrees deleted aggressively unless they contain critical unsalvaged work that still matches the current plan.
 - 2026-04-05: User wants the April 2026 redesign sourced from `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026`, with the older in-repo `docs/design` and `screen_design` packs treated as obsolete.
 - 2026-04-05: User wants new worktrees avoided for normal work; use the canonical checkout by default and reserve extra worktrees for subagents or isolated recovery passes.
+- 2026-04-08: User wants Android build/test loops to remove older phone installs and local staged builds, generate a non-repo test passphrase, and follow one documented repeatable automation path instead of rediscovering host quirks.
 - 2026-03-15: User wants mobile implementation/testing runs to include stored screenshots as completion proof.
 - 2026-03-15: User clarified that iOS share status is out of scope for v1 and must not block v1 distribution work.
 - 2026-03-15: User wants `AGENTS.md` to include a purpose map for repo markdown files.
@@ -476,3 +495,7 @@ Troubleshooting checklist:
 - 2026-04-06: This OPPO build rejects `adb shell pm clear com.starlog.app.dev` with `android.permission.CLEAR_APP_USER_DATA`; use uninstall/reinstall when a clean-state mobile login test is required.
 - 2026-04-06: The April mobile login/SRS flow on the physical `com.starlog.app.dev` release build reached the new login UI but failed local-API login with `Network request failed` until a main-manifest `networkSecurityConfig` override was added for `localhost` and `127.0.0.1` cleartext.
 - 2026-04-06: This WSL host currently lacks a usable local JDK path for rebuilding the Android APK in-place; Windows-side Gradle invocation against the `\\wsl.localhost\\Ubuntu\\...` checkout returned without refreshing release outputs, so physical retest of native manifest changes requires a host with a working Android build JDK or a Windows-native build run from a path Gradle can materialize correctly.
+- 2026-04-08: The documented Linux Android build path on this host is actually usable when `JAVA_HOME=$HOME/.local/jdks/temurin-17` and `ANDROID_SDK_ROOT=$HOME/.local/android` are exported first; Windows interop is still needed for `adb.exe` install/phone control, but not for the Gradle build itself.
+- 2026-04-08: Fresh Android validation builds need a bounded `versionCode`; a raw UTC `YYMMDDHHMM` scheme can exceed Android's signed-int max, so the repeatable local-validation loop now uses `1<YY><day-of-year><HH><MM>` instead.
+- 2026-04-08: For this OPPO/Windows-ADB path, `adb.exe install --no-streaming -r C:\\Temp\\...` succeeds reliably while the default streamed `adb.exe install -r` path can hang or finish without actually installing the package.
+- 2026-04-08: The April mobile Review screen can render instructional copy before the actionable buttons enter view; automated phone proof should scroll the review card and tap exact labels like `Load due cards` / `Reveal answer` instead of tapping the first partial text match.
