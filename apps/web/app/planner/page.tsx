@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ObservatoryPanel, ObservatoryWorkspaceShell } from "../components/observatory-shell";
+import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
@@ -158,7 +157,6 @@ function isoDateFromOffset(baseDate: string, offset: number): string {
 }
 
 export default function PlannerPage() {
-  const pathname = usePathname();
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const initialDate = useMemo(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today), [today]);
@@ -432,10 +430,6 @@ export default function PlannerPage() {
     };
   }, [load, token]);
 
-  const startHour = 8;
-  const endHour = 15;
-  const hourSlots = useMemo(() => Array.from({ length: endHour - startHour + 1 }, (_, index) => startHour + index), [endHour, startHour]);
-  const rowHeight = 80;
   const cycleDays = useMemo(
     () => [
       { id: "cycle1", label: "Cycle 1", offsetLabel: "T-0", date: isoDateFromOffset(date, 0) },
@@ -443,11 +437,6 @@ export default function PlannerPage() {
       { id: "cycle3", label: "Cycle 3", offsetLabel: "T+2", date: isoDateFromOffset(date, 2) },
     ],
     [date],
-  );
-
-  const timelineByCycle = useMemo(
-    () => cycleDays.map((cycleDay) => timeline.filter((item) => isSameDay(item.startsAt, cycleDay.date))),
-    [cycleDays, timeline],
   );
 
   const unscheduledPool = useMemo(() => {
@@ -474,280 +463,348 @@ export default function PlannerPage() {
       }));
   }, [conflicts, cycleDays, events]);
 
-  const nowLineOffset = useMemo(() => {
-    const now = new Date();
-    if (now.toISOString().slice(0, 10) !== cycleDays[0]?.date) {
-      return null;
-    }
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const minMinutes = startHour * 60;
-    const maxMinutes = (endHour + 1) * 60;
-    if (nowMinutes < minMinutes || nowMinutes > maxMinutes) {
-      return null;
-    }
-    return ((nowMinutes - minMinutes) / 60) * rowHeight;
-  }, [cycleDays, endHour, rowHeight, startHour]);
+  const calendarMonth = useMemo(() => {
+    const selected = new Date(`${date}T00:00:00`);
+    const monthStart = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    const firstWeekday = (monthStart.getDay() + 6) % 7;
+    const gridStart = new Date(monthStart);
+    gridStart.setDate(monthStart.getDate() - firstWeekday);
+
+    const days = Array.from({ length: 35 }, (_, index) => {
+      const day = new Date(gridStart);
+      day.setDate(gridStart.getDate() + index);
+      const iso = day.toISOString().slice(0, 10);
+      const itemCount = [...blocks, ...events].filter((item) => isSameDay(item.starts_at, iso)).length;
+      return {
+        iso,
+        label: day.getDate(),
+        inMonth: day.getMonth() === selected.getMonth(),
+        current: iso === date,
+        itemCount,
+      };
+    });
+
+    return {
+      heading: selected.toLocaleDateString([], { month: "long", year: "numeric" }),
+      days,
+    };
+  }, [blocks, date, events]);
+
+  const agendaItems = useMemo(
+    () => timeline.map((item) => ({
+      id: item.id,
+      time: formatTime(item.startsAt),
+      title: item.title,
+      detail: item.kind === "event" ? `${item.source} event` : "focus block",
+      critical: item.kind === "event",
+    })),
+    [timeline],
+  );
+  const ritualCompletion = useMemo(() => {
+    const connected = oauthStatus?.connected ? 1 : 0;
+    const loadFactor = timeline.length > 0 ? 1 : 0;
+    const syncFactor = conflicts.some((conflict) => !conflict.resolved) ? 0 : 1;
+    const ratio = (connected + loadFactor + syncFactor) / 3;
+    return Math.round(ratio * 100);
+  }, [conflicts, oauthStatus?.connected, timeline.length]);
+  const ritualChecklist = useMemo(
+    () => [
+      {
+        id: "briefing",
+        title: "Morning briefing ready",
+        done: timeline.length > 0,
+        detail: timeline.length > 0 ? `${timeline.length} scheduled item(s) staged` : "Generate or load blocks first",
+      },
+      {
+        id: "sync",
+        title: "Calendar sync stable",
+        done: Boolean(oauthStatus?.connected) && !conflicts.some((conflict) => !conflict.resolved),
+        detail: oauthStatus?.connected ? "Google calendar link active" : "Internal agenda mode",
+      },
+      {
+        id: "pool",
+        title: "Ritual pool triaged",
+        done: unscheduledPool.length === 0,
+        detail: unscheduledPool.length === 0 ? "No unscheduled drift" : `${unscheduledPool.length} item(s) still waiting`,
+      },
+    ],
+    [conflicts, oauthStatus?.connected, timeline.length, unscheduledPool.length],
+  );
+
+  function shiftMonth(offset: number) {
+    const stamp = new Date(`${date}T00:00:00`);
+    stamp.setMonth(stamp.getMonth() + offset);
+    setDate(stamp.toISOString().slice(0, 10));
+  }
 
   return (
-    <ObservatoryWorkspaceShell
-      pathname={pathname}
-      surface="agenda"
-      eyebrow="Agenda"
-      title="Tasks, time blocks, and calendar drift in one ritual workspace."
-      description="Keep the planning grid stable while the observatory shell takes over the chrome. The timeline still runs on the existing planning and calendar contracts."
+    <AprilWorkspaceShell
+      activeSurface="agenda"
       statusLabel={oauthStatus?.connected ? "Calendar sync connected" : "Internal agenda only"}
-      stats={[
-        { label: "Scheduled", value: String(timeline.length) },
-        { label: "Pool", value: String(unscheduledPool.length) },
-        { label: "Conflicts", value: String(conflicts.filter((conflict) => !conflict.resolved).length) },
-      ]}
-      actions={
-        <div className="button-row">
-          <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
-          <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
-        </div>
-      }
-      sideNote={{
-        title: "Ritual focus",
-        body: "The agenda view should bias toward the next cycle, briefing audio, and unresolved sync drift instead of behaving like a generic calendar.",
-        meta: `${date} · ${timeline.length} scheduled items`,
-      }}
-      orbitCards={[
-        {
-          kicker: "Briefing readiness",
-          title: oauthStatus?.connected ? "Calendar connected" : "Awaiting calendar sync",
-          body: oauthStatus?.detail || "Internal blocks can still guide the next ritual cycle.",
-        },
-        {
-          kicker: "Unscheduled pool",
-          title: `${unscheduledPool.length} items pending placement`,
-          body: unscheduledPool[0]?.title || "No unscheduled tasks or conflicts.",
-        },
-        {
-          kicker: "Main Room",
-          title: "Return to the shared thread",
-          body: "Use the Main Room for briefings, next actions, and follow-up confirmations.",
-          href: "/assistant",
-          actionLabel: "Open Main Room",
-        },
-      ]}
-    >
-      <section className="observatory-grid observatory-grid-wide">
-        <ObservatoryPanel
-          kicker="Cycle controls"
-          title="Three-cycle agenda board"
-          meta="Time-block the next three cycles, keep unscheduled pressure visible, and resolve sync drift before it spills into the day."
-        >
-          <div className="chronos-sidebar-head">
-            <div>
-              <p className="observatory-eyebrow">Agenda ritual</p>
-              <h3 className="observatory-panel-title">Three-cycle planner</h3>
-              <p className="chronos-subcopy">
-                Hold the day in view while keeping the next two cycles ready for briefing playback and block generation.
-              </p>
-            </div>
-            <div className="chronos-controls">
-              <div className="chronos-cycle-switch">
-                <button className="active" type="button">3-Day Cycle</button>
-                <button type="button" disabled>7-Day Cycle</button>
+      queueLabel={`${timeline.length} scheduled`}
+      searchPlaceholder="Search agenda..."
+      railSlot={(
+        <>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Agenda rhythm</span>
+            <div className="april-rail-metric-stack">
+              <div className="april-rail-metric-card">
+                <strong>{timeline.length}</strong>
+                <span>Scheduled</span>
               </div>
-              <label className="label" htmlFor="planner-date">
-                Date
-              </label>
-              <input
-                id="planner-date"
-                type="date"
-                className="input"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-              />
-              <div className="chronos-summary-grid">
-                <article className="chronos-summary-card">
-                  <strong>{timeline.length}</strong>
-                  <span>scheduled items</span>
-                </article>
-                <article className="chronos-summary-card">
-                  <strong>{unscheduledPool.length}</strong>
-                  <span>pool items</span>
-                </article>
-                <article className="chronos-summary-card">
-                  <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
-                  <span>open conflicts</span>
-                </article>
+              <div className="april-rail-metric-card">
+                <strong>{unscheduledPool.length}</strong>
+                <span>Pool items</span>
               </div>
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => generate()}>
-                  Generate Blocks
-                </button>
-                <button className="button" type="button" onClick={() => load()}>
-                  Refresh
-                </button>
-                <button className="button" type="button" onClick={() => addSampleEvent()}>
-                  Add Event
-                </button>
-                <button className="button" type="button" onClick={() => runGoogleSync()}>
-                  Run Google sync
-                </button>
-              </div>
-              <p className="status">{status}</p>
             </div>
           </div>
-        </ObservatoryPanel>
-
-        <PaneRestoreStrip
-          actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
-        />
-        {!sidecarPane.collapsed ? (
-          <ObservatoryPanel
-            kicker="Ritual sidecar"
-            title="Unscheduled pool and sync drift"
-            meta="Keep the pool visible, but secondary to the agenda board."
-            actions={<PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />}
-          >
-            <div className="chronos-pool">
-              <h2>Unscheduled pool</h2>
-              {unscheduledPool.length === 0 ? (
-                <p className="console-copy">No unscheduled tasks or conflicts.</p>
-              ) : (
-                unscheduledPool.map((item) => (
-                  <article key={item.id} className="chronos-pool-card">
-                    <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
-                      {item.type === "conflict" ? "sync conflict" : "event spillover"}
-                    </span>
-                    <strong>{item.title}</strong>
-                    <small>{item.subtitle}</small>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Briefing readiness</span>
+            <p className="console-copy">{oauthStatus?.detail || "Internal blocks can still guide the next ritual cycle."}</p>
+          </div>
+        </>
+      )}
+    >
+      <section className="april-agenda-layout">
+        <div className="april-agenda-grid">
+          <div className="april-agenda-main">
+            <AprilPanel className="april-briefing-panel">
+              <div className="april-briefing-copy">
+                <span className="april-panel-kicker">System transmission</span>
+                <h2>Morning Briefing</h2>
+                <p>{oauthStatus?.detail || "Good morning. Today's forecast is clear for focus and synthesis."}</p>
+                <div className="april-briefing-wave">
+                  {Array.from({ length: 18 }, (_, index) => (
+                    <span key={`brief-wave-${index}`} style={{ height: `${28 + ((index * 11) % 42)}%` }} />
+                  ))}
+                </div>
+                <div className="chronos-summary-grid">
+                  <article className="chronos-summary-card">
+                    <strong>{timeline.length}</strong>
+                    <span>scheduled items</span>
                   </article>
-                ))
-              )}
+                  <article className="chronos-summary-card">
+                    <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
+                    <span>open conflicts</span>
+                  </article>
+                  <article className="chronos-summary-card">
+                    <strong>{oauthStatus?.connected ? "Live" : "Local"}</strong>
+                    <span>calendar mode</span>
+                  </article>
+                </div>
+              </div>
+              <div className="april-briefing-controls">
+                <button className="april-icon-button" type="button">◂</button>
+                <button className="april-play-button" type="button">Play</button>
+                <button className="april-icon-button" type="button">▸</button>
+              </div>
+            </AprilPanel>
 
-              <article className="chronos-pool-card">
-                <strong>{timeline.length} scheduled item(s) on {date}</strong>
-                <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
-              </article>
+            <AprilPanel className="april-calendar-panel">
+              <div className="april-panel-head">
+                <div>
+                  <span className="april-panel-kicker">Agenda ritual</span>
+                  <h2>Calendar constellation</h2>
+                </div>
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
+                  <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
+                </div>
+              </div>
+              <div className="april-month-head">
+                <div>
+                  <h3>{calendarMonth.heading}</h3>
+                  <p>{oauthStatus?.connected ? "Lunar cycle synced" : "Internal orbit mode"}</p>
+                </div>
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => shiftMonth(-1)}>Previous</button>
+                  <button className="button" type="button" onClick={() => shiftMonth(1)}>Next</button>
+                </div>
+              </div>
+              <div className="april-month-grid">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                  <span key={day} className="april-month-grid-label">{day}</span>
+                ))}
+                {calendarMonth.days.map((day) => (
+                  <button
+                    key={day.iso}
+                    type="button"
+                    className={day.current ? "april-month-cell active" : day.inMonth ? "april-month-cell" : "april-month-cell muted"}
+                    onClick={() => setDate(day.iso)}
+                  >
+                    <strong>{day.label}</strong>
+                    {day.itemCount > 0 ? <small>{day.itemCount} item{day.itemCount === 1 ? "" : "s"}</small> : null}
+                  </button>
+                ))}
+              </div>
+            </AprilPanel>
 
-              <details>
-                <summary className="label">Sync conflicts</summary>
-                {conflicts.length === 0 ? (
-                  <p className="console-copy">No conflicts.</p>
+            <AprilPanel className="april-timeline-panel">
+              <div className="april-panel-head">
+                <div>
+                  <span className="april-panel-kicker">Today&apos;s agenda</span>
+                  <h2>Ritual timeline</h2>
+                </div>
+              </div>
+              <div className="april-agenda-list">
+                {agendaItems.length === 0 ? (
+                  <p className="console-copy">No timeline items for this day yet.</p>
                 ) : (
-                  conflicts.map((conflict) => (
-                    <article key={conflict.id} className="chronos-pool-card">
-                      <strong>Remote {conflict.remote_id}</strong>
-                      <small>policy {conflict.strategy}</small>
-                      <div className="button-row">
-                        <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
-                          Replay Sync
-                        </button>
-                        <button
-                          className="button"
-                          type="button"
-                          onClick={() => resolveConflict(conflict.id, "local_wins")}
-                        >
-                          Local Wins
-                        </button>
-                        <button
-                          className="button"
-                          type="button"
-                          onClick={() => resolveConflict(conflict.id, "remote_wins")}
-                        >
-                          Remote Wins
-                        </button>
-                        <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
-                          Dismiss
-                        </button>
+                  agendaItems.map((item) => (
+                    <article key={item.id} className={item.critical ? "april-agenda-item critical" : "april-agenda-item"}>
+                      <div className="april-agenda-item-track">
+                        <span />
+                      </div>
+                      <div className="april-agenda-item-card">
+                        <div className="april-agenda-item-head">
+                          <strong>{item.time}</strong>
+                          {item.critical ? <small>Critical</small> : null}
+                        </div>
+                        <h3>{item.title}</h3>
+                        <p>{item.detail}</p>
                       </div>
                     </article>
                   ))
                 )}
-              </details>
-
-              <details>
-                <summary className="label">Google OAuth</summary>
-                {!oauthStatus ? (
-                  <p className="console-copy">OAuth status not loaded.</p>
-                ) : (
-                  <>
-                    <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
-                    <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
-                    <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
-                    <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
-                    <p className="console-copy">{oauthStatus.detail}</p>
-                  </>
-                )}
-              </details>
-            </div>
-          </ObservatoryPanel>
-        ) : null}
-      </section>
-
-      <section className="observatory-grid">
-        <ObservatoryPanel
-          kicker="Timeline board"
-          title="Cycle schedule"
-          meta="The briefing rail can narrate this exact board without changing the underlying contracts."
-        >
-          <section className="chronos-layout chronos-layout-sidebar-collapsed">
-            <section className="chronos-grid-wrap">
-              <div className="chronos-day-head">
-                <span />
-                {cycleDays.map((cycleDay) => (
-                  <span key={cycleDay.id}>
-                    <strong>{cycleDay.label}</strong>
-                    {cycleDay.offsetLabel}
-                  </span>
-                ))}
               </div>
-              <div className="chronos-grid">
-                <div className="chronos-grid-inner">
-                  <div className="chronos-hours">
-                    {hourSlots.map((hour) => (
-                      <div key={`hour-${hour}`} className="chronos-hour">{`${hour.toString().padStart(2, "0")}:00`}</div>
-                    ))}
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => generate()}>Generate Blocks</button>
+                <button className="button" type="button" onClick={() => addSampleEvent()}>Add Event</button>
+              </div>
+              <p className="status">{status}</p>
+            </AprilPanel>
+          </div>
+
+          <div className="april-agenda-side">
+            <PaneRestoreStrip
+              actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
+            />
+            {!sidecarPane.collapsed ? (
+              <AprilPanel className="april-ritual-panel">
+                <div className="april-panel-head">
+                  <div>
+                    <span className="april-panel-kicker">Daily rituals</span>
+                    <h2>Ritual readiness and sync drift</h2>
                   </div>
-                  {cycleDays.map((cycleDay, cycleIndex) => (
-                    <div key={cycleDay.id} className="chronos-day-col">
-                      {hourSlots.map((hour) => (
-                        <div key={`${cycleDay.id}-${hour}`} className="chronos-day-row" />
-                      ))}
-                      {timelineByCycle[cycleIndex].map((item) => {
-                        const startMinutes = Math.max(startHour * 60, toMinutes(item.startsAt));
-                        const endMinutes = Math.min((endHour + 1) * 60, toMinutes(item.endsAt));
-                        if (endMinutes <= startMinutes) {
-                          return null;
-                        }
-                        const top = ((startMinutes - startHour * 60) / 60) * rowHeight + 2;
-                        const height = Math.max(32, ((endMinutes - startMinutes) / 60) * rowHeight - 4);
-                        const taskClass = item.kind === "event" ? "chronos-task event" : "chronos-task";
-                        return (
-                          <article
-                            key={item.id}
-                            className={taskClass}
-                            style={{
-                              left: "4px",
-                              right: "4px",
-                              top: `${top}px`,
-                              height: `${height}px`,
-                            }}
-                          >
-                            <strong>{item.title}</strong>
-                            <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ))}
+                  <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
                 </div>
-                {nowLineOffset !== null ? <div className="chronos-now-line" style={{ top: `${nowLineOffset}px` }} /> : null}
-              </div>
-              <div className="chronos-foot-controls">
-                <p className="console-copy">
-                  Day board: {timeline.length > 0 ? "timeline active" : "no timeline items for this day yet"}.
-                </p>
-              </div>
-            </section>
-          </section>
-        </ObservatoryPanel>
+                <div className="chronos-pool">
+                  <section className="april-ritual-progress-card">
+                    <div className="april-ritual-progress-ring" aria-hidden="true">
+                      <svg viewBox="0 0 120 120">
+                        <circle cx="60" cy="60" r="44" />
+                        <circle
+                          className="active"
+                          cx="60"
+                          cy="60"
+                          r="44"
+                          pathLength="100"
+                          strokeDasharray="100"
+                          strokeDashoffset={100 - ritualCompletion}
+                        />
+                      </svg>
+                      <strong>{ritualCompletion}%</strong>
+                    </div>
+                    <div className="april-ritual-progress-copy">
+                      <span className="chronos-pool-tag">daily return point</span>
+                      <h3>{date}</h3>
+                      <p>{oauthStatus?.connected ? "Google sync connected and feeding the ritual cycle." : "Internal agenda mode active for this ritual cycle."}</p>
+                    </div>
+                  </section>
+
+                  <section className="april-ritual-checklist">
+                    {ritualChecklist.map((item) => (
+                      <article key={item.id} className={item.done ? "april-ritual-checkpoint done" : "april-ritual-checkpoint"}>
+                        <span className="april-ritual-check-glyph" aria-hidden="true">{item.done ? "●" : "○"}</span>
+                        <div>
+                          <strong>{item.title}</strong>
+                          <small>{item.detail}</small>
+                        </div>
+                      </article>
+                    ))}
+                  </section>
+
+                  <article className="chronos-pool-card">
+                    <strong>{timeline.length} scheduled item(s)</strong>
+                    <small>Across {cycleDays.length} ritual cycles</small>
+                  </article>
+
+                  <h2>Unscheduled pool</h2>
+                  {unscheduledPool.length === 0 ? (
+                    <p className="console-copy">No unscheduled tasks or conflicts.</p>
+                  ) : (
+                    unscheduledPool.map((item) => (
+                      <article key={item.id} className="chronos-pool-card">
+                        <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
+                          {item.type === "conflict" ? "sync conflict" : "event spillover"}
+                        </span>
+                        <strong>{item.title}</strong>
+                        <small>{item.subtitle}</small>
+                      </article>
+                    ))
+                  )}
+
+                  <article className="chronos-pool-card">
+                    <strong>{timeline.length} scheduled item(s) on {date}</strong>
+                    <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
+                  </article>
+
+                  <details>
+                    <summary className="label">Sync conflicts</summary>
+                    {conflicts.length === 0 ? (
+                      <p className="console-copy">No conflicts.</p>
+                    ) : (
+                      conflicts.map((conflict) => (
+                        <article key={conflict.id} className="chronos-pool-card">
+                          <strong>Remote {conflict.remote_id}</strong>
+                          <small>policy {conflict.strategy}</small>
+                          <div className="button-row">
+                            <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
+                              Replay Sync
+                            </button>
+                            <button
+                              className="button"
+                              type="button"
+                              onClick={() => resolveConflict(conflict.id, "local_wins")}
+                            >
+                              Local Wins
+                            </button>
+                            <button
+                              className="button"
+                              type="button"
+                              onClick={() => resolveConflict(conflict.id, "remote_wins")}
+                            >
+                              Remote Wins
+                            </button>
+                            <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
+                              Dismiss
+                            </button>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </details>
+
+                  <details>
+                    <summary className="label">Google OAuth</summary>
+                    {!oauthStatus ? (
+                      <p className="console-copy">OAuth status not loaded.</p>
+                    ) : (
+                      <>
+                        <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
+                        <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
+                        <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
+                        <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
+                        <p className="console-copy">{oauthStatus.detail}</p>
+                      </>
+                    )}
+                  </details>
+                </div>
+              </AprilPanel>
+            ) : null}
+          </div>
+        </div>
       </section>
-    </ObservatoryWorkspaceShell>
+    </AprilWorkspaceShell>
   );
 }

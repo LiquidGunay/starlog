@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import { getConversationCardRegistryEntry } from "./conversation-card-registry";
 
@@ -112,6 +112,94 @@ function cardPresentation(card: ConversationCard): { label: string; tone: string
   return { label: entry.label, tone: entry.tone };
 }
 
+function cardGlyph(card: ConversationCard): string {
+  return getConversationCardRegistryEntry(card.kind, card.title).glyph || "•";
+}
+
+function bodyLines(body?: string | null): string[] {
+  return (body || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function renderCardBody(card: ConversationCard): ReactNode {
+  const lines = bodyLines(card.body);
+  const metadata = card.metadata ?? {};
+
+  if (card.kind === "review_queue") {
+    return (
+      <div className="assistant-card-ritual assistant-card-ritual-review">
+        {card.title ? <h4>{card.title}</h4> : null}
+        {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
+        <div className="assistant-card-rate-row" aria-hidden="true">
+          <span>Hard</span>
+          <span>Good</span>
+          <span>Reveal</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (card.kind === "briefing") {
+    return (
+      <div className="assistant-card-ritual assistant-card-ritual-briefing">
+        {card.title ? <h4>{card.title}</h4> : null}
+        {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
+        <div className="assistant-card-waveform" aria-hidden="true">
+          {Array.from({ length: 18 }).map((_, index) => (
+            <span key={`wave-${index}`} style={{ height: `${14 + ((index * 11) % 28)}px` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (card.kind === "knowledge_note") {
+    return (
+      <div className="assistant-card-ritual assistant-card-ritual-knowledge">
+        <div className="assistant-card-knowledge-copy">
+          {card.title ? <h4>{card.title}</h4> : null}
+          {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
+        </div>
+        <div className="assistant-card-knowledge-glow" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (card.kind === "task_list" && lines.length > 0) {
+    return (
+      <div className="assistant-card-ritual assistant-card-ritual-task">
+        {card.title ? <h4>{card.title}</h4> : null}
+        <ul className="assistant-card-checklist">
+          {lines.slice(0, 4).map((line) => (
+            <li key={line}>{line.replace(/^[-*]\s*/, "")}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (card.kind === "assistant_summary") {
+    return (
+      <div className="assistant-card-ritual">
+        {card.title ? <h4>{card.title}</h4> : null}
+        {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
+        {typeof metadata.status === "string" ? (
+          <span className="assistant-card-status">{metadata.status.replace(/_/g, " ")}</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="assistant-card-ritual">
+      {card.title ? <h4>{card.title}</h4> : null}
+      {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
+    </div>
+  );
+}
+
 export function MainRoomThread({
   messages,
   traces,
@@ -156,6 +244,9 @@ export function MainRoomThread({
           return (
             <article key={message.id} className={`assistant-thread-message role-${message.role}${pendingMessage ? " pending" : ""}`}>
               <div className="assistant-thread-message-meta">
+                <span className={`assistant-sigil assistant-sigil-${message.role}`} aria-hidden="true">
+                  {message.role === "assistant" ? "✦" : message.role === "user" ? "◉" : "◌"}
+                </span>
                 <span className="assistant-role-chip">{message.role}</span>
                 <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
               </div>
@@ -197,12 +288,18 @@ export function MainRoomThread({
                           >
                             <div>
                               <div className="assistant-inline-step-head">
-                                <strong>{presentation.label}</strong>
+                                <strong>
+                                  <span className="assistant-inline-step-glyph" aria-hidden="true">{cardGlyph(card)}</span>
+                                  {presentation.label}
+                                </strong>
                                 <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
                               </div>
-                              {card.title ? <p className="assistant-inline-card-title">{card.title}</p> : null}
-                              {!cardsExpanded && card.body ? <p className="assistant-inline-card-preview">{card.body}</p> : null}
-                              {cardsExpanded && card.body ? <p>{card.body}</p> : null}
+                              {!cardsExpanded ? (
+                                <>
+                                  {card.title ? <p className="assistant-inline-card-title">{card.title}</p> : null}
+                                  {card.body ? <p className="assistant-inline-card-preview">{card.body}</p> : null}
+                                </>
+                              ) : renderCardBody(card)}
                               {canReuse || canNavigate ? (
                                 <div className="assistant-inline-action-row">
                                   <button

@@ -200,6 +200,176 @@ Launch verification command on this host:
   shell am start -W -n com.starlog.app.preview/com.starlog.app.dev.MainActivity
 ```
 
+## Fresh local April validation loop
+
+When the goal is to prove the current April mobile implementation from current source, use the
+fresh local loop instead of an older preview bundle:
+
+```bash
+cd /home/ubuntu/starlog
+bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+What this loop does:
+
+- exports the documented Linux build prerequisites:
+  - `JAVA_HOME=$HOME/.local/jdks/temurin-17`
+  - `ANDROID_HOME=$HOME/.local/android`
+  - `ANDROID_SDK_ROOT=$HOME/.local/android`
+- wipes prior local validation runtime/build state under `.localdata/android-local-validation/`
+- generates or reuses a non-repo test passphrase from `/home/ubuntu/.config/starlog/android-local-srs-passphrase.txt`
+- starts a fresh local API on `127.0.0.1:8000`
+- bootstraps/imports the ML Interviews SRS deck into that fresh local DB
+- builds a fresh `development` release APK from current source
+- stages it into `C:\Temp\...`
+- writes the latest staged-build metadata at `.localdata/android-local-validation/builds/latest.json`
+- uninstalls prior Starlog phone packages before install
+- installs the new APK with Windows `adb.exe install --no-streaming -r`
+- launches the April login UI, establishes the fresh local station, opens the review tab, loads due cards, reveals an answer, and records one `Good` rating
+- mirrors the latest installable APK at `.localdata/android-local-validation/builds/latest.apk`
+
+Performance defaults for this loop:
+
+- it now defaults `REACT_NATIVE_ARCHITECTURES` to the connected device ABI, so the main phone on this host builds only `arm64-v8a` unless you override it
+- it skips `gradlew clean` by default to avoid paying the full native rebuild cost on every validation run
+- use `CLEAN_BUILD=1` when you intentionally need a cold rebuild
+
+Examples:
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> CLEAN_BUILD=1 REACT_NATIVE_ARCHITECTURES=arm64-v8a \
+  bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+If the build already succeeded and only the install/UI phase needs to be retried, reuse the
+existing APK instead of rebuilding. The canonical reuse target is usually the tracked latest APK:
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> SKIP_BUILD=1 \
+  EXISTING_APK_PATH=/home/ubuntu/starlog/.localdata/android-local-validation/builds/latest.apk \
+  bash ./scripts/android_fresh_local_srs_validation.sh
+```
+
+Artifact naming for this loop:
+
+- APK: `starlog-dev-<UTCSTAMP>-<versionCode>.apk`
+- `versionCode`: `1<YY><day-of-year><HH><MM>` so it stays below Android's signed-int max
+- latest metadata pointer: `.localdata/android-local-validation/builds/latest.json`
+- latest APK pointer: `.localdata/android-local-validation/builds/latest.apk`
+
+Phone-state rules for this loop:
+
+- keep the phone unlocked from install through the last screenshot; the script now fails fast if the OPPO keyguard is still active
+- the script now also performs that lock check before booting the fresh local station/import work, so a locked phone does not waste a full rebuild/import cycle
+- the script keeps USB power stay-awake enabled during validation, but that does not bypass a secure lock screen
+- the installed mobile app can retain an older passphrase in its auth field across reinstalls, so the validation loop now clears the password field before typing the test passphrase
+- dismiss the software keyboard before tapping `Initiate Neural Sync`; otherwise the CTA tap can be lost even though the field contents look correct
+- if Google Play Protect appears during sideload install, the script will try the common `More details` -> `Install anyway` path automatically
+- if Play Protect still blocks the install, accept the dialog manually on-device and rerun with `SKIP_BUILD=1` against the latest APK instead of paying for another Gradle build
+- `versionName`: `0.1.0-april.devtest.<UTCSTAMP>`
+
+The script writes `latest.json`, screenshots, API logs, and import/build evidence into the same
+build folder so the latest proof is obvious without manually sorting old APKs.
+
+## Physical phone dev-client runbook (this host)
+
+Use this sequence when validating the native mobile app on the connected Android phone from WSL.
+Keep the phone unlocked for the full run.
+
+1. Use the newer Windows ADB binary:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" devices -l
+```
+
+2. Keep the phone awake and prepare API reverse:
+
+```bash
+"$ADB_WIN" -s <SERIAL> shell svc power stayon usb
+"$ADB_WIN" -s <SERIAL> reverse tcp:8000 tcp:8000
+```
+
+3. Start the Windows relay in a dedicated terminal and keep it running:
+
+```bash
+bash -x /home/ubuntu/starlog/scripts/android_windows_metro_relay.sh
+```
+
+Expected relay checkpoint:
+
+```text
+[android-metro-relay] listening 0.0.0.0:8081 -> <WSL_IP>:8081
+```
+
+4. Validate relay reachability from Windows before opening the app:
+
+```bash
+powershell.exe -NoProfile -Command 'try { (Invoke-WebRequest -Uri "http://127.0.0.1:8081" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $_.Exception.Message; exit 1 }'
+```
+
+Expected output: `200`
+
+5. Start Metro in LAN mode:
+
+```bash
+cd /home/ubuntu/starlog/apps/mobile
+APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=192.168.0.102 ./node_modules/.bin/expo start --dev-client --host lan --port 8081
+```
+
+6. Open the dev client using the explicit Expo dev-launcher URL:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> reverse --remove tcp:8081 || true
+"$ADB_WIN" -s <SERIAL> shell am start -W -a android.intent.action.VIEW -d 'expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081'
+```
+
+If the dev client shows `Unable to load script` or a blank white screen, keep the same LAN
+dev-client URL flow, wait for Metro to finish the first bundle, and then rerun the same launcher
+command. Do not switch to the localhost reverse path on this host.
+
+Expected checkpoint in the Metro terminal:
+
+```text
+Android Bundled ... index.js (...)
+```
+
+7. Run the Android smoke flow after the app loads:
+
+```bash
+cd /home/ubuntu/starlog
+DEV_CLIENT_URL='expo-dev-launcher://expo-development-client/?url=http%3A%2F%2F192.168.0.102%3A8081' \
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=<SERIAL> \
+REVERSE_PORTS=8000 \
+SKIP_INSTALL=1 \
+./scripts/android_native_smoke.sh
+```
+
+8. Capture a screenshot from the phone:
+
+```bash
+ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
+"$ADB_WIN" -s <SERIAL> exec-out screencap -p > /tmp/starlog-phone.png
+```
+
+Host-specific troubleshooting:
+
+- `failed to connect to /192.168.0.102 (port 8081)`: relay is not reachable; re-check the relay and Windows probe steps.
+- `unexpected end of stream on http://127.0.0.1:8081/...`: avoid the localhost reverse path for Metro on this host; keep the LAN URL flow.
+- `Unable to load script` after opening the dev client: let the first bundle finish, then reopen the same dev-launcher URL.
+- White screen for ~20-40s on first open: keep the phone unlocked and wait for the first bundle compile to finish before retrying.
+- `adb devices` empty but the phone appears in Device Manager: unlock the phone, enable USB debugging, and accept the authorization prompt.
+- `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying the wireless flow.
+
 ## Current voice-native RC artifact (WI-581)
 
 Current preview release-candidate artifact:

@@ -70,6 +70,22 @@ def test_build_deck_raises_on_chapter_fetch_failure(monkeypatch) -> None:
         build.build_deck()
 
 
+def test_build_deck_falls_back_to_extensionless_summary_targets(monkeypatch) -> None:
+    def fake_fetch_from_repo(path: str) -> str:
+        if path == "SUMMARY.md":
+            return "## Part II: Questions\n- [1.1](contents/test.md)\n## Appendix"
+        if path == "contents/test":
+            return "# Empty Overview\n\n"
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(build, "fetch_from_repo", fake_fetch_from_repo)
+    monkeypatch.setattr(build, "fetch_answer_source", lambda: "")
+
+    deck = build.build_deck()
+
+    assert deck == []
+
+
 def test_build_note_block_content_contains_provenance() -> None:
     card = {
         "prompt": "What is X?",
