@@ -7,18 +7,10 @@ Use this guide to run Starlog on your laptop and test progress from your phone.
 From repo root:
 
 ```bash
-pnpm install
-uv sync --project services/api --extra dev
-make dev-api
+./scripts/dev_stack.sh --lan
 ```
 
-`make dev-api` already binds API to `0.0.0.0:8000`.
-
-In a second terminal, start web on LAN host:
-
-```bash
-make dev-web-lan
-```
+This starts the API on `0.0.0.0:8000` and the PWA on `0.0.0.0:3000` in one process.
 
 In a third terminal, if you want queued Codex/Whisper work to complete locally:
 

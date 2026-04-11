@@ -1,7 +1,7 @@
 UV ?= uv
 API_PROJECT ?= services/api
 
-.PHONY: bootstrap bootstrap-api bootstrap-web dev-api dev-web dev-web-lan dev-worker dev-local-ai test-api lint-api seed-api verify-export sync-workitem-registry check-workitem-registry test-workitem-registry sync-workitem-mirror check-workitem-mirror test-workitem-mirror
+.PHONY: bootstrap bootstrap-api bootstrap-web dev-api dev-web dev-web-lan dev-stack dev-stack-lan dev-worker dev-local-ai test-api lint-api seed-api verify-export sync-workitem-registry check-workitem-registry test-workitem-registry sync-workitem-mirror check-workitem-mirror test-workitem-mirror
 
 bootstrap: bootstrap-api bootstrap-web
 
@@ -19,6 +19,12 @@ dev-web:
 
 dev-web-lan:
 	pnpm --filter web dev -- --hostname 0.0.0.0 --port 3000
+
+dev-stack:
+	./scripts/dev_stack.sh || test $$? -eq 130
+
+dev-stack-lan:
+	./scripts/dev_stack.sh --lan || test $$? -eq 130
 
 dev-worker:
 	$(UV) run --project $(API_PROJECT) python -m app.worker

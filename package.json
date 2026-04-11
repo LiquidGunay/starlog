@@ -10,6 +10,8 @@
   ],
   "scripts": {
     "dev:web": "pnpm --filter web dev",
+    "dev:stack": "./scripts/dev_stack.sh",
+    "dev:stack:lan": "./scripts/dev_stack.sh --lan",
     "dev:mobile": "pnpm --filter mobile start",
     "dev:desktop-helper": "pnpm --filter starlog-desktop-helper dev",
     "release:handoff": "python3 ./scripts/release_handoff.py",

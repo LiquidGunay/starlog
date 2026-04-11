@@ -13,10 +13,6 @@ The product is organized around one persistent Assistant thread. `Library`, `Pla
 - `Review`: flashcards and recall sessions
 - `Desktop helper`: a capture companion for clipboard and screenshot intake on laptop
 
-Hosted web app:
-
-- [https://starlog-web-production.up.railway.app/assistant](https://starlog-web-production.up.railway.app/assistant)
-
 ## First-Time Use
 
 For a first-time user, the normal path is:
@@ -65,9 +61,11 @@ Use mobile for:
 - review on the go
 - alarm and briefing playback
 
-## Self-Host The PWA
+## Self-Host Starlog
 
-Starlog’s web app and API are separate services. For a basic self-hosted setup, run both locally first.
+Starlog is designed so the web app and API can be self-hosted together.
+
+The PWA talks to the API you run. The native mobile app and desktop helper can then point at that same deployment, whether you host it locally, on Railway, or somewhere else.
 
 ### Prerequisites
 
@@ -75,40 +73,63 @@ Starlog’s web app and API are separate services. For a basic self-hosted setup
 - `Python 3.12+`
 - [`uv`](https://docs.astral.sh/uv/)
 
-### Install Dependencies
+### Start The Full Local Stack In One Command
 
 From repo root:
+
+```bash
+./scripts/dev_stack.sh
+```
+
+This command:
+
+- installs or refreshes workspace dependencies with `pnpm install`
+- syncs the API environment with `uv sync --project services/api --extra dev`
+- starts the API on `http://0.0.0.0:8000`
+- starts the PWA on `http://localhost:3000`
+
+For phone or LAN testing, use:
+
+```bash
+./scripts/dev_stack.sh --lan
+```
+
+That keeps the API on `http://0.0.0.0:8000` and exposes the PWA on `http://0.0.0.0:3000`.
+
+Press `Ctrl-C` once to stop both services.
+
+If you prefer aliases, `make dev-stack`, `make dev-stack-lan`, `pnpm dev:stack`, and `pnpm dev:stack:lan` point to the same flow.
+
+### Manual Start Commands
+
+If you prefer to run each service yourself:
+
+Install dependencies:
 
 ```bash
 pnpm install
 uv sync --project services/api --extra dev
 ```
 
-### Run The API
-
-```bash
-make dev-api
-```
-
-This starts the API on `http://localhost:8000`.
-
-If you want the raw command instead:
+Run the API:
 
 ```bash
 uv run --project services/api uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/api
 ```
 
-### Run The PWA In Development
+Run the PWA:
 
 ```bash
-make dev-web-lan
+pnpm --filter web dev
 ```
 
-This starts the web app on `http://localhost:3000`.
+For LAN access to the PWA, use:
 
-For same-machine use, `pnpm --filter web dev` is also fine.
+```bash
+pnpm --filter web dev -- --hostname 0.0.0.0 --port 3000
+```
 
-### Build And Run The PWA For Production-Style Hosting
+### Production-Style Web Hosting
 
 Build:
 
@@ -123,6 +144,8 @@ pnpm --filter web start
 ```
 
 The production web server uses the Next.js app in `apps/web`.
+
+The API can be hosted anywhere that can run the FastAPI service in `services/api`.
 
 ### First Sign-In On A Self-Hosted Instance
 
