@@ -1,4 +1,9 @@
+import json
+import sqlite3
+
 from fastapi.testclient import TestClient
+
+from app.core.config import get_settings
 
 
 def test_primary_conversation_bootstraps(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -87,6 +92,57 @@ def test_chat_turn_persists_messages_cards_and_runtime_trace(
     assert payload["trace"]["metadata"]["workflow"] == "chat_turn"
     assert payload["session_state"]["last_turn_kind"] == "chat_turn"
     assert payload["session_state"]["last_chat_turn_provider"] == "local_prompt_preview"
+
+
+def test_primary_chat_routes_actionable_commands_into_task_cards(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    response = client.post(
+        "/v1/conversations/primary/chat",
+        json={
+            "content": "create task Review projected card actions due tomorrow priority 4",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant"},
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["assistant_message"]["metadata"]["assistant_command"]["planner"] == "deterministic"
+    assert payload["assistant_message"]["metadata"]["assistant_command"]["matched_intent"] == "create_task"
+    assert payload["trace"]["tool_name"] == "create_task"
+
+    task_card = next(card for card in payload["assistant_message"]["cards"] if card["kind"] == "task_list")
+    assert task_card["entity_ref"]["entity_type"] == "task"
+    assert [action["label"] for action in task_card["actions"]] == ["Complete", "Schedule", "Open Planner"]
+    assert task_card["actions"][0]["kind"] == "mutation"
+    assert task_card["actions"][0]["payload"]["method"] == "PATCH"
+    assert task_card["actions"][0]["payload"]["endpoint"].startswith("/v1/tasks/")
+
+
+def test_primary_chat_projects_capture_cards_with_inline_actions(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    response = client.post(
+        "/v1/conversations/primary/chat",
+        json={
+            "content": "capture Onboarding copy: rewrite the assistant setup message for professionals",
+            "device_target": "web-desktop",
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["assistant_message"]["metadata"]["assistant_command"]["matched_intent"] == "capture"
+    capture_card = next(card for card in payload["assistant_message"]["cards"] if card["kind"] == "capture_item")
+    assert capture_card["entity_ref"]["entity_type"] == "artifact"
+    assert [action["label"] for action in capture_card["actions"]] == ["Summarize", "Make cards", "Open Library"]
+    assert capture_card["actions"][0]["kind"] == "mutation"
+    assert capture_card["actions"][0]["payload"]["endpoint"].startswith("/v1/artifacts/")
 
 
 def test_thread_context_cards_project_latest_session_state(
@@ -202,3 +258,69 @@ def test_primary_conversation_preview_assembles_runtime_context(
     assert payload["context"]["recent_messages"][-1]["role"] == "assistant"
     assert payload["context"]["request_metadata"] == {"surface": "assistant"}
     assert "What should I do next?" in payload["user_prompt"]
+
+
+def test_primary_conversation_backfills_legacy_card_actions_on_read(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_message = client.post(
+        "/v1/conversations/primary/messages",
+        json={
+            "role": "assistant",
+            "content": "Legacy card payload",
+            "cards": [
+                {
+                    "kind": "knowledge_note",
+                    "title": "Legacy note",
+                    "body": "Carry the professional naming pass forward.",
+                    "entity_ref": {
+                        "entity_type": "note",
+                        "entity_id": "note_legacy",
+                        "href": "/notes?note=note_legacy",
+                    },
+                    "metadata": {"legacy": True},
+                }
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert create_message.status_code == 201
+    message_id = create_message.json()["id"]
+
+    legacy_cards = [
+        {
+            "kind": "knowledge_note",
+            "title": "Legacy note",
+            "body": "Carry the professional naming pass forward.",
+            "entity_ref": {
+                "entity_type": "note",
+                "entity_id": "note_legacy",
+                "href": "/notes?note=note_legacy",
+            },
+            "metadata": {"legacy": True},
+        }
+    ]
+
+    with sqlite3.connect(get_settings().db_path) as conn:
+        conn.execute(
+            "UPDATE conversation_messages SET cards_json = ? WHERE id = ?",
+            (json.dumps(legacy_cards, sort_keys=True), message_id),
+        )
+        conn.commit()
+
+    conversation = client.get("/v1/conversations/primary?trace_limit=0", headers=auth_headers)
+    assert conversation.status_code == 200
+    payload = conversation.json()
+    message = next(item for item in payload["messages"] if item["id"] == message_id)
+    card = message["cards"][0]
+    assert card["version"] == 1
+    assert [action["label"] for action in card["actions"]] == ["Open", "Ask follow-up"]
+    assert card["actions"][0]["payload"]["href"] == "/notes?note=note_legacy"
+
+    with sqlite3.connect(get_settings().db_path) as conn:
+        row = conn.execute("SELECT cards_json FROM conversation_messages WHERE id = ?", (message_id,)).fetchone()
+
+    assert row is not None
+    stored_card = json.loads(row[0])[0]
+    assert [action["label"] for action in stored_card["actions"]] == ["Open", "Ask follow-up"]

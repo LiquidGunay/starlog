@@ -20,6 +20,7 @@
     "build:android:production:local": "../../scripts/android_prepare_production_release.sh"
   },
   "dependencies": {
+    "@starlog/contracts": "workspace:*",
     "@babel/runtime": "^7.28.6",
     "@expo/vector-icons": "^14.0.2",
     "@react-native/assets-registry": "0.74.87",

@@ -1,6 +1,7 @@
 from sqlite3 import Connection
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 
 from app.api.deps import get_db, require_user_id
 from app.schemas.conversations import (
@@ -13,7 +14,7 @@ from app.schemas.conversations import (
     ConversationTurnResponse,
     ConversationThreadSnapshot,
 )
-from app.services import ai_service, conversation_service
+from app.services import agent_command_service, ai_service, conversation_card_service, conversation_service
 
 router = APIRouter(prefix="/conversations")
 
@@ -70,6 +71,21 @@ def execute_primary_conversation_turn(
     _user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> ConversationTurnResponse:
+    try:
+        planned_turn = agent_command_service.run_conversation_command(
+            db,
+            command=payload.content,
+            input_mode=payload.input_mode,
+            device_target=payload.device_target,
+        )
+    except ValueError:
+        planned_turn = None
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from exc
+
+    if planned_turn is not None:
+        return ConversationTurnResponse.model_validate(planned_turn)
+
     request_payload = conversation_service.build_chat_preview_request(
         db,
         content=payload.content,
@@ -88,7 +104,16 @@ def execute_primary_conversation_turn(
         db,
         content=payload.content,
         assistant_content=str(turn.get("response_text") or ""),
-        cards=turn.get("cards") if isinstance(turn.get("cards"), list) else [],
+        cards=conversation_card_service.normalize_cards(
+            turn.get("cards") if isinstance(turn.get("cards"), list) else [
+                {
+                    "kind": "assistant_summary",
+                    "title": "Assistant",
+                    "body": str(turn.get("response_text") or ""),
+                    "metadata": {},
+                }
+            ]
+        ),
         request_metadata={
             "input_mode": payload.input_mode,
             "device_target": payload.device_target,

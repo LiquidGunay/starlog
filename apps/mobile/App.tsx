@@ -10,9 +10,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   DeviceEventEmitter,
+  Keyboard,
   Linking,
   Platform,
-  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -26,13 +26,34 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 import {
+  PRODUCT_SURFACES,
+} from "@starlog/contracts";
+import type {
+  AssistantCard as ConversationCard,
+  AssistantCardAction,
+  AssistantConversationMessage,
+  AssistantConversationToolTrace,
+} from "@starlog/contracts";
+import {
   MobileCalendarSurface,
   MobileHomeSurface,
   MobileLoginSurface,
   MobileNotesSurface,
   MobileReviewSurface,
 } from "./src/mobile-surfaces";
-import { MOBILE_TABS, mobileTabFromParam, type MobileTab } from "./src/navigation";
+import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
+import {
+  AssistantToolsSection,
+  ArtifactTriageSection,
+  BriefingPipelineSection,
+  CaptureQueueSection,
+  CaptureRoutingSection,
+  DesktopFallbackSection,
+  ReviewSessionSection,
+} from "./src/mobile-support-panel-sections";
+import { MobileAssistantDrawer, MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
+import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
+import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -131,6 +152,7 @@ type IncomingShareIntent = {
   files?: IncomingShareIntentFile[];
 };
 
+type VoiceClipTarget = "capture" | "assistant";
 type VoiceRoutePreference = "shared_policy" | "on_device_first" | "bridge_first";
 type BriefingPlaybackPreference = "offline_first" | "refresh_then_cache";
 
@@ -145,6 +167,7 @@ type PersistedState = {
   sharedFileDrafts?: SharedFileDraft[];
   voiceClipUri?: string | null;
   voiceClipDurationMs?: number;
+  voiceClipTarget?: VoiceClipTarget | null;
   briefingDate: string;
   cachedPath: string | null;
   alarmHour: number;
@@ -315,37 +338,13 @@ type AssistantQueuedJob = {
 
 type AssistantVoiceJob = AssistantQueuedJob;
 
-type ConversationCard = {
-  kind: string;
-  version: number;
-  title?: string | null;
-  body?: string | null;
-  metadata: Record<string, unknown>;
-};
-
-type ConversationMessage = {
-  id: string;
-  thread_id: string;
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  cards: ConversationCard[];
+type ConversationMessage = Omit<AssistantConversationMessage, "metadata"> & {
   metadata: {
     assistant_command?: AssistantCommandResponse;
   } & Record<string, unknown>;
-  created_at: string;
 };
 
-type ConversationToolTrace = {
-  id: string;
-  thread_id: string;
-  message_id?: string | null;
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  status: string;
-  result: unknown;
-  metadata: Record<string, unknown>;
-  created_at: string;
-};
+type ConversationToolTrace = AssistantConversationToolTrace;
 
 type ConversationSnapshot = {
   id: string;
@@ -834,7 +833,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
-          conversationTitle: "Primary Starlog Thread",
+          conversationTitle: "Assistant Thread",
           conversationSessionState: {},
           conversationMessages: [],
           conversationToolTraces: [],
@@ -856,7 +855,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
-          conversationTitle: "Primary Starlog Thread",
+          conversationTitle: "Assistant Thread",
           conversationSessionState: {},
           conversationMessages: [],
           conversationToolTraces: [],
@@ -879,7 +878,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
-          conversationTitle: "Primary Starlog Thread",
+          conversationTitle: "Assistant Thread",
           conversationSessionState: {},
           conversationMessages: [],
           conversationToolTraces: [],
@@ -930,7 +929,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
       assistantHistory: [],
       assistantVoiceJobs: [],
       assistantAiJobs: [],
-      conversationTitle: "Primary Starlog Thread",
+      conversationTitle: "Assistant Thread",
       conversationSessionState: {},
       conversationMessages: [],
       conversationToolTraces: [],
@@ -1167,7 +1166,10 @@ function parseSurfaceTabDeepLink(rawUrl: string): MobileTab | null {
 export default function App({ initialIntentUrl = null }: AppProps) {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
-  const [activeTab, setActiveTab] = useState<MobileTab>("home");
+  const mainScrollViewRef = useRef<ScrollView>(null);
+  const [activeTab, setActiveTab] = useState<MobileTab>("assistant");
+  const [assistantPanelOpen, setAssistantPanelOpen] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [countdownTick, setCountdownTick] = useState(() => Date.now());
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showAdvancedCapture, setShowAdvancedCapture] = useState(false);
@@ -1186,6 +1188,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [voiceRecording, setVoiceRecording] = useState<Audio.Recording | null>(null);
   const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
   const [voiceClipDurationMs, setVoiceClipDurationMs] = useState(0);
+  const [voiceClipTarget, setVoiceClipTarget] = useState<VoiceClipTarget | null>(null);
   const [localSttAvailable, setLocalSttAvailable] = useState(false);
   const [localSttListening, setLocalSttListening] = useState(false);
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
@@ -1216,7 +1219,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
-  const [conversationTitle, setConversationTitle] = useState("Primary Starlog Thread");
+  const [conversationTitle, setConversationTitle] = useState("Assistant Thread");
   const [conversationSessionState, setConversationSessionState] = useState<Record<string, unknown>>({});
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationToolTraces, setConversationToolTraces] = useState<ConversationToolTrace[]>([]);
@@ -1246,6 +1249,25 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const isAssistantMode = activeTab === "assistant";
+  const captureVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "capture";
+  const captureVoiceClipReady = Boolean(voiceClipUri) && voiceClipTarget === "capture";
+  const assistantVoiceActionState =
+    localSttListening
+      ? "listening"
+      : Boolean(voiceRecording) && voiceClipTarget === "assistant"
+        ? "recording"
+        : Boolean(voiceClipUri) && voiceClipTarget === "assistant"
+          ? "ready"
+          : "idle";
+  const assistantVoiceActionHint =
+    assistantVoiceActionState === "listening"
+      ? "Listening for an on-device message..."
+      : assistantVoiceActionState === "recording"
+        ? "Recording voice input. Tap the mic again to stop."
+        : assistantVoiceActionState === "ready"
+          ? "Voice clip ready. Tap the mic to send it as an Assistant command, or clear it."
+          : null;
   const threadMessages = useMemo(() => {
     if (!pendingConversationTurn) {
       return conversationMessages;
@@ -1358,8 +1380,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     voiceRecordingRef.current = voiceRecording;
   }, [voiceRecording]);
 
+  useEffect(() => {
+    if (activeTab !== "assistant" && assistantPanelOpen) {
+      setAssistantPanelOpen(false);
+    }
+  }, [activeTab, assistantPanelOpen]);
+
   function applyDeepCapture(deepCapture: { title: string; text: string; sourceUrl: string }) {
-    setActiveTab("notes");
+    setActiveTab("library");
     setShowAdvancedCapture(true);
     setQuickCaptureTitle(deepCapture.title);
     setQuickCaptureText(deepCapture.text);
@@ -1387,7 +1415,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     const requestedTab = parseSurfaceTabDeepLink(normalizedUrl);
     if (requestedTab) {
       setActiveTab(requestedTab);
-      setStatus(`Opened ${requestedTab} surface`);
+      setStatus(`Opened ${mobileTabLabel(requestedTab)}`);
       handled = true;
     }
 
@@ -1759,7 +1787,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         `${normalizeBaseUrl(pwaBase)}/artifacts?artifact=${encodeURIComponent(selectedArtifactId)}`,
       );
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open artifact in PWA");
+      setStatus(error instanceof Error ? error.message : "Failed to open Library detail");
     }
   }
 
@@ -1767,7 +1795,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     try {
       await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/notes?note=${encodeURIComponent(noteId)}`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open note in PWA");
+      setStatus(error instanceof Error ? error.message : "Failed to open note detail");
     }
   }
 
@@ -1775,7 +1803,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     try {
       await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/tasks?task=${encodeURIComponent(taskId)}`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open task in PWA");
+      setStatus(error instanceof Error ? error.message : "Failed to open task detail");
     }
   }
 
@@ -1936,7 +1964,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function submitPrimaryCapture() {
-    if (voiceClipUri) {
+    if (captureVoiceClipReady) {
       await submitVoiceCapture();
       return;
     }
@@ -1944,7 +1972,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await submitQuickCapture();
   }
 
-  async function startVoiceRecording() {
+  function clearVoiceClip(target?: VoiceClipTarget) {
+    if (target && voiceClipTarget !== target) {
+      return;
+    }
+    setVoiceClipUri(null);
+    setVoiceClipDurationMs(0);
+    setVoiceClipTarget(null);
+  }
+
+  async function startVoiceRecording(target: VoiceClipTarget) {
     if (voiceRecordingRef.current) {
       setStatus("Voice recording is already in progress");
       return;
@@ -1965,9 +2002,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       voiceRecordingRef.current = recording;
       setVoiceRecording(recording);
       setSharedFileDrafts([]);
-      setVoiceClipUri(null);
-      setVoiceClipDurationMs(0);
-      setStatus("Recording voice note...");
+      clearVoiceClip();
+      setVoiceClipTarget(target);
+      setStatus(target === "assistant" ? "Recording an Assistant voice message..." : "Recording voice note...");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to start voice recording");
     }
@@ -1995,7 +2032,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
       setVoiceClipUri(uri);
       setVoiceClipDurationMs(typeof status.durationMillis === "number" ? status.durationMillis : 0);
-      setStatus("Voice note ready to upload or queue");
+      setStatus(voiceClipTarget === "assistant" ? "Assistant voice clip ready" : "Voice note ready to upload or queue");
     } catch (error) {
       voiceRecordingRef.current = null;
       setVoiceRecording(null);
@@ -2008,7 +2045,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (voiceRecordingRef.current) {
       return;
     }
-    await startVoiceRecording();
+    await startVoiceRecording("capture");
     if (!captureHoldActive.current && voiceRecordingRef.current) {
       await stopVoiceRecording();
     }
@@ -2026,6 +2063,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setStatus("Record a voice note first");
       return;
     }
+    if (voiceClipTarget === "assistant") {
+      setStatus("An Assistant voice clip is ready. Send or clear it from Assistant before using capture upload.");
+      return;
+    }
 
     const capture: PendingVoiceCapture = {
       id: `mobvoice_${Date.now()}`,
@@ -2041,22 +2082,19 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
     if (!token) {
       queueCapture(capture, "missing token");
-      setVoiceClipUri(null);
-      setVoiceClipDurationMs(0);
+      clearVoiceClip("capture");
       return;
     }
 
     try {
       const artifactId = await sendCapture(capture);
-      setVoiceClipUri(null);
-      setVoiceClipDurationMs(0);
+      clearVoiceClip("capture");
       setSelectedArtifactId(artifactId);
       loadArtifacts().catch(() => undefined);
       setStatus(`Queued voice note ${artifactId} for transcription`);
     } catch (error) {
       queueCapture(capture, error instanceof Error ? error.message : "voice upload failed");
-      setVoiceClipUri(null);
-      setVoiceClipDurationMs(0);
+      clearVoiceClip("capture");
     }
   }
 
@@ -2084,7 +2122,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   async function loginObservatorySession() {
     if (authPassphrase.trim().length < 8) {
-      setStatus("Use at least 8 characters for the access cipher");
+      setStatus("Use at least 8 characters for the passphrase");
       return;
     }
 
@@ -2105,7 +2143,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
       const payload = (await response.json()) as { access_token: string };
       setToken(payload.access_token);
-      setStatus("Observatory link established on mobile");
+      setStatus("Starlog is ready on mobile");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Login failed");
     } finally {
@@ -2115,7 +2153,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   async function bootstrapObservatorySession() {
     if (authPassphrase.trim().length < 12) {
-      setStatus("Bootstrap requires a passphrase of at least 12 characters");
+      setStatus("Setup requires a passphrase of at least 12 characters");
       return;
     }
 
@@ -2135,7 +2173,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       await loginObservatorySession();
-      setStatus(response.status === 201 ? "Station established and linked on mobile" : "Station already existed. Session refreshed.");
+      setStatus(response.status === 201 ? "Starlog is set up on this device" : "Starlog was already set up. Session refreshed.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Bootstrap failed");
     } finally {
@@ -2355,7 +2393,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
-  const holdToTalkLabel = voiceRecording ? "Release to stop" : "Hold to talk";
+  const holdToTalkLabel = captureVoiceRecording ? "Release to stop" : "Hold to talk";
   const offlineBriefingStatus = cachedPath
     ? `Offline briefing cached for ${briefingDate}`
     : "No offline briefing cached yet";
@@ -2381,7 +2419,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     : "Cache the brief first, then let one next action carry the day.";
   const nextActionPreview =
     dueCards[0]?.prompt || selectedArtifact?.title || "Promote one note, one task, or one card after playback.";
-  const voiceMemoPreview = voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s voice memo ready` : "No voice memo recorded yet.";
+  const voiceMemoPreview = captureVoiceClipReady ? `${Math.round(voiceClipDurationMs / 1000)}s voice memo ready` : "No voice memo recorded yet.";
 
   async function scheduleMorningAlarm() {
     try {
@@ -2466,7 +2504,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     try {
       await Linking.openURL(pwaBase);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open PWA URL");
+      setStatus(error instanceof Error ? error.message : "Failed to open the desktop web fallback");
     }
   }
 
@@ -2474,7 +2512,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     try {
       await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/integrations`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open integrations in PWA");
+      setStatus(error instanceof Error ? error.message : "Failed to open integrations in desktop web");
     }
   }
 
@@ -2482,7 +2520,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     try {
       await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/assistant`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open assistant in PWA");
+      setStatus(error instanceof Error ? error.message : "Failed to open Assistant in desktop web");
     }
   }
 
@@ -2490,17 +2528,108 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     try {
       await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/review/decks`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open review workspace in PWA");
+      setStatus(error instanceof Error ? error.message : "Failed to open Review in desktop web");
+    }
+  }
+
+  async function openWebPath(path: string, failureLabel: string) {
+    try {
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}${path.startsWith("/") ? path : `/${path}`}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : failureLabel);
+    }
+  }
+
+  function reuseConversationCardText(value: string) {
+    const prompt = value.trim();
+    if (!prompt) {
+      return;
+    }
+    setActiveTab("assistant");
+    setHomeDraft(prompt);
+    setStatus("Loaded card text into Assistant");
+  }
+
+  async function handleConversationCardAction(action: AssistantCardAction, card: ConversationCard) {
+    if (action.kind === "navigate") {
+      const href = typeof action.payload?.href === "string" ? action.payload.href : "";
+      if (!href) {
+        setStatus(`Action "${action.label}" is missing a destination`);
+        return;
+      }
+      if (href === "/assistant" || href.startsWith("/assistant?")) {
+        setActiveTab("assistant");
+        setStatus(`${PRODUCT_SURFACES.assistant.label} ready`);
+        return;
+      }
+      if (href === "/review" || href.startsWith("/review")) {
+        setActiveTab("review");
+        setStatus(`${PRODUCT_SURFACES.review.label} ready`);
+        return;
+      }
+      if (href === "/planner" || href.startsWith("/planner")) {
+        setActiveTab("planner");
+        setStatus(`${PRODUCT_SURFACES.planner.label} ready`);
+        return;
+      }
+      if (href === "/notes" || href.startsWith("/notes?") || href.startsWith("/notes/")) {
+        setActiveTab("library");
+        setStatus(`${PRODUCT_SURFACES.library.label} ready`);
+        return;
+      }
+      await openWebPath(href, `Failed to open ${action.label.toLowerCase()}`);
+      return;
+    }
+
+    if (action.kind === "composer") {
+      const prompt = typeof action.payload?.prompt === "string" ? action.payload.prompt : card.body || card.title || "";
+      setActiveTab("assistant");
+      setHomeDraft(prompt);
+      setStatus(`Loaded "${action.label}" into Assistant`);
+      return;
+    }
+
+    const endpoint = typeof action.payload?.endpoint === "string" ? action.payload.endpoint : "";
+    const method = typeof action.payload?.method === "string" ? action.payload.method : "POST";
+    const body = action.payload?.body ?? {};
+    if (!endpoint) {
+      setStatus(`Action "${action.label}" is missing an endpoint`);
+      return;
+    }
+    setStatus(`${action.label}...`);
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}${endpoint}`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`${action.label} failed: ${response.status} ${errorBody}`);
+      }
+      await loadConversation("auto");
+      if (card.kind === "capture_item" || card.kind === "knowledge_note") {
+        loadArtifacts().catch(() => undefined);
+      }
+      if (card.kind === "review_queue") {
+        loadDueCards().catch(() => undefined);
+      }
+      setStatus(`${action.label} complete`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : `${action.label} failed`);
     }
   }
 
   async function sendConversationTurn(command: string, sourceLabel = "typed composer") {
     if (!command) {
-      setStatus("Enter a Main Room message first");
+      setStatus("Enter an Assistant message first");
       return;
     }
     if (pendingConversationTurn) {
-      setStatus("Wait for the current Main Room reply to finish");
+      setStatus("Wait for the current Assistant reply to finish");
       return;
     }
     if (!token) {
@@ -2525,16 +2654,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         body: JSON.stringify({
           content: command,
           input_mode: sourceLabel === "voice" ? "voice" : "text",
-          device_target: "mobile-companion",
+          device_target: "mobile-native",
           metadata: {
-            surface: "home_chat_mobile",
+            surface: "assistant_mobile",
             submitted_via: sourceLabel,
           },
         }),
       });
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`Main Room turn failed: ${response.status} ${errorBody}`);
+        throw new Error(`Assistant turn failed: ${response.status} ${errorBody}`);
       }
 
       const payload = (await response.json()) as ConversationTurnResponse;
@@ -2543,16 +2672,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setConversationSessionState(payload.session_state);
       setHomeDraft("");
       setPendingConversationTurn(null);
-      setStatus("Main Room reply received");
+      setStatus("Assistant reply received");
     } catch (error) {
       setPendingConversationTurn(null);
-      setStatus(error instanceof Error ? error.message : "Main Room turn failed");
+      setStatus(error instanceof Error ? error.message : "Assistant turn failed");
     }
   }
 
   async function submitAssistantCommand(command: string, execute: boolean, sourceLabel?: string) {
     if (!command) {
-      setStatus("Enter an operator command first");
+      setStatus("Enter an Assistant command first");
       return;
     }
     if (!token) {
@@ -2570,7 +2699,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         body: JSON.stringify({
           command,
           execute,
-          device_target: "mobile-companion",
+          device_target: "mobile-native",
         }),
       });
       if (!response.ok) {
@@ -2599,7 +2728,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await submitAssistantCommand(command, execute);
   }
 
-  async function runMainRoomTurn() {
+  async function runAssistantTurn() {
     const command = homeDraft.trim();
     await sendConversationTurn(command);
   }
@@ -2768,7 +2897,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   async function queueAssistantAiCommand(execute: boolean) {
     const command = assistantCommand.trim();
     if (!command) {
-      setStatus("Enter an operator command first");
+      setStatus("Enter an Assistant command first");
       return;
     }
     if (!token) {
@@ -2786,7 +2915,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         body: JSON.stringify({
           command,
           execute,
-          device_target: "mobile-companion",
+          device_target: "mobile-native",
           provider_hint: BATCH_PROVIDER_HINT.llm ?? "codex_local",
         }),
       });
@@ -2819,6 +2948,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setStatus("Stop the current voice recording before starting on-device STT");
       return;
     }
+    if (voiceClipUri) {
+      setStatus(
+        voiceClipTarget === "capture"
+          ? "A Library voice note is ready. Upload it in Library or clear it before starting Assistant STT."
+          : "An Assistant voice clip is ready. Send it or clear it before starting on-device STT.",
+      );
+      return;
+    }
 
     try {
       const permission = await Audio.requestPermissionsAsync();
@@ -2846,6 +2983,57 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function submitLocalVoiceConversationTurn() {
+    if (localSttListening) {
+      setStatus("On-device STT is already listening");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+    if (!localSttAvailable || sttResolution.active !== "on_device") {
+      setStatus("On-device STT is unavailable; use the recording fallback.");
+      return;
+    }
+    if (voiceRecording) {
+      setStatus("Stop the current voice recording before starting on-device STT");
+      return;
+    }
+    if (voiceClipUri) {
+      setStatus(
+        voiceClipTarget === "capture"
+          ? "A Library voice note is ready. Upload it in Library or clear it before using Assistant voice."
+          : "An Assistant voice clip is ready. Send it or clear it before starting on-device STT.",
+      );
+      return;
+    }
+
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setStatus("Microphone permission denied");
+        return;
+      }
+
+      setLocalSttListening(true);
+      setStatus("Listening for an Assistant message...");
+      const transcriptPayload = await recognizeSpeechOnce({
+        prompt: "Speak your message for Assistant",
+      });
+      const transcript = transcriptPayload.transcript.trim();
+      if (!transcript) {
+        throw new Error("On-device STT returned no transcript");
+      }
+      setHomeDraft(transcript);
+      await sendConversationTurn(transcript, "voice");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "On-device STT failed");
+    } finally {
+      setLocalSttListening(false);
+    }
+  }
+
   async function submitVoiceAssistantCommand(execute: boolean) {
     if (sttResolution.active === "on_device") {
       await submitLocalVoiceAssistantCommand(execute);
@@ -2853,6 +3041,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
     if (!voiceClipUri) {
       setStatus("Record a voice clip first");
+      return;
+    }
+    if (voiceClipTarget === "capture") {
+      setStatus("A Library voice note is ready. Upload it in Library or clear it before sending an Assistant voice command.");
       return;
     }
     if (!token) {
@@ -2865,7 +3057,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       formData.append("title", "Mobile voice command");
       formData.append("duration_ms", String(voiceClipDurationMs));
       formData.append("execute", execute ? "true" : "false");
-      formData.append("device_target", "mobile-companion");
+      formData.append("device_target", "mobile-native");
       formData.append("provider_hint", BATCH_PROVIDER_HINT.stt ?? "whisper_local");
       formData.append(
         "file",
@@ -2889,12 +3081,48 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
       const payload = (await response.json()) as AssistantVoiceJob;
       setAssistantVoiceJobs((previous) => [payload, ...previous].slice(0, 10));
-      setVoiceClipUri(null);
-      setVoiceClipDurationMs(0);
+      clearVoiceClip("assistant");
       setStatus(`Queued voice command ${payload.id} via ${formatExecutionTarget(sttResolution.active)}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Voice command upload failed");
     }
+  }
+
+  function clearAssistantVoiceAction() {
+    if (localSttListening) {
+      setStatus("Wait for on-device listening to finish");
+      return;
+    }
+    clearVoiceClip("assistant");
+    setStatus("Cleared Assistant voice clip");
+  }
+
+  async function handleAssistantVoiceAction() {
+    if (pendingConversationTurn) {
+      setStatus("Wait for the current Assistant reply to finish");
+      return;
+    }
+    if (sttResolution.active === "on_device") {
+      await submitLocalVoiceConversationTurn();
+      return;
+    }
+    if (voiceRecording) {
+      if (voiceClipTarget !== "assistant") {
+        setStatus("A Library voice note is recording. Finish it in Library before recording for Assistant.");
+        return;
+      }
+      await stopVoiceRecording();
+      return;
+    }
+    if (voiceClipUri) {
+      if (voiceClipTarget !== "assistant") {
+        setStatus("A Library voice note is ready. Upload it in Library or clear it before using Assistant voice.");
+        return;
+      }
+      await submitVoiceAssistantCommand(true);
+      return;
+    }
+    await startVoiceRecording("assistant");
   }
 
   useEffect(() => {
@@ -2934,6 +3162,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setSharedFileDrafts(persisted.sharedFileDrafts || []);
         setVoiceClipUri(persisted.voiceClipUri ?? null);
         setVoiceClipDurationMs(persisted.voiceClipDurationMs ?? 0);
+        setVoiceClipTarget(persisted.voiceClipTarget ?? (persisted.voiceClipUri ? "capture" : null));
         setBriefingDate(persisted.briefingDate);
         setCachedPath(persisted.cachedPath);
         setVoiceRoutePreference(normalizeVoiceRoutePreference(persisted.voiceRoutePreference));
@@ -2956,7 +3185,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
         setAssistantAiJobs(persisted.assistantAiJobs || []);
-        setConversationTitle(persisted.conversationTitle || "Primary Starlog Thread");
+        setConversationTitle(persisted.conversationTitle || "Assistant Thread");
         setConversationSessionState(persisted.conversationSessionState || {});
         setConversationMessages(persisted.conversationMessages || []);
         setConversationToolTraces(persisted.conversationToolTraces || []);
@@ -3182,6 +3411,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [token, pendingCaptures.length, apiBase]);
 
   useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
+      setKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) {
       return;
     }
@@ -3204,6 +3447,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       sharedFileDrafts,
       voiceClipUri,
       voiceClipDurationMs,
+      voiceClipTarget,
       briefingDate,
       cachedPath,
       alarmHour: boundedInt(alarmHour, 0, 23),
@@ -3265,6 +3509,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     token,
     voiceRoutePreference,
     voiceClipDurationMs,
+    voiceClipTarget,
     voiceClipUri,
   ]);
 
@@ -3321,803 +3566,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     loadArtifactDetail(selectedArtifactId).catch(() => undefined);
   }, [hydrated, token, apiBase, selectedArtifactId]);
 
-  function renderOpsChip(label: string, active: boolean, onPress: () => void) {
-    return (
-      <TouchableOpacity
-        key={label}
-        style={[styles.opsChip, active ? styles.opsChipActive : null]}
-        activeOpacity={0.85}
-        onPress={onPress}
-      >
-        <Text style={[styles.opsChipText, active ? styles.opsChipTextActive : null]}>{label}</Text>
-      </TouchableOpacity>
-    );
-  }
-
-  function renderCaptureQueueSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Capture queue</Text>
-        <Text style={styles.subtle}>Keep text, voice, and shared-file intake off the main hero while preserving the full queue workflow.</Text>
-        <Text style={styles.label}>Capture title</Text>
-        <TextInput style={styles.input} value={quickCaptureTitle} onChangeText={setQuickCaptureTitle} />
-        <Text style={styles.label}>Source URL (optional)</Text>
-        <TextInput
-          style={styles.input}
-          value={quickCaptureSourceUrl}
-          onChangeText={setQuickCaptureSourceUrl}
-          autoCapitalize="none"
-          placeholder="https://..."
-          placeholderTextColor={palette.muted}
-        />
-        <Text style={styles.label}>Quick capture text</Text>
-        <TextInput
-          style={styles.input}
-          value={quickCaptureText}
-          onChangeText={setQuickCaptureText}
-          placeholder="Clip text, ideas, or reminders..."
-          placeholderTextColor={palette.muted}
-          multiline
-        />
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={submitQuickCapture}>
-            <Text style={styles.buttonText}>Capture / Queue</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={() => flushPendingCaptures("manual")}>
-            <Text style={styles.buttonText}>Flush Queue</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
-            <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Note" : "Start Voice Note"}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
-            <Text style={styles.buttonText}>Upload / Queue Voice</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.subtle}>
-          Voice clip: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
-        </Text>
-        <Text style={styles.subtle}>
-          Shared file{sharedFileDrafts.length === 1 ? "" : "s"}: {describeSharedDrafts(sharedFileDrafts)}
-        </Text>
-        {sharedFileDrafts.length > 0 ? (
-          <>
-            {sharedFileDrafts.slice(0, 3).map((draft) => (
-              <View key={`${draft.localUri}:${draft.fileName}`} style={styles.inlineCard}>
-                <Text style={styles.subtle}>{describeSharedFile(draft.fileName, draft.mimeType, draft.bytesSize)}</Text>
-              </View>
-            ))}
-            {sharedFileDrafts.length > 3 ? (
-              <Text style={styles.subtle}>+{sharedFileDrafts.length - 3} more shared file(s)</Text>
-            ) : null}
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => {
-                  setSharedFileDrafts([]);
-                  setStatus("Cleared shared file drafts");
-                }}
-              >
-                <Text style={styles.buttonText}>Clear Shared Files</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : null}
-        <Text style={styles.subtle}>Pending captures: {pendingCaptures.length}</Text>
-        {pendingCaptures[0]?.lastError ? (
-          <Text style={styles.subtle}>Last queue error: {pendingCaptures[0].lastError}</Text>
-        ) : null}
-        {pendingCaptures.slice(0, 3).map((capture) => (
-          <View key={capture.id} style={styles.inlineCard}>
-            <Text style={styles.subtle}>{capture.title}</Text>
-            <Text style={styles.subtle}>
-              {capture.kind} | attempts: {capture.attempts} | queued {new Date(capture.createdAt).toLocaleTimeString()}
-            </Text>
-          </View>
-        ))}
-      </>
-    );
-  }
-
-  function renderCaptureRoutingSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Execution routing</Text>
-        <Text style={styles.subtle}>
-          Mobile reads the shared execution policy, then falls back to the nearest implemented route on phone when needed.
-        </Text>
-        <View style={styles.inlineCard}>
-          <Text style={styles.inlineCardTitle}>LLM actions</Text>
-          <Text style={styles.subtle}>
-            requested {formatExecutionTarget(llmResolution.requested)} {"->"} active {formatExecutionTarget(llmResolution.active)}
-          </Text>
-          {llmResolution.reason ? <Text style={styles.subtle}>{llmResolution.reason}</Text> : null}
-        </View>
-        <View style={styles.inlineCard}>
-          <Text style={styles.inlineCardTitle}>Voice STT</Text>
-          <Text style={styles.subtle}>
-            requested {formatExecutionTarget(sttResolution.requested)} {"->"} active {formatExecutionTarget(sttResolution.active)}
-          </Text>
-          {sttResolution.reason ? <Text style={styles.subtle}>{sttResolution.reason}</Text> : null}
-          <View style={styles.opsChipRow}>
-            {renderOpsChip("Shared Policy", voiceRoutePreference === "shared_policy", () =>
-              setVoiceRoutePreference("shared_policy"),
-            )}
-            {renderOpsChip("On-device First", voiceRoutePreference === "on_device_first", () =>
-              setVoiceRoutePreference("on_device_first"),
-            )}
-            {renderOpsChip("Bridge First", voiceRoutePreference === "bridge_first", () =>
-              setVoiceRoutePreference("bridge_first"),
-            )}
-          </View>
-        </View>
-        <View style={styles.inlineCard}>
-          <Text style={styles.inlineCardTitle}>Speech playback</Text>
-          <Text style={styles.subtle}>
-            requested {formatExecutionTarget(ttsResolution.requested)} {"->"} active {formatExecutionTarget(ttsResolution.active)}
-          </Text>
-          {ttsResolution.reason ? <Text style={styles.subtle}>{ttsResolution.reason}</Text> : null}
-        </View>
-        <Text style={styles.subtle}>
-          Policy updated: {executionPolicy.updated_at ? new Date(executionPolicy.updated_at).toLocaleString() : "local default"}
-        </Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={() => loadExecutionPolicy("manual")}>
-            <Text style={styles.buttonText}>Refresh Policy</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={openIntegrationsInPwa}>
-            <Text style={styles.buttonText}>Open Integrations</Text>
-          </TouchableOpacity>
-        </View>
-      </>
-    );
-  }
-
-  function renderAssistantSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Assistant command relay</Text>
-        <Text style={styles.subtle}>
-          Keep command, voice, and queue inspection reachable without turning the main capture deck into a second console.
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={assistantCommand}
-          onChangeText={setAssistantCommand}
-          placeholder="summarize latest artifact"
-          placeholderTextColor={palette.muted}
-          multiline
-        />
-        <View style={styles.chipRow}>
-          {assistantExampleCommands.map((example) => (
-            <TouchableOpacity
-              key={example}
-              style={styles.chip}
-              activeOpacity={0.8}
-              onPress={() => setAssistantCommand(example)}
-            >
-              <Text style={styles.chipText}>{example}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(false)}>
-            <Text style={styles.buttonText}>Plan Command</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={() => runAssistantCommand(true)}>
-            <Text style={styles.buttonText}>Execute Command</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(false)}>
-            <Text style={styles.buttonText}>Queue Codex Plan</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={() => queueAssistantAiCommand(true)}>
-            <Text style={styles.buttonText}>Queue Codex Execute</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={openAssistantInPwa}>
-            <Text style={styles.buttonText}>Open PWA Assistant</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.buttonRow}>
-          {sttResolution.active === "on_device" ? (
-            <>
-              <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(false)}>
-                <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Plan"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={() => submitLocalVoiceAssistantCommand(true)}>
-                <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Execute"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={() => refreshLocalSttAvailability("manual")}>
-                <Text style={styles.buttonText}>Refresh STT</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
-                <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Command" : "Start Voice Command"}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(false)}>
-                <Text style={styles.buttonText}>Plan Voice Command</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={() => submitVoiceAssistantCommand(true)}>
-                <Text style={styles.buttonText}>Execute Voice</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => {
-              loadConversation("manual").catch(() => undefined);
-              loadAssistantVoiceJobs("manual").catch(() => undefined);
-              loadAssistantAiJobs("manual").catch(() => undefined);
-            }}
-          >
-            <Text style={styles.buttonText}>Refresh Thread</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={resetConversationSession}>
-            <Text style={styles.buttonText}>Reset Session Memory</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.subtle}>On-device STT: {localSttProbeLabel(localSttAvailable)}</Text>
-        {sttResolution.active === "on_device" ? (
-          <Text style={styles.subtle}>
-            Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint.
-          </Text>
-        ) : (
-          <Text style={styles.subtle}>
-            Voice clip for commands: {voiceRecording ? "recording..." : voiceClipUri ? `${Math.round(voiceClipDurationMs / 1000)}s ready` : "none"}
-          </Text>
-        )}
-        <View style={styles.detailCard}>
-          <Text style={styles.inlineCardTitle}>{conversationTitle}</Text>
-          <Text style={styles.subtle}>
-            {Object.keys(conversationSessionState).length} live session keys | {conversationMessages.length} messages | {conversationToolTraces.length} traces
-          </Text>
-          <Text style={styles.subtle}>
-            Reset clears only short-term thread state. The transcript and runtime trace history stay attached for rereading.
-          </Text>
-          {lastConversationReset ? (
-            <View style={styles.inlineCard}>
-              <Text style={styles.inlineCardTitle}>Last reset</Text>
-              <Text style={styles.subtle}>
-                {(lastConversationReset.cleared_keys ?? []).length > 0
-                  ? `Cleared ${(lastConversationReset.cleared_keys ?? []).join(", ")}`
-                  : "No session keys needed clearing."}
-              </Text>
-            </View>
-          ) : null}
-          {visibleConversationMessages.length === 0 ? (
-            <Text style={styles.subtle}>No persistent thread messages loaded yet.</Text>
-          ) : (
-            <>
-              {hiddenConversationMessageCount > 0 ? (
-                <View style={styles.inlineCard}>
-                  <Text style={styles.inlineCardTitle}>Earlier thread context is available</Text>
-                  <Text style={styles.subtle}>
-                    {hiddenConversationMessageCount} older message{hiddenConversationMessageCount === 1 ? "" : "s"} are hidden from the compact view.
-                  </Text>
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(true)}>
-                      <Text style={styles.buttonText}>Show Full Thread</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-              {visibleConversationMessages.map((message) => {
-              const messageTraces = conversationToolTraces.filter((trace) => trace.message_id === message.id);
-              const body = message.content.trim() || message.metadata?.assistant_command?.summary || "No message body recorded.";
-              const cardsExpanded = expandedThreadCards[message.id] ?? false;
-              const tracesExpanded = expandedThreadTraces[message.id] ?? false;
-              return (
-                <View key={message.id} style={styles.threadMessageCard}>
-                  <View style={styles.threadMessageMeta}>
-                    <Text style={styles.threadRoleChip}>{message.role}</Text>
-                    <Text style={styles.subtle}>{new Date(message.created_at).toLocaleTimeString()}</Text>
-                  </View>
-                  <Text style={styles.threadMessageBody}>{body}</Text>
-                  {message.cards.length > 0 ? (
-                    <View style={styles.inlineCard}>
-                      <View style={styles.threadDetailHeader}>
-                        <Text style={styles.inlineCardTitle}>Attached cards</Text>
-                        <TouchableOpacity
-                          style={styles.threadDetailToggle}
-                          onPress={() =>
-                            setExpandedThreadCards((previous) => ({
-                              ...previous,
-                              [message.id]: !cardsExpanded,
-                            }))
-                          }
-                        >
-                          <Text style={styles.threadDetailToggleText}>
-                            {cardsExpanded ? "Collapse" : "Expand"} {message.cards.length}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                      {message.cards.map((card, index) => (
-                        <View key={`${message.id}-card-${index}`} style={styles.threadDetailRow}>
-                          <Text style={styles.threadDetailTitle}>{card.title || card.kind.replace(/_/g, " ")}</Text>
-                          <Text style={styles.threadDetailMeta}>{cardMetaText(card)}</Text>
-                          {cardsExpanded && card.body ? <Text style={styles.subtle}>{card.body}</Text> : null}
-                          {cardsExpanded && card.metadata && Object.keys(card.metadata).length > 0 ? (
-                            <Text style={styles.mono}>{JSON.stringify(card.metadata, null, 2)}</Text>
-                          ) : null}
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  {messageTraces.length > 0 ? (
-                    <View style={styles.inlineCard}>
-                      <View style={styles.threadDetailHeader}>
-                        <Text style={styles.inlineCardTitle}>Runtime traces</Text>
-                        <TouchableOpacity
-                          style={styles.threadDetailToggle}
-                          onPress={() =>
-                            setExpandedThreadTraces((previous) => ({
-                              ...previous,
-                              [message.id]: !tracesExpanded,
-                            }))
-                          }
-                        >
-                          <Text style={styles.threadDetailToggleText}>
-                            {tracesExpanded ? "Collapse" : "Expand"} {messageTraces.length}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                      {messageTraces.map((trace) => (
-                        <View key={trace.id} style={styles.threadDetailRow}>
-                          <Text style={styles.threadDetailTitle}>{trace.tool_name} [{trace.status}]</Text>
-                          <Text style={styles.subtle}>{summarizeTraceValue(trace.result)}</Text>
-                          {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
-                            <Text style={styles.mono}>{JSON.stringify(trace.arguments, null, 2)}</Text>
-                          ) : null}
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  {message.metadata?.assistant_command ? (
-                    <View style={styles.inlineCard}>
-                      <Text style={styles.inlineCardTitle}>
-                        {message.metadata.assistant_command.matched_intent} [{message.metadata.assistant_command.status}]
-                      </Text>
-                      <Text style={styles.subtle}>{message.metadata.assistant_command.summary}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-              })}
-              {showFullConversationThread && threadMessages.length > DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES ? (
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(false)}>
-                    <Text style={styles.buttonText}>Collapse Thread</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </>
-          )}
-        </View>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={() => setShowDiagnostics((value) => !value)}>
-            <Text style={styles.buttonText}>{showDiagnostics ? "Hide Diagnostics" : "Show Diagnostics"}</Text>
-          </TouchableOpacity>
-        </View>
-        {showDiagnostics ? (
-          <>
-            {assistantHistory[0] ? (
-              <View style={styles.detailCard}>
-                <Text style={styles.inlineCardTitle}>
-                  Latest: {assistantHistory[0].matched_intent} [{assistantHistory[0].status}]
-                </Text>
-                <Text style={styles.subtle}>{assistantHistory[0].summary}</Text>
-                {assistantHistory[0].steps.map((step, index) => (
-                  <View key={`${step.tool_name}-${index}`} style={styles.inlineCard}>
-                    <Text style={styles.inlineCardTitle}>
-                      {step.tool_name} [{step.status}]
-                    </Text>
-                    {step.message ? <Text style={styles.subtle}>{step.message}</Text> : null}
-                    <Text style={styles.mono}>{JSON.stringify(step.arguments)}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.subtle}>No mobile assistant command history yet.</Text>
-            )}
-            {assistantVoiceJobs.length > 0 ? (
-              <View style={styles.detailCard}>
-                <Text style={styles.inlineCardTitle}>Voice command jobs</Text>
-                {assistantVoiceJobs.slice(0, 4).map((job) => (
-                  <View key={job.id} style={styles.inlineCard}>
-                    <Text style={styles.inlineCardTitle}>
-                      {job.id} [{job.status}]
-                    </Text>
-                    <Text style={styles.subtle}>
-                      provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
-                    </Text>
-                    {job.output.transcript ? <Text style={styles.subtle}>Transcript: {job.output.transcript}</Text> : null}
-                    {job.output.assistant_command ? (
-                      <Text style={styles.subtle}>
-                        Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                      </Text>
-                    ) : null}
-                    {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {assistantAiJobs.length > 0 ? (
-              <View style={styles.detailCard}>
-                <Text style={styles.inlineCardTitle}>Queued Codex jobs</Text>
-                {assistantAiJobs.slice(0, 4).map((job) => (
-                  <View key={job.id} style={styles.inlineCard}>
-                    <Text style={styles.inlineCardTitle}>
-                      {job.id} [{job.status}]
-                    </Text>
-                    <Text style={styles.subtle}>
-                      provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
-                    </Text>
-                    {typeof job.payload.command === "string" && job.payload.command ? (
-                      <Text style={styles.subtle}>Command: {job.payload.command}</Text>
-                    ) : null}
-                    {job.output.assistant_command ? (
-                      <Text style={styles.subtle}>
-                        Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
-                      </Text>
-                    ) : null}
-                    {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </>
-        ) : (
-          <Text style={styles.subtle}>Diagnostics hidden for the focused command view.</Text>
-        )}
-      </>
-    );
-  }
-
-  function renderArtifactTriageSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Artifact triage</Text>
-        <Text style={styles.subtle}>
-          Load recent clips, trigger manual AI actions, then jump into the full artifact graph in the PWA.
-        </Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={loadArtifacts}>
-            <Text style={styles.buttonText}>Refresh Inbox</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={openSelectedArtifactInPwa}>
-            <Text style={styles.buttonText}>Open in PWA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={speakSelectedArtifact}>
-            <Text style={styles.buttonText}>Speak Locally</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.subtle}>
-          Selected: {selectedArtifact ? `${selectedArtifact.title || selectedArtifact.id}` : "none"}
-        </Text>
-        <Text style={styles.subtle}>{artifactDetailStatus}</Text>
-        <View style={styles.chipRow}>
-          {artifactQuickActions.map((item) => (
-            <TouchableOpacity
-              key={item.action}
-              style={styles.chip}
-              activeOpacity={0.8}
-              onPress={() => runArtifactAction(item.action)}
-            >
-              <Text style={styles.chipText}>{item.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {artifacts.length === 0 ? (
-          <Text style={styles.subtle}>No artifacts loaded yet.</Text>
-        ) : (
-          artifacts.slice(0, 6).map((artifact) => {
-            const active = artifact.id === selectedArtifactId;
-            return (
-              <TouchableOpacity
-                key={artifact.id}
-                style={[styles.inlineCard, active ? styles.inlineCardActive : null]}
-                activeOpacity={0.85}
-                onPress={() => setSelectedArtifactId(artifact.id)}
-              >
-                <Text style={styles.inlineCardTitle}>{artifact.title || artifact.id}</Text>
-                <Text style={styles.subtle}>
-                  {artifact.source_type} | {new Date(artifact.created_at).toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-            );
-          })
-        )}
-        {artifactGraph ? (
-          <View style={styles.detailCard}>
-            <Text style={styles.inlineCardTitle}>Selected artifact detail</Text>
-            <Text style={styles.subtle}>
-              summaries {artifactGraph.summaries.length} | cards {artifactGraph.cards.length} | tasks {artifactGraph.tasks.length} | notes {artifactGraph.notes.length}
-            </Text>
-            {artifactGraph.summaries[0] ? (
-              <View style={styles.inlineCard}>
-                <Text style={styles.inlineCardTitle}>Latest summary v{artifactGraph.summaries[0].version}</Text>
-                <Text style={styles.subtle}>
-                  {artifactGraph.summaries[0].content.slice(0, 180)}
-                  {artifactGraph.summaries[0].content.length > 180 ? "..." : ""}
-                </Text>
-              </View>
-            ) : null}
-            {artifactGraph.tasks.slice(0, 2).map((task) => (
-              <View key={task.id} style={styles.inlineCard}>
-                <Text style={styles.inlineCardTitle}>{task.title}</Text>
-                <Text style={styles.subtle}>task status: {task.status}</Text>
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity style={styles.button} onPress={() => openTaskInPwa(task.id)}>
-                    <Text style={styles.buttonText}>Open Task</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-            {artifactGraph.notes.slice(0, 1).map((note) => (
-              <View key={note.id} style={styles.inlineCard}>
-                <Text style={styles.inlineCardTitle}>{note.title}</Text>
-                <Text style={styles.subtle}>
-                  {note.body_md.slice(0, 160)}
-                  {note.body_md.length > 160 ? "..." : ""}
-                </Text>
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity style={styles.button} onPress={() => openNoteInPwa(note.id)}>
-                    <Text style={styles.buttonText}>Open Note</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-            {artifactGraph.cards.slice(0, 2).map((card) => (
-              <View key={card.id} style={styles.inlineCard}>
-                <Text style={styles.inlineCardTitle}>{card.prompt}</Text>
-                <Text style={styles.subtle}>
-                  {card.answer.slice(0, 140)}
-                  {card.answer.length > 140 ? "..." : ""}
-                </Text>
-              </View>
-            ))}
-            {artifactVersions ? (
-              <View style={styles.inlineCard}>
-                <Text style={styles.inlineCardTitle}>Version history</Text>
-                <Text style={styles.subtle}>
-                  {artifactVersions.summaries.length} summaries | {artifactVersions.card_sets.length} card sets | {artifactVersions.actions.length} actions
-                </Text>
-                {artifactVersions.actions.slice(0, 3).map((action) => (
-                  <Text key={action.id} style={styles.subtle}>
-                    {action.action} [{action.status}]
-                  </Text>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-      </>
-    );
-  }
-
-  function renderReviewSessionSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Quick review session</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={loadDueCards}>
-            <Text style={styles.buttonText}>Load Due Cards</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => {
-              if (!dueCards[0]) {
-                setStatus("No due card selected");
-                return;
-              }
-              setShowAnswer(true);
-            }}
-          >
-            <Text style={styles.buttonText}>Reveal Answer</Text>
-          </TouchableOpacity>
-        </View>
-        {dueCards[0] ? (
-          <View style={styles.reviewCard}>
-            <Text style={styles.subtle}>
-              Card type: {dueCards[0].card_type} | due queue: {dueCards.length}
-            </Text>
-            <Text style={styles.reviewPrompt}>{dueCards[0].prompt}</Text>
-            {showAnswer ? <Text style={styles.reviewAnswer}>{dueCards[0].answer}</Text> : null}
-            <View style={styles.buttonRow}>
-              {[1, 3, 4, 5].map((rating) => (
-                <TouchableOpacity key={rating} style={styles.button} onPress={() => submitReview(rating)}>
-                  <Text style={styles.buttonText}>Rate {rating}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.subtle}>No due card loaded yet.</Text>
-        )}
-      </>
-    );
-  }
-
-  function renderCompanionLinkSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Phone + PWA linkage</Text>
-        <Text style={styles.label}>PWA URL</Text>
-        <TextInput style={styles.input} value={pwaBase} onChangeText={setPwaBase} autoCapitalize="none" />
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={openPwa}>
-            <Text style={styles.buttonText}>Open PWA</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.subtle}>Share deep-link format</Text>
-        <Text style={styles.mono}>starlog://capture?title=Clip&text=Hello&source_url=https://example.com</Text>
-      </>
-    );
-  }
-
-  function renderBriefingPipelineSection() {
-    return (
-      <>
-        <Text style={styles.opsSectionTitle}>Offline morning brief pipeline</Text>
-        <Text style={styles.label}>API base</Text>
-        <TextInput
-          style={styles.input}
-          value={apiBase}
-          onChangeText={setApiBase}
-          autoCapitalize="none"
-          placeholder="http://192.168.x.x:8000"
-          placeholderTextColor={palette.muted}
-        />
-        <Text style={styles.label}>Bearer token</Text>
-        <TextInput
-          style={styles.input}
-          value={token}
-          onChangeText={setToken}
-          autoCapitalize="none"
-          secureTextEntry
-        />
-        <Text style={styles.label}>Briefing date (YYYY-MM-DD)</Text>
-        <TextInput style={styles.input} value={briefingDate} onChangeText={setBriefingDate} autoCapitalize="none" />
-        <Text style={styles.label}>Alarm time</Text>
-        <View style={styles.buttonRow}>
-          <TextInput
-            style={styles.timeInput}
-            keyboardType="number-pad"
-            value={String(alarmHour)}
-            onChangeText={(value) => setAlarmHour(boundedInt(Number(value || "0"), 0, 23))}
-          />
-          <TextInput
-            style={styles.timeInput}
-            keyboardType="number-pad"
-            value={String(alarmMinute)}
-            onChangeText={(value) => setAlarmMinute(boundedInt(Number(value || "0"), 0, 59))}
-          />
-        </View>
-        <View style={styles.inlineCard}>
-          <Text style={styles.inlineCardTitle}>Playback route</Text>
-          <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
-          <View style={styles.opsChipRow}>
-            {renderOpsChip("Offline First", briefingPlaybackPreference === "offline_first", () =>
-              setBriefingPlaybackPreference("offline_first"),
-            )}
-            {renderOpsChip("Refresh + Cache", briefingPlaybackPreference === "refresh_then_cache", () =>
-              setBriefingPlaybackPreference("refresh_then_cache"),
-            )}
-          </View>
-        </View>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.button} onPress={generateAndCache}>
-            <Text style={styles.buttonText}>Cache Briefing</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
-            <Text style={styles.buttonText}>Queue Audio Render</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={playBriefing}>
-            <Text style={styles.buttonText}>Play Briefing</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={scheduleMorningAlarm}>
-            <Text style={styles.buttonText}>Schedule Daily Alarm</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={clearMorningAlarm}>
-            <Text style={styles.buttonText}>Clear Alarm</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.subtle}>Notification permission: {notificationPermission}</Text>
-        <Text style={styles.subtle}>Cached file: {cachedPath ?? "none"}</Text>
-        <Text style={styles.subtle}>{briefingPlaybackStatus}</Text>
-        <Text style={styles.subtle}>
-          Alarm status: {alarmNotificationId ? `scheduled at ${toHourMinuteLabel(alarmHour, alarmMinute)}` : "not scheduled"}
-        </Text>
-        <Text style={styles.subtle}>{status}</Text>
-      </>
-    );
-  }
-
-  function renderCaptureOpsPanel() {
-  if (activeTab !== "notes" || !showAdvancedCapture) {
-      return null;
-    }
-
-    return (
-      <View style={styles.panel}>
-        <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Notes support systems</Text>
-        <Text style={styles.subtle}>
-          Keep the main notes shell focused on intake. Use the support systems below for queue control, AI routing, and triage.
-        </Text>
-        <View style={styles.opsChipRow}>
-          {renderOpsChip("Queue", captureOpsSection === "queue", () => setCaptureOpsSection("queue"))}
-          {renderOpsChip("Assistant", captureOpsSection === "assistant", () => setCaptureOpsSection("assistant"))}
-          {renderOpsChip("Routing", captureOpsSection === "routing", () => setCaptureOpsSection("routing"))}
-          {renderOpsChip("Triage", captureOpsSection === "triage", () => setCaptureOpsSection("triage"))}
-        </View>
-        <View style={styles.opsSectionCard}>
-          {captureOpsSection === "queue" ? renderCaptureQueueSection() : null}
-          {captureOpsSection === "assistant" ? renderAssistantSection() : null}
-          {captureOpsSection === "routing" ? renderCaptureRoutingSection() : null}
-          {captureOpsSection === "triage" ? renderArtifactTriageSection() : null}
-        </View>
-      </View>
-    );
-  }
-
-  function renderReviewOpsPanel() {
-    if (activeTab !== "review" || !showAdvancedReview) {
-      return null;
-    }
-
-    return (
-      <View style={styles.panel}>
-        <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Review support systems</Text>
-        <Text style={styles.subtle}>
-          Keep the flashcard deck primary. Use the secondary panel for session controls and artifact context when you need it.
-        </Text>
-        <View style={styles.opsChipRow}>
-          {renderOpsChip("Session", reviewOpsSection === "session", () => setReviewOpsSection("session"))}
-          {renderOpsChip("Triage", reviewOpsSection === "triage", () => setReviewOpsSection("triage"))}
-        </View>
-        <View style={styles.opsSectionCard}>
-          {reviewOpsSection === "session" ? renderReviewSessionSection() : null}
-          {reviewOpsSection === "triage" ? renderArtifactTriageSection() : null}
-        </View>
-      </View>
-    );
-  }
-
-  function renderAlarmOpsPanel() {
-  if (activeTab !== "calendar" || !showAdvancedAlarms) {
-      return null;
-    }
-
-    return (
-      <View style={styles.panel}>
-        <Text style={styles.sectionKicker}>Mission Tools</Text>
-        <Text style={styles.panelTitle}>Agenda support systems</Text>
-        <Text style={styles.subtle}>
-          Keep the station clock and player front-and-center. Use the secondary panel for setup, caching, and phone-to-PWA linkage.
-        </Text>
-        <View style={styles.opsChipRow}>
-          {renderOpsChip("Briefing", alarmOpsSection === "briefing", () => setAlarmOpsSection("briefing"))}
-          {renderOpsChip("Link", alarmOpsSection === "link", () => setAlarmOpsSection("link"))}
-        </View>
-        <View style={styles.opsSectionCard}>
-          {alarmOpsSection === "briefing" ? renderBriefingPipelineSection() : null}
-          {alarmOpsSection === "link" ? renderCompanionLinkSection() : null}
-        </View>
-      </View>
-    );
-  }
-
   if (!token) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
-        <View pointerEvents="none" style={styles.bgOrbTop} />
-        <View pointerEvents="none" style={styles.bgOrbCenter} />
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="always">
           <MobileLoginSurface
             styles={styles}
             palette={palette}
@@ -4144,50 +3597,85 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
-      <View pointerEvents="none" style={styles.bgOrbTop} />
-      <View pointerEvents="none" style={styles.bgOrbCenter} />
-      <View style={styles.topBar}>
-        <View style={styles.topBarBrand}>
-          <View style={styles.topBarAvatar}>
-            <Text style={styles.topBarAvatarText}>◉</Text>
+      <MobileTopBar
+        styles={styles}
+        palette={palette}
+        isAssistantMode={isAssistantMode}
+        assistantPanelOpen={assistantPanelOpen}
+        onToggleAssistantPanel={() => setAssistantPanelOpen((value) => !value)}
+        onRefresh={() => {
+          loadExecutionPolicy("manual").catch(() => undefined);
+          loadArtifacts().catch(() => undefined);
+        }}
+        onToggleDiagnostics={() => {
+          const next = !showDiagnostics;
+          setShowDiagnostics(next);
+          setStatus(next ? "Diagnostics available" : "Diagnostics hidden");
+        }}
+      />
+      {isAssistantMode ? (
+        <MobileAssistantDrawer
+          styles={styles}
+          palette={palette}
+          open={assistantPanelOpen}
+          activeTab={activeTab}
+          onClose={() => setAssistantPanelOpen(false)}
+          onSelectTab={(tab, label) => {
+            setActiveTab(tab);
+            setAssistantPanelOpen(false);
+            setStatus(`${label} ready`);
+          }}
+          onRefreshThread={() => {
+            loadConversation("manual").catch(() => undefined);
+            setAssistantPanelOpen(false);
+          }}
+          onResetSession={() => {
+            resetConversationSession().catch(() => undefined);
+            setAssistantPanelOpen(false);
+          }}
+        />
+      ) : null}
+      <ScrollView
+        ref={mainScrollViewRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isAssistantMode && !keyboardVisible ? styles.assistantScrollContent : null,
+        ]}
+        keyboardShouldPersistTaps="always"
+        onContentSizeChange={() => {
+          if (isAssistantMode) {
+            mainScrollViewRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
+      >
+        {activeTab === "assistant" ? (
+          <View style={styles.assistantStage}>
+            <MobileHomeSurface
+              styles={styles}
+              palette={palette}
+              pendingConversationTurn={Boolean(pendingConversationTurn)}
+              homeDraft={homeDraft}
+              setHomeDraft={setHomeDraft}
+              runAssistantTurn={runAssistantTurn}
+              onVoiceAction={() => handleAssistantVoiceAction().catch(() => undefined)}
+              onCancelVoiceAction={clearAssistantVoiceAction}
+              voiceActionState={assistantVoiceActionState}
+              voiceActionHint={assistantVoiceActionHint}
+              refreshThread={() => loadConversation("manual").catch(() => undefined)}
+              resetConversationSession={resetConversationSession}
+              visibleConversationMessages={visibleConversationMessages}
+              hiddenConversationMessageCount={hiddenConversationMessageCount}
+              previewCommandFlow={() => previewHomeDraftCommandFlow().catch(() => undefined)}
+              formatCardMeta={cardMetaText}
+              onCardAction={(action, card) => {
+                handleConversationCardAction(action, card).catch(() => undefined);
+              }}
+              reuseCardText={reuseConversationCardText}
+            />
           </View>
-          <Text style={styles.topBarTitle}>Obsidian Observatory</Text>
-        </View>
-        <View style={styles.topBarActions}>
-          <TouchableOpacity
-            style={styles.topBarIconButton}
-            onPress={() => {
-              loadExecutionPolicy("manual").catch(() => undefined);
-              loadArtifacts().catch(() => undefined);
-            }}
-          >
-            <MaterialCommunityIcons name="sync" size={16} color={palette.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.topBarIconButton} onPress={openPwa}>
-            <MaterialCommunityIcons name="account-circle" size={18} color={palette.tertiary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {activeTab === "home" ? (
-          <MobileHomeSurface
-            styles={styles}
-            palette={palette}
-            pendingConversationTurn={Boolean(pendingConversationTurn)}
-            homeDraft={homeDraft}
-            setHomeDraft={setHomeDraft}
-            runMainRoomTurn={runMainRoomTurn}
-            refreshThread={() => loadConversation("manual").catch(() => undefined)}
-            resetConversationSession={resetConversationSession}
-            visibleConversationMessages={visibleConversationMessages}
-            hiddenConversationMessageCount={hiddenConversationMessageCount}
-            openAssistantInPwa={openAssistantInPwa}
-            previewCommandFlow={() => previewHomeDraftCommandFlow().catch(() => undefined)}
-            formatCardMeta={cardMetaText}
-          />
         ) : null}
 
-        {activeTab === "notes" ? (
+        {activeTab === "library" ? (
           <MobileNotesSurface
             styles={styles}
             palette={palette}
@@ -4200,7 +3688,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             setQuickCaptureText={setQuickCaptureText}
             notesInstructionDraft={notesInstructionDraft}
             setNotesInstructionDraft={setNotesInstructionDraft}
-            voiceRecording={Boolean(voiceRecording)}
+            voiceRecording={captureVoiceRecording}
             holdToTalkLabel={holdToTalkLabel}
             beginHoldToTalkCapture={() => beginHoldToTalkCapture().catch(() => undefined)}
             endHoldToTalkCapture={() => endHoldToTalkCapture().catch(() => undefined)}
@@ -4213,7 +3701,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             selectedArtifactTitle={selectedArtifact?.title || quickCaptureTitle || "Waiting for a chosen artifact"}
             captureSourcePreview={captureSourcePreview}
             routeNarrative={routeNarrative}
-            voiceClipReady={Boolean(voiceClipUri)}
+            voiceClipReady={captureVoiceClipReady}
             playVoiceClip={playVoiceClip}
             submitVoiceCapture={() => submitVoiceCapture().catch(() => undefined)}
             showAdvancedCapture={showAdvancedCapture}
@@ -4228,7 +3716,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <MobileReviewSurface
             styles={styles}
             palette={palette}
-            reviewPrompt={reviewCard?.prompt || "Load the next due card to begin a focused SRS pass."}
+            reviewPrompt={reviewCard?.prompt || "Load the next due card to begin a focused review pass."}
             reviewAnswer={reviewCard?.answer || "The answer stays sealed until you load a card and intentionally reveal it."}
             reviewDueCount={dueCards.length}
             reviewCardType={reviewCardTypeLabel}
@@ -4267,7 +3755,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           />
         ) : null}
 
-        {activeTab === "calendar" ? (
+        {activeTab === "planner" ? (
           <MobileCalendarSurface
             styles={styles}
             palette={palette}
@@ -4285,7 +3773,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             openPwa={openPwa}
             openReview={() => {
               setActiveTab("review");
-              setStatus("Quick review surface active");
+              setStatus(`${PRODUCT_SURFACES.review.label} ready`);
             }}
             alarmScheduled={Boolean(alarmNotificationId)}
             toggleAlarm={() => (alarmNotificationId ? clearMorningAlarm().catch(() => undefined) : scheduleMorningAlarm().catch(() => undefined))}
@@ -4297,31 +3785,365 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           />
         ) : null}
 
-        {renderCaptureOpsPanel()}
-        {renderReviewOpsPanel()}
-        {renderAlarmOpsPanel()}
+        <MobileSupportPanel
+          styles={styles}
+          visible={activeTab === "library" && showAdvancedCapture}
+          kicker={MOBILE_SUPPORT_PANEL_COPY.library.kicker}
+          title={MOBILE_SUPPORT_PANEL_COPY.library.title}
+          description={MOBILE_SUPPORT_PANEL_COPY.library.description}
+          activeSection={captureOpsSection}
+          onSelectSection={setCaptureOpsSection}
+          sections={[
+            {
+              id: "queue",
+              label: "Queue",
+              content: (
+                <CaptureQueueSection
+                  styles={styles}
+                  palette={palette}
+                  quickCaptureTitle={quickCaptureTitle}
+                  setQuickCaptureTitle={setQuickCaptureTitle}
+                  quickCaptureSourceUrl={quickCaptureSourceUrl}
+                  setQuickCaptureSourceUrl={setQuickCaptureSourceUrl}
+                  quickCaptureText={quickCaptureText}
+                  setQuickCaptureText={setQuickCaptureText}
+                  submitQuickCapture={() => {
+                    submitQuickCapture().catch(() => undefined);
+                  }}
+                  flushPendingCaptures={() => {
+                    flushPendingCaptures("manual").catch(() => undefined);
+                  }}
+                  voiceRecording={captureVoiceRecording}
+                  startVoiceRecording={() => {
+                    startVoiceRecording("capture").catch(() => undefined);
+                  }}
+                  stopVoiceRecording={() => {
+                    stopVoiceRecording().catch(() => undefined);
+                  }}
+                  submitVoiceCapture={() => {
+                    submitVoiceCapture().catch(() => undefined);
+                  }}
+                  voiceClipUri={voiceClipUri}
+                  voiceClipDurationMs={voiceClipDurationMs}
+                  sharedFileDrafts={sharedFileDrafts}
+                  describeSharedDrafts={describeSharedDrafts}
+                  describeSharedFile={describeSharedFile}
+                  clearSharedFiles={() => {
+                    setSharedFileDrafts([]);
+                    setStatus("Cleared shared file drafts");
+                  }}
+                  pendingCaptures={pendingCaptures}
+                />
+              ),
+            },
+            {
+              id: "assistant",
+              label: "Assistant",
+              content: (
+                <AssistantToolsSection
+                  styles={styles}
+                  palette={palette}
+                  assistantCommand={assistantCommand}
+                  setAssistantCommand={setAssistantCommand}
+                  assistantExampleCommands={assistantExampleCommands}
+                  runAssistantPlan={() => {
+                    runAssistantCommand(false).catch(() => undefined);
+                  }}
+                  runAssistantExecute={() => {
+                    runAssistantCommand(true).catch(() => undefined);
+                  }}
+                  queueAssistantPlan={() => {
+                    queueAssistantAiCommand(false).catch(() => undefined);
+                  }}
+                  queueAssistantExecute={() => {
+                    queueAssistantAiCommand(true).catch(() => undefined);
+                  }}
+                  openAssistantInPwa={openAssistantInPwa}
+                  sttUsesOnDevice={sttResolution.active === "on_device"}
+                  localSttListening={localSttListening}
+                  submitLocalVoiceAssistantPlan={() => {
+                    submitLocalVoiceAssistantCommand(false).catch(() => undefined);
+                  }}
+                  submitLocalVoiceAssistantExecute={() => {
+                    submitLocalVoiceAssistantCommand(true).catch(() => undefined);
+                  }}
+                  refreshLocalSttAvailability={() => {
+                    refreshLocalSttAvailability("manual").catch(() => undefined);
+                  }}
+                  voiceRecording={Boolean(voiceRecording) && voiceClipTarget === "assistant"}
+                  voiceClipTarget={voiceClipTarget}
+                  startAssistantVoiceRecording={() => {
+                    startVoiceRecording("assistant").catch(() => undefined);
+                  }}
+                  stopVoiceRecording={() => {
+                    stopVoiceRecording().catch(() => undefined);
+                  }}
+                  submitVoiceAssistantPlan={() => {
+                    submitVoiceAssistantCommand(false).catch(() => undefined);
+                  }}
+                  submitVoiceAssistantExecute={() => {
+                    submitVoiceAssistantCommand(true).catch(() => undefined);
+                  }}
+                  refreshAssistantThread={() => {
+                    loadConversation("manual").catch(() => undefined);
+                    loadAssistantVoiceJobs("manual").catch(() => undefined);
+                    loadAssistantAiJobs("manual").catch(() => undefined);
+                  }}
+                  resetConversationSession={() => {
+                    resetConversationSession().catch(() => undefined);
+                  }}
+                  localSttLabel={localSttProbeLabel(localSttAvailable)}
+                  voiceCommandStatus={
+                    sttResolution.active === "on_device"
+                      ? "Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint."
+                      : `Voice clip for commands: ${
+                          voiceRecording && voiceClipTarget === "assistant"
+                            ? "recording..."
+                            : voiceClipUri && voiceClipTarget === "assistant"
+                              ? `${Math.round(voiceClipDurationMs / 1000)}s ready`
+                              : "none"
+                        }`
+                  }
+                  conversationTitle={conversationTitle}
+                  conversationSessionState={conversationSessionState}
+                  conversationMessages={conversationMessages}
+                  conversationToolTraces={conversationToolTraces}
+                  lastConversationReset={lastConversationReset}
+                  visibleConversationMessages={visibleConversationMessages}
+                  hiddenConversationMessageCount={hiddenConversationMessageCount}
+                  showFullConversationThread={showFullConversationThread}
+                  setShowFullConversationThread={setShowFullConversationThread}
+                  expandedThreadCards={expandedThreadCards}
+                  setExpandedThreadCards={(updater) => setExpandedThreadCards(updater)}
+                  expandedThreadTraces={expandedThreadTraces}
+                  setExpandedThreadTraces={(updater) => setExpandedThreadTraces(updater)}
+                  cardMetaText={cardMetaText}
+                  summarizeTraceValue={summarizeTraceValue}
+                  threadMessagesLength={threadMessages.length}
+                  defaultVisibleMessages={DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES}
+                  showDiagnostics={showDiagnostics}
+                  toggleDiagnostics={() => setShowDiagnostics((value) => !value)}
+                  assistantHistory={assistantHistory}
+                  assistantVoiceJobs={assistantVoiceJobs}
+                  assistantAiJobs={assistantAiJobs}
+                />
+              ),
+            },
+            {
+              id: "routing",
+              label: "Routing",
+              content: (
+                <CaptureRoutingSection
+                  styles={styles}
+                  palette={palette}
+                  llmResolution={llmResolution}
+                  sttResolution={sttResolution}
+                  ttsResolution={ttsResolution}
+                  formatExecutionTarget={(target) => formatExecutionTarget(target as never)}
+                  voiceRoutePreference={voiceRoutePreference}
+                  setVoiceRoutePreference={setVoiceRoutePreference}
+                  executionPolicyUpdatedAt={executionPolicy.updated_at}
+                  refreshPolicy={() => {
+                    loadExecutionPolicy("manual").catch(() => undefined);
+                  }}
+                  openIntegrations={() => {
+                    openIntegrationsInPwa().catch(() => undefined);
+                  }}
+                />
+              ),
+            },
+            {
+              id: "triage",
+              label: "Triage",
+              content: (
+                <ArtifactTriageSection
+                  styles={styles}
+                  palette={palette}
+                  loadArtifacts={() => {
+                    loadArtifacts().catch(() => undefined);
+                  }}
+                  openSelectedArtifactInPwa={() => {
+                    openSelectedArtifactInPwa().catch(() => undefined);
+                  }}
+                  speakSelectedArtifact={() => {
+                    speakSelectedArtifact();
+                  }}
+                  selectedArtifact={selectedArtifact}
+                  artifactDetailStatus={artifactDetailStatus}
+                  artifactQuickActions={artifactQuickActions}
+                  runArtifactAction={(action) => {
+                    runArtifactAction(action).catch(() => undefined);
+                  }}
+                  artifacts={artifacts}
+                  selectedArtifactId={selectedArtifactId}
+                  setSelectedArtifactId={setSelectedArtifactId}
+                  artifactGraph={artifactGraph}
+                  artifactVersions={artifactVersions}
+                  openTaskInPwa={(taskId) => {
+                    openTaskInPwa(taskId).catch(() => undefined);
+                  }}
+                  openNoteInPwa={(noteId) => {
+                    openNoteInPwa(noteId).catch(() => undefined);
+                  }}
+                />
+              ),
+            },
+          ]}
+        />
+        <MobileSupportPanel
+          styles={styles}
+          visible={activeTab === "review" && showAdvancedReview}
+          kicker={MOBILE_SUPPORT_PANEL_COPY.review.kicker}
+          title={MOBILE_SUPPORT_PANEL_COPY.review.title}
+          description={MOBILE_SUPPORT_PANEL_COPY.review.description}
+          activeSection={reviewOpsSection}
+          onSelectSection={setReviewOpsSection}
+          sections={[
+            {
+              id: "session",
+              label: "Session",
+              content: (
+                <ReviewSessionSection
+                  styles={styles}
+                  palette={palette}
+                  dueCards={dueCards}
+                  showAnswer={showAnswer}
+                  loadDueCards={() => {
+                    loadDueCards().catch(() => undefined);
+                  }}
+                  revealAnswer={() => {
+                    if (!dueCards[0]) {
+                      setStatus("No due card selected");
+                      return;
+                    }
+                    setShowAnswer(true);
+                  }}
+                  submitReview={(rating) => {
+                    submitReview(rating).catch(() => undefined);
+                  }}
+                />
+              ),
+            },
+            {
+              id: "triage",
+              label: "Triage",
+              content: (
+                <ArtifactTriageSection
+                  styles={styles}
+                  palette={palette}
+                  loadArtifacts={() => {
+                    loadArtifacts().catch(() => undefined);
+                  }}
+                  openSelectedArtifactInPwa={() => {
+                    openSelectedArtifactInPwa().catch(() => undefined);
+                  }}
+                  speakSelectedArtifact={() => {
+                    speakSelectedArtifact();
+                  }}
+                  selectedArtifact={selectedArtifact}
+                  artifactDetailStatus={artifactDetailStatus}
+                  artifactQuickActions={artifactQuickActions}
+                  runArtifactAction={(action) => {
+                    runArtifactAction(action).catch(() => undefined);
+                  }}
+                  artifacts={artifacts}
+                  selectedArtifactId={selectedArtifactId}
+                  setSelectedArtifactId={setSelectedArtifactId}
+                  artifactGraph={artifactGraph}
+                  artifactVersions={artifactVersions}
+                  openTaskInPwa={(taskId) => {
+                    openTaskInPwa(taskId).catch(() => undefined);
+                  }}
+                  openNoteInPwa={(noteId) => {
+                    openNoteInPwa(noteId).catch(() => undefined);
+                  }}
+                />
+              ),
+            },
+          ]}
+        />
+        <MobileSupportPanel
+          styles={styles}
+          visible={activeTab === "planner" && showAdvancedAlarms}
+          kicker={MOBILE_SUPPORT_PANEL_COPY.planner.kicker}
+          title={MOBILE_SUPPORT_PANEL_COPY.planner.title}
+          description={MOBILE_SUPPORT_PANEL_COPY.planner.description}
+          activeSection={alarmOpsSection}
+          onSelectSection={setAlarmOpsSection}
+          sections={[
+            {
+              id: "briefing",
+              label: "Briefing",
+              content: (
+                <BriefingPipelineSection
+                  styles={styles}
+                  palette={palette}
+                  apiBase={apiBase}
+                  setApiBase={setApiBase}
+                  token={token}
+                  setToken={setToken}
+                  briefingDate={briefingDate}
+                  setBriefingDate={setBriefingDate}
+                  alarmHour={alarmHour}
+                  setAlarmHour={setAlarmHour}
+                  alarmMinute={alarmMinute}
+                  setAlarmMinute={setAlarmMinute}
+                  boundedInt={boundedInt}
+                  briefingPlaybackStatus={briefingPlaybackStatus}
+                  briefingPlaybackPreference={briefingPlaybackPreference}
+                  setBriefingPlaybackPreference={setBriefingPlaybackPreference}
+                  generateAndCache={() => {
+                    generateAndCache().catch(() => undefined);
+                  }}
+                  queueBriefingAudio={() => {
+                    queueBriefingAudio().catch(() => undefined);
+                  }}
+                  playBriefing={() => {
+                    playBriefing().catch(() => undefined);
+                  }}
+                  scheduleMorningAlarm={() => {
+                    scheduleMorningAlarm().catch(() => undefined);
+                  }}
+                  clearMorningAlarm={() => {
+                    clearMorningAlarm().catch(() => undefined);
+                  }}
+                  notificationPermission={notificationPermission}
+                  cachedPath={cachedPath}
+                  alarmNotificationId={alarmNotificationId}
+                  toHourMinuteLabel={toHourMinuteLabel}
+                  status={status}
+                />
+              ),
+            },
+            {
+              id: "link",
+              label: "Link",
+              content: (
+                <DesktopFallbackSection
+                  styles={styles}
+                  palette={palette}
+                  pwaBase={pwaBase}
+                  setPwaBase={setPwaBase}
+                  openPwa={() => {
+                    openPwa().catch(() => undefined);
+                  }}
+                />
+              ),
+            },
+          ]}
+        />
       </ScrollView>
-      <View style={styles.bottomNav}>
-        {MOBILE_TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.id}
-            style={[styles.bottomNavItem, activeTab === tab.id ? styles.bottomNavItemActive : null]}
-            onPress={() => {
-              setActiveTab(tab.id);
-              setStatus(`${tab.label} surface active`);
-            }}
-          >
-            <MaterialCommunityIcons
-              name={tab.icon as never}
-              size={20}
-              color={activeTab === tab.id ? palette.accent : "#49473f"}
-            />
-            <Text style={[styles.bottomNavLabel, activeTab === tab.id ? styles.bottomNavLabelActive : null]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {keyboardVisible || isAssistantMode ? null : (
+        <MobileBottomNav
+          styles={styles}
+          palette={palette}
+          activeTab={activeTab}
+          onSelectTab={(tab, label) => {
+            setActiveTab(tab);
+            setStatus(`${label} ready`);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -4352,16 +4174,27 @@ function themedStyles(palette: Palette) {
     },
     topBar: {
       paddingHorizontal: 20,
-      paddingVertical: 14,
+      paddingTop: Platform.OS === "android" ? 18 : 14,
+      paddingBottom: 14,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       backgroundColor: "rgba(30,15,22,0.82)",
     },
+    topBarAssistant: {
+      paddingTop: Platform.OS === "android" ? 18 : 12,
+      paddingBottom: 10,
+      backgroundColor: "rgba(30,15,22,0.34)",
+      borderBottomWidth: 1,
+      borderBottomColor: "rgba(255,255,255,0.05)",
+    },
     topBarBrand: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+    },
+    topBarBrandAssistant: {
+      gap: 4,
     },
     topBarAvatar: {
       width: 30,
@@ -4400,6 +4233,46 @@ function themedStyles(palette: Palette) {
       letterSpacing: 1.2,
       textTransform: "uppercase",
     },
+    topBarTitleAssistant: {
+      fontSize: 16,
+      letterSpacing: 1,
+    },
+    topBarAssistantCaption: {
+      color: palette.muted,
+      fontSize: 10,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 1.2,
+      marginTop: -1,
+    },
+    topBarAssistantStatus: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.05)",
+      backgroundColor: "rgba(255,255,255,0.025)",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    topBarAssistantStatusDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 999,
+      backgroundColor: palette.accent,
+      shadowColor: palette.accent,
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+    },
+    topBarAssistantStatusText: {
+      color: palette.muted,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+    },
     topBarActions: {
       flexDirection: "row",
       alignItems: "center",
@@ -4435,6 +4308,27 @@ function themedStyles(palette: Palette) {
       paddingTop: 20,
       paddingBottom: 120,
       gap: 18,
+    },
+    assistantScrollContent: {
+      paddingHorizontal: 12,
+      paddingTop: 12,
+      paddingBottom: 22,
+      gap: 12,
+    },
+    assistantStage: {
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.05)",
+      borderRadius: 30,
+      backgroundColor: "rgba(39,23,30,0.46)",
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      paddingBottom: 14,
+      gap: 12,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 8 },
     },
     hero: {
       borderWidth: 1,
@@ -5105,41 +4999,51 @@ function themedStyles(palette: Palette) {
     },
     inlineCard: {
       borderWidth: 1,
-      borderColor: palette.border,
-      borderRadius: 12,
-      padding: 10,
-      gap: 4,
-      backgroundColor: palette.surfaceLow,
-      marginTop: 4,
+      borderColor: "rgba(241, 182, 205, 0.14)",
+      borderRadius: 16,
+      padding: 12,
+      gap: 6,
+      backgroundColor: "rgba(16,20,26,0.76)",
+      marginTop: 6,
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 2,
     },
     inlineCardActive: {
-      borderColor: palette.accent,
+      borderColor: "rgba(241, 182, 205, 0.34)",
       shadowColor: palette.accent,
-      shadowOpacity: 0.18,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.22,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
     },
     inlineCardTitle: {
       color: palette.text,
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: "700",
     },
     detailCard: {
       borderWidth: 1,
-      borderColor: palette.border,
-      borderRadius: 14,
-      padding: 10,
+      borderColor: "rgba(241, 182, 205, 0.14)",
+      borderRadius: 16,
+      padding: 12,
       gap: 8,
-      backgroundColor: "rgba(16,20,26,0.55)",
-      marginTop: 6,
+      backgroundColor: "rgba(16,20,26,0.68)",
+      marginTop: 8,
     },
     threadMessageCard: {
       borderWidth: 1,
-      borderColor: palette.border,
-      borderRadius: 14,
-      padding: 10,
-      gap: 8,
-      backgroundColor: palette.surfaceLow,
+      borderColor: "rgba(241, 182, 205, 0.12)",
+      borderRadius: 18,
+      padding: 12,
+      gap: 10,
+      backgroundColor: "rgba(16,20,26,0.76)",
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
     },
     threadMessageMeta: {
       flexDirection: "row",
@@ -5149,15 +5053,22 @@ function themedStyles(palette: Palette) {
     },
     threadRoleChip: {
       color: palette.secondary,
-      fontSize: 10,
+      fontSize: 9,
       textTransform: "uppercase",
-      letterSpacing: 1.2,
-      fontWeight: "700",
+      letterSpacing: 1.1,
+      fontWeight: "800",
+      borderWidth: 1,
+      borderColor: "rgba(241, 182, 205, 0.14)",
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      backgroundColor: "rgba(255,255,255,0.03)",
+      overflow: "hidden",
     },
     threadMessageBody: {
       color: palette.text,
-      fontSize: 14,
-      lineHeight: 20,
+      fontSize: 15,
+      lineHeight: 22,
     },
     threadDetailHeader: {
       flexDirection: "row",
@@ -5167,11 +5078,11 @@ function themedStyles(palette: Palette) {
     },
     threadDetailToggle: {
       borderWidth: 1,
-      borderColor: palette.border,
+      borderColor: "rgba(241, 182, 205, 0.12)",
       borderRadius: 999,
       paddingHorizontal: 8,
       paddingVertical: 4,
-      backgroundColor: palette.surfaceHigh,
+      backgroundColor: "rgba(255,255,255,0.03)",
     },
     threadDetailToggleText: {
       color: palette.muted,
@@ -5250,12 +5161,17 @@ function themedStyles(palette: Palette) {
     },
     reviewCard: {
       borderWidth: 1,
-      borderColor: palette.border,
-      borderRadius: 12,
+      borderColor: "rgba(241, 182, 205, 0.12)",
+      borderRadius: 16,
       padding: 12,
       gap: 8,
-      backgroundColor: palette.surfaceLow,
-      marginTop: 6,
+      backgroundColor: "rgba(16,20,26,0.72)",
+      marginTop: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 2,
     },
     reviewPrompt: {
       color: palette.text,

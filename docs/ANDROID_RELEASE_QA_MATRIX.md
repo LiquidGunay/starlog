@@ -258,6 +258,36 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
 1. The production path is now distinct from preview RC packaging:
    - preview remains the sideload feedback APK flow
    - production is the signed Play-upload AAB plus optional signed QA APK flow
+
+## WI-704 Assistant-first mobile stabilization
+
+Date: 2026-04-11
+Device target: OPPO CPH2381 (`9dd62e84`)
+Repo path: `/home/ubuntu/starlog`
+Artifact under test: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Installed package: `com.starlog.app.dev`
+Launcher component: `com.starlog.app.dev/.MainActivity`
+Version: `0.1.0-assistant-dev (1261010943)`
+Windows install copy: `C:\Temp\starlog-dev-1261010943.apk`
+
+## WI-704 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Mobile TypeScript compile (`apps/mobile`) | PASS | local `tsc --noEmit -p tsconfig.json` on 2026-04-11 |
+| Development release APK assembly (`assembleRelease`) | PASS | local Gradle build on 2026-04-11 |
+| Windows-host streamed install of build `1261010943` | PASS | local `adb.exe install -r C:\Temp\starlog-dev-1261010943.apk` on 2026-04-11 |
+| Assistant-first shell renders on the connected phone after install | PASS | `docs/evidence/mobile/wi-704-assistant-shell-v1261010943.png` |
+| Inline Assistant card actions remain visible in-thread (`SUMMARIZE`, `MAKE CARDS`, `OPEN LIBRARY`) | PASS | `docs/evidence/mobile/wi-704-assistant-shell-v1261010943.png`, `docs/evidence/mobile/wi-704-assistant-shell-v1261010943.xml` |
+| Diagnostics stay collapsed instead of returning as a primary rail | PASS | `docs/evidence/mobile/wi-704-assistant-shell-v1261010943.png`, `docs/evidence/mobile/wi-704-assistant-shell-v1261010943.xml` |
+| Composer mic enters the on-device Assistant listening state on phone | PASS | `docs/evidence/mobile/wi-704-assistant-mic-v1261010943.png`, `docs/evidence/mobile/wi-704-assistant-mic-v1261010943.xml` |
+
+## WI-704 notes
+
+1. This proof was taken after extracting the remaining large Assistant support panel out of `apps/mobile/App.tsx` into `apps/mobile/src/mobile-support-panel-sections.tsx`.
+   - Interpretation: the architectural split did not regress the main Assistant thread or the phone mic entrypoint.
+2. The phone is currently following the on-device STT route for Assistant voice.
+   - Interpretation: this evidence proves the listening-state path directly; queued recorded-upload fallback still warrants its own explicit phone proof in a later pass.
 2. Production sideload QA should now run `pnpm test:android:release-smoke` before handoff.
    - The release smoke gate rejects APKs that are missing `libhermes.so` or `libhermes_executor.so`, stages the APK into a Windows-visible path when required, and fails fast on post-launch crash-buffer evidence.
 2. Production packaging must also validate the final APK label and package from the built artifact, not only the Expo config inputs.

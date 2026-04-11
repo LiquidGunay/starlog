@@ -519,7 +519,7 @@ export default function PlannerPage() {
         id: "sync",
         title: "Calendar sync stable",
         done: Boolean(oauthStatus?.connected) && !conflicts.some((conflict) => !conflict.resolved),
-        detail: oauthStatus?.connected ? "Google calendar link active" : "Internal agenda mode",
+        detail: oauthStatus?.connected ? "Google calendar link active" : "Internal Planner mode",
       },
       {
         id: "pool",
@@ -539,14 +539,14 @@ export default function PlannerPage() {
 
   return (
     <AprilWorkspaceShell
-      activeSurface="agenda"
-      statusLabel={oauthStatus?.connected ? "Calendar sync connected" : "Internal agenda only"}
+      activeSurface="planner"
+      statusLabel={oauthStatus?.connected ? "Calendar sync connected" : "Internal Planner only"}
       queueLabel={`${timeline.length} scheduled`}
-      searchPlaceholder="Search agenda..."
+      searchPlaceholder="Search Planner..."
       railSlot={(
         <>
           <div className="april-rail-section">
-            <span className="april-rail-section-label">Agenda rhythm</span>
+            <span className="april-rail-section-label">Planner rhythm</span>
             <div className="april-rail-metric-stack">
               <div className="april-rail-metric-card">
                 <strong>{timeline.length}</strong>
@@ -603,11 +603,11 @@ export default function PlannerPage() {
             <AprilPanel className="april-calendar-panel">
               <div className="april-panel-head">
                 <div>
-                  <span className="april-panel-kicker">Agenda ritual</span>
+                  <span className="april-panel-kicker">Planner ritual</span>
                   <h2>Calendar constellation</h2>
                 </div>
                 <div className="button-row">
-                  <button className="button" type="button" onClick={() => load()}>Refresh agenda</button>
+                  <button className="button" type="button" onClick={() => load()}>Refresh Planner</button>
                   <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
                 </div>
               </div>
@@ -642,7 +642,7 @@ export default function PlannerPage() {
             <AprilPanel className="april-timeline-panel">
               <div className="april-panel-head">
                 <div>
-                  <span className="april-panel-kicker">Today&apos;s agenda</span>
+                  <span className="april-panel-kicker">Today&apos;s plan</span>
                   <h2>Ritual timeline</h2>
                 </div>
               </div>
@@ -708,7 +708,7 @@ export default function PlannerPage() {
                     <div className="april-ritual-progress-copy">
                       <span className="chronos-pool-tag">daily return point</span>
                       <h3>{date}</h3>
-                      <p>{oauthStatus?.connected ? "Google sync connected and feeding the ritual cycle." : "Internal agenda mode active for this ritual cycle."}</p>
+                      <p>{oauthStatus?.connected ? "Google sync connected and feeding the ritual cycle." : "Internal Planner mode active for this ritual cycle."}</p>
                     </div>
                   </section>
 

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "sync:product-copy": "node ./scripts/sync_product_copy.mjs",
     "dev": "tauri dev",
     "build": "tauri build",
     "build:artifacts": "bash ./scripts/build_release_artifacts.sh",

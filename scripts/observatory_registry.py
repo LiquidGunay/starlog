@@ -20,14 +20,14 @@ APRIL_WORKITEMS: list[dict[str, Any]] = [
     {"id": "WI-705", "title": "Android production packaging entrypoint", "track": "backend", "status": "open"},
     {"id": "WI-706", "title": "ML interview deck bootstrap hardening", "track": "backend", "status": "open"},
     {"id": "WI-707", "title": "Card deck API hardening", "track": "backend", "status": "open"},
-    {"id": "WI-710", "title": "Observatory design system foundation", "track": "frontend", "status": "open"},
+    {"id": "WI-710", "title": "Assistant-first design system foundation", "track": "frontend", "status": "open"},
     {"id": "WI-711", "title": "Dynamic conversation component kit", "track": "frontend", "status": "open"},
-    {"id": "WI-712", "title": "PWA Main Room cutover", "track": "frontend", "status": "open"},
+    {"id": "WI-712", "title": "Desktop Assistant cutover", "track": "frontend", "status": "open"},
     {"id": "WI-713", "title": "Smooth chat interaction pass", "track": "frontend", "status": "open"},
     {"id": "WI-714", "title": "Support-view redesign on stable routes", "track": "frontend", "status": "open"},
     {"id": "WI-720", "title": "Mobile shell refactor", "track": "mobile", "status": "open"},
-    {"id": "WI-721", "title": "Mobile Home chat", "track": "mobile", "status": "open"},
-    {"id": "WI-722", "title": "Mobile ritual tabs", "track": "mobile", "status": "open"},
+    {"id": "WI-721", "title": "Mobile Assistant chat", "track": "mobile", "status": "open"},
+    {"id": "WI-722", "title": "Mobile support tabs", "track": "mobile", "status": "open"},
 ]
 
 REVIEW_BACKLOG_ITEMS: list[dict[str, Any]] = [
@@ -95,7 +95,7 @@ REVIEW_BACKLOG_ITEMS: list[dict[str, Any]] = [
 ]
 
 DESIGN_QUEUE: dict[str, Any] = {
-    "visual_thesis": "Build Starlog as a quiet observatory: glassy, low-chroma, mono-accented, with chat as the primary stage and all other surfaces as supporting instruments.",
+    "visual_thesis": "Build Starlog as a calm Assistant-first workspace: glassy, low-chroma, mono-accented, with chat as the primary stage and Library, Planner, and Review as support views.",
     "design_root": "/home/ubuntu/starlog_extras/starlog_unified_design_april_2026",
     "source_files": [
         "starlog_design_document_design.md",
@@ -124,7 +124,7 @@ DESIGN_QUEUE: dict[str, Any] = {
             "platforms": ["web"],
             "sources": ["main_room_chat", "knowledge_base", "srs_review"],
             "reuse": ["top-navigation route wiring"],
-            "new_work": ["observatory labeling", "glass shell", "active route state"],
+            "new_work": ["plain product labeling", "glass shell", "active route state"],
         },
         {
             "id": "web.status_bar",
@@ -152,7 +152,7 @@ DESIGN_QUEUE: dict[str, Any] = {
         },
         {
             "id": "knowledge.workspace",
-            "title": "Knowledge Base workspace",
+            "title": "Library workspace",
             "platforms": ["web"],
             "sources": ["knowledge_base"],
             "reuse": ["artifacts", "notes", "search", "graph data"],
@@ -160,7 +160,7 @@ DESIGN_QUEUE: dict[str, Any] = {
         },
         {
             "id": "review.workspace",
-            "title": "SRS Review workspace",
+            "title": "Review workspace",
             "platforms": ["web", "mobile"],
             "sources": ["srs_review", "review_analytics_mobile"],
             "reuse": ["cards API", "reviews API", "analytics counts"],
@@ -168,11 +168,11 @@ DESIGN_QUEUE: dict[str, Any] = {
         },
         {
             "id": "agenda.workspace",
-            "title": "Agenda workspace",
+            "title": "Planner workspace",
             "platforms": ["web", "mobile"],
             "sources": ["calendar_alarms_mobile"],
             "reuse": ["planner", "calendar sync", "briefings", "alarms"],
-            "new_work": ["audio-first agenda controls", "time-block framing", "briefing playback prominence"],
+            "new_work": ["briefing playback controls", "time-block framing", "planner prominence"],
         },
         {
             "id": "mobile.tab_bar",
@@ -180,7 +180,7 @@ DESIGN_QUEUE: dict[str, Any] = {
             "platforms": ["mobile"],
             "sources": ["home_chat_mobile", "notes_capture_mobile", "calendar_alarms_mobile", "review_analytics_mobile"],
             "reuse": ["existing capture", "alarms", "review flows"],
-            "new_work": ["Home/Notes/Calendar/Review IA", "tab visuals", "navigation split"],
+            "new_work": ["Assistant/Library/Planner/Review IA", "tab visuals", "navigation split"],
         },
     ],
 }

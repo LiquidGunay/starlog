@@ -1,14 +1,13 @@
-import type { ReactNode, RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
+import type {
+  AssistantCard as ConversationCard,
+  AssistantCardAction,
+  AssistantConversationToolTrace as ConversationToolTrace,
+} from "@starlog/contracts";
 
 import { getConversationCardRegistryEntry } from "./conversation-card-registry";
 
-type AgentCommandStep = {
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  status: "planned" | "ok" | "dry_run" | "failed";
-  message?: string | null;
-  result: unknown;
-};
+const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
 type AgentCommandResponse = {
   command: string;
@@ -16,15 +15,13 @@ type AgentCommandResponse = {
   matched_intent: string;
   status: "planned" | "executed" | "failed";
   summary: string;
-  steps: AgentCommandStep[];
-};
-
-type ConversationCard = {
-  kind: string;
-  version: number;
-  title?: string | null;
-  body?: string | null;
-  metadata: Record<string, unknown>;
+  steps: Array<{
+    tool_name: string;
+    arguments: Record<string, unknown>;
+    status: "planned" | "ok" | "dry_run" | "failed" | "completed" | "confirmation_required";
+    message?: string | null;
+    result: unknown;
+  }>;
 };
 
 type ConversationMessage = {
@@ -38,18 +35,6 @@ type ConversationMessage = {
   created_at: string;
 };
 
-type ConversationToolTrace = {
-  id: string;
-  thread_id: string;
-  message_id?: string | null;
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  status: string;
-  result: unknown;
-  metadata: Record<string, unknown>;
-  created_at: string;
-};
-
 type MainRoomThreadProps = {
   messages: ConversationMessage[];
   traces: ConversationToolTrace[];
@@ -58,7 +43,7 @@ type MainRoomThreadProps = {
   onToggleCards: (key: string) => void;
   onToggleTraces: (key: string) => void;
   onReuseCommand: (command: string) => void;
-  onOpenSurface: (href: string) => void;
+  onCardAction: (action: AssistantCardAction, card: ConversationCard) => void;
   emptyTitle: string;
   emptyBody: string;
   emptyActions: string[];
@@ -121,6 +106,10 @@ function bodyLines(body?: string | null): string[] {
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function isDiagnosticCard(card: ConversationCard): boolean {
+  return DIAGNOSTIC_CARD_KINDS.has(card.kind);
 }
 
 function renderCardBody(card: ConversationCard): ReactNode {
@@ -208,12 +197,14 @@ export function MainRoomThread({
   onToggleCards,
   onToggleTraces,
   onReuseCommand,
-  onOpenSurface,
+  onCardAction,
   emptyTitle,
   emptyBody,
   emptyActions,
   transcriptEndRef,
 }: MainRoomThreadProps) {
+  const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
+
   return (
     <div className="assistant-thread-feed">
       {messages.length === 0 ? (
@@ -235,12 +226,16 @@ export function MainRoomThread({
           const traceToggleKey = `${message.id}-traces`;
           const cardsExpanded = !!expandedCards[cardToggleKey];
           const tracesExpanded = !!expandedTraces[traceToggleKey];
+          const primaryCards = message.cards.filter((card) => !isDiagnosticCard(card));
+          const diagnosticCards = message.cards.filter(isDiagnosticCard);
           const pendingMessage = Boolean(message.metadata?.pending);
           const fallbackBody = assistantCommand?.summary || "No message content recorded.";
           const thinkingMessage = pendingMessage && message.role === "assistant";
           const body = pendingMessage && message.role === "assistant"
-            ? "Observatory reply forming..."
+            ? "Assistant reply in progress..."
             : message.content.trim() || fallbackBody;
+          const hasDiagnostics = diagnosticCards.length > 0 || messageTraces.length > 0 || Boolean(assistantCommand);
+          const hiddenDiagnosticCount = diagnosticCards.length + messageTraces.length + (assistantCommand ? 1 : 0);
           return (
             <article key={message.id} className={`assistant-thread-message role-${message.role}${pendingMessage ? " pending" : ""}`}>
               <div className="assistant-thread-message-meta">
@@ -259,31 +254,17 @@ export function MainRoomThread({
                 ) : (
                   <p>{body}</p>
                 )}
-                {message.cards.length > 0 ? (
-                  <div className="assistant-inline-card assistant-inline-card-stack">
-                    <div className="assistant-inline-card-head">
-                      <span>{message.cards.length} card{message.cards.length === 1 ? "" : "s"} attached</span>
-                      <span className="assistant-inline-card-actions">
-                        <button
-                          className="assistant-inline-card-toggle"
-                          type="button"
-                          onClick={() => onToggleCards(cardToggleKey)}
-                        >
-                          {cardsExpanded ? "Collapse" : "Expand"}
-                        </button>
-                      </span>
-                    </div>
-                    <div className="assistant-inline-card-steps">
-                      {message.cards.map((card, index) => {
-                        const entry = getConversationCardRegistryEntry(card.kind, card.title);
+                {primaryCards.length > 0 ? (
+                  <div className="assistant-inline-card-steps assistant-inline-card-attachments">
+                    {primaryCards.map((card, index) => {
                         const presentation = cardPresentation(card);
-                        const actionLabel = entry.actionLabel;
                         const reusableText = card.body?.trim() || card.title?.trim() || "";
-                        const canReuse = entry.actionKind !== "navigate" && !!reusableText;
-                        const canNavigate = entry.actionKind === "navigate" && typeof entry.href === "string";
+                        const cardKey = `${message.id}-card-${card.kind}-${index}`;
+                        const reviewAnswer = typeof card.metadata?.answer === "string" ? card.metadata.answer : "";
+                        const revealActive = !!revealedReviewCards[cardKey];
                         return (
                           <div
-                            key={`${message.id}-card-${card.kind}-${index}`}
+                            key={cardKey}
                             className={`assistant-inline-step assistant-inline-step-card tone-${presentation.tone}`}
                           >
                             <div>
@@ -294,99 +275,131 @@ export function MainRoomThread({
                                 </strong>
                                 <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
                               </div>
-                              {!cardsExpanded ? (
-                                <>
-                                  {card.title ? <p className="assistant-inline-card-title">{card.title}</p> : null}
-                                  {card.body ? <p className="assistant-inline-card-preview">{card.body}</p> : null}
-                                </>
-                              ) : renderCardBody(card)}
-                              {canReuse || canNavigate ? (
-                                <div className="assistant-inline-action-row">
-                                  <button
-                                    className="assistant-inline-card-toggle"
-                                    type="button"
-                                    onClick={() => {
-                                      if (canNavigate && entry.href) {
-                                        onOpenSurface(entry.href);
-                                        return;
-                                      }
-                                      if (canReuse) {
-                                        onReuseCommand(reusableText);
-                                      }
-                                    }}
-                                  >
-                                    {actionLabel || "Reuse in composer"}
-                                  </button>
-                                </div>
+                              {renderCardBody(card)}
+                              {card.kind === "review_queue" && reviewAnswer && revealActive ? (
+                                <code className="assistant-inline-card-json">{reviewAnswer}</code>
                               ) : null}
-                              {cardsExpanded && Object.keys(card.metadata ?? {}).length > 0 ? (
-                                <code className="assistant-inline-card-json">
-                                  {JSON.stringify(card.metadata, null, 2)}
-                                </code>
+                              {card.actions.length > 0 || (card.kind === "review_queue" && reviewAnswer) || reusableText ? (
+                                <div className="assistant-inline-action-row">
+                                  {card.kind === "review_queue" && reviewAnswer ? (
+                                    <button
+                                      className="assistant-inline-card-toggle"
+                                      type="button"
+                                      onClick={() => {
+                                        setRevealedReviewCards((previous) => ({ ...previous, [cardKey]: !previous[cardKey] }));
+                                      }}
+                                    >
+                                      {revealActive ? "Hide answer" : "Reveal"}
+                                    </button>
+                                  ) : null}
+                                  {card.actions.map((action) => (
+                                    <button
+                                      key={`${cardKey}-${action.id}`}
+                                      className="assistant-inline-card-toggle"
+                                      type="button"
+                                      onClick={() => onCardAction(action, card)}
+                                    >
+                                      {action.label}
+                                    </button>
+                                  ))}
+                                  {card.actions.length === 0 && reusableText ? (
+                                    <button
+                                      className="assistant-inline-card-toggle"
+                                      type="button"
+                                      onClick={() => onReuseCommand(reusableText)}
+                                    >
+                                      Reuse in Assistant
+                                    </button>
+                                  ) : null}
+                                </div>
                               ) : null}
                             </div>
                           </div>
                         );
                       })}
-                    </div>
                   </div>
                 ) : null}
-                {messageTraces.length > 0 ? (
-                  <div className="assistant-inline-card assistant-inline-card-stack">
+                {hasDiagnostics ? (
+                  <div className="assistant-inline-card assistant-inline-card-stack assistant-inline-diagnostics">
                     <div className="assistant-inline-card-head">
-                      <span>Used {messageTraces.length} tool{messageTraces.length === 1 ? "" : "s"}</span>
+                      <span>Diagnostics {cardsExpanded ? "shown" : "collapsed"} · {hiddenDiagnosticCount} hidden</span>
                       <span className="assistant-inline-card-actions">
+                        {cardsExpanded && messageTraces.length > 0 ? (
+                          <button
+                            className="assistant-inline-card-toggle"
+                            type="button"
+                            onClick={() => onToggleTraces(traceToggleKey)}
+                          >
+                            {tracesExpanded ? "Compact" : "Details"}
+                          </button>
+                        ) : null}
                         <button
                           className="assistant-inline-card-toggle"
                           type="button"
-                          onClick={() => onToggleTraces(traceToggleKey)}
+                          onClick={() => onToggleCards(cardToggleKey)}
                         >
-                          {tracesExpanded ? "Collapse" : "Expand"}
+                          {cardsExpanded ? "Hide" : "Show"}
                         </button>
                       </span>
                     </div>
-                    <div className="assistant-inline-card-steps">
-                      {messageTraces.map((trace) => (
-                        <div key={trace.id} className="assistant-inline-step assistant-inline-step-trace">
-                          <div className="assistant-inline-step-copy">
-                            <div className="assistant-inline-step-head">
-                              <strong>{trace.tool_name}</strong>
-                              <span className={`assistant-trace-status assistant-trace-status-${trace.status}`}>{trace.status}</span>
+                    {cardsExpanded ? (
+                      <div className="assistant-inline-card-steps">
+                        {diagnosticCards.map((card, index) => (
+                          <div key={`${message.id}-diagnostic-card-${index}-${card.kind}`} className="assistant-inline-step assistant-inline-step-trace">
+                            <div className="assistant-inline-step-copy">
+                              <div className="assistant-inline-step-head">
+                                <strong>{cardPresentation(card).label}</strong>
+                                <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
+                              </div>
+                              <p>{card.title || card.body || "Diagnostic detail available."}</p>
+                              {card.body && card.title ? <p>{card.body}</p> : null}
                             </div>
-                            <p>{summarizeTraceArguments(trace.arguments)}</p>
-                            <p>Result: {summarizeTraceValue(trace.result)}</p>
-                            {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
-                              <code>{JSON.stringify(trace.arguments, null, 2)}</code>
-                            ) : null}
-                            {tracesExpanded ? (
-                              <code>{JSON.stringify(trace.result, null, 2)}</code>
-                            ) : null}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {assistantCommand ? (
-                  <div className="assistant-inline-card">
-                    <div className="assistant-inline-card-head">
-                      <span>{assistantCommand.matched_intent}</span>
-                      <span>{assistantCommand.status}</span>
-                    </div>
-                    <p>{assistantCommand.summary}</p>
-                    <div className="assistant-inline-card-steps">
-                      {assistantCommand.steps.slice(0, 3).map((step, index) => (
-                        <div key={`${assistantCommand.command}-${step.tool_name}-${index}`} className="assistant-inline-step">
-                          <strong>{step.tool_name}</strong>
-                          <span>{step.status}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="button-row">
-                      <button className="button" type="button" onClick={() => onReuseCommand(assistantCommand.command)}>
-                        Reuse command
-                      </button>
-                    </div>
+                        ))}
+                        {messageTraces.map((trace) => (
+                          <div key={trace.id} className="assistant-inline-step assistant-inline-step-trace">
+                            <div className="assistant-inline-step-copy">
+                              <div className="assistant-inline-step-head">
+                                <strong>{trace.tool_name}</strong>
+                                <span className={`assistant-trace-status assistant-trace-status-${trace.status}`}>{trace.status}</span>
+                              </div>
+                              <p>{summarizeTraceArguments(trace.arguments)}</p>
+                              <p>Result: {summarizeTraceValue(trace.result)}</p>
+                              {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
+                                <code>{JSON.stringify(trace.arguments, null, 2)}</code>
+                              ) : null}
+                              {tracesExpanded ? (
+                                <code>{JSON.stringify(trace.result, null, 2)}</code>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {assistantCommand ? (
+                          <div className="assistant-inline-step assistant-inline-step-trace">
+                            <div className="assistant-inline-step-copy">
+                              <div className="assistant-inline-step-head">
+                                <strong>{assistantCommand.matched_intent}</strong>
+                                <span className={`assistant-trace-status assistant-trace-status-${assistantCommand.status}`}>{assistantCommand.status}</span>
+                              </div>
+                              <p>{assistantCommand.summary}</p>
+                              <div className="assistant-inline-card-steps">
+                                {assistantCommand.steps.slice(0, 3).map((step, index) => (
+                                  <div key={`${assistantCommand.command}-${step.tool_name}-${index}`} className="assistant-inline-step">
+                                    <strong>{step.tool_name}</strong>
+                                    <span>{step.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="button-row">
+                                <button className="button" type="button" onClick={() => onReuseCommand(assistantCommand.command)}>
+                                  Reuse command
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

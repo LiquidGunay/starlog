@@ -5,6 +5,10 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Completed in this pass
 
+- Native mobile Assistant shell now uses a ChatGPT-style focused thread on phone: no separate returned-card rail, inline Assistant cards stay in the transcript, diagnostics remain collapsed, and the side drawer owns support-view navigation.
+- Native mobile mic flow now restores the Assistant composer mic as a first-class entrypoint and separates Assistant voice state from Library voice-note state, so the two flows no longer share one ambiguous queued clip.
+- The remaining large Assistant support/tools panel has been extracted out of [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) into [apps/mobile/src/mobile-support-panel-sections.tsx](/home/ubuntu/starlog/apps/mobile/src/mobile-support-panel-sections.tsx), leaving `App.tsx` focused more on runtime orchestration and top-level composition.
+- Fresh Android device proof on `2026-04-11` confirms build `1261010943` still shows the Assistant-first shell, inline `capture_item` actions, collapsed diagnostics, and the mic entering the on-device listening state on the connected phone.
 - Monorepo scaffolding (web, mobile, api, contracts, tools).
 - FastAPI core with SQLite schema bootstrapping and token auth.
 - Core routes:
@@ -146,6 +150,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Validation run for this pass
 
+- `cd /home/ubuntu/starlog/apps/mobile && ./node_modules/.bin/tsc --noEmit -p tsconfig.json`
+- `export JAVA_HOME="$HOME/.local/jdks/temurin-17" ANDROID_HOME="$HOME/.local/android" ANDROID_SDK_ROOT="$HOME/.local/android" EXPO_PUBLIC_STARLOG_API_BASE="http://localhost:8000" EXPO_PUBLIC_STARLOG_PWA_BASE="http://localhost:3000" && cd /home/ubuntu/starlog/apps/mobile/android && APP_VARIANT=development STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true STARLOG_VERSION_NAME=0.1.0-assistant-dev STARLOG_ANDROID_VERSION_CODE=1261010943 ./gradlew :app:assembleRelease --console=plain`
+- `cp /home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk /mnt/c/Temp/starlog-dev-1261010943.apk && "/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe" -s 9dd62e84 install -r "C:\\Temp\\starlog-dev-1261010943.apk"`
 - `cd /home/ubuntu/starlog/services/api && uv run --project services/api --extra dev pytest tests/test_api_flows.py -k 'provider_config_and_webhooks or execution_policy_controls_ai_routing or codex_bridge_requires_explicit_opt_in_for_execution' -s`
 - `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/tsc --noEmit`
 - `cd /home/ubuntu/starlog/apps/web && ./node_modules/.bin/next lint`
@@ -158,11 +165,11 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Next implementation targets
 
-1. Recover the Windows ADB daemon path on this host and rerun the fresh installed-phone proof against `C:\Temp\starlog-preview-0.1.0-preview.rc2-103.apk`.
-2. Finish the persistent conversation-thread foundation so the primary assistant thread has durable turns, session reset, tool traces, and in-chat card payloads end-to-end.
-3. Recover the chat-surface assistant Playwright lanes so `apps/web/tests/assistant-*.spec.ts` can move back into the default PR smoke matrix.
-4. Fix the currently red `services/api/tests/test_voice_native_regression.py` expectation drift and move that lane back into the default smoke gate.
-5. Finish the remaining real macOS helper validation path now that Linux and a real Windows PowerShell host path have been checked against the diagnostics matrix.
-6. Harden the local TTS worker path further with deeper provider validation, retries/timeouts, and richer failure metadata beyond the current local wrapper set plus cancel/retry controls.
-7. Re-authenticate Railway CLI in the operator environment so live dashboard/start-command verification can be completed without falling back to public URL checks only.
-8. Replace the guarded experimental Codex bridge contract with a first-party native Codex-subscription/OAuth path if/when that upstream contract is finalized.
+1. Tighten the native mobile voice path so the mic flow cleanly handles permission, listening, recording, stop/send, cancel, on-device STT, and recorded-upload fallback without state ambiguity.
+2. Finish the native mobile Assistant shell pass: keep the drawer intentional, preserve per-tab state, and continue aligning in-thread cards with the desktop Assistant visual language.
+3. Continue shrinking [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) by extracting remaining runtime/conversation helpers into focused modules now that the support-panel JSX split is in place.
+4. Keep extending deterministic Assistant card projection and inline action behavior so common chat turns return `review_queue`, `knowledge_note`, `task_list`, `briefing`, or `capture_item` instead of generic summary fallbacks.
+5. Complete the desktop-web Assistant pass around the desktop main-room reference, including support-view copy cleanup and stronger desktop inline-card coverage.
+6. Finish the desktop helper capture-first redesign and validate the `Open in Library` / `Ask Assistant` handoff path on real host setups.
+7. Expand automated and manual proof across API, web Playwright, Android device screenshots, and helper validation so Assistant hydration, inline actions, and support-view navigation stay covered.
+8. Run the final repo-wide copy and docs audit so README, auth text, navigation, manifest metadata, helper copy, and self-host instructions all match the current Assistant-first product language.

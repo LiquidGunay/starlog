@@ -1,0 +1,60 @@
+{
+  "brand": {
+    "name": "Starlog",
+    "tagline": "One assistant thread for capture, planning, review, and follow-up."
+  },
+  "surfaces": {
+    "assistant": {
+      "label": "Assistant",
+      "shortLabel": "Assistant",
+      "description": "Persistent thread for commands, confirmations, and returned cards.",
+      "href": "/assistant"
+    },
+    "library": {
+      "label": "Library",
+      "shortLabel": "Library",
+      "description": "Notes, captures, saved sources, search, and artifact history.",
+      "href": "/notes"
+    },
+    "planner": {
+      "label": "Planner",
+      "shortLabel": "Planner",
+      "description": "Tasks, calendar, time blocks, and briefings.",
+      "href": "/planner"
+    },
+    "review": {
+      "label": "Review",
+      "shortLabel": "Review",
+      "description": "Flashcards and recall sessions.",
+      "href": "/review"
+    }
+  },
+  "cardLabels": {
+    "assistant_summary": "Assistant update",
+    "thread_context": "Thread context",
+    "review_queue": "Review queue",
+    "briefing": "Briefing",
+    "task_list": "Plan",
+    "knowledge_note": "Library note",
+    "capture_item": "Capture",
+    "tool_step": "Tool detail"
+  },
+  "assistant": {
+    "emptyTitle": "Start with a clear request.",
+    "emptyBody": "The assistant thread keeps the answer, the next move, and the supporting tool details in one place.",
+    "inputPlaceholder": "Ask Starlog to capture, plan, review, or follow up..."
+  },
+  "auth": {
+    "readyStatus": "Single-user passphrase access is required before Starlog opens.",
+    "signedInTitle": "Session active",
+    "signedOutTitle": "Access Starlog",
+    "signedOutBody": "Use one passphrase to unlock the assistant, library, planner, and review surfaces."
+  },
+  "helper": {
+    "workspaceKicker": "Desktop capture companion",
+    "workspaceTitle": "Capture Workspace",
+    "workspaceSubtitle": "Capture quickly, review recent items, and hand them into Assistant or Library. Diagnostics stay available but secondary.",
+    "quickTitle": "Capture",
+    "quickSubtitle": "Desktop helper"
+  }
+}

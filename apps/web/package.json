@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@starlog/contracts": "workspace:*",
     "next": "15.0.7",
     "react": "18.3.1",
     "react-dom": "18.3.1"

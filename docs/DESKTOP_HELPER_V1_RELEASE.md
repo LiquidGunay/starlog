@@ -1,6 +1,6 @@
 # Desktop Helper v1 Distribution Runbook
 
-Last updated: 2026-03-22
+Last updated: 2026-04-08
 
 ## Workitem coverage
 
@@ -21,8 +21,9 @@ Last updated: 2026-03-22
   - Linux host builds Linux installers.
   - macOS host builds/notarizes macOS artifacts.
   - Windows host builds/signs Windows artifacts.
-- Helper capture flow talks directly to the Starlog API (`/v1/capture`); a deployed PWA is not required to validate helper upload wiring.
+- Helper capture flow talks directly to the Starlog API (`/v1/capture`); a deployed desktop web app is not required to validate helper upload wiring.
 - The release scripts are intentionally under `tools/desktop-helper/scripts/` so build/release work is isolated from app/web/mobile workflows.
+- The helper is a capture-first companion. Release validation should prioritize capture speed, recent-item UX, and Assistant/Library handoff ahead of diagnostics polish.
 
 ## Artifact pipeline (WI-321)
 
@@ -115,6 +116,7 @@ Last updated: 2026-03-22
 ### Why this matters
 
 - The helper already surfaces runtime diagnostics in-app; this probe script gives an operator-visible preflight outside the GUI for release/support workflows.
+- Diagnostics are still secondary to the main capture workflow, so probe output should explain blockers without obscuring the primary capture path.
 
 ### Latest run evidence (2026-03-22, this host)
 
@@ -154,6 +156,7 @@ Last updated: 2026-03-22
 | Screenshot capture | Native Linux runtime still blocked by missing screenshot binaries; helper reports the missing-backend state cleanly | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
 | Active-window metadata | Pass/degraded-with-guidance paths covered; RC smoke kept browser-context fallback visible | Previously validated on host probes (2026-03-10) | Pending real-host rerun |
 | OCR dependency behavior | Pass for dependency detection; `tesseract` remains optional-degraded on this host | Pending rerun on current RC | Pending real-host rerun |
+| Recent capture actions | Pending rerun on the current Assistant/Library handoff build | Pending real-host rerun | Pending real-host rerun |
 | Shortcut behavior | Pass for browser fallback + plugin wiring checks | Manual-only runtime check still required | Manual-only runtime check still required |
 | Local bridge discovery/auth | Pass against a real authenticated bridge on `127.0.0.1:8091` | Pending real-host rerun | Pending real-host rerun |
 | Local voice server path | Pass for real rootless STT on `127.0.0.1:8171`; TTS remains optional/unconfigured on this host | Pending real-host rerun | Pending real-host rerun |

@@ -212,8 +212,8 @@ export function ObservatoryWorkspaceShell({
     <main className={joinClasses("observatory-workspace", className)}>
       <aside className="observatory-side-rail glass">
         <div className="observatory-side-brand">
-          <span className="observatory-eyebrow">The Observatory</span>
-          <h2>Stellar Tier</h2>
+          <span className="observatory-eyebrow">Starlog</span>
+          <h2>Assistant-first workspace</h2>
         </div>
         <nav className="observatory-side-nav" aria-label="Observatory surfaces">
           {OBSERVATORY_SURFACES.map((item) => {

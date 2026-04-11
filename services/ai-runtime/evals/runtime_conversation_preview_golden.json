@@ -1,12 +1,12 @@
 {
-  "id": "main-room-thread-reset",
+  "id": "assistant-thread-reset",
   "workflow": "chat_turn",
   "input": {
-    "title": "Main Room session reset",
+    "title": "Assistant session reset",
     "text": "Reset the live session state but keep the persistent thread, inline cards, and tool traces intact.",
     "context": {
       "thread_slug": "primary",
-      "surface": "Main Room",
+      "surface": "Assistant",
       "tool_trace_visibility": true
     }
   },

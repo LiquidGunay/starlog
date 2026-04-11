@@ -6,11 +6,29 @@ from pydantic import BaseModel, Field
 ConversationRole = Literal["system", "user", "assistant", "tool"]
 
 
+class ConversationCardEntityRef(BaseModel):
+    entity_type: str = Field(..., min_length=1)
+    entity_id: str = Field(..., min_length=1)
+    href: str | None = None
+    title: str | None = None
+
+
+class ConversationCardAction(BaseModel):
+    id: str = Field(..., min_length=1)
+    label: str = Field(..., min_length=1)
+    kind: Literal["navigate", "mutation", "composer"]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    style: Literal["primary", "secondary", "ghost", "danger"] = "secondary"
+    requires_confirmation: bool = False
+
+
 class ConversationCard(BaseModel):
     kind: str = Field(..., min_length=1)
     version: int = Field(default=1, ge=1)
     title: str | None = None
     body: str | None = None
+    entity_ref: ConversationCardEntityRef | None = None
+    actions: list[ConversationCardAction] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

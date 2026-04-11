@@ -8,7 +8,15 @@ from sqlite3 import Connection
 from typing import Any, Literal
 
 from app.schemas.agent import AgentCommandIntent, AgentCommandResponse, AgentCommandStep
-from app.services import agent_service, ai_jobs_service, artifacts_service, conversation_service, integrations_service, tasks_service
+from app.services import (
+    agent_service,
+    ai_jobs_service,
+    artifacts_service,
+    conversation_card_service,
+    conversation_service,
+    integrations_service,
+    tasks_service,
+)
 
 COMMAND_DATE_PATTERN = r"(today|tomorrow|\d{4}-\d{2}-\d{2})"
 DATETIME_PATTERN = r"(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2})"
@@ -580,32 +588,11 @@ def _execute_planned_calls(
 
 
 def _assistant_cards(response: AgentCommandResponse) -> list[dict[str, Any]]:
-    cards: list[dict[str, Any]] = [
-        {
-            "kind": "assistant_summary",
-            "title": response.matched_intent.replace("_", " "),
-            "body": response.summary,
-            "metadata": {
-                "planner": response.planner,
-                "status": response.status,
-            },
-        }
-    ]
-    for step in response.steps:
-        cards.append(
-            {
-                "kind": "tool_step",
-                "title": step.tool_name,
-                "body": step.message or step.status,
-                "metadata": {
-                    "status": step.status,
-                    "arguments": step.arguments,
-                    "confirmation_state": step.confirmation_state,
-                    "requires_confirmation": step.requires_confirmation,
-                },
-            }
-        )
-    return cards
+    raise RuntimeError("_assistant_cards no longer accepts a response without a database connection")
+
+
+def _assistant_cards_for_conversation(conn: Connection, response: AgentCommandResponse) -> list[dict[str, Any]]:
+    return conversation_card_service.project_agent_response_cards(conn, response)
 
 
 def _persist_conversation_turn(
@@ -616,52 +603,47 @@ def _persist_conversation_turn(
     input_mode: str,
     device_target: str,
 ) -> None:
-    conversation_service.append_message(
+    conversation_service.record_assistant_tool_turn(
         conn,
-        role="user",
         content=command,
-        metadata={
+        assistant_content=response.summary,
+        cards=_assistant_cards_for_conversation(conn, response),
+        tool_traces=[
+            {
+                "tool_name": step.tool_name,
+                "arguments": step.arguments,
+                "status": step.status,
+                "result": step.result,
+                "metadata": {
+                    "planner": response.planner,
+                    "message": step.message,
+                    "backing_endpoint": step.backing_endpoint,
+                    "requires_confirmation": step.requires_confirmation,
+                    "confirmation_state": step.confirmation_state,
+                },
+            }
+            for step in response.steps
+        ],
+        request_metadata={
             "input_mode": input_mode,
             "device_target": device_target,
             "execute_requested": response.status != "planned",
         },
-    )
-    assistant_message = conversation_service.append_message(
-        conn,
-        role="assistant",
-        content=response.summary,
-        cards=_assistant_cards(response),
-        metadata={
+        assistant_metadata={
             "assistant_command": response.model_dump(mode="json"),
             "matched_intent": response.matched_intent,
             "planner": response.planner,
             "status": response.status,
         },
-    )
-    for step in response.steps:
-        conversation_service.record_tool_trace(
-            conn,
-            message_id=str(assistant_message["id"]),
-            tool_name=step.tool_name,
-            arguments=step.arguments,
-            status=step.status,
-            result=step.result,
-            metadata={
-                "planner": response.planner,
-                "message": step.message,
-                "backing_endpoint": step.backing_endpoint,
-                "requires_confirmation": step.requires_confirmation,
-                "confirmation_state": step.confirmation_state,
-            },
-        )
-    conversation_service.update_session_state(
-        conn,
-        {
+        session_state_patch={
             "last_command": command,
             "last_matched_intent": response.matched_intent,
             "last_planner": response.planner,
             "last_status": response.status,
             "last_tool_names": [step.tool_name for step in response.steps],
+            "last_turn_kind": "assistant_command",
+            "last_user_message": command,
+            "last_assistant_response": response.summary,
         },
     )
 
@@ -692,6 +674,71 @@ def run_command(
         device_target=device_target,
     )
     return response
+
+
+def run_conversation_command(
+    conn: Connection,
+    command: str,
+    *,
+    input_mode: str,
+    device_target: str,
+) -> dict[str, Any]:
+    matched_intent, summary, planned_calls = _plan_command(conn, command, device_target)
+    response = _execute_planned_calls(
+        conn,
+        command,
+        planner="deterministic",
+        matched_intent=matched_intent,
+        summary=summary,
+        execute=True,
+        planned_calls=planned_calls,
+        enforce_confirmation_policy=False,
+    )
+    return conversation_service.record_assistant_tool_turn(
+        conn,
+        content=command,
+        assistant_content=response.summary,
+        cards=_assistant_cards_for_conversation(conn, response),
+        tool_traces=[
+            {
+                "tool_name": step.tool_name,
+                "arguments": step.arguments,
+                "status": step.status,
+                "result": step.result,
+                "metadata": {
+                    "planner": response.planner,
+                    "message": step.message,
+                    "backing_endpoint": step.backing_endpoint,
+                    "requires_confirmation": step.requires_confirmation,
+                    "confirmation_state": step.confirmation_state,
+                },
+            }
+            for step in response.steps
+        ],
+        request_metadata={
+            "input_mode": input_mode,
+            "device_target": device_target,
+            "execute_requested": True,
+        },
+        assistant_metadata={
+            "assistant_command": response.model_dump(mode="json"),
+            "matched_intent": response.matched_intent,
+            "planner": response.planner,
+            "status": response.status,
+        },
+        session_state_patch={
+            "last_command": command,
+            "last_matched_intent": response.matched_intent,
+            "last_planner": response.planner,
+            "last_status": response.status,
+            "last_tool_names": [step.tool_name for step in response.steps],
+            "last_turn_kind": "assistant_command",
+            "last_user_message": command,
+            "last_assistant_response": response.summary,
+            "last_chat_turn_provider": response.planner,
+            "last_chat_turn_model": "",
+        },
+    )
 
 
 def apply_ai_command_plan(

@@ -1,19 +1,19 @@
+import { productCardLabel } from "@starlog/contracts";
+
 export type ConversationCardRegistryEntry = {
   label: string;
   tone: string;
   glyph?: string;
-  actionLabel?: string;
-  actionKind?: "reuse" | "navigate";
-  href?: string;
 };
 
 const REGISTRY: Record<string, ConversationCardRegistryEntry> = {
-  assistant_summary: { label: "Operational Briefing", tone: "brief", glyph: "✦", actionLabel: "Reuse in composer", actionKind: "reuse" },
-  thread_context: { label: "Thread context", tone: "context", glyph: "◌", actionLabel: "Reuse in composer", actionKind: "reuse" },
-  review_queue: { label: "SRS challenge", tone: "review", glyph: "◈", actionLabel: "Open review", actionKind: "navigate", href: "/review" },
-  briefing: { label: "Daily Briefing", tone: "brief", glyph: "◉", actionLabel: "Open agenda", actionKind: "navigate", href: "/planner" },
-  task_list: { label: "Stellar Agenda", tone: "task", glyph: "☰", actionLabel: "Open agenda", actionKind: "navigate", href: "/planner" },
-  knowledge_note: { label: "Knowledge Fragment", tone: "knowledge", glyph: "✳", actionLabel: "Open note", actionKind: "navigate", href: "/notes" },
+  assistant_summary: { label: productCardLabel("assistant_summary"), tone: "brief", glyph: "✦" },
+  thread_context: { label: productCardLabel("thread_context"), tone: "context", glyph: "◌" },
+  review_queue: { label: productCardLabel("review_queue"), tone: "review", glyph: "◈" },
+  briefing: { label: productCardLabel("briefing"), tone: "brief", glyph: "◉" },
+  task_list: { label: productCardLabel("task_list"), tone: "task", glyph: "☰" },
+  knowledge_note: { label: productCardLabel("knowledge_note"), tone: "knowledge", glyph: "✳" },
+  capture_item: { label: productCardLabel("capture_item"), tone: "knowledge", glyph: "⬒" },
   tool_step: { label: "Tool step", tone: "context", glyph: "⊹" },
 };
 
@@ -22,10 +22,8 @@ export function getConversationCardRegistryEntry(kind: string, title?: string | 
     return REGISTRY[kind];
   }
   return {
-    label: title?.trim() || kind.replace(/_/g, " "),
+    label: title?.trim() || productCardLabel(kind),
     tone: "default",
     glyph: "•",
-    actionLabel: "Reuse in composer",
-    actionKind: "reuse",
   };
 }

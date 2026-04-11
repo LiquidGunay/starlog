@@ -1,8 +1,10 @@
 # Desktop Helper Main-Laptop Setup Pack
 
-Last updated: 2026-03-22
+Last updated: 2026-04-08
 
 This guide is the daily-use setup handoff for the Linux desktop helper on this host.
+The helper is a capture-first Starlog companion: its primary job is to grab clipboard and
+screenshots quickly, show recent captures, and hand those captures into `Assistant` or `Library`.
 
 ## Selected artifact
 
@@ -115,7 +117,7 @@ PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scrip
 ```bash
 export STARLOG_BRIDGE_AUTH_TOKEN='bridge-secret'
 export STARLOG_BRIDGE_STT_SERVER_URL='http://127.0.0.1:8171/inference'
-export STARLOG_BRIDGE_CONTEXT_JSON='{"app_name":"Codex","window_title":"WI-585 Voice Smoke","platform":"linux"}'
+export STARLOG_BRIDGE_CONTEXT_JSON='{"app_name":"Codex","window_title":"Desktop Helper Smoke","platform":"linux"}'
 PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime uvicorn bridge.server:app --host 127.0.0.1 --port 8091
 ```
 
@@ -157,9 +159,12 @@ node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/
 
 3. For an installed native helper check, trigger `Cmd/Ctrl+Shift+C`.
 4. Confirm the status line reports a saved clip and `Recent Captures` shows the new artifact id.
-5. Trigger `Cmd/Ctrl+Shift+S`.
-6. Confirm the status line reports either a saved screenshot or a precise missing-backend note.
-7. In the workspace, inspect `Runtime Diagnostics` and `Recent Captures` for:
+5. Use the recent capture actions to verify:
+   - `Open in Library` opens the capture in the main Starlog workspace.
+   - `Ask Assistant about this capture` hands the capture into the primary thread flow.
+6. Trigger `Cmd/Ctrl+Shift+S`.
+7. Confirm the status line reports either a saved screenshot or a precise missing-backend note.
+8. In the workspace, inspect `Runtime Diagnostics` and `Recent Captures` for:
    - capture backend labels,
    - active-window metadata,
    - OCR state,

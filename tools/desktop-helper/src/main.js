@@ -1,5 +1,8 @@
+import { productCopy } from "./generated-product-copy.js";
+
 const statusNode = document.getElementById("status");
 const apiBaseInput = document.getElementById("apiBase");
+const webBaseInput = document.getElementById("webBase");
 const bridgeBaseInput = document.getElementById("bridgeBase");
 const bridgeTokenInput = document.getElementById("bridgeToken");
 const tokenInput = document.getElementById("token");
@@ -23,6 +26,7 @@ const SURFACE_MODE_STORAGE_KEY = "starlog.desktop-helper.surface-mode.v1";
 const MAIN_WINDOW_LABEL = "main";
 const WORKSPACE_WINDOW_LABEL = "workspace";
 const DEFAULT_API_BASE = "http://localhost:8000";
+const DEFAULT_WEB_BASE = "http://localhost:3000";
 const DEFAULT_BRIDGE_BASE = "http://127.0.0.1:8091";
 const MAX_RECENT_CAPTURES = 6;
 const SCREENSHOT_PREVIEW_MAX_DIMENSION = 320;
@@ -45,6 +49,24 @@ const GLOBAL_SHORTCUTS = [
     handler: () => clipScreenshot().catch(() => undefined),
   },
 ];
+
+function applyProductCopy() {
+  document.title = `${productCopy.brand.name} Capture Companion`;
+  const bindings = [
+    ["workspaceKicker", productCopy.helper.workspaceKicker],
+    ["workspaceTitle", productCopy.helper.workspaceTitle],
+    ["workspaceSubtitle", productCopy.helper.workspaceSubtitle],
+    ["quickTitle", productCopy.helper.quickTitle],
+    ["quickSubtitle", productCopy.helper.quickSubtitle],
+    ["quickCopy", "Capture the current selection or frame, then hand it back into Assistant or Library."],
+  ];
+  for (const [id, value] of bindings) {
+    const node = document.getElementById(id);
+    if (node) {
+      node.textContent = value;
+    }
+  }
+}
 
 function setStatus(message) {
   statusNode.textContent = message;
@@ -117,7 +139,7 @@ async function openWorkspaceSurface() {
     }
 
     const workspaceWindow = new WebviewWindow(WORKSPACE_WINDOW_LABEL, {
-      title: "Starlog Helper Studio",
+      title: `${productCopy.brand.name} ${productCopy.helper.workspaceTitle}`,
       url: "index.html?mode=workspace",
       width: WORKSPACE_SURFACE_WINDOW.width,
       height: WORKSPACE_SURFACE_WINDOW.height,
@@ -529,6 +551,7 @@ function buildRuntimeDiagnosticsSnapshot() {
   return JSON.stringify({
     capturedAt: new Date().toISOString(),
     apiBase: readConfig().apiBase,
+    webBase: readConfig().webBase,
     runtime: runtimeDiagnostics.runtime,
     platform: runtimeDiagnostics.platform,
     diagnostics: {
@@ -545,11 +568,12 @@ function buildRuntimeDiagnosticsSnapshot() {
 function buildSetupChecklistSnapshot() {
   const config = readConfig();
   const lines = [
-    "Starlog Desktop Helper Setup Checklist",
+    "Starlog Capture Companion Setup Checklist",
     `Captured at: ${new Date().toISOString()}`,
     `Runtime: ${runtimeDiagnostics.runtime}`,
     `Platform: ${runtimeDiagnostics.platform}`,
     `API base: ${config.apiBase}`,
+    `Web base: ${config.webBase}`,
     `Bridge base: ${config.bridgeBase}`,
     `Bridge auth token configured: ${config.bridgeToken ? "yes" : "no"}`,
     `Bearer token configured: ${config.token ? "yes" : "no"}`,
@@ -557,17 +581,18 @@ function buildSetupChecklistSnapshot() {
     "Checklist:",
     "1. Launch the packaged helper on this device.",
     `2. Set API base to ${config.apiBase}.`,
-    `3. Set local bridge base to ${config.bridgeBase}.`,
+    `3. Set web base to ${config.webBase}.`,
+    `4. Set local bridge base to ${config.bridgeBase}.`,
     config.bridgeToken
-      ? "4. Bridge auth token is configured locally. Keep it aligned with STARLOG_BRIDGE_AUTH_TOKEN when bridge auth is enabled."
-      : "4. Add a bridge auth token only if the local bridge reports auth is required.",
+      ? "5. Bridge auth token is configured locally. Keep it aligned with STARLOG_BRIDGE_AUTH_TOKEN when bridge auth is enabled."
+      : "5. Add a bridge auth token only if the local bridge reports auth is required.",
     config.token
-      ? "5. Bearer token is configured on this device. Keep using secure storage for daily use."
-      : "5. Paste a bearer token into the helper before testing live uploads.",
-    "6. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
-    "7. Discover or Check Local Bridge to confirm STT/TTS/context routes are reachable on localhost.",
-    "8. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
-    "9. Review Recent Captures to confirm upload IDs, metadata, and screenshot previews render.",
+      ? "6. Bearer token is configured on this device. Keep using secure storage for daily use."
+      : "6. Paste a bearer token into the helper before testing live uploads.",
+    "7. Refresh Diagnostics and resolve anything marked Partial or Unavailable.",
+    "8. Discover or Check Local Bridge to confirm STT/TTS/context routes are reachable on localhost.",
+    "9. Trigger Cmd/Ctrl+Shift+C and Cmd/Ctrl+Shift+S to confirm clipboard and screenshot capture.",
+    "10. Review Recent Captures to confirm upload IDs, metadata, previews, and handoff actions render.",
     "",
     "Runtime readiness:",
   ];
@@ -583,7 +608,7 @@ function buildSetupChecklistSnapshot() {
   lines.push(
     "",
     "Reset:",
-    "Use Reset Local State in the helper studio to clear the local API base, secure/local token, recent captures, and remembered surface mode on this device.",
+    "Use Reset Local State in the capture workspace to clear the local API base, web base, secure/local token, recent captures, and remembered surface mode on this device.",
   );
 
   return lines.join("\n");
@@ -641,6 +666,9 @@ function applyStoredConfig(config) {
   apiBaseInput.value = typeof config?.apiBase === "string" && config.apiBase.trim()
     ? config.apiBase
     : DEFAULT_API_BASE;
+  webBaseInput.value = typeof config?.webBase === "string" && config.webBase.trim()
+    ? config.webBase
+    : DEFAULT_WEB_BASE;
   bridgeBaseInput.value = typeof config?.bridgeBase === "string" && config.bridgeBase.trim()
     ? config.bridgeBase
     : DEFAULT_BRIDGE_BASE;
@@ -653,6 +681,7 @@ function applyStoredConfig(config) {
 function readConfig() {
   return {
     apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
+    webBase: webBaseInput.value.trim() || DEFAULT_WEB_BASE,
     bridgeBase: bridgeBaseInput.value.trim() || DEFAULT_BRIDGE_BASE,
     bridgeToken: bridgeTokenInput.value.trim(),
     token: tokenInput.value.trim(),
@@ -662,6 +691,7 @@ function readConfig() {
 function persistConfig() {
   const nextConfig = {
     apiBase: apiBaseInput.value.trim() || DEFAULT_API_BASE,
+    webBase: webBaseInput.value.trim() || DEFAULT_WEB_BASE,
     bridgeBase: bridgeBaseInput.value.trim() || DEFAULT_BRIDGE_BASE,
     bridgeToken: bridgeTokenInput.value.trim(),
   };
@@ -736,6 +766,61 @@ async function hydrateSecureTokenFromStorage() {
 function formatCapturedAt(value) {
   const timestamp = new Date(value);
   return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString();
+}
+
+function assistantPromptForCapture(entry) {
+  const summary = clipSummary(entry.summary || "");
+  return [
+    `Help me process this capture from ${entry.appName || "desktop"}.`,
+    `Artifact ID: ${entry.artifactId}`,
+    summary ? `Summary: ${summary}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function openSupportUrl(url, title = productCopy.brand.name) {
+  if (!url) {
+    return;
+  }
+
+  if (!hasTauriRuntime()) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  try {
+    const { WebviewWindow } = await import("@tauri-apps/api/window");
+    new WebviewWindow(`support-${Date.now()}`, {
+      title,
+      url,
+      width: 1280,
+      height: 860,
+      minWidth: 980,
+      minHeight: 720,
+      resizable: true,
+      center: true,
+      focus: true,
+    });
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+async function openCaptureInLibrary(entry) {
+  const { webBase } = readConfig();
+  await openSupportUrl(`${webBase}/artifacts?artifact=${encodeURIComponent(entry.artifactId)}`, `${productCopy.brand.name} Library`);
+  setStatus(`Opened ${entry.artifactId} in Library`);
+}
+
+async function askAssistantAboutCapture(entry) {
+  const { webBase } = readConfig();
+  const prompt = assistantPromptForCapture(entry);
+  await openSupportUrl(
+    `${webBase}/assistant?draft=${encodeURIComponent(prompt)}`,
+    `${productCopy.brand.name} Assistant`,
+  );
+  setStatus("Opened Assistant handoff for the selected capture");
 }
 
 function renderRecentCaptures(entries) {
@@ -830,6 +915,33 @@ function renderRecentCaptures(entries) {
       card.appendChild(preview);
     }
 
+    const actions = document.createElement("div");
+    actions.className = "recent-action-row";
+
+    const openLibraryButton = document.createElement("button");
+    openLibraryButton.type = "button";
+    openLibraryButton.className = "recent-action-button";
+    openLibraryButton.textContent = "Open in Library";
+    openLibraryButton.addEventListener("click", () => {
+      openCaptureInLibrary(entry).catch((error) => {
+        setStatus(errorMessage(error, "Failed to open Library"));
+      });
+    });
+    actions.appendChild(openLibraryButton);
+
+    const askAssistantButton = document.createElement("button");
+    askAssistantButton.type = "button";
+    askAssistantButton.className = "recent-action-button";
+    askAssistantButton.textContent = "Ask Assistant";
+    askAssistantButton.addEventListener("click", () => {
+      askAssistantAboutCapture(entry).catch((error) => {
+        setStatus(errorMessage(error, "Failed to open Assistant handoff"));
+      });
+    });
+    actions.appendChild(askAssistantButton);
+
+    card.appendChild(actions);
+
     recentCapturesNode.appendChild(card);
   }
 }
@@ -841,6 +953,7 @@ function persistRecentCaptures(entries) {
 
 async function resetLocalState() {
   apiBaseInput.value = DEFAULT_API_BASE;
+  webBaseInput.value = DEFAULT_WEB_BASE;
   bridgeBaseInput.value = DEFAULT_BRIDGE_BASE;
   bridgeTokenInput.value = "";
   tokenInput.value = "";
@@ -1154,7 +1267,7 @@ async function readCaptureContext() {
   const clippedAt = new Date().toISOString();
   const fallbackContext = {
     appName: "Browser runtime",
-    windowTitle: document.title || "Starlog Helper",
+    windowTitle: document.title || `${productCopy.brand.name} Capture Companion`,
     contextBackend: "browser",
     platform: navigator.platform || "unknown",
     clippedAt,
@@ -1565,10 +1678,12 @@ async function copySetupChecklist() {
 }
 
 applyStoredConfig(readStoredConfig());
+applyProductCopy();
 document.body.dataset.helperMode = currentSurfaceMode;
 renderRecentCaptures(readStoredRecentCaptures());
 renderRuntimeDiagnostics(runtimeDiagnostics);
 apiBaseInput.addEventListener("input", persistConfig);
+webBaseInput.addEventListener("input", persistConfig);
 bridgeBaseInput.addEventListener("input", persistConfig);
 bridgeTokenInput.addEventListener("input", persistConfig);
 tokenInput.addEventListener("input", () => {

@@ -1,11 +1,17 @@
 # Starlog Desktop Helper (Tauri)
 
-Desktop helper for clipping content from non-browser apps.
+Desktop capture companion for Starlog.
 
 ## Current capabilities
-- Two-surface desktop UX aligned to Starlog design language:
-  - compact quick-capture popup (capture buttons + open-workspace launcher),
-  - full helper workspace window (diagnostics + recent captures + API/token controls).
+
+- Two-surface desktop UX aligned to the Starlog design language:
+  - compact quick-capture popup,
+  - full helper workspace window.
+- Capture-first workflow:
+  - clipboard capture,
+  - screenshot capture,
+  - recent captures,
+  - handoff into `Library` or `Assistant`.
 - Global OS shortcuts plus window-local fallback (`Cmd/Ctrl+Shift+C` and `Cmd/Ctrl+Shift+S`).
 - Persisted API base between launches; bearer token uses OS secure storage in Tauri runtime (browser fallback keeps local-storage behavior only outside Tauri).
 - Setup-pack controls in the workspace config surface:
@@ -33,6 +39,7 @@ Desktop helper for clipping content from non-browser apps.
 | Screenshot capture | Validated via local helper build; requires `grim+slurp`, `gnome-screenshot`, `import`, `grim`, or `scrot` | Expected via `screencapture -i`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell full-screen capture into `%TEMP%` | Linux falls back to full-screen capture when only `grim` or `scrot` is present. macOS/Windows failures now map to explicit permission guidance. |
 | Active window metadata | Validated via local helper build; uses `xdotool` or `hyprctl` | Expected via `osascript`/System Events; real-host validation still pending | Validated on 2026-03-10 via host PowerShell user32 bridge after fixing the `$PID` variable collision in the probe script | Missing metadata does not block capture; diagnostics now degrade with actionable host guidance instead of silently implying success. |
 | OCR | `tesseract` | `tesseract` | `tesseract` | OCR is intentionally local-only. |
+| Recent capture actions | Pending rerun on the current Assistant/Library handoff build | Pending rerun | Pending rerun | Validate both `Open in Library` and `Ask Assistant about this capture`. |
 | Shortcut wiring | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Window-local key handling remains the last-resort fallback. |
 
 ## Host validation evidence
@@ -41,7 +48,7 @@ Desktop helper for clipping content from non-browser apps.
 | --- | --- | --- | --- |
 | Linux helper workspace in this repo | 2026-03-10 | Playwright helper UI tests, `cargo check`, Linux Tauri release build | Passed. Browser fallback logic, runtime note rendering, Rust backend checks, and the Linux release artifact stayed green. |
 | Linux RC localhost stack in this repo | 2026-03-22 | `build_release_artifacts.sh`, runtime dependency probe, Linux bootstrap script, authenticated bridge discovery on `127.0.0.1:8091`, real rootless STT smoke on `127.0.0.1:8171`, and real browser-fallback clipboard upload into a local API on `127.0.0.1:8010` | Passed for the current host-supported path. The helper discovered the authenticated bridge, uploaded a real clipboard capture (`art_b40fadfafc55444897413ec4bdc59593`) into the local API, and the rootless `faster-whisper` server transcribed `jfk.wav` through the bridge on CPU fallback. Native Linux clipboard/screenshot/OCR still require the generated `apt-get` package install on the Linux side. |
-| Windows host backend from WSL via `powershell.exe` | 2026-03-10 | PowerShell version probe, `Get-Clipboard -Raw`, foreground-window probe, full-screen screenshot capture | Passed. PowerShell reported `5.1.26100.7705`; clipboard returned `STATUS=ok` with `LENGTH=141`; the foreground-window probe returned `APP:Codex` / `TITLE:Codex`; screenshot capture wrote `C:\Users\bossg\AppData\Local\Temp\starlog-host-matrix-test.png` with `SIZE=192937`. |
+| Windows host backend from WSL via `powershell.exe` | 2026-03-10 | PowerShell version probe, `Get-Clipboard -Raw`, foreground-window probe, full-screen screenshot capture | Passed. PowerShell reported `5.1.26100.7705`; clipboard returned `STATUS=ok` with `LENGTH=141`; the foreground-window probe returned `APP:Codex` / `TITLE:Codex`; screenshot capture wrote `C:\\Users\\bossg\\AppData\\Local\\Temp\\starlog-host-matrix-test.png` with `SIZE=192937`. |
 | Windows OCR/tooling probe from WSL via `cmd.exe` | 2026-03-10 | `where tesseract` | Not installed on the Windows `PATH` in this host check, so OCR remains a setup dependency even though screenshot capture itself worked. |
 | Windows shortcut path | 2026-03-10 | Manual-only check | Not directly automatable from WSL. The helper still exposes the same Tauri global-shortcut plus window-keydown fallback matrix documented below. |
 
@@ -52,7 +59,7 @@ Desktop helper for clipping content from non-browser apps.
 | Linux | Screenshot diagnostics prefer `grim` or `scrot` only | Region capture is not fully available. Install `slurp`, `gnome-screenshot`, or ImageMagick `import` to restore an area-selection backend. |
 | macOS | Screenshot note says the `screencapture` attempt was cancelled | Dismissing the selection is expected to report a cancellation. Re-run the capture and complete the selection, and grant Screen Recording permission if every attempt fails. |
 | macOS | Active window diagnostics degrade or notes mention `osascript` failure | Grant Automation permission (System Events) and Accessibility permission for the helper, keep a normal app window focused, then refresh diagnostics. |
-| Windows | Screenshot note says the `powershell` attempt failed | Run the helper in a logged-in Windows desktop session and keep `powershell.exe` on `PATH`. When running probe scripts from WSL, use `-ExecutionPolicy Bypass` because unsigned `\\wsl$` scripts are blocked by default. |
+| Windows | Screenshot note says the `powershell` attempt failed | Run the helper in a logged-in Windows desktop session and keep `powershell.exe` on `PATH`. When running probe scripts from WSL, use `-ExecutionPolicy Bypass` because unsigned `\\\\wsl$` scripts are blocked by default. |
 | Windows | Active window diagnostics degrade or recent captures show `powershell-user32-error` | Keep a normal Windows app focused, then refresh diagnostics or retry the clip. If the problem persists, confirm PowerShell can still load `user32.dll` from the interactive session. |
 | Windows | OCR is marked degraded or unavailable | Install `tesseract` on the Windows `PATH`. Screenshot capture still works without OCR, but extracted text will stay empty until `tesseract` is present. |
 | Browser fallback | Clipboard note mentions permission denial | Focus the helper window and allow clipboard access, or switch back to the native Tauri runtime for the preferred clipboard path. |
@@ -102,8 +109,8 @@ Desktop helper for clipping content from non-browser apps.
 1. Launch the helper and confirm the runtime diagnostics card shows the expected clipboard/screenshot backends for the current desktop session, then use Refresh Diagnostics after any local dependency change.
 2. Trigger `Cmd/Ctrl+Shift+C` while another app is focused, then again with the helper focused to verify both global and window-local shortcut paths.
 3. Trigger `Cmd/Ctrl+Shift+S` and confirm the status text clearly reports whether the helper used region capture, a full-screen fallback, or no backend at all.
-4. Use Copy Diagnostics to capture a redacted runtime snapshot for issue reporting, then inspect Recent captures and confirm metadata, capture-backend labels, OCR details, and screenshot preview thumbnails render after a successful upload.
-5. Intentionally reproduce one clipboard or screenshot failure path and confirm the copied diagnostics snapshot includes the latest failure note without exposing the bearer token.
+4. Inspect Recent captures and confirm metadata, capture-backend labels, OCR details, screenshot preview thumbnails, and the Assistant/Library handoff actions render after a successful upload.
+5. Use Copy Diagnostics to capture a redacted runtime snapshot for issue reporting, then intentionally reproduce one clipboard or screenshot failure path and confirm the copied diagnostics snapshot includes the latest failure note without exposing the bearer token.
 
 ## Current Linux host note
 

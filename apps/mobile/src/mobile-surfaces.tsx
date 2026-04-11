@@ -1,19 +1,16 @@
+import { useState } from "react";
+import type { AssistantCard as ConversationCard, AssistantCardAction } from "@starlog/contracts";
+import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 
+const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
+
 type SharedProps = {
   styles: Record<string, any>;
   palette: Record<string, string>;
-};
-
-type ConversationCard = {
-  kind: string;
-  version: number;
-  title?: string | null;
-  body?: string | null;
-  metadata: Record<string, unknown>;
 };
 
 type ConversationMessage = {
@@ -28,14 +25,19 @@ type MobileHomeSurfaceProps = SharedProps & {
   pendingConversationTurn: boolean;
   homeDraft: string;
   setHomeDraft: (value: string) => void;
-  runMainRoomTurn: () => void;
+  runAssistantTurn: () => void;
+  onVoiceAction: () => void;
+  onCancelVoiceAction: () => void;
+  voiceActionState: "idle" | "listening" | "recording" | "ready";
+  voiceActionHint?: string | null;
   refreshThread: () => void;
   resetConversationSession: () => void;
   visibleConversationMessages: ConversationMessage[];
   hiddenConversationMessageCount: number;
-  openAssistantInPwa: () => void;
   previewCommandFlow: () => void;
   formatCardMeta: (card: ConversationCard) => string;
+  onCardAction: (action: AssistantCardAction, card: ConversationCard) => void;
+  reuseCardText: (value: string) => void;
 };
 
 type MobileNotesSurfaceProps = SharedProps & {
@@ -175,16 +177,351 @@ function pillStyle(palette: Record<string, string>, active = false) {
 }
 
 function mapRecentMessages(messages: ConversationMessage[]) {
-  return messages.slice(-4);
+  return messages.slice(-8);
 }
 
-function findLatestAssistantMessage(messages: ConversationMessage[]): ConversationMessage | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === "assistant") {
-      return messages[index];
-    }
+function isDiagnosticConversationCard(card: ConversationCard): boolean {
+  return DIAGNOSTIC_CARD_KINDS.has(card.kind);
+}
+
+function conversationCardIcon(kind: string): keyof typeof MaterialCommunityIcons.glyphMap {
+  if (kind === "review_queue") {
+    return "cards-outline";
   }
-  return undefined;
+  if (kind === "knowledge_note") {
+    return "notebook-outline";
+  }
+  if (kind === "task_list") {
+    return "checkbox-marked-circle-outline";
+  }
+  if (kind === "briefing") {
+    return "play-circle-outline";
+  }
+  if (kind === "capture_item") {
+    return "tray-arrow-down";
+  }
+  return "star-four-points-outline";
+}
+
+function cardAttachmentLabel(kind: string, title?: string | null): string {
+  if (title && title.trim()) {
+    return title.trim();
+  }
+  if (kind === "review_queue") {
+    return "Review item";
+  }
+  if (kind === "knowledge_note") {
+    return "Library note";
+  }
+  if (kind === "task_list") {
+    return "Task item";
+  }
+  if (kind === "briefing") {
+    return "Briefing";
+  }
+  if (kind === "capture_item") {
+    return "Capture";
+  }
+  return "Assistant attachment";
+}
+
+function compactCardMeta(meta: string): string {
+  return meta.replace(/^v\d+(?:\s*·\s*)?/i, "").trim();
+}
+
+function bodyLines(body?: string | null): string[] {
+  return (body || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function conversationCardTone(kind: string, palette: Record<string, string>) {
+  if (kind === "review_queue") {
+    return {
+      cardBorder: "rgba(166, 222, 191, 0.18)",
+      cardBackground: "rgba(42, 33, 39, 0.96)",
+      accentBackground: "rgba(166, 222, 191, 0.14)",
+      accentBorder: "rgba(166, 222, 191, 0.24)",
+      accentText: "#cfeeda",
+      bodyBackground: "rgba(255,255,255,0.03)",
+    };
+  }
+  if (kind === "task_list") {
+    return {
+      cardBorder: "rgba(243, 207, 122, 0.18)",
+      cardBackground: "rgba(42, 33, 39, 0.96)",
+      accentBackground: "rgba(243, 207, 122, 0.14)",
+      accentBorder: "rgba(243, 207, 122, 0.24)",
+      accentText: "#f4ddb0",
+      bodyBackground: "rgba(255,255,255,0.03)",
+    };
+  }
+  if (kind === "knowledge_note") {
+    return {
+      cardBorder: "rgba(151, 188, 255, 0.18)",
+      cardBackground: "rgba(42, 33, 39, 0.96)",
+      accentBackground: "rgba(151, 188, 255, 0.14)",
+      accentBorder: "rgba(151, 188, 255, 0.22)",
+      accentText: "#d7e6ff",
+      bodyBackground: "rgba(255,255,255,0.03)",
+    };
+  }
+  if (kind === "briefing") {
+    return {
+      cardBorder: "rgba(241, 182, 205, 0.2)",
+      cardBackground: "rgba(47, 32, 41, 0.98)",
+      accentBackground: "rgba(241, 182, 205, 0.14)",
+      accentBorder: "rgba(241, 182, 205, 0.24)",
+      accentText: palette.accent,
+      bodyBackground: "rgba(255,255,255,0.03)",
+    };
+  }
+  if (kind === "capture_item") {
+    return {
+      cardBorder: "rgba(241, 182, 205, 0.2)",
+      cardBackground: "rgba(47, 32, 41, 0.98)",
+      accentBackground: "rgba(241, 182, 205, 0.14)",
+      accentBorder: "rgba(241, 182, 205, 0.24)",
+      accentText: palette.accent,
+      bodyBackground: "rgba(255,255,255,0.03)",
+    };
+  }
+  return {
+    cardBorder: "rgba(241, 182, 205, 0.16)",
+    cardBackground: "rgba(45, 31, 40, 0.96)",
+    accentBackground: "rgba(241, 182, 205, 0.12)",
+    accentBorder: "rgba(241, 182, 205, 0.18)",
+    accentText: palette.accent,
+    bodyBackground: "rgba(255,255,255,0.03)",
+  };
+}
+
+function renderConversationCardPreview(
+  card: ConversationCard,
+  palette: Record<string, string>,
+  tone: ReturnType<typeof conversationCardTone>,
+  revealActive: boolean,
+) {
+  const lines = bodyLines(card.body);
+  const metadata = card.metadata ?? {};
+  const reviewAnswer = typeof metadata.answer === "string" ? metadata.answer.trim() : "";
+
+  if (card.kind === "review_queue") {
+    return (
+      <View style={{ gap: 10 }}>
+        {card.body ? <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body}</Text> : null}
+        <View
+          style={{
+            borderRadius: 14,
+            backgroundColor: "rgba(255,255,255,0.035)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.04)",
+            padding: 10,
+            gap: 8,
+          }}
+        >
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {["Hard", "Good", "Reveal"].map((label, index) => (
+              <View
+                key={label}
+                style={{
+                  flex: 1,
+                  borderRadius: 10,
+                  minHeight: 34,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: index === 2 ? tone.accentBackground : "rgba(14, 10, 14, 0.52)",
+                  borderWidth: 1,
+                  borderColor: index === 2 ? tone.accentBorder : "rgba(255,255,255,0.04)",
+                }}
+              >
+                <Text
+                  style={{
+                    color: index === 2 ? tone.accentText : palette.muted,
+                    fontSize: 10,
+                    fontWeight: "800",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {reviewAnswer ? (
+            <Text style={{ color: palette.text, fontSize: 13.5, lineHeight: 20 }}>
+              {revealActive ? reviewAnswer : "Reveal the answer before you rate the card."}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
+  if (card.kind === "task_list" && lines.length > 0) {
+    return (
+      <View style={{ gap: 8 }}>
+        {lines.slice(0, 4).map((line) => (
+          <View key={line} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+            <View
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 5,
+                marginTop: 2,
+                borderWidth: 1,
+                borderColor: tone.accentBorder,
+                backgroundColor: tone.accentBackground,
+              }}
+            />
+            <Text style={{ flex: 1, color: palette.text, fontSize: 13.5, lineHeight: 20 }}>
+              {line.replace(/^[-*]\s*/, "")}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  if (card.kind === "briefing") {
+    return (
+      <View style={{ gap: 12 }}>
+        {card.body ? <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body}</Text> : null}
+        <View
+          style={{
+            borderRadius: 14,
+            paddingHorizontal: 10,
+            paddingVertical: 12,
+            backgroundColor: "rgba(255,255,255,0.03)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.04)",
+            flexDirection: "row",
+            alignItems: "flex-end",
+            gap: 5,
+            minHeight: 54,
+          }}
+        >
+          {Array.from({ length: 16 }).map((_, index) => (
+            <View
+              key={`wave-${index}`}
+              style={{
+                width: 4,
+                borderRadius: 999,
+                height: 12 + ((index * 9) % 26),
+                backgroundColor: index >= 5 && index <= 8 ? tone.accentText : "rgba(255,255,255,0.18)",
+              }}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (card.kind === "knowledge_note") {
+    return (
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ flex: 1, gap: 8 }}>
+          {card.body ? <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body}</Text> : null}
+        </View>
+        <View
+          style={{
+            width: 84,
+            minHeight: 82,
+            borderRadius: 16,
+            backgroundColor: "#14111b",
+            borderWidth: 1,
+            borderColor: tone.accentBorder,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              position: "absolute",
+              left: 10,
+              top: 12,
+              width: 54,
+              height: 54,
+              borderRadius: 999,
+              backgroundColor: "rgba(124, 189, 255, 0.22)",
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              right: 6,
+              bottom: 6,
+              width: 42,
+              height: 42,
+              borderRadius: 999,
+              backgroundColor: "rgba(241, 182, 205, 0.18)",
+            }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (card.kind === "assistant_summary") {
+    return (
+      <View style={{ gap: 10 }}>
+        {card.body ? <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body}</Text> : null}
+        {typeof metadata.status === "string" ? (
+          <View
+            style={{
+              alignSelf: "flex-start",
+              borderRadius: 999,
+              backgroundColor: tone.accentBackground,
+              borderWidth: 1,
+              borderColor: tone.accentBorder,
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+            }}
+          >
+            <Text
+              style={{
+                color: tone.accentText,
+                fontSize: 10,
+                fontWeight: "800",
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+              }}
+            >
+              {metadata.status.replace(/_/g, " ")}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  return <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body || ""}</Text>;
+}
+
+function conversationActionTone(
+  action: AssistantCardAction,
+  palette: Record<string, string>,
+): { backgroundColor: string; borderColor: string; color: string } {
+  if (action.style === "danger") {
+    return {
+      backgroundColor: "rgba(255, 180, 183, 0.12)",
+      borderColor: "rgba(255, 180, 183, 0.18)",
+      color: palette.error,
+    };
+  }
+  if (action.style === "primary") {
+    return {
+      backgroundColor: "rgba(96, 57, 75, 0.88)",
+      borderColor: "rgba(241, 182, 205, 0.16)",
+      color: palette.accent,
+    };
+  }
+  return {
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255,255,255,0.06)",
+    color: palette.text,
+  };
 }
 
 function artifactCard(
@@ -219,98 +556,379 @@ export function MobileHomeSurface({
   pendingConversationTurn,
   homeDraft,
   setHomeDraft,
-  runMainRoomTurn,
+  runAssistantTurn,
+  onVoiceAction,
+  onCancelVoiceAction,
+  voiceActionState,
+  voiceActionHint,
   refreshThread,
   resetConversationSession,
   visibleConversationMessages,
   hiddenConversationMessageCount,
-  openAssistantInPwa,
   previewCommandFlow,
   formatCardMeta,
+  onCardAction,
+  reuseCardText,
 }: MobileHomeSurfaceProps) {
   const recentMessages = mapRecentMessages(visibleConversationMessages);
-  const leadAssistant = findLatestAssistantMessage(recentMessages);
-  const leadCard = leadAssistant?.cards[0];
+  const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
+  const [showDiagnosticCards, setShowDiagnosticCards] = useState(false);
+
+  function handleCardPress(card: ConversationCard) {
+    const preferredAction = card.actions.find((action) => action.kind === "navigate") ?? card.actions[0];
+    if (preferredAction) {
+      onCardAction(preferredAction, card);
+      return;
+    }
+    const reusableText = card.body?.trim() || card.title?.trim() || "";
+    if (reusableText) {
+      reuseCardText(reusableText);
+    }
+  }
+
+  const voiceIcon =
+    voiceActionState === "listening" ? "waveform" : voiceActionState === "recording" ? "stop" : "microphone";
+  const voiceButtonAccent =
+    voiceActionState === "recording"
+      ? "rgba(255, 180, 183, 0.18)"
+      : voiceActionState === "listening"
+        ? "rgba(166, 222, 191, 0.16)"
+        : "rgba(255,255,255,0.04)";
 
   return (
-    <View style={{ gap: 24 }}>
-      <View style={{ gap: 18 }}>
+    <View style={{ gap: 18 }}>
+      <View style={{ minHeight: 460, gap: 16, justifyContent: recentMessages.length === 0 ? "center" : "flex-end" }}>
         {recentMessages.length === 0 ? (
-          <View style={cardBase(palette)}>
-            <Text style={kickerStyle(palette)}>Operational Briefing</Text>
-            <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>No synced turns yet.</Text>
-            <Text style={bodyStyle(palette)}>Start the next command and the shared thread will fill in here.</Text>
+          <View style={{ alignItems: "center", gap: 14, paddingHorizontal: 16 }}>
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 24,
+                backgroundColor: "rgba(241, 182, 205, 0.14)",
+                borderWidth: 1,
+                borderColor: "rgba(241, 182, 205, 0.24)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <MaterialCommunityIcons name="star-four-points-outline" size={28} color={palette.accent} />
+            </View>
+            <Text style={[headingStyle(palette), { fontSize: 25, lineHeight: 31, textAlign: "center" }]}>{productCopy.assistant.emptyTitle}</Text>
+            <Text style={[bodyStyle(palette), { textAlign: "center", maxWidth: 300 }]}>{productCopy.assistant.emptyBody}</Text>
           </View>
         ) : (
-          recentMessages.map((message, index) => {
+          recentMessages.map((message, messageIndex) => {
             const isUser = message.role === "user";
+            const primaryCards = isUser ? [] : message.cards.filter((card) => !isDiagnosticConversationCard(card));
+            const diagnosticCards = isUser ? [] : message.cards.filter(isDiagnosticConversationCard);
             return (
               <View
                 key={message.id}
                 style={{
+                  width: "100%",
                   alignSelf: isUser ? "flex-end" : "stretch",
-                  maxWidth: "92%",
-                  marginLeft: isUser ? 48 : 0,
-                  marginRight: isUser ? 0 : 24,
-                  borderRadius: 22,
-                  borderTopLeftRadius: isUser ? 22 : 10,
-                  borderTopRightRadius: isUser ? 10 : 22,
-                  backgroundColor: isUser ? palette.surfaceHigh : "transparent",
-                  borderWidth: isUser ? 1 : 0,
-                  borderColor: palette.border,
-                  padding: isUser ? 18 : 0,
-                  gap: 10,
+                  alignItems: isUser ? "flex-end" : "flex-start",
+                  marginLeft: isUser ? 52 : 0,
+                  marginRight: isUser ? 0 : 12,
+                  gap: 8,
                 }}
               >
                 {!isUser ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 2 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginLeft: 2, marginBottom: 1 }}>
                     <View
                       style={{
                         width: 24,
                         height: 24,
-                        borderRadius: 8,
-                        backgroundColor: "rgba(241, 182, 205, 0.16)",
+                        borderRadius: 9,
+                        backgroundColor: "rgba(241, 182, 205, 0.12)",
                         alignItems: "center",
                         justifyContent: "center",
                       }}
                     >
                       <MaterialCommunityIcons name="star-four-points-outline" size={14} color={palette.accent} />
                     </View>
-                    <Text style={[kickerStyle(palette), { color: palette.secondary }]}>Operational Briefing</Text>
+                    <Text style={[kickerStyle(palette), { color: palette.secondary }]}>{PRODUCT_SURFACES.assistant.label}</Text>
                   </View>
                 ) : null}
-                <Text
+                <View
                   style={{
-                    color: palette.text,
-                    fontSize: isUser ? 18 : 17,
-                    lineHeight: isUser ? 28 : 27,
-                    fontStyle: isUser ? "italic" : "normal",
-                    paddingHorizontal: isUser ? 0 : 4,
+                    maxWidth: isUser ? "84%" : "90%",
+                    borderRadius: 24,
+                    borderBottomRightRadius: isUser ? 10 : 24,
+                    borderBottomLeftRadius: isUser ? 24 : 10,
+                    backgroundColor: isUser ? "rgba(61, 41, 49, 0.92)" : "transparent",
+                    borderWidth: isUser ? 1 : 0,
+                    borderColor: isUser ? "rgba(241, 182, 205, 0.08)" : "transparent",
+                    paddingHorizontal: isUser ? 16 : 0,
+                    paddingVertical: isUser ? 14 : 0,
                   }}
                 >
-                  {message.content || (pendingConversationTurn && index === recentMessages.length - 1 ? "Observatory reply forming..." : "No content")}
-                </Text>
-                {!isUser && leadAssistant?.id === message.id && leadCard ? (
-                  <View
+                  <Text
                     style={{
-                      borderRadius: 22,
-                      overflow: "hidden",
-                      backgroundColor: palette.surfaceLow,
-                      borderWidth: 1,
-                      borderColor: palette.border,
-                      marginTop: 6,
+                      color: palette.text,
+                      fontSize: isUser ? 16 : 17,
+                      lineHeight: isUser ? 24 : 29,
+                      paddingHorizontal: isUser ? 0 : 4,
+                      paddingVertical: isUser ? 0 : 2,
                     }}
                   >
-                    <View style={{ height: 160, backgroundColor: palette.surfaceHighest }} />
-                    <View style={{ padding: 18, gap: 8 }}>
-                      <Text style={[kickerStyle(palette), { color: palette.secondary }]}>
-                        {mobileConversationCardLabel(leadCard.kind, leadCard.title)}
+                    {message.content || (pendingConversationTurn && messageIndex === recentMessages.length - 1 ? "Assistant reply in progress..." : "No content")}
+                  </Text>
+                </View>
+                {primaryCards.length > 0 ? (
+                  <View style={{ width: "92%", gap: 10, paddingLeft: 18, position: "relative" }}>
+                    <View
+                      style={{
+                        position: "absolute",
+                        left: 8,
+                        top: 2,
+                        bottom: 10,
+                        width: 1,
+                        backgroundColor: "rgba(241, 182, 205, 0.12)",
+                      }}
+                    />
+                    {primaryCards.map((card, cardIndex) => {
+                      const cardKey = `${message.id}-${cardIndex}-${card.kind}`;
+                      const reviewAnswer = typeof card.metadata?.answer === "string" ? card.metadata.answer.trim() : "";
+                      const revealActive = !!revealedReviewCards[cardKey];
+                      const reusableText = card.body?.trim() || card.title?.trim() || "";
+                      const meta = compactCardMeta(formatCardMeta(card));
+                      const hasNavigateAction = card.actions.some((action) => action.kind === "navigate");
+                      const tone = conversationCardTone(card.kind, palette);
+                      return (
+                        <Pressable
+                          key={cardKey}
+                          onPress={() => handleCardPress(card)}
+                          style={{
+                            marginLeft: 14,
+                            borderRadius: 22,
+                            borderWidth: 1,
+                            borderColor: tone.cardBorder,
+                            backgroundColor: tone.cardBackground,
+                            shadowColor: "#000",
+                            shadowOpacity: 0.22,
+                            shadowRadius: 18,
+                            shadowOffset: { width: 0, height: 10 },
+                            overflow: "hidden",
+                          }}
+                        >
+                          <View
+                            style={{
+                              position: "absolute",
+                              left: -11,
+                              top: 28,
+                              width: 11,
+                              height: 1,
+                              backgroundColor: "rgba(241, 182, 205, 0.12)",
+                            }}
+                          />
+                          <View
+                            style={{
+                              position: "absolute",
+                              top: -28,
+                              right: -10,
+                              width: 116,
+                              height: 116,
+                              borderRadius: 999,
+                              backgroundColor: tone.accentBackground,
+                            }}
+                          />
+                          <View style={{ paddingHorizontal: 14, paddingVertical: 14, gap: 12 }}>
+                            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+                              <View
+                                style={{
+                                  width: 38,
+                                  height: 38,
+                                  borderRadius: 14,
+                                  backgroundColor: tone.accentBackground,
+                                  borderWidth: 1,
+                                  borderColor: tone.accentBorder,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  marginTop: 2,
+                                }}
+                              >
+                                <MaterialCommunityIcons name={conversationCardIcon(card.kind)} size={19} color={tone.accentText} />
+                              </View>
+                              <View style={{ flex: 1, gap: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                  <Text
+                                    style={[
+                                      kickerStyle(palette),
+                                      { color: tone.accentText, letterSpacing: 1.15, fontSize: 9.5 },
+                                    ]}
+                                  >
+                                    {mobileConversationCardLabel(card.kind, card.title)}
+                                  </Text>
+                                </View>
+                                <Text style={{ color: palette.text, fontSize: 18, lineHeight: 22, fontWeight: "800" }} numberOfLines={2}>
+                                  {cardAttachmentLabel(card.kind, card.title)}
+                                </Text>
+                              </View>
+                              {hasNavigateAction ? (
+                                <View
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 999,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    backgroundColor: "rgba(255,255,255,0.04)",
+                                  }}
+                                >
+                                  <MaterialCommunityIcons name="arrow-top-right" size={14} color={palette.muted} />
+                                </View>
+                              ) : null}
+                            </View>
+                            <View
+                              style={{
+                                borderRadius: 16,
+                                backgroundColor: tone.bodyBackground,
+                                borderWidth: 1,
+                                borderColor: "rgba(255,255,255,0.04)",
+                                paddingHorizontal: 12,
+                                paddingVertical: 11,
+                                gap: 10,
+                              }}
+                            >
+                              {renderConversationCardPreview(card, palette, tone, revealActive)}
+                            </View>
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                              {meta ? (
+                                <Text
+                                  style={{
+                                    color: palette.muted,
+                                    fontSize: 10.5,
+                                    lineHeight: 16,
+                                    fontWeight: "700",
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.7,
+                                  }}
+                                >
+                                  {meta}
+                                </Text>
+                              ) : (
+                                <View />
+                              )}
+                              {hasNavigateAction ? (
+                                <Text
+                                  style={{
+                                    color: tone.accentText,
+                                    fontSize: 10.5,
+                                    lineHeight: 16,
+                                    fontWeight: "800",
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.8,
+                                  }}
+                                >
+                                  Tap card to open
+                                </Text>
+                              ) : null}
+                            </View>
+                            <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
+                              {card.kind === "review_queue" && reviewAnswer ? (
+                                <TouchableOpacity
+                                  style={{
+                                    ...pillStyle(palette, true),
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 7,
+                                    backgroundColor: "rgba(241, 182, 205, 0.10)",
+                                    borderWidth: 1,
+                                    borderColor: "rgba(241, 182, 205, 0.12)",
+                                  }}
+                                  onPress={() =>
+                                    setRevealedReviewCards((previous) => ({
+                                      ...previous,
+                                      [cardKey]: !previous[cardKey],
+                                    }))
+                                  }
+                                >
+                                  <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
+                                    {revealActive ? "Hide answer" : "Reveal"}
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
+                              {card.actions.map((action) => {
+                                const actionTone = conversationActionTone(action, palette);
+                                return (
+                                  <TouchableOpacity
+                                    key={`${cardKey}-${action.id}`}
+                                    style={{
+                                      ...pillStyle(palette, action.style === "primary"),
+                                      paddingHorizontal: 12,
+                                      paddingVertical: 8,
+                                      borderWidth: 1,
+                                      borderColor: actionTone.borderColor,
+                                      backgroundColor: actionTone.backgroundColor,
+                                    }}
+                                    onPress={() => onCardAction(action, card)}
+                                  >
+                                    <Text
+                                      style={{
+                                        color: actionTone.color,
+                                        fontSize: 9.5,
+                                        fontWeight: "800",
+                                        textTransform: "uppercase",
+                                        letterSpacing: 0.75,
+                                      }}
+                                    >
+                                      {action.label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                              {card.actions.length === 0 && reusableText ? (
+                                <TouchableOpacity
+                                  style={{
+                                    ...pillStyle(palette),
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 7,
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.05)",
+                                    backgroundColor: "rgba(255,255,255,0.04)",
+                                  }}
+                                  onPress={() => reuseCardText(reusableText)}
+                                >
+                                  <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
+                                    Use in Assistant
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                {diagnosticCards.length > 0 ? (
+                  <View style={{ width: "92%", paddingLeft: 28 }}>
+                    <Pressable
+                      onPress={() => setShowDiagnosticCards((previous) => !previous)}
+                      style={{
+                        borderRadius: 999,
+                        backgroundColor: "rgba(255,255,255,0.03)",
+                        paddingHorizontal: 13,
+                        paddingVertical: 8,
+                        alignSelf: "flex-start",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
+                        Diagnostics {showDiagnosticCards ? "shown" : "collapsed"} · {diagnosticCards.length} hidden
                       </Text>
-                      <Text style={{ color: palette.text, fontSize: 24, lineHeight: 30, fontWeight: "800" }}>
-                        {leadCard.title || "Operational artifact"}
-                      </Text>
-                      <Text style={bodyStyle(palette)}>{leadCard.body || formatCardMeta(leadCard)}</Text>
-                    </View>
+                    </Pressable>
+                    {showDiagnosticCards ? (
+                      <View style={{ gap: 6, paddingTop: 8 }}>
+                        {diagnosticCards.map((card, cardIndex) => (
+                          <Text key={`${message.id}-diagnostic-${cardIndex}-${card.kind}`} style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+                            {mobileConversationCardLabel(card.kind, card.title)} · {card.title || formatCardMeta(card)}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -319,77 +937,118 @@ export function MobileHomeSurface({
         )}
       </View>
 
-      <View style={{ alignItems: "center", gap: 4 }}>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, height: 18 }}>
-          {[4, 10, 6, 14, 5].map((height, index) => (
-            <View key={index} style={{ width: 4, height, borderRadius: 999, backgroundColor: palette.accent }} />
-          ))}
-        </View>
-      </View>
-
       <View
         style={{
-          ...cardBase(palette),
-          backgroundColor: "rgba(66, 47, 56, 0.64)",
-          borderRadius: 999,
-          paddingHorizontal: 18,
-          paddingVertical: 14,
-          gap: 12,
+          borderRadius: 30,
+          backgroundColor: "rgba(48, 31, 39, 0.9)",
+          borderWidth: 1,
+          borderColor: "rgba(241, 182, 205, 0.16)",
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          shadowColor: "#000",
+          shadowOpacity: 0.22,
+          shadowRadius: 22,
+          shadowOffset: { width: 0, height: 12 },
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <TextInput
-            style={{ flex: 1, color: palette.text, fontSize: 14, fontWeight: "600" }}
-            value={homeDraft}
-            onChangeText={setHomeDraft}
-            placeholder="Speak or Type Command..."
-            placeholderTextColor={palette.muted}
-            multiline
-          />
-          <MaterialCommunityIcons name="keyboard-outline" size={18} color={palette.muted} />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
           <TouchableOpacity
             style={{
-              flex: 1,
-              borderRadius: 999,
-              backgroundColor: palette.surfaceHigh,
-              paddingVertical: 13,
-              alignItems: "center",
-            }}
-            onPress={runMainRoomTurn}
-          >
-            <Text style={{ color: palette.text, fontWeight: "700", textTransform: "uppercase", fontSize: 12, letterSpacing: 1.2 }}>
-              {pendingConversationTurn ? "Reply pending" : "Send"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 28,
-              backgroundColor: palette.accent,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: voiceButtonAccent,
+              borderWidth: 1,
+              borderColor:
+                voiceActionState === "recording"
+                  ? "rgba(255, 180, 183, 0.18)"
+                  : voiceActionState === "listening"
+                    ? "rgba(166, 222, 191, 0.18)"
+                    : "rgba(255,255,255,0.06)",
               alignItems: "center",
               justifyContent: "center",
             }}
-            onPress={previewCommandFlow}
+            onPress={onVoiceAction}
+            disabled={pendingConversationTurn || voiceActionState === "listening"}
           >
-            <MaterialCommunityIcons name="microphone" size={24} color={palette.onAccent} />
+            <MaterialCommunityIcons
+              name={voiceIcon as never}
+              size={20}
+              color={
+                voiceActionState === "recording"
+                  ? palette.error
+                  : voiceActionState === "listening"
+                    ? "#cfeeda"
+                    : palette.muted
+              }
+            />
+          </TouchableOpacity>
+          <TextInput
+            style={{
+              flex: 1,
+              minHeight: 42,
+              maxHeight: 118,
+              color: palette.text,
+              fontSize: 16,
+              lineHeight: 22,
+              fontWeight: "500",
+              paddingVertical: 9,
+              paddingHorizontal: 4,
+            }}
+            value={homeDraft}
+            onChangeText={setHomeDraft}
+            placeholder={productCopy.assistant.inputPlaceholder}
+            placeholderTextColor={palette.muted}
+            multiline
+          />
+          <TouchableOpacity
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: pendingConversationTurn ? palette.surfaceHighest : palette.accent,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onPress={runAssistantTurn}
+            disabled={pendingConversationTurn}
+          >
+            <MaterialCommunityIcons name={pendingConversationTurn ? "dots-horizontal" : "arrow-up"} size={22} color={palette.onAccent} />
           </TouchableOpacity>
         </View>
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <TouchableOpacity style={{ ...pillStyle(palette), flex: 1, alignItems: "center" }} onPress={refreshThread}>
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Refresh</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{ ...pillStyle(palette), flex: 1, alignItems: "center" }} onPress={resetConversationSession}>
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Reset</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{ ...pillStyle(palette), flex: 1, alignItems: "center" }} onPress={openAssistantInPwa}>
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>Open PWA</Text>
-          </TouchableOpacity>
-        </View>
+        {voiceActionState !== "idle" ? (
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 4, paddingTop: 8 }}>
+            <Text style={[bodyStyle(palette), { flex: 1, fontSize: 12, lineHeight: 18 }]}>
+              {voiceActionHint ||
+                (voiceActionState === "listening"
+                  ? "Listening for an on-device message..."
+                  : voiceActionState === "recording"
+                    ? "Recording voice input. Tap the mic again to stop."
+                    : "Voice clip ready. Tap the mic to send it.")}
+            </Text>
+            {voiceActionState === "ready" ? (
+              <TouchableOpacity
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.06)",
+                  backgroundColor: "rgba(255,255,255,0.03)",
+                }}
+                onPress={onCancelVoiceAction}
+              >
+                <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                  Clear
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
         {hiddenConversationMessageCount > 0 ? (
-          <Text style={bodyStyle(palette)}>{hiddenConversationMessageCount} older messages remain in the full transcript.</Text>
+          <Text style={[bodyStyle(palette), { fontSize: 12, lineHeight: 18, paddingHorizontal: 4, paddingTop: 8 }]}>
+            {hiddenConversationMessageCount} earlier messages remain in the shared assistant transcript.
+          </Text>
         ) : null}
       </View>
     </View>
@@ -538,7 +1197,7 @@ export function MobileNotesSurface({
 
       <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Pinned Notes</Text>
+          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Library Snapshot</Text>
           <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.2 }}>
             {pendingCaptures} pending
           </Text>
@@ -558,7 +1217,7 @@ export function MobileNotesSurface({
               }}
             >
               <Text style={[kickerStyle(palette), { color: palette.muted }]}>
-                {index === 0 ? "Research" : index === 1 ? "Capture" : "Routing"}
+                {index === 0 ? "Selected item" : index === 1 ? "Queue" : "Routing"}
               </Text>
               <Text style={{ color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "800" }}>{item}</Text>
               <Text style={bodyStyle(palette)}>
@@ -571,9 +1230,9 @@ export function MobileNotesSurface({
 
       <View style={{ gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Recent Artifacts</Text>
+          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Recent Library Items</Text>
           <Text style={{ color: palette.secondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
-            Filter
+            Sync
           </Text>
         </View>
         {artifactCard(palette, captureCommandPreview, captureQueuePreview, "DATA-STREAM", "4H AGO")}
@@ -581,7 +1240,7 @@ export function MobileNotesSurface({
         <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
           <View style={{ flexDirection: "row", gap: 14 }}>
             <View style={{ flex: 1 }}>
-              <Text style={kickerStyle(palette)}>Voice memo</Text>
+              <Text style={kickerStyle(palette)}>Voice capture</Text>
               <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Latest capture</Text>
               <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
               <Text style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
@@ -620,7 +1279,7 @@ export function MobileNotesSurface({
 
       <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
         <Text style={[kickerStyle(palette), { fontSize: 11 }]}>
-          {showAdvancedCapture ? "Close mission tools" : "Mission tools"}
+          {showAdvancedCapture ? "Close advanced tools" : "Advanced tools"}
         </Text>
       </TouchableOpacity>
     </View>
@@ -659,7 +1318,7 @@ export function MobileReviewSurface({
     <View style={{ gap: 20 }}>
       <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Knowledge Health</Text>
+          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Review Overview</Text>
           <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
             {reviewReviewedCount > 0 ? `${reviewReviewedCount} reviewed` : "Last updated now"}
           </Text>
@@ -698,14 +1357,14 @@ export function MobileReviewSurface({
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Active Decks</Text>
           <TouchableOpacity style={pillStyle(palette)} onPress={openReviewWorkspace}>
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Open workspace</Text>
+            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Open Review</Text>
           </TouchableOpacity>
         </View>
         {(deckCards.length > 0 ? deckCards : [
           {
             id: "review-workspace",
-            name: "Deck Workspace",
-            description: "Open the fuller browser and analytics surface in the PWA.",
+            name: "Review queue",
+            description: "Open the full review workspace when you need deck analytics or editing.",
             due_count: reviewDueCount,
             card_count: Math.max(reviewDueCount, 1),
           },
@@ -816,13 +1475,13 @@ export function MobileReviewSurface({
           <View style={cardBase(palette)}>
             <Text style={kickerStyle(palette)}>Focused review</Text>
             <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Load due cards to begin the next pass.</Text>
-            <Text style={bodyStyle(palette)}>This surface stays quiet until the due queue is requested from the shared SRS backend.</Text>
+            <Text style={bodyStyle(palette)}>This surface stays quiet until the shared review queue is requested.</Text>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.button} onPress={loadDueCards}>
                 <Text style={styles.buttonText}>Load due cards</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.button} onPress={openReviewWorkspace}>
-                <Text style={styles.buttonText}>Open deck workspace</Text>
+                <Text style={styles.buttonText}>Open Review</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -832,7 +1491,7 @@ export function MobileReviewSurface({
       <Text style={bodyStyle(palette)}>{reviewStatus}</Text>
       <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
         <Text style={[kickerStyle(palette), { fontSize: 11 }]}>
-          {showAdvancedReview ? "Close mission tools" : "Mission tools"}
+          {showAdvancedReview ? "Close advanced tools" : "Advanced tools"}
         </Text>
       </TouchableOpacity>
     </View>
@@ -870,16 +1529,16 @@ export function MobileLoginSurface({
           <Text style={{ color: palette.accent, fontSize: 36, fontWeight: "800" }}>✦</Text>
         </View>
         <View style={{ alignItems: "center", gap: 8 }}>
-          <Text style={{ color: palette.accent, fontSize: 40, fontWeight: "800", letterSpacing: 6 }}>STARLOG</Text>
+          <Text style={{ color: palette.accent, fontSize: 40, fontWeight: "800", letterSpacing: 6 }}>{productCopy.brand.name.toUpperCase()}</Text>
           <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.3 }}>
-            The Celestial Archive
+            {productCopy.brand.tagline}
           </Text>
         </View>
       </View>
 
       <View style={{ ...cardBase(palette), gap: 16 }}>
         <View style={{ gap: 8 }}>
-          <Text style={kickerStyle(palette)}>Observer identity</Text>
+          <Text style={kickerStyle(palette)}>API endpoint</Text>
           <TextInput
             style={{
               borderRadius: 18,
@@ -900,7 +1559,7 @@ export function MobileLoginSurface({
 
         <View style={{ gap: 8 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={kickerStyle(palette)}>Access cipher</Text>
+            <Text style={kickerStyle(palette)}>Passphrase</Text>
             <Pressable onPress={() => setRevealPassphrase(!revealPassphrase)}>
               <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>
                 {revealPassphrase ? "Hide" : "Reveal"}
@@ -921,7 +1580,7 @@ export function MobileLoginSurface({
             value={authPassphrase}
             onChangeText={setAuthPassphrase}
             secureTextEntry={!revealPassphrase}
-            placeholder="minimum 12 characters for first station bootstrap"
+            placeholder="use the same single-user passphrase you configured for Starlog"
             placeholderTextColor={palette.muted}
           />
         </View>
@@ -939,13 +1598,13 @@ export function MobileLoginSurface({
           onPress={login}
         >
           <Text style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.5 }}>
-            {authBusy ? "Initiating..." : "Initiate Neural Sync"}
+            {authBusy ? "Signing in..." : "Sign In"}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={{ alignItems: "center", paddingVertical: 8 }} disabled={authBusy} onPress={bootstrap}>
           <Text style={{ color: palette.secondary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.3 }}>
-            Establish Station
+            Set Up Starlog
           </Text>
         </TouchableOpacity>
 
@@ -954,10 +1613,10 @@ export function MobileLoginSurface({
 
       <View style={{ alignItems: "center", gap: 12 }}>
         <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.2 }}>
-          Deep Space Protocol
+          Secure Local Access
         </Text>
         <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18, textAlign: "center" }}>
-          Single-user passphrase login. Use bootstrap once for a new station, then login for subsequent sessions.
+          Single-user passphrase login. Use setup once for a new Starlog instance, then sign in for later sessions.
         </Text>
       </View>
     </View>
@@ -996,7 +1655,7 @@ export function MobileCalendarSurface({
         }}
       >
         <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", letterSpacing: 2.8, textTransform: "uppercase" }}>
-          Daily Return Point
+          {PRODUCT_SURFACES.planner.label}
         </Text>
         <Text style={{ color: palette.accent, fontSize: 72, lineHeight: 78, fontWeight: "800", letterSpacing: -4 }}>
           {stationTimeLabel}
@@ -1011,7 +1670,7 @@ export function MobileCalendarSurface({
       <View style={cardBase(palette)}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <View style={{ flex: 1 }}>
-            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Morning Ritual</Text>
+            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Daily briefing</Text>
             <Text style={bodyStyle(palette)}>{briefingHeroCopy}</Text>
           </View>
           <MaterialCommunityIcons name="star-four-points-outline" size={20} color={palette.accent} />
@@ -1029,19 +1688,19 @@ export function MobileCalendarSurface({
       <View style={{ gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
           <View>
-            <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>Today's Agenda</Text>
+            <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>Today's plan</Text>
             <Text style={{ color: palette.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2 }}>
               {alarmScheduled ? `${nextBriefingCountdown} until briefing` : "Alarm unscheduled"}
             </Text>
           </View>
           <TouchableOpacity style={pillStyle(palette)} onPress={openPwa}>
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Grid</Text>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Open desktop web</Text>
           </TouchableOpacity>
         </View>
         {[
-          { time: "09:30", title: "Archive Review", detail: nextActionPreview, active: true, critical: false },
-          { time: "12:00", title: "Solar Noon Calibration", detail: "Align the day around one quiet reset.", active: false, critical: false },
-          { time: "15:45", title: "Council Manifest", detail: "Critical handoff before evening synthesis.", active: true, critical: true },
+          { time: "09:30", title: "Assistant follow-up", detail: nextActionPreview, active: true, critical: false },
+          { time: "12:00", title: "Focused work block", detail: "Protect a quiet block for your highest-value work.", active: false, critical: false },
+          { time: "15:45", title: "Priority handoff", detail: "Close the biggest open loop before the evening review.", active: true, critical: true },
         ].map((item, index, items) => (
           <View key={item.time} style={{ flexDirection: "row", gap: 14 }}>
             <View style={{ alignItems: "center" }}>
@@ -1141,17 +1800,17 @@ export function MobileCalendarSurface({
         </View>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.button} onPress={openPwa}>
-            <Text style={styles.buttonText}>Open workspace</Text>
+            <Text style={styles.buttonText}>Open desktop web</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.button} onPress={openReview}>
-            <Text style={styles.buttonText}>Open review</Text>
+            <Text style={styles.buttonText}>Open Review</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
         <Text style={[kickerStyle(palette), { fontSize: 11 }]}>
-          {showAdvancedAlarms ? "Close mission tools" : "Mission tools"}
+          {showAdvancedAlarms ? "Close advanced tools" : "Advanced tools"}
         </Text>
       </TouchableOpacity>
     </View>

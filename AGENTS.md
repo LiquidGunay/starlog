@@ -6,9 +6,12 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 ## Locked v1 preferences
 - Voice/chat-first interaction is the canonical operating model; buttons and direct surface interactions are secondary.
 - One persistent user chat thread exists across clients, with durable long-term memory and clearable short-term session state.
-- Web-first PWA and the mobile app are both primary workspaces.
+- Desktop web and the native mobile app are both primary products.
+- The mobile PWA is fallback-only and must not absorb primary UX redesign effort.
 - iOS share-specific work is out of scope for v1 distribution and must not block v1 release readiness.
 - Clipping is first-class: browser clipper + cross-platform desktop helper (Tauri) + mobile share capture.
+- The approved user-facing surface taxonomy is `Assistant`, `Library`, `Planner`, and `Review`.
+- The desktop helper is a capture-first companion, not a second full assistant client.
 - Knowledge model uses an artifact graph with explicit provenance links.
 - Keep version history for summaries/cards generated from the same artifact.
 - Preserve source fidelity: raw + normalized + extracted.
@@ -35,7 +38,7 @@ Put dated incident history and one-off issue chronology in a dedicated doc under
 
 ## External design source of truth
 
-Use the April 2026 design pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as the only active UI/design source of truth for current observatory work.
+Use the April 2026 design pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as the only active UI/design source of truth for the current Assistant-first implementation pass.
 
 - Treat `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/starlog_design_document_design.md` plus the per-surface `code.html` and `screen.png` files in that folder as the authoritative design references.
 - When design guidance conflicts across sources, prefer the April 2026 external pack over any older repo-tracked doc or screenshot.
@@ -73,7 +76,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable preview/semi-stable release checklist spanning docs, validation, artifacts, and signoff.
-- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped companion to `PLAN.md`; keeps the current observatory implementation sequence, system boundaries, and workstream ordering in one execution-focused plan.
+- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped companion to `PLAN.md`; keeps the current Assistant-first implementation sequence, system boundaries, and workstream ordering in one execution-focused plan.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
 - `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.
@@ -114,7 +117,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - When reusing shared dependencies across worktrees, verify symlinks, `PYTHONPATH`, and build outputs still point at the active checkout before trusting validation results.
 - Prefer exact evidence over optimistic success text: confirm builds, installs, screenshots, and route transitions directly.
 - For Android validation from WSL on this host, treat Windows `adb.exe`, Windows-visible APK staging paths, and manual device unlock as the reliable baseline.
-- Preserve collapsible side-pane behavior and other explicitly stated interaction contracts when redesigning observatory surfaces.
+- Preserve collapsible side-pane behavior and other explicitly stated interaction contracts when redesigning assistant and support surfaces.
 - Keep docs-scoped workflow plans under `docs/`; replace them with updated versions rather than deleting them when the plan changes.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.

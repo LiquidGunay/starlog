@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.starlog.desktophelper",
   "build": {
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "",
+    "beforeDevCommand": "node ./scripts/sync_product_copy.mjs",
+    "beforeBuildCommand": "node ./scripts/sync_product_copy.mjs",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src"
   },

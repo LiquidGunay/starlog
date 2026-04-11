@@ -178,7 +178,7 @@ export default function ReviewPage() {
             <span className="april-rail-section-label">Return Points</span>
             <div className="april-rail-link-stack">
               <Link href="/review/decks">Deck Workspace</Link>
-              <Link href="/notes">Knowledge Base</Link>
+              <Link href="/notes">Library</Link>
               <Link href={missingConfig ? "/login" : "/runtime"}>{missingConfig ? "Open Login" : "Runtime"}</Link>
             </div>
           </div>
@@ -253,7 +253,7 @@ export default function ReviewPage() {
                 <h2>{missingConfig ? "Access required" : "No due cards loaded."}</h2>
                 <p>
                   {missingConfig
-                    ? "Open login, link the observatory, then return to this focused review surface."
+                    ? "Open login, sign in to Starlog, then return to this focused review surface."
                     : "The queue is empty until you load due cards or import a deck."}
                 </p>
                 <div className="assistant-inline-action-row">

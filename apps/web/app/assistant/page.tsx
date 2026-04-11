@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import type { AssistantCard as ConversationCard, AssistantCardAction, AssistantConversationToolTrace as ConversationToolTrace } from "@starlog/contracts";
+import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 
 import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { MainRoomThread } from "../components/main-room-thread";
@@ -14,21 +16,19 @@ import { ApiError } from "../lib/starlog-client";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
-type AgentCommandStep = {
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  status: "planned" | "ok" | "dry_run" | "failed";
-  message?: string | null;
-  result: unknown;
-};
-
 type AgentCommandResponse = {
   command: string;
   planner: string;
   matched_intent: string;
   status: "planned" | "executed" | "failed";
   summary: string;
-  steps: AgentCommandStep[];
+  steps: Array<{
+    tool_name: string;
+    arguments: Record<string, unknown>;
+    status: "planned" | "ok" | "dry_run" | "failed" | "completed" | "confirmation_required";
+    message?: string | null;
+    result: unknown;
+  }>;
 };
 
 type AgentIntent = {
@@ -80,26 +80,6 @@ type ConversationMessage = {
   metadata: {
     assistant_command?: AgentCommandResponse;
   } & Record<string, unknown>;
-  created_at: string;
-};
-
-type ConversationCard = {
-  kind: string;
-  version: number;
-  title?: string | null;
-  body?: string | null;
-  metadata: Record<string, unknown>;
-};
-
-type ConversationToolTrace = {
-  id: string;
-  thread_id: string;
-  message_id?: string | null;
-  tool_name: string;
-  arguments: Record<string, unknown>;
-  status: string;
-  result: unknown;
-  metadata: Record<string, unknown>;
   created_at: string;
 };
 
@@ -269,7 +249,7 @@ export default function AssistantPage() {
   const [recording, setRecording] = useState(false);
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
   const [sessionState, setSessionState] = useState<Record<string, unknown>>({});
-  const [conversationTitle, setConversationTitle] = useState("Primary Thread");
+  const [conversationTitle, setConversationTitle] = useState("Assistant thread");
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [conversationTraces, setConversationTraces] = useState<ConversationToolTrace[]>([]);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
@@ -302,7 +282,7 @@ export default function AssistantPage() {
     return [
       "Refine the command until the planned tool flow looks correct.",
       "Inspect the queue and agent panes before promoting to execute mode.",
-      "Push any long-running voice or Codex work into the side feeds for replay.",
+      "Keep deep editing in Library, Planner, and Review while the thread stays primary.",
     ];
   }, [latest]);
   const latestSpokenReply = useMemo(() => {
@@ -353,6 +333,13 @@ export default function AssistantPage() {
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: turnInFlight ? "smooth" : "auto", block: "end" });
   }, [transcriptMessages.length, turnInFlight]);
+
+  useEffect(() => {
+    const draft = new URLSearchParams(window.location.search).get("draft");
+    if (draft?.trim()) {
+      setCommand(draft.trim());
+    }
+  }, []);
 
   const toggleExpandedCards = useCallback((key: string) => {
     setExpandedCards((previous) => ({ ...previous, [key]: !previous[key] }));
@@ -702,7 +689,7 @@ export default function AssistantPage() {
   async function runCommand(execute: boolean) {
     const trimmed = command.trim();
     if (!trimmed) {
-      setStatus("Enter an operator command first");
+      setStatus("Enter a command first");
       return;
     }
 
@@ -712,7 +699,7 @@ export default function AssistantPage() {
         body: JSON.stringify({
           command: trimmed,
           execute,
-          device_target: "web-pwa",
+          device_target: "web-desktop",
         }),
       });
       setLatest(payload);
@@ -733,7 +720,7 @@ export default function AssistantPage() {
   async function sendToMainRoom(inputMode: "text" | "voice" = "text") {
     const trimmed = command.trim();
     if (!trimmed) {
-      setStatus("Enter a message for the Main Room first");
+      setStatus("Enter a message for Assistant first");
       return;
     }
 
@@ -749,7 +736,7 @@ export default function AssistantPage() {
       createdAt: new Date().toISOString(),
     });
     setTurnInFlight(true);
-    setStatus(inputMode === "voice" ? "Routing voice text into the Main Room..." : "Sending to the Main Room...");
+    setStatus(inputMode === "voice" ? "Routing voice text into Assistant..." : "Sending to Assistant...");
 
     try {
       const payload = await apiRequest<ConversationTurnResponse>(apiBase, token, "/v1/conversations/primary/chat", {
@@ -757,9 +744,9 @@ export default function AssistantPage() {
         body: JSON.stringify({
           content: trimmed,
           input_mode: inputMode,
-          device_target: "web-pwa",
+          device_target: "web-desktop",
           metadata: {
-            surface: "main_room",
+            surface: "assistant",
             submitted_via: "assistant_page",
           },
         }),
@@ -770,12 +757,46 @@ export default function AssistantPage() {
       setPendingTurn(null);
       setCommand("");
       clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      setStatus("Main Room reply received");
+      setStatus("Assistant reply received");
     } catch (error) {
       setPendingTurn(null);
-      setStatus(error instanceof Error ? error.message : "Main Room turn failed");
+      setStatus(error instanceof Error ? error.message : "Assistant turn failed");
     } finally {
       setTurnInFlight(false);
+    }
+  }
+
+  async function handleCardAction(action: AssistantCardAction, card: ConversationCard) {
+    if (action.kind === "navigate") {
+      const href = typeof action.payload?.href === "string" ? action.payload.href : "/";
+      router.push(href);
+      return;
+    }
+
+    if (action.kind === "composer") {
+      const prompt = typeof action.payload?.prompt === "string" ? action.payload.prompt : card.body || card.title || "";
+      setCommand(prompt);
+      setStatus(`Loaded "${action.label}" into the composer`);
+      return;
+    }
+
+    const endpoint = typeof action.payload?.endpoint === "string" ? action.payload.endpoint : "";
+    const method = typeof action.payload?.method === "string" ? action.payload.method : "POST";
+    const body = action.payload?.body ?? {};
+    if (!endpoint) {
+      setStatus(`Action "${action.label}" is missing an endpoint`);
+      return;
+    }
+    setStatus(`${action.label}...`);
+    try {
+      await apiRequest<unknown>(apiBase, token, endpoint, {
+        method,
+        body: JSON.stringify(body),
+      });
+      await loadConversation("auto");
+      setStatus(`${action.label} complete`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : `${action.label} failed`);
     }
   }
 
@@ -792,7 +813,7 @@ export default function AssistantPage() {
         body: JSON.stringify({
           command: trimmed,
           execute,
-          device_target: "web-pwa",
+          device_target: "web-desktop",
           provider_hint: "codex_local",
         }),
       });
@@ -878,7 +899,7 @@ export default function AssistantPage() {
       title: "Web voice command",
       execute,
       provider_hint: "whisper_local",
-      device_target: "web-pwa",
+      device_target: "web-desktop",
       file_name: `voice-command-${Date.now()}.${extensionForMime(mimeType)}`,
       mime_type: mimeType,
       blob: voiceBlob,
@@ -946,9 +967,9 @@ export default function AssistantPage() {
   return (
     <AprilWorkspaceShell
       activeSurface="main-room"
-      statusLabel={isOnline ? "System optimal" : "Offline cache"}
+      statusLabel={isOnline ? "Online" : "Offline cache"}
       queueLabel={`${voiceUploadQueue.length} voice queued`}
-      searchPlaceholder="Query the archive..."
+      searchPlaceholder="Search Library..."
       railSlot={(
         <>
           <div className="april-rail-section">
@@ -956,7 +977,7 @@ export default function AssistantPage() {
             <div className="april-rail-metric-stack">
               <div className="april-rail-metric-card">
                 <strong>{pendingTurn ? "LIVE" : "READY"}</strong>
-                <span>Main Room</span>
+                <span>{PRODUCT_SURFACES.assistant.label}</span>
               </div>
               <div className="april-rail-metric-card">
                 <strong>{history.length}</strong>
@@ -967,9 +988,9 @@ export default function AssistantPage() {
           <div className="april-rail-section">
             <span className="april-rail-section-label">Support views</span>
             <div className="april-rail-link-stack">
-              <Link href="/notes">Knowledge Base</Link>
-              <Link href="/review">SRS Review</Link>
-              <Link href="/planner">Agenda</Link>
+              <Link href="/notes">{PRODUCT_SURFACES.library.label}</Link>
+              <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
+              <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
             </div>
           </div>
         </>
@@ -977,13 +998,24 @@ export default function AssistantPage() {
     >
       <section className="april-main-room-desktop">
         <div className="april-main-room-story">
+          <div className="april-main-room-surface-strip">
+            <div className="april-main-room-surface-status">
+              <span className="april-main-room-surface-dot" aria-hidden="true" />
+              <span>System optimal</span>
+            </div>
+            <div className="april-main-room-surface-pills" aria-label="Assistant status">
+              <span>{pendingTurn ? "Reply pending" : "Thread live"}</span>
+              <span>{conversationMessages.length} turns</span>
+              <span>{voiceUploadQueue.length} voice queued</span>
+            </div>
+          </div>
           <header className="april-main-room-hero">
-            <span className="april-panel-kicker">Observatory intelligence</span>
+            <span className="april-panel-kicker">Assistant thread</span>
             <h1>
-              The <span>Main Room</span> keeps the thread primary.
+              Keep <span>{PRODUCT_SURFACES.assistant.label}</span> as the primary workflow.
             </h1>
             <p>
-              {conversationTitle}. Support views surface as cards under each reply so notes, review, and agenda stay subordinate to the conversation.
+              {conversationTitle}. {PRODUCT_SURFACES.library.label}, {PRODUCT_SURFACES.review.label}, and {PRODUCT_SURFACES.planner.label} surface as inline return points so the thread stays central.
             </p>
           </header>
 
@@ -996,9 +1028,9 @@ export default function AssistantPage() {
               onToggleCards={toggleExpandedCards}
               onToggleTraces={toggleExpandedTraces}
               onReuseCommand={(nextCommand) => setCommand(nextCommand)}
-              onOpenSurface={(href) => router.push(href)}
-              emptyTitle="Begin with a typed turn or a held-to-talk request"
-              emptyBody="The Main Room keeps the answer, the next move, and the supporting tool details in one readable thread."
+              onCardAction={handleCardAction}
+              emptyTitle={productCopy.assistant.emptyTitle}
+              emptyBody={productCopy.assistant.emptyBody}
               emptyActions={showcaseActions}
               transcriptEndRef={transcriptEndRef}
             />
@@ -1007,7 +1039,7 @@ export default function AssistantPage() {
 
         <aside className="april-main-room-aux">
           <AprilPanel className="april-main-room-brief-card">
-            <span className="april-panel-kicker">Observatory intelligence</span>
+            <span className="april-panel-kicker">Thread state</span>
             <h2>Thread state</h2>
             <p>{status}</p>
             <div className="april-rail-metric-stack">
@@ -1030,9 +1062,9 @@ export default function AssistantPage() {
             <span className="april-panel-kicker">Return points</span>
             <h2>Support views</h2>
             <div className="april-rail-link-stack">
-              <Link href="/notes">Knowledge Base</Link>
-              <Link href="/review">SRS Review</Link>
-              <Link href="/planner">Agenda</Link>
+              <Link href="/notes">{PRODUCT_SURFACES.library.label}</Link>
+              <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
+              <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
             </div>
           </AprilPanel>
 
@@ -1053,7 +1085,7 @@ export default function AssistantPage() {
               </div>
               <ul className="assistant-mini-feed">
                 {history.length === 0 ? (
-                  <li className="assistant-mini-feed-empty">No recent operator runs yet.</li>
+                  <li className="assistant-mini-feed-empty">No recent command runs yet.</li>
                 ) : (
                   history.map((entry, index) => (
                     <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
@@ -1088,7 +1120,7 @@ export default function AssistantPage() {
               </div>
               <div className="assistant-diagnostics-grid">
                 <article className="assistant-diagnostic-card">
-                  <span className="observatory-eyebrow">Session memory</span>
+                  <span className="observatory-eyebrow">Thread memory</span>
                   <p className="console-copy">
                     {Object.keys(sessionState).length > 0
                       ? JSON.stringify(sessionState, null, 2)
@@ -1096,7 +1128,7 @@ export default function AssistantPage() {
                   </p>
                 </article>
                 <article className="assistant-diagnostic-card">
-                  <span className="observatory-eyebrow">Queued voice uploads</span>
+                  <span className="observatory-eyebrow">Queued voice items</span>
                   {voiceUploadQueue.length === 0 ? (
                     <p className="console-copy">No queued voice uploads.</p>
                   ) : (
@@ -1157,7 +1189,7 @@ export default function AssistantPage() {
           <div className="april-main-room-dock-head">
             <div>
               <span className="april-panel-kicker">Voice interaction</span>
-              <h2>{voiceBlob ? "Voice clip staged" : recording ? "Listening now" : "Speak or type to the observatory"}</h2>
+              <h2>{voiceBlob ? "Voice clip staged" : recording ? "Listening now" : "Speak or type to Assistant"}</h2>
             </div>
             <div className="button-row">
               <button className="button" type="button" onClick={() => loadConversation("manual").catch(() => undefined)}>
@@ -1183,7 +1215,7 @@ export default function AssistantPage() {
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
                 rows={3}
-                placeholder="Speak or type command..."
+                placeholder={productCopy.assistant.inputPlaceholder}
               />
             </label>
             <button
@@ -1207,7 +1239,7 @@ export default function AssistantPage() {
           </div>
           <div className="april-main-room-dock-actions">
             <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
-              {turnInFlight ? "Sending..." : "Send to Main Room"}
+              {turnInFlight ? "Sending..." : `Send to ${PRODUCT_SURFACES.assistant.label}`}
             </button>
             <button
               className="button"

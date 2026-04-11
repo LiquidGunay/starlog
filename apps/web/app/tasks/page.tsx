@@ -334,7 +334,7 @@ function TasksPageContent() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Agenda</p>
+          <p className="eyebrow">Planner</p>
           <h1>Execution workspace</h1>
           <p className="console-copy">
             Create and update tasks in the PWA, with queued mutations kept visible until replay.

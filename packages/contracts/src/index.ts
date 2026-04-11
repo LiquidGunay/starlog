@@ -1,3 +1,6 @@
+export * from "./assistant";
+export * from "./product";
+
 export type ArtifactAction = "summarize" | "cards" | "tasks" | "append_note";
 
 export interface ArtifactCreateRequest {

@@ -29,10 +29,10 @@ export function TopNavigation() {
       <div className="app-header-inner">
         <div className="app-brand">
           <span className="brand-mark" aria-hidden="true" />
-          <Link href="/" className="brand-link">
-            The Observatory
+          <Link href="/assistant" className="brand-link">
+            Starlog
           </Link>
-          <span className="brand-version">Stellar tier</span>
+          <span className="brand-version">Assistant-first workspace</span>
         </div>
         <nav className="surface-nav" aria-label="Primary surfaces">
           {OBSERVATORY_SURFACES.map((surface) => {

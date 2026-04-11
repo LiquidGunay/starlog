@@ -1,4 +1,6 @@
-export type ObservatorySurfaceId = "main-room" | "knowledge-base" | "srs-review" | "agenda";
+import { PRODUCT_SURFACES } from "@starlog/contracts";
+
+export type ObservatorySurfaceId = "main-room" | "knowledge-base" | "srs-review" | "planner";
 
 export type ObservatorySurface = {
   id: ObservatorySurfaceId;
@@ -17,32 +19,32 @@ export type ObservatoryUtilityLink = {
 export const OBSERVATORY_SURFACES: ObservatorySurface[] = [
   {
     id: "main-room",
-    label: "Main Room",
-    shortLabel: "Main Room",
+    label: PRODUCT_SURFACES.assistant.label,
+    shortLabel: PRODUCT_SURFACES.assistant.shortLabel,
     href: "/assistant",
     prefixes: ["/", "/assistant", "/tasks", "/agent-tools", "/ai-jobs", "/mobile-share", "/share-target", "/runtime"],
     glyph: "✦",
   },
   {
     id: "knowledge-base",
-    label: "Knowledge Base",
-    shortLabel: "Knowledge Base",
+    label: PRODUCT_SURFACES.library.label,
+    shortLabel: PRODUCT_SURFACES.library.shortLabel,
     href: "/notes",
     prefixes: ["/notes", "/artifacts", "/search", "/portability"],
     glyph: "◫",
   },
   {
     id: "srs-review",
-    label: "SRS Review",
-    shortLabel: "SRS Review",
+    label: PRODUCT_SURFACES.review.label,
+    shortLabel: PRODUCT_SURFACES.review.shortLabel,
     href: "/review",
     prefixes: ["/review", "/sync-center"],
     glyph: "◉",
   },
   {
-    id: "agenda",
-    label: "Agenda",
-    shortLabel: "Agenda",
+    id: "planner",
+    label: PRODUCT_SURFACES.planner.label,
+    shortLabel: PRODUCT_SURFACES.planner.shortLabel,
     href: "/planner",
     prefixes: ["/planner", "/calendar", "/integrations"],
     glyph: "☷",
@@ -51,23 +53,23 @@ export const OBSERVATORY_SURFACES: ObservatorySurface[] = [
 
 export const OBSERVATORY_CONTEXT_LINKS: Record<ObservatorySurfaceId, ObservatoryUtilityLink[]> = {
   "main-room": [
-    { href: "/assistant", label: "Conversation" },
-    { href: "/notes", label: "Notes" },
-    { href: "/tasks", label: "Tasks" },
-    { href: "/runtime", label: "Runtime" },
+    { href: "/assistant", label: PRODUCT_SURFACES.assistant.label },
+    { href: "/notes", label: PRODUCT_SURFACES.library.label },
+    { href: "/planner", label: PRODUCT_SURFACES.planner.label },
+    { href: "/runtime", label: "Settings" },
   ],
   "knowledge-base": [
-    { href: "/notes", label: "Notes" },
+    { href: "/notes", label: PRODUCT_SURFACES.library.label },
     { href: "/artifacts", label: "Artifacts" },
     { href: "/search", label: "Search" },
   ],
   "srs-review": [
-    { href: "/review", label: "Review" },
+    { href: "/review", label: PRODUCT_SURFACES.review.label },
     { href: "/review/decks", label: "Decks" },
     { href: "/sync-center", label: "Sync" },
   ],
-  "agenda": [
-    { href: "/planner", label: "Agenda" },
+  planner: [
+    { href: "/planner", label: PRODUCT_SURFACES.planner.label },
     { href: "/calendar", label: "Calendar" },
     { href: "/integrations", label: "Integrations" },
   ],

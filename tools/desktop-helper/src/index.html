@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Starlog Helper Studio</title>
+    <title>Starlog Capture Companion</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -262,8 +262,11 @@
       .capture-action {
         border-radius: 24px;
         padding: 18px;
-        background: rgba(26, 10, 18, 0.34);
-        border: 1px solid rgba(255, 255, 255, 0.05);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+          rgba(26, 10, 18, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
         display: grid;
         gap: 10px;
         align-content: start;
@@ -336,6 +339,10 @@
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 10px;
+      }
+
+      .secondary-panel {
+        opacity: 0.9;
       }
 
       .diagnostic-tile {
@@ -575,12 +582,32 @@
       .recent-empty-card {
         min-height: 238px;
         border-radius: 24px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        background: rgba(24, 9, 16, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background:
+          radial-gradient(circle at top right, rgba(212, 154, 59, 0.08), transparent 26%),
+          rgba(24, 9, 16, 0.34);
         padding: 16px;
         display: grid;
         gap: 10px;
         align-content: start;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .recent-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(212, 154, 59, 0.9), rgba(212, 154, 59, 0.08));
+        opacity: 0.75;
+      }
+
+      .recent-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(212, 154, 59, 0.16);
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
       }
 
       .recent-empty-card {
@@ -652,6 +679,28 @@
         background: rgba(0, 0, 0, 0.18);
       }
 
+      .recent-action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 2px;
+      }
+
+      .recent-action-button {
+        border: 1px solid rgba(212, 154, 59, 0.18);
+        background: rgba(212, 154, 59, 0.08);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .recent-action-button:hover {
+        background: rgba(212, 154, 59, 0.14);
+        border-color: rgba(212, 154, 59, 0.32);
+      }
+
       .quick-surface-panel {
         width: min(350px, 100%);
         border-radius: 30px;
@@ -719,7 +768,9 @@
       .quick-hero {
         border-radius: 24px;
         padding: 14px;
-        background: rgba(255, 255, 255, 0.03);
+        background:
+          radial-gradient(circle at top right, rgba(212, 154, 59, 0.08), transparent 24%),
+          rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.05);
         display: grid;
         gap: 8px;
@@ -1008,11 +1059,10 @@
       <section class="workspace-only">
         <header class="workspace-header">
           <div>
-            <p class="workspace-kicker mono">Velvet Helper</p>
-            <h1 class="workspace-title display">Instrument<br />Control</h1>
-            <p class="workspace-subtitle">
-              A desk-bound capture instrument for quiet clipping, local bridge checks, and recent artifact review.
-              The popup stays ceremonial and compact; this workspace handles setup, diagnostics, and history.
+            <p id="workspaceKicker" class="workspace-kicker mono">Desktop capture companion</p>
+            <h1 id="workspaceTitle" class="workspace-title display">Capture<br />Workspace</h1>
+            <p id="workspaceSubtitle" class="workspace-subtitle">
+              Capture quickly, review recent items, and hand them into Assistant or Library. Diagnostics stay available but secondary.
             </p>
           </div>
           <div class="workspace-badge mono">
@@ -1027,26 +1077,26 @@
               <div class="hero-grid">
                 <div class="hero-lead">
                   <p class="section-label mono">Capture posture</p>
-                  <p class="hero-copy display">A polished little object for capture, not a neutral software popup.</p>
+                  <p class="hero-copy display">Capture first. Diagnose second.</p>
                   <p class="hero-detail">
-                    Bronze light, plum lacquer, and restrained controls. The helper should feel deliberate whether it
-                    is clipping a screenshot, checking the local bridge, or handing you back the last few captures.
+                    The quick surface should stay immediate: capture the current selection or frame, then hand it back
+                    into Assistant or Library without turning the helper into a second desktop app.
                   </p>
                   <div class="capture-grid">
                     <div class="capture-action highlight">
                       <p class="section-label mono">Clipboard</p>
-                      <h2 class="capture-action-title display">Lift text cleanly.</h2>
-                      <p class="capture-action-copy">Preserve the selected line and send it into the Starlog artifact stream.</p>
+                      <h2 class="capture-action-title display">Capture the current selection.</h2>
+                      <p class="capture-action-copy">Preserve the current text with active-window context and upload it into Starlog.</p>
                     </div>
                     <div class="capture-action">
                       <p class="section-label mono">Screenshot</p>
-                      <h2 class="capture-action-title display">Catch the frame.</h2>
-                      <p class="capture-action-copy">Run native capture, OCR when available, and keep the clip anchored to context.</p>
+                      <h2 class="capture-action-title display">Capture the frame.</h2>
+                      <p class="capture-action-copy">Run native screenshot capture, OCR when available, and preserve where it came from.</p>
                     </div>
-                  <div class="capture-action">
-                      <p class="section-label mono">Bridge</p>
-                      <h2 class="capture-action-title display">Keep it local.</h2>
-                      <p class="capture-action-copy">Probe the localhost bridge before you lean on STT, TTS, or desktop context.</p>
+                    <div class="capture-action">
+                      <p class="section-label mono">Handoff</p>
+                      <h2 class="capture-action-title display">Return to the thread.</h2>
+                      <p class="capture-action-copy">Use recent captures to open Library detail or start an Assistant follow-up with one click.</p>
                     </div>
                   </div>
                 </div>
@@ -1054,16 +1104,16 @@
                 <aside class="hero-aside">
                   <div class="hero-aside-card">
                     <p class="section-label mono">Workspace use</p>
-                    <h2 class="hero-aside-title">Diagnostics, config, and proof</h2>
+                    <h2 class="hero-aside-title">Recent captures and setup</h2>
                     <p class="hero-aside-copy">
-                      Use this surface to verify the runtime, tune API and bridge settings, and inspect the latest capture trail.
+                      Use this surface to inspect recent captures, tune API and web settings, and verify local bridge readiness.
                     </p>
                   </div>
                   <div class="hero-aside-card">
-                    <p class="section-label mono">Bridge readiness</p>
+                    <p class="section-label mono">Secondary diagnostics</p>
                     <h2 class="hero-aside-title">Local-first when available</h2>
                     <p class="hero-aside-copy">
-                      Bronze marks the actions that matter now: clipping, health refresh, and confirming the localhost bridge.
+                      Runtime diagnostics stay here as a support tool for bridge, OCR, and shortcut checks when capture behavior degrades.
                     </p>
                   </div>
                 </aside>
@@ -1072,7 +1122,19 @@
 
             <article class="panel velvet-panel">
               <div class="section-head">
-                <h2 class="section-title display">Runtime Diagnostics</h2>
+                <h2 class="section-title display">Recent Captures</h2>
+                <span class="section-chip mono">Artifact trail</span>
+              </div>
+              <div id="recentCaptures" class="recent-grid">
+                <article class="recent-empty-card">
+                  <p class="help">No captures yet.</p>
+                </article>
+              </div>
+            </article>
+
+            <article class="panel velvet-panel secondary-panel">
+              <div class="section-head">
+                <h2 class="section-title display">Support Diagnostics</h2>
                 <span id="studioHealthBadge" class="section-chip mono">System Nominal</span>
               </div>
               <div id="diagnosticTiles" class="diagnostic-tiles"></div>
@@ -1100,24 +1162,12 @@
                 <p class="help">Checking runtime capabilities.</p>
               </div>
             </article>
-
-            <article class="panel velvet-panel">
-              <div class="section-head">
-                <h2 class="section-title display">Recent Captures</h2>
-                <span class="section-chip mono">Artifact trail</span>
-              </div>
-              <div id="recentCaptures" class="recent-grid">
-                <article class="recent-empty-card">
-                  <p class="help">No captures yet.</p>
-                </article>
-              </div>
-            </article>
           </div>
 
           <div class="column">
             <article class="panel velvet-panel">
               <div class="section-head">
-                <h2 class="section-title display">Instrument Config</h2>
+                <h2 class="section-title display">Capture Config</h2>
                 <span class="section-chip mono">Local state</span>
               </div>
 
@@ -1125,6 +1175,10 @@
                 <div class="form-block">
                   <label class="label mono" for="apiBase">API base</label>
                   <input id="apiBase" value="http://localhost:8000" />
+                </div>
+                <div class="form-block">
+                  <label class="label mono" for="webBase">Web app base</label>
+                  <input id="webBase" value="http://localhost:3000" />
                 </div>
                 <div class="form-block">
                   <label class="label mono" for="bridgeBase">Local bridge base</label>
@@ -1143,7 +1197,7 @@
                   <div class="status-pair">
                     <div>
                       <p class="label mono">Capture posture</p>
-                      <p class="help">The popup should stay immediate. The workspace remains the place to tune and inspect.</p>
+                      <p class="help">Keep the quick surface immediate. Use the workspace when you need recent captures or setup changes.</p>
                     </div>
                     <button type="button" class="toggle-switch" aria-pressed="true"><span></span></button>
                   </div>
@@ -1165,7 +1219,7 @@
                 <div class="config-block">
                   <p class="label mono">Quick surface handoff</p>
                   <p class="help">
-                    The quick helper is the first-class object. Reopen it when you want the smaller ceremonial capture surface back.
+                    The quick helper is the first-class capture surface. Reopen it when you want the smaller always-ready capture panel back.
                   </p>
                   <button id="workspaceReturnQuick" type="button" class="quick-link">Return To Quick Surface</button>
                 </div>
@@ -1180,8 +1234,8 @@
           <div class="quick-brand">
             <div class="brand-mark display">S</div>
             <div>
-              <p class="quick-title display">Instrument</p>
-              <p class="quick-subtitle">Velvet helper</p>
+              <p id="quickTitle" class="quick-title display">Capture</p>
+              <p id="quickSubtitle" class="quick-subtitle">Desktop helper</p>
             </div>
           </div>
           <span class="quick-state mono">Ready</span>
@@ -1190,9 +1244,9 @@
         <div class="quick-body">
           <section class="quick-hero">
             <div class="quick-line" aria-hidden="true"></div>
-            <p class="quick-copy display">A small instrument for capture.</p>
+            <p id="quickCopy" class="quick-copy display">Capture the current selection or frame.</p>
             <p class="help">
-              Screen, URL, and spoken intent should feel like one composed gesture, not three separate utilities.
+              Keep the quick surface focused on capture. Use the workspace only when you need recent items, handoff, or diagnostics.
             </p>
           </section>
 
@@ -1227,8 +1281,8 @@
               <span class="command-left">
                 <span class="command-icon mono">WRK</span>
                 <span>
-                  <span class="command-label">Open Workspace</span>
-                  <span class="command-note">Inspect diagnostics, config, and recent captures.</span>
+                  <span class="command-label">Recent Captures</span>
+                  <span class="command-note">Inspect recent captures, handoff actions, and diagnostics.</span>
                 </span>
               </span>
               <span class="command-meta quick-only">

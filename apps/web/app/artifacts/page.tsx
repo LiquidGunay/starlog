@@ -515,9 +515,9 @@ function ArtifactsPageContent() {
     <ObservatoryWorkspaceShell
       pathname={pathname}
       surface="knowledge-base"
-      eyebrow="Knowledge Base"
+      eyebrow="Library"
       title="Reading room, provenance, and artifact lineage."
-      description="Keep the graph-native artifact scene intact while the surrounding chrome aligns with the Main Room-era observatory shell."
+      description="Keep artifact lineage intact while the surrounding chrome aligns with the Assistant-first workspace."
       statusLabel={selectedArtifact ? "Artifact selected" : "Room idle"}
       stats={[
         { label: "Visible nodes", value: String(graphNodes.length) },
@@ -551,11 +551,11 @@ function ArtifactsPageContent() {
           body: versions ? `${versions.actions.length} action runs preserved in version history.` : "Version history appears once artifact context is loaded.",
         },
         {
-          kicker: "Main Room",
+          kicker: "Assistant",
           title: "Return to the persistent thread",
           body: "Bring artifact findings back into conversation without losing the provenance trail.",
           href: "/assistant",
-          actionLabel: "Open Main Room",
+          actionLabel: "Open Assistant",
         },
       ]}
       className="artifact-room-shell"
@@ -688,7 +688,7 @@ function ArtifactsPageContent() {
           <header className="artifact-inspector-header">
             <div className="artifact-pane-head">
               <div>
-                <p className="eyebrow">Knowledge Base</p>
+                <p className="eyebrow">Library</p>
                 <h1>Reading room and lineage</h1>
                 <p className="status">{status}</p>
               </div>

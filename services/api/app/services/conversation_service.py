@@ -6,6 +6,7 @@ from typing import Any
 
 from app.core.time import utc_now
 from app.services.common import execute_fetchall, execute_fetchone, new_id
+from app.services import conversation_card_service
 
 PRIMARY_THREAD_SLUG = "primary"
 PRIMARY_THREAD_TITLE = "Primary Starlog Thread"
@@ -89,6 +90,7 @@ def _project_cards(
     stored_cards: list[dict[str, Any]] = []
     needs_persist = False
     for card in cards:
+        original_card = card
         kind = str(card.get("kind") or "").strip()
         metadata = card.get("metadata")
         metadata = metadata if isinstance(metadata, dict) else {}
@@ -114,20 +116,33 @@ def _project_cards(
                 "projection_version": version,
                 "projection_updated_at": session_updated_at,
             }
-            projected_card = {
+            projected_card = conversation_card_service.normalize_card(
+                {
                 **card,
                 "title": card.get("title") or title,
                 "body": body,
                 "metadata": next_metadata,
                 "version": version,
-            }
+                }
+            )
             projected.append(projected_card)
-            stored_cards.append({**card, "metadata": next_metadata, "version": version})
-            if previous_key != projection_key or stored_version != version or base_version != version:
+            normalized_stored = conversation_card_service.normalize_card(
+                {**card, "metadata": next_metadata, "version": version}
+            )
+            stored_cards.append(normalized_stored)
+            if (
+                previous_key != projection_key
+                or stored_version != version
+                or base_version != version
+                or normalized_stored != original_card
+            ):
                 needs_persist = True
         else:
-            projected.append(card)
-            stored_cards.append(card)
+            normalized_card = conversation_card_service.normalize_card(card)
+            projected.append(normalized_card)
+            stored_cards.append(normalized_card)
+            if normalized_card != original_card:
+                needs_persist = True
     return projected, stored_cards if needs_persist else None
 
 
@@ -140,7 +155,7 @@ def _normalize_cards_for_storage(cards: list[dict[str, Any]] | None) -> list[dic
         metadata = metadata if isinstance(metadata, dict) else {}
         if kind == PROJECTION_THREAD_CONTEXT:
             metadata = {**metadata, "projection": PROJECTION_THREAD_CONTEXT, "projection_source": "session_state"}
-        output.append({**card, "metadata": metadata})
+        output.append(conversation_card_service.normalize_card({**card, "metadata": metadata}))
     return output
 
 
@@ -554,6 +569,62 @@ def record_chat_turn(
         "user_message": user_message,
         "assistant_message": assistant_message,
         "trace": trace,
+        "session_state": session_state["session_state"],
+    }
+
+
+def record_assistant_tool_turn(
+    conn: Connection,
+    *,
+    content: str,
+    assistant_content: str,
+    cards: list[dict[str, Any]] | None = None,
+    tool_traces: list[dict[str, Any]] | None = None,
+    request_metadata: dict[str, Any] | None = None,
+    assistant_metadata: dict[str, Any] | None = None,
+    session_state_patch: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    user_message = append_message(
+        conn,
+        role="user",
+        content=content,
+        metadata=request_metadata or {},
+    )
+    assistant_message = append_message(
+        conn,
+        role="assistant",
+        content=assistant_content,
+        cards=cards or [],
+        metadata=assistant_metadata or {},
+    )
+    recorded_traces: list[dict[str, Any]] = []
+    for trace in tool_traces or []:
+        recorded_traces.append(
+            record_tool_trace(
+                conn,
+                message_id=str(assistant_message["id"]),
+                tool_name=str(trace.get("tool_name") or "assistant_tool"),
+                arguments=trace.get("arguments") if isinstance(trace.get("arguments"), dict) else {},
+                status=str(trace.get("status") or "completed"),
+                result=trace.get("result") if isinstance(trace.get("result"), (dict, list)) else {},
+                metadata=trace.get("metadata") if isinstance(trace.get("metadata"), dict) else {},
+            )
+        )
+    primary_trace = recorded_traces[-1] if recorded_traces else record_tool_trace(
+        conn,
+        message_id=str(assistant_message["id"]),
+        tool_name="assistant_turn",
+        arguments={"content": content},
+        status="completed",
+        result={"response_text": assistant_content, "cards": cards or []},
+        metadata={"source": "assistant_tool_turn"},
+    )
+    session_state = merge_session_state(conn, session_state_patch or {})
+    return {
+        "thread_id": assistant_message["thread_id"],
+        "user_message": user_message,
+        "assistant_message": assistant_message,
+        "trace": primary_trace,
         "session_state": session_state["session_state"],
     }
 

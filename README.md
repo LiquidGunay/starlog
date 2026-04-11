@@ -1,98 +1,168 @@
 # Starlog
 
-Starlog is a single-user, voice-first system for capture, knowledge work, scheduling, and learning
-loops.
+Starlog is a single-user assistant for capture, planning, review, and follow-up.
 
-The product is built around one persistent assistant thread, with the PWA as the main workspace,
-the phone as the quick-capture and briefing companion, and the desktop helper as the fastest path
-for clipping from laptop workflows.
+The product is organized around one persistent Assistant thread. `Library`, `Planner`, and
+`Review` are support views for deeper work, not separate products.
 
-## What Starlog Does
+## What You Use
 
-- captures text, links, files, screenshots, and voice notes into one artifact system
-- keeps provenance across raw, normalized, and extracted content
-- turns artifacts into summaries, cards, notes, and follow-up actions
-- keeps notes, tasks, calendar, review, and briefings in the same system
-- supports a synced PWA, an Android-first phone companion, and a desktop helper
+- `Assistant`: the primary thread for commands, follow-up questions, confirmations, and returned cards
+- `Library`: notes, captures, saved artifacts, and source history
+- `Planner`: tasks, schedule, briefings, and time blocks
+- `Review`: flashcards and recall sessions
+- `Desktop helper`: a capture companion for clipboard and screenshot intake on laptop
 
-## Current Surfaces
-
-### PWA
-
-Use the PWA as the primary workspace for:
-
-- the assistant thread
-- artifacts, notes, and search
-- tasks, calendar, and review
-- longer-form planning and cleanup
-
-Hosted app:
+Hosted web app:
 
 - [https://starlog-web-production.up.railway.app/assistant](https://starlog-web-production.up.railway.app/assistant)
 
-### Mobile companion
+## First-Time Use
 
-Use the phone app for:
+For a first-time user, the normal path is:
+
+1. Open the web app at `/assistant`.
+2. If this is a new Starlog instance, choose `Set Up Starlog` and create a passphrase with at least 12 characters.
+3. Sign in with that same passphrase.
+4. Start in the Assistant thread with a plain command such as:
+   - `summarize latest artifact`
+   - `create task Review project notes tomorrow at 10`
+   - `make cards from the last capture`
+5. Use the cards returned in chat to jump into `Library`, `Planner`, or `Review` when you need a deeper surface.
+
+Important:
+
+- Starlog is single-user today.
+- Do not commit passphrases, bearer tokens, API keys, or bridge tokens into this repo.
+
+## Everyday Workflow
+
+The intended flow is simple:
+
+1. Capture something.
+   Use the web app, the mobile app, the desktop helper, or a share/deep-link path.
+2. Ask Assistant to do the next step.
+   Summarize it, make cards, create a task, plan time, or pull related context.
+3. Open a support view only when needed.
+   `Library` for artifact/note inspection, `Planner` for scheduling, `Review` for recall sessions.
+
+## Native Mobile
+
+The native mobile app is the first-class mobile client.
+
+Tabs:
+
+- `Assistant`
+- `Library`
+- `Planner`
+- `Review`
+
+Use mobile for:
 
 - quick capture
-- voice-first intake
-- alarms
-- offline briefing playback
-- light triage and review
+- voice input
+- in-thread Assistant actions
+- review on the go
+- alarm and briefing playback
 
-### Desktop helper
+## Self-Host The PWA
 
-Use the desktop helper for:
+Starlog’s web app and API are separate services. For a basic self-hosted setup, run both locally first.
 
-- clipping from desktop apps
-- clipboard and screenshot intake
-- lightweight local companion workflows
+### Prerequisites
 
-## Install And Try
+- `Node.js` + `pnpm`
+- `Python 3.12+`
+- [`uv`](https://docs.astral.sh/uv/)
 
-Current preview bundle on this machine:
+### Install Dependencies
 
-- bundle root: `/home/ubuntu/starlog_preview_bundle`
-- Android APK: `/home/ubuntu/starlog_preview_bundle/android/starlog-preview-0.1.0-preview.rc3-104.apk`
-- Linux desktop helper: `/home/ubuntu/starlog_preview_bundle/desktop/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
-- compressed bundle: `/home/ubuntu/starlog-preview-feedback-bundle-20260330.tar.gz`
+From repo root:
 
-Release handoff docs:
+```bash
+pnpm install
+uv sync --project services/api --extra dev
+```
 
-- [`docs/RELEASE_HANDOFF_RUNBOOK.md`](docs/RELEASE_HANDOFF_RUNBOOK.md)
-- [`docs/RELEASE_HANDOFF.md`](docs/RELEASE_HANDOFF.md)
-- [`docs/PREVIEW_FEEDBACK_BUNDLE.md`](docs/PREVIEW_FEEDBACK_BUNDLE.md)
-- [`docs/FINAL_PREVIEW_SIGNOFF.md`](docs/FINAL_PREVIEW_SIGNOFF.md)
-- [`docs/RELEASE_20260330.md`](docs/RELEASE_20260330.md)
+### Run The API
 
-## Sign-In
+```bash
+make dev-api
+```
 
-This deployment is single-user. Use the current operator-provided credential to sign in.
+This starts the API on `http://localhost:8000`.
 
-Do not store passphrases, bearer tokens, bridge tokens, API keys, or secret keys in this README.
+If you want the raw command instead:
 
-## Current Release Status
+```bash
+uv run --project services/api uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/api
+```
 
-Current preview baseline:
+### Run The PWA In Development
 
-- branch target: `master`
-- baseline commit: `f742097`
-- Android preview: `0.1.0-preview.rc3 (104)`
-- repeatable release entrypoint: `python3 scripts/release_handoff.py`
-- PWA release gate: passed on 2026-03-30
-- hosted smoke: passed on 2026-03-30
-- physical-phone install and launch proof: passed on 2026-03-30
+```bash
+make dev-web-lan
+```
 
-Release validation references:
+This starts the web app on `http://localhost:3000`.
 
-- [`docs/ANDROID_RELEASE_QA_MATRIX.md`](docs/ANDROID_RELEASE_QA_MATRIX.md)
-- [`docs/CROSS_SURFACE_PROOF.md`](docs/CROSS_SURFACE_PROOF.md)
-- [`docs/PWA_RELEASE_VERIFICATION_GATE.md`](docs/PWA_RELEASE_VERIFICATION_GATE.md)
-- [`docs/PWA_HOSTED_SMOKE_CHECKLIST.md`](docs/PWA_HOSTED_SMOKE_CHECKLIST.md)
+For same-machine use, `pnpm --filter web dev` is also fine.
 
-## Support Docs
+### Build And Run The PWA For Production-Style Hosting
 
-- phone setup: [`docs/PHONE_SETUP.md`](docs/PHONE_SETUP.md)
-- desktop helper setup: [`docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md`](docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md)
-- codebase map: [`docs/CODEBASE_ORGANIZATION.md`](docs/CODEBASE_ORGANIZATION.md)
-- repo runbooks and agent instructions: [`AGENTS.md`](AGENTS.md)
+Build:
+
+```bash
+pnpm --filter web build
+```
+
+Run:
+
+```bash
+pnpm --filter web start
+```
+
+The production web server uses the Next.js app in `apps/web`.
+
+### First Sign-In On A Self-Hosted Instance
+
+1. Open the web app.
+2. Set API base to your API URL, for example `http://localhost:8000`.
+3. Click `Set Up Starlog` if this is a new instance.
+4. Sign in with the passphrase you just created.
+5. Go to `/assistant` and start using the thread.
+
+## Mobile And Phone Testing
+
+For LAN testing from your phone, use:
+
+- web app: `http://<YOUR_LAN_IP>:3000`
+- API: `http://<YOUR_LAN_IP>:8000`
+
+Detailed setup:
+
+- [docs/PHONE_SETUP.md](/home/ubuntu/starlog/docs/PHONE_SETUP.md)
+- [docs/ANDROID_DEV_BUILD.md](/home/ubuntu/starlog/docs/ANDROID_DEV_BUILD.md)
+
+## Desktop Helper
+
+The desktop helper is a capture-first companion, not a second full client.
+
+Use it for:
+
+- clipboard capture
+- screenshot capture
+- recent capture review
+- `Open in Library`
+- `Ask Assistant`
+
+Setup and release docs:
+
+- [docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md](/home/ubuntu/starlog/docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md)
+- [tools/desktop-helper/README.md](/home/ubuntu/starlog/tools/desktop-helper/README.md)
+
+## Repo Entry Points
+
+- product direction: [PLAN.md](/home/ubuntu/starlog/PLAN.md)
+- repo rules: [AGENTS.md](/home/ubuntu/starlog/AGENTS.md)
+- architecture/workflow plan: [docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md](/home/ubuntu/starlog/docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md)

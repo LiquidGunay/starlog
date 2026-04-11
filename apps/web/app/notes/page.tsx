@@ -367,7 +367,7 @@ function NotesPageContent() {
             <div className="april-rail-link-stack">
               <a href="#knowledge-editor">Editor</a>
               <a href="#knowledge-graph">Graph</a>
-              <Link href="/assistant">Main Room</Link>
+              <Link href="/assistant">Assistant</Link>
             </div>
           </div>
         </>
@@ -497,7 +497,7 @@ function NotesPageContent() {
                 <span className="knowledge-base-kicker">Editor well</span>
                 <p>Long-form note drafting with graph-aware context.</p>
               </div>
-              <Link className="button" href="/assistant">Open Main Room</Link>
+              <Link className="button" href="/assistant">Open Assistant</Link>
             </div>
 
             <label className="knowledge-base-field knowledge-base-title-field" htmlFor="note-title">

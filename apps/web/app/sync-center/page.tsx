@@ -246,7 +246,7 @@ export default function SyncCenterPage() {
     <ObservatoryWorkspaceShell
       pathname={pathname}
       surface="srs-review"
-      eyebrow="SRS Review"
+      eyebrow="Review"
       title="Sync diagnostics, replay edge, and offline cache readiness."
       description="Keep the specialized replay and offline tooling intact, but frame it as a support surface for review and shared state reliability."
       statusLabel={isOnline ? "Online replay available" : "Offline mode"}

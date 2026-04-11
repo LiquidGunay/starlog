@@ -135,7 +135,7 @@ export default function PortabilityPage() {
     <main className="shell">
       <section className="workspace glass">
         <div>
-          <p className="eyebrow">Knowledge Base</p>
+          <p className="eyebrow">Library</p>
           <h1>Export, restore, and verification</h1>
           <p className="console-copy">
             Use the API snapshot directly, restore it into the local Starlog database, and validate with `make verify-export`.

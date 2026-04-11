@@ -443,10 +443,10 @@ function CalendarPageContent() {
   return (
     <ObservatoryWorkspaceShell
       pathname={pathname}
-      surface="agenda"
-      eyebrow="Agenda"
+      surface="planner"
+      eyebrow="Planner"
       title="Weekly board and event lifecycle."
-      description="Create, update, delete, and sync events while keeping conflict visibility inside the observatory agenda shell."
+      description="Create, update, delete, and sync events while keeping conflict visibility inside the Planner workspace."
       statusLabel={lastSync ? "Calendar sync active" : "Awaiting sync run"}
       stats={[
         { label: "Events", value: String(visibleEvents.length) },
@@ -467,10 +467,10 @@ function CalendarPageContent() {
       orbitCards={[
         {
           kicker: "Planner",
-          title: "Return to agenda rituals",
+          title: "Return to Planner",
           body: "Use the ritual workspace for the multi-cycle planning view.",
           href: "/planner",
-          actionLabel: "Open agenda",
+          actionLabel: "Open Planner",
         },
         {
           kicker: "Sync",
@@ -483,7 +483,7 @@ function CalendarPageContent() {
         <ObservatoryPanel
           kicker="Calendar editor"
           title="Anchor day and event form"
-          meta="Keep direct event edits available without leaving the agenda family of routes."
+          meta="Keep direct event edits available without leaving the Planner family of routes."
         >
           <label className="label" htmlFor="calendar-day">Anchor day</label>
           <input
