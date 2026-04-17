@@ -263,6 +263,9 @@ export default function AssistantPage() {
   const holdToTalkActiveRef = useRef(false);
   const stopRecordingOnceReadyRef = useRef(false);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const setTranscriptEndRef = useCallback((node: HTMLDivElement | null) => {
+    transcriptEndRef.current = node;
+  }, []);
   const browserSupportsRecording = useMemo(
     () => typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia,
     [],
@@ -1032,7 +1035,7 @@ export default function AssistantPage() {
               emptyTitle={productCopy.assistant.emptyTitle}
               emptyBody={productCopy.assistant.emptyBody}
               emptyActions={showcaseActions}
-              transcriptEndRef={transcriptEndRef}
+              transcriptEndRef={setTranscriptEndRef}
             />
           </AprilPanel>
         </div>

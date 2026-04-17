@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type RefObject } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   AssistantCard as ConversationCard,
   AssistantCardAction,
@@ -47,7 +47,7 @@ type MainRoomThreadProps = {
   emptyTitle: string;
   emptyBody: string;
   emptyActions: string[];
-  transcriptEndRef?: RefObject<HTMLDivElement | null>;
+  transcriptEndRef?: (node: HTMLDivElement | null) => void;
 };
 
 function summarizeTraceValue(value: unknown): string {
