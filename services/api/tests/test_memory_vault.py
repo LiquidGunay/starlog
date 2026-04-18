@@ -111,3 +111,33 @@ def test_memory_profile_proposals_and_suggestions(client: TestClient, auth_heade
     )
     assert dismissed.status_code == 200
     assert dismissed.json()["status"] == "dismissed"
+
+
+def test_memory_page_update_cannot_move_wiki_page_into_profile_namespace(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    created = client.post(
+        "/v1/memory/pages",
+        json={
+            "title": "Project that stays wiki",
+            "body_md": "Keep this in the wiki namespace.",
+            "kind": "project",
+            "namespace": "wiki/projects",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    page = created.json()
+
+    response = client.put(
+        f"/v1/memory/pages/{page['id']}",
+        json={
+            "markdown_source": page["markdown_source"].replace("namespace: wiki/projects", "namespace: profile/goals"),
+            "base_version": page["latest_version"],
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 400
+    assert "confirmed profile proposal" in response.json()["detail"]

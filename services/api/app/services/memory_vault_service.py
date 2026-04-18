@@ -171,6 +171,15 @@ def _resolve_archive_namespace(namespace: str, status: str) -> str:
     return namespace if namespace.startswith("archive/") else f"archive/{namespace}"
 
 
+def _namespace_family(namespace: str) -> str:
+    normalized = namespace.removeprefix("archive/")
+    if normalized in PROFILE_NAMESPACES:
+        return "profile"
+    if normalized in WIKI_NAMESPACES:
+        return "wiki"
+    raise ValueError(f"Unsupported memory namespace: {namespace}")
+
+
 def _normalize_frontmatter(
     frontmatter: dict[str, Any],
     *,
@@ -787,6 +796,13 @@ def update_page(
         raise conflict_service.RevisionConflictError(conflict)
 
     frontmatter, body_md = parse_markdown_source(markdown_source)
+    requested_namespace = _validate_namespace(
+        str(frontmatter.get("namespace") or current["namespace"]),
+        allow_profile=True,
+        allow_archive=True,
+    )
+    if _namespace_family(str(current["namespace"])) != _namespace_family(requested_namespace):
+        raise ValueError("Moving pages into or out of profile namespaces requires a confirmed profile proposal")
     return _update_page_from_frontmatter(conn, current, body_md=body_md, frontmatter=frontmatter)
 
 
