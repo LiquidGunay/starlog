@@ -120,6 +120,20 @@ def _latest_tool_name(context: dict[str, Any]) -> str | None:
     return tool_name or None
 
 
+def _memory_counts(context: dict[str, Any]) -> tuple[int, int, int]:
+    memory = context.get("memory_context")
+    if not isinstance(memory, dict):
+        return 0, 0, 0
+    wiki_pages = memory.get("wiki_pages")
+    profile_pages = memory.get("profile_pages")
+    artifact_matches = memory.get("artifact_matches")
+    return (
+        len(wiki_pages) if isinstance(wiki_pages, list) else 0,
+        len(profile_pages) if isinstance(profile_pages, list) else 0,
+        len(artifact_matches) if isinstance(artifact_matches, list) else 0,
+    )
+
+
 def _agent_plan_output(payload: dict[str, Any]) -> dict[str, Any]:
     command = str(payload.get("command") or _source_text(payload) or "").strip()
     tool_catalog = payload.get("tool_catalog")
@@ -213,6 +227,7 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
     session_state = context.get("session_state") if isinstance(context.get("session_state"), dict) else {}
     last_intent = str(session_state.get("last_matched_intent") or "").strip()
     latest_tool = _latest_tool_name(context)
+    wiki_count, profile_count, artifact_count = _memory_counts(context)
 
     response_parts = [f"Captured into {resolved_title}: {excerpt}"]
     if last_intent:
@@ -221,6 +236,10 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
         response_parts.append(f"The latest execution trace is {latest_tool.replace('_', ' ')}.")
     else:
         response_parts.append("The persistent thread is ready for the next explicit action.")
+    if wiki_count or profile_count or artifact_count:
+        response_parts.append(
+            f"Memory context surfaced {wiki_count} wiki page(s), {profile_count} profile page(s), and {artifact_count} related artifact match(es)."
+        )
     response_text = " ".join(response_parts)
 
     cards: list[dict[str, Any]] = [
@@ -275,6 +294,11 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
             "title": resolved_title,
             "recent_message_count": len(context.get("recent_messages") or []),
             "recent_trace_count": len(context.get("recent_tool_traces") or []),
+            "memory_context_counts": {
+                "wiki_pages": wiki_count,
+                "profile_pages": profile_count,
+                "artifact_matches": artifact_count,
+            },
         },
     )
 

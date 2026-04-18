@@ -3,7 +3,7 @@ from datetime import timedelta
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import ai_service, events_service, integrations_service, srs_service
+from app.services import ai_service, events_service, integrations_service, memory_vault_service, srs_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 DEFERRED_CAPABILITIES = {
@@ -201,6 +201,12 @@ def _create_summary_record(
         (summary_id, artifact["id"], version, summary_text, provider, now),
     )
     _record_relation(conn, str(artifact["id"]), "artifact.summary_version", "summary_version", summary_id)
+    memory_vault_service.promote_artifact_summary(
+        conn,
+        artifact=artifact,
+        summary_id=summary_id,
+        summary_text=summary_text,
+    )
     conn.commit()
     return summary_id
 
@@ -412,6 +418,9 @@ def _apply_transcript(
         "artifact.transcribed",
         {"artifact_id": artifact["id"], "provider_used": provider_used},
     )
+    updated_artifact = get_artifact(conn, str(artifact["id"]))
+    if updated_artifact is not None:
+        memory_vault_service.index_artifact_capture(conn, updated_artifact, commit=False)
     conn.commit()
     return str(artifact["id"])
 

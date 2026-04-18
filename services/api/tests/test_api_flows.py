@@ -56,6 +56,10 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
     assert len(payload["notes"]) >= 1
     assert len(payload["relations"]) >= 4
 
+    memory_tree = client.get("/v1/memory/tree", headers=auth_headers)
+    assert memory_tree.status_code == 200
+    assert artifact_id in str(memory_tree.json()) or "wiki/sources" in str(memory_tree.json())
+
     versions = client.get(f"/v1/artifacts/{artifact_id}/versions", headers=auth_headers)
     assert versions.status_code == 200
     version_payload = versions.json()

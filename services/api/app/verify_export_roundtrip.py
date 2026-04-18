@@ -52,7 +52,7 @@ def verify_roundtrip(source_db: Path) -> tuple[bool, list[str]]:
         if original_count != restored_count:
             issues.append(f"{table}: expected {original_count}, restored {restored_count}")
 
-    for table in ["artifacts", "action_runs", "artifact_relations", "notes", "tasks", "cards", "plugins"]:
+    for table in ["artifacts", "action_runs", "artifact_relations", "notes", "tasks", "cards", "plugins", "memory_pages"]:
         if _table_ids(exported, table) != _table_ids(reexported, table):
             issues.append(f"{table}: id set mismatch after roundtrip")
 

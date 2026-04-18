@@ -71,6 +71,36 @@ def search(conn: Connection, query: str, limit: int) -> list[dict]:
             }
         )
 
+    memory_rows = execute_fetchall(
+        conn,
+        """
+        SELECT mp.id, mp.path, mp.title, mp.namespace, mp.status, mp.updated_at, mp.latest_version, mpv.body_md
+        FROM memory_pages mp
+        INNER JOIN memory_page_versions mpv
+          ON mpv.page_id = mp.id AND mpv.version = mp.latest_version
+        WHERE lower(mp.title) LIKE ? OR lower(mp.path) LIKE ? OR lower(mpv.body_md) LIKE ?
+        ORDER BY mp.updated_at DESC
+        LIMIT ?
+        """,
+        (needle, needle, needle, limit),
+    )
+    for row in memory_rows:
+        results.append(
+            {
+                "kind": "memory_page",
+                "id": row["id"],
+                "title": row["title"],
+                "snippet": _snippet(str(row["body_md"]), query),
+                "updated_at": row["updated_at"],
+                "metadata": {
+                    "path": row["path"],
+                    "namespace": row["namespace"],
+                    "status": row["status"],
+                    "version": row["latest_version"],
+                },
+            }
+        )
+
     task_rows = execute_fetchall(
         conn,
         """

@@ -327,6 +327,109 @@ CREATE TABLE IF NOT EXISTS recommendation_events (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS memory_pages (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  namespace TEXT NOT NULL,
+  status TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.6,
+  latest_version INTEGER NOT NULL DEFAULT 1,
+  frontmatter_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_activated_at TEXT,
+  review_after TEXT,
+  archived_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS memory_page_versions (
+  id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  markdown_source TEXT NOT NULL,
+  frontmatter_json TEXT NOT NULL,
+  body_md TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (page_id) REFERENCES memory_pages(id),
+  UNIQUE(page_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS memory_edges (
+  id TEXT PRIMARY KEY,
+  source_page_id TEXT NOT NULL,
+  relation_type TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (source_page_id) REFERENCES memory_pages(id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_chunks (
+  id TEXT PRIMARY KEY,
+  page_id TEXT,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_profile_proposals (
+  id TEXT PRIMARY KEY,
+  page_id TEXT,
+  proposed_page_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  namespace TEXT NOT NULL,
+  proposal_markdown_source TEXT NOT NULL,
+  frontmatter_json TEXT NOT NULL,
+  body_md TEXT NOT NULL,
+  rationale TEXT,
+  status TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  resolved_at TEXT,
+  FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_activation_events (
+  id TEXT PRIMARY KEY,
+  page_id TEXT,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_suggestions (
+  id TEXT PRIMARY KEY,
+  surface TEXT NOT NULL,
+  suggestion_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  page_id TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+);
+
 CREATE TABLE IF NOT EXISTS research_sources (
   id TEXT PRIMARY KEY,
   source_kind TEXT NOT NULL,
@@ -499,6 +602,16 @@ CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expire
 CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_pages_namespace_updated ON memory_pages(namespace, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_pages_path ON memory_pages(path);
+CREATE INDEX IF NOT EXISTS idx_memory_page_versions_page_version ON memory_page_versions(page_id, version DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_edges_source_updated ON memory_edges(source_page_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_edges_target ON memory_edges(target_type, target_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_source ON memory_chunks(source_type, source_id, chunk_index);
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_page ON memory_chunks(page_id, chunk_index);
+CREATE INDEX IF NOT EXISTS idx_memory_profile_proposals_status_created ON memory_profile_proposals(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_activation_events_page_created ON memory_activation_events(page_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_suggestions_surface_weight ON memory_suggestions(surface, weight DESC, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_research_items_source_updated ON research_items(source_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
 """
@@ -664,6 +777,102 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           metadata_json TEXT NOT NULL,
           created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS memory_pages (
+          id TEXT PRIMARY KEY,
+          path TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          namespace TEXT NOT NULL,
+          status TEXT NOT NULL,
+          confidence REAL NOT NULL DEFAULT 0.6,
+          latest_version INTEGER NOT NULL DEFAULT 1,
+          frontmatter_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_activated_at TEXT,
+          review_after TEXT,
+          archived_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS memory_page_versions (
+          id TEXT PRIMARY KEY,
+          page_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          markdown_source TEXT NOT NULL,
+          frontmatter_json TEXT NOT NULL,
+          body_md TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (page_id) REFERENCES memory_pages(id),
+          UNIQUE(page_id, version)
+        );
+        CREATE TABLE IF NOT EXISTS memory_edges (
+          id TEXT PRIMARY KEY,
+          source_page_id TEXT NOT NULL,
+          relation_type TEXT NOT NULL,
+          target_type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (source_page_id) REFERENCES memory_pages(id)
+        );
+        CREATE TABLE IF NOT EXISTS memory_chunks (
+          id TEXT PRIMARY KEY,
+          page_id TEXT,
+          source_type TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          chunk_index INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+        );
+        CREATE TABLE IF NOT EXISTS memory_profile_proposals (
+          id TEXT PRIMARY KEY,
+          page_id TEXT,
+          proposed_page_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          title TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          namespace TEXT NOT NULL,
+          proposal_markdown_source TEXT NOT NULL,
+          frontmatter_json TEXT NOT NULL,
+          body_md TEXT NOT NULL,
+          rationale TEXT,
+          status TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          resolved_at TEXT,
+          FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+        );
+        CREATE TABLE IF NOT EXISTS memory_activation_events (
+          id TEXT PRIMARY KEY,
+          page_id TEXT,
+          source_type TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          weight REAL NOT NULL DEFAULT 1.0,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+        );
+        CREATE TABLE IF NOT EXISTS memory_suggestions (
+          id TEXT PRIMARY KEY,
+          surface TEXT NOT NULL,
+          suggestion_type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          weight REAL NOT NULL DEFAULT 1.0,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          page_id TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (page_id) REFERENCES memory_pages(id)
+        );
         CREATE TABLE IF NOT EXISTS research_sources (
           id TEXT PRIMARY KEY,
           source_kind TEXT NOT NULL,
@@ -703,6 +912,16 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_conversation_tool_traces_thread_created ON conversation_tool_traces(thread_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_conversation_memory_thread_created ON conversation_memory_entries(thread_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_pages_namespace_updated ON memory_pages(namespace, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_pages_path ON memory_pages(path);
+        CREATE INDEX IF NOT EXISTS idx_memory_page_versions_page_version ON memory_page_versions(page_id, version DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_edges_source_updated ON memory_edges(source_page_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_edges_target ON memory_edges(target_type, target_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_chunks_source ON memory_chunks(source_type, source_id, chunk_index);
+        CREATE INDEX IF NOT EXISTS idx_memory_chunks_page ON memory_chunks(page_id, chunk_index);
+        CREATE INDEX IF NOT EXISTS idx_memory_profile_proposals_status_created ON memory_profile_proposals(status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_activation_events_page_created ON memory_activation_events(page_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_suggestions_surface_weight ON memory_suggestions(surface, weight DESC, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_research_items_source_updated ON research_items(source_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
         """

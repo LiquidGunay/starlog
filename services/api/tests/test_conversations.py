@@ -4,6 +4,8 @@ import sqlite3
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from app.db.storage import get_connection
+from app.services import memory_vault_service
 
 
 def test_primary_conversation_bootstraps(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -231,6 +233,15 @@ def test_primary_conversation_preview_assembles_runtime_context(
     client: TestClient,
     auth_headers: dict[str, str],
 ) -> None:
+    with get_connection() as conn:
+        memory_vault_service.create_page(
+            conn,
+            title="Memory retrieval",
+            body_md="Remember that retrieval should prioritize explicit references and active goals.",
+            kind="concept",
+            namespace="wiki/concepts",
+        )
+
     command = "create task Review chat preview due tomorrow priority 4"
     command_response = client.post(
         "/v1/agent/command",
@@ -257,7 +268,39 @@ def test_primary_conversation_preview_assembles_runtime_context(
     assert payload["context"]["session_state"]["last_matched_intent"] == "create_task"
     assert payload["context"]["recent_messages"][-1]["role"] == "assistant"
     assert payload["context"]["request_metadata"] == {"surface": "assistant"}
+    assert payload["context"]["memory_context"]["wiki_pages"]
     assert "What should I do next?" in payload["user_prompt"]
+
+
+def test_primary_chat_surfaces_memory_suggestion_cards(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        proposal = memory_vault_service.create_profile_proposal(
+            conn,
+            title="Working style",
+            body_md="Prefer proactive reminders about forgotten commitments.",
+            kind="preference",
+            namespace="profile/preferences",
+            rationale="The user explicitly asked for proactive forgotten-item prompts.",
+        )
+
+    response = client.post(
+        "/v1/conversations/primary/chat",
+        json={
+            "content": "What should I remember next?",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant"},
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    cards = response.json()["assistant_message"]["cards"]
+    suggestion_cards = [card for card in cards if card["kind"] == "memory_suggestion"]
+    assert suggestion_cards
+    assert suggestion_cards[0]["metadata"]["proposal_id"] == proposal["id"]
 
 
 def test_primary_conversation_backfills_legacy_card_actions_on_read(

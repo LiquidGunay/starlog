@@ -2,7 +2,7 @@ from copy import deepcopy
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import ai_jobs_service, artifacts_service, events_service, integrations_service
+from app.services import ai_jobs_service, artifacts_service, events_service, integrations_service, memory_vault_service
 from app.services.common import new_id
 
 
@@ -69,6 +69,7 @@ def ingest_capture(
             "source_type": source_type,
         },
     )
+    memory_vault_service.index_artifact_capture(conn, artifact, commit=False)
     conn.commit()
 
     return artifact

@@ -4,7 +4,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import ai_jobs_service, events_service, integrations_service, memory_service
+from app.services import ai_jobs_service, events_service, integrations_service, memory_service, memory_vault_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 
@@ -117,7 +117,7 @@ def _briefing_sections(
     sections.append(
         {
             "kind": "calendar",
-            "title": "Schedule blocks",
+            "title": "Calendar blocks",
             "summary": f"{len(events)} calendar blocks on {date}" if events else "No calendar blocks scheduled",
             "items": event_items,
         }
@@ -282,6 +282,7 @@ def _briefing_payload(conn: Connection, row: dict[str, Any]) -> dict[str, Any]:
     research_digest = _latest_research_digest(conn, str(row["date"]))
     recent_memories = memory_service.list_memory_entries(conn, limit=3)
     recommendation_hints = memory_service.list_recommendation_hints(conn, surface="briefing", limit=8)
+    memory_suggestions = memory_vault_service.list_suggestions(conn, surface="briefing", refresh=True)
     sections, source_refs = _briefing_sections(
         date=str(row["date"]),
         tasks=tasks,
@@ -297,6 +298,7 @@ def _briefing_payload(conn: Connection, row: dict[str, Any]) -> dict[str, Any]:
         "sections": sections,
         "recent_memories": recent_memories,
         "recommendation_hints": recommendation_hints,
+        "memory_suggestions": memory_suggestions,
         "source_refs": source_refs
         + [
             {
