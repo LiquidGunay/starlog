@@ -36,12 +36,13 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 When a recurring preference, reusable guardrail, or durable process rule is discovered, update this file.
 Put dated incident history and one-off issue chronology in a dedicated doc under `docs/`, not in `AGENTS.md`.
 
-## External design source of truth
+## Design source of truth
 
-Use the April 2026 design pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as the only active UI/design source of truth for the current Assistant-first implementation pass.
+Use the repo-local chat overhaul moodboard as the primary visual source of truth for the current Assistant redesign across mobile and web.
 
-- Treat `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/starlog_design_document_design.md` plus the per-surface `code.html` and `screen.png` files in that folder as the authoritative design references.
-- When design guidance conflicts across sources, prefer the April 2026 external pack over any older repo-tracked doc or screenshot.
+- Treat [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md) and the corresponding implementation reference at [apps/web/app/design/chat-moodboard/page.tsx](/home/ubuntu/starlog/apps/web/app/design/chat-moodboard/page.tsx) as the active design references for chat-first UI work.
+- The April 2026 pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` is now a soft historical reference only. Use it for lineage and constraint checks, not as a screen-by-screen target.
+- When design guidance conflicts across sources, prefer the repo-local chat overhaul moodboard over the April pack and older screenshots/docs.
 
 ## Default execution mode
 
@@ -64,6 +65,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
+- `docs/CHAT_UI_MOODBOARD.md` — primary visual direction, material system, motion thesis, and implementation guardrails for the current Assistant chat overhaul.
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` — archived human-readable queue snapshot; not the live coordination surface.
 - `docs/ENGINEERING_ISSUE_HISTORY.md` — archived dated issue chronology and host-specific debugging history that should not live inline in `AGENTS.md`.
 - `docs/PARALLEL_AGENT_WORKFLOW.md` — subagent-only workflow for workitem locking, extra worktrees, branch cleanup, and shared dependency reuse.
@@ -90,7 +92,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `apps/mobile/.expo/README.md` — Expo-generated explanation of local `.expo` state; informational only, not a planning source.
 - `services/api/.pytest_cache/README.md` — pytest-generated cache note; informational only, not a planning source.
 - Vendor markdown under `services/api/.venv/**` is third-party package/license material and is not part of Starlog repo guidance.
-- External markdown under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**` is the current cross-worktree design reference set; it is intentionally outside the repo so design iteration does not churn implementation branches.
+- External markdown under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**` is retained as historical design input only; the active chat redesign reference now lives in repo-local docs and implementation files.
 
 ## Collaboration preferences
 
@@ -118,6 +120,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - Prefer exact evidence over optimistic success text: confirm builds, installs, screenshots, and route transitions directly.
 - For Android validation from WSL on this host, treat Windows `adb.exe`, Windows-visible APK staging paths, and manual device unlock as the reliable baseline.
 - Preserve collapsible side-pane behavior and other explicitly stated interaction contracts when redesigning assistant and support surfaces.
+- For major UI overhauls, establish or refresh a repo-local moodboard/reference artifact before changing shared components.
 - Keep docs-scoped workflow plans under `docs/`; replace them with updated versions rather than deleting them when the plan changes.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.

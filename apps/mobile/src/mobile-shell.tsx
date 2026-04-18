@@ -24,6 +24,9 @@ type MobileBottomNavProps = MobileShellProps & {
 type MobileAssistantDrawerProps = MobileShellProps & {
   open: boolean;
   activeTab: MobileTab;
+  messageCount: number;
+  queuedCaptureCount: number;
+  pendingReply: boolean;
   onClose: () => void;
   onSelectTab: (tab: MobileTab, label: string) => void;
   onRefreshThread: () => void;
@@ -51,15 +54,27 @@ export function MobileTopBar({
             <Text style={styles.topBarAvatarText}>◉</Text>
           </View>
         )}
-        <View style={{ gap: 2 }}>
-          <Text style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>Starlog</Text>
-          {isAssistantMode ? <Text style={styles.topBarAssistantCaption}>Assistant</Text> : null}
+        <View style={{ gap: 0 }}>
+          {isAssistantMode ? <Text style={styles.topBarAssistantLabel}>Starlog</Text> : null}
+          <Text style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>
+            {isAssistantMode ? "Assistant" : "Starlog"}
+          </Text>
+          {isAssistantMode ? (
+            <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 14 }}>
+              Shared mobile + web thread
+            </Text>
+          ) : null}
         </View>
       </View>
       {isAssistantMode ? (
-        <View style={styles.topBarAssistantStatus}>
-          <View style={styles.topBarAssistantStatusDot} />
-          <Text style={styles.topBarAssistantStatusText}>Live thread</Text>
+        <View style={[styles.topBarAssistantStatus, { alignItems: "flex-end" }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={styles.topBarAssistantStatusDot} />
+            <Text style={styles.topBarAssistantStatusText}>Live</Text>
+          </View>
+          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 13 }}>
+            Thread-first workspace
+          </Text>
         </View>
       ) : (
         <View style={styles.topBarActions}>
@@ -78,6 +93,9 @@ export function MobileTopBar({
 export function MobileAssistantDrawer({
   open,
   activeTab,
+  messageCount,
+  queuedCaptureCount,
+  pendingReply,
   onClose,
   onSelectTab,
   onRefreshThread,
@@ -104,7 +122,7 @@ export function MobileAssistantDrawer({
     >
       <View
         style={{
-          width: 280,
+          width: 272,
           maxWidth: "82%",
           paddingHorizontal: 16,
           paddingTop: 88,
@@ -117,8 +135,65 @@ export function MobileAssistantDrawer({
       >
         <View style={{ gap: 6 }}>
           <Text style={[styles.sectionKicker, { color: palette.accent }]}>Workspace</Text>
-          <Text style={[styles.panelTitle, { fontSize: 24, lineHeight: 28 }]}>Move between surfaces</Text>
-          <Text style={styles.subtle}>Keep Assistant primary, then step into Library, Planner, or Review when you need the deeper view.</Text>
+          <Text style={[styles.panelTitle, { fontSize: 23, lineHeight: 27 }]}>Stay in the thread</Text>
+          <Text style={styles.subtle}>Open Library, Planner, or Review when you need the deeper surface.</Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          {["Shared transcript", "Docked composer", "Secondary surfaces"].map((label) => (
+            <View
+              key={label}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                backgroundColor: "rgba(255,255,255,0.03)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+              }}
+            >
+              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <View
+          style={{
+            borderRadius: 22,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.05)",
+            backgroundColor: "rgba(255,255,255,0.02)",
+            padding: 14,
+            gap: 10,
+          }}
+        >
+          <Text style={[styles.sectionKicker, { color: palette.accent }]}>Thread state</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {[
+              { label: pendingReply ? "Live" : "Ready", meta: "Assistant" },
+              { label: String(messageCount), meta: "Messages" },
+              { label: String(queuedCaptureCount), meta: "Queued" },
+            ].map((item) => (
+              <View
+                key={`${item.meta}-${item.label}`}
+                style={{
+                  flex: 1,
+                  borderRadius: 16,
+                  paddingHorizontal: 10,
+                  paddingVertical: 10,
+                  backgroundColor: "rgba(255,255,255,0.025)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.04)",
+                  gap: 4,
+                }}
+              >
+                <Text style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{item.label}</Text>
+                <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                  {item.meta}
+                </Text>
+              </View>
+            ))}
+          </View>
         </View>
         <View style={{ gap: 10 }}>
           {MOBILE_TABS.map((tab) => (

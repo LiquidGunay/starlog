@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import type { AssistantCard as ConversationCard, AssistantCardAction, AssistantConversationToolTrace as ConversationToolTrace } from "@starlog/contracts";
 import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 
-import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
+import { WorkspacePanel as AssistantSurfacePanel, WorkspaceShell as AssistantWorkspaceShell } from "../components/april-observatory-shell";
 import { MainRoomThread } from "../components/main-room-thread";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
@@ -967,12 +967,38 @@ export default function AssistantPage() {
     voiceUploadQueueHydrated,
   ]);
 
+  const supportPaneActions = [
+    ...(historyPane.collapsed ? [{ id: "assistant-history", label: "Show side lane", onClick: historyPane.expand }] : []),
+    ...(diagnosticsPane.collapsed ? [{ id: "assistant-diagnostics", label: "Show diagnostics", onClick: diagnosticsPane.expand }] : []),
+  ];
+  const hasVisibleSupportPane = !historyPane.collapsed || !diagnosticsPane.collapsed;
+  const assistantReplies = conversationMessages.filter((message) => message.role === "assistant").length;
+  const attachmentCount = conversationMessages.reduce((count, message) => (
+    count + message.cards.filter((card) => !["thread_context", "tool_step"].includes(card.kind)).length
+  ), 0);
+  const composerHeadline = voiceBlob ? "Voice clip ready" : recording ? "Listening now" : pendingTurn ? "Assistant is answering" : "Stay in the thread";
+  const composerSubline = voiceBlob
+    ? "Route the captured clip into planning or execution."
+    : recording
+      ? "Release to stop the local recording and keep the reply in this shared thread."
+      : pendingTurn
+        ? "The thread is live. Keep the next move close while the reply lands."
+        : "Type, speak, or reuse attachment text without leaving the main conversation plane.";
+  const composerState = voiceBlob ? "voice-ready" : recording ? "listening" : pendingTurn ? "pending" : "idle";
+  const composerHasDraft = command.trim().length > 0;
+
   return (
-    <AprilWorkspaceShell
+    <AssistantWorkspaceShell
       activeSurface="main-room"
+      variant="assistant"
       statusLabel={isOnline ? "Online" : "Offline cache"}
+      brandMeta="Primary conversation workspace"
+      ctaLabel="Quick capture"
       queueLabel={`${voiceUploadQueue.length} voice queued`}
-      searchPlaceholder="Search Library..."
+      searchLabel="Search memory"
+      searchAriaLabel="Search notes, artifacts, and thread memory"
+      searchPlaceholder="Search notes, artifacts, and clips..."
+      profileTitle={pendingTurn ? "Reply in motion" : "Live thread"}
       railSlot={(
         <>
           <div className="april-rail-section">
@@ -999,30 +1025,40 @@ export default function AssistantPage() {
         </>
       )}
     >
-      <section className="april-main-room-desktop">
+      <section className={`april-main-room-desktop assistant-chat-layout${hasVisibleSupportPane ? " has-side-pane" : ""}`}>
         <div className="april-main-room-story">
-          <div className="april-main-room-surface-strip">
-            <div className="april-main-room-surface-status">
-              <span className="april-main-room-surface-dot" aria-hidden="true" />
-              <span>System optimal</span>
+          <header className="assistant-chat-head">
+            <div className="assistant-chat-head-copy">
+              <span className="april-panel-kicker">{PRODUCT_SURFACES.assistant.label}</span>
+              <h1>{conversationTitle === "Assistant thread" ? "Live thread" : conversationTitle}</h1>
+              <p>
+                One persistent conversation for planning, capture follow-through, and returned artifact context.
+              </p>
+              <div className="assistant-chat-head-stats" aria-label="Thread overview">
+                <div className="assistant-chat-stat">
+                  <strong>{conversationMessages.length}</strong>
+                  <span>messages</span>
+                </div>
+                <div className="assistant-chat-stat">
+                  <strong>{assistantReplies}</strong>
+                  <span>assistant replies</span>
+                </div>
+                <div className="assistant-chat-stat">
+                  <strong>{attachmentCount}</strong>
+                  <span>attachments</span>
+                </div>
+              </div>
             </div>
-            <div className="april-main-room-surface-pills" aria-label="Assistant status">
-              <span>{pendingTurn ? "Reply pending" : "Thread live"}</span>
-              <span>{conversationMessages.length} turns</span>
-              <span>{voiceUploadQueue.length} voice queued</span>
+            <div className="assistant-chat-head-pills" aria-label="Assistant status">
+              <span>{pendingTurn ? "Reply pending" : "Live"}</span>
+              <span>{Object.keys(sessionState).length} state keys</span>
+              {voiceUploadQueue.length > 0 ? <span>{voiceUploadQueue.length} queued</span> : null}
             </div>
-          </div>
-          <header className="april-main-room-hero">
-            <span className="april-panel-kicker">Assistant thread</span>
-            <h1>
-              Keep <span>{PRODUCT_SURFACES.assistant.label}</span> as the primary workflow.
-            </h1>
-            <p>
-              {conversationTitle}. {PRODUCT_SURFACES.library.label}, {PRODUCT_SURFACES.review.label}, and {PRODUCT_SURFACES.planner.label} surface as inline return points so the thread stays central.
-            </p>
           </header>
 
-          <AprilPanel className="april-main-room-transcript-card">
+          {supportPaneActions.length > 0 ? <PaneRestoreStrip actions={supportPaneActions} className="assistant-chat-restore-strip" /> : null}
+
+          <AssistantSurfacePanel className="april-main-room-transcript-card">
             <MainRoomThread
               messages={transcriptMessages}
               traces={conversationTraces}
@@ -1037,55 +1073,23 @@ export default function AssistantPage() {
               emptyActions={showcaseActions}
               transcriptEndRef={setTranscriptEndRef}
             />
-          </AprilPanel>
+          </AssistantSurfacePanel>
         </div>
 
-        <aside className="april-main-room-aux">
-          <AprilPanel className="april-main-room-brief-card">
-            <span className="april-panel-kicker">Thread state</span>
-            <h2>Thread state</h2>
-            <p>{status}</p>
-            <div className="april-rail-metric-stack">
-              <div className="april-rail-metric-card">
-                <strong>{pendingTurn ? "LIVE" : "READY"}</strong>
-                <span>thread state</span>
-              </div>
-              <div className="april-rail-metric-card">
-                <strong>{conversationMessages.length}</strong>
-                <span>recorded turns</span>
-              </div>
-              <div className="april-rail-metric-card">
-                <strong>{voiceUploadQueue.length}</strong>
-                <span>voice queued</span>
-              </div>
-            </div>
-          </AprilPanel>
-
-          <AprilPanel className="april-main-room-brief-card">
-            <span className="april-panel-kicker">Return points</span>
-            <h2>Support views</h2>
-            <div className="april-rail-link-stack">
-              <Link href="/notes">{PRODUCT_SURFACES.library.label}</Link>
-              <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
-              <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
-            </div>
-          </AprilPanel>
-
-          <PaneRestoreStrip
-            actions={[
-              ...(historyPane.collapsed ? [{ id: "assistant-history", label: "Show advanced lanes", onClick: historyPane.expand }] : []),
-              ...(diagnosticsPane.collapsed ? [{ id: "assistant-diagnostics", label: "Show diagnostics", onClick: diagnosticsPane.expand }] : []),
-            ]}
-          />
+        {hasVisibleSupportPane ? (
+          <aside className="april-main-room-aux assistant-chat-sidepane">
           {!historyPane.collapsed ? (
-            <AprilPanel className="april-support-panel">
+            <AssistantSurfacePanel className="april-support-panel">
               <div className="april-panel-head">
                 <div>
-                  <span className="april-panel-kicker">Advanced lanes</span>
-                  <h2>Reusable prompts</h2>
+                  <span className="april-panel-kicker">Side lane</span>
+                  <h2>Recent phrasing</h2>
                 </div>
-                <PaneToggleButton label="Hide pane" onClick={historyPane.collapse} />
+                <PaneToggleButton label="Hide pane" onClick={historyPane.collapse} className="assistant-chat-pane-toggle" />
               </div>
+              <p className="assistant-side-note">
+                Pull proven command language back into the composer without leaving the live thread.
+              </p>
               <ul className="assistant-mini-feed">
                 {history.length === 0 ? (
                   <li className="assistant-mini-feed-empty">No recent command runs yet.</li>
@@ -1101,26 +1105,38 @@ export default function AssistantPage() {
                   ))
                 )}
               </ul>
-              <details className="command-agent-detail">
-                <summary>Command actions</summary>
-                <div className="assistant-toolbar assistant-toolbar-advanced">
-                  <button className="button" type="button" onClick={() => runCommand(false)}>Preview flow</button>
-                  <button className="button" type="button" onClick={() => runCommand(true)}>Execute flow</button>
-                  <button className="button" type="button" onClick={() => queueAssistCommand(true)}>Queue Codex execute</button>
+              <div className="assistant-side-action-cluster">
+                <span className="assistant-side-section-label">Command actions</span>
+                <div className="assistant-side-action-grid">
+                  <button className="assistant-side-action" type="button" onClick={() => runCommand(false)}>
+                    <strong>Preview flow</strong>
+                    <span>Inspect the planned tool path before it touches state.</span>
+                  </button>
+                  <button className="assistant-side-action" type="button" onClick={() => runCommand(true)}>
+                    <strong>Execute flow</strong>
+                    <span>Run the current command against the shared thread context.</span>
+                  </button>
+                  <button className="assistant-side-action" type="button" onClick={() => queueAssistCommand(true)}>
+                    <strong>Queue Codex</strong>
+                    <span>Push a deeper execution pass into the planner queue.</span>
+                  </button>
                 </div>
-              </details>
-            </AprilPanel>
+              </div>
+            </AssistantSurfacePanel>
           ) : null}
 
           {!diagnosticsPane.collapsed ? (
-            <AprilPanel className="april-support-panel">
+            <AssistantSurfacePanel className="april-support-panel">
               <div className="april-panel-head">
                 <div>
                   <span className="april-panel-kicker">Diagnostics</span>
-                  <h2>Queue state and session memory</h2>
+                  <h2>Thread internals</h2>
                 </div>
-                <PaneToggleButton label="Hide pane" onClick={diagnosticsPane.collapse} />
+                <PaneToggleButton label="Hide pane" onClick={diagnosticsPane.collapse} className="assistant-chat-pane-toggle" />
               </div>
+              <p className="assistant-side-note">
+                Keep operator state visible but visually secondary to the conversation itself.
+              </p>
               <div className="assistant-diagnostics-grid">
                 <article className="assistant-diagnostic-card">
                   <span className="observatory-eyebrow">Thread memory</span>
@@ -1137,81 +1153,85 @@ export default function AssistantPage() {
                   ) : (
                     voiceUploadQueue.map((item) => (
                       <div key={item.id} className="assistant-queue-item">
-                        <p className="console-copy">
-                          <strong>{item.id}</strong> [{item.execute ? "execute" : "plan"}] attempts: {item.attempts}
-                        </p>
-                        {item.last_error ? <p className="console-copy">last error: {item.last_error}</p> : null}
-                        <button className="button" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
-                          Drop upload
+                        <div className="assistant-job-card-head">
+                          <strong>{item.id}</strong>
+                          <span>{item.execute ? "execute" : "plan"}</span>
+                        </div>
+                        <p className="assistant-job-inline-copy">Attempts {item.attempts}</p>
+                        {item.last_error ? <p className="assistant-job-inline-copy">Last error {item.last_error}</p> : null}
+                        <button className="assistant-side-action compact muted" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
+                          <strong>Drop upload</strong>
+                          <span>Remove this queued capture from the replay list.</span>
                         </button>
                       </div>
                     ))
                   )}
                 </article>
               </div>
-              <details className="command-agent-detail">
-                <summary>Voice jobs ({voiceJobs.length})</summary>
-              <div className="scroll-panel">
-                {voiceJobs.length === 0 ? (
-                  <p className="console-copy">No voice command jobs yet.</p>
-                ) : (
-                  voiceJobs.map((job) => (
-                    <div key={job.id} className="command-step-card">
-                      <p className="console-copy">
-                        <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                      </p>
-                      {job.output.transcript ? <p className="console-copy">transcript: {job.output.transcript}</p> : null}
-                      {job.error_text ? <p className="console-copy">error: {job.error_text}</p> : null}
-                    </div>
-                  ))
-                )}
+              <div className="assistant-job-section">
+                <div className="assistant-job-section-head">
+                  <span className="assistant-side-section-label">Voice jobs</span>
+                  <span className="assistant-job-count">{voiceJobs.length}</span>
+                </div>
+                <div className="assistant-job-stack">
+                  {voiceJobs.length === 0 ? (
+                    <p className="assistant-job-empty">No voice command jobs yet.</p>
+                  ) : (
+                    voiceJobs.map((job) => (
+                      <article key={job.id} className="assistant-job-card">
+                        <div className="assistant-job-card-head">
+                          <strong>{job.id}</strong>
+                          <span>{job.status}</span>
+                        </div>
+                        <p>Provider {job.provider_used || job.provider_hint || "pending"}</p>
+                        {job.output.transcript ? <p>Transcript {job.output.transcript}</p> : null}
+                        {job.error_text ? <p>Error {job.error_text}</p> : null}
+                      </article>
+                    ))
+                  )}
+                </div>
               </div>
-            </details>
-            <details className="command-agent-detail">
-              <summary>Planner jobs ({assistJobs.length})</summary>
-              <div className="scroll-panel">
+            <div className="assistant-job-section">
+              <div className="assistant-job-section-head">
+                <span className="assistant-side-section-label">Planner jobs</span>
+                <span className="assistant-job-count">{assistJobs.length}</span>
+              </div>
+              <div className="assistant-job-stack">
                 {assistJobs.length === 0 ? (
-                  <p className="console-copy">No queued planner jobs yet.</p>
+                  <p className="assistant-job-empty">No queued planner jobs yet.</p>
                 ) : (
                   assistJobs.map((job) => (
-                    <div key={job.id} className="command-step-card">
-                      <p className="console-copy">
-                        <strong>{job.id}</strong> [{job.status}] provider: {job.provider_used || job.provider_hint || "pending"}
-                      </p>
-                      {job.payload.command ? <p className="console-copy">command: {job.payload.command}</p> : null}
-                    </div>
+                    <article key={job.id} className="assistant-job-card">
+                      <div className="assistant-job-card-head">
+                        <strong>{job.id}</strong>
+                        <span>{job.status}</span>
+                      </div>
+                      <p>Provider {job.provider_used || job.provider_hint || "pending"}</p>
+                      {job.payload.command ? <p>Command {job.payload.command}</p> : null}
+                    </article>
                   ))
                 )}
               </div>
-            </details>
-            </AprilPanel>
+            </div>
+            </AssistantSurfacePanel>
           ) : null}
         </aside>
+        ) : null}
 
-        <AprilPanel className="april-main-room-dock">
-          <div className="april-main-room-dock-head">
-            <div>
-              <span className="april-panel-kicker">Voice interaction</span>
-              <h2>{voiceBlob ? "Voice clip staged" : recording ? "Listening now" : "Speak or type to Assistant"}</h2>
+        <AssistantSurfacePanel className={`april-main-room-dock assistant-chat-dock state-${composerState}${speakingReply ? " speaking" : ""}`}>
+          <div className="april-main-room-dock-head assistant-chat-dock-head">
+            <div className="assistant-chat-dock-copy">
+              <span className="april-panel-kicker">Composer</span>
+              <h2>{composerHeadline}</h2>
+              <p>{composerSubline}</p>
             </div>
-            <div className="button-row">
-              <button className="button" type="button" onClick={() => loadConversation("manual").catch(() => undefined)}>
-                Refresh thread
-              </button>
-              <button className="button" type="button" onClick={() => resetConversationSession()}>
-                Reset session
-              </button>
-            </div>
-          </div>
-          <div className="april-main-room-dock-wave">
-            <div className={recording ? "april-waveform active" : "april-waveform"}>
-              {Array.from({ length: 12 }).map((_, index) => (
-                <span key={`wave-${index}`} style={{ height: `${18 + ((index * 7) % 26)}px` }} />
-              ))}
+            <div className="assistant-chat-dock-meta">
+              <span>{pendingTurn ? "Reply pending" : status}</span>
+              {voiceBlob ? <span>Voice clip captured</span> : null}
             </div>
           </div>
           <div className="april-main-room-dock-row">
-            <label className="april-main-room-input-shell" htmlFor="assistant-command">
+            <label className={`april-main-room-input-shell${composerHasDraft ? " has-draft" : ""}`} htmlFor="assistant-command">
               <textarea
                 id="assistant-command"
                 className="textarea april-main-room-command-input"
@@ -1222,7 +1242,7 @@ export default function AssistantPage() {
               />
             </label>
             <button
-              className={recording ? "assistant-voice-button recording" : "assistant-voice-button"}
+              className={`assistant-voice-button${recording ? " recording" : ""}${voiceBlob ? " ready" : ""}${pendingTurn ? " pending" : ""}`}
               type="button"
               onPointerDown={beginHoldToTalk}
               onPointerUp={endHoldToTalk}
@@ -1240,20 +1260,33 @@ export default function AssistantPage() {
               </span>
             </button>
           </div>
-          <div className="april-main-room-dock-actions">
-            <button className="button" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
-              {turnInFlight ? "Sending..." : `Send to ${PRODUCT_SURFACES.assistant.label}`}
+          <div className="assistant-chat-dock-strip" aria-label="Composer shortcuts">
+            <span>{browserSupportsRecording ? "Hold to talk" : "Voice unavailable"}</span>
+            <span>{browserSupportsSpeech ? "Spoken reply ready" : "Speech unavailable"}</span>
+            <span>{`Upload queue ${voiceUploadQueue.length}`}</span>
+            <span>{history.length} reusable runs</span>
+          </div>
+          <div className="april-main-room-dock-actions assistant-chat-dock-actions">
+            <button className="assistant-dock-action primary" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
+              <strong>{turnInFlight ? "Sending..." : "Send"}</strong>
+              <span>Post the current draft into the persistent assistant thread.</span>
             </button>
             <button
-              className="button"
+              className="assistant-dock-action"
               type="button"
               onClick={toggleSpokenReply}
               disabled={!browserSupportsSpeech || !latestSpokenReply}
             >
-              {speakingReply ? "Stop spoken reply" : "Speak latest reply"}
+              <strong>{speakingReply ? "Stop spoken reply" : "Speak latest reply"}</strong>
+              <span>Use local speech playback for the newest assistant answer.</span>
             </button>
-            <button className="button" type="button" onClick={() => setCommand(exampleCommands[0] || FALLBACK_EXAMPLES[0])}>
-              Load sample
+            <button className="assistant-dock-action" type="button" onClick={() => loadConversation("manual").catch(() => undefined)}>
+              <strong>Refresh thread</strong>
+              <span>Rehydrate the shared transcript and support state from the server.</span>
+            </button>
+            <button className="assistant-dock-action muted" type="button" onClick={() => resetConversationSession()}>
+              <strong>Reset session</strong>
+              <span>Clear short-term thread state while preserving the conversation itself.</span>
             </button>
           </div>
           <div className="assistant-chip-grid">
@@ -1266,15 +1299,24 @@ export default function AssistantPage() {
           {voiceBlob ? (
             <div className="assistant-voice-ready">
               <p className="console-copy">Voice clip captured and ready for upload.</p>
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => submitVoiceCommand(false)}>Plan voice</button>
-                <button className="button" type="button" onClick={() => submitVoiceCommand(true)}>Execute voice</button>
-                <button className="button" type="button" onClick={() => discardVoiceCapture()}>Discard clip</button>
+              <div className="assistant-voice-ready-actions">
+                <button className="assistant-side-action compact" type="button" onClick={() => submitVoiceCommand(false)}>
+                  <strong>Plan voice</strong>
+                  <span>Route the clip into a planning pass.</span>
+                </button>
+                <button className="assistant-side-action compact" type="button" onClick={() => submitVoiceCommand(true)}>
+                  <strong>Execute voice</strong>
+                  <span>Send the clip into the live assistant flow.</span>
+                </button>
+                <button className="assistant-side-action compact muted" type="button" onClick={() => discardVoiceCapture()}>
+                  <strong>Discard clip</strong>
+                  <span>Clear the capture and return to the text composer.</span>
+                </button>
               </div>
             </div>
           ) : null}
-        </AprilPanel>
+        </AssistantSurfacePanel>
       </section>
-    </AprilWorkspaceShell>
+    </AssistantWorkspaceShell>
   );
 }

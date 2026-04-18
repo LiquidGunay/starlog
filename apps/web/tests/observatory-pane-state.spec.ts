@@ -13,18 +13,18 @@ async function seedSession(page: import("@playwright/test").Page): Promise<void>
   );
 }
 
-test("review deck context pane stays collapsed after reload", async ({ page }) => {
+test("artifact inspector pane stays collapsed after reload", async ({ page }) => {
   await seedSession(page);
 
-  await page.goto("/review");
+  await page.goto("/artifacts");
 
-  await page.getByRole("button", { name: "Hide pane" }).click();
-  await expect(page.getByRole("button", { name: "Show deck context" })).toBeVisible();
+  await page.locator(".artifact-inspector").getByRole("button", { name: "Hide pane" }).click();
+  await expect(page.getByRole("button", { name: "Show inspector" })).toBeVisible();
 
   await page.reload();
 
-  await expect(page.getByRole("button", { name: "Show deck context" })).toBeVisible();
-  await expect(page.getByText("Queue and session health")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Show inspector" })).toBeVisible();
+  await expect(page.getByText("Reading room and lineage")).toHaveCount(0);
 });
 
 test("planner sidecar pane stays collapsed after reload", async ({ page }) => {

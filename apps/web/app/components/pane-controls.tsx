@@ -9,6 +9,7 @@ type PaneRestoreAction = {
 type PaneToggleButtonProps = {
   label: string;
   onClick: () => void;
+  className?: string;
 };
 
 type PaneRestoreStripProps = {
@@ -16,9 +17,9 @@ type PaneRestoreStripProps = {
   className?: string;
 };
 
-export function PaneToggleButton({ label, onClick }: PaneToggleButtonProps) {
+export function PaneToggleButton({ label, onClick, className = "" }: PaneToggleButtonProps) {
   return (
-    <button className="pane-toggle-button" type="button" onClick={onClick}>
+    <button className={className ? `pane-toggle-button ${className}` : "pane-toggle-button"} type="button" onClick={onClick}>
       {label}
     </button>
   );
