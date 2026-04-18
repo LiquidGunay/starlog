@@ -2,7 +2,7 @@ from copy import deepcopy
 from sqlite3 import Connection
 
 from app.core.time import utc_now
-from app.services import ai_jobs_service, artifacts_service, events_service, integrations_service
+from app.services import ai_jobs_service, artifacts_service, events_service, integrations_service, memory_vault_service
 from app.services.common import new_id
 
 
@@ -35,11 +35,19 @@ def ingest_capture(
     metadata: dict,
 ) -> dict:
     merged_metadata = deepcopy(metadata)
+    existing_capture = merged_metadata.get("capture")
+    if not isinstance(existing_capture, dict):
+        existing_capture = {}
+    existing_layers = existing_capture.get("layers")
+    if not isinstance(existing_layers, dict):
+        existing_layers = {}
     merged_metadata["capture"] = {
+        **existing_capture,
         "capture_source": capture_source,
         "source_url": source_url,
         "tags": tags,
         "layers": {
+            **existing_layers,
             "raw": _compact_layer(raw),
             "normalized": _compact_layer(normalized),
             "extracted": _compact_layer(extracted),
@@ -69,6 +77,7 @@ def ingest_capture(
             "source_type": source_type,
         },
     )
+    memory_vault_service.index_artifact_capture(conn, artifact, commit=False)
     conn.commit()
 
     return artifact

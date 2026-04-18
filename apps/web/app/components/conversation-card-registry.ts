@@ -14,6 +14,7 @@ const REGISTRY: Record<string, ConversationCardRegistryEntry> = {
   task_list: { label: productCardLabel("task_list"), tone: "task", glyph: "☰" },
   knowledge_note: { label: productCardLabel("knowledge_note"), tone: "knowledge", glyph: "✳" },
   capture_item: { label: productCardLabel("capture_item"), tone: "knowledge", glyph: "⬒" },
+  memory_suggestion: { label: productCardLabel("memory_suggestion"), tone: "knowledge", glyph: "⟲" },
   tool_step: { label: "Tool step", tone: "context", glyph: "⊹" },
 };
 

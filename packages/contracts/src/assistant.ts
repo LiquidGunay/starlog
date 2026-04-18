@@ -6,6 +6,7 @@ export const ASSISTANT_CARD_KINDS = [
   "task_list",
   "knowledge_note",
   "capture_item",
+  "memory_suggestion",
   "tool_step",
 ] as const;
 

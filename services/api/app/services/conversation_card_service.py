@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlite3 import Connection
 from typing import Any
 
-from app.services import artifacts_service
+from app.services import artifacts_service, memory_vault_service
 
 
 def _snippet(text: str | None, *, limit: int = 220) -> str:
@@ -170,6 +170,35 @@ def _default_actions(card: dict[str, Any]) -> list[dict[str, Any]]:
             _navigate_action("open_library", "Open Library", href or "/notes"),
         ]
 
+    if kind == "memory_suggestion":
+        actions: list[dict[str, Any]] = []
+        page_path = str(metadata.get("page_path") or href or "").strip()
+        proposal_id = str(metadata.get("proposal_id") or "").strip()
+        if page_path:
+            actions.append(_navigate_action("open_memory", "Open page", href or page_path, style="primary"))
+        if proposal_id:
+            actions.append(
+                _mutation_action(
+                    "confirm_profile_proposal",
+                    "Confirm",
+                    f"/v1/memory/profile-proposals/{proposal_id}/confirm",
+                    {},
+                )
+            )
+            actions.append(
+                _mutation_action(
+                    "dismiss_profile_proposal",
+                    "Dismiss",
+                    f"/v1/memory/profile-proposals/{proposal_id}/dismiss",
+                    {},
+                    style="secondary",
+                )
+            )
+        else:
+            prompt = f"Follow up on {title or body or 'this memory suggestion'}".strip()
+            actions.append(_composer_action("follow_up_memory", "Ask Assistant", prompt, style="secondary"))
+        return actions
+
     return []
 
 
@@ -244,6 +273,17 @@ def _card_entity_ref(card: dict[str, Any]) -> dict[str, Any]:
         "entity_id": card_id,
         "href": "/review",
         "title": card.get("prompt") or card_id,
+    }
+
+
+def _memory_page_entity_ref(page: dict[str, Any]) -> dict[str, Any]:
+    page_id = str(page["id"])
+    path = str(page.get("path") or page_id)
+    return {
+        "entity_type": "memory_page",
+        "entity_id": page_id,
+        "href": f"/notes/memory?page={page_id}",
+        "title": page.get("title") or path,
     }
 
 
@@ -371,6 +411,45 @@ def _briefing_card(briefing: dict[str, Any], *, title: str = "Briefing") -> dict
             },
         }
     )
+
+
+def _memory_suggestion_card(suggestion: dict[str, Any], *, page: dict[str, Any] | None = None) -> dict[str, Any]:
+    entity_ref = _memory_page_entity_ref(page) if page is not None else {
+        "entity_type": str(suggestion.get("entity_type") or "memory_suggestion"),
+        "entity_id": str(suggestion.get("entity_id") or suggestion["id"]),
+        "href": "/notes/memory",
+        "title": suggestion.get("title") or "Memory suggestion",
+    }
+    metadata = {
+        "suggestion_id": suggestion["id"],
+        "suggestion_type": suggestion.get("suggestion_type"),
+        "weight": suggestion.get("weight"),
+        "page_id": suggestion.get("page_id"),
+        "page_path": page.get("path") if page else None,
+        "proposal_id": suggestion["entity_id"] if suggestion.get("entity_type") == "profile_proposal" else None,
+        **(suggestion.get("metadata") if isinstance(suggestion.get("metadata"), dict) else {}),
+    }
+    return normalize_card(
+        {
+            "kind": "memory_suggestion",
+            "title": suggestion.get("title") or "Memory suggestion",
+            "body": suggestion.get("body") or "",
+            "entity_ref": entity_ref,
+            "metadata": metadata,
+        }
+    )
+
+
+def memory_suggestion_cards(conn: Connection, *, surface: str, limit: int = 2) -> list[dict[str, Any]]:
+    suggestions = memory_vault_service.list_suggestions(conn, surface=surface, refresh=True)[:limit]
+    cards: list[dict[str, Any]] = []
+    for suggestion in suggestions:
+        page = None
+        page_id = suggestion.get("page_id")
+        if isinstance(page_id, str) and page_id.strip():
+            page = memory_vault_service.get_page(conn, page_id)
+        cards.append(_memory_suggestion_card(suggestion, page=page))
+    return cards
 
 
 def project_step_cards(conn: Connection, step: Any) -> list[dict[str, Any]]:

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.memory import MemorySuggestionResponse
 from app.schemas.memory_context import MemoryEntryResponse, RecommendationHintResponse
 
 
@@ -39,6 +40,7 @@ class BriefingPackageResponse(BaseModel):
     sections: list[BriefingSection] = Field(default_factory=list)
     recent_memories: list[MemoryEntryResponse] = Field(default_factory=list)
     recommendation_hints: list[RecommendationHintResponse] = Field(default_factory=list)
+    memory_suggestions: list[MemorySuggestionResponse] = Field(default_factory=list)
     source_refs: list[BriefingSourceRef] = Field(default_factory=list)
     audio_ref: str | None = None
     generated_by_provider: str

@@ -16,6 +16,7 @@ from app.api.routes import (
     importing,
     integrations,
     media,
+    memory,
     notes,
     ops,
     planning,
@@ -38,6 +39,7 @@ api_router.include_router(sync.router, tags=["sync"])
 api_router.include_router(capture.router, tags=["capture"])
 api_router.include_router(media.router, tags=["media"])
 api_router.include_router(artifacts.router, tags=["artifacts"])
+api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(notes.router, tags=["notes"])
 api_router.include_router(tasks.router, tags=["tasks"])
 api_router.include_router(calendar.router, tags=["calendar"])

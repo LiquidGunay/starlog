@@ -367,6 +367,7 @@ function NotesPageContent() {
             <div className="april-rail-link-stack">
               <a href="#knowledge-editor">Editor</a>
               <a href="#knowledge-graph">Graph</a>
+              <Link href="/notes/memory">Memory vault</Link>
               <Link href="/assistant">Assistant</Link>
             </div>
           </div>
@@ -380,7 +381,10 @@ function NotesPageContent() {
               <span className="knowledge-base-kicker">Vault Explorer</span>
               <h2>Living archive</h2>
             </div>
-            <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+            <div style={{ display: "flex", gap: "0.6rem" }}>
+              <Link className="button" href="/notes/memory">Memory Vault</Link>
+              <button className="button" type="button" onClick={() => loadNotes()}>Refresh</button>
+            </div>
           </div>
           <div className="knowledge-base-constellation-note">
             <span>Search horizon</span>

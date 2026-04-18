@@ -1,4 +1,5 @@
 from app.db.storage import get_connection
+from app.services import memory_vault_service
 
 
 def test_generate_briefing_surfaces_memory_and_recommendation_hints(client, auth_headers) -> None:
@@ -39,6 +40,15 @@ def test_generate_briefing_surfaces_memory_and_recommendation_hints(client, auth
                 "2026-03-22T07:00:00+00:00",
             ),
         )
+        memory_vault_service.create_profile_proposal(
+            conn,
+            title="Morning planning preference",
+            body_md="Surface forgotten commitments in the morning briefing.",
+            kind="preference",
+            namespace="profile/preferences",
+            rationale="The user wants proactive forgotten-item reminders.",
+            commit=False,
+        )
         conn.commit()
 
     generated = client.post(
@@ -58,6 +68,7 @@ def test_generate_briefing_surfaces_memory_and_recommendation_hints(client, auth
         hint["entity_type"] == "calendar_event" and hint["entity_id"] == event_id
         for hint in payload["recommendation_hints"]
     )
+    assert any(item["suggestion_type"] == "confirm_profile_update" for item in payload["memory_suggestions"])
     assert any(ref["entity_type"] == "research_digest" for ref in payload["source_refs"])
 
     fetched = client.get("/v1/briefings/2026-03-22", headers=auth_headers)
@@ -65,3 +76,4 @@ def test_generate_briefing_surfaces_memory_and_recommendation_hints(client, auth
     fetched_payload = fetched.json()
     assert fetched_payload["headline"] == payload["headline"]
     assert fetched_payload["recent_memories"]
+    assert fetched_payload["memory_suggestions"]

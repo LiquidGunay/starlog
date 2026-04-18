@@ -34,6 +34,22 @@ TABLES = [
     "calendar_sync_meta",
     "calendar_sync_conflicts",
     "plugins",
+    "conversation_threads",
+    "conversation_messages",
+    "conversation_session_state",
+    "conversation_tool_traces",
+    "conversation_memory_entries",
+    "recommendation_events",
+    "memory_pages",
+    "memory_page_versions",
+    "memory_edges",
+    "memory_chunks",
+    "memory_profile_proposals",
+    "memory_activation_events",
+    "memory_suggestions",
+    "research_sources",
+    "research_items",
+    "research_digests",
 ]
 
 
@@ -59,6 +75,11 @@ def build_export(conn: Connection) -> dict:
         note["id"]: f"# {note['title']}\n\n{note['body_md']}"
         for note in entities["notes"]
     }
+    memory_markdown = {
+        version["page_id"]: version["markdown_source"]
+        for version in entities["memory_page_versions"]
+        if isinstance(version.get("page_id"), str)
+    }
 
     manifest = {
         "table_counts": {table: len(rows) for table, rows in entities.items()},
@@ -69,6 +90,7 @@ def build_export(conn: Connection) -> dict:
         "exported_at": utc_now_iso(),
         "manifest": manifest,
         "notes_markdown": notes_markdown,
+        "memory_markdown": memory_markdown,
         "media_blobs": media_blobs,
         "entities": entities,
     }

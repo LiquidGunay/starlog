@@ -6,7 +6,7 @@ from typing import Any
 
 from app.core.time import utc_now
 from app.services.common import execute_fetchall, execute_fetchone, new_id
-from app.services import conversation_card_service
+from app.services import conversation_card_service, memory_vault_service
 
 PRIMARY_THREAD_SLUG = "primary"
 PRIMARY_THREAD_TITLE = "Primary Starlog Thread"
@@ -671,6 +671,8 @@ def build_chat_preview_request(
             for trace in thread["tool_traces"]
         ],
         "request_metadata": metadata or {},
+        "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
+        "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],
     }
     if context_overrides:
         context.update(context_overrides)

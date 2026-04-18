@@ -32,12 +32,24 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
             "raw": {"text": "<html>raw clip</html>", "mime_type": "text/html"},
             "normalized": {"text": "Stars form in nebulas and memory forms in review loops.", "mime_type": "text/plain"},
             "extracted": {"text": "Extracted: stars and recall systems."},
-            "metadata": {"url": "https://example.com"},
+            "metadata": {
+                "url": "https://example.com",
+                "capture": {
+                    "clip": {"page_title": "Nebula Notes", "site_name": "Example"},
+                    "selection": {"text": "Extracted: stars and recall systems."},
+                    "highlights": [{"quote": "stars and recall systems"}],
+                },
+            },
         },
         headers=auth_headers,
     )
     assert artifact.status_code == 201
-    artifact_id = artifact.json()["artifact"]["id"]
+    artifact_payload = artifact.json()["artifact"]
+    artifact_id = artifact_payload["id"]
+    assert artifact_payload["metadata"]["capture"]["clip"]["page_title"] == "Nebula Notes"
+    assert artifact_payload["metadata"]["capture"]["selection"]["text"] == "Extracted: stars and recall systems."
+    assert artifact_payload["metadata"]["capture"]["highlights"][0]["quote"] == "stars and recall systems"
+    assert artifact_payload["metadata"]["capture"]["layers"]["normalized"]["text"] == "Stars form in nebulas and memory forms in review loops."
 
     for action in ["summarize", "cards", "tasks", "append_note"]:
         response = client.post(
@@ -55,6 +67,10 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
     assert len(payload["tasks"]) >= 1
     assert len(payload["notes"]) >= 1
     assert len(payload["relations"]) >= 4
+
+    memory_tree = client.get("/v1/memory/tree", headers=auth_headers)
+    assert memory_tree.status_code == 200
+    assert artifact_id in str(memory_tree.json()) or "wiki/sources" in str(memory_tree.json())
 
     versions = client.get(f"/v1/artifacts/{artifact_id}/versions", headers=auth_headers)
     assert versions.status_code == 200

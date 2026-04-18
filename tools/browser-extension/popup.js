@@ -43,20 +43,29 @@ async function captureSelection() {
     title: payload.title,
     source_url: payload.url,
     raw: {
-      text: payload.rawHtml || payload.selection || payload.url,
+      text: payload.rawHtml || payload.selection?.html || payload.url,
       mime_type: "text/html",
     },
     normalized: {
-      text: payload.selection || payload.url,
+      text: payload.normalizedContent || payload.articleText || payload.url,
       mime_type: "text/plain",
     },
     extracted: {
-      text: payload.selection,
+      text: payload.extractedSnippet || payload.selection?.text || payload.title,
       mime_type: "text/plain",
     },
     metadata: {
       url: payload.url,
       clipped_at: new Date().toISOString(),
+      capture: {
+        clip: payload.clip,
+        selection: {
+          text: payload.selection?.text || "",
+          html: payload.selection?.html || "",
+          context: payload.selection?.context || "",
+        },
+        highlights: Array.isArray(payload.selection?.highlights) ? payload.selection.highlights : [],
+      },
     },
   };
 

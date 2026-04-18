@@ -100,20 +100,24 @@ def execute_primary_conversation_turn(
     except ai_service.ProviderError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
+    runtime_cards = conversation_card_service.normalize_cards(
+        turn.get("cards") if isinstance(turn.get("cards"), list) else [
+            {
+                "kind": "assistant_summary",
+                "title": "Assistant",
+                "body": str(turn.get("response_text") or ""),
+                "metadata": {},
+            }
+        ]
+    )
+    suggestion_cards = conversation_card_service.memory_suggestion_cards(db, surface="assistant", limit=2)
+    all_cards = runtime_cards + suggestion_cards
+
     response = conversation_service.record_chat_turn(
         db,
         content=payload.content,
         assistant_content=str(turn.get("response_text") or ""),
-        cards=conversation_card_service.normalize_cards(
-            turn.get("cards") if isinstance(turn.get("cards"), list) else [
-                {
-                    "kind": "assistant_summary",
-                    "title": "Assistant",
-                    "body": str(turn.get("response_text") or ""),
-                    "metadata": {},
-                }
-            ]
-        ),
+        cards=all_cards,
         request_metadata={
             "input_mode": payload.input_mode,
             "device_target": payload.device_target,
