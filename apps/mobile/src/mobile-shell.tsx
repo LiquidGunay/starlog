@@ -55,15 +55,9 @@ export function MobileTopBar({
           </View>
         )}
         <View style={{ gap: 0 }}>
-          {isAssistantMode ? <Text style={styles.topBarAssistantLabel}>Starlog</Text> : null}
           <Text style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>
             {isAssistantMode ? "Assistant" : "Starlog"}
           </Text>
-          {isAssistantMode ? (
-            <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 14 }}>
-              Shared mobile + web thread
-            </Text>
-          ) : null}
         </View>
       </View>
       {isAssistantMode ? (
@@ -72,9 +66,6 @@ export function MobileTopBar({
             <View style={styles.topBarAssistantStatusDot} />
             <Text style={styles.topBarAssistantStatusText}>Live</Text>
           </View>
-          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 13 }}>
-            Thread-first workspace
-          </Text>
         </View>
       ) : (
         <View style={styles.topBarActions}>

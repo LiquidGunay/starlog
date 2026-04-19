@@ -36,11 +36,11 @@ import type {
 } from "@starlog/contracts";
 import {
   MobileCalendarSurface,
-  MobileHomeSurface,
   MobileLoginSurface,
   MobileNotesSurface,
   MobileReviewSurface,
 } from "./src/mobile-surfaces";
+import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
 import {
   AssistantToolsSection,
@@ -3653,7 +3653,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       >
         {activeTab === "assistant" ? (
           <View style={styles.assistantStage}>
-            <MobileHomeSurface
+            <MobileAssistantRebuild
               styles={styles}
               palette={palette}
               pendingConversationTurn={Boolean(pendingConversationTurn)}
@@ -4185,11 +4185,12 @@ function themedStyles(palette: Palette) {
       backgroundColor: "rgba(30,15,22,0.52)",
     },
     topBarAssistant: {
-      paddingTop: Platform.OS === "android" ? 8 : 8,
-      paddingBottom: 10,
+      paddingTop: Platform.OS === "android" ? 18 : 6,
+      paddingBottom: 8,
       backgroundColor: "rgba(30,15,22,0.08)",
       borderBottomWidth: 1,
       borderBottomColor: "rgba(255,255,255,0.04)",
+      alignItems: "center",
     },
     topBarBrand: {
       flexDirection: "row",
@@ -4200,6 +4201,7 @@ function themedStyles(palette: Palette) {
       gap: 8,
       flex: 1,
       paddingRight: 12,
+      alignItems: "center",
     },
     topBarAvatar: {
       width: 30,
@@ -4239,22 +4241,15 @@ function themedStyles(palette: Palette) {
       textTransform: "uppercase",
     },
     topBarTitleAssistant: {
-      fontSize: 18,
+      fontSize: 16,
       letterSpacing: -0.2,
       textTransform: "none",
       color: palette.text,
     },
-    topBarAssistantLabel: {
-      color: palette.muted,
-      fontSize: 8.5,
-      fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
-    },
     topBarAssistantStatus: {
       flexDirection: "column",
       alignItems: "flex-end",
-      gap: 6,
+      gap: 2,
       paddingHorizontal: 2,
       paddingVertical: 2,
     },
@@ -4270,10 +4265,10 @@ function themedStyles(palette: Palette) {
     },
     topBarAssistantStatusText: {
       color: palette.muted,
-      fontSize: 9,
+      fontSize: 10,
       fontWeight: "700",
       textTransform: "uppercase",
-      letterSpacing: 1.0,
+      letterSpacing: 0.7,
     },
     topBarActions: {
       flexDirection: "row",
