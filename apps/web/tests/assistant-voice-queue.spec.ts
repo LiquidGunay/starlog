@@ -118,11 +118,11 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
   await expect(page.getByText("Voice clip captured and ready for upload.")).toBeVisible();
 
   await page.getByRole("button", { name: /Plan voice/i }).click();
-  await expect(page.getByText("Upload queue: 1", { exact: false })).toBeVisible();
+  await expect(page.getByText(/Upload queue 1/i)).toBeVisible();
 
   await context.setOffline(false);
   await expect.poll(() => uploadCalls).toBe(1);
-  await expect(page.getByText("Upload queue: 0", { exact: false })).toBeVisible();
+  await expect(page.getByText(/Upload queue 0/i)).toBeVisible();
   await expect(page.getByText("Uploaded 1 queued voice command(s)", { exact: false })).toBeVisible();
   await expect(page.getByText("voice-job-1", { exact: false })).toBeVisible();
 });
@@ -173,5 +173,5 @@ test("keyboard users can hold the velvet voice control to capture a voice clip",
   await expect(page.getByText("Voice command ready to upload")).toBeVisible();
 
   await page.getByRole("button", { name: /Plan voice/i }).click();
-  await expect(page.getByText("Upload queue: 1", { exact: false })).toBeVisible();
+  await expect(page.getByText(/Upload queue 1/i)).toBeVisible();
 });

@@ -67,11 +67,11 @@ test("keeps cached notes readable after an offline reload", async ({ context, pa
   });
 
   await page.goto("/notes");
-  await expect(page.getByRole("button", { name: "Nebula Checklist" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Nebula Checklist/i }).first()).toBeVisible();
 
   await waitForOfflineShell(page);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("button", { name: "Nebula Checklist" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Nebula Checklist/i }).first()).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveValue("Nebula Checklist");
   await expect(page.getByLabel("Body")).toHaveValue("Pack telescope, battery, and journal.");
 
@@ -79,7 +79,7 @@ test("keeps cached notes readable after an offline reload", async ({ context, pa
   await context.setOffline(true);
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("button", { name: "Nebula Checklist" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Nebula Checklist/i }).first()).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveValue("Nebula Checklist");
   await expect(page.getByLabel("Body")).toHaveValue("Pack telescope, battery, and journal.");
   await expect(page.locator(".status")).toContainText("Loaded cached notes");
@@ -399,11 +399,11 @@ test("offline warmup preloads cached notes before going offline", async ({ page 
   });
 
   await page.goto("/sync-center");
-  await page.getByRole("button", { name: "Offline Warmup" }).click();
+  await page.getByRole("button", { name: "Offline warmup", exact: true }).click();
   await expect(page.getByText(/Offline warmup (complete|partial):/, { exact: false })).toBeVisible();
 
   allowNotesApi = false;
   await page.goto("/notes");
-  await expect(page.getByRole("button", { name: "Offline Warmup Note" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Offline Warmup Note/i }).first()).toBeVisible();
   await expect(page.locator(".status")).toContainText("Loaded cached notes");
 });

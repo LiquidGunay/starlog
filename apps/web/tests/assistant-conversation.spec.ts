@@ -130,10 +130,10 @@ test("hydrates the assistant from the server conversation and clears session sta
 
   await page.goto("/assistant");
 
-  await expect(page.getByRole("heading", { name: "Queue state and session memory" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Thread internals" })).toBeVisible();
   await expect(page.getByText("Loaded your current tasks into the queue.").first()).toBeVisible();
   await expect(page.locator(".assistant-inline-step-card").filter({ hasText: "Task queue" })).toBeVisible();
-  await expect(page.getByText("Diagnostics collapsed")).toBeVisible();
+  await expect(page.getByText(/System trace collapsed/i).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Reset session" }).click();
 
@@ -387,8 +387,8 @@ test("collapsed assistant side panes stay hidden after reload", async ({ page })
   await page.goto("/assistant");
   await page.reload();
 
-  await expect(page.getByRole("button", { name: "Show advanced lanes" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show side lane" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Show diagnostics" })).toBeVisible();
-  await expect(page.getByText("Reusable prompts")).toHaveCount(0);
+  await expect(page.getByText("Reuse prompts")).toHaveCount(0);
   await expect(page.getByText("Queue state and session memory")).toHaveCount(0);
 });

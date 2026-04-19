@@ -36,11 +36,11 @@ import type {
 } from "@starlog/contracts";
 import {
   MobileCalendarSurface,
-  MobileHomeSurface,
   MobileLoginSurface,
   MobileNotesSurface,
   MobileReviewSurface,
 } from "./src/mobile-surfaces";
+import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
 import {
   AssistantToolsSection,
@@ -3619,6 +3619,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           palette={palette}
           open={assistantPanelOpen}
           activeTab={activeTab}
+          messageCount={conversationMessages.length}
+          queuedCaptureCount={pendingCaptures.length}
+          pendingReply={Boolean(pendingConversationTurn)}
           onClose={() => setAssistantPanelOpen(false)}
           onSelectTab={(tab, label) => {
             setActiveTab(tab);
@@ -3650,7 +3653,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       >
         {activeTab === "assistant" ? (
           <View style={styles.assistantStage}>
-            <MobileHomeSurface
+            <MobileAssistantRebuild
               styles={styles}
               palette={palette}
               pendingConversationTurn={Boolean(pendingConversationTurn)}
@@ -4173,20 +4176,21 @@ function themedStyles(palette: Palette) {
       backgroundColor: "rgba(109,61,83,0.16)",
     },
     topBar: {
-      paddingHorizontal: 20,
-      paddingTop: Platform.OS === "android" ? 18 : 14,
-      paddingBottom: 14,
+      paddingHorizontal: 18,
+      paddingTop: Platform.OS === "android" ? 10 : 10,
+      paddingBottom: 8,
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       justifyContent: "space-between",
-      backgroundColor: "rgba(30,15,22,0.82)",
+      backgroundColor: "rgba(30,15,22,0.52)",
     },
     topBarAssistant: {
-      paddingTop: Platform.OS === "android" ? 18 : 12,
-      paddingBottom: 10,
-      backgroundColor: "rgba(30,15,22,0.34)",
+      paddingTop: Platform.OS === "android" ? 18 : 6,
+      paddingBottom: 8,
+      backgroundColor: "rgba(30,15,22,0.08)",
       borderBottomWidth: 1,
-      borderBottomColor: "rgba(255,255,255,0.05)",
+      borderBottomColor: "rgba(255,255,255,0.04)",
+      alignItems: "center",
     },
     topBarBrand: {
       flexDirection: "row",
@@ -4194,7 +4198,10 @@ function themedStyles(palette: Palette) {
       gap: 10,
     },
     topBarBrandAssistant: {
-      gap: 4,
+      gap: 8,
+      flex: 1,
+      paddingRight: 12,
+      alignItems: "center",
     },
     topBarAvatar: {
       width: 30,
@@ -4230,35 +4237,25 @@ function themedStyles(palette: Palette) {
       color: palette.accent,
       fontSize: 18,
       fontWeight: "800",
-      letterSpacing: 1.2,
+      letterSpacing: 0.3,
       textTransform: "uppercase",
     },
     topBarTitleAssistant: {
       fontSize: 16,
-      letterSpacing: 1,
-    },
-    topBarAssistantCaption: {
-      color: palette.muted,
-      fontSize: 10,
-      fontWeight: "600",
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
-      marginTop: -1,
+      letterSpacing: -0.2,
+      textTransform: "none",
+      color: palette.text,
     },
     topBarAssistantStatus: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.05)",
-      backgroundColor: "rgba(255,255,255,0.025)",
-      paddingHorizontal: 10,
-      paddingVertical: 6,
+      flexDirection: "column",
+      alignItems: "flex-end",
+      gap: 2,
+      paddingHorizontal: 2,
+      paddingVertical: 2,
     },
     topBarAssistantStatusDot: {
-      width: 7,
-      height: 7,
+      width: 8,
+      height: 8,
       borderRadius: 999,
       backgroundColor: palette.accent,
       shadowColor: palette.accent,
@@ -4271,7 +4268,7 @@ function themedStyles(palette: Palette) {
       fontSize: 10,
       fontWeight: "700",
       textTransform: "uppercase",
-      letterSpacing: 1.1,
+      letterSpacing: 0.7,
     },
     topBarActions: {
       flexDirection: "row",
@@ -4283,8 +4280,8 @@ function themedStyles(palette: Palette) {
       height: 38,
       borderRadius: 19,
       borderWidth: 1,
-      borderColor: palette.border,
-      backgroundColor: palette.surfaceLow,
+      borderColor: "rgba(255,255,255,0.05)",
+      backgroundColor: "rgba(255,255,255,0.03)",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -4319,15 +4316,15 @@ function themedStyles(palette: Palette) {
       borderWidth: 1,
       borderColor: "rgba(255,255,255,0.05)",
       borderRadius: 30,
-      backgroundColor: "rgba(39,23,30,0.46)",
+      backgroundColor: "rgba(27,16,22,0.52)",
       paddingHorizontal: 12,
       paddingTop: 10,
       paddingBottom: 14,
       gap: 12,
       overflow: "hidden",
       shadowColor: "#000",
-      shadowOpacity: 0.12,
-      shadowRadius: 20,
+      shadowOpacity: 0.1,
+      shadowRadius: 16,
       shadowOffset: { width: 0, height: 8 },
     },
     hero: {

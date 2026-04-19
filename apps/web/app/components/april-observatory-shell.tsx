@@ -8,12 +8,19 @@ import { OBSERVATORY_SURFACES, type ObservatorySurfaceId } from "./observatory-n
 type AprilWorkspaceShellProps = {
   activeSurface: ObservatorySurfaceId;
   statusLabel: string;
+  variant?: "default" | "assistant";
   queueLabel?: string;
+  brandMeta?: string;
+  ctaLabel?: string;
+  searchLabel?: string;
+  searchAriaLabel?: string;
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  profileTitle?: string;
   railSlot?: ReactNode;
   children: ReactNode;
+  className?: string;
 };
 
 type AprilPanelProps = ComponentPropsWithoutRef<"section">;
@@ -33,19 +40,28 @@ export function AprilPanel({ className, children, ...rest }: AprilPanelProps) {
 export function AprilWorkspaceShell({
   activeSurface,
   statusLabel,
+  variant = "default",
   queueLabel,
+  brandMeta = "Persistent thread system",
+  ctaLabel,
+  searchLabel = "Library search",
+  searchAriaLabel = "Search archive",
   searchPlaceholder = "Search Library...",
   searchValue,
   onSearchChange,
+  profileTitle = "Single-user thread",
   railSlot,
   children,
+  className,
 }: AprilWorkspaceShellProps) {
+  const resolvedCtaLabel = ctaLabel || (activeSurface === "main-room" ? "Quick capture" : "New item");
+
   return (
-    <div className="april-shell">
+    <div className={shellClassName(["april-shell", "observatory-shell", variant === "assistant" && "assistant-shell", className])}>
       <aside className="april-rail">
         <div className="april-rail-brand">
           <span className="april-rail-brand-mark">{productCopy.brand.name}</span>
-          <span className="april-rail-brand-meta">Assistant-first workspace</span>
+          <span className="april-rail-brand-meta">{brandMeta}</span>
         </div>
         <nav className="april-rail-nav" aria-label="Primary surfaces">
           {OBSERVATORY_SURFACES.map((surface) => (
@@ -65,7 +81,7 @@ export function AprilWorkspaceShell({
           ))}
         </nav>
         <button className="april-rail-cta" type="button">
-          New capture
+          {resolvedCtaLabel}
         </button>
         {railSlot ? <div className="april-rail-slot">{railSlot}</div> : null}
         <div className="april-rail-footer">
@@ -80,8 +96,8 @@ export function AprilWorkspaceShell({
               ◉
             </div>
             <div className="april-rail-profile-copy">
-              <strong>Single-user session</strong>
-              <span>{queueLabel || "Thread live"}</span>
+              <strong>{profileTitle}</strong>
+              <span>{queueLabel || "Live context"}</span>
             </div>
           </div>
         </div>
@@ -94,9 +110,9 @@ export function AprilWorkspaceShell({
             <span>{statusLabel}</span>
           </div>
           <label className="april-topbar-search">
-            <span className="april-topbar-search-label">Search</span>
+            <span className="april-topbar-search-label">{searchLabel}</span>
             <input
-              aria-label="Search archive"
+              aria-label={searchAriaLabel}
               className="april-topbar-search-input"
               type="text"
               placeholder={searchPlaceholder}
@@ -106,11 +122,11 @@ export function AprilWorkspaceShell({
             />
           </label>
           <div className="april-topbar-actions">
+            <Link className="april-topbar-icon" href="/assistant" aria-label="Open assistant thread">
+              ✦
+            </Link>
             <Link className="april-topbar-icon" href="/runtime" aria-label="Open runtime">
               ⌘
-            </Link>
-            <Link className="april-topbar-icon" href="/" aria-label="Open account">
-              ◎
             </Link>
           </div>
         </header>
@@ -119,3 +135,8 @@ export function AprilWorkspaceShell({
     </div>
   );
 }
+
+export type WorkspaceShellProps = AprilWorkspaceShellProps;
+export type WorkspacePanelProps = AprilPanelProps;
+export const WorkspaceShell = AprilWorkspaceShell;
+export const WorkspacePanel = AprilPanel;

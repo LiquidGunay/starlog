@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import type {
   AssistantCard as ConversationCard,
   AssistantCardAction,
@@ -76,18 +76,18 @@ function summarizeTraceArguments(argumentsValue: Record<string, unknown>): strin
 }
 
 function cardMetaText(card: ConversationCard): string {
-  const parts = [`v${card.version}`];
+  const parts: string[] = [];
   const metadata = card.metadata ?? {};
   const source = typeof metadata.projection_source === "string" ? metadata.projection_source : "";
   const updatedAt = typeof metadata.projection_updated_at === "string" ? metadata.projection_updated_at : "";
   if (updatedAt) {
     const parsed = new Date(updatedAt);
     if (!Number.isNaN(parsed.getTime())) {
-      parts.push(`updated ${parsed.toLocaleString()}`);
+      parts.push(parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }
   }
   if (source) {
-    parts.push(`source ${source.replace(/_/g, " ")}`);
+    parts.push(source.replace(/_/g, " "));
   }
   return parts.join(" · ");
 }
@@ -118,10 +118,9 @@ function renderCardBody(card: ConversationCard): ReactNode {
 
   if (card.kind === "review_queue") {
     return (
-      <div className="assistant-card-ritual assistant-card-ritual-review">
-        {card.title ? <h4>{card.title}</h4> : null}
+      <div className="assistant-card-ritual assistant-card-preview-group assistant-card-ritual-review">
         {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
-        <div className="assistant-card-rate-row" aria-hidden="true">
+        <div className="assistant-card-pill-row" aria-hidden="true">
           <span>Hard</span>
           <span>Good</span>
           <span>Reveal</span>
@@ -132,8 +131,7 @@ function renderCardBody(card: ConversationCard): ReactNode {
 
   if (card.kind === "briefing") {
     return (
-      <div className="assistant-card-ritual assistant-card-ritual-briefing">
-        {card.title ? <h4>{card.title}</h4> : null}
+      <div className="assistant-card-ritual assistant-card-preview-group assistant-card-ritual-briefing">
         {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
         <div className="assistant-card-waveform" aria-hidden="true">
           {Array.from({ length: 18 }).map((_, index) => (
@@ -146,20 +144,18 @@ function renderCardBody(card: ConversationCard): ReactNode {
 
   if (card.kind === "knowledge_note") {
     return (
-      <div className="assistant-card-ritual assistant-card-ritual-knowledge">
-        <div className="assistant-card-knowledge-copy">
-          {card.title ? <h4>{card.title}</h4> : null}
-          {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
-        </div>
-        <div className="assistant-card-knowledge-glow" aria-hidden="true" />
+      <div className="assistant-card-ritual assistant-card-preview-group assistant-card-ritual-knowledge">
+        {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
+        {lines.length > 0 ? (
+          <blockquote className="assistant-card-knowledge-quote">{lines[0]}</blockquote>
+        ) : null}
       </div>
     );
   }
 
   if (card.kind === "task_list" && lines.length > 0) {
     return (
-      <div className="assistant-card-ritual assistant-card-ritual-task">
-        {card.title ? <h4>{card.title}</h4> : null}
+      <div className="assistant-card-ritual assistant-card-preview-group assistant-card-ritual-task">
         <ul className="assistant-card-checklist">
           {lines.slice(0, 4).map((line) => (
             <li key={line}>{line.replace(/^[-*]\s*/, "")}</li>
@@ -171,8 +167,7 @@ function renderCardBody(card: ConversationCard): ReactNode {
 
   if (card.kind === "assistant_summary") {
     return (
-      <div className="assistant-card-ritual">
-        {card.title ? <h4>{card.title}</h4> : null}
+      <div className="assistant-card-ritual assistant-card-preview-group">
         {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
         {typeof metadata.status === "string" ? (
           <span className="assistant-card-status">{metadata.status.replace(/_/g, " ")}</span>
@@ -182,8 +177,7 @@ function renderCardBody(card: ConversationCard): ReactNode {
   }
 
   return (
-    <div className="assistant-card-ritual">
-      {card.title ? <h4>{card.title}</h4> : null}
+    <div className="assistant-card-ritual assistant-card-preview-group">
       {card.body ? <p className="assistant-card-lede">{card.body}</p> : null}
     </div>
   );
@@ -219,7 +213,8 @@ export function MainRoomThread({
           </ul>
         </div>
       ) : (
-        messages.map((message) => {
+        messages.map((message, messageIndex) => {
+          const previousRole = messages[messageIndex - 1]?.role;
           const assistantCommand = message.metadata?.assistant_command;
           const messageTraces = traces.filter((trace) => trace.message_id === message.id);
           const cardToggleKey = `${message.id}-cards`;
@@ -236,16 +231,37 @@ export function MainRoomThread({
             : message.content.trim() || fallbackBody;
           const hasDiagnostics = diagnosticCards.length > 0 || messageTraces.length > 0 || Boolean(assistantCommand);
           const hiddenDiagnosticCount = diagnosticCards.length + messageTraces.length + (assistantCommand ? 1 : 0);
+          const showRoleChip = message.role === "system" || message.role === "tool";
+          const showAssistantMarker = message.role === "assistant" && previousRole !== "assistant";
+          const showUserMarker = message.role === "user" && previousRole !== "user";
+          const timestampLabel = new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           return (
-            <article key={message.id} className={`assistant-thread-message role-${message.role}${pendingMessage ? " pending" : ""}`}>
+            <article
+              key={message.id}
+              className={`assistant-thread-message role-${message.role}${pendingMessage ? " pending" : ""}${showAssistantMarker || showUserMarker ? " cluster-start" : ""}`}
+              style={{ "--thread-index": messageIndex } as CSSProperties}
+            >
               <div className="assistant-thread-message-meta">
                 <span className={`assistant-sigil assistant-sigil-${message.role}`} aria-hidden="true">
                   {message.role === "assistant" ? "✦" : message.role === "user" ? "◉" : "◌"}
                 </span>
-                <span className="assistant-role-chip">{message.role}</span>
-                <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                {showRoleChip ? <span className="assistant-role-chip">{message.role}</span> : null}
+                <span>{timestampLabel}</span>
               </div>
               <div className="assistant-thread-bubble">
+                {showAssistantMarker ? (
+                  <div className="assistant-thread-marker assistant-thread-marker-assistant">
+                    <span className="assistant-thread-marker-dot" aria-hidden="true" />
+                    <span>Assistant</span>
+                    <span className="assistant-thread-marker-time">{timestampLabel}</span>
+                  </div>
+                ) : null}
+                {showUserMarker ? (
+                  <div className="assistant-thread-marker assistant-thread-marker-user">
+                    <span>You</span>
+                    <span className="assistant-thread-marker-time">{timestampLabel}</span>
+                  </div>
+                ) : null}
                 {thinkingMessage ? (
                   <div className="assistant-thinking-block">
                     <span className="assistant-thinking-pill">Latent thinking</span>
@@ -255,32 +271,40 @@ export function MainRoomThread({
                   <p>{body}</p>
                 )}
                 {primaryCards.length > 0 ? (
-                  <div className="assistant-inline-card-steps assistant-inline-card-attachments">
+                  <div className="assistant-attachment-stack">
                     {primaryCards.map((card, index) => {
                         const presentation = cardPresentation(card);
                         const reusableText = card.body?.trim() || card.title?.trim() || "";
                         const cardKey = `${message.id}-card-${card.kind}-${index}`;
                         const reviewAnswer = typeof card.metadata?.answer === "string" ? card.metadata.answer : "";
                         const revealActive = !!revealedReviewCards[cardKey];
+                        const metaText = cardMetaText(card);
+                        const navigateAction = card.actions.find((action) => action.kind === "navigate");
                         return (
-                          <div
+                          <article
                             key={cardKey}
-                            className={`assistant-inline-step assistant-inline-step-card tone-${presentation.tone}`}
+                            className={`assistant-attachment assistant-inline-step-card tone-${presentation.tone}`}
+                            style={{ "--attachment-index": index } as CSSProperties}
                           >
-                            <div>
-                              <div className="assistant-inline-step-head">
-                                <strong>
+                            <div className="assistant-attachment-rail" aria-hidden="true" />
+                            <div className="assistant-attachment-shell">
+                              <div className="assistant-attachment-topline">
+                                <strong className="assistant-attachment-label">
                                   <span className="assistant-inline-step-glyph" aria-hidden="true">{cardGlyph(card)}</span>
                                   {presentation.label}
                                 </strong>
-                                <span className="assistant-inline-card-meta">{cardMetaText(card)}</span>
+                                {metaText ? <span className="assistant-attachment-meta">{metaText}</span> : null}
+                              </div>
+                              <div className="assistant-attachment-heading">
+                                {card.title ? <h4 className="assistant-inline-card-title">{card.title}</h4> : null}
+                                {navigateAction ? <span className="assistant-attachment-jump">Open</span> : null}
                               </div>
                               {renderCardBody(card)}
                               {card.kind === "review_queue" && reviewAnswer && revealActive ? (
                                 <code className="assistant-inline-card-json">{reviewAnswer}</code>
                               ) : null}
                               {card.actions.length > 0 || (card.kind === "review_queue" && reviewAnswer) || reusableText ? (
-                                <div className="assistant-inline-action-row">
+                                <div className="assistant-inline-action-row assistant-attachment-actions">
                                   {card.kind === "review_queue" && reviewAnswer ? (
                                     <button
                                       className="assistant-inline-card-toggle"
@@ -314,16 +338,16 @@ export function MainRoomThread({
                                 </div>
                               ) : null}
                             </div>
-                          </div>
+                          </article>
                         );
                       })}
                   </div>
                 ) : null}
                 {hasDiagnostics ? (
-                  <div className="assistant-inline-card assistant-inline-card-stack assistant-inline-diagnostics">
-                    <div className="assistant-inline-card-head">
-                      <span>Diagnostics {cardsExpanded ? "shown" : "collapsed"} · {hiddenDiagnosticCount} hidden</span>
-                      <span className="assistant-inline-card-actions">
+                    <div className="assistant-diagnostic-inline">
+                      <div className="assistant-inline-card-head assistant-diagnostic-head">
+                      <span>System trace {cardsExpanded ? "shown" : "collapsed"} · {hiddenDiagnosticCount} hidden</span>
+                      <span className="assistant-inline-card-actions assistant-diagnostic-actions">
                         {cardsExpanded && messageTraces.length > 0 ? (
                           <button
                             className="assistant-inline-card-toggle"
@@ -343,7 +367,7 @@ export function MainRoomThread({
                       </span>
                     </div>
                     {cardsExpanded ? (
-                      <div className="assistant-inline-card-steps">
+                      <div className="assistant-diagnostic-panel">
                         {diagnosticCards.map((card, index) => (
                           <div key={`${message.id}-diagnostic-card-${index}-${card.kind}`} className="assistant-inline-step assistant-inline-step-trace">
                             <div className="assistant-inline-step-copy">
@@ -390,9 +414,14 @@ export function MainRoomThread({
                                   </div>
                                 ))}
                               </div>
-                              <div className="button-row">
-                                <button className="button" type="button" onClick={() => onReuseCommand(assistantCommand.command)}>
-                                  Reuse command
+                              <div className="assistant-inline-action-row">
+                                <button
+                                  className="assistant-side-action compact muted"
+                                  type="button"
+                                  onClick={() => onReuseCommand(assistantCommand.command)}
+                                >
+                                  <strong>Reuse command</strong>
+                                  <span>Load this matched intent back into the composer.</span>
                                 </button>
                               </div>
                             </div>

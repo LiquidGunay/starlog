@@ -19,6 +19,7 @@ type ConversationMessage = {
   content: string;
   cards: ConversationCard[];
   metadata?: Record<string, unknown>;
+  created_at: string;
 };
 
 type MobileHomeSurfaceProps = SharedProps & {
@@ -177,7 +178,7 @@ function pillStyle(palette: Record<string, string>, active = false) {
 }
 
 function mapRecentMessages(messages: ConversationMessage[]) {
-  return messages.slice(-8);
+  return messages.slice(-10);
 }
 
 function isDiagnosticConversationCard(card: ConversationCard): boolean {
@@ -236,64 +237,72 @@ function bodyLines(body?: string | null): string[] {
     .filter(Boolean);
 }
 
+function conversationMessageTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function conversationCardTone(kind: string, palette: Record<string, string>) {
   if (kind === "review_queue") {
     return {
-      cardBorder: "rgba(166, 222, 191, 0.18)",
-      cardBackground: "rgba(42, 33, 39, 0.96)",
-      accentBackground: "rgba(166, 222, 191, 0.14)",
-      accentBorder: "rgba(166, 222, 191, 0.24)",
+      cardBorder: "rgba(166, 222, 191, 0.12)",
+      cardBackground: "rgba(43, 28, 37, 0.92)",
+      accentBackground: "rgba(166, 222, 191, 0.09)",
+      accentBorder: "rgba(166, 222, 191, 0.16)",
       accentText: "#cfeeda",
-      bodyBackground: "rgba(255,255,255,0.03)",
+      bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   if (kind === "task_list") {
     return {
-      cardBorder: "rgba(243, 207, 122, 0.18)",
-      cardBackground: "rgba(42, 33, 39, 0.96)",
-      accentBackground: "rgba(243, 207, 122, 0.14)",
-      accentBorder: "rgba(243, 207, 122, 0.24)",
+      cardBorder: "rgba(243, 207, 122, 0.12)",
+      cardBackground: "rgba(43, 28, 37, 0.92)",
+      accentBackground: "rgba(243, 207, 122, 0.09)",
+      accentBorder: "rgba(243, 207, 122, 0.16)",
       accentText: "#f4ddb0",
-      bodyBackground: "rgba(255,255,255,0.03)",
+      bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   if (kind === "knowledge_note") {
     return {
-      cardBorder: "rgba(151, 188, 255, 0.18)",
-      cardBackground: "rgba(42, 33, 39, 0.96)",
-      accentBackground: "rgba(151, 188, 255, 0.14)",
-      accentBorder: "rgba(151, 188, 255, 0.22)",
+      cardBorder: "rgba(151, 188, 255, 0.12)",
+      cardBackground: "rgba(43, 28, 37, 0.92)",
+      accentBackground: "rgba(151, 188, 255, 0.09)",
+      accentBorder: "rgba(151, 188, 255, 0.16)",
       accentText: "#d7e6ff",
-      bodyBackground: "rgba(255,255,255,0.03)",
+      bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   if (kind === "briefing") {
     return {
-      cardBorder: "rgba(241, 182, 205, 0.2)",
-      cardBackground: "rgba(47, 32, 41, 0.98)",
-      accentBackground: "rgba(241, 182, 205, 0.14)",
-      accentBorder: "rgba(241, 182, 205, 0.24)",
+      cardBorder: "rgba(241, 182, 205, 0.13)",
+      cardBackground: "rgba(45, 30, 39, 0.94)",
+      accentBackground: "rgba(241, 182, 205, 0.09)",
+      accentBorder: "rgba(241, 182, 205, 0.16)",
       accentText: palette.accent,
-      bodyBackground: "rgba(255,255,255,0.03)",
+      bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   if (kind === "capture_item") {
     return {
-      cardBorder: "rgba(241, 182, 205, 0.2)",
-      cardBackground: "rgba(47, 32, 41, 0.98)",
-      accentBackground: "rgba(241, 182, 205, 0.14)",
-      accentBorder: "rgba(241, 182, 205, 0.24)",
+      cardBorder: "rgba(241, 182, 205, 0.13)",
+      cardBackground: "rgba(45, 30, 39, 0.94)",
+      accentBackground: "rgba(241, 182, 205, 0.09)",
+      accentBorder: "rgba(241, 182, 205, 0.16)",
       accentText: palette.accent,
-      bodyBackground: "rgba(255,255,255,0.03)",
+      bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   return {
-    cardBorder: "rgba(241, 182, 205, 0.16)",
-    cardBackground: "rgba(45, 31, 40, 0.96)",
-    accentBackground: "rgba(241, 182, 205, 0.12)",
-    accentBorder: "rgba(241, 182, 205, 0.18)",
+    cardBorder: "rgba(241, 182, 205, 0.12)",
+    cardBackground: "rgba(43, 29, 37, 0.92)",
+    accentBackground: "rgba(241, 182, 205, 0.09)",
+    accentBorder: "rgba(241, 182, 205, 0.15)",
     accentText: palette.accent,
-    bodyBackground: "rgba(255,255,255,0.03)",
+    bodyBackground: "rgba(255,255,255,0.02)",
   };
 }
 
@@ -314,7 +323,7 @@ function renderConversationCardPreview(
         <View
           style={{
             borderRadius: 14,
-            backgroundColor: "rgba(255,255,255,0.035)",
+            backgroundColor: "rgba(255,255,255,0.026)",
             borderWidth: 1,
             borderColor: "rgba(255,255,255,0.04)",
             padding: 10,
@@ -394,7 +403,7 @@ function renderConversationCardPreview(
             borderRadius: 14,
             paddingHorizontal: 10,
             paddingVertical: 12,
-            backgroundColor: "rgba(255,255,255,0.03)",
+            backgroundColor: "rgba(255,255,255,0.024)",
             borderWidth: 1,
             borderColor: "rgba(255,255,255,0.04)",
             flexDirection: "row",
@@ -421,44 +430,21 @@ function renderConversationCardPreview(
 
   if (card.kind === "knowledge_note") {
     return (
-      <View style={{ flexDirection: "row", gap: 12 }}>
-        <View style={{ flex: 1, gap: 8 }}>
-          {card.body ? <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body}</Text> : null}
-        </View>
-        <View
-          style={{
-            width: 84,
-            minHeight: 82,
-            borderRadius: 16,
-            backgroundColor: "#14111b",
-            borderWidth: 1,
-            borderColor: tone.accentBorder,
-            overflow: "hidden",
-          }}
-        >
+      <View style={{ gap: 10 }}>
+        {card.body ? <Text style={[bodyStyle(palette), { fontSize: 14, lineHeight: 21 }]}>{card.body}</Text> : null}
+        {lines[0] ? (
           <View
             style={{
-              position: "absolute",
-              left: 10,
-              top: 12,
-              width: 54,
-              height: 54,
-              borderRadius: 999,
-              backgroundColor: "rgba(124, 189, 255, 0.22)",
+              borderLeftWidth: 1,
+              borderLeftColor: tone.accentBorder,
+              paddingLeft: 10,
             }}
-          />
-          <View
-            style={{
-              position: "absolute",
-              right: 6,
-              bottom: 6,
-              width: 42,
-              height: 42,
-              borderRadius: 999,
-              backgroundColor: "rgba(241, 182, 205, 0.18)",
-            }}
-          />
-        </View>
+          >
+            <Text style={{ color: palette.text, fontSize: 13.5, lineHeight: 20 }}>
+              {lines[0]}
+            </Text>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -512,8 +498,8 @@ function conversationActionTone(
   }
   if (action.style === "primary") {
     return {
-      backgroundColor: "rgba(96, 57, 75, 0.88)",
-      borderColor: "rgba(241, 182, 205, 0.16)",
+      backgroundColor: "rgba(96, 57, 75, 0.62)",
+      borderColor: "rgba(241, 182, 205, 0.12)",
       color: palette.accent,
     };
   }
@@ -571,6 +557,10 @@ export function MobileHomeSurface({
   reuseCardText,
 }: MobileHomeSurfaceProps) {
   const recentMessages = mapRecentMessages(visibleConversationMessages);
+  const assistantReplyCount = visibleConversationMessages.filter((message) => message.role === "assistant").length;
+  const attachmentCount = visibleConversationMessages.reduce((count, message) => (
+    count + message.cards.filter((card) => !isDiagnosticConversationCard(card)).length
+  ), 0);
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [showDiagnosticCards, setShowDiagnosticCards] = useState(false);
 
@@ -594,32 +584,92 @@ export function MobileHomeSurface({
       : voiceActionState === "listening"
         ? "rgba(166, 222, 191, 0.16)"
         : "rgba(255,255,255,0.04)";
+  const composerStateLabels = [
+    voiceActionState === "recording"
+      ? "Listening live"
+      : voiceActionState === "ready"
+        ? "Voice clip ready"
+        : voiceActionState === "listening"
+          ? "Preparing mic"
+          : "Text draft",
+    pendingConversationTurn ? "Reply pending" : "Thread ready",
+    hiddenConversationMessageCount > 0 ? "Shared transcript" : "Recent thread",
+  ];
 
   return (
-    <View style={{ gap: 18 }}>
-      <View style={{ minHeight: 460, gap: 16, justifyContent: recentMessages.length === 0 ? "center" : "flex-end" }}>
+    <View style={{ gap: 14 }}>
+      <View
+        style={{
+          borderRadius: 24,
+          borderWidth: 1,
+          borderColor: "rgba(241, 182, 205, 0.08)",
+          backgroundColor: "rgba(26, 17, 23, 0.72)",
+          paddingHorizontal: 14,
+          paddingVertical: 14,
+          gap: 10,
+        }}
+      >
+        <Text style={[kickerStyle(palette), { color: palette.accent, letterSpacing: 1.05 }]}>Assistant thread</Text>
+        <Text style={{ color: palette.text, fontSize: 24, lineHeight: 27, fontWeight: "800" }}>
+          Persistent conversation, docked context, minimal chrome.
+        </Text>
+        <Text style={[bodyStyle(palette), { lineHeight: 21 }]}>
+          Keep planning, follow-through, and returned artifacts inside one live thread instead of bouncing between surfaces.
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          {[
+            `${visibleConversationMessages.length} messages`,
+            `${assistantReplyCount} replies`,
+            `${attachmentCount} attachments`,
+          ].map((label) => (
+            <View
+              key={label}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                backgroundColor: "rgba(255,255,255,0.025)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+              }}
+            >
+              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+      <View style={{ minHeight: 480, gap: 18, justifyContent: recentMessages.length === 0 ? "center" : "flex-end" }}>
         {recentMessages.length === 0 ? (
-          <View style={{ alignItems: "center", gap: 14, paddingHorizontal: 16 }}>
+          <View style={{ alignItems: "center", gap: 10, paddingHorizontal: 24 }}>
             <View
               style={{
-                width: 64,
-                height: 64,
-                borderRadius: 24,
-                backgroundColor: "rgba(241, 182, 205, 0.14)",
+                width: 46,
+                height: 46,
+                borderRadius: 16,
+                backgroundColor: "rgba(241, 182, 205, 0.08)",
                 borderWidth: 1,
-                borderColor: "rgba(241, 182, 205, 0.24)",
+                borderColor: "rgba(241, 182, 205, 0.12)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <MaterialCommunityIcons name="star-four-points-outline" size={28} color={palette.accent} />
+              <MaterialCommunityIcons name="star-four-points-outline" size={18} color={palette.accent} />
             </View>
-            <Text style={[headingStyle(palette), { fontSize: 25, lineHeight: 31, textAlign: "center" }]}>{productCopy.assistant.emptyTitle}</Text>
-            <Text style={[bodyStyle(palette), { textAlign: "center", maxWidth: 300 }]}>{productCopy.assistant.emptyBody}</Text>
+            <Text style={[headingStyle(palette), { fontSize: 25, lineHeight: 30, textAlign: "center" }]}>
+              {productCopy.assistant.emptyTitle}
+            </Text>
+            <Text style={[bodyStyle(palette), { textAlign: "center", maxWidth: 300 }]}>
+              {productCopy.assistant.emptyBody}
+            </Text>
           </View>
         ) : (
           recentMessages.map((message, messageIndex) => {
             const isUser = message.role === "user";
+            const previousRole = recentMessages[messageIndex - 1]?.role;
+            const showAssistantMarker = !isUser && previousRole !== "assistant";
+            const timestampLabel = conversationMessageTimestamp(message.created_at);
             const primaryCards = isUser ? [] : message.cards.filter((card) => !isDiagnosticConversationCard(card));
             const diagnosticCards = isUser ? [] : message.cards.filter(isDiagnosticConversationCard);
             return (
@@ -629,47 +679,53 @@ export function MobileHomeSurface({
                   width: "100%",
                   alignSelf: isUser ? "flex-end" : "stretch",
                   alignItems: isUser ? "flex-end" : "flex-start",
-                  marginLeft: isUser ? 52 : 0,
-                  marginRight: isUser ? 0 : 12,
-                  gap: 8,
+                  marginLeft: isUser ? 70 : 0,
+                  marginRight: isUser ? 0 : 2,
+                  gap: 9,
                 }}
               >
-                {!isUser ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginLeft: 2, marginBottom: 1 }}>
+                {showAssistantMarker ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginLeft: 2, marginBottom: 2 }}>
                     <View
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 9,
-                        backgroundColor: "rgba(241, 182, 205, 0.12)",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        width: 8,
+                        height: 8,
+                        borderRadius: 999,
+                        backgroundColor: palette.accent,
+                      }}
+                    />
+                    <Text
+                      style={{
+                        color: palette.muted,
+                        fontSize: 10,
+                        letterSpacing: 0.9,
+                        textTransform: "uppercase",
+                        fontWeight: "700",
                       }}
                     >
-                      <MaterialCommunityIcons name="star-four-points-outline" size={14} color={palette.accent} />
-                    </View>
-                    <Text style={[kickerStyle(palette), { color: palette.secondary }]}>{PRODUCT_SURFACES.assistant.label}</Text>
+                      Assistant {timestampLabel ? `· ${timestampLabel}` : ""}
+                    </Text>
                   </View>
                 ) : null}
                 <View
                   style={{
-                    maxWidth: isUser ? "84%" : "90%",
+                    maxWidth: isUser ? "82%" : "96%",
                     borderRadius: 24,
-                    borderBottomRightRadius: isUser ? 10 : 24,
-                    borderBottomLeftRadius: isUser ? 24 : 10,
-                    backgroundColor: isUser ? "rgba(61, 41, 49, 0.92)" : "transparent",
+                    borderBottomRightRadius: isUser ? 11 : 24,
+                    borderBottomLeftRadius: isUser ? 24 : 11,
+                    backgroundColor: isUser ? "rgba(57, 38, 47, 0.58)" : "transparent",
                     borderWidth: isUser ? 1 : 0,
-                    borderColor: isUser ? "rgba(241, 182, 205, 0.08)" : "transparent",
-                    paddingHorizontal: isUser ? 16 : 0,
-                    paddingVertical: isUser ? 14 : 0,
+                    borderColor: isUser ? "rgba(241, 182, 205, 0.06)" : "transparent",
+                    paddingHorizontal: isUser ? 14 : 0,
+                    paddingVertical: isUser ? 10 : 0,
                   }}
                 >
                   <Text
                     style={{
                       color: palette.text,
-                      fontSize: isUser ? 16 : 17,
-                      lineHeight: isUser ? 24 : 29,
-                      paddingHorizontal: isUser ? 0 : 4,
+                      fontSize: isUser ? 16 : 18,
+                      lineHeight: isUser ? 24 : 31,
+                      paddingHorizontal: isUser ? 0 : 3,
                       paddingVertical: isUser ? 0 : 2,
                     }}
                   >
@@ -677,15 +733,15 @@ export function MobileHomeSurface({
                   </Text>
                 </View>
                 {primaryCards.length > 0 ? (
-                  <View style={{ width: "92%", gap: 10, paddingLeft: 18, position: "relative" }}>
+                  <View style={{ width: "96%", gap: 10, paddingLeft: 18, position: "relative" }}>
                     <View
                       style={{
                         position: "absolute",
                         left: 8,
-                        top: 2,
+                        top: 4,
                         bottom: 10,
                         width: 1,
-                        backgroundColor: "rgba(241, 182, 205, 0.12)",
+                        backgroundColor: "rgba(241, 182, 205, 0.06)",
                       }}
                     />
                     {primaryCards.map((card, cardIndex) => {
@@ -701,141 +757,105 @@ export function MobileHomeSurface({
                           key={cardKey}
                           onPress={() => handleCardPress(card)}
                           style={{
-                            marginLeft: 14,
-                            borderRadius: 22,
-                            borderWidth: 1,
-                            borderColor: tone.cardBorder,
-                            backgroundColor: tone.cardBackground,
-                            shadowColor: "#000",
-                            shadowOpacity: 0.22,
-                            shadowRadius: 18,
-                            shadowOffset: { width: 0, height: 10 },
-                            overflow: "hidden",
+                            marginLeft: 10,
+                            flexDirection: "row",
+                            alignItems: "stretch",
+                            gap: 8,
                           }}
                         >
                           <View
                             style={{
-                              position: "absolute",
-                              left: -11,
-                              top: 28,
-                              width: 11,
-                              height: 1,
-                              backgroundColor: "rgba(241, 182, 205, 0.12)",
+                              width: 8,
+                              justifyContent: "center",
+                              paddingTop: 20,
                             }}
-                          />
+                          >
+                            <View style={{ height: 1, backgroundColor: "rgba(241, 182, 205, 0.1)" }} />
+                          </View>
                           <View
                             style={{
-                              position: "absolute",
-                              top: -28,
-                              right: -10,
-                              width: 116,
-                              height: 116,
-                              borderRadius: 999,
-                              backgroundColor: tone.accentBackground,
+                              flex: 1,
+                              borderRadius: 18,
+                              borderWidth: 1,
+                              borderColor: tone.cardBorder,
+                              backgroundColor: "rgba(43, 28, 37, 0.62)",
+                              paddingHorizontal: 13,
+                              paddingVertical: 12,
+                              gap: 10,
                             }}
-                          />
-                          <View style={{ paddingHorizontal: 14, paddingVertical: 14, gap: 12 }}>
-                            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-                              <View
-                                style={{
-                                  width: 38,
-                                  height: 38,
-                                  borderRadius: 14,
-                                  backgroundColor: tone.accentBackground,
-                                  borderWidth: 1,
-                                  borderColor: tone.accentBorder,
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  marginTop: 2,
-                                }}
-                              >
-                                <MaterialCommunityIcons name={conversationCardIcon(card.kind)} size={19} color={tone.accentText} />
-                              </View>
-                              <View style={{ flex: 1, gap: 4 }}>
+                          >
+                            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                              <View style={{ flex: 1, gap: 6 }}>
                                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                   <Text
                                     style={[
                                       kickerStyle(palette),
-                                      { color: tone.accentText, letterSpacing: 1.15, fontSize: 9.5 },
+                                      { color: tone.accentText, letterSpacing: 0.92, fontSize: 8.5 },
                                     ]}
                                   >
                                     {mobileConversationCardLabel(card.kind, card.title)}
                                   </Text>
+                                  {meta ? (
+                                    <Text
+                                      style={{
+                                        color: palette.muted,
+                                        fontSize: 8.8,
+                                        fontWeight: "700",
+                                        textTransform: "uppercase",
+                                        letterSpacing: 0.6,
+                                      }}
+                                    >
+                                      {meta}
+                                    </Text>
+                                  ) : null}
                                 </View>
-                                <Text style={{ color: palette.text, fontSize: 18, lineHeight: 22, fontWeight: "800" }} numberOfLines={2}>
+                                <Text style={{ color: palette.text, fontSize: 15.5, lineHeight: 21, fontWeight: "800" }} numberOfLines={2}>
                                   {cardAttachmentLabel(card.kind, card.title)}
                                 </Text>
                               </View>
-                              {hasNavigateAction ? (
-                                <View
-                                  style={{
-                                    width: 26,
-                                    height: 26,
-                                    borderRadius: 999,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    backgroundColor: "rgba(255,255,255,0.04)",
-                                  }}
-                                >
-                                  <MaterialCommunityIcons name="arrow-top-right" size={14} color={palette.muted} />
-                                </View>
-                              ) : null}
+                              <View
+                                style={{
+                                  width: 26,
+                                  height: 26,
+                                  borderRadius: 999,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  backgroundColor: tone.accentBackground,
+                                  borderWidth: 1,
+                                  borderColor: tone.accentBorder,
+                                  marginTop: 2,
+                                }}
+                              >
+                                <MaterialCommunityIcons
+                                  name={(hasNavigateAction ? "arrow-top-right" : conversationCardIcon(card.kind)) as never}
+                                  size={13}
+                                  color={tone.accentText}
+                                />
+                              </View>
                             </View>
                             <View
                               style={{
-                                borderRadius: 16,
-                                backgroundColor: tone.bodyBackground,
+                                borderRadius: 13,
+                                backgroundColor: "rgba(255,255,255,0.022)",
                                 borderWidth: 1,
                                 borderColor: "rgba(255,255,255,0.04)",
-                                paddingHorizontal: 12,
-                                paddingVertical: 11,
-                                gap: 10,
+                                paddingHorizontal: 10,
+                                paddingVertical: 9,
+                                gap: 8,
                               }}
                             >
                               {renderConversationCardPreview(card, palette, tone, revealActive)}
-                            </View>
-                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                              {meta ? (
-                                <Text
-                                  style={{
-                                    color: palette.muted,
-                                    fontSize: 10.5,
-                                    lineHeight: 16,
-                                    fontWeight: "700",
-                                    textTransform: "uppercase",
-                                    letterSpacing: 0.7,
-                                  }}
-                                >
-                                  {meta}
-                                </Text>
-                              ) : (
-                                <View />
-                              )}
-                              {hasNavigateAction ? (
-                                <Text
-                                  style={{
-                                    color: tone.accentText,
-                                    fontSize: 10.5,
-                                    lineHeight: 16,
-                                    fontWeight: "800",
-                                    textTransform: "uppercase",
-                                    letterSpacing: 0.8,
-                                  }}
-                                >
-                                  Tap card to open
-                                </Text>
-                              ) : null}
                             </View>
                             <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
                               {card.kind === "review_queue" && reviewAnswer ? (
                                 <TouchableOpacity
                                   style={{
                                     ...pillStyle(palette, true),
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 7,
-                                    backgroundColor: "rgba(241, 182, 205, 0.10)",
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
+                                    backgroundColor: "rgba(241, 182, 205, 0.06)",
                                     borderWidth: 1,
-                                    borderColor: "rgba(241, 182, 205, 0.12)",
+                                    borderColor: "rgba(241, 182, 205, 0.08)",
                                   }}
                                   onPress={() =>
                                     setRevealedReviewCards((previous) => ({
@@ -844,7 +864,7 @@ export function MobileHomeSurface({
                                     }))
                                   }
                                 >
-                                  <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
+                                  <Text style={{ color: palette.accent, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase" }}>
                                     {revealActive ? "Hide answer" : "Reveal"}
                                   </Text>
                                 </TouchableOpacity>
@@ -856,8 +876,8 @@ export function MobileHomeSurface({
                                     key={`${cardKey}-${action.id}`}
                                     style={{
                                       ...pillStyle(palette, action.style === "primary"),
-                                      paddingHorizontal: 12,
-                                      paddingVertical: 8,
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 6,
                                       borderWidth: 1,
                                       borderColor: actionTone.borderColor,
                                       backgroundColor: actionTone.backgroundColor,
@@ -867,10 +887,10 @@ export function MobileHomeSurface({
                                     <Text
                                       style={{
                                         color: actionTone.color,
-                                        fontSize: 9.5,
+                                        fontSize: 9,
                                         fontWeight: "800",
                                         textTransform: "uppercase",
-                                        letterSpacing: 0.75,
+                                        letterSpacing: 0.7,
                                       }}
                                     >
                                       {action.label}
@@ -882,15 +902,15 @@ export function MobileHomeSurface({
                                 <TouchableOpacity
                                   style={{
                                     ...pillStyle(palette),
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 7,
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
                                     borderWidth: 1,
                                     borderColor: "rgba(255,255,255,0.05)",
-                                    backgroundColor: "rgba(255,255,255,0.04)",
+                                    backgroundColor: "rgba(255,255,255,0.03)",
                                   }}
                                   onPress={() => reuseCardText(reusableText)}
                                 >
-                                  <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
+                                  <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase" }}>
                                     Use in Assistant
                                   </Text>
                                 </TouchableOpacity>
@@ -908,24 +928,51 @@ export function MobileHomeSurface({
                       onPress={() => setShowDiagnosticCards((previous) => !previous)}
                       style={{
                         borderRadius: 999,
-                        backgroundColor: "rgba(255,255,255,0.03)",
-                        paddingHorizontal: 13,
-                        paddingVertical: 8,
+                        backgroundColor: "rgba(255,255,255,0.015)",
+                        paddingHorizontal: 11,
+                        paddingVertical: 5,
                         alignSelf: "flex-start",
                         borderWidth: 1,
                         borderColor: "rgba(255,255,255,0.05)",
                       }}
                     >
                       <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
-                        Diagnostics {showDiagnosticCards ? "shown" : "collapsed"} · {diagnosticCards.length} hidden
+                        System trace {showDiagnosticCards ? "shown" : "collapsed"} · {diagnosticCards.length} hidden
                       </Text>
                     </Pressable>
                     {showDiagnosticCards ? (
-                      <View style={{ gap: 6, paddingTop: 8 }}>
+                      <View
+                        style={{
+                          gap: 8,
+                          paddingTop: 8,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.04)",
+                          backgroundColor: "rgba(255,255,255,0.018)",
+                          paddingHorizontal: 10,
+                          paddingVertical: 10,
+                        }}
+                      >
                         {diagnosticCards.map((card, cardIndex) => (
-                          <Text key={`${message.id}-diagnostic-${cardIndex}-${card.kind}`} style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
-                            {mobileConversationCardLabel(card.kind, card.title)} · {card.title || formatCardMeta(card)}
-                          </Text>
+                          <View
+                            key={`${message.id}-diagnostic-${cardIndex}-${card.kind}`}
+                            style={{
+                              gap: 4,
+                              borderRadius: 12,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.04)",
+                              backgroundColor: "rgba(255,255,255,0.02)",
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                            }}
+                          >
+                            <Text style={{ color: palette.text, fontSize: 11.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                              {mobileConversationCardLabel(card.kind, card.title)}
+                            </Text>
+                            <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+                              {card.title || formatCardMeta(card)}
+                            </Text>
+                          </View>
                         ))}
                       </View>
                     ) : null}
@@ -939,24 +986,104 @@ export function MobileHomeSurface({
 
       <View
         style={{
-          borderRadius: 30,
-          backgroundColor: "rgba(48, 31, 39, 0.9)",
+          borderRadius: 24,
+          backgroundColor: "rgba(32, 20, 27, 0.78)",
           borderWidth: 1,
-          borderColor: "rgba(241, 182, 205, 0.16)",
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          borderColor: "rgba(241, 182, 205, 0.07)",
+          paddingHorizontal: 10,
+          paddingVertical: 10,
           shadowColor: "#000",
-          shadowOpacity: 0.22,
-          shadowRadius: 22,
-          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+        <View style={{ gap: 3, paddingHorizontal: 4, paddingBottom: 8 }}>
+          <Text style={[kickerStyle(palette), { color: palette.accent, letterSpacing: 1.05 }]}>Composer</Text>
+          <Text style={{ color: palette.text, fontSize: 16, lineHeight: 20, fontWeight: "800" }}>
+            {voiceActionState === "ready"
+              ? "Voice clip ready"
+              : voiceActionState === "recording"
+                ? "Listening now"
+                : pendingConversationTurn
+                  ? "Assistant is answering"
+                  : "Stay in the thread"}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingHorizontal: 4, paddingBottom: 8 }}>
+          {composerStateLabels.map((label, index) => (
+            <View
+              key={label}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderWidth: 1,
+                borderColor: index === 0 ? "rgba(241, 182, 205, 0.1)" : "rgba(255,255,255,0.05)",
+                backgroundColor: index === 0 ? "rgba(241, 182, 205, 0.06)" : "rgba(255,255,255,0.02)",
+              }}
+            >
+              <Text
+                style={{
+                  color: index === 0 ? palette.text : palette.muted,
+                  fontSize: 9.5,
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.65,
+                }}
+              >
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingHorizontal: 4, paddingBottom: 8 }}>
           <TouchableOpacity
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
+              ...pillStyle(palette),
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.05)",
+              backgroundColor: "rgba(255,255,255,0.025)",
+            }}
+            onPress={previewCommandFlow}
+          >
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Preview flow
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              ...pillStyle(palette),
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.05)",
+              backgroundColor: "rgba(255,255,255,0.025)",
+            }}
+            onPress={refreshThread}
+          >
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Refresh
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              ...pillStyle(palette),
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.05)",
+              backgroundColor: "rgba(255,255,255,0.025)",
+            }}
+            onPress={resetConversationSession}
+          >
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Reset session
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+          <TouchableOpacity
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 21,
               backgroundColor: voiceButtonAccent,
               borderWidth: 1,
               borderColor:
@@ -964,7 +1091,7 @@ export function MobileHomeSurface({
                   ? "rgba(255, 180, 183, 0.18)"
                   : voiceActionState === "listening"
                     ? "rgba(166, 222, 191, 0.18)"
-                    : "rgba(255,255,255,0.06)",
+                    : "rgba(255,255,255,0.05)",
               alignItems: "center",
               justifyContent: "center",
             }}
@@ -983,29 +1110,87 @@ export function MobileHomeSurface({
               }
             />
           </TouchableOpacity>
-          <TextInput
+          <View
             style={{
               flex: 1,
-              minHeight: 42,
-              maxHeight: 118,
-              color: palette.text,
-              fontSize: 16,
-              lineHeight: 22,
-              fontWeight: "500",
-              paddingVertical: 9,
-              paddingHorizontal: 4,
+              borderRadius: 20,
+              backgroundColor: "rgba(255,255,255,0.02)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.04)",
+              paddingHorizontal: 10,
+              paddingTop: 2,
+              paddingBottom: 6,
             }}
-            value={homeDraft}
-            onChangeText={setHomeDraft}
-            placeholder={productCopy.assistant.inputPlaceholder}
-            placeholderTextColor={palette.muted}
-            multiline
-          />
+          >
+            <TextInput
+              style={{
+                minHeight: 34,
+                maxHeight: 96,
+                color: palette.text,
+                fontSize: 15,
+                lineHeight: 21,
+                fontWeight: "500",
+                paddingVertical: 8,
+                paddingHorizontal: 0,
+              }}
+              value={homeDraft}
+              onChangeText={setHomeDraft}
+              placeholder={productCopy.assistant.inputPlaceholder}
+              placeholderTextColor={palette.muted}
+              multiline
+            />
+            {voiceActionState !== "idle" || hiddenConversationMessageCount > 0 ? (
+              <View style={{ gap: 6, paddingTop: 2 }}>
+                {voiceActionState !== "idle" ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <Text style={[bodyStyle(palette), { flex: 1, fontSize: 11.5, lineHeight: 17 }]}>
+                      {voiceActionHint ||
+                        (voiceActionState === "listening"
+                          ? "Listening for an on-device message..."
+                          : voiceActionState === "recording"
+                            ? "Recording voice input. Tap the mic again to stop."
+                            : "Voice clip ready. Tap the mic to send it.")}
+                    </Text>
+                    {voiceActionState === "ready" ? (
+                      <TouchableOpacity
+                        style={{
+                          borderRadius: 999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.06)",
+                          backgroundColor: "rgba(255,255,255,0.03)",
+                        }}
+                        onPress={onCancelVoiceAction}
+                      >
+                        <Text
+                          style={{
+                            color: palette.muted,
+                            fontSize: 10,
+                            fontWeight: "800",
+                            textTransform: "uppercase",
+                            letterSpacing: 0.7,
+                          }}
+                        >
+                          Clear
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
+                {hiddenConversationMessageCount > 0 ? (
+                  <Text style={[bodyStyle(palette), { fontSize: 11.5, lineHeight: 17 }]}>
+                    {hiddenConversationMessageCount} earlier messages remain in the shared assistant transcript.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
           <TouchableOpacity
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
+              width: 42,
+              height: 42,
+              borderRadius: 21,
               backgroundColor: pendingConversationTurn ? palette.surfaceHighest : palette.accent,
               alignItems: "center",
               justifyContent: "center",
@@ -1016,40 +1201,29 @@ export function MobileHomeSurface({
             <MaterialCommunityIcons name={pendingConversationTurn ? "dots-horizontal" : "arrow-up"} size={22} color={palette.onAccent} />
           </TouchableOpacity>
         </View>
-        {voiceActionState !== "idle" ? (
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 4, paddingTop: 8 }}>
-            <Text style={[bodyStyle(palette), { flex: 1, fontSize: 12, lineHeight: 18 }]}>
-              {voiceActionHint ||
-                (voiceActionState === "listening"
-                  ? "Listening for an on-device message..."
-                  : voiceActionState === "recording"
-                    ? "Recording voice input. Tap the mic again to stop."
-                    : "Voice clip ready. Tap the mic to send it.")}
-            </Text>
-            {voiceActionState === "ready" ? (
-              <TouchableOpacity
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.06)",
-                  backgroundColor: "rgba(255,255,255,0.03)",
-                }}
-                onPress={onCancelVoiceAction}
-              >
-                <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                  Clear
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
-        {hiddenConversationMessageCount > 0 ? (
-          <Text style={[bodyStyle(palette), { fontSize: 12, lineHeight: 18, paddingHorizontal: 4, paddingTop: 8 }]}>
-            {hiddenConversationMessageCount} earlier messages remain in the shared assistant transcript.
-          </Text>
-        ) : null}
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingHorizontal: 4, paddingTop: 8 }}>
+          {[
+            voiceActionState === "idle" ? "Tap or hold mic" : "Voice active",
+            hiddenConversationMessageCount > 0 ? `${hiddenConversationMessageCount} earlier messages` : "Recent thread visible",
+            "Shared mobile + web transcript",
+          ].map((label) => (
+            <View
+              key={label}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+                backgroundColor: "rgba(255,255,255,0.02)",
+              }}
+            >
+              <Text style={{ color: palette.muted, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
