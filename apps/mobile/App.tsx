@@ -24,6 +24,12 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
+import {
+  cancelLocalMorningAlarm,
+  probeLocalAlarmAvailability,
+  scheduleLocalMorningAlarm,
+  startLocalAlarmPreview,
+} from "./local-alarm";
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 import {
   PRODUCT_SURFACES,
@@ -169,6 +175,7 @@ type PersistedState = {
   voiceClipDurationMs?: number;
   voiceClipTarget?: VoiceClipTarget | null;
   briefingDate: string;
+  briefingDraftText?: string;
   cachedPath: string | null;
   alarmHour: number;
   alarmMinute: number;
@@ -808,6 +815,34 @@ function boundedInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
+function briefingCachePath(date: string): string {
+  return `${writableDir()}briefing-${date}.json`;
+}
+
+function normalizeBriefingText(value: string): string {
+  return value.replace(/\r\n/g, "\n").trim();
+}
+
+function buildLocalBriefingPayload(
+  date: string,
+  text: string,
+  existing?: Partial<BriefingPayload> | null,
+): BriefingPayload {
+  return {
+    id: existing?.id || `local-${date}`,
+    date,
+    text: normalizeBriefingText(text),
+    audioRef: existing?.audioRef ?? null,
+    audioPath: existing?.audioPath ?? null,
+  };
+}
+
+async function writeBriefingCacheFile(payload: BriefingPayload, path?: string | null): Promise<string> {
+  const targetPath = path || briefingCachePath(payload.date);
+  await FileSystem.writeAsStringAsync(targetPath, JSON.stringify(payload));
+  return targetPath;
+}
+
 async function readPersistedState(): Promise<PersistedState | null> {
   try {
     const db = await stateDatabase();
@@ -824,6 +859,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
+          briefingDraftText: "",
           executionPolicy: defaultExecutionPolicy(),
           voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
           briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
@@ -847,6 +883,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           sharedFileDrafts: [],
           voiceClipUri: null,
           voiceClipDurationMs: 0,
+          briefingDraftText: "",
           voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
           briefingPlaybackPreference: DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
           homeDraft: DEFAULT_HOME_DRAFT,
@@ -884,6 +921,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           conversationToolTraces: [],
           lastConversationReset: null,
           ...parsed,
+          briefingDraftText: parsed.briefingDraftText ?? "",
           homeDraft: parsed.homeDraft ?? parsed.assistantCommand ?? DEFAULT_HOME_DRAFT,
           notesInstructionDraft: parsed.notesInstructionDraft ?? parsed.assistantCommand ?? DEFAULT_NOTES_INSTRUCTION_DRAFT,
           voiceRoutePreference: normalizeVoiceRoutePreference(parsed.voiceRoutePreference),
@@ -915,6 +953,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
       sharedFileDrafts: [],
       voiceClipUri: null,
       voiceClipDurationMs: 0,
+      briefingDraftText: "",
       artifacts: [],
       selectedArtifactId: "",
       artifactGraph: null,
@@ -1023,9 +1062,7 @@ async function maybeCacheBriefingAudio(
 
 async function cacheBriefing(apiBase: string, token: string, payload: BriefingPayload): Promise<string> {
   const audioPath = await maybeCacheBriefingAudio(apiBase, token, payload);
-  const path = `${writableDir()}briefing-${payload.date}.json`;
-  await FileSystem.writeAsStringAsync(path, JSON.stringify({ ...payload, audioPath }));
-  return path;
+  return writeBriefingCacheFile({ ...payload, audioPath }, briefingCachePath(payload.date));
 }
 
 async function readCachedBriefing(path: string): Promise<BriefingPayload> {
@@ -1044,6 +1081,11 @@ type AppProps = {
 };
 
 const APP_LINK_DEDUP_WINDOW_MS = 1500;
+const MORNING_BRIEFING_CHANNEL_ID = "starlog-morning";
+const MORNING_BRIEFING_CATEGORY_ID = "starlog-morning-actions";
+const MORNING_DISMISS_ACTION_ID = "starlog_morning_dismiss";
+const MORNING_SNOOZE_ACTION_ID = "starlog_morning_snooze";
+const MORNING_SNOOZE_MINUTES = 10;
 
 const SUPPORTED_MOBILE_DEEP_LINK_SCHEMES = new Set([
   "starlog",
@@ -1163,6 +1205,39 @@ function parseSurfaceTabDeepLink(rawUrl: string): MobileTab | null {
   return mobileTabFromParam(rawTab);
 }
 
+function parseBriefingPlaybackDeepLink(
+  rawUrl: string,
+): { briefingPath: string | null; fallbackText: string | null } | null {
+  const parsedUrl = parseAppDeepLink(rawUrl);
+  if (!parsedUrl || parsedUrl.route !== "surface") {
+    return null;
+  }
+  const { params } = parsedUrl;
+  const shouldPlay = (deepLinkParam(params, "play_briefing") ?? "").trim() === "1";
+  if (!shouldPlay) {
+    return null;
+  }
+  return {
+    briefingPath: deepLinkParam(params, "briefing_path"),
+    fallbackText: deepLinkParam(params, "fallback_text"),
+  };
+}
+
+function parseAlarmPreviewDeepLink(rawUrl: string): { fallbackText: string | null } | null {
+  const parsedUrl = parseAppDeepLink(rawUrl);
+  if (!parsedUrl || parsedUrl.route !== "surface") {
+    return null;
+  }
+  const { params } = parsedUrl;
+  const shouldPreview = (deepLinkParam(params, "preview_alarm") ?? "").trim() === "1";
+  if (!shouldPreview) {
+    return null;
+  }
+  return {
+    fallbackText: deepLinkParam(params, "fallback_text"),
+  };
+}
+
 export default function App({ initialIntentUrl = null }: AppProps) {
   const palette = usePalette();
   const styles = useMemo(() => themedStyles(palette), [palette]);
@@ -1189,9 +1264,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
   const [voiceClipDurationMs, setVoiceClipDurationMs] = useState(0);
   const [voiceClipTarget, setVoiceClipTarget] = useState<VoiceClipTarget | null>(null);
+  const [localAlarmAvailable, setLocalAlarmAvailable] = useState(false);
   const [localSttAvailable, setLocalSttAvailable] = useState(false);
   const [localSttListening, setLocalSttListening] = useState(false);
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
+  const [briefingDraftText, setBriefingDraftText] = useState("");
   const [cachedPath, setCachedPath] = useState<string | null>(null);
   const [voiceRoutePreference, setVoiceRoutePreference] = useState<VoiceRoutePreference>(DEFAULT_VOICE_ROUTE_PREFERENCE);
   const [briefingPlaybackPreference, setBriefingPlaybackPreference] = useState<BriefingPlaybackPreference>(
@@ -1380,6 +1457,104 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     voiceRecordingRef.current = voiceRecording;
   }, [voiceRecording]);
 
+  async function readCurrentCachedBriefing(): Promise<BriefingPayload | null> {
+    if (!cachedPath) {
+      return null;
+    }
+    const info = await FileSystem.getInfoAsync(cachedPath);
+    if (!info.exists) {
+      return null;
+    }
+    const cachedBriefing = await readCachedBriefing(cachedPath);
+    if (cachedBriefing.date !== briefingDate) {
+      return null;
+    }
+    return cachedBriefing;
+  }
+
+  async function saveBriefingDraftToCache(rawText?: string): Promise<BriefingPayload | null> {
+    const text = normalizeBriefingText(rawText ?? briefingDraftText);
+    if (!text) {
+      return null;
+    }
+    const existing = await readCurrentCachedBriefing().catch(() => null);
+    const payload = buildLocalBriefingPayload(briefingDate, text, existing);
+    const path = await writeBriefingCacheFile(payload, existing ? cachedPath : briefingCachePath(briefingDate));
+    if (path !== cachedPath) {
+      setCachedPath(path);
+    }
+    return payload;
+  }
+
+  async function loadPreparedBriefing(): Promise<BriefingPayload> {
+    const draftText = normalizeBriefingText(briefingDraftText);
+    const cachedBriefing = await readCurrentCachedBriefing().catch(() => null);
+    if (cachedBriefing) {
+      if (draftText && draftText !== normalizeBriefingText(cachedBriefing.text)) {
+        const updatedPayload = buildLocalBriefingPayload(briefingDate, draftText, cachedBriefing);
+        await writeBriefingCacheFile(updatedPayload, cachedPath);
+        return updatedPayload;
+      }
+      return cachedBriefing;
+    }
+    if (!draftText) {
+      throw new Error("Cache briefing or enter briefing text first");
+    }
+    const payload = buildLocalBriefingPayload(briefingDate, draftText);
+    const path = await writeBriefingCacheFile(payload, briefingCachePath(briefingDate));
+    setCachedPath(path);
+    return payload;
+  }
+
+  async function scheduleSnoozedAlarm(briefingPath: string, fallbackText: string) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Starlog Morning Brief",
+        body: `Snoozed for ${MORNING_SNOOZE_MINUTES} minutes. Dismiss to hear your briefing.`,
+        data: {
+          briefingPath,
+          fallbackText,
+        },
+        sound: true,
+        autoDismiss: false,
+        sticky: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        categoryIdentifier: MORNING_BRIEFING_CATEGORY_ID,
+        ...(Platform.OS === "android" ? { channelId: MORNING_BRIEFING_CHANNEL_ID } : {}),
+      },
+      trigger: {
+        seconds: MORNING_SNOOZE_MINUTES * 60,
+        channelId: MORNING_BRIEFING_CHANNEL_ID,
+      },
+    });
+  }
+
+  function playBriefingFromExternalTrigger(briefingPath: string | null, fallbackText: string | null) {
+    setActiveTab("planner");
+    if (!briefingPath) {
+      if (fallbackText) {
+        Speech.stop();
+        Speech.speak(fallbackText);
+      }
+      return;
+    }
+
+    readCachedBriefing(briefingPath)
+      .then((briefing) => {
+        setBriefingDate(briefing.date);
+        setBriefingDraftText(briefing.text);
+        setCachedPath(briefingPath);
+        return playBriefingPayload(briefing, "scheduled");
+      })
+      .catch(() => {
+        if (fallbackText) {
+          Speech.stop();
+          Speech.speak(fallbackText);
+        }
+        setStatus("Cached briefing missing; fallback played");
+      });
+  }
+
   useEffect(() => {
     if (activeTab !== "assistant" && assistantPanelOpen) {
       setAssistantPanelOpen(false);
@@ -1425,6 +1600,28 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       handled = true;
     }
 
+    const alarmPreview = parseAlarmPreviewDeepLink(normalizedUrl);
+    if (alarmPreview && Platform.OS === "android") {
+      startLocalAlarmPreview({
+        fallbackText: alarmPreview.fallbackText || "Starlog preview alarm",
+      })
+        .then((started) => {
+          if (!started) {
+            setStatus("Native alarm preview is unavailable in this build");
+          }
+        })
+        .catch(() => {
+          setStatus("Failed to start native alarm preview");
+        });
+      handled = true;
+    }
+
+    const briefingPlayback = parseBriefingPlaybackDeepLink(normalizedUrl);
+    if (briefingPlayback) {
+      playBriefingFromExternalTrigger(briefingPlayback.briefingPath, briefingPlayback.fallbackText);
+      handled = true;
+    }
+
     if (handled) {
       lastHandledAppLink.current = { handledAt: now, url: normalizedUrl };
       if (Platform.OS === "android") {
@@ -1440,6 +1637,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (origin === "manual") {
       setStatus(localSttProbeLabel(available));
     }
+    return available;
+  }
+
+  async function refreshLocalAlarmAvailability() {
+    const available = await probeLocalAlarmAvailability();
+    setLocalAlarmAvailable(available);
     return available;
   }
 
@@ -2269,16 +2472,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   async function playCachedBriefing() {
     try {
-      if (!cachedPath) {
-        setStatus("No cached briefing yet");
-        return;
-      }
-      const info = await FileSystem.getInfoAsync(cachedPath);
-      if (!info.exists) {
-        setStatus("Cached briefing file not found");
-        return;
-      }
-      const briefing = await readCachedBriefing(cachedPath);
+      const briefing = await loadPreparedBriefing();
       await playBriefingPayload(briefing, "cached");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to play cached briefing");
@@ -2295,6 +2489,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
+      setBriefingDraftText(briefing.text);
       const cachedBriefing = await readCachedBriefing(path);
       await playBriefingPayload(cachedBriefing, "cached");
     } catch (error) {
@@ -2348,6 +2543,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
+      setBriefingDraftText(briefing.text);
       setStatus(
         briefing.audioRef
           ? `Cached briefing package for ${briefingDate} with audio`
@@ -2394,9 +2590,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   const holdToTalkLabel = captureVoiceRecording ? "Release to stop" : "Hold to talk";
+  const preparedBriefingText = normalizeBriefingText(briefingDraftText);
   const offlineBriefingStatus = cachedPath
-    ? `Offline briefing cached for ${briefingDate}`
-    : "No offline briefing cached yet";
+    ? `Offline briefing prepared for ${briefingDate}`
+    : preparedBriefingText
+      ? `Local briefing draft ready for ${briefingDate}`
+      : "No offline briefing cached yet";
   const briefingPlaybackStatus =
     briefingPlaybackPreference === "offline_first"
       ? "Playback preference: use the cached offline package first."
@@ -2414,17 +2613,29 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     sttResolution.active === "on_device"
       ? "Phone-local STT/TTS first, then bridge or hosted fallback."
       : sttFallbackReason(localSttAvailable);
-  const briefingHeroCopy = cachedPath
-    ? "Your day, condensed into one elegant ritual."
-    : "Cache the brief first, then let one next action carry the day.";
+  const briefingHeroCopy =
+    preparedBriefingText || cachedPath
+      ? "Your day, condensed into one editable ritual."
+      : "Cache the brief first, then let one next action carry the day.";
   const nextActionPreview =
     dueCards[0]?.prompt || selectedArtifact?.title || "Promote one note, one task, or one card after playback.";
   const voiceMemoPreview = captureVoiceClipReady ? `${Math.round(voiceClipDurationMs / 1000)}s voice memo ready` : "No voice memo recorded yet.";
 
   async function scheduleMorningAlarm() {
     try {
-      if (!cachedPath) {
-        setStatus("Cache briefing before scheduling");
+      const briefing = await loadPreparedBriefing();
+      const path = await writeBriefingCacheFile(briefing, cachedPath || briefingCachePath(briefing.date));
+      setCachedPath(path);
+
+      if (Platform.OS === "android" && localAlarmAvailable) {
+        const scheduled = await scheduleLocalMorningAlarm({
+          hour: boundedInt(alarmHour, 0, 23),
+          minute: boundedInt(alarmMinute, 0, 59),
+          briefingPath: path,
+          fallbackText: "Briefing cache missing. Open Starlog companion to refresh.",
+        });
+        setAlarmNotificationId(scheduled.alarmId);
+        setStatus(`Native alarm scheduled for ${toHourMinuteLabel(alarmHour, alarmMinute)}`);
         return;
       }
 
@@ -2441,17 +2652,23 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         hour: boundedInt(alarmHour, 0, 23),
         minute: boundedInt(alarmMinute, 0, 59),
         repeats: true,
+        channelId: MORNING_BRIEFING_CHANNEL_ID,
       };
 
       const identifier = await Notifications.scheduleNotificationAsync({
         content: {
           title: "Starlog Morning Brief",
-          body: "Tap to play your cached spoken briefing.",
+          body: "Dismiss to hear your editable morning briefing.",
           data: {
-            briefingPath: cachedPath,
+            briefingPath: path,
             fallbackText: "Briefing cache missing. Open Starlog companion to refresh.",
           },
-          ...(Platform.OS === "android" ? { channelId: "starlog-morning" } : {}),
+          sound: true,
+          autoDismiss: false,
+          sticky: true,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          categoryIdentifier: MORNING_BRIEFING_CATEGORY_ID,
+          ...(Platform.OS === "android" ? { channelId: MORNING_BRIEFING_CHANNEL_ID } : {}),
         },
         trigger,
       });
@@ -2469,6 +2686,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("No morning alarm is scheduled");
         return;
       }
+      if (Platform.OS === "android" && localAlarmAvailable) {
+        await cancelLocalMorningAlarm();
+        setAlarmNotificationId(null);
+        setStatus("Morning alarm cleared");
+        return;
+      }
       await Notifications.cancelScheduledNotificationAsync(alarmNotificationId);
       setAlarmNotificationId(null);
       setStatus("Morning alarm cleared");
@@ -2479,6 +2702,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   async function playBriefingPayload(briefing: BriefingPayload, mode: "cached" | "scheduled") {
     try {
+      Speech.stop();
       if (briefing.audioPath) {
         const info = await FileSystem.getInfoAsync(briefing.audioPath);
         if (info.exists) {
@@ -2493,6 +2717,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         }
       }
 
+      if (briefingSoundRef.current) {
+        await briefingSoundRef.current.unloadAsync();
+        briefingSoundRef.current = null;
+      }
+      if (!normalizeBriefingText(briefing.text)) {
+        setStatus("Briefing text is empty");
+        return;
+      }
       Speech.speak(briefing.text);
       setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing text`);
     } catch (error) {
@@ -3131,18 +3363,41 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     async function initialize() {
       const initialUrlPromise = initialIntentUrl ? Promise.resolve(initialIntentUrl) : resolveInitialDeepLinkUrl();
       if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("starlog-morning", {
+        await Notifications.setNotificationChannelAsync(MORNING_BRIEFING_CHANNEL_ID, {
           name: "Starlog Morning Brief",
-          importance: Notifications.AndroidImportance.HIGH,
+          importance: Notifications.AndroidImportance.MAX,
+          sound: "default",
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          audioAttributes: {
+            usage: Notifications.AndroidAudioUsage.ALARM,
+            contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+          },
           vibrationPattern: [0, 250, 200, 250],
         });
       }
+      await Notifications.setNotificationCategoryAsync(MORNING_BRIEFING_CATEGORY_ID, [
+        {
+          identifier: MORNING_DISMISS_ACTION_ID,
+          buttonTitle: "Dismiss + Briefing",
+          options: {
+            opensAppToForeground: true,
+          },
+        },
+        {
+          identifier: MORNING_SNOOZE_ACTION_ID,
+          buttonTitle: `Snooze ${MORNING_SNOOZE_MINUTES}m`,
+          options: {
+            opensAppToForeground: true,
+          },
+        },
+      ]);
 
       const permission = await Notifications.getPermissionsAsync();
       if (active) {
         setNotificationPermission(permission.status);
       }
 
+      await refreshLocalAlarmAvailability();
       await refreshLocalSttAvailability("auto");
 
       const persisted = await readPersistedState();
@@ -3164,6 +3419,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setVoiceClipDurationMs(persisted.voiceClipDurationMs ?? 0);
         setVoiceClipTarget(persisted.voiceClipTarget ?? (persisted.voiceClipUri ? "capture" : null));
         setBriefingDate(persisted.briefingDate);
+        setBriefingDraftText(persisted.briefingDraftText ?? "");
         setCachedPath(persisted.cachedPath);
         setVoiceRoutePreference(normalizeVoiceRoutePreference(persisted.voiceRoutePreference));
         setBriefingPlaybackPreference(normalizeBriefingPlaybackPreference(persisted.briefingPlaybackPreference));
@@ -3212,27 +3468,30 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     });
 
     const notificationSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const actionIdentifier = response.actionIdentifier;
       const data = response.notification.request.content.data as Record<string, unknown> | undefined;
       const briefingPath = typeof data?.briefingPath === "string" ? data.briefingPath : null;
       const fallbackText = typeof data?.fallbackText === "string" ? data.fallbackText : null;
+      const notificationId = response.notification.request.identifier;
 
-      if (!briefingPath) {
-        if (fallbackText) {
-          Speech.speak(fallbackText);
+      Notifications.dismissNotificationAsync(notificationId).catch(() => undefined);
+
+      if (actionIdentifier === MORNING_SNOOZE_ACTION_ID) {
+        if (!briefingPath) {
+          setStatus("Alarm snooze failed because no briefing was prepared");
+          return;
         }
+        scheduleSnoozedAlarm(briefingPath, fallbackText || "Starlog briefing is ready.")
+          .then(() => {
+            setStatus(`Morning alarm snoozed for ${MORNING_SNOOZE_MINUTES} minutes`);
+          })
+          .catch((error) => {
+            setStatus(error instanceof Error ? error.message : "Failed to snooze morning alarm");
+          });
         return;
       }
 
-      readCachedBriefing(briefingPath)
-        .then((briefing) => {
-          return playBriefingPayload(briefing, "scheduled");
-        })
-        .catch(() => {
-          if (fallbackText) {
-            Speech.speak(fallbackText);
-          }
-          setStatus("Cached briefing missing; fallback played");
-        });
+      playBriefingFromExternalTrigger(briefingPath, fallbackText);
     });
 
     const linkSubscription = Linking.addEventListener("url", (event) => {
@@ -3435,6 +3694,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated) {
       return;
     }
+    const draft = normalizeBriefingText(briefingDraftText);
+    if (!draft) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      saveBriefingDraftToCache(draft).catch(() => undefined);
+    }, 250);
+    return () => clearTimeout(timeoutId);
+  }, [briefingDate, briefingDraftText, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
 
     writePersistedState({
       version: 5,
@@ -3449,6 +3722,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       voiceClipDurationMs,
       voiceClipTarget,
       briefingDate,
+      briefingDraftText,
       cachedPath,
       alarmHour: boundedInt(alarmHour, 0, 23),
       alarmMinute: boundedInt(alarmMinute, 0, 59),
@@ -3494,6 +3768,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     artifactVersions,
     artifacts,
     briefingDate,
+    briefingDraftText,
     cachedPath,
     briefingPlaybackPreference,
     dueCards,
@@ -3771,7 +4046,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             playBriefing={playBriefing}
             queueBriefingAudio={() => queueBriefingAudio().catch(() => undefined)}
             generateAndCache={() => generateAndCache().catch(() => undefined)}
-            canPlayOffline={Boolean(cachedPath || briefingPlaybackPreference !== "offline_first")}
+            canPlayOffline={Boolean(preparedBriefingText || cachedPath || briefingPlaybackPreference !== "offline_first")}
             nextActionPreview={nextActionPreview}
             openPwa={openPwa}
             openReview={() => {
@@ -4087,6 +4362,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   setToken={setToken}
                   briefingDate={briefingDate}
                   setBriefingDate={setBriefingDate}
+                  briefingDraftText={briefingDraftText}
+                  setBriefingDraftText={setBriefingDraftText}
                   alarmHour={alarmHour}
                   setAlarmHour={setAlarmHour}
                   alarmMinute={alarmMinute}
@@ -4097,6 +4374,19 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   setBriefingPlaybackPreference={setBriefingPlaybackPreference}
                   generateAndCache={() => {
                     generateAndCache().catch(() => undefined);
+                  }}
+                  saveBriefingDraft={() => {
+                    saveBriefingDraftToCache()
+                      .then((payload) => {
+                        if (!payload) {
+                          setStatus("Enter briefing text first");
+                          return;
+                        }
+                        setStatus(`Saved local briefing for ${payload.date}`);
+                      })
+                      .catch((error) => {
+                        setStatus(error instanceof Error ? error.message : "Failed to save local briefing");
+                      });
                   }}
                   queueBriefingAudio={() => {
                     queueBriefingAudio().catch(() => undefined);

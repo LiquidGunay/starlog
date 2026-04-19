@@ -7,11 +7,12 @@ Use `scripts/release_handoff.py` as the single entrypoint for a release pass.
 The command can:
 
 - refresh the preview bundle from staged APK and desktop package inputs
+- stage a PWA standalone tarball alongside the installable binaries
 - write `checksums.sha256` and a tarball checksum atomically
 - sync the release docs into the bundle
 - generate a current release handoff markdown snapshot
 - create an annotated git tag
-- optionally publish a GitHub release when `gh` is available
+- optionally publish a GitHub release when `gh` is available, attaching the APK, desktop helper package, PWA bundle, and bundle metadata
 
 ## Recommended command
 
@@ -20,6 +21,7 @@ STARLOG_RELEASE_TAG=v0.1.0-preview.rc4 \
 STARLOG_RELEASE_NAME="Starlog preview rc4" \
 STARLOG_RELEASE_APK=/path/to/starlog-preview.apk \
 STARLOG_RELEASE_DESKTOP_DEB=/path/to/starlog-desktop-helper.deb \
+STARLOG_RELEASE_PWA=/path/to/starlog-pwa-standalone.tar.gz \
 python3 scripts/release_handoff.py
 ```
 
@@ -30,6 +32,7 @@ python3 scripts/release_handoff.py
 - `STARLOG_RELEASE_DOCS_ROOT`: docs root to read release docs from
 - `STARLOG_RELEASE_APK`: APK to stage into `android/`
 - `STARLOG_RELEASE_DESKTOP_DEB`: desktop helper `.deb` to stage into `desktop/`
+- `STARLOG_RELEASE_PWA`: PWA standalone tarball to stage into `pwa/`
 - `STARLOG_RELEASE_RUNBOOK_DOC`: runbook source to copy into the bundle
 - `STARLOG_RELEASE_TAG`: git tag to create
 - `STARLOG_RELEASE_NAME`: human-readable release name
@@ -57,3 +60,4 @@ python3 scripts/release_handoff_smoke.py
 - bundle checksum file: `checksums.sha256`
 - tarball checksum: `<tarball>.sha256`
 - generated release snapshot: `docs/RELEASE_HANDOFF.md`
+- GitHub release assets, when enabled: APK, desktop `.deb`, PWA standalone tarball, bundle tarball, and checksum files

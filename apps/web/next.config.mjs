@@ -2,6 +2,7 @@
 // deploys can be intentionally re-triggered without changing runtime behavior.
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   reactStrictMode: true,
 };
 

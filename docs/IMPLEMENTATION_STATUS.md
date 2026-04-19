@@ -5,6 +5,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Completed in this pass
 
+- Android morning alarms now have a native fullscreen alarm activity instead of only a notification-backed path, with `Dismiss + Briefing` and `Snooze 10 Minutes` wired through a local React Native bridge.
+- Native mobile morning briefings are now user-editable on device, cached locally, and spoken through Android local TTS after alarm dismiss.
+- The release handoff path now stages three deliverables for GitHub release distribution: Android preview APK, desktop helper `.deb`, and a standalone PWA bundle built from `apps/web/.next/standalone`.
 - Native mobile Assistant shell now uses a ChatGPT-style focused thread on phone: no separate returned-card rail, inline Assistant cards stay in the transcript, diagnostics remain collapsed, and the side drawer owns support-view navigation.
 - Native mobile mic flow now restores the Assistant composer mic as a first-class entrypoint and separates Assistant voice state from Library voice-note state, so the two flows no longer share one ambiguous queued clip.
 - The remaining large Assistant support/tools panel has been extracted out of [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) into [apps/mobile/src/mobile-support-panel-sections.tsx](/home/ubuntu/starlog/apps/mobile/src/mobile-support-panel-sections.tsx), leaving `App.tsx` focused more on runtime orchestration and top-level composition.
@@ -136,6 +139,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - API tests + lint + type checks passing via `uv` (`24 passed`).
 - Web lint + TypeScript checks pass, and production build succeeds.
 - Physical Android validation on the attached phone now confirms: the dev client can render the companion UI through the Windows LAN relay path, the previous `unexpected end of stream on http://127.0.0.1:8081/...` failure is avoidable with Expo LAN mode plus relay, and the remaining toast-level Metro warning is tied to mixed `localhost`/LAN Dev Launcher endpoints rather than a blank-screen app failure.
+- Fresh Android release proof on 2026-04-19 confirms preview build `0.1.0-preview.4 (104)` installs on the connected phone, renders the native alarm screen, and plays local spoken TTS after `Dismiss + Briefing`.
+- Fresh desktop-helper package rebuild on 2026-04-19 produced a current `.deb` with checksum `af41ea87e4dc6389574bf636d1010c0c739ad3580b2c2fb7b9e6976edcbc6e46`.
+- Fresh standalone PWA bundle build on 2026-04-19 produced `artifacts/pwa/v0.1.0/starlog-pwa-v0.1.0-standalone.tar.gz`, and the extracted bundle served `/assistant` successfully in a local smoke run.
 - WI-593 now has a maximal host-local cross-surface proof bundle in `docs/CROSS_SURFACE_PROOF.md`, including isolated API evidence for the persistent thread, a real desktop-helper clip uploaded into that same API, PWA screenshots against the same build/API pair, and the one remaining external Windows-host Android smoke step.
 - Railway-hosted PWA release-candidate path is now concrete enough for user testing:
   - public web URL: `https://starlog-web-production.up.railway.app`

@@ -118,9 +118,19 @@ def parse_args() -> argparse.Namespace:
         help="Desktop helper .deb source to stage into the bundle before publication.",
     )
     parser.add_argument(
+        "--pwa-source",
+        default=os.environ.get("STARLOG_RELEASE_PWA"),
+        help="PWA standalone tarball source to stage into the bundle before publication.",
+    )
+    parser.add_argument(
         "--desktop-target-name",
         default=os.environ.get("STARLOG_RELEASE_DESKTOP_TARGET_NAME"),
         help="Target desktop package filename inside the bundle.",
+    )
+    parser.add_argument(
+        "--pwa-target-name",
+        default=os.environ.get("STARLOG_RELEASE_PWA_TARGET_NAME"),
+        help="Target PWA tarball filename inside the bundle.",
     )
     parser.add_argument(
         "--tag",
@@ -264,6 +274,7 @@ def sync_bundle_docs(
         ("ANDROID_RELEASE_QA_MATRIX.md", "docs/ANDROID_RELEASE_QA_MATRIX.md"),
         ("evidence/mobile/wi-601-phone-proof.md", "docs/evidence/mobile/wi-601-phone-proof.md"),
         ("RELEASE_HANDOFF.md", "docs/RELEASE_HANDOFF.md"),
+        ("STARLOG_SETUP_GUIDE.md", "docs/STARLOG_SETUP_GUIDE.md"),
     ]
     copied: list[Path] = []
     for source_rel, dest_rel in targets:
@@ -394,6 +405,7 @@ def main() -> int:
 
     android_dir = bundle_root / "android"
     desktop_dir = bundle_root / "desktop"
+    pwa_dir = bundle_root / "pwa"
     bundle_docs_dir = bundle_root / "docs"
     evidence_dir = bundle_root / "evidence"
 
@@ -415,16 +427,27 @@ def main() -> int:
         dry_run=args.dry_run,
         allow_existing_duplicates=args.prune_old_assets,
     )
+    staged_pwa = select_or_stage_asset(
+        asset_type="pwa",
+        source=args.pwa_source,
+        target_name=args.pwa_target_name,
+        target_dir=pwa_dir,
+        pattern="starlog-pwa-*.tar.gz",
+        dry_run=args.dry_run,
+        allow_existing_duplicates=args.prune_old_assets,
+    )
 
     if args.prune_old_assets and not args.dry_run:
         prune_matching_assets(android_dir, staged_apk, "starlog-preview-*.apk")
         prune_matching_assets(desktop_dir, staged_deb, "*.deb")
+        prune_matching_assets(pwa_dir, staged_pwa, "starlog-pwa-*.tar.gz")
 
     copied_docs = sync_bundle_docs(repo_root, bundle_root, docs_root, runbook_doc_path, args.dry_run)
 
     assets_for_checksums = [
         ("android/" + staged_apk.name, staged_apk),
         ("desktop/" + staged_deb.name, staged_deb),
+        ("pwa/" + staged_pwa.name, staged_pwa),
     ]
 
     manifest: dict[str, object] = {
@@ -452,6 +475,11 @@ def main() -> int:
                 "kind": "desktop-deb",
                 "path": str(staged_deb),
                 "sha256": sha256_file(staged_deb) if not args.dry_run else "<dry-run>",
+            },
+            {
+                "kind": "pwa-standalone",
+                "path": str(staged_pwa),
+                "sha256": sha256_file(staged_pwa) if not args.dry_run else "<dry-run>",
             },
         ],
         "copied_docs": [str(path) for path in copied_docs],
@@ -485,7 +513,14 @@ def main() -> int:
             tag=tag,
             release_name=release_name,
             notes_path=release_doc_path,
-            assets=[bundle_root / "checksums.sha256", tarball_path, Path(str(tarball_path) + ".sha256")],
+            assets=[
+                staged_apk,
+                staged_deb,
+                staged_pwa,
+                bundle_root / "checksums.sha256",
+                tarball_path,
+                Path(str(tarball_path) + ".sha256"),
+            ],
             dry_run=False,
         )
 

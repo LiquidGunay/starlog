@@ -259,6 +259,33 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
    - preview remains the sideload feedback APK flow
    - production is the signed Play-upload AAB plus optional signed QA APK flow
 
+## WI-704 native alarm + local TTS proof
+
+Date: 2026-04-19
+Device target: OPPO CPH2381 (`9dd62e84`)
+Artifact under test: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Staged Windows copy: `C:\Temp\starlog-preview-0.1.0-preview.4-104.apk`
+Installed package: `com.starlog.app.preview`
+Version: `0.1.0-preview.4 (104)`
+SHA-256: `0b1bf8850bae7e9cb20346d2563a8e0ce039f850b35cbc958c1bac9f92226f1b`
+
+## WI-704 matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Preview APK assembly (`assembleRelease`) | PASS | local Gradle build on 2026-04-19 |
+| Windows-host streamed install of preview build `104` | PASS | local `adb.exe install -r C:\Temp\starlog-preview-0.1.0-preview.4-104.apk` |
+| Native fullscreen alarm preview renders on device | PASS | `docs/evidence/mobile/wi-704-alarm-preview.png` |
+| `Dismiss + Briefing` returns to `MainActivity` | PASS | `docs/evidence/mobile/wi-704-alarm-after-dismiss.png`, `docs/evidence/mobile/wi-704-alarm-tts-proof.md` |
+| Android local TTS binds and plays after dismiss | PASS | `docs/evidence/mobile/wi-704-alarm-tts-proof.md` |
+| `Snooze 10 Minutes` dismisses the overlay and schedules a later retry path | PARTIAL | `docs/evidence/mobile/wi-704-alarm-tts-proof.md` |
+
+## WI-704 notes
+
+1. The working connected-phone path on this host remains the Windows `adb.exe` binary under `/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe`.
+2. The TTS proof was validated through Android runtime behavior and logcat (`com.google.android.tts` bind + playback), not by a microphone capture of the speaker output.
+3. The snooze control was tapped and behaved correctly immediately, but the pass did not wait the full ten minutes for a second alarm fire.
+
 ## WI-704 Assistant-first mobile stabilization
 
 Date: 2026-04-11

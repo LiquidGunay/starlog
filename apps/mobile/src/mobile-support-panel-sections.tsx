@@ -188,6 +188,8 @@ type BriefingPipelineSectionProps = SharedProps & {
   setToken: (value: string) => void;
   briefingDate: string;
   setBriefingDate: (value: string) => void;
+  briefingDraftText: string;
+  setBriefingDraftText: (value: string) => void;
   alarmHour: number;
   setAlarmHour: (value: number) => void;
   alarmMinute: number;
@@ -197,6 +199,7 @@ type BriefingPipelineSectionProps = SharedProps & {
   briefingPlaybackPreference: "offline_first" | "refresh_then_cache";
   setBriefingPlaybackPreference: (value: "offline_first" | "refresh_then_cache") => void;
   generateAndCache: () => void;
+  saveBriefingDraft: () => void;
   queueBriefingAudio: () => void;
   playBriefing: () => void;
   scheduleMorningAlarm: () => void;
@@ -632,6 +635,8 @@ export function BriefingPipelineSection({
   setToken,
   briefingDate,
   setBriefingDate,
+  briefingDraftText,
+  setBriefingDraftText,
   alarmHour,
   setAlarmHour,
   alarmMinute,
@@ -641,6 +646,7 @@ export function BriefingPipelineSection({
   briefingPlaybackPreference,
   setBriefingPlaybackPreference,
   generateAndCache,
+  saveBriefingDraft,
   queueBriefingAudio,
   playBriefing,
   scheduleMorningAlarm,
@@ -667,6 +673,15 @@ export function BriefingPipelineSection({
       <TextInput style={styles.input} value={token} onChangeText={setToken} autoCapitalize="none" secureTextEntry />
       <Text style={styles.label}>Briefing date (YYYY-MM-DD)</Text>
       <TextInput style={styles.input} value={briefingDate} onChangeText={setBriefingDate} autoCapitalize="none" />
+      <Text style={styles.label}>Editable briefing</Text>
+      <TextInput
+        style={[styles.input, { minHeight: 160, textAlignVertical: "top" }]}
+        value={briefingDraftText}
+        onChangeText={setBriefingDraftText}
+        multiline
+        placeholder="Write or edit the spoken briefing here. This local text is what the alarm will speak after dismissal."
+        placeholderTextColor={palette.muted}
+      />
       <Text style={styles.label}>Alarm time</Text>
       <View style={styles.buttonRow}>
         <TextInput
@@ -703,6 +718,9 @@ export function BriefingPipelineSection({
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={generateAndCache}>
           <Text style={styles.buttonText}>Cache Briefing</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={saveBriefingDraft}>
+          <Text style={styles.buttonText}>Save Local Edit</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
           <Text style={styles.buttonText}>Queue Audio Render</Text>

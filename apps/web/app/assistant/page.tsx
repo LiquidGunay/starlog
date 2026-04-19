@@ -633,8 +633,12 @@ export default function AssistantPage() {
     stopRecordingOnceReadyRef.current = true;
   }
 
+  function isHoldToTalkKey(key: string) {
+    return key === " " || key === "Enter" || key === "Space" || key === "Spacebar";
+  }
+
   function handleHoldToTalkKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
+    if (event.repeat || !isHoldToTalkKey(event.key)) {
       return;
     }
     event.preventDefault();
@@ -642,7 +646,7 @@ export default function AssistantPage() {
   }
 
   function handleHoldToTalkKeyUp(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== " " && event.key !== "Enter") {
+    if (!isHoldToTalkKey(event.key)) {
       return;
     }
     event.preventDefault();

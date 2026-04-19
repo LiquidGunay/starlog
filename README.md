@@ -5,6 +5,10 @@ Starlog is a single-user assistant for capture, planning, review, and follow-up.
 The product is organized around one persistent Assistant thread. `Library`, `Planner`, and
 `Review` are support views for deeper work, not separate products.
 
+Current install/setup handoff:
+
+- [docs/STARLOG_SETUP_GUIDE.md](/home/ubuntu/starlog/docs/STARLOG_SETUP_GUIDE.md)
+
 ## What You Use
 
 - `Assistant`: the primary thread for commands, follow-up questions, confirmations, and returned cards
@@ -59,7 +63,8 @@ Use mobile for:
 - voice input
 - in-thread Assistant actions
 - review on the go
-- alarm and briefing playback
+- editable morning briefing drafts
+- native alarm and local TTS briefing playback
 
 ## Self-Host Starlog
 
@@ -182,6 +187,7 @@ Use it for:
 Setup and release docs:
 
 - [docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md](/home/ubuntu/starlog/docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md)
+- [docs/STARLOG_SETUP_GUIDE.md](/home/ubuntu/starlog/docs/STARLOG_SETUP_GUIDE.md)
 - [tools/desktop-helper/README.md](/home/ubuntu/starlog/tools/desktop-helper/README.md)
 
 ## Repo Entry Points

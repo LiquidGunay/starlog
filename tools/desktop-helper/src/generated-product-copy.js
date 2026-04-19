@@ -38,6 +38,7 @@ export const productCopy = {
     "task_list": "Plan",
     "knowledge_note": "Library note",
     "capture_item": "Capture",
+    "memory_suggestion": "Memory suggestion",
     "tool_step": "Tool detail"
   },
   "assistant": {
