@@ -447,7 +447,7 @@ def memory_suggestion_cards(conn: Connection, *, surface: str, limit: int = 2) -
         page = None
         page_id = suggestion.get("page_id")
         if isinstance(page_id, str) and page_id.strip():
-            page = memory_vault_service.get_page(conn, page_id)
+            page = memory_vault_service.get_page(conn, page_id, record_access=False)
         cards.append(_memory_suggestion_card(suggestion, page=page))
     return cards
 

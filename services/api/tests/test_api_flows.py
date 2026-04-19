@@ -4,6 +4,8 @@ from sqlite3 import IntegrityError
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db.storage import get_connection
+
 
 def test_health_and_auth_bootstrap(client: TestClient) -> None:
     health = client.get("/v1/health")
@@ -85,6 +87,52 @@ def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]
     assert "capture.ingested" in event_types
     assert "artifact.created" in event_types
     assert "artifact.action_suggested" in event_types
+
+
+def test_artifact_summary_promotion_uses_unique_source_paths_for_duplicate_titles(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_ids: list[str] = []
+    for index in range(2):
+        artifact = client.post(
+            "/v1/capture",
+            json={
+                "source_type": "clip_browser",
+                "capture_source": "browser_ext",
+                "title": "Repeated source title",
+                "normalized": {"text": f"Summary source body {index} for duplicate title handling."},
+                "metadata": {"origin": "duplicate-title-test"},
+            },
+            headers=auth_headers,
+        )
+        assert artifact.status_code == 201
+        artifact_id = artifact.json()["artifact"]["id"]
+        artifact_ids.append(artifact_id)
+
+        summary = client.post(
+            f"/v1/artifacts/{artifact_id}/actions",
+            json={"action": "summarize"},
+            headers=auth_headers,
+        )
+        assert summary.status_code == 200
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT mp.path
+            FROM memory_pages mp
+            INNER JOIN memory_edges me ON me.source_page_id = mp.id
+            WHERE me.relation_type = 'derived_from' AND me.target_type = 'artifact' AND me.target_id IN (?, ?)
+            ORDER BY mp.path
+            """,
+            (artifact_ids[0], artifact_ids[1]),
+        ).fetchall()
+
+    paths = [str(row["path"]) for row in rows]
+    assert len(paths) == 2
+    assert len(set(paths)) == 2
+    assert all(path.startswith("wiki/sources/") for path in paths)
 
 
 def test_card_deck_browser_api_flow(client: TestClient, auth_headers: dict[str, str]) -> None:

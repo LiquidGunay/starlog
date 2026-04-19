@@ -1,11 +1,12 @@
 import json
 import sqlite3
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.db.storage import get_connection
-from app.services import memory_vault_service
+from app.services import conversation_card_service, memory_vault_service
 
 
 def test_primary_conversation_bootstraps(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -301,6 +302,71 @@ def test_primary_chat_surfaces_memory_suggestion_cards(
     suggestion_cards = [card for card in cards if card["kind"] == "memory_suggestion"]
     assert suggestion_cards
     assert suggestion_cards[0]["metadata"]["proposal_id"] == proposal["id"]
+
+
+def test_memory_suggestion_cards_do_not_record_page_open_activations(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with get_connection() as conn:
+        page = memory_vault_service.create_page(
+            conn,
+            title="Dormant project",
+            body_md="Keep stale suggestion rendering read-only.",
+            kind="project",
+            namespace="wiki/projects",
+        )
+        before = conn.execute(
+            """
+            SELECT COUNT(*) AS total, MAX(last_activated_at) AS last_activated_at
+            FROM memory_pages
+            WHERE id = ?
+            """,
+            (page["id"],),
+        ).fetchone()
+
+        monkeypatch.setattr(
+            conversation_card_service.memory_vault_service,
+            "list_suggestions",
+            lambda _conn, *, surface, refresh=True: [
+                {
+                    "id": "msug_test",
+                    "surface": surface,
+                    "suggestion_type": "stale_project_thread",
+                    "title": "Stale project thread",
+                    "body": "This project has not moved recently.",
+                    "weight": 0.84,
+                    "entity_type": "memory_page",
+                    "entity_id": page["id"],
+                    "page_id": page["id"],
+                    "status": "active",
+                    "metadata": {},
+                    "created_at": page["created_at"],
+                    "updated_at": page["updated_at"],
+                }
+            ],
+        )
+
+        cards = conversation_card_service.memory_suggestion_cards(conn, surface="assistant", limit=1)
+        assert cards
+        assert cards[0]["metadata"]["page_id"] == page["id"]
+
+        after_page = conn.execute(
+            "SELECT last_activated_at FROM memory_pages WHERE id = ?",
+            (page["id"],),
+        ).fetchone()
+        page_open_events = conn.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM memory_activation_events
+            WHERE page_id = ? AND event_type = 'page_opened'
+            """,
+            (page["id"],),
+        ).fetchone()
+
+    assert after_page["last_activated_at"] == before["last_activated_at"]
+    assert int(page_open_events["total"]) == 0
 
 
 def test_primary_conversation_backfills_legacy_card_actions_on_read(

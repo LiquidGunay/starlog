@@ -180,6 +180,15 @@ def _namespace_family(namespace: str) -> str:
     raise ValueError(f"Unsupported memory namespace: {namespace}")
 
 
+def _collision_safe_source_path(conn: Connection, *, title: str, artifact_id: str) -> str:
+    base_path = _normalize_path("wiki/sources", title, None)
+    if execute_fetchone(conn, "SELECT id FROM memory_pages WHERE path = ?", (base_path,)) is None:
+        return base_path
+    suffix = str(artifact_id).removeprefix("art_") or str(artifact_id)
+    slug = _slugify(title)
+    return _normalize_path("wiki/sources", title, f"wiki/sources/{slug}-{suffix}.md")
+
+
 def _normalize_frontmatter(
     frontmatter: dict[str, Any],
     *,
@@ -1569,6 +1578,11 @@ def promote_artifact_summary(
         {"relation_type": "summarized_by", "target_type": "summary_version", "target_id": summary_id},
         {"relation_type": "derived_from", "target_type": "artifact", "target_id": str(artifact["id"])},
     ]
+    source_path = _collision_safe_source_path(
+        conn,
+        title=str(artifact.get("title") or "Captured source"),
+        artifact_id=str(artifact["id"]),
+    )
     if existing_edge is None:
         created = create_page(
             conn,
@@ -1576,7 +1590,7 @@ def promote_artifact_summary(
             body_md=body_md,
             kind="source",
             namespace="wiki/sources",
-            path=None,
+            path=source_path,
             tags=["capture", str(artifact.get("source_type") or "artifact")],
             source_refs=source_refs,
             entity_refs=entity_refs,
@@ -1594,6 +1608,7 @@ def promote_artifact_summary(
                 body_md=body_md,
                 kind="source",
                 namespace="wiki/sources",
+                path=source_path,
                 tags=["capture", str(artifact.get("source_type") or "artifact")],
                 source_refs=source_refs,
                 edge_refs=edge_refs,
