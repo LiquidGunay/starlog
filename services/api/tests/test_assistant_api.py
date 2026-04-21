@@ -1,4 +1,44 @@
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
+
+from app.core.security import create_session_token, hash_passphrase
+from app.core.time import utc_now
+from app.db.storage import get_connection
+from app.services import ai_service, assistant_projection_service, assistant_thread_service
+from app.services.common import new_id
+
+
+def _message_texts(payload: dict) -> list[str]:
+    return [
+        part["text"]
+        for message in payload["messages"]
+        for part in message["parts"]
+        if part["type"] == "text"
+    ]
+
+
+def _secondary_auth_headers() -> dict[str, str]:
+    token = create_session_token()
+    now = utc_now()
+    with get_connection() as conn:
+        user_id = new_id("usr")
+        conn.execute(
+            "INSERT INTO users (id, passphrase_hash, created_at) VALUES (?, ?, ?)",
+            (user_id, hash_passphrase("secondary user"), now.isoformat()),
+        )
+        conn.execute(
+            "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                new_id("ses"),
+                user_id,
+                token.hashed,
+                (now + timedelta(days=7)).isoformat(),
+                now.isoformat(),
+            ),
+        )
+        conn.commit()
+    return {"Authorization": f"Bearer {token.plain}"}
 
 
 def test_assistant_primary_thread_snapshot_bootstraps(
@@ -26,7 +66,7 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
             "content": "create task Review the diffusion notes",
             "input_mode": "text",
             "device_target": "web-desktop",
-            "metadata": {"surface": "assistant_web"},
+            "metadata": {"surface": "assistant_web", "client_timezone": "America/Los_Angeles"},
         },
         headers=auth_headers,
     )
@@ -41,7 +81,7 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
 
     submit = client.post(
         f"/v1/assistant/interrupts/{interrupt['id']}/submit",
-        json={"values": {"due_date": "2026-04-22", "priority": "4", "create_time_block": False}},
+        json={"values": {"due_date": "2026-04-22", "priority": "4", "create_time_block": False, "client_timezone": "America/Los_Angeles"}},
         headers=auth_headers,
     )
     assert submit.status_code == 200
@@ -49,6 +89,10 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
     completed_run = next(run for run in snapshot["runs"] if run["id"] == payload["run"]["id"])
     assert completed_run["status"] == "completed"
     assert any(message["role"] == "assistant" and message["status"] == "complete" for message in snapshot["messages"])
+    tasks = client.get("/v1/tasks", headers=auth_headers)
+    assert tasks.status_code == 200
+    created_task = next(task for task in tasks.json() if task["title"] == "Review the diffusion notes")
+    assert created_task["due_at"] == "2026-04-22T07:00:00Z"
 
     legacy = client.get("/v1/conversations/primary", headers=auth_headers)
     assert legacy.status_code == 200
@@ -210,3 +254,75 @@ def test_assistant_updates_endpoint_returns_real_deltas_after_cursor(
     assert "message.created" in event_types
     assert "run.updated" in event_types
     assert "interrupt.opened" in event_types
+    follow_up = client.get(
+        f"/v1/assistant/threads/primary/updates?cursor={payload['cursor']}",
+        headers=auth_headers,
+    )
+    assert follow_up.status_code == 200
+    assert follow_up.json()["deltas"] == []
+
+
+def test_assistant_snapshot_message_limit_returns_latest_messages(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    with get_connection() as conn:
+        user_id = conn.execute("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()["id"]
+        assistant_thread_service.ensure_primary_thread(conn, user_id=str(user_id))
+        for index in range(5):
+            assistant_thread_service.append_message(
+                conn,
+                thread_id="primary",
+                role="assistant",
+                status="complete",
+                parts=[assistant_projection_service.text_part(f"assistant message {index}")],
+                user_id=str(user_id),
+            )
+
+    response = client.get("/v1/assistant/threads/primary?message_limit=2", headers=auth_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert _message_texts(payload) == ["assistant message 3", "assistant message 4"]
+
+
+def test_assistant_run_failure_marks_run_failed_and_persists_error_message(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    def boom(_request):
+        raise RuntimeError("runtime exploded")
+
+    monkeypatch.setattr(ai_service, "execute_chat_turn", boom)
+
+    response = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "talk through this idea with me",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web"},
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["run"]["status"] == "failed"
+    assert payload["assistant_message"]["status"] == "error"
+    assert any("marked failed" in text for text in _message_texts(payload["snapshot"]))
+
+
+def test_assistant_routes_enforce_primary_user_invariant(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    bootstrap = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert bootstrap.status_code == 200
+
+    secondary_headers = _secondary_auth_headers()
+    response = client.get("/v1/assistant/threads/primary", headers=secondary_headers)
+
+    assert response.status_code == 403
+    assert "primary Starlog user" in response.json()["detail"]

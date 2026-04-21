@@ -267,11 +267,13 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 CREATE TABLE IF NOT EXISTS conversation_threads (
   id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
   mode TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS conversation_messages (
@@ -753,6 +755,7 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "ai_jobs", "requested_targets_json", "TEXT")
     _ensure_column(conn, "ai_jobs", "selected_target", "TEXT")
     _ensure_column(conn, "ai_jobs", "claimed_worker_class", "TEXT")
+    _ensure_column(conn, "conversation_threads", "owner_user_id", "TEXT")
     _ensure_column(conn, "conversation_messages", "run_id", "TEXT")
     _ensure_column(conn, "conversation_messages", "status", "TEXT NOT NULL DEFAULT 'complete'")
     _ensure_column(conn, "conversation_messages", "updated_at", "TEXT")
@@ -818,11 +821,13 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
         CREATE TABLE IF NOT EXISTS conversation_threads (
           id TEXT PRIMARY KEY,
+          owner_user_id TEXT NOT NULL,
           slug TEXT NOT NULL UNIQUE,
           title TEXT NOT NULL,
           mode TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (owner_user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS conversation_messages (
           id TEXT PRIMARY KEY,
@@ -1109,6 +1114,17 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_deck_due_at ON cards(deck_id, due_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_conversation_threads_owner ON conversation_threads(owner_user_id, updated_at DESC)")
+    owner_row = conn.execute("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()
+    if owner_row is not None:
+        conn.execute(
+            """
+            UPDATE conversation_threads
+            SET owner_user_id = ?
+            WHERE owner_user_id IS NULL OR owner_user_id = ''
+            """,
+            (owner_row["id"],),
+        )
     conn.execute("UPDATE conversation_messages SET status = 'complete' WHERE status IS NULL OR status = ''")
     conn.execute("UPDATE conversation_messages SET updated_at = created_at WHERE updated_at IS NULL")
     conn.execute("UPDATE cards SET tags_json = '[]' WHERE tags_json IS NULL OR tags_json = ''")

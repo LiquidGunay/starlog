@@ -137,7 +137,7 @@ def update_card_deck(
 @router.post("/reviews", response_model=ReviewResponse, status_code=status.HTTP_201_CREATED)
 def review_card(
     payload: ReviewCreateRequest,
-    _user_id: str = Depends(require_user_id),
+    user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> ReviewResponse:
     reviewed = srs_service.review_card(
@@ -164,6 +164,7 @@ def review_card(
                 **reviewed,
             },
             visibility="ambient",
+            user_id=user_id,
         )
     except Exception:
         # Review submission is primary; assistant reflection should not block the SRS path.

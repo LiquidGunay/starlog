@@ -142,6 +142,8 @@ function applyAssistantDelta(
 
 export default function AssistantPage() {
   const { apiBase, token, isOnline } = useSessionConfig();
+  const clientTimezone =
+    typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
   const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [composer, setComposer] = useState("");
@@ -249,7 +251,7 @@ export default function AssistantPage() {
             content,
             input_mode: "text",
             device_target: "web-desktop",
-            metadata: { surface: "assistant_web" },
+            metadata: { surface: "assistant_web", client_timezone: clientTimezone },
           }),
         },
       );
@@ -276,7 +278,7 @@ export default function AssistantPage() {
         `/v1/assistant/interrupts/${interruptId}/submit`,
         {
           method: "POST",
-          body: JSON.stringify({ values }),
+          body: JSON.stringify({ values: { ...values, client_timezone: clientTimezone } }),
         },
       );
       setSnapshot(payload);

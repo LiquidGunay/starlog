@@ -10,31 +10,58 @@ from app.services import assistant_projection_service, conversation_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 
-def ensure_primary_thread(conn: Connection) -> dict[str, Any]:
-    payload = conversation_service.ensure_primary_thread(conn, message_limit=1, trace_limit=0)
+def _assistant_owner_user_id(conn: Connection) -> str:
+    row = execute_fetchone(conn, "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
+    if row is None:
+        raise LookupError("Starlog has not been bootstrapped yet")
+    return str(row["id"])
+
+
+def _require_assistant_user(conn: Connection, user_id: str | None) -> str | None:
+    if user_id is None:
+        return None
+    owner_user_id = _assistant_owner_user_id(conn)
+    if user_id != owner_user_id:
+        raise PermissionError("Assistant access is restricted to the primary Starlog user")
+    return owner_user_id
+
+
+def ensure_primary_thread(conn: Connection, *, user_id: str | None = None) -> dict[str, Any]:
+    owner_user_id = _require_assistant_user(conn, user_id)
+    payload = conversation_service.ensure_primary_thread(
+        conn,
+        user_id=owner_user_id,
+        message_limit=1,
+        trace_limit=0,
+    )
     row = execute_fetchone(conn, "SELECT * FROM conversation_threads WHERE id = ?", (payload["id"],))
     if row is None:
         raise RuntimeError("Primary assistant thread missing")
     return row
 
 
-def get_thread(conn: Connection, thread_id: str) -> dict[str, Any]:
-    row = execute_fetchone(
-        conn,
-        "SELECT * FROM conversation_threads WHERE id = ? OR slug = ?",
-        (thread_id, thread_id),
-    )
+def get_thread(conn: Connection, thread_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+    owner_user_id = _require_assistant_user(conn, user_id)
+    sql = "SELECT * FROM conversation_threads WHERE (id = ? OR slug = ?)"
+    params: tuple[Any, ...] = (thread_id, thread_id)
+    if owner_user_id is not None:
+        sql += " AND owner_user_id = ?"
+        params += (owner_user_id,)
+    row = execute_fetchone(conn, sql, params)
     if row is None:
         if thread_id == "primary":
-            return ensure_primary_thread(conn)
+            return ensure_primary_thread(conn, user_id=owner_user_id)
         raise LookupError(f"Assistant thread not found: {thread_id}")
     return row
 
 
-def list_threads(conn: Connection) -> list[dict[str, Any]]:
+def list_threads(conn: Connection, *, user_id: str | None = None) -> list[dict[str, Any]]:
+    owner_user_id = _require_assistant_user(conn, user_id)
+    where_sql = "WHERE t.owner_user_id = ?" if owner_user_id is not None else ""
+    params: tuple[Any, ...] = (owner_user_id,) if owner_user_id is not None else ()
     rows = execute_fetchall(
         conn,
-        """
+        f"""
         SELECT t.*, m.created_at AS last_message_at, m.content AS last_preview_text
         FROM conversation_threads t
         LEFT JOIN conversation_messages m
@@ -45,8 +72,10 @@ def list_threads(conn: Connection) -> list[dict[str, Any]]:
             ORDER BY created_at DESC, id DESC
             LIMIT 1
           )
+        {where_sql}
         ORDER BY t.updated_at DESC, t.id DESC
         """,
+        params,
     )
     return [
         {
@@ -62,17 +91,19 @@ def list_threads(conn: Connection) -> list[dict[str, Any]]:
         for row in rows
     ]
 
-
-def create_thread(conn: Connection, *, title: str, slug: str | None = None, mode: str = "assistant") -> dict[str, Any]:
+def create_thread(conn: Connection, *, title: str, user_id: str, slug: str | None = None, mode: str = "assistant") -> dict[str, Any]:
+    owner_user_id = _require_assistant_user(conn, user_id)
+    if owner_user_id is None:
+        raise PermissionError("Assistant thread owner is required")
     now = utc_now().isoformat()
     thread_id = new_id("thr")
     normalized_slug = slug or thread_id
     conn.execute(
         """
-        INSERT INTO conversation_threads (id, slug, title, mode, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_threads (id, owner_user_id, slug, title, mode, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (thread_id, normalized_slug, title, mode, now, now),
+        (thread_id, owner_user_id, normalized_slug, title, mode, now, now),
     )
     conn.execute(
         """
@@ -82,7 +113,7 @@ def create_thread(conn: Connection, *, title: str, slug: str | None = None, mode
         (thread_id, json.dumps({}, sort_keys=True), now),
     )
     conn.commit()
-    return get_thread(conn, thread_id)
+    return get_thread(conn, thread_id, user_id=owner_user_id)
 
 
 def _load_message_parts(conn: Connection, message_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
@@ -292,24 +323,25 @@ def _load_run_payloads(conn: Connection, run_ids: list[str]) -> dict[str, dict[s
     }
 
 
-def get_thread_snapshot(conn: Connection, thread_id: str, *, message_limit: int = 120) -> dict[str, Any]:
-    thread = get_thread(conn, thread_id)
+def get_thread_snapshot(conn: Connection, thread_id: str, *, message_limit: int = 120, user_id: str | None = None) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id, user_id=user_id)
     session = execute_fetchone(
         conn,
         "SELECT state_json FROM conversation_session_state WHERE thread_id = ?",
         (thread["id"],),
     )
-    message_rows = execute_fetchall(
+    recent_message_rows = execute_fetchall(
         conn,
         """
         SELECT id, thread_id, run_id, role, content, cards_json, status, metadata_json, created_at, updated_at
         FROM conversation_messages
         WHERE thread_id = ?
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at DESC, id DESC
         LIMIT ?
         """,
         (thread["id"], message_limit),
     )
+    message_rows = list(reversed(recent_message_rows))
     parts_by_message = _load_message_parts(conn, [str(row["id"]) for row in message_rows])
     interrupt_rows = execute_fetchall(
         conn,
@@ -396,8 +428,9 @@ def append_message(
     parts: list[dict[str, Any]],
     metadata: dict[str, Any] | None = None,
     run_id: str | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
-    thread = get_thread(conn, thread_id)
+    thread = get_thread(conn, thread_id, user_id=user_id)
     now = utc_now().isoformat()
     content, cards = assistant_projection_service.legacy_projection_from_parts(parts)
     message_id = new_id("msg")
@@ -457,10 +490,10 @@ def append_message(
     return _message_payload(row, {message_id: parts})
 
 
-def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None) -> dict[str, Any]:
-    thread = get_thread(conn, thread_id)
+def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id, user_id=user_id)
     if cursor is None:
-        snapshot = get_thread_snapshot(conn, thread["id"])
+        snapshot = get_thread_snapshot(conn, thread["id"], user_id=user_id)
         return {
             "thread_id": snapshot["id"],
             "cursor": snapshot.get("next_cursor"),

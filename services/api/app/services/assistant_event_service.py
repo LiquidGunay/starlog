@@ -68,8 +68,9 @@ def create_surface_event(
     entity_ref: dict[str, Any] | None,
     payload: dict[str, Any],
     visibility: str,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
-    thread = assistant_thread_service.get_thread(conn, thread_id)
+    thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
     event = _insert_surface_event(
         conn,
         thread_id=thread["id"],
@@ -82,7 +83,7 @@ def create_surface_event(
     )
 
     if visibility == "internal":
-        return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     if visibility == "ambient":
         label = payload.get("label") if isinstance(payload.get("label"), str) else kind.replace(".", " ")
@@ -105,7 +106,7 @@ def create_surface_event(
             metadata={"surface_event": event},
             parts=[assistant_projection_service.ambient_update_part(update)],
         )
-        return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     run = _create_run(conn, thread_id=thread["id"], origin_message_id=None, orchestrator="hybrid", metadata={"surface_event": event})
 
@@ -161,7 +162,7 @@ def create_surface_event(
             interrupt_id=interrupt["id"],
         )
         _update_run(conn, run_id=run["id"], status="interrupted", summary="Planner conflict needs resolution")
-        return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     if kind == "capture.created":
         interrupt = _create_interrupt(
@@ -229,7 +230,7 @@ def create_surface_event(
             interrupt_id=interrupt["id"],
         )
         _update_run(conn, run_id=run["id"], status="interrupted", summary="Capture triage requested")
-        return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     if kind == "review.answer.revealed":
         card_id = str(payload.get("card_id") or (entity_ref or {}).get("entity_id") or "").strip()
@@ -289,7 +290,7 @@ def create_surface_event(
             interrupt_id=interrupt["id"],
         )
         _update_run(conn, run_id=run["id"], status="interrupted", summary="Review grade requested")
-        return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     if kind == "briefing.generated":
         interrupt = _create_interrupt(
@@ -344,7 +345,7 @@ def create_surface_event(
             interrupt_id=interrupt["id"],
         )
         _update_run(conn, run_id=run["id"], status="interrupted", summary="Morning focus requested")
-        return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     assistant_thread_service.append_message(
         conn,
@@ -369,4 +370,4 @@ def create_surface_event(
         ],
     )
     _update_run(conn, run_id=run["id"], status="completed", summary=kind.replace(".", " "))
-    return assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+    return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)

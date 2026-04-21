@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, time, timezone
 from sqlite3 import Connection
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.time import utc_now
 from app.schemas.agent import AgentCommandResponse, AgentCommandStep
@@ -43,6 +44,95 @@ def _review_rating_label(rating: int) -> str:
         4: "Good",
         5: "Easy",
     }.get(rating, f"Rating {rating}")
+
+
+def _assistant_client_timezone(metadata: dict[str, Any] | None, values: dict[str, Any] | None = None) -> str:
+    request_metadata = metadata if isinstance(metadata, dict) else {}
+    submitted_values = values if isinstance(values, dict) else {}
+    raw_timezone = str(
+        submitted_values.get("client_timezone")
+        or request_metadata.get("client_timezone")
+        or request_metadata.get("timezone")
+        or "UTC"
+    ).strip()
+    if not raw_timezone:
+        return "UTC"
+    try:
+        ZoneInfo(raw_timezone)
+    except ZoneInfoNotFoundError:
+        return "UTC"
+    return raw_timezone
+
+
+def _due_date_to_utc_start(due_date_raw: str, *, client_timezone: str) -> datetime:
+    due_date = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
+    local_start = datetime.combine(due_date, time.min, tzinfo=ZoneInfo(client_timezone))
+    return local_start.astimezone(timezone.utc)
+
+
+def _next_step_index(conn: Connection, *, run_id: str) -> int:
+    row = execute_fetchone(
+        conn,
+        "SELECT COALESCE(MAX(step_index), -1) AS max_step_index FROM conversation_run_steps WHERE run_id = ?",
+        (run_id,),
+    )
+    if row is None:
+        return 0
+    return int(row.get("max_step_index") or -1) + 1
+
+
+def _record_run_failure(
+    conn: Connection,
+    *,
+    thread_id: str,
+    run_id: str,
+    error_text: str,
+    stage: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    assistant_message = assistant_thread_service.append_message(
+        conn,
+        thread_id=thread_id,
+        role="assistant",
+        status="error",
+        run_id=run_id,
+        metadata={
+            "run_failure": {
+                "stage": stage,
+                "error_text": error_text,
+            },
+            **(metadata or {}),
+        },
+        parts=[
+            assistant_projection_service.text_part(
+                "That turn failed before it could finish. The run was marked failed, and you can retry from the thread."
+            ),
+            assistant_projection_service.status_part("error", "Run failed"),
+        ],
+    )
+    _record_step(
+        conn,
+        run_id=run_id,
+        thread_id=thread_id,
+        step_index=_next_step_index(conn, run_id=run_id),
+        title="Run failed",
+        tool_name=stage,
+        tool_kind="system_tool",
+        status="failed",
+        arguments={},
+        result={},
+        error_text=error_text,
+        message_id=assistant_message["id"],
+        metadata=metadata or {},
+    )
+    _update_run(
+        conn,
+        run_id=run_id,
+        status="failed",
+        summary="Run failed before completion",
+        metadata_patch={"failure": {"stage": stage, "error_text": error_text}},
+    )
+    return assistant_message
 
 
 def _create_run(conn: Connection, *, thread_id: str, origin_message_id: str | None, orchestrator: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -655,9 +745,10 @@ def start_run(
     input_mode: str,
     device_target: str,
     metadata: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     request_metadata = metadata or {}
-    thread = assistant_thread_service.get_thread(conn, thread_id)
+    thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
     user_message = assistant_thread_service.append_message(
         conn,
         thread_id=thread["id"],
@@ -669,6 +760,7 @@ def start_run(
             "request_metadata": request_metadata,
         },
         parts=[assistant_projection_service.text_part(content)],
+        user_id=user_id,
     )
     run = _create_run(
         conn,
@@ -679,70 +771,84 @@ def start_run(
     )
 
     try:
-        matched_intent, summary, planned_calls = agent_command_service.plan_command(
-            conn,
-            content,
-            device_target=device_target,
-        )
-    except ValueError:
-        matched_intent = ""
-        summary = ""
-        planned_calls = []
+        try:
+            matched_intent, summary, planned_calls = agent_command_service.plan_command(
+                conn,
+                content,
+                device_target=device_target,
+            )
+        except ValueError:
+            matched_intent = ""
+            summary = ""
+            planned_calls = []
 
-    if planned_calls:
-        first_call = planned_calls[0]
-        if first_call.tool_name == "create_task" and "due_at" not in first_call.arguments:
-            _request_due_date_interrupt(
+        if planned_calls:
+            first_call = planned_calls[0]
+            if first_call.tool_name == "create_task" and "due_at" not in first_call.arguments:
+                _request_due_date_interrupt(
+                    conn,
+                    thread_id=thread["id"],
+                    run_id=run["id"],
+                    content=content,
+                    title=str(first_call.arguments.get("title") or "New task"),
+                    arguments=first_call.arguments,
+                    input_mode=input_mode,
+                    device_target=device_target,
+                    metadata=request_metadata,
+                )
+            else:
+                response = agent_command_service.execute_planned_command(
+                    conn,
+                    command=content,
+                    planner="deterministic",
+                    matched_intent=matched_intent,
+                    summary=summary,
+                    execute=True,
+                    planned_calls=planned_calls,
+                )
+                _assistant_message_from_command_response(
+                    conn,
+                    thread_id=thread["id"],
+                    run_id=run["id"],
+                    command=content,
+                    response=response,
+                    input_mode=input_mode,
+                    device_target=device_target,
+                    metadata=request_metadata,
+                )
+        else:
+            runtime_request = _build_runtime_request(
+                conn,
+                thread_id=thread["id"],
+                content=content,
+                metadata=request_metadata,
+            )
+            turn = ai_service.execute_chat_turn(runtime_request)
+            _assistant_message_from_runtime_turn(
                 conn,
                 thread_id=thread["id"],
                 run_id=run["id"],
                 content=content,
-                title=str(first_call.arguments.get("title") or "New task"),
-                arguments=first_call.arguments,
+                turn=turn,
                 input_mode=input_mode,
                 device_target=device_target,
                 metadata=request_metadata,
             )
-        else:
-            response = agent_command_service.execute_planned_command(
-                conn,
-                command=content,
-                planner="deterministic",
-                matched_intent=matched_intent,
-                summary=summary,
-                execute=True,
-                planned_calls=planned_calls,
-            )
-            _assistant_message_from_command_response(
-                conn,
-                thread_id=thread["id"],
-                run_id=run["id"],
-                command=content,
-                response=response,
-                input_mode=input_mode,
-                device_target=device_target,
-                metadata=request_metadata,
-            )
-    else:
-        runtime_request = _build_runtime_request(
-            conn,
-            thread_id=thread["id"],
-            content=content,
-            metadata=request_metadata,
-        )
-        turn = ai_service.execute_chat_turn(runtime_request)
-        _assistant_message_from_runtime_turn(
+    except Exception as exc:
+        _record_run_failure(
             conn,
             thread_id=thread["id"],
             run_id=run["id"],
-            content=content,
-            turn=turn,
-            input_mode=input_mode,
-            device_target=device_target,
-            metadata=request_metadata,
+            error_text=str(exc),
+            stage="assistant_turn",
+            metadata={
+                "input_mode": input_mode,
+                "device_target": device_target,
+                "request_metadata": request_metadata,
+            },
         )
 
-    snapshot = assistant_thread_service.get_thread_snapshot(conn, thread["id"])
+    snapshot = assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
     final_run = next(item for item in snapshot["runs"] if item["id"] == run["id"])
     assistant_messages = [message for message in snapshot["messages"] if message.get("run_id") == run["id"] and message["role"] == "assistant"]
     return {
@@ -754,26 +860,58 @@ def start_run(
     }
 
 
-def get_run(conn: Connection, *, thread_id: str, run_id: str) -> dict[str, Any]:
-    snapshot = assistant_thread_service.get_thread_snapshot(conn, thread_id)
+def _interrupt_row(conn: Connection, interrupt_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+    owner_user_id = assistant_thread_service._require_assistant_user(conn, user_id)
+    sql = """
+        SELECT i.*
+        FROM conversation_interrupts i
+        JOIN conversation_threads t ON t.id = i.thread_id
+        WHERE i.id = ?
+    """
+    params: tuple[Any, ...] = (interrupt_id,)
+    if owner_user_id is not None:
+        sql += " AND t.owner_user_id = ?"
+        params += (owner_user_id,)
+    row = execute_fetchone(conn, sql, params)
+    if row is None:
+        raise LookupError(f"Assistant interrupt not found: {interrupt_id}")
+    return row
+
+
+def _run_row(conn: Connection, run_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+    owner_user_id = assistant_thread_service._require_assistant_user(conn, user_id)
+    sql = """
+        SELECT r.*
+        FROM conversation_runs r
+        JOIN conversation_threads t ON t.id = r.thread_id
+        WHERE r.id = ?
+    """
+    params: tuple[Any, ...] = (run_id,)
+    if owner_user_id is not None:
+        sql += " AND t.owner_user_id = ?"
+        params += (owner_user_id,)
+    row = execute_fetchone(conn, sql, params)
+    if row is None:
+        raise LookupError(f"Assistant run not found: {run_id}")
+    return row
+
+
+def get_run(conn: Connection, *, thread_id: str, run_id: str, user_id: str | None = None) -> dict[str, Any]:
+    snapshot = assistant_thread_service.get_thread_snapshot(conn, thread_id, user_id=user_id)
     for run in snapshot["runs"]:
         if run["id"] == run_id:
             return run
     raise LookupError(f"Assistant run not found: {run_id}")
 
 
-def cancel_run(conn: Connection, *, run_id: str) -> dict[str, Any]:
+def cancel_run(conn: Connection, *, run_id: str, user_id: str | None = None) -> dict[str, Any]:
+    row = _run_row(conn, run_id, user_id=user_id)
     _update_run(conn, run_id=run_id, status="cancelled", summary="Run cancelled")
-    row = execute_fetchone(conn, "SELECT thread_id FROM conversation_runs WHERE id = ?", (run_id,))
-    if row is None:
-        raise LookupError(f"Assistant run not found: {run_id}")
-    return get_run(conn, thread_id=str(row["thread_id"]), run_id=run_id)
+    return get_run(conn, thread_id=str(row["thread_id"]), run_id=run_id, user_id=user_id)
 
 
-def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, Any]) -> dict[str, Any]:
-    row = execute_fetchone(conn, "SELECT * FROM conversation_interrupts WHERE id = ?", (interrupt_id,))
-    if row is None:
-        raise LookupError(f"Assistant interrupt not found: {interrupt_id}")
+def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+    row = _interrupt_row(conn, interrupt_id, user_id=user_id)
     if row["status"] != "pending":
         raise ValueError("Interrupt is no longer pending")
 
@@ -785,266 +923,291 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
         raise ValueError("due_date is required")
 
     resolution = _complete_interrupt(conn, interrupt_id=interrupt_id, action="submit", values=values)
-
-    if row["tool_name"] == "request_due_date":
-        due_at = datetime.fromisoformat(f"{due_date_raw}T09:00:00+00:00")
-        priority = int(values.get("priority") or planned_arguments.get("priority") or 3)
-        create_arguments = {**planned_arguments, "due_at": due_at.isoformat(), "priority": priority}
-        spec, _validated, normalized, confirmation_policy = agent_service.prepare_tool_call("create_task", create_arguments)
-        status_text, _executed_arguments, result = agent_service.execute_tool(
-            conn,
-            tool_name="create_task",
-            arguments=normalized,
-            dry_run=False,
-        )
-        step = AgentCommandStep(
-            tool_name="create_task",
-            arguments=normalized,
-            status="ok" if status_text in {"ok", "completed"} else status_text,
-            message=f"Create task {normalized['title']}",
-            result=result,
-            backing_endpoint=spec.backing_endpoint,
-            requires_confirmation=confirmation_policy.mode == "always",
-            confirmation_state="confirmed",
-        )
-        response = AgentCommandResponse(
-            command=user_content,
-            planner="deterministic",
-            matched_intent="create_task",
-            status="executed",
-            summary=f"Created task {normalized['title']}.",
-            steps=[step],
-        )
-        assistant_message = assistant_thread_service.append_message(
-            conn,
-            thread_id=row["thread_id"],
-            role="assistant",
-            status="complete",
-            run_id=row["run_id"],
-            metadata={
-                "assistant_command": response.model_dump(mode="json"),
-                "interrupt_resolution": resolution,
-            },
-            parts=[
-                assistant_projection_service.text_part(response.summary),
-                assistant_projection_service.interrupt_resolution_part(resolution),
-                *[
-                    assistant_projection_service.card_part(card)
-                    for card in conversation_card_service.project_agent_response_cards(conn, response)
-                ],
-            ],
-        )
-        _record_step(
-            conn,
-            run_id=row["run_id"],
-            thread_id=row["thread_id"],
-            step_index=1,
-            title="Create task after due date resolution",
-            tool_name="create_task",
-            tool_kind="domain_tool",
-            status="completed",
-            arguments=normalized,
-            result=result,
-            interrupt_id=interrupt_id,
-            message_id=assistant_message["id"],
-        )
-        _record_trace(
-            conn,
-            thread_id=row["thread_id"],
-            assistant_message_id=assistant_message["id"],
-            tool_name="create_task",
-            arguments=normalized,
-            status="completed",
-            result=result,
-            metadata={"resolved_from_interrupt": interrupt_id},
-        )
-        _merge_session_state(
-            conn,
-            command=user_content,
-            response_text=response.summary,
-            matched_intent="create_task",
-            planner="deterministic",
-            status="executed",
-            tool_names=["create_task"],
-        )
-        _update_run(conn, run_id=row["run_id"], status="completed", summary=response.summary)
-    elif row["tool_name"] == "triage_capture":
-        artifact_id = str(metadata.get("artifact_id") or "")
-        artifact = artifacts_service.get_artifact(conn, artifact_id) if artifact_id else None
-        if artifact is not None:
-            artifact_metadata = dict(artifact.get("metadata") or {})
-            artifact_metadata["triage"] = {
-                "capture_kind": values.get("capture_kind"),
-                "next_step": values.get("next_step"),
-                "updated_at": utc_now().isoformat(),
+    try:
+        if row["tool_name"] == "request_due_date":
+            client_timezone = _assistant_client_timezone(metadata.get("request_metadata"), values)
+            due_at = _due_date_to_utc_start(due_date_raw, client_timezone=client_timezone)
+            priority = int(values.get("priority") or planned_arguments.get("priority") or 3)
+            create_arguments = {
+                **planned_arguments,
+                "due_at": due_at.isoformat(),
+                "priority": priority,
             }
-            conn.execute(
-                "UPDATE artifacts SET metadata_json = ?, updated_at = ? WHERE id = ?",
-                (
-                    json.dumps(artifact_metadata, sort_keys=True),
-                    utc_now().isoformat(),
-                    artifact_id,
-                ),
+            spec, _validated, normalized, confirmation_policy = agent_service.prepare_tool_call("create_task", create_arguments)
+            status_text, _executed_arguments, result = agent_service.execute_tool(
+                conn,
+                tool_name="create_task",
+                arguments=normalized,
+                dry_run=False,
             )
-            conn.commit()
-        next_step = str(values.get("next_step") or "follow_up").replace("_", " ")
-        assistant_message = assistant_thread_service.append_message(
-            conn,
-            thread_id=row["thread_id"],
-            role="assistant",
-            status="complete",
-            run_id=row["run_id"],
-            metadata={"interrupt_resolution": resolution},
-            parts=[
-                assistant_projection_service.text_part(f"Saved the capture triage. Next step: {next_step}."),
-                assistant_projection_service.interrupt_resolution_part(resolution),
-            ],
-        )
-        _record_step(
-            conn,
-            run_id=row["run_id"],
-            thread_id=row["thread_id"],
-            step_index=1,
-            title="Save capture triage",
-            tool_name="triage_capture",
-            tool_kind="ui_tool",
-            status="completed",
-            arguments=values,
-            result={"artifact_id": artifact_id, "next_step": values.get("next_step")},
-            interrupt_id=interrupt_id,
-            message_id=assistant_message["id"],
-        )
-        _update_run(conn, run_id=row["run_id"], status="completed", summary="Capture triage saved")
-    elif row["tool_name"] == "resolve_planner_conflict":
-        resolution_choice = str(values.get("resolution") or "").strip() or "open_planner"
-        assistant_message = assistant_thread_service.append_message(
-            conn,
-            thread_id=row["thread_id"],
-            role="assistant",
-            status="complete",
-            run_id=row["run_id"],
-            metadata={"interrupt_resolution": resolution},
-            parts=[
-                assistant_projection_service.text_part(f"Recorded the planner conflict resolution: {resolution_choice}."),
-                assistant_projection_service.interrupt_resolution_part(resolution),
-            ],
-        )
-        _record_step(
-            conn,
-            run_id=row["run_id"],
-            thread_id=row["thread_id"],
-            step_index=1,
-            title="Resolve planner conflict",
-            tool_name="resolve_planner_conflict",
-            tool_kind="ui_tool",
-            status="completed",
-            arguments=values,
-            result={"resolution": resolution_choice},
-            interrupt_id=interrupt_id,
-            message_id=assistant_message["id"],
-        )
-        _update_run(conn, run_id=row["run_id"], status="completed", summary="Planner conflict resolved")
-    elif row["tool_name"] == "choose_morning_focus":
-        focus = str(values.get("focus") or "").strip() or "review"
-        assistant_message = assistant_thread_service.append_message(
-            conn,
-            thread_id=row["thread_id"],
-            role="assistant",
-            status="complete",
-            run_id=row["run_id"],
-            metadata={"interrupt_resolution": resolution},
-            parts=[
-                assistant_projection_service.text_part(f"Locked in the first move for today: {focus.replace('_', ' ')}."),
-                assistant_projection_service.interrupt_resolution_part(resolution),
-            ],
-        )
-        _record_step(
-            conn,
-            run_id=row["run_id"],
-            thread_id=row["thread_id"],
-            step_index=1,
-            title="Choose morning focus",
-            tool_name="choose_morning_focus",
-            tool_kind="ui_tool",
-            status="completed",
-            arguments=values,
-            result={"focus": focus},
-            interrupt_id=interrupt_id,
-            message_id=assistant_message["id"],
-        )
-        _update_run(conn, run_id=row["run_id"], status="completed", summary="Morning focus selected")
-    elif row["tool_name"] == "grade_review_recall":
-        rating_raw = values.get("rating")
-        try:
-            rating = int(rating_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("Review rating must be one of 1, 3, 4, or 5") from exc
-        if rating not in {1, 3, 4, 5}:
-            raise ValueError("Review rating must be one of 1, 3, 4, or 5")
-
-        latency_raw = values.get("latency_ms")
-        latency_ms: int | None = None
-        if latency_raw not in (None, ""):
+            step = AgentCommandStep(
+                tool_name="create_task",
+                arguments=normalized,
+                status="ok" if status_text in {"ok", "completed"} else status_text,
+                message=f"Create task {normalized['title']}",
+                result=result,
+                backing_endpoint=spec.backing_endpoint,
+                requires_confirmation=confirmation_policy.mode == "always",
+                confirmation_state="confirmed",
+            )
+            response = AgentCommandResponse(
+                command=user_content,
+                planner="deterministic",
+                matched_intent="create_task",
+                status="executed",
+                summary=f"Created task {normalized['title']}.",
+                steps=[step],
+            )
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={
+                    "assistant_command": response.model_dump(mode="json"),
+                    "interrupt_resolution": resolution,
+                    "due_date_resolution": {
+                        "due_date": due_date_raw,
+                        "client_timezone": client_timezone,
+                        "due_at_utc": due_at.isoformat(),
+                    },
+                },
+                parts=[
+                    assistant_projection_service.text_part(response.summary),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                    *[
+                        assistant_projection_service.card_part(card)
+                        for card in conversation_card_service.project_agent_response_cards(conn, response)
+                    ],
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Create task after due date resolution",
+                tool_name="create_task",
+                tool_kind="domain_tool",
+                status="completed",
+                arguments={
+                    **normalized,
+                    "due_date": due_date_raw,
+                    "client_timezone": client_timezone,
+                },
+                result=result,
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _record_trace(
+                conn,
+                thread_id=row["thread_id"],
+                assistant_message_id=assistant_message["id"],
+                tool_name="create_task",
+                arguments={
+                    **normalized,
+                    "due_date": due_date_raw,
+                    "client_timezone": client_timezone,
+                },
+                status="completed",
+                result=result,
+                metadata={"resolved_from_interrupt": interrupt_id},
+            )
+            _merge_session_state(
+                conn,
+                command=user_content,
+                response_text=response.summary,
+                matched_intent="create_task",
+                planner="deterministic",
+                status="executed",
+                tool_names=["create_task"],
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary=response.summary)
+        elif row["tool_name"] == "triage_capture":
+            artifact_id = str(metadata.get("artifact_id") or "")
+            artifact = artifacts_service.get_artifact(conn, artifact_id) if artifact_id else None
+            if artifact is not None:
+                artifact_metadata = dict(artifact.get("metadata") or {})
+                artifact_metadata["triage"] = {
+                    "capture_kind": values.get("capture_kind"),
+                    "next_step": values.get("next_step"),
+                    "updated_at": utc_now().isoformat(),
+                }
+                conn.execute(
+                    "UPDATE artifacts SET metadata_json = ?, updated_at = ? WHERE id = ?",
+                    (
+                        json.dumps(artifact_metadata, sort_keys=True),
+                        utc_now().isoformat(),
+                        artifact_id,
+                    ),
+                )
+                conn.commit()
+            next_step = str(values.get("next_step") or "follow_up").replace("_", " ")
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={"interrupt_resolution": resolution},
+                parts=[
+                    assistant_projection_service.text_part(f"Saved the capture triage. Next step: {next_step}."),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Save capture triage",
+                tool_name="triage_capture",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments=values,
+                result={"artifact_id": artifact_id, "next_step": values.get("next_step")},
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Capture triage saved")
+        elif row["tool_name"] == "resolve_planner_conflict":
+            resolution_choice = str(values.get("resolution") or "").strip() or "open_planner"
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={"interrupt_resolution": resolution},
+                parts=[
+                    assistant_projection_service.text_part(f"Recorded the planner conflict resolution: {resolution_choice}."),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Resolve planner conflict",
+                tool_name="resolve_planner_conflict",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments=values,
+                result={"resolution": resolution_choice},
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Planner conflict resolved")
+        elif row["tool_name"] == "choose_morning_focus":
+            focus = str(values.get("focus") or "").strip() or "review"
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={"interrupt_resolution": resolution},
+                parts=[
+                    assistant_projection_service.text_part(f"Locked in the first move for today: {focus.replace('_', ' ')}."),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Choose morning focus",
+                tool_name="choose_morning_focus",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments=values,
+                result={"focus": focus},
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Morning focus selected")
+        elif row["tool_name"] == "grade_review_recall":
+            rating_raw = values.get("rating")
             try:
-                latency_ms = int(latency_raw)
+                rating = int(rating_raw)
             except (TypeError, ValueError) as exc:
-                raise ValueError("Review latency must be a non-negative integer when provided") from exc
-            if latency_ms < 0:
-                raise ValueError("Review latency must be a non-negative integer when provided")
+                raise ValueError("Review rating must be one of 1, 3, 4, or 5") from exc
+            if rating not in {1, 3, 4, 5}:
+                raise ValueError("Review rating must be one of 1, 3, 4, or 5")
 
-        card_id = str(metadata.get("card_id") or "").strip() or str(
-            ((row.get("entity_ref_json") or {}) if isinstance(row.get("entity_ref_json"), dict) else {}).get("entity_id") or ""
-        ).strip()
-        if not card_id:
-            raise ValueError("Review interrupt is missing the target card")
+            latency_raw = values.get("latency_ms")
+            latency_ms: int | None = None
+            if latency_raw not in (None, ""):
+                try:
+                    latency_ms = int(latency_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Review latency must be a non-negative integer when provided") from exc
+                if latency_ms < 0:
+                    raise ValueError("Review latency must be a non-negative integer when provided")
 
-        reviewed = srs_service.review_card(conn, card_id=card_id, rating=rating, latency_ms=latency_ms)
-        if reviewed is None:
-            raise LookupError(f"Review card not found: {card_id}")
+            card_id = str(metadata.get("card_id") or "").strip() or str(
+                ((row.get("entity_ref_json") or {}) if isinstance(row.get("entity_ref_json"), dict) else {}).get("entity_id") or ""
+            ).strip()
+            if not card_id:
+                raise ValueError("Review interrupt is missing the target card")
 
-        prompt_text = str(metadata.get("prompt") or "that card").strip() or "that card"
-        rating_label = _review_rating_label(rating)
-        next_due_at = str(reviewed.get("next_due_at") or "")
-        next_due_label = next_due_at[:10] if next_due_at else "the next review window"
-        assistant_message = assistant_thread_service.append_message(
+            reviewed = srs_service.review_card(conn, card_id=card_id, rating=rating, latency_ms=latency_ms)
+            if reviewed is None:
+                raise LookupError(f"Review card not found: {card_id}")
+
+            prompt_text = str(metadata.get("prompt") or "that card").strip() or "that card"
+            rating_label = _review_rating_label(rating)
+            next_due_at = str(reviewed.get("next_due_at") or "")
+            next_due_label = next_due_at[:10] if next_due_at else "the next review window"
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={"interrupt_resolution": resolution, "review_result": reviewed},
+                parts=[
+                    assistant_projection_service.text_part(
+                        f"Recorded {rating_label} for {prompt_text}. Next due: {next_due_label}."
+                    ),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Grade review recall",
+                tool_name="grade_review_recall",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments={"rating": rating, "latency_ms": latency_ms},
+                result=reviewed,
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Review grade recorded")
+        else:
+            raise ValueError(f"Unsupported interrupt tool: {row['tool_name']}")
+    except Exception as exc:
+        _record_run_failure(
             conn,
-            thread_id=row["thread_id"],
-            role="assistant",
-            status="complete",
-            run_id=row["run_id"],
-            metadata={"interrupt_resolution": resolution, "review_result": reviewed},
-            parts=[
-                assistant_projection_service.text_part(
-                    f"Recorded {rating_label} for {prompt_text}. Next due: {next_due_label}."
-                ),
-                assistant_projection_service.interrupt_resolution_part(resolution),
-            ],
+            thread_id=str(row["thread_id"]),
+            run_id=str(row["run_id"]),
+            error_text=str(exc),
+            stage=f"interrupt:{row['tool_name']}",
+            metadata={"interrupt_id": interrupt_id},
         )
-        _record_step(
-            conn,
-            run_id=row["run_id"],
-            thread_id=row["thread_id"],
-            step_index=1,
-            title="Grade review recall",
-            tool_name="grade_review_recall",
-            tool_kind="ui_tool",
-            status="completed",
-            arguments={"rating": rating, "latency_ms": latency_ms},
-            result=reviewed,
-            interrupt_id=interrupt_id,
-            message_id=assistant_message["id"],
-        )
-        _update_run(conn, run_id=row["run_id"], status="completed", summary="Review grade recorded")
-    else:
-        raise ValueError(f"Unsupported interrupt tool: {row['tool_name']}")
 
-    return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]))
+    return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
 
 
-def dismiss_interrupt(conn: Connection, *, interrupt_id: str) -> dict[str, Any]:
-    row = execute_fetchone(conn, "SELECT * FROM conversation_interrupts WHERE id = ?", (interrupt_id,))
-    if row is None:
-        raise LookupError(f"Assistant interrupt not found: {interrupt_id}")
+def dismiss_interrupt(conn: Connection, *, interrupt_id: str, user_id: str | None = None) -> dict[str, Any]:
+    row = _interrupt_row(conn, interrupt_id, user_id=user_id)
     if row["status"] != "pending":
         raise ValueError("Interrupt is no longer pending")
     resolution = _complete_interrupt(conn, interrupt_id=interrupt_id, action="dismiss", values={})
@@ -1061,4 +1224,4 @@ def dismiss_interrupt(conn: Connection, *, interrupt_id: str) -> dict[str, Any]:
         ],
     )
     _update_run(conn, run_id=row["run_id"], status="cancelled", summary="Interrupt dismissed")
-    return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]))
+    return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
