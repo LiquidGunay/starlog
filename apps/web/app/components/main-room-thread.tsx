@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { AssistantInterrupt, AssistantThreadMessage, AssistantThreadSnapshot } from "@starlog/contracts";
+import type { AssistantCardAction, AssistantInterrupt, AssistantThreadMessage, AssistantThreadSnapshot } from "@starlog/contracts";
 
 import styles from "./main-room-thread.module.css";
 
@@ -9,6 +9,7 @@ type MainRoomThreadProps = {
   snapshot: AssistantThreadSnapshot | null;
   loading: boolean;
   busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 };
@@ -89,11 +90,13 @@ function renderField(
 function MessagePart({
   message,
   busy,
+  onCardAction,
   onInterruptSubmit,
   onInterruptDismiss,
 }: {
   message: AssistantThreadMessage;
   busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 }) {
@@ -141,9 +144,15 @@ function MessagePart({
                 {part.card.actions.length > 0 ? (
                   <div className={styles.actions}>
                     {part.card.actions.map((action) => (
-                      <span key={action.id} className={styles.actionChip}>
+                      <button
+                        key={action.id}
+                        type="button"
+                        className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
+                        onClick={() => void onCardAction(action)}
+                        disabled={busy}
+                      >
                         {action.label}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 ) : null}
@@ -227,6 +236,7 @@ export function MainRoomThread({
   snapshot,
   loading,
   busy,
+  onCardAction,
   onInterruptSubmit,
   onInterruptDismiss,
 }: MainRoomThreadProps) {
@@ -251,6 +261,7 @@ export function MainRoomThread({
             key={message.id}
             message={message}
             busy={busy}
+            onCardAction={onCardAction}
             onInterruptSubmit={onInterruptSubmit}
             onInterruptDismiss={onInterruptDismiss}
           />

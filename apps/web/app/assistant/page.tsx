@@ -1,7 +1,9 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type {
+  AssistantCardAction,
   AssistantDeltaList,
   AssistantInterrupt,
   AssistantRun,
@@ -15,6 +17,12 @@ import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
 import styles from "./page.module.css";
+
+type AssistantStreamEnvelope = {
+  event: string;
+  data: string | null;
+  id: string | null;
+};
 
 function maxIso(left?: string | null, right?: string | null): string {
   if (!left) {
@@ -140,20 +148,130 @@ function applyAssistantDelta(
   return snapshot;
 }
 
+function parseStreamEnvelope(block: string): AssistantStreamEnvelope | null {
+  const normalized = block.trim();
+  if (!normalized || normalized.startsWith(":")) {
+    return null;
+  }
+
+  let event = "message";
+  let id: string | null = null;
+  const dataLines: string[] = [];
+
+  for (const line of normalized.split("\n")) {
+    if (line.startsWith("event:")) {
+      event = line.slice("event:".length).trim() || "message";
+      continue;
+    }
+    if (line.startsWith("id:")) {
+      id = line.slice("id:".length).trim() || null;
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+
+  return {
+    event,
+    id,
+    data: dataLines.length > 0 ? dataLines.join("\n") : null,
+  };
+}
+
+async function consumeAssistantStream({
+  apiBase,
+  token,
+  threadId,
+  cursor,
+  signal,
+  onOpen,
+  onDelta,
+  onCursor,
+}: {
+  apiBase: string;
+  token: string;
+  threadId: string;
+  cursor: string | null;
+  signal: AbortSignal;
+  onOpen?: () => void;
+  onDelta: (delta: AssistantThreadDelta) => void;
+  onCursor: (cursor: string) => void;
+}) {
+  const response = await fetch(`${apiBase}/v1/assistant/threads/${threadId}/stream`, {
+    method: "GET",
+    signal,
+    headers: {
+      Accept: "text/event-stream",
+      Authorization: `Bearer ${token}`,
+      ...(cursor ? { "Last-Event-ID": cursor } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new ApiError(response.status, body);
+  }
+
+  if (!response.body) {
+    throw new Error("Assistant stream did not return a readable body.");
+  }
+
+  onOpen?.();
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += value.replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const envelope = parseStreamEnvelope(block);
+      if (envelope?.event === "cursor" && envelope.data) {
+        const payload = JSON.parse(envelope.data) as { cursor?: string };
+        if (payload.cursor) {
+          onCursor(payload.cursor);
+        }
+      } else if (envelope?.data) {
+        onDelta(JSON.parse(envelope.data) as AssistantThreadDelta);
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+}
+
 export default function AssistantPage() {
-  const { apiBase, token, isOnline } = useSessionConfig();
+  const router = useRouter();
+  const { apiBase, token, isOnline, mutateWithQueue } = useSessionConfig();
   const clientTimezone =
     typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const snapshotRef = useRef<AssistantThreadSnapshot | null>(null);
+  const cursorRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [composer, setComposer] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "recovering">("connecting");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => {
+    cursorRef.current = cursor;
+  }, [cursor]);
 
   const loadSnapshot = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) {
-      return;
+      return null;
     }
 
     const silent = options?.silent ?? false;
@@ -172,10 +290,12 @@ export default function AssistantPage() {
         setCursor(payload.next_cursor || null);
         setError(null);
       });
+      return payload;
     } catch (err) {
       if (!silent) {
         setError(err instanceof ApiError ? err.body : "Failed to load the Assistant thread.");
       }
+      return null;
     } finally {
       if (!silent) {
         setLoading(false);
@@ -183,56 +303,121 @@ export default function AssistantPage() {
     }
   }, [apiBase, token]);
 
-  const loadUpdates = useCallback(async () => {
-    if (!token || !snapshot) {
-      return;
+  const loadUpdates = useCallback(async (threadId: string, nextCursor: string | null) => {
+    if (!token) {
+      return null;
     }
 
-    const path = cursor
-      ? `/v1/assistant/threads/${snapshot.id}/updates?cursor=${encodeURIComponent(cursor)}`
-      : `/v1/assistant/threads/${snapshot.id}/updates`;
+    const path = nextCursor
+      ? `/v1/assistant/threads/${threadId}/updates?cursor=${encodeURIComponent(nextCursor)}`
+      : `/v1/assistant/threads/${threadId}/updates`;
 
     try {
-      const payload = await apiRequest<AssistantDeltaList>(apiBase, token, path);
-      startTransition(() => {
-        setSnapshot((current) => payload.deltas.reduce<AssistantThreadSnapshot | null>(applyAssistantDelta, current));
-        setCursor(payload.cursor || cursor);
-      });
+      return await apiRequest<AssistantDeltaList>(apiBase, token, path);
     } catch {
-      // Keep the current snapshot and retry on the next interval/focus cycle.
+      return null;
     }
-  }, [apiBase, cursor, snapshot, token]);
+  }, [apiBase, token]);
 
   useEffect(() => {
     void loadSnapshot();
   }, [loadSnapshot]);
 
   useEffect(() => {
-    if (!token || !snapshot) {
+    const threadId = snapshot?.id;
+    if (!token || !threadId) {
       return;
     }
 
-    const refresh = () => {
-      if (document.visibilityState === "hidden" || sending) {
-        return;
+    let reconnectTimer: number | null = null;
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const reconnect = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
       }
-      if (!cursor) {
-        void loadSnapshot({ silent: true });
-        return;
-      }
-      void loadUpdates();
+      reconnectTimer = window.setTimeout(() => {
+        if (!cancelled) {
+          void openStream();
+        }
+      }, 1200);
     };
 
-    const intervalId = window.setInterval(refresh, 3000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    const recoverFromPolling = async () => {
+      const payload = await loadUpdates(threadId, cursorRef.current);
+      if (payload) {
+        startTransition(() => {
+          setSnapshot((current) => payload.deltas.reduce<AssistantThreadSnapshot | null>(applyAssistantDelta, current));
+          setCursor(payload.cursor || cursorRef.current);
+        });
+        return;
+      }
+      await loadSnapshot({ silent: true });
+    };
+
+    const openStream = async () => {
+      try {
+        setLiveStatus((current) => (current === "live" ? current : "connecting"));
+        await consumeAssistantStream({
+          apiBase,
+          token,
+          threadId,
+          cursor: cursorRef.current,
+          signal: controller.signal,
+          onOpen: () => setLiveStatus("live"),
+          onDelta: (delta) => {
+            startTransition(() => {
+              setSnapshot((current) => applyAssistantDelta(current, delta));
+            });
+          },
+          onCursor: (nextCursor) => {
+            cursorRef.current = nextCursor;
+            startTransition(() => {
+              setCursor(nextCursor);
+            });
+          },
+        });
+      } catch (err) {
+        if (controller.signal.aborted || cancelled) {
+          return;
+        }
+        if (!(err instanceof ApiError && err.status === 401)) {
+          setLiveStatus("recovering");
+          await recoverFromPolling();
+          reconnect();
+          return;
+        }
+      }
+
+      if (!controller.signal.aborted && !cancelled) {
+        setLiveStatus("recovering");
+        await recoverFromPolling();
+        reconnect();
+      }
+    };
+
+    void openStream();
+
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") {
+        void loadSnapshot({ silent: true });
+      }
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
 
     return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      cancelled = true;
+      controller.abort();
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, [cursor, loadSnapshot, loadUpdates, sending, snapshot, token]);
+  }, [apiBase, loadSnapshot, loadUpdates, snapshot?.id, token]);
 
   async function sendMessage(content: string) {
     if (!snapshot || !content.trim() || sending) {
@@ -260,6 +445,77 @@ export default function AssistantPage() {
       setComposer("");
     } catch (err) {
       setError(err instanceof ApiError ? err.body : "Failed to send the message.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleCardAction(action: AssistantCardAction) {
+    const payload = action.payload || {};
+    if (action.requires_confirmation && typeof window !== "undefined") {
+      const confirmed = window.confirm(`Run "${action.label}"?`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    if (action.kind === "navigate") {
+      const href = typeof payload.href === "string" ? payload.href : null;
+      if (href) {
+        router.push(href);
+      }
+      return;
+    }
+
+    if (action.kind === "composer") {
+      const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
+      if (prompt) {
+        setComposer(prompt);
+        composerRef.current?.focus();
+      }
+      return;
+    }
+
+    if (action.kind === "interrupt") {
+      setError("This action is handled by the active thread panel.");
+      return;
+    }
+
+    if (action.kind !== "mutation") {
+      return;
+    }
+
+    const endpoint = typeof payload.endpoint === "string" ? payload.endpoint : null;
+    const method = typeof payload.method === "string" ? payload.method.toUpperCase() : "POST";
+    const body = payload.body && typeof payload.body === "object" ? payload.body : {};
+
+    if (!endpoint) {
+      setError(`Card action "${action.label}" is missing an endpoint.`);
+      return;
+    }
+
+    setSending(true);
+    setError(null);
+    try {
+      const result = await mutateWithQueue(
+        endpoint,
+        {
+          method,
+          body: JSON.stringify(body),
+        },
+        {
+          label: action.label,
+          entity: "assistant_card",
+          op: action.id,
+        },
+      );
+      if (result.queued) {
+        setError(`Queued "${action.label}" for replay.`);
+      } else {
+        await loadSnapshot({ silent: true });
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.body : `Failed to run "${action.label}".`);
     } finally {
       setSending(false);
     }
@@ -335,6 +591,7 @@ export default function AssistantPage() {
           </div>
           <div className={styles.heroMeta}>
             <span>{isOnline ? "Online" : "Offline"}</span>
+            <span>{liveStatus === "live" ? "Live feed" : liveStatus === "recovering" ? "Recovering feed" : "Connecting feed"}</span>
             <span>{activeRun ? `Run: ${activeRun.status}` : "Idle"}</span>
             <span>{activeInterrupt ? `Panel: ${activeInterrupt.title}` : "No open panel"}</span>
           </div>
@@ -346,6 +603,7 @@ export default function AssistantPage() {
               snapshot={snapshot}
               loading={loading}
               busy={sending}
+              onCardAction={handleCardAction}
               onInterruptSubmit={submitInterrupt}
               onInterruptDismiss={dismissInterrupt}
             />
@@ -357,6 +615,7 @@ export default function AssistantPage() {
               }}
             >
               <textarea
+                ref={composerRef}
                 value={composer}
                 onChange={(event) => setComposer(event.target.value)}
                 placeholder="Capture, plan, review, or ask the Assistant to move something forward."
@@ -377,9 +636,9 @@ export default function AssistantPage() {
               <p className={styles.sideLabel}>Protocol</p>
               <h2>assistant-ui runtime boundary</h2>
               <p>
-                This web surface uses the new `/v1/assistant/...` contract and an assistant-ui
-                external-store runtime adapter instead of the old `content + cards + traces` page
-                orchestration.
+                This web surface now hydrates from the new `/v1/assistant/...` contract, streams
+                batch-safe live deltas, and preserves cards, tool calls, attachments, and
+                interrupts inside the runtime message content instead of flattening to plain text.
               </p>
             </article>
 

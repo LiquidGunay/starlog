@@ -53,3 +53,10 @@ ios/
 .vscode/
 .idea/
 *.log
+*.Zone.Identifier
+*:Zone.Identifier
+
+# Playwright / local test artifacts
+test-results/
+apps/web/test-results/
+artifacts/pwa-release-gate/test-results/

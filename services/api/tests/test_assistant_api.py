@@ -1,7 +1,10 @@
+import json
+import asyncio
 from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
@@ -16,6 +19,62 @@ def _message_texts(payload: dict) -> list[str]:
         for part in message["parts"]
         if part["type"] == "text"
     ]
+
+
+def _parse_sse_events(raw_stream: str, *, stop_event: str = "cursor", limit: int = 32) -> list[dict]:
+    events: list[dict] = []
+    current_event = "message"
+    current_id: str | None = None
+    data_lines: list[str] = []
+
+    def flush() -> bool:
+        nonlocal current_event, current_id, data_lines
+        if not data_lines and current_event == "message" and current_id is None:
+            return False
+        raw_data = "\n".join(data_lines).strip()
+        parsed = json.loads(raw_data) if raw_data else None
+        events.append({"event": current_event, "id": current_id, "data": parsed})
+        stop = current_event == stop_event
+        current_event = "message"
+        current_id = None
+        data_lines = []
+        return stop
+
+    for index, line in enumerate(raw_stream.splitlines()):
+        if index >= limit:
+            break
+        normalized = line
+        if not normalized:
+            if flush():
+                break
+            continue
+        if normalized.startswith(":"):
+            continue
+        if normalized.startswith("event:"):
+            current_event = normalized.partition(":")[2].strip() or "message"
+            continue
+        if normalized.startswith("id:"):
+            current_id = normalized.partition(":")[2].strip() or None
+            continue
+        if normalized.startswith("data:"):
+            data_lines.append(normalized.partition(":")[2].lstrip())
+            continue
+
+    return events
+
+
+async def _collect_stream_output(stream) -> str:
+    chunks: list[str] = []
+    cursor_started = False
+    async for chunk in stream:
+        chunks.append(chunk)
+        if chunk.startswith("event: cursor"):
+            cursor_started = True
+            continue
+        if cursor_started and chunk.startswith("data:"):
+            break
+    await stream.aclose()
+    return "".join(chunks)
 
 
 def _secondary_auth_headers() -> dict[str, str]:
@@ -326,3 +385,80 @@ def test_assistant_routes_enforce_primary_user_invariant(
 
     assert response.status_code == 403
     assert "primary Starlog user" in response.json()["detail"]
+
+
+def test_assistant_stream_supports_resume_cursor(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    bootstrap = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert bootstrap.status_code == 200
+    initial_cursor = bootstrap.json()["next_cursor"]
+    assert initial_cursor is not None
+
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()["id"])
+
+    with get_connection() as conn:
+        assistant_thread_service.append_message(
+            conn,
+            thread_id="primary",
+            role="assistant",
+            status="complete",
+            parts=[assistant_projection_service.text_part("stream message alpha")],
+            user_id=user_id,
+        )
+
+    class _FakeRequest:
+        def __init__(self, headers: dict[str, str] | None = None) -> None:
+            self.headers = headers or {}
+
+        async def is_disconnected(self) -> bool:
+            return False
+
+    first_stream = assistant_routes._stream_delta_events(
+        thread_id="primary",
+        user_id=user_id,
+        request=_FakeRequest(),
+        cursor=initial_cursor,
+        poll_interval_seconds=0,
+    )
+    first_batch = _parse_sse_events(asyncio.run(_collect_stream_output(first_stream)))
+
+    first_delta_events = [event for event in first_batch if event["event"] != "cursor"]
+    assert {event["event"] for event in first_delta_events} == {"message.created"}
+    assert any(
+        part["type"] == "text" and part["text"] == "stream message alpha"
+        for event in first_delta_events
+        for part in event["data"]["payload"]["parts"]
+    )
+    resume_cursor = next(event["data"]["cursor"] for event in first_batch if event["event"] == "cursor")
+
+    with get_connection() as conn:
+        assistant_thread_service.append_message(
+            conn,
+            thread_id="primary",
+            role="assistant",
+            status="complete",
+            parts=[assistant_projection_service.text_part("stream message beta")],
+            user_id=user_id,
+        )
+
+    second_stream = assistant_routes._stream_delta_events(
+        thread_id="primary",
+        user_id=user_id,
+        request=_FakeRequest(headers={"last-event-id": resume_cursor}),
+        cursor=None,
+        poll_interval_seconds=0,
+    )
+    second_batch = _parse_sse_events(asyncio.run(_collect_stream_output(second_stream)))
+
+    second_delta_events = [event for event in second_batch if event["event"] != "cursor"]
+    assert {event["event"] for event in second_delta_events} == {"message.created"}
+    texts = [
+        part["text"]
+        for event in second_delta_events
+        for part in event["data"]["payload"]["parts"]
+        if part["type"] == "text"
+    ]
+    assert texts == ["stream message beta"]
