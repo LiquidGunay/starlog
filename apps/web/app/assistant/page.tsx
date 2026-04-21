@@ -194,6 +194,13 @@ function mutationBody(payload: Record<string, unknown>): { body?: string; isJson
   return { body: JSON.stringify(rawBody), isJson: true };
 }
 
+function hasContentTypeHeader(headers?: Record<string, string>): boolean {
+  if (!headers) {
+    return false;
+  }
+  return Object.keys(headers).some((key) => key.toLowerCase() === "content-type");
+}
+
 function parseStreamEnvelope(block: string): AssistantStreamEnvelope | null {
   const normalized = block.trim();
   if (!normalized || normalized.startsWith(":")) {
@@ -574,7 +581,8 @@ export default function AssistantPage() {
     try {
       const requestHeaders = {
         ...(headers || {}),
-        ...(isJson && (!headers || !headers["Content-Type"]) ? { "Content-Type": "application/json" } : {}),
+        ...(isJson && !hasContentTypeHeader(headers) ? { "Content-Type": "application/json" } : {}),
+        ...(!isJson && body !== undefined && !hasContentTypeHeader(headers) ? { "Content-Type": "text/plain;charset=UTF-8" } : {}),
       };
       const result = await mutateWithQueue(
         endpoint,

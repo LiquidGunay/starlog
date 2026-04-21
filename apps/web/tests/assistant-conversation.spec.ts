@@ -362,3 +362,87 @@ test("mutation card actions confirm, execute, and refresh the thread snapshot", 
   await expect(page.getByText("Briefing audio cached")).toBeVisible();
   await expect(page.getByText("Offline playback is ready on this device.")).toBeVisible();
 });
+
+test("queued mutation replay preserves custom headers and raw body semantics", async ({ page }) => {
+  await seedSession(page);
+
+  const mutationRequests: Array<{ headers: Record<string, string>; body: string | null }> = [];
+
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      last_message_at: "2026-04-21T09:04:00.000Z",
+      last_preview_text: "Render the briefing payload.",
+      messages: [
+        {
+          id: "msg_assistant_1",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: "part_text_1",
+              text: "Render the briefing payload.",
+            },
+            {
+              type: "card",
+              id: "part_card_1",
+              card: {
+                kind: "briefing",
+                version: 1,
+                title: "Render briefing",
+                body: "Send the payload with a custom replay header.",
+                entity_ref: null,
+                actions: [
+                  {
+                    id: "render_payload",
+                    label: "Render payload",
+                    kind: "mutation",
+                    payload: {
+                      endpoint: "/v1/briefings/briefing_2/audio/render",
+                      method: "POST",
+                      body: "render=this",
+                      headers: {
+                        "X-Starlog-Replay": "preserve-me",
+                      },
+                    },
+                    style: "primary",
+                    requires_confirmation: false,
+                  },
+                ],
+                metadata: {},
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  );
+
+  await page.route(`${API_BASE}/v1/briefings/briefing_2/audio/render`, async (route) => {
+    mutationRequests.push({
+      headers: await route.request().allHeaders(),
+      body: route.request().postData(),
+    });
+    await route.fulfill({
+      status: mutationRequests.length === 1 ? 503 : 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: mutationRequests.length === 1 ? "retry" : "ok" }),
+    });
+  });
+
+  await page.goto("/assistant");
+  await page.getByRole("button", { name: "Render payload" }).click();
+
+  await expect(page.getByText('Queued "Render payload" for replay.')).toBeVisible();
+
+  await expect.poll(() => mutationRequests.length).toBe(2);
+
+  for (const request of mutationRequests) {
+    expect(request.headers["x-starlog-replay"]).toBe("preserve-me");
+    expect(request.headers["content-type"]).toContain("text/plain");
+    expect(request.body).toBe("render=this");
+  }
+});

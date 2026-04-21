@@ -87,6 +87,21 @@ function bodyString(init?: RequestInit): string | undefined {
   return typeof init.body === "string" ? init.body : undefined;
 }
 
+function requestHeaders(init?: RequestInit): Record<string, string> | undefined {
+  if (!init?.headers) {
+    return undefined;
+  }
+
+  const normalized = new Headers(init.headers);
+  normalized.delete("authorization");
+
+  const entries = Array.from(normalized.entries()).filter(([, value]) => value);
+  if (entries.length === 0) {
+    return undefined;
+  }
+  return Object.fromEntries(entries);
+}
+
 function toSyncActivity(
   mutation: QueuedMutation,
   status: SyncActivityWrite["status"],
@@ -214,6 +229,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
         path,
         method,
         body: bodyString(init),
+        headers: requestHeaders(init),
         entity: options.entity,
         op: options.op,
       });
@@ -296,6 +312,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
         await apiRequest<unknown>(apiBase, token, mutation.path, {
           method: mutation.method,
           body: mutation.body,
+          ...(mutation.headers ? { headers: mutation.headers } : {}),
         });
         flushed += 1;
         for (const prefix of cachePrefixesForMutation(attempted)) {
