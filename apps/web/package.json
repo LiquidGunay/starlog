@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.12.25",
     "@starlog/contracts": "workspace:*",
     "next": "15.0.7",
     "react": "18.3.1",

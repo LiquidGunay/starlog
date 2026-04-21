@@ -1,193 +1,200 @@
-# Starlog Plan: Assistant-First Product
+# Starlog Plan: Assistant-First Life OS
 
-`PLAN.md` is the only forward-looking product and architecture spec for Starlog.
-Other markdown files may describe current implementation status, operational runbooks, or
-historical plans, but they must not compete with this document.
+`PLAN.md` is the canonical forward-looking product and architecture plan for Starlog.
+The repo-local vision and assistant migration documents define the active implementation
+basis for this plan:
+
+- [VISION.md](/home/ubuntu/starlog/VISION.md)
+- [starlog_surface_event_and_dynamic_ui_spec.md](/home/ubuntu/starlog/starlog_surface_event_and_dynamic_ui_spec.md)
+- [starlog_assistant_ui_backend_migration_design.md](/home/ubuntu/starlog/starlog_assistant_ui_backend_migration_design.md)
+- [starlog_assistant_ui_contracts_and_api_blueprint.md](/home/ubuntu/starlog/starlog_assistant_ui_contracts_and_api_blueprint.md)
+- [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md)
 
 ## Summary
 
-- Starlog is a voice-native personal system organized around one persistent `Assistant` thread.
-- The web app is a desktop-first workspace. The mobile PWA remains functional as a fallback, but
-  polish effort belongs on the native mobile app.
-- The native mobile app is the first-class mobile client with four user-facing surfaces:
-  `Assistant`, `Library`, `Planner`, and `Review`.
-- `Library`, `Planner`, and `Review` are support views for deeper work, but they are not equal
-  first-entry destinations with the assistant thread.
-- The desktop helper is a capture-first companion for clipboard/screenshot intake and handoff into
-  the Assistant and Library.
-- All user-facing copy should read like a professional product. Keep `Starlog` as the product
-  brand, but stop using observatory-themed feature names as default vocabulary.
-- All AI orchestration lives in a separate in-repo Python service. OpenAI `gpt-5.4-nano` is the
-  primary hosted LLM for v1; local voice runtimes are first choice for STT/TTS.
+- Starlog is a single-user Life OS and lifelong learning engine.
+- The product is centered on one persistent `Assistant` thread that orchestrates capture,
+  planning, execution, review, and adaptation.
+- `Library`, `Planner`, and `Review` remain first-class support surfaces, but they feed
+  structured state and events back into the Assistant thread instead of behaving like
+  isolated apps.
+- The near-term product priority is execution support for known goals: capture-to-action,
+  dependable planning, review loops, daily briefings, and follow-through.
+- The canonical assistant architecture is a server-owned thread/run/interrupt/message-part
+  protocol rendered through an assistant-ui web client with Starlog-specific tool UIs.
+- This is a system overhaul, not a reskin of the existing observatory-era interface.
 
 ## Product Model
 
-### Canonical interaction model
+### Core identity
 
-- One long-lived chat thread exists for the single Starlog user.
-- Long-term memory is derived from Starlog data and chat summaries.
-- Short-term session state is clearable without deleting domain data or long-term memory.
-- The assistant can surface notes, tasks, artifacts, research digests, review cards, capture cards,
-  and briefings inline.
-- Full editing and deep inspection remain available in dedicated support surfaces.
+- Starlog is not primarily a passive archive, generic chatbot, note store, or task board.
+- Starlog exists to help one user:
+  - capture what matters
+  - build durable systems for action and learning
+  - follow through consistently
+  - review, adapt, and improve over time
+- Product decisions should favor progress, learning depth, system quality, and compounding
+  long-term usefulness over convenience features that do not materially improve the user.
 
-### Surface model
+### Canonical operating loop
+
+- The default Starlog loop is:
+  - capture
+  - understanding
+  - planning
+  - execution
+  - review
+  - adaptation
+- The Assistant thread should make this loop feel continuous and personalized rather than
+  forcing the user to manually narrate their own activity back into chat.
+
+### Surfaces
 
 - `Assistant`
-  - Primary thread for commands, confirmations, tool results, and dynamic cards.
+  - The canonical operating surface and persistent thread.
+  - Owns orchestration, structured follow-up, daily guidance, and cross-surface context.
 - `Library`
-  - Notes, captures, saved sources, search, and artifact history.
+  - Captures, artifacts, notes, provenance, and source fidelity.
 - `Planner`
-  - Tasks, calendar, time blocks, and briefings.
+  - Tasks, calendar, time blocks, conflicts, and briefings.
 - `Review`
-  - Flashcards, recall sessions, and spaced-review follow-up.
+  - Recall, quizzes, drills, grading, and focused reinforcement loops.
 
-### Autonomy and behavior
+### Bounded proactivity
 
-- The assistant may read, search, capture, draft, summarize, rank, and suggest without confirmation.
-- The assistant must confirm before destructive changes, costly workflows, or external side effects.
-- Proactive behavior is limited to preparing suggestions. It does not silently commit major changes.
+- The assistant should proactively surface useful next steps, missed commitments, due review,
+  planner conflicts, and capture follow-up when there is clear value.
+- Major writes still require explicit confirmation or explicit user completion of a structured
+  interrupt.
+- Near-term proactivity is execution-support oriented, not open-ended life coaching.
 
-### Voice UX
+## Experience Direction
 
-- v1 voice input is hold-to-talk.
-- v1 voice output defaults to short spoken replies plus visible transcripts/cards.
-- v1 explicitly does not target full-duplex live conversation.
+### Thread first
 
-## Client and Runtime Split
+- The Assistant thread is the center of the product.
+- Support surfaces should emit structured surface events into the thread so the assistant can
+  react to what the user is doing without making them restate it.
+- Visible ambient updates should keep the thread aware of cross-surface activity without
+  turning every event into a full assistant message.
 
-### Desktop web
+### Dynamic UI
 
-- Canonical desktop workspace and primary polished web experience.
-- Hosts the persistent `Assistant` conversation surface.
-- Hosts the full `Library`, `Planner`, and `Review` workspaces.
-- Keeps operator/debug lanes available but visually secondary to the transcript.
+- Dynamic panels are thread-native structured interactions attached to a turn, card, or
+  composer state.
+- On desktop they should appear as anchored popups or sidecars tied to the thread context.
+- On mobile they should appear as bottom sheets that preserve thread context.
+- Panels are for minimal missing structure, quick triage, conflict resolution, and compact
+  decisions. They are not a hidden second full workspace.
 
-### Native mobile
+### Broad UI overhaul
 
-- First-class mobile client.
-- Shares the same server-backed assistant thread as the web app.
-- Owns mobile-first voice capture, quick capture/share, alarms, offline briefing playback, quick
-  triage, and quick review.
+- Do not optimize for preserving observatory-era shell assumptions, stacked card layouts, or
+  the old `content + cards + traces` rendering model.
+- The thread UI should be rebuilt around message parts, tool lifecycle, interrupts, ambient
+  updates, and integrated attachments.
+- Keep the conversation as the visual and behavioral center. Diagnostics stay reachable but
+  secondary.
 
-### Mobile PWA fallback
+## Architecture Direction
 
-- Must stay functional for fallback access and testing.
-- Does not receive dedicated redesign or polish effort beyond maintaining a working fallback path.
+### Backend protocol
 
-### Desktop helper companion
+- Starlog must move from:
+  - message content string
+  - cards array
+  - separate tool traces
+- To:
+  - assistant threads
+  - typed messages with typed parts
+  - runs and run steps
+  - interrupts and resolutions
+  - surface events
+  - ambient updates
+  - card projections as one projection mechanism among several
 
-- Fastest path for clipboard and screenshot capture from laptop workflows.
-- Surfaces recent captures and handoff actions into `Assistant` and `Library`.
-- Diagnostics remain available but are secondary to capture workflows.
-- Uses existing Starlog capture/tooling rather than inventing a separate storage path.
+### Ownership boundaries
 
-## System Boundaries
+- `services/api`
+  - Remains the system of record for threads, messages, runs, interrupts, events, tasks,
+    artifacts, planner data, review data, and tool execution.
+  - Owns legacy compatibility for existing `/v1/conversations/...` clients during migration.
+- `services/ai-runtime`
+  - Remains the AI orchestration service for prompts, provider adapters, runtime capability
+    manifests, tool planning, and evaluation fixtures.
+  - Assistant and agent behavior prompts must live as repo-local markdown files under
+    `services/ai-runtime/prompts/` so the user can inspect and edit them directly.
+  - Must evolve from `response_text + cards` into tool-call / interrupt-aware runtime output.
+- `@starlog/contracts`
+  - Becomes the shared assistant protocol package for threads, parts, runs, interrupts,
+    events, ambient updates, attachments, cards, and legacy adapters.
 
-### `services/api`
+### API shape
 
-- System of record for auth, sync, CRUD, queues, tools, calendar, tasks, artifacts, review, and export.
-- Owns canonical domain schemas, persistence, and tool execution.
-- Owns the canonical conversation thread, messages, tool traces, and structured assistant cards.
+- Introduce a new canonical `/v1/assistant/...` route family for:
+  - threads
+  - thread snapshots
+  - create-message/start-run
+  - run status
+  - interrupt submit/dismiss
+  - surface-event ingestion
+  - update feed and SSE stream
+- Keep `/v1/conversations/primary/chat` and related legacy endpoints only as compatibility
+  projections over the new assistant core while mobile and older clients transition.
 
-### `services/ai-runtime`
+## Migration Order
 
-- Separate Python service for prompts, orchestration, provider adapters, recommendation logic, and evals.
-- Owns chat-turn assembly, memory assembly, research ranking, briefing generation, and OpenAI calls.
-- Prompts must be file-based and reviewable.
+1. Source-of-truth reset
+   - Align `PLAN.md`, `AGENTS.md`, and repo-local design references to the new assistant
+     direction and retire stale April-era guidance.
+2. Shared protocol
+   - Expand `@starlog/contracts` into the assistant thread/run/interrupt/event protocol while
+     keeping legacy exports available.
+3. Assistant backend
+   - Add assistant storage, schemas, services, and `/v1/assistant` routes.
+   - Route deterministic commands and AI turns through one run model.
+4. First vertical slices
+   - `request_due_date`
+   - `resolve_planner_conflict`
+   - `triage_capture`
+   - ambient surface updates
+5. Web assistant overhaul
+   - Replace the current web Assistant page with an assistant-ui runtime adapter and
+     Starlog-specific tool UIs.
+6. Cross-surface convergence
+   - Move mobile and helper flows onto the shared event + interrupt protocol once the web
+     slices are stable.
 
-### `@starlog/contracts`
+## Initial Tool UI Scope
 
-- Shared home for cross-surface Assistant types and durable product copy constants.
-- Defines the assistant card contract consumed by API, web, mobile, and helper surfaces.
-
-## Required Data and Interface Changes
-
-- Server-backed conversation storage:
-  - conversation thread
-  - messages/turns
-  - session-state reset
-  - tool-execution traces
-  - structured in-chat card payloads with typed actions
-- Shared assistant card contract:
-  - typed `kind`
-  - optional `entity_ref`
-  - typed `actions[]`
-  - compatibility adaptation for legacy stored cards without actions
-- Memory and recommendation primitives:
-  - long-term memory summaries/facts
-  - session-state snapshots
-  - recommendation events/signals
-- Research primitives:
-  - source adapters
-  - research items
-  - digest packages
-  - manual URL/PDF ingest
-  - arXiv ingest
-
-## First-Wave Assistant Workflows
-
-### Unified assistant turn
-
-- Keep `/v1/conversations/primary/chat` as the canonical execution path for desktop web and native mobile.
-- Route action-oriented requests through the same planner/tool catalog used by command execution so
-  normal chat can produce real tool traces and structured cards.
-- Persist resulting assistant output, traces, and surfaced cards into the canonical conversation thread.
-
-### Assistant card projection
-
-- Project typed cards server-side from tool results and domain entities.
-- Primary card kinds for this pass:
-  - `review_queue`
-  - `knowledge_note`
-  - `task_list`
-  - `briefing`
-  - `capture_item`
-  - fallback `assistant_summary`
-- `thread_context` and `tool_step` remain available as collapsed diagnostic details, not primary
-  cards in the main user flow.
-
-### Unified briefing
-
-- Build one daily package combining schedule, tasks, review cues, and research digest.
-- Use linked cards for deeper paper/task/note follow-up.
-
-### Research pipeline
-
-- Start with arXiv plus manual URL/PDF ingest.
-- Normalize research items into artifacts with provenance.
-- Use batch/background processing for daily ranking and summaries.
-- Support optional deeper follow-up summaries.
-
-## Documentation Rules
-
-- `PLAN.md` is canonical for future direction.
-- Superseded forward-looking plan docs should be replaced rather than kept as competing sources.
-- `README.md` and `docs/IMPLEMENTATION_STATUS.md` describe what exists now, not future architecture.
-- `AGENTS.md` records locked preferences, repo process, and markdown-map authority, but should point
-  to this file for product direction.
+- `request_due_date`
+  - Fill the minimum missing task fields before creating a task.
+- `resolve_planner_conflict`
+  - Resolve a structured overlap without forcing a full Planner switch.
+- `triage_capture`
+  - Classify new captures and choose the next action.
+- `grade_review_recall`
+  - Support compact review grading from the thread when launched there.
+- `choose_morning_focus`
+  - Select the first bounded move from a briefing.
 
 ## Validation Requirements
 
-- Contract tests for conversation APIs, session reset, tool traces, card projection, legacy-card
-  backfill, and in-chat card actions.
-- Integration tests for AI runtime prompt loading and provider adapters.
-- End-to-end checks for:
-  - desktop web assistant flow
-  - desktop web inline card actions and collapsed diagnostics panes
-  - native mobile Assistant, Library, Planner, and Review tabs
-  - desktop helper capture, recent items, and Assistant/Library handoff
-- Env-gated smoke scripts for:
-  - OpenAI chat/tool orchestration with `gpt-5.4-nano`
-  - research batch/background flows
-  - briefing generation
-  - local desktop bridge STT/TTS/clipping
+- Contract tests for new assistant protocol types and legacy adapters.
+- Storage/API tests for assistant thread snapshots, runs, interrupts, events, updates, and
+  migration-safe additive storage.
+- Backend behavior tests showing deterministic command flows can interrupt and resume.
+- Web UI tests for runtime hydration, interrupt rendering, ambient updates, and no duplicate
+  transcript state.
+- Cross-surface evidence for planner, review, helper, and Library events feeding the thread.
 
 ## Defaults and Constraints
 
-- `Assistant / Library / Planner / Review` is the approved user-facing taxonomy.
-- Desktop web and native mobile are both primary products, but only desktop web gets the polished PWA redesign.
-- The mobile PWA remains fallback-only.
-- Support views remain necessary for deep editing and inspection; the design is chat-first, not chat-only.
-- The desktop helper remains a capture companion, not a second full assistant client.
-- Existing task/calendar/artifact/review APIs remain and are consumed through the tool layer.
+- One visible persistent user thread remains the canonical UX.
+- Web ships first on the new assistant protocol; mobile continues on the legacy adapter until
+  the new assistant slices are stable.
+- The April pack and the old chat moodboard are historical references only.
+- Support surfaces remain necessary for deep editing; Starlog is assistant-first, not
+  assistant-only.
+- The desktop helper remains a capture-first companion, not a second full assistant client.

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     agent,
     ai,
+    assistant,
     artifacts,
     auth,
     briefings,
@@ -34,6 +35,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(agent.router, tags=["agent"])
 api_router.include_router(ai.router, tags=["ai"])
+api_router.include_router(assistant.router, tags=["assistant"])
 api_router.include_router(conversations.router, tags=["conversations"])
 api_router.include_router(sync.router, tags=["sync"])
 api_router.include_router(capture.router, tags=["capture"])

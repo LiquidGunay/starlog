@@ -676,6 +676,38 @@ def run_command(
     return response
 
 
+def plan_command(
+    conn: Connection,
+    command: str,
+    *,
+    device_target: str,
+) -> tuple[str, str, list[PlannedToolCall]]:
+    return _plan_command(conn, command, device_target)
+
+
+def execute_planned_command(
+    conn: Connection,
+    *,
+    command: str,
+    planner: str,
+    matched_intent: str,
+    summary: str,
+    execute: bool,
+    planned_calls: list[PlannedToolCall],
+    enforce_confirmation_policy: bool = False,
+) -> AgentCommandResponse:
+    return _execute_planned_calls(
+        conn,
+        command,
+        planner=planner,
+        matched_intent=matched_intent,
+        summary=summary,
+        execute=execute,
+        planned_calls=planned_calls,
+        enforce_confirmation_policy=enforce_confirmation_policy,
+    )
+
+
 def run_conversation_command(
     conn: Connection,
     command: str,

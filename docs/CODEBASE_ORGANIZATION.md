@@ -45,7 +45,9 @@ Shared code used by more than one surface.
 - `docs` — runbooks, status docs, release checklists, and implementation guides.
 - `scripts` — local automation, smoke flows, helper tooling, and workitem coordination scripts.
 - `artifacts` — captured validation output, screenshots, release evidence, and proof bundles.
-- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` — current external design source of truth for April 2026 observatory work; older in-repo design folders were intentionally removed.
+- `VISION.md` plus the assistant reset markdown files in the repo root — active product and assistant architecture sources of truth.
+- `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local assistant UI reference.
+- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` — historical-only external design reference from the pre-reset observatory work.
 
 ## Frontend surfaces
 
@@ -147,6 +149,7 @@ Key responsibilities:
 Typical places to inspect:
 
 - `services/ai-runtime/runtime_app/` — runtime application entrypoints and workflow wiring
+- `services/ai-runtime/prompts/` — user-editable markdown prompt files for assistant and agent behavior
 - `services/ai-runtime/tests/` — runtime tests
 - `services/ai-runtime/evals/` — eval inputs, goldens, and quality fixtures
 - `services/ai-runtime/scripts/` — smoke scripts and developer utilities

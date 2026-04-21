@@ -167,6 +167,10 @@ def execute_chat_turn(payload: dict) -> dict:
                 "user_prompt": str(decoded.get("user_prompt") or ""),
                 "response_text": str(decoded.get("response_text") or ""),
                 "cards": decoded.get("cards") if isinstance(decoded.get("cards"), list) else [],
+                "tool_calls": decoded.get("tool_calls") if isinstance(decoded.get("tool_calls"), list) else [],
+                "interrupts": decoded.get("interrupts") if isinstance(decoded.get("interrupts"), list) else [],
+                "ambient_updates": decoded.get("ambient_updates") if isinstance(decoded.get("ambient_updates"), list) else [],
+                "attachments": decoded.get("attachments") if isinstance(decoded.get("attachments"), list) else [],
                 "session_state": decoded.get("session_state") if isinstance(decoded.get("session_state"), dict) else {},
                 "metadata": decoded.get("metadata") if isinstance(decoded.get("metadata"), dict) else {},
             }

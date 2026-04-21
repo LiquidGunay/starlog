@@ -1,1322 +1,397 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { AssistantCard as ConversationCard, AssistantCardAction, AssistantConversationToolTrace as ConversationToolTrace } from "@starlog/contracts";
-import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
+import { startTransition, useCallback, useEffect, useState } from "react";
+import type {
+  AssistantDeltaList,
+  AssistantInterrupt,
+  AssistantRun,
+  AssistantThreadDelta,
+  AssistantThreadMessage,
+  AssistantThreadSnapshot,
+} from "@starlog/contracts";
 
-import { WorkspacePanel as AssistantSurfacePanel, WorkspaceShell as AssistantWorkspaceShell } from "../components/april-observatory-shell";
 import { MainRoomThread } from "../components/main-room-thread";
-import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
-import { replaceEntityCacheScope } from "../lib/entity-cache";
-import { clearEntityCachesStale, readEntitySnapshot, readEntitySnapshotAsync, writeEntitySnapshot } from "../lib/entity-snapshot";
-import { usePaneCollapsed } from "../lib/pane-state";
-import { ApiError } from "../lib/starlog-client";
-import { apiRequest } from "../lib/starlog-client";
+import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
+import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
+import styles from "./page.module.css";
 
-type AgentCommandResponse = {
-  command: string;
-  planner: string;
-  matched_intent: string;
-  status: "planned" | "executed" | "failed";
-  summary: string;
-  steps: Array<{
-    tool_name: string;
-    arguments: Record<string, unknown>;
-    status: "planned" | "ok" | "dry_run" | "failed" | "completed" | "confirmation_required";
-    message?: string | null;
-    result: unknown;
-  }>;
-};
+function maxIso(left?: string | null, right?: string | null): string {
+  if (!left) {
+    return right || "";
+  }
+  if (!right) {
+    return left;
+  }
+  return left > right ? left : right;
+}
 
-type AgentIntent = {
-  name: string;
-  description: string;
-  examples: string[];
-};
+function previewFromMessage(message: AssistantThreadMessage): string | null {
+  const text = message.parts
+    .filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return text || null;
+}
 
-type AssistantQueuedJob = {
-  id: string;
-  capability: "stt" | "llm_agent_plan";
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  provider_hint?: string | null;
-  provider_used?: string | null;
-  action?: string | null;
-  payload: {
-    command?: string;
-    title?: string;
+function sortMessages(messages: AssistantThreadMessage[]): AssistantThreadMessage[] {
+  return [...messages].sort((left, right) =>
+    left.created_at === right.created_at ? left.id.localeCompare(right.id) : left.created_at.localeCompare(right.created_at),
+  );
+}
+
+function sortRuns(runs: AssistantRun[]): AssistantRun[] {
+  return [...runs].sort((left, right) =>
+    left.created_at === right.created_at ? right.id.localeCompare(left.id) : right.created_at.localeCompare(left.created_at),
+  );
+}
+
+function sortInterrupts(interrupts: AssistantInterrupt[]): AssistantInterrupt[] {
+  return [...interrupts].sort((left, right) =>
+    left.created_at === right.created_at ? right.id.localeCompare(left.id) : right.created_at.localeCompare(left.created_at),
+  );
+}
+
+function upsertById<T extends { id: string }>(
+  items: T[],
+  nextItem: T,
+  sortItems: (items: T[]) => T[],
+): T[] {
+  const filtered = items.filter((item) => item.id !== nextItem.id);
+  return sortItems([...filtered, nextItem]);
+}
+
+function withMessage(snapshot: AssistantThreadSnapshot, message: AssistantThreadMessage): AssistantThreadSnapshot {
+  const messages = upsertById(snapshot.messages, message, sortMessages);
+  const lastMessage = messages.at(-1) || null;
+  return {
+    ...snapshot,
+    messages,
+    last_message_at: lastMessage?.created_at || snapshot.last_message_at,
+    last_preview_text: lastMessage ? previewFromMessage(lastMessage) : snapshot.last_preview_text,
+    updated_at: maxIso(snapshot.updated_at, message.updated_at || message.created_at),
   };
-  output: {
-    transcript?: string;
-    assistant_command?: AgentCommandResponse;
+}
+
+function withRun(snapshot: AssistantThreadSnapshot, run: AssistantRun): AssistantThreadSnapshot {
+  const runs = upsertById(snapshot.runs, run, sortRuns);
+  const interrupts = run.current_interrupt
+    ? upsertById(snapshot.interrupts, run.current_interrupt, sortInterrupts)
+    : snapshot.interrupts;
+  return {
+    ...snapshot,
+    runs,
+    interrupts,
+    updated_at: maxIso(snapshot.updated_at, run.updated_at),
   };
-  error_text?: string | null;
-  created_at: string;
-  finished_at?: string | null;
-};
+}
 
-type AssistantVoiceUploadQueueItem = {
-  id: string;
-  title: string;
-  execute: boolean;
-  provider_hint: string;
-  device_target: string;
-  file_name: string;
-  mime_type: string;
-  blob: Blob;
-  created_at: string;
-  attempts: number;
-  last_attempt_at?: string;
-  last_error?: string;
-};
-
-type ConversationMessage = {
-  id: string;
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  cards: ConversationCard[];
-  metadata: {
-    assistant_command?: AgentCommandResponse;
-  } & Record<string, unknown>;
-  created_at: string;
-};
-
-type ConversationSnapshot = {
-  id: string;
-  slug: string;
-  title: string;
-  mode: string;
-  session_state: Record<string, unknown>;
-  messages: ConversationMessage[];
-  tool_traces: ConversationToolTrace[];
-};
-
-type ConversationSessionResetResponse = {
-  thread_id: string;
-  session_state: Record<string, unknown>;
-  cleared_keys?: string[];
-  preserved_message_count?: number;
-  preserved_tool_trace_count?: number;
-  updated_at: string;
-};
-
-type ConversationTurnResponse = {
-  thread_id: string;
-  user_message: ConversationMessage;
-  assistant_message: ConversationMessage;
-  trace: ConversationToolTrace;
-  session_state: Record<string, unknown>;
-};
-
-type PendingTurn = {
-  id: string;
-  content: string;
-  inputMode: "text" | "voice";
-  createdAt: string;
-};
-
-const FALLBACK_EXAMPLES = [
-  "summarize latest artifact",
-  "create cards for latest artifact",
-  "create task Review the latest summary due tomorrow priority 4",
-  "create note Morning plan: Focus on review queue and planner cleanup",
-  "create event Deep Work from 2026-03-07 09:00 to 2026-03-07 10:00",
-  "schedule alarm for tomorrow at 07:00",
-  "show execution policy",
-];
-
-const ASSISTANT_HISTORY_SNAPSHOT = "assistant.history";
-const ASSISTANT_INTENTS_SNAPSHOT = "assistant.intents";
-const ASSISTANT_VOICE_JOBS_SNAPSHOT = "assistant.voice_jobs";
-const ASSISTANT_AI_JOBS_SNAPSHOT = "assistant.ai_jobs";
-const ASSISTANT_VOICE_UPLOAD_QUEUE_SNAPSHOT = "assistant.voice_upload_queue";
-const ASSISTANT_CACHE_PREFIXES = ["assistant."];
-const ASSISTANT_INTENTS_ENTITY_SCOPE = "assistant.intents";
-const ASSISTANT_HISTORY_ENTITY_SCOPE = "assistant.history";
-const ASSISTANT_VOICE_JOBS_ENTITY_SCOPE = "assistant.voice_jobs";
-const ASSISTANT_AI_JOBS_ENTITY_SCOPE = "assistant.ai_jobs";
-const ASSISTANT_HISTORY_PANE_SNAPSHOT = "assistant.history_pane.collapsed";
-const ASSISTANT_DIAGNOSTICS_PANE_SNAPSHOT = "assistant.diagnostics_pane.collapsed";
-
-function cacheAssistantIntents(intents: AgentIntent[]): void {
-  const recordedAt = new Date().toISOString();
-  void replaceEntityCacheScope(
-    ASSISTANT_INTENTS_ENTITY_SCOPE,
-    intents.map((intent) => ({
-      id: intent.name,
-      value: intent,
-      updated_at: recordedAt,
-      search_text: `${intent.name} ${intent.description} ${intent.examples.join(" ")}`,
-    })),
+function withInterrupt(snapshot: AssistantThreadSnapshot, interrupt: AssistantInterrupt): AssistantThreadSnapshot {
+  const interrupts = upsertById(snapshot.interrupts, interrupt, sortInterrupts);
+  const runs = snapshot.runs.map((run) =>
+    run.id === interrupt.run_id
+      ? {
+          ...run,
+          current_interrupt: interrupt.status === "pending" ? interrupt : null,
+        }
+      : run,
   );
+  return {
+    ...snapshot,
+    interrupts,
+    runs,
+    updated_at: maxIso(snapshot.updated_at, interrupt.resolved_at || interrupt.created_at),
+  };
 }
 
-function cacheAssistantHistory(history: AgentCommandResponse[]): void {
-  const recordedAt = new Date().toISOString();
-  void replaceEntityCacheScope(
-    ASSISTANT_HISTORY_ENTITY_SCOPE,
-    history.map((entry, index) => ({
-      id: `${entry.matched_intent}:${entry.planner}:${index}`,
-      value: entry,
-      updated_at: recordedAt,
-      search_text: `${entry.command} ${entry.summary} ${entry.matched_intent} ${entry.planner}`,
-    })),
-  );
-}
+function applyAssistantDelta(
+  snapshot: AssistantThreadSnapshot | null,
+  delta: AssistantThreadDelta,
+): AssistantThreadSnapshot | null {
+  if (delta.event_type === "thread.snapshot") {
+    return delta.payload as unknown as AssistantThreadSnapshot;
+  }
 
-function cacheAssistantJobs(scope: string, jobs: AssistantQueuedJob[]): void {
-  void replaceEntityCacheScope(
-    scope,
-    jobs.map((job) => ({
-      id: job.id,
-      value: job,
-      updated_at: job.finished_at || job.created_at,
-      search_text: `${job.capability} ${job.status} ${job.provider_hint || ""} ${job.provider_used || ""} ${job.action || ""} ${job.payload.command || job.payload.title || ""}`,
-    })),
-  );
-}
+  if (!snapshot) {
+    return snapshot;
+  }
 
-function extractAssistantHistory(snapshot: ConversationSnapshot): AgentCommandResponse[] {
-  return snapshot.messages
-    .map((message) => message.metadata?.assistant_command)
-    .filter((entry): entry is AgentCommandResponse => !!entry)
-    .slice()
-    .reverse()
-    .slice(0, 8);
-}
+  if (delta.event_type === "message.created" || delta.event_type === "message.updated") {
+    return withMessage(snapshot, delta.payload as unknown as AssistantThreadMessage);
+  }
 
-function createVoiceQueueId(): string {
-  if (typeof window !== "undefined" && window.crypto?.randomUUID) {
-    return `vq_${window.crypto.randomUUID().replace(/-/g, "")}`;
+  if (delta.event_type === "run.updated" || delta.event_type === "run.step.updated") {
+    return withRun(snapshot, delta.payload as unknown as AssistantRun);
   }
-  return `vq_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
-function extensionForMime(mimeType: string): string {
-  const normalized = (mimeType || "").toLowerCase();
-  if (normalized.includes("ogg")) {
-    return "ogg";
+  if (delta.event_type === "interrupt.opened" || delta.event_type === "interrupt.resolved") {
+    return withInterrupt(snapshot, delta.payload as unknown as AssistantInterrupt);
   }
-  if (normalized.includes("mp4")) {
-    return "m4a";
-  }
-  if (normalized.includes("mpeg")) {
-    return "mp3";
-  }
-  if (normalized.includes("wav")) {
-    return "wav";
-  }
-  return "webm";
-}
 
-function isVoiceQueueItem(value: unknown): value is AssistantVoiceUploadQueueItem {
-  if (!value || typeof value !== "object") {
-    return false;
+  if (delta.event_type === "surface_event.created") {
+    return {
+      ...snapshot,
+      updated_at: maxIso(snapshot.updated_at, delta.created_at),
+    };
   }
-  const candidate = value as Partial<AssistantVoiceUploadQueueItem>;
-  return (
-    typeof candidate.id === "string"
-    && typeof candidate.title === "string"
-    && typeof candidate.execute === "boolean"
-    && typeof candidate.file_name === "string"
-    && typeof candidate.mime_type === "string"
-    && candidate.blob instanceof Blob
-    && typeof candidate.created_at === "string"
-    && typeof candidate.attempts === "number"
-  );
+
+  return snapshot;
 }
 
 export default function AssistantPage() {
-  const router = useRouter();
   const { apiBase, token, isOnline } = useSessionConfig();
-  const [command, setCommand] = useState("summarize latest artifact");
-  const [status, setStatus] = useState("Ready");
-  const [latest, setLatest] = useState<AgentCommandResponse | null>(() => {
-    const cached = readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []);
-    return cached[0] ?? null;
-  });
-  const [history, setHistory] = useState<AgentCommandResponse[]>(() => readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
-  const [intents, setIntents] = useState<AgentIntent[]>(() => readEntitySnapshot<AgentIntent[]>(ASSISTANT_INTENTS_SNAPSHOT, []));
-  const [voiceJobs, setVoiceJobs] = useState<AssistantQueuedJob[]>(() => readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_VOICE_JOBS_SNAPSHOT, []));
-  const [assistJobs, setAssistJobs] = useState<AssistantQueuedJob[]>(() => readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []));
-  const [voiceUploadQueue, setVoiceUploadQueue] = useState<AssistantVoiceUploadQueueItem[]>([]);
-  const historyPane = usePaneCollapsed(ASSISTANT_HISTORY_PANE_SNAPSHOT);
-  const diagnosticsPane = usePaneCollapsed(ASSISTANT_DIAGNOSTICS_PANE_SNAPSHOT);
-  const [voiceUploadQueueHydrated, setVoiceUploadQueueHydrated] = useState(false);
-  const [voiceQueueReplayInFlight, setVoiceQueueReplayInFlight] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
-  const [sessionState, setSessionState] = useState<Record<string, unknown>>({});
-  const [conversationTitle, setConversationTitle] = useState("Assistant thread");
-  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
-  const [conversationTraces, setConversationTraces] = useState<ConversationToolTrace[]>([]);
-  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
-  const [expandedTraces, setExpandedTraces] = useState<Record<string, boolean>>({});
-  const [speakingReply, setSpeakingReply] = useState(false);
-  const [pendingTurn, setPendingTurn] = useState<PendingTurn | null>(null);
-  const [turnInFlight, setTurnInFlight] = useState(false);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const holdToTalkActiveRef = useRef(false);
-  const stopRecordingOnceReadyRef = useRef(false);
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
-  const setTranscriptEndRef = useCallback((node: HTMLDivElement | null) => {
-    transcriptEndRef.current = node;
-  }, []);
-  const browserSupportsRecording = useMemo(
-    () => typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia,
-    [],
-  );
-  const browserSupportsSpeech = useMemo(
-    () => typeof window !== "undefined" && "speechSynthesis" in window,
-    [],
-  );
-  const exampleCommands = useMemo(() => {
-    const collected = intents.flatMap((intent) => intent.examples);
-    return collected.length > 0 ? collected : FALLBACK_EXAMPLES;
-  }, [intents]);
-  const showcaseActions = useMemo(() => {
-    if (latest?.steps.length) {
-      return latest.steps.slice(0, 3).map((step) => step.message || `${step.tool_name} ${step.status}`);
+  const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [composer, setComposer] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadSnapshot = useCallback(async (options?: { silent?: boolean }) => {
+    if (!token) {
+      return;
     }
-    return [
-      "Refine the command until the planned tool flow looks correct.",
-      "Inspect the queue and agent panes before promoting to execute mode.",
-      "Keep deep editing in Library, Planner, and Review while the thread stays primary.",
-    ];
-  }, [latest]);
-  const latestSpokenReply = useMemo(() => {
-    if (latest?.summary) {
-      return latest.summary;
+
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setLoading(true);
     }
-    const assistantMessage = [...conversationMessages].reverse().find((message) => message.role === "assistant");
-    return assistantMessage?.content?.trim() || "";
-  }, [conversationMessages, latest]);
-  const transcriptMessages = useMemo(() => {
-    if (conversationMessages.length > 0 || pendingTurn) {
-      const messages = [...conversationMessages];
-      if (pendingTurn) {
-        messages.push({
-          id: pendingTurn.id,
-          role: "user",
-          content: pendingTurn.content,
-          cards: [],
-          metadata: { pending: true, input_mode: pendingTurn.inputMode },
-          created_at: pendingTurn.createdAt,
-        });
-        messages.push({
-          id: `${pendingTurn.id}:assistant`,
-          role: "assistant",
-          content: "",
-          cards: [],
-          metadata: { pending: true, status: "thinking" },
-          created_at: pendingTurn.createdAt,
-        });
-      }
-      return messages;
-    }
-    if (!latest) {
-      return [];
-    }
-    return [
-      {
-        id: "assistant-preview",
-        role: "assistant" as const,
-        content: latest.summary,
-        cards: [],
-        metadata: { assistant_command: latest },
-        created_at: new Date().toISOString(),
-      },
-    ];
-  }, [conversationMessages, latest, pendingTurn]);
 
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: turnInFlight ? "smooth" : "auto", block: "end" });
-  }, [transcriptMessages.length, turnInFlight]);
-
-  useEffect(() => {
-    const draft = new URLSearchParams(window.location.search).get("draft");
-    if (draft?.trim()) {
-      setCommand(draft.trim());
-    }
-  }, []);
-
-  const toggleExpandedCards = useCallback((key: string) => {
-    setExpandedCards((previous) => ({ ...previous, [key]: !previous[key] }));
-  }, []);
-
-  const toggleExpandedTraces = useCallback((key: string) => {
-    setExpandedTraces((previous) => ({ ...previous, [key]: !previous[key] }));
-  }, []);
-
-  useEffect(() => {
-    setHistory((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, []));
-    setLatest((previous) => previous ?? readEntitySnapshot<AgentCommandResponse[]>(ASSISTANT_HISTORY_SNAPSHOT, [])[0] ?? null);
-    setIntents((previous) => previous.length > 0 ? previous : readEntitySnapshot<AgentIntent[]>(ASSISTANT_INTENTS_SNAPSHOT, []));
-    setVoiceJobs((previous) => previous.length > 0 ? previous : readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_VOICE_JOBS_SNAPSHOT, []));
-    setAssistJobs((previous) => previous.length > 0 ? previous : readEntitySnapshot<AssistantQueuedJob[]>(ASSISTANT_AI_JOBS_SNAPSHOT, []));
-
-    let cancelled = false;
-    readEntitySnapshotAsync<AssistantVoiceUploadQueueItem[]>(ASSISTANT_VOICE_UPLOAD_QUEUE_SNAPSHOT, [])
-      .then((cachedQueue) => {
-        if (cancelled) {
-          return;
-        }
-        const validQueue = cachedQueue.filter((item) => isVoiceQueueItem(item));
-        setVoiceUploadQueue(validQueue);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setVoiceUploadQueueHydrated(true);
-        }
+    try {
+      const payload = await apiRequest<AssistantThreadSnapshot>(
+        apiBase,
+        token,
+        "/v1/assistant/threads/primary",
+      );
+      startTransition(() => {
+        setSnapshot(payload);
+        setCursor(payload.next_cursor || null);
+        setError(null);
       });
+    } catch (err) {
+      if (!silent) {
+        setError(err instanceof ApiError ? err.body : "Failed to load the Assistant thread.");
+      }
+    } finally {
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  }, [apiBase, token]);
+
+  const loadUpdates = useCallback(async () => {
+    if (!token || !snapshot) {
+      return;
+    }
+
+    const path = cursor
+      ? `/v1/assistant/threads/${snapshot.id}/updates?cursor=${encodeURIComponent(cursor)}`
+      : `/v1/assistant/threads/${snapshot.id}/updates`;
+
+    try {
+      const payload = await apiRequest<AssistantDeltaList>(apiBase, token, path);
+      startTransition(() => {
+        setSnapshot((current) => payload.deltas.reduce<AssistantThreadSnapshot | null>(applyAssistantDelta, current));
+        setCursor(payload.cursor || cursor);
+      });
+    } catch {
+      // Keep the current snapshot and retry on the next interval/focus cycle.
+    }
+  }, [apiBase, cursor, snapshot, token]);
+
+  useEffect(() => {
+    void loadSnapshot();
+  }, [loadSnapshot]);
+
+  useEffect(() => {
+    if (!token || !snapshot) {
+      return;
+    }
+
+    const refresh = () => {
+      if (document.visibilityState === "hidden" || sending) {
+        return;
+      }
+      if (!cursor) {
+        void loadSnapshot({ silent: true });
+        return;
+      }
+      void loadUpdates();
+    };
+
+    const intervalId = window.setInterval(refresh, 3000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
 
     return () => {
-      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
     };
-  }, []);
+  }, [cursor, loadSnapshot, loadUpdates, sending, snapshot, token]);
 
-  useEffect(() => {
-    if (!voiceUploadQueueHydrated) {
+  async function sendMessage(content: string) {
+    if (!snapshot || !content.trim() || sending) {
       return;
     }
-    writeEntitySnapshot(
-      ASSISTANT_VOICE_UPLOAD_QUEUE_SNAPSHOT,
-      voiceUploadQueue,
-      { persistBootstrap: false },
-    );
-  }, [voiceUploadQueue, voiceUploadQueueHydrated]);
-
-  const loadIntents = useCallback(async () => {
+    setSending(true);
+    setError(null);
     try {
-      const payload = await apiRequest<AgentIntent[]>(apiBase, token, "/v1/agent/intents");
-      setIntents(payload);
-      writeEntitySnapshot(ASSISTANT_INTENTS_SNAPSHOT, payload);
-      cacheAssistantIntents(payload);
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-    } catch {
-      // Keep existing cached intents when live refresh fails.
-    }
-  }, [apiBase, token]);
-
-  const loadConversation = useCallback(async (origin: "auto" | "manual") => {
-    try {
-      const payload = await apiRequest<ConversationSnapshot>(apiBase, token, "/v1/conversations/primary");
-      const derivedHistory = extractAssistantHistory(payload);
-      setConversationTitle(payload.title);
-      setConversationMessages(payload.messages);
-      setConversationTraces(payload.tool_traces);
-      setSessionState(payload.session_state);
-      setLatest(derivedHistory[0] ?? null);
-      setHistory(derivedHistory);
-      writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, derivedHistory);
-      cacheAssistantHistory(derivedHistory);
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      if (origin === "manual") {
-        setStatus(`Loaded conversation ${payload.title}`);
-      }
-    } catch (error) {
-      if (origin === "manual") {
-        setStatus(error instanceof Error ? error.message : "Failed to load conversation");
-      }
-    }
-  }, [apiBase, token]);
-
-  const recordCompletedCommand = useCallback((candidate: AgentCommandResponse | null | undefined) => {
-    if (!candidate) {
-      return;
-    }
-    setLatest(candidate);
-    setHistory((previous) => {
-      const next = [candidate, ...previous.filter((item) => item.command !== candidate.command || item.planner !== candidate.planner)].slice(0, 8);
-      writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, next);
-      cacheAssistantHistory(next);
-      return next;
-    });
-  }, []);
-
-  const loadVoiceJobs = useCallback(async (origin: "auto" | "manual") => {
-    try {
-      const payload = await apiRequest<AssistantQueuedJob[]>(
+      const payload = await apiRequest<{ snapshot: AssistantThreadSnapshot }>(
         apiBase,
         token,
-        "/v1/ai/jobs?limit=12&action=assistant_command",
+        `/v1/assistant/threads/${snapshot.id}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            content,
+            input_mode: "text",
+            device_target: "web-desktop",
+            metadata: { surface: "assistant_web" },
+          }),
+        },
       );
-      setVoiceJobs(payload);
-      writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, payload);
-      cacheAssistantJobs(ASSISTANT_VOICE_JOBS_ENTITY_SCOPE, payload);
-      recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
-      if (payload.some((job) => job.output.assistant_command)) {
-        loadConversation("auto").catch(() => undefined);
-      }
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      if (origin === "manual") {
-        setStatus(`Loaded ${payload.length} voice command job(s)`);
-      }
-    } catch (error) {
-      if (origin === "manual") {
-        setStatus(error instanceof Error ? error.message : "Failed to load voice jobs");
-      }
-    }
-  }, [apiBase, loadConversation, recordCompletedCommand, token]);
-
-  const loadAssistJobs = useCallback(async (origin: "auto" | "manual") => {
-    try {
-      const payload = await apiRequest<AssistantQueuedJob[]>(
-        apiBase,
-        token,
-        "/v1/ai/jobs?limit=12&action=assistant_command_ai",
-      );
-      setAssistJobs(payload);
-      writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, payload);
-      cacheAssistantJobs(ASSISTANT_AI_JOBS_ENTITY_SCOPE, payload);
-      recordCompletedCommand(payload.find((job) => job.output.assistant_command)?.output.assistant_command);
-      if (payload.some((job) => job.output.assistant_command)) {
-        loadConversation("auto").catch(() => undefined);
-      }
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      if (origin === "manual") {
-        setStatus(`Loaded ${payload.length} queued Codex planner job(s)`);
-      }
-    } catch (error) {
-      if (origin === "manual") {
-        setStatus(error instanceof Error ? error.message : "Failed to load queued Codex jobs");
-      }
-    }
-  }, [apiBase, loadConversation, recordCompletedCommand, token]);
-
-  const appendVoiceJobs = useCallback((jobs: AssistantQueuedJob[]) => {
-    if (jobs.length === 0) {
-      return;
-    }
-    setVoiceJobs((previous) => {
-      const nextById = new Map<string, AssistantQueuedJob>();
-      for (const job of jobs) {
-        nextById.set(job.id, job);
-      }
-      for (const existing of previous) {
-        if (!nextById.has(existing.id)) {
-          nextById.set(existing.id, existing);
-        }
-      }
-      const ordered = [...nextById.values()].slice(0, 12);
-      writeEntitySnapshot(ASSISTANT_VOICE_JOBS_SNAPSHOT, ordered);
-      return ordered;
-    });
-  }, []);
-
-  const uploadVoiceQueueItem = useCallback(async (item: AssistantVoiceUploadQueueItem): Promise<AssistantQueuedJob> => {
-    const formData = new FormData();
-    formData.append("title", item.title);
-    formData.append("execute", item.execute ? "true" : "false");
-    formData.append("device_target", item.device_target);
-    formData.append("provider_hint", item.provider_hint);
-    formData.append("file", new File([item.blob], item.file_name, { type: item.mime_type || "audio/webm" }));
-
-    const response = await fetch(`${apiBase}/v1/agent/command/voice`, {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new ApiError(response.status, body);
-    }
-
-    return await response.json() as AssistantQueuedJob;
-  }, [apiBase, token]);
-
-  const replayVoiceUploadQueue = useCallback(async (origin: "auto" | "manual") => {
-    if (voiceQueueReplayInFlight) {
-      return;
-    }
-    if (voiceUploadQueue.length === 0) {
-      if (origin === "manual") {
-        setStatus("No queued voice uploads");
-      }
-      return;
-    }
-    if (!isOnline) {
-      if (origin === "manual") {
-        setStatus("Reconnect to replay queued voice uploads");
-      }
-      return;
-    }
-    if (!token) {
-      if (origin === "manual") {
-        setStatus("Add bearer token to replay queued voice uploads");
-      }
-      return;
-    }
-
-    setVoiceQueueReplayInFlight(true);
-    try {
-      const orderedQueue = [...voiceUploadQueue].sort((left, right) => left.created_at.localeCompare(right.created_at));
-      const remaining: AssistantVoiceUploadQueueItem[] = [];
-      const uploadedJobs: AssistantQueuedJob[] = [];
-
-      for (const item of orderedQueue) {
-        const attemptedAt = new Date().toISOString();
-        try {
-          const payload = await uploadVoiceQueueItem(item);
-          uploadedJobs.push(payload);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "Voice command upload failed";
-          remaining.push({
-            ...item,
-            attempts: item.attempts + 1,
-            last_attempt_at: attemptedAt,
-            last_error: reason,
-          });
-        }
-      }
-
-      setVoiceUploadQueue(remaining);
-      appendVoiceJobs(uploadedJobs);
-      recordCompletedCommand(uploadedJobs.find((job) => job.output.assistant_command)?.output.assistant_command);
-      if (remaining.length === 0) {
-        setStatus(
-          uploadedJobs.length > 0
-            ? `Uploaded ${uploadedJobs.length} queued voice command(s)`
-            : "Voice queue is empty",
-        );
-      } else {
-        setStatus(
-          uploadedJobs.length > 0
-            ? `Uploaded ${uploadedJobs.length} queued voice command(s); ${remaining.length} still queued`
-            : `Voice upload replay failed; ${remaining.length} item(s) remain queued`,
-        );
-      }
+      setSnapshot(payload.snapshot);
+      setCursor(payload.snapshot.next_cursor || null);
+      setComposer("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.body : "Failed to send the message.");
     } finally {
-      setVoiceQueueReplayInFlight(false);
-    }
-  }, [
-    appendVoiceJobs,
-    isOnline,
-    recordCompletedCommand,
-    token,
-    uploadVoiceQueueItem,
-    voiceQueueReplayInFlight,
-    voiceUploadQueue,
-  ]);
-
-  function dropQueuedVoiceUpload(queueId: string) {
-    setVoiceUploadQueue((previous) => previous.filter((item) => item.id !== queueId));
-    setStatus(`Dropped queued voice upload ${queueId}`);
-  }
-
-  function discardVoiceCapture() {
-    setVoiceBlob(null);
-    setStatus("Discarded captured voice command");
-  }
-
-  function beginHoldToTalk() {
-    holdToTalkActiveRef.current = true;
-    stopRecordingOnceReadyRef.current = false;
-    if (!recording && !recorderRef.current) {
-      void startVoiceRecording();
+      setSending(false);
     }
   }
 
-  function endHoldToTalk() {
-    holdToTalkActiveRef.current = false;
-    if (recording || recorderRef.current) {
-      stopVoiceRecording();
+  async function submitInterrupt(interruptId: string, values: Record<string, unknown>) {
+    if (!snapshot) {
       return;
     }
-    stopRecordingOnceReadyRef.current = true;
-  }
-
-  function handleHoldToTalkKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.repeat || (event.key !== " " && event.key !== "Enter")) {
-      return;
-    }
-    event.preventDefault();
-    beginHoldToTalk();
-  }
-
-  function handleHoldToTalkKeyUp(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== " " && event.key !== "Enter") {
-      return;
-    }
-    event.preventDefault();
-    endHoldToTalk();
-  }
-
-  function toggleSpokenReply() {
-    if (!browserSupportsSpeech) {
-      setStatus("This browser cannot play spoken replies");
-      return;
-    }
-    const synth = window.speechSynthesis;
-    if (speakingReply) {
-      synth.cancel();
-      setSpeakingReply(false);
-      setStatus("Stopped spoken reply");
-      return;
-    }
-    const nextReply = latestSpokenReply.trim();
-    if (!nextReply) {
-      setStatus("No assistant reply is available to speak");
-      return;
-    }
-    synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(nextReply);
-    utterance.rate = 1.03;
-    utterance.pitch = 0.95;
-    utterance.onend = () => {
-      setSpeakingReply(false);
-      setStatus("Finished spoken reply");
-    };
-    utterance.onerror = () => {
-      setSpeakingReply(false);
-      setStatus("Spoken reply failed");
-    };
-    setSpeakingReply(true);
-    setStatus("Speaking latest assistant reply");
-    synth.speak(utterance);
-  }
-
-  useEffect(() => () => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
-  }, []);
-
-  async function runCommand(execute: boolean) {
-    const trimmed = command.trim();
-    if (!trimmed) {
-      setStatus("Enter a command first");
-      return;
-    }
-
+    setSending(true);
+    setError(null);
     try {
-      const payload = await apiRequest<AgentCommandResponse>(apiBase, token, "/v1/agent/command", {
-        method: "POST",
-        body: JSON.stringify({
-          command: trimmed,
-          execute,
-          device_target: "web-desktop",
-        }),
-      });
-      setLatest(payload);
-      setHistory((previous) => {
-        const next = [payload, ...previous].slice(0, 8);
-        writeEntitySnapshot(ASSISTANT_HISTORY_SNAPSHOT, next);
-        cacheAssistantHistory(next);
-        return next;
-      });
-      loadConversation("auto").catch(() => undefined);
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      setStatus(`${execute ? "Executed" : "Planned"} ${payload.matched_intent} via ${payload.planner}`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Assistant command failed");
-    }
-  }
-
-  async function sendToMainRoom(inputMode: "text" | "voice" = "text") {
-    const trimmed = command.trim();
-    if (!trimmed) {
-      setStatus("Enter a message for Assistant first");
-      return;
-    }
-
-    const pendingId =
-      typeof window !== "undefined" && window.crypto?.randomUUID
-        ? `pending_${window.crypto.randomUUID().replace(/-/g, "")}`
-        : `pending_${Date.now()}`;
-
-    setPendingTurn({
-      id: pendingId,
-      content: trimmed,
-      inputMode,
-      createdAt: new Date().toISOString(),
-    });
-    setTurnInFlight(true);
-    setStatus(inputMode === "voice" ? "Routing voice text into Assistant..." : "Sending to Assistant...");
-
-    try {
-      const payload = await apiRequest<ConversationTurnResponse>(apiBase, token, "/v1/conversations/primary/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          content: trimmed,
-          input_mode: inputMode,
-          device_target: "web-desktop",
-          metadata: {
-            surface: "assistant",
-            submitted_via: "assistant_page",
-          },
-        }),
-      });
-      setConversationMessages((previous) => [...previous, payload.user_message, payload.assistant_message]);
-      setConversationTraces((previous) => [payload.trace, ...previous].slice(0, 25));
-      setSessionState(payload.session_state);
-      setPendingTurn(null);
-      setCommand("");
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      setStatus("Assistant reply received");
-    } catch (error) {
-      setPendingTurn(null);
-      setStatus(error instanceof Error ? error.message : "Assistant turn failed");
-    } finally {
-      setTurnInFlight(false);
-    }
-  }
-
-  async function handleCardAction(action: AssistantCardAction, card: ConversationCard) {
-    if (action.kind === "navigate") {
-      const href = typeof action.payload?.href === "string" ? action.payload.href : "/";
-      router.push(href);
-      return;
-    }
-
-    if (action.kind === "composer") {
-      const prompt = typeof action.payload?.prompt === "string" ? action.payload.prompt : card.body || card.title || "";
-      setCommand(prompt);
-      setStatus(`Loaded "${action.label}" into the composer`);
-      return;
-    }
-
-    const endpoint = typeof action.payload?.endpoint === "string" ? action.payload.endpoint : "";
-    const method = typeof action.payload?.method === "string" ? action.payload.method : "POST";
-    const body = action.payload?.body ?? {};
-    if (!endpoint) {
-      setStatus(`Action "${action.label}" is missing an endpoint`);
-      return;
-    }
-    setStatus(`${action.label}...`);
-    try {
-      await apiRequest<unknown>(apiBase, token, endpoint, {
-        method,
-        body: JSON.stringify(body),
-      });
-      await loadConversation("auto");
-      setStatus(`${action.label} complete`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : `${action.label} failed`);
-    }
-  }
-
-  async function queueAssistCommand(execute: boolean) {
-    const trimmed = command.trim();
-    if (!trimmed) {
-      setStatus("Enter an operator command first");
-      return;
-    }
-
-    try {
-      const payload = await apiRequest<AssistantQueuedJob>(apiBase, token, "/v1/agent/command/assist", {
-        method: "POST",
-        body: JSON.stringify({
-          command: trimmed,
-          execute,
-          device_target: "web-desktop",
-          provider_hint: "codex_local",
-        }),
-      });
-      setAssistJobs((previous) => {
-        const next = [payload, ...previous.filter((item) => item.id !== payload.id)].slice(0, 12);
-        writeEntitySnapshot(ASSISTANT_AI_JOBS_SNAPSHOT, next);
-        cacheAssistantJobs(ASSISTANT_AI_JOBS_ENTITY_SCOPE, next);
-        return next;
-      });
-      clearEntityCachesStale(ASSISTANT_CACHE_PREFIXES);
-      setStatus(`Queued Codex ${execute ? "execute" : "plan"} job ${payload.id}`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to queue Codex planner job");
-    }
-  }
-
-  async function startVoiceRecording() {
-    if (!browserSupportsRecording) {
-      setStatus("This browser does not support recording voice commands");
-      return;
-    }
-    if (recording) {
-      setStatus("Voice recording is already in progress");
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      chunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        setVoiceBlob(blob);
-        setRecording(false);
-        chunksRef.current = [];
-        holdToTalkActiveRef.current = false;
-        stopRecordingOnceReadyRef.current = false;
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        recorderRef.current = null;
-        setStatus("Voice command ready to upload");
-      };
-      recorder.start();
-      recorderRef.current = recorder;
-      streamRef.current = stream;
-      setVoiceBlob(null);
-      setRecording(true);
-      setStatus("Recording voice command...");
-      if (!holdToTalkActiveRef.current || stopRecordingOnceReadyRef.current) {
-        stopRecordingOnceReadyRef.current = false;
-        recorder.stop();
-      }
-    } catch (error) {
-      holdToTalkActiveRef.current = false;
-      stopRecordingOnceReadyRef.current = false;
-      setStatus(error instanceof Error ? error.message : "Failed to start voice recording");
-    }
-  }
-
-  function stopVoiceRecording() {
-    if (!recorderRef.current) {
-      setStatus("No voice command recording is in progress");
-      return;
-    }
-    recorderRef.current.stop();
-  }
-
-  async function submitVoiceCommand(execute: boolean) {
-    if (!voiceBlob) {
-      setStatus("Record a voice command first");
-      return;
-    }
-
-    const mimeType = voiceBlob.type || "audio/webm";
-    const queueId = createVoiceQueueId();
-    const queueItem: AssistantVoiceUploadQueueItem = {
-      id: queueId,
-      title: "Web voice command",
-      execute,
-      provider_hint: "whisper_local",
-      device_target: "web-desktop",
-      file_name: `voice-command-${Date.now()}.${extensionForMime(mimeType)}`,
-      mime_type: mimeType,
-      blob: voiceBlob,
-      created_at: new Date().toISOString(),
-      attempts: 0,
-    };
-    setVoiceUploadQueue((previous) => [queueItem, ...previous]);
-    setVoiceBlob(null);
-    setStatus(
-      isOnline && token
-        ? `Queued voice upload ${queueId}; replaying now`
-        : `Queued voice upload ${queueId} for replay`,
-    );
-  }
-
-  async function resetConversationSession() {
-    try {
-      const payload = await apiRequest<ConversationSessionResetResponse>(
+      const payload = await apiRequest<AssistantThreadSnapshot>(
         apiBase,
         token,
-        "/v1/conversations/primary/session/reset",
-        { method: "POST" },
+        `/v1/assistant/interrupts/${interruptId}/submit`,
+        {
+          method: "POST",
+          body: JSON.stringify({ values }),
+        },
       );
-      setSessionState(payload.session_state);
-      const clearedKeys = payload.cleared_keys ?? Object.keys(sessionState);
-      const preservedMessageCount = payload.preserved_message_count ?? conversationMessages.length;
-      const preservedTraceCount = payload.preserved_tool_trace_count ?? conversationTraces.length;
-      const clearedLabel =
-        clearedKeys.length > 0 ? `${clearedKeys.length} key${clearedKeys.length === 1 ? "" : "s"} cleared` : "Session already empty";
-      setStatus(
-        `${clearedLabel}; kept ${preservedMessageCount} messages and ${preservedTraceCount} traces`,
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to clear conversation state");
+      setSnapshot(payload);
+      setCursor(payload.next_cursor || null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.body : "Failed to submit the panel.");
+    } finally {
+      setSending(false);
     }
   }
 
-  useEffect(() => {
-    if (!token) {
+  async function dismissInterrupt(interruptId: string) {
+    if (!snapshot) {
       return;
     }
-    loadConversation("auto").catch(() => undefined);
-    loadIntents().catch(() => undefined);
-    loadVoiceJobs("auto").catch(() => undefined);
-    loadAssistJobs("auto").catch(() => undefined);
-  }, [loadAssistJobs, loadConversation, loadIntents, loadVoiceJobs, token]);
-
-  useEffect(() => {
-    if (!voiceUploadQueueHydrated || voiceUploadQueue.length === 0 || !isOnline || !token) {
-      return;
+    setSending(true);
+    setError(null);
+    try {
+      const payload = await apiRequest<AssistantThreadSnapshot>(
+        apiBase,
+        token,
+        `/v1/assistant/interrupts/${interruptId}/dismiss`,
+        {
+          method: "POST",
+        },
+      );
+      setSnapshot(payload);
+      setCursor(payload.next_cursor || null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.body : "Failed to dismiss the panel.");
+    } finally {
+      setSending(false);
     }
+  }
 
-    replayVoiceUploadQueue("auto").catch((error) => {
-      setStatus(error instanceof Error ? error.message : "Voice upload replay failed");
-      setVoiceQueueReplayInFlight(false);
-    });
-  }, [
-    isOnline,
-    replayVoiceUploadQueue,
-    token,
-    voiceUploadQueue.length,
-    voiceUploadQueueHydrated,
-  ]);
-
-  const supportPaneActions = [
-    ...(historyPane.collapsed ? [{ id: "assistant-history", label: "Show side lane", onClick: historyPane.expand }] : []),
-    ...(diagnosticsPane.collapsed ? [{ id: "assistant-diagnostics", label: "Show diagnostics", onClick: diagnosticsPane.expand }] : []),
-  ];
-  const hasVisibleSupportPane = !historyPane.collapsed || !diagnosticsPane.collapsed;
-  const assistantReplies = conversationMessages.filter((message) => message.role === "assistant").length;
-  const attachmentCount = conversationMessages.reduce((count, message) => (
-    count + message.cards.filter((card) => !["thread_context", "tool_step"].includes(card.kind)).length
-  ), 0);
-  const composerHeadline = voiceBlob ? "Voice clip ready" : recording ? "Listening now" : pendingTurn ? "Assistant is answering" : "Stay in the thread";
-  const composerSubline = voiceBlob
-    ? "Route the captured clip into planning or execution."
-    : recording
-      ? "Release to stop the local recording and keep the reply in this shared thread."
-      : pendingTurn
-        ? "The thread is live. Keep the next move close while the reply lands."
-        : "Type, speak, or reuse attachment text without leaving the main conversation plane.";
-  const composerState = voiceBlob ? "voice-ready" : recording ? "listening" : pendingTurn ? "pending" : "idle";
-  const composerHasDraft = command.trim().length > 0;
+  const activeRun = snapshot?.runs.find((run) => run.status === "running" || run.status === "interrupted");
+  const activeInterrupt = snapshot?.interrupts.find((interrupt) => interrupt.status === "pending");
 
   return (
-    <AssistantWorkspaceShell
-      activeSurface="main-room"
-      variant="assistant"
-      statusLabel={isOnline ? "Online" : "Offline cache"}
-      brandMeta="Primary conversation workspace"
-      ctaLabel="Quick capture"
-      queueLabel={`${voiceUploadQueue.length} voice queued`}
-      searchLabel="Search memory"
-      searchAriaLabel="Search notes, artifacts, and thread memory"
-      searchPlaceholder="Search notes, artifacts, and clips..."
-      profileTitle={pendingTurn ? "Reply in motion" : "Live thread"}
-      railSlot={(
-        <>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Thread state</span>
-            <div className="april-rail-metric-stack">
-              <div className="april-rail-metric-card">
-                <strong>{pendingTurn ? "LIVE" : "READY"}</strong>
-                <span>{PRODUCT_SURFACES.assistant.label}</span>
-              </div>
-              <div className="april-rail-metric-card">
-                <strong>{history.length}</strong>
-                <span>Recent runs</span>
-              </div>
-            </div>
-          </div>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Support views</span>
-            <div className="april-rail-link-stack">
-              <Link href="/notes">{PRODUCT_SURFACES.library.label}</Link>
-              <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
-              <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
-            </div>
-          </div>
-        </>
-      )}
+    <StarlogAssistantRuntimeProvider
+      messages={snapshot?.messages ?? []}
+      isRunning={sending || activeRun?.status === "running"}
+      onSendMessage={sendMessage}
     >
-      <section className={`april-main-room-desktop assistant-chat-layout${hasVisibleSupportPane ? " has-side-pane" : ""}`}>
-        <div className="april-main-room-story">
-          <header className="assistant-chat-head">
-            <div className="assistant-chat-head-copy">
-              <span className="april-panel-kicker">{PRODUCT_SURFACES.assistant.label}</span>
-              <h1>{conversationTitle === "Assistant thread" ? "Live thread" : conversationTitle}</h1>
-              <p>
-                One persistent conversation for planning, capture follow-through, and returned artifact context.
-              </p>
-              <div className="assistant-chat-head-stats" aria-label="Thread overview">
-                <div className="assistant-chat-stat">
-                  <strong>{conversationMessages.length}</strong>
-                  <span>messages</span>
-                </div>
-                <div className="assistant-chat-stat">
-                  <strong>{assistantReplies}</strong>
-                  <span>assistant replies</span>
-                </div>
-                <div className="assistant-chat-stat">
-                  <strong>{attachmentCount}</strong>
-                  <span>attachments</span>
-                </div>
-              </div>
-            </div>
-            <div className="assistant-chat-head-pills" aria-label="Assistant status">
-              <span>{pendingTurn ? "Reply pending" : "Live"}</span>
-              <span>{Object.keys(sessionState).length} state keys</span>
-              {voiceUploadQueue.length > 0 ? <span>{voiceUploadQueue.length} queued</span> : null}
-            </div>
-          </header>
+      <main className={styles.page}>
+        <section className={styles.hero}>
+          <div>
+            <p className={styles.kicker}>Assistant Runtime</p>
+            <h1>{snapshot?.title || "Assistant thread"}</h1>
+            <p className={styles.lede}>
+              Starlog is now centered on a server-owned assistant thread with runs, interrupts,
+              ambient updates, and support-surface events.
+            </p>
+          </div>
+          <div className={styles.heroMeta}>
+            <span>{isOnline ? "Online" : "Offline"}</span>
+            <span>{activeRun ? `Run: ${activeRun.status}` : "Idle"}</span>
+            <span>{activeInterrupt ? `Panel: ${activeInterrupt.title}` : "No open panel"}</span>
+          </div>
+        </section>
 
-          {supportPaneActions.length > 0 ? <PaneRestoreStrip actions={supportPaneActions} className="assistant-chat-restore-strip" /> : null}
-
-          <AssistantSurfacePanel className="april-main-room-transcript-card">
+        <section className={styles.layout}>
+          <div className={styles.threadColumn}>
             <MainRoomThread
-              messages={transcriptMessages}
-              traces={conversationTraces}
-              expandedCards={expandedCards}
-              expandedTraces={expandedTraces}
-              onToggleCards={toggleExpandedCards}
-              onToggleTraces={toggleExpandedTraces}
-              onReuseCommand={(nextCommand) => setCommand(nextCommand)}
-              onCardAction={handleCardAction}
-              emptyTitle={productCopy.assistant.emptyTitle}
-              emptyBody={productCopy.assistant.emptyBody}
-              emptyActions={showcaseActions}
-              transcriptEndRef={setTranscriptEndRef}
+              snapshot={snapshot}
+              loading={loading}
+              busy={sending}
+              onInterruptSubmit={submitInterrupt}
+              onInterruptDismiss={dismissInterrupt}
             />
-          </AssistantSurfacePanel>
-        </div>
-
-        {hasVisibleSupportPane ? (
-          <aside className="april-main-room-aux assistant-chat-sidepane">
-          {!historyPane.collapsed ? (
-            <AssistantSurfacePanel className="april-support-panel">
-              <div className="april-panel-head">
-                <div>
-                  <span className="april-panel-kicker">Side lane</span>
-                  <h2>Recent phrasing</h2>
-                </div>
-                <PaneToggleButton label="Hide pane" onClick={historyPane.collapse} className="assistant-chat-pane-toggle" />
-              </div>
-              <p className="assistant-side-note">
-                Pull proven command language back into the composer without leaving the live thread.
-              </p>
-              <ul className="assistant-mini-feed">
-                {history.length === 0 ? (
-                  <li className="assistant-mini-feed-empty">No recent command runs yet.</li>
-                ) : (
-                  history.map((entry, index) => (
-                    <li key={`${entry.command}-${index}`} className={index === 0 ? "assistant-mini-feed-item active" : "assistant-mini-feed-item"}>
-                      <button type="button" className="assistant-mini-feed-button" onClick={() => setCommand(entry.command)}>
-                        <span className="assistant-mini-feed-meta">{entry.matched_intent} · {entry.status}</span>
-                        <strong>{entry.command}</strong>
-                        <span>{entry.summary}</span>
-                      </button>
-                    </li>
-                  ))
-                )}
-              </ul>
-              <div className="assistant-side-action-cluster">
-                <span className="assistant-side-section-label">Command actions</span>
-                <div className="assistant-side-action-grid">
-                  <button className="assistant-side-action" type="button" onClick={() => runCommand(false)}>
-                    <strong>Preview flow</strong>
-                    <span>Inspect the planned tool path before it touches state.</span>
-                  </button>
-                  <button className="assistant-side-action" type="button" onClick={() => runCommand(true)}>
-                    <strong>Execute flow</strong>
-                    <span>Run the current command against the shared thread context.</span>
-                  </button>
-                  <button className="assistant-side-action" type="button" onClick={() => queueAssistCommand(true)}>
-                    <strong>Queue Codex</strong>
-                    <span>Push a deeper execution pass into the planner queue.</span>
-                  </button>
-                </div>
-              </div>
-            </AssistantSurfacePanel>
-          ) : null}
-
-          {!diagnosticsPane.collapsed ? (
-            <AssistantSurfacePanel className="april-support-panel">
-              <div className="april-panel-head">
-                <div>
-                  <span className="april-panel-kicker">Diagnostics</span>
-                  <h2>Thread internals</h2>
-                </div>
-                <PaneToggleButton label="Hide pane" onClick={diagnosticsPane.collapse} className="assistant-chat-pane-toggle" />
-              </div>
-              <p className="assistant-side-note">
-                Keep operator state visible but visually secondary to the conversation itself.
-              </p>
-              <div className="assistant-diagnostics-grid">
-                <article className="assistant-diagnostic-card">
-                  <span className="observatory-eyebrow">Thread memory</span>
-                  <p className="console-copy">
-                    {Object.keys(sessionState).length > 0
-                      ? JSON.stringify(sessionState, null, 2)
-                      : "Short-term session state is empty."}
-                  </p>
-                </article>
-                <article className="assistant-diagnostic-card">
-                  <span className="observatory-eyebrow">Queued voice items</span>
-                  {voiceUploadQueue.length === 0 ? (
-                    <p className="console-copy">No queued voice uploads.</p>
-                  ) : (
-                    voiceUploadQueue.map((item) => (
-                      <div key={item.id} className="assistant-queue-item">
-                        <div className="assistant-job-card-head">
-                          <strong>{item.id}</strong>
-                          <span>{item.execute ? "execute" : "plan"}</span>
-                        </div>
-                        <p className="assistant-job-inline-copy">Attempts {item.attempts}</p>
-                        {item.last_error ? <p className="assistant-job-inline-copy">Last error {item.last_error}</p> : null}
-                        <button className="assistant-side-action compact muted" type="button" onClick={() => dropQueuedVoiceUpload(item.id)}>
-                          <strong>Drop upload</strong>
-                          <span>Remove this queued capture from the replay list.</span>
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </article>
-              </div>
-              <div className="assistant-job-section">
-                <div className="assistant-job-section-head">
-                  <span className="assistant-side-section-label">Voice jobs</span>
-                  <span className="assistant-job-count">{voiceJobs.length}</span>
-                </div>
-                <div className="assistant-job-stack">
-                  {voiceJobs.length === 0 ? (
-                    <p className="assistant-job-empty">No voice command jobs yet.</p>
-                  ) : (
-                    voiceJobs.map((job) => (
-                      <article key={job.id} className="assistant-job-card">
-                        <div className="assistant-job-card-head">
-                          <strong>{job.id}</strong>
-                          <span>{job.status}</span>
-                        </div>
-                        <p>Provider {job.provider_used || job.provider_hint || "pending"}</p>
-                        {job.output.transcript ? <p>Transcript {job.output.transcript}</p> : null}
-                        {job.error_text ? <p>Error {job.error_text}</p> : null}
-                      </article>
-                    ))
-                  )}
-                </div>
-              </div>
-            <div className="assistant-job-section">
-              <div className="assistant-job-section-head">
-                <span className="assistant-side-section-label">Planner jobs</span>
-                <span className="assistant-job-count">{assistJobs.length}</span>
-              </div>
-              <div className="assistant-job-stack">
-                {assistJobs.length === 0 ? (
-                  <p className="assistant-job-empty">No queued planner jobs yet.</p>
-                ) : (
-                  assistJobs.map((job) => (
-                    <article key={job.id} className="assistant-job-card">
-                      <div className="assistant-job-card-head">
-                        <strong>{job.id}</strong>
-                        <span>{job.status}</span>
-                      </div>
-                      <p>Provider {job.provider_used || job.provider_hint || "pending"}</p>
-                      {job.payload.command ? <p>Command {job.payload.command}</p> : null}
-                    </article>
-                  ))
-                )}
-              </div>
-            </div>
-            </AssistantSurfacePanel>
-          ) : null}
-        </aside>
-        ) : null}
-
-        <AssistantSurfacePanel className={`april-main-room-dock assistant-chat-dock state-${composerState}${speakingReply ? " speaking" : ""}`}>
-          <div className="april-main-room-dock-head assistant-chat-dock-head">
-            <div className="assistant-chat-dock-copy">
-              <span className="april-panel-kicker">Composer</span>
-              <h2>{composerHeadline}</h2>
-              <p>{composerSubline}</p>
-            </div>
-            <div className="assistant-chat-dock-meta">
-              <span>{pendingTurn ? "Reply pending" : status}</span>
-              {voiceBlob ? <span>Voice clip captured</span> : null}
-            </div>
-          </div>
-          <div className="april-main-room-dock-row">
-            <label className={`april-main-room-input-shell${composerHasDraft ? " has-draft" : ""}`} htmlFor="assistant-command">
+            <form
+              className={styles.composer}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendMessage(composer);
+              }}
+            >
               <textarea
-                id="assistant-command"
-                className="textarea april-main-room-command-input"
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                rows={3}
-                placeholder={productCopy.assistant.inputPlaceholder}
+                value={composer}
+                onChange={(event) => setComposer(event.target.value)}
+                placeholder="Capture, plan, review, or ask the Assistant to move something forward."
+                rows={4}
+                disabled={!snapshot || sending}
               />
-            </label>
-            <button
-              className={`assistant-voice-button${recording ? " recording" : ""}${voiceBlob ? " ready" : ""}${pendingTurn ? " pending" : ""}`}
-              type="button"
-              onPointerDown={beginHoldToTalk}
-              onPointerUp={endHoldToTalk}
-              onPointerLeave={endHoldToTalk}
-              onPointerCancel={endHoldToTalk}
-              onKeyDown={handleHoldToTalkKeyDown}
-              onKeyUp={handleHoldToTalkKeyUp}
-              disabled={!browserSupportsRecording}
-            >
-              <span className="assistant-voice-button-label">
-                {recording ? "Release" : voiceBlob ? "Ready" : "Mic"}
-              </span>
-              <span className="assistant-voice-button-meta">
-                {browserSupportsRecording ? "Local mic capture" : "Capture unavailable"}
-              </span>
-            </button>
-          </div>
-          <div className="assistant-chat-dock-strip" aria-label="Composer shortcuts">
-            <span>{browserSupportsRecording ? "Hold to talk" : "Voice unavailable"}</span>
-            <span>{browserSupportsSpeech ? "Spoken reply ready" : "Speech unavailable"}</span>
-            <span>{`Upload queue ${voiceUploadQueue.length}`}</span>
-            <span>{history.length} reusable runs</span>
-          </div>
-          <div className="april-main-room-dock-actions assistant-chat-dock-actions">
-            <button className="assistant-dock-action primary" type="button" onClick={() => sendToMainRoom("text")} disabled={turnInFlight}>
-              <strong>{turnInFlight ? "Sending..." : "Send"}</strong>
-              <span>Post the current draft into the persistent assistant thread.</span>
-            </button>
-            <button
-              className="assistant-dock-action"
-              type="button"
-              onClick={toggleSpokenReply}
-              disabled={!browserSupportsSpeech || !latestSpokenReply}
-            >
-              <strong>{speakingReply ? "Stop spoken reply" : "Speak latest reply"}</strong>
-              <span>Use local speech playback for the newest assistant answer.</span>
-            </button>
-            <button className="assistant-dock-action" type="button" onClick={() => loadConversation("manual").catch(() => undefined)}>
-              <strong>Refresh thread</strong>
-              <span>Rehydrate the shared transcript and support state from the server.</span>
-            </button>
-            <button className="assistant-dock-action muted" type="button" onClick={() => resetConversationSession()}>
-              <strong>Reset session</strong>
-              <span>Clear short-term thread state while preserving the conversation itself.</span>
-            </button>
-          </div>
-          <div className="assistant-chip-grid">
-            {exampleCommands.slice(0, 6).map((example) => (
-              <button key={example} className="april-chip-button" type="button" onClick={() => setCommand(example)}>
-                {example}
-              </button>
-            ))}
-          </div>
-          {voiceBlob ? (
-            <div className="assistant-voice-ready">
-              <p className="console-copy">Voice clip captured and ready for upload.</p>
-              <div className="assistant-voice-ready-actions">
-                <button className="assistant-side-action compact" type="button" onClick={() => submitVoiceCommand(false)}>
-                  <strong>Plan voice</strong>
-                  <span>Route the clip into a planning pass.</span>
-                </button>
-                <button className="assistant-side-action compact" type="button" onClick={() => submitVoiceCommand(true)}>
-                  <strong>Execute voice</strong>
-                  <span>Send the clip into the live assistant flow.</span>
-                </button>
-                <button className="assistant-side-action compact muted" type="button" onClick={() => discardVoiceCapture()}>
-                  <strong>Discard clip</strong>
-                  <span>Clear the capture and return to the text composer.</span>
+              <div className={styles.composerBar}>
+                <span>{error || (sending ? "Assistant is working..." : "The thread remains the control plane.")}</span>
+                <button type="submit" disabled={!snapshot || sending || !composer.trim()}>
+                  Send
                 </button>
               </div>
-            </div>
-          ) : null}
-        </AssistantSurfacePanel>
-      </section>
-    </AssistantWorkspaceShell>
+            </form>
+          </div>
+
+          <aside className={styles.sideRail}>
+            <article className={styles.sideCard}>
+              <p className={styles.sideLabel}>Protocol</p>
+              <h2>assistant-ui runtime boundary</h2>
+              <p>
+                This web surface uses the new `/v1/assistant/...` contract and an assistant-ui
+                external-store runtime adapter instead of the old `content + cards + traces` page
+                orchestration.
+              </p>
+            </article>
+
+            <article className={styles.sideCard}>
+              <p className={styles.sideLabel}>Open Work</p>
+              <ul>
+                <li>{activeRun ? `${activeRun.orchestrator} run is ${activeRun.status}` : "No active run"}</li>
+                <li>{activeInterrupt ? activeInterrupt.title : "No pending interrupt"}</li>
+                <li>{snapshot ? `${snapshot.messages.length} thread messages loaded` : "No thread snapshot yet"}</li>
+              </ul>
+            </article>
+          </aside>
+        </section>
+      </main>
+    </StarlogAssistantRuntimeProvider>
   );
 }

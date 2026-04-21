@@ -1,7 +1,7 @@
 # AGENTS.md — Starlog repo instructions
 
 ## Product goal
-Build Starlog as a single-user, low-cost, independent system for knowledge management, scheduling, alarms, and learning workflows.
+Build Starlog as a single-user, low-cost, independent Life OS and lifelong learning engine.
 
 ## Locked v1 preferences
 - Voice/chat-first interaction is the canonical operating model; buttons and direct surface interactions are secondary.
@@ -36,13 +36,14 @@ Build Starlog as a single-user, low-cost, independent system for knowledge manag
 When a recurring preference, reusable guardrail, or durable process rule is discovered, update this file.
 Put dated incident history and one-off issue chronology in a dedicated doc under `docs/`, not in `AGENTS.md`.
 
-## Design source of truth
+## Design and architecture sources of truth
 
-Use the repo-local chat overhaul moodboard as the primary visual source of truth for the current Assistant redesign across mobile and web.
+Use the repo-local assistant reset documents as the active source of truth for Assistant redesign and assistant stack work.
 
-- Treat [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md) and the corresponding implementation reference at [apps/web/app/design/chat-moodboard/page.tsx](/home/ubuntu/starlog/apps/web/app/design/chat-moodboard/page.tsx) as the active design references for chat-first UI work.
-- The April 2026 pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` is now a soft historical reference only. Use it for lineage and constraint checks, not as a screen-by-screen target.
-- When design guidance conflicts across sources, prefer the repo-local chat overhaul moodboard over the April pack and older screenshots/docs.
+- Treat [VISION.md](/home/ubuntu/starlog/VISION.md), [starlog_surface_event_and_dynamic_ui_spec.md](/home/ubuntu/starlog/starlog_surface_event_and_dynamic_ui_spec.md), [starlog_assistant_ui_backend_migration_design.md](/home/ubuntu/starlog/starlog_assistant_ui_backend_migration_design.md), [starlog_assistant_ui_contracts_and_api_blueprint.md](/home/ubuntu/starlog/starlog_assistant_ui_contracts_and_api_blueprint.md), and [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md) as the active product and implementation basis for assistant work.
+- Treat [docs/ASSISTANT_UI_REFERENCE.md](/home/ubuntu/starlog/docs/ASSISTANT_UI_REFERENCE.md) and [apps/web/app/design/assistant-runtime-reference/page.tsx](/home/ubuntu/starlog/apps/web/app/design/assistant-runtime-reference/page.tsx) as the active repo-local UI reference artifacts.
+- Treat [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md) and the April 2026 pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as historical-only input. Use them for lineage checks, not as implementation targets.
+- When older docs or UI references conflict with the assistant reset documents, prefer the new assistant reset documents and update or remove the stale references.
 
 ## Default execution mode
 
@@ -61,11 +62,17 @@ This section is the repo-local purpose map for markdown files so agents know whi
 
 - `AGENTS.md` — repo instructions, stable product/collaboration preferences, lock protocol, branch hygiene, markdown map, and durable engineering guardrails.
 - `PLAN.md` — canonical forward-looking product and architecture direction for Starlog.
+- `VISION.md` — product identity and decision filter for Starlog as a Life OS and lifelong learning engine.
+- `starlog_surface_event_and_dynamic_ui_spec.md` — canonical assistant thread event/panel behavior spec.
+- `starlog_assistant_ui_backend_migration_design.md` — canonical repo-specific backend migration design for assistant-ui adoption.
+- `starlog_assistant_ui_contracts_and_api_blueprint.md` — canonical contracts, API, and storage blueprint for the new assistant protocol.
+- `starlog_assistant_ui_repo_execution_checklist.md` — canonical execution-ordered migration checklist for the assistant reset.
 - `README.md` — top-level user-facing product README for install, sign-in handoff, release status, and operator entrypoints; keep developer internals and secrets out of it.
+- `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local UI reference for the assistant reset.
+- `docs/CHAT_UI_MOODBOARD.md` — historical-only prior chat redesign reference; not an active source of truth.
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
-- `docs/CHAT_UI_MOODBOARD.md` — primary visual direction, material system, motion thesis, and implementation guardrails for the current Assistant chat overhaul.
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` — archived human-readable queue snapshot; not the live coordination surface.
 - `docs/ENGINEERING_ISSUE_HISTORY.md` — archived dated issue chronology and host-specific debugging history that should not live inline in `AGENTS.md`.
 - `docs/PARALLEL_AGENT_WORKFLOW.md` — subagent-only workflow for workitem locking, extra worktrees, branch cleanup, and shared dependency reuse.
@@ -78,7 +85,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable preview/semi-stable release checklist spanning docs, validation, artifacts, and signoff.
-- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped companion to `PLAN.md`; keeps the current Assistant-first implementation sequence, system boundaries, and workstream ordering in one execution-focused plan.
+- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped execution companion to `PLAN.md`; keep it aligned with the assistant reset direction.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
 - `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.
@@ -86,13 +93,15 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PWA_RELEASE_VERIFICATION_GATE.md` — mandatory pre-release gate for PWA builds/tests.
 - `docs/RAILWAY_DEPLOY.md` — recommended Railway deployment model and supporting runbooks.
 - `docs/srs/README.md` — SRS deck/bootstrap references and import commands.
+- `services/ai-runtime/prompts/README.md` — prompt pack conventions for user-editable assistant and agent behavior files.
+- `services/ai-runtime/prompts/*.md` — canonical assistant/agent behavior and workflow prompt templates; prefer editing these markdown files over changing inline prompt strings in code.
 - `services/worker/README.md` — placeholder scope note for future dedicated worker-runtime code.
 - `tools/browser-extension/README.md` — browser clipper scaffold purpose and local load instructions.
 - `tools/desktop-helper/README.md` — desktop helper capabilities, validation matrix, and host evidence.
 - `apps/mobile/.expo/README.md` — Expo-generated explanation of local `.expo` state; informational only, not a planning source.
 - `services/api/.pytest_cache/README.md` — pytest-generated cache note; informational only, not a planning source.
 - Vendor markdown under `services/api/.venv/**` is third-party package/license material and is not part of Starlog repo guidance.
-- External markdown under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**` is retained as historical design input only; the active chat redesign reference now lives in repo-local docs and implementation files.
+- External markdown under `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**` is historical-only design input.
 
 ## Collaboration preferences
 
@@ -119,8 +128,9 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - When reusing shared dependencies across worktrees, verify symlinks, `PYTHONPATH`, and build outputs still point at the active checkout before trusting validation results.
 - Prefer exact evidence over optimistic success text: confirm builds, installs, screenshots, and route transitions directly.
 - For Android validation from WSL on this host, treat Windows `adb.exe`, Windows-visible APK staging paths, and manual device unlock as the reliable baseline.
-- Preserve collapsible side-pane behavior and other explicitly stated interaction contracts when redesigning assistant and support surfaces.
-- For major UI overhauls, establish or refresh a repo-local moodboard/reference artifact before changing shared components.
+- Preserve explicitly stated interaction contracts when redesigning assistant and support surfaces.
+- For major UI overhauls, refresh the repo-local reference artifact before changing shared components.
+- Keep assistant and agent behavior prompts in repo-local `.md` files under `services/ai-runtime/prompts/` so users can inspect and edit them directly; do not bury canonical prompt behavior in code literals.
 - Keep docs-scoped workflow plans under `docs/`; replace them with updated versions rather than deleting them when the plan changes.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.

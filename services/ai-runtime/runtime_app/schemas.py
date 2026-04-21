@@ -33,6 +33,10 @@ class ChatTurnExecutionResponse(BaseModel):
     user_prompt: str
     response_text: str
     cards: list[dict[str, Any]] = Field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    interrupts: list[dict[str, Any]] = Field(default_factory=list)
+    ambient_updates: list[dict[str, Any]] = Field(default_factory=list)
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
     session_state: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 

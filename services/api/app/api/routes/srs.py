@@ -13,7 +13,17 @@ from app.schemas.srs import (
     ReviewCreateRequest,
     ReviewResponse,
 )
-from app.services import srs_service
+from app.services import assistant_event_service, srs_service
+
+
+def _review_rating_label(rating: int) -> str:
+    return {
+        1: "Again",
+        2: "Again",
+        3: "Hard",
+        4: "Good",
+        5: "Easy",
+    }.get(rating, f"Rating {rating}")
 
 router = APIRouter()
 
@@ -138,4 +148,24 @@ def review_card(
     )
     if reviewed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    try:
+        rating_label = _review_rating_label(payload.rating)
+        assistant_event_service.create_surface_event(
+            db,
+            thread_id="primary",
+            source_surface="review",
+            kind="review.answer.graded",
+            entity_ref={"entity_type": "card", "entity_id": payload.card_id, "href": "/review"},
+            payload={
+                "card_id": payload.card_id,
+                "rating": payload.rating,
+                "label": f"Review graded: {rating_label}",
+                "body": f"Next due {str(reviewed['next_due_at'])[:10]}",
+                **reviewed,
+            },
+            visibility="ambient",
+        )
+    except Exception:
+        # Review submission is primary; assistant reflection should not block the SRS path.
+        pass
     return ReviewResponse.model_validate(reviewed)
