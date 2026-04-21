@@ -5,7 +5,8 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_db, require_user_id
+from app.api.deps import get_db, require_token_hash, require_user_id
+from app.db.storage import get_connection
 from app.schemas.assistant import (
     AssistantCreateMessageRequest,
     AssistantCreateMessageResponse,
@@ -17,9 +18,41 @@ from app.schemas.assistant import (
     AssistantThreadSnapshot,
     AssistantThreadSummary,
 )
-from app.services import assistant_event_service, assistant_interrupt_service, assistant_run_service, assistant_thread_service
+from app.services import assistant_event_service, assistant_interrupt_service, assistant_run_service, assistant_thread_service, auth_service
 
 router = APIRouter(prefix="/assistant")
+
+
+async def _stream_delta_events(
+    *,
+    thread_id: str,
+    user_id: str,
+    request: Request,
+    cursor: str | None,
+    poll_interval_seconds: float = 2.0,
+):
+    current_cursor = cursor or request.headers.get("last-event-id") or None
+    yield "retry: 2000\n\n"
+    while True:
+        if await request.is_disconnected():
+            break
+        with get_connection() as conn:
+            delta_list = assistant_thread_service.list_deltas(conn, thread_id, cursor=current_cursor, user_id=user_id)
+        if delta_list["deltas"]:
+            for delta in delta_list["deltas"]:
+                yield f"event: {delta['event_type']}\n"
+                yield f"data: {json.dumps(delta, sort_keys=True)}\n\n"
+            next_cursor = delta_list.get("cursor") or current_cursor
+            if next_cursor:
+                payload = json.dumps({"cursor": next_cursor}, sort_keys=True)
+                yield "event: cursor\n"
+                yield f"id: {next_cursor}\n"
+                yield f"data: {payload}\n\n"
+            current_cursor = next_cursor
+        else:
+            current_cursor = delta_list.get("cursor") or current_cursor
+            yield ": keep-alive\n\n"
+        await asyncio.sleep(poll_interval_seconds)
 
 
 @router.get("/threads", response_model=list[AssistantThreadSummary])
@@ -207,30 +240,21 @@ def list_updates(
 async def stream_updates(
     thread_id: str,
     request: Request,
-    user_id: str = Depends(require_user_id),
-    db: Connection = Depends(get_db),
+    cursor: str | None = Query(default=None),
+    token_hash: str = Depends(require_token_hash),
 ) -> StreamingResponse:
-    try:
-        assistant_thread_service.get_thread(db, thread_id, user_id=user_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    with get_connection() as conn:
+        user_id = auth_service.get_user_id_from_token_hash(conn, token_hash)
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid auth token")
+        try:
+            assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
-    async def _iter() -> str:
-        cursor: str | None = None
-        while True:
-            if await request.is_disconnected():
-                break
-            delta_list = assistant_thread_service.list_deltas(db, thread_id, cursor=cursor, user_id=user_id)
-            if delta_list["deltas"]:
-                cursor = delta_list.get("cursor")
-                for delta in delta_list["deltas"]:
-                    yield f"event: {delta['event_type']}\n"
-                    yield f"data: {json.dumps(delta, sort_keys=True)}\n\n"
-            else:
-                cursor = delta_list.get("cursor") or cursor
-                yield ": keep-alive\n\n"
-            await asyncio.sleep(2)
-
-    return StreamingResponse(_iter(), media_type="text/event-stream")
+    return StreamingResponse(
+        _stream_delta_events(thread_id=thread_id, user_id=user_id, request=request, cursor=cursor),
+        media_type="text/event-stream",
+    )

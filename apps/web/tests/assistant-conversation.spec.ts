@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 const API_BASE = "http://api.local";
 const TOKEN = "token-123";
@@ -13,188 +13,152 @@ async function seedSession(page: import("@playwright/test").Page): Promise<void>
   );
 }
 
-async function triggerDomClick(locator: Locator): Promise<void> {
-  await locator.evaluate((element) => {
-    if (element instanceof HTMLElement) {
-      element.click();
-    }
-  });
+function threadSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "thr_primary",
+    slug: "primary",
+    title: "Assistant thread",
+    mode: "assistant",
+    created_at: "2026-04-21T09:00:00.000Z",
+    updated_at: "2026-04-21T09:00:00.000Z",
+    last_message_at: null,
+    last_preview_text: null,
+    messages: [],
+    runs: [],
+    interrupts: [],
+    next_cursor: "2026-04-21T09:00:00.000Z",
+    ...overrides,
+  };
 }
 
-test("hydrates the assistant from the server conversation and clears session state", async ({ page }) => {
-  await seedSession(page);
-
-  let sessionState: Record<string, unknown> = { last_matched_intent: "list_tasks" };
-  let conversationLoads = 0;
-
-  await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
+async function routeAssistantShell(page: import("@playwright/test").Page, snapshot: Record<string, unknown>) {
+  await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: "[]",
+      body: JSON.stringify(snapshot),
     });
   });
 
-  await page.route(`${API_BASE}/v1/ai/jobs*`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  await page.route(`${API_BASE}/v1/conversations/primary/session/reset`, async (route) => {
-    sessionState = {};
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/updates*`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         thread_id: "thr_primary",
-        session_state: {},
-        cleared_keys: ["last_matched_intent"],
-        preserved_message_count: 2,
-        preserved_tool_trace_count: 1,
-        updated_at: "2026-03-22T09:00:00.000Z",
+        cursor: snapshot.next_cursor,
+        deltas: [],
       }),
     });
   });
+}
 
-  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
-    conversationLoads += 1;
+test("renders rich assistant thread parts from the snapshot", async ({ page }) => {
+  await seedSession(page);
+  await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        id: "thr_primary",
-        slug: "primary",
-        title: "Primary conversation",
-        mode: "voice_native",
-        session_state: sessionState,
-        tool_traces: [
-          {
-            id: "trace_1",
-            thread_id: "thr_primary",
-            message_id: "msg_assistant_1",
-            tool_name: "list_tasks",
-            arguments: { status: "open" },
-            status: "completed",
-            result: { tasks: [{ id: "task_1" }] },
-            metadata: {},
-            created_at: "2026-03-22T08:01:02.000Z",
-          },
-        ],
-        created_at: "2026-03-22T08:00:00.000Z",
-        updated_at: "2026-03-22T08:05:00.000Z",
-        messages: [
-          {
-            id: "msg_user_1",
-            thread_id: "thr_primary",
-            role: "user",
-            content: "list tasks",
-            cards: [],
-            metadata: {},
-            created_at: "2026-03-22T08:01:00.000Z",
-          },
-          {
-            id: "msg_assistant_1",
-            thread_id: "thr_primary",
-            role: "assistant",
-            content: "Loaded your tasks.",
-            cards: [
-              {
-                kind: "assistant_summary",
-                version: 1,
-                title: "Task queue",
-                body: "3 tasks need attention next.",
-                entity_ref: null,
-                actions: [],
-                metadata: {},
-              },
-            ],
-            metadata: {
-              assistant_command: {
-                command: "list tasks",
-                planner: "voice_native_preview",
-                matched_intent: "list_tasks",
-                status: "planned",
-                summary: "Loaded your current tasks into the queue.",
-                steps: [],
-              },
+      body: JSON.stringify(
+        threadSnapshot({
+          last_message_at: "2026-04-21T09:01:00.000Z",
+          last_preview_text: "Planner noticed a conflict and surfaced it in the thread.",
+          messages: [
+            {
+              id: "msg_assistant_1",
+              thread_id: "thr_primary",
+              run_id: null,
+              role: "assistant",
+              status: "complete",
+              parts: [
+                {
+                  type: "text",
+                  id: "part_text_1",
+                  text: "Planner noticed a conflict and surfaced it in the thread.",
+                },
+                {
+                  type: "ambient_update",
+                  id: "part_ambient_1",
+                  update: {
+                    id: "ambient_1",
+                    event_id: "evt_1",
+                    label: "Planner conflict detected",
+                    body: "Deep Work overlaps with Team Sync.",
+                    entity_ref: null,
+                    actions: [],
+                    metadata: {},
+                    created_at: "2026-04-21T09:01:00.000Z",
+                  },
+                },
+                {
+                  type: "tool_call",
+                  id: "part_tool_1",
+                  tool_call: {
+                    id: "tool_1",
+                    tool_name: "resolve_planner_conflict",
+                    tool_kind: "ui_tool",
+                    status: "requires_action",
+                    arguments: { block_id: "tb_1" },
+                    title: "Resolve overlap",
+                    metadata: {},
+                  },
+                },
+              ],
+              metadata: {},
+              created_at: "2026-04-21T09:01:00.000Z",
+              updated_at: "2026-04-21T09:01:00.000Z",
             },
-            created_at: "2026-03-22T08:01:02.000Z",
-          },
-        ],
-      }),
+          ],
+        }),
+      ),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/stream`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: ": keep-alive\n\n",
     });
   });
 
   await page.goto("/assistant");
 
-  await expect(page.getByRole("heading", { name: "Thread internals" })).toBeVisible();
-  await expect(page.getByText("Loaded your current tasks into the queue.").first()).toBeVisible();
-  await expect(page.locator(".assistant-inline-step-card").filter({ hasText: "Task queue" })).toBeVisible();
-  await expect(page.getByText(/System trace collapsed/i).first()).toBeVisible();
-
-  await page.getByRole("button", { name: "Reset session" }).click();
-
-  await expect(page.getByText("1 key cleared; kept 2 messages and 1 traces")).toBeVisible();
-  await expect.poll(() => conversationLoads).toBe(1);
+  await expect(page.getByRole("heading", { name: "Assistant thread", exact: true })).toBeVisible();
+  await expect(page.getByText("Planner noticed a conflict and surfaced it in the thread.")).toBeVisible();
+  await expect(page.getByText("Planner conflict detected")).toBeVisible();
+  await expect(page.getByText("resolve_planner_conflict")).toBeVisible();
 });
 
-test("navigation-style conversation cards open their target surface", async ({ page }) => {
+test("navigation and composer card actions stay live in the assistant thread", async ({ page }) => {
   await seedSession(page);
-
-  await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  await page.route(`${API_BASE}/v1/ai/jobs*`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "thr_primary",
-        slug: "primary",
-        title: "Primary conversation",
-        mode: "voice_native",
-        session_state: {},
-        tool_traces: [],
-        created_at: "2026-03-22T08:00:00.000Z",
-        updated_at: "2026-03-22T08:05:00.000Z",
-        messages: [
-          {
-            id: "msg_user_1",
-            thread_id: "thr_primary",
-            role: "user",
-            content: "what should I study next?",
-            cards: [],
-            metadata: {},
-            created_at: "2026-03-22T08:01:00.000Z",
-          },
-          {
-            id: "msg_assistant_1",
-            thread_id: "thr_primary",
-            role: "assistant",
-            content: "You have a review queue and a note worth opening.",
-            cards: [
-              {
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      last_message_at: "2026-04-21T09:02:00.000Z",
+      last_preview_text: "Here are two next actions.",
+      messages: [
+        {
+          id: "msg_assistant_1",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: "part_text_1",
+              text: "Here are two next actions.",
+            },
+            {
+              type: "card",
+              id: "part_card_nav",
+              card: {
                 kind: "review_queue",
                 version: 1,
                 title: "Due cards",
-                body: "2 cards are ready now.",
-                entity_ref: { entity_type: "card", entity_id: "card_1", href: "/review" },
+                body: "Two cards are ready in Review.",
+                entity_ref: null,
                 actions: [
                   {
                     id: "open_review",
@@ -207,188 +171,278 @@ test("navigation-style conversation cards open their target surface", async ({ p
                 ],
                 metadata: {},
               },
-              {
-                kind: "knowledge_note",
-                version: 1,
-                title: "Orbit note",
-                body: "Capture the reset decisions before they drift.",
-                entity_ref: { entity_type: "note", entity_id: "note_1", href: "/notes" },
-                actions: [
-                  {
-                    id: "open_library",
-                    label: "Open",
-                    kind: "navigate",
-                    payload: { href: "/notes" },
-                    style: "secondary",
-                    requires_confirmation: false,
-                  },
-                ],
-                metadata: {},
-              },
-            ],
-            metadata: {},
-            created_at: "2026-03-22T08:01:02.000Z",
-          },
-        ],
-      }),
-    });
-  });
-
-  await page.goto("/assistant");
-
-  const reviewCard = page.locator(".assistant-inline-step-card").filter({
-    has: page.getByText("Due cards"),
-  }).first();
-  await reviewCard.scrollIntoViewIfNeeded();
-  await triggerDomClick(reviewCard.getByRole("button", { name: "Open Review" }));
-  await expect(page).toHaveURL(/\/review$/);
-
-  await page.goBack();
-  await expect(page).toHaveURL(/\/assistant$/);
-
-  const noteCard = page.locator(".assistant-inline-step-card").filter({
-    has: page.getByText("Orbit note"),
-  }).first();
-  await noteCard.scrollIntoViewIfNeeded();
-  await triggerDomClick(noteCard.getByRole("button", { name: "Open" }));
-  await expect(page).toHaveURL(/\/notes$/);
-});
-
-test("composer-style conversation cards prefill the Assistant composer in place", async ({ page }) => {
-  await seedSession(page);
-
-  await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  await page.route(`${API_BASE}/v1/ai/jobs*`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "thr_primary",
-        slug: "primary",
-        title: "Primary conversation",
-        mode: "voice_native",
-        session_state: {},
-        tool_traces: [],
-        created_at: "2026-03-22T08:00:00.000Z",
-        updated_at: "2026-03-22T08:05:00.000Z",
-        messages: [
-          {
-            id: "msg_user_1",
-            thread_id: "thr_primary",
-            role: "user",
-            content: "what should I do next?",
-            cards: [],
-            metadata: {},
-            created_at: "2026-03-22T08:01:00.000Z",
-          },
-          {
-            id: "msg_assistant_1",
-            thread_id: "thr_primary",
-            role: "assistant",
-            content: "Here is a follow-up prompt you can reuse.",
-            cards: [
-              {
+            },
+            {
+              type: "card",
+              id: "part_card_compose",
+              card: {
                 kind: "knowledge_note",
                 version: 1,
                 title: "Follow-up prompt",
-                body: "Ask for a concise summary of the latest capture.",
-                entity_ref: { entity_type: "note", entity_id: "note_2", href: "/notes" },
+                body: "Ask for a tighter summary before you schedule it.",
+                entity_ref: null,
                 actions: [
                   {
                     id: "ask_follow_up",
                     label: "Ask follow-up",
                     kind: "composer",
-                    payload: { prompt: "Summarize the latest capture and highlight any action items." },
+                    payload: { prompt: "Summarize the current review queue and suggest the first card to grade." },
                     style: "secondary",
                     requires_confirmation: false,
                   },
                 ],
                 metadata: {},
               },
-            ],
-            metadata: {},
-            created_at: "2026-03-22T08:01:02.000Z",
-          },
-        ],
-      }),
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:02:00.000Z",
+          updated_at: "2026-04-21T09:02:00.000Z",
+        },
+      ],
+    }),
+  );
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/stream`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: ": keep-alive\n\n",
     });
   });
 
   await page.goto("/assistant");
 
-  const followUpCard = page.locator(".assistant-inline-step-card").filter({
-    has: page.getByText("Follow-up prompt"),
-  }).first();
-  await followUpCard.scrollIntoViewIfNeeded();
-  await triggerDomClick(followUpCard.getByRole("button", { name: "Ask follow-up" }));
+  await page.getByRole("button", { name: "Ask follow-up" }).click();
+  await expect(
+    page.getByPlaceholder("Capture, plan, review, or ask the Assistant to move something forward."),
+  ).toHaveValue("Summarize the current review queue and suggest the first card to grade.");
 
-  await expect(page).toHaveURL(/\/assistant$/);
-  await expect(page.locator("#assistant-command")).toHaveValue(
-    "Summarize the latest capture and highlight any action items.",
-  );
+  await page.getByRole("button", { name: "Open Review" }).click();
+  await expect(page).toHaveURL(/\/review$/);
 });
 
-test("collapsed assistant side panes stay hidden after reload", async ({ page }) => {
+test("mutation card actions confirm, execute, and refresh the thread snapshot", async ({ page }) => {
   await seedSession(page);
-  await page.addInitScript(() => {
-    window.localStorage.setItem("starlog-web-snapshot-v2:assistant.history_pane.collapsed", JSON.stringify(true));
-    window.localStorage.setItem("starlog-web-snapshot-v2:assistant.diagnostics_pane.collapsed", JSON.stringify(true));
-  });
 
-  await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
+  let snapshotStage: "initial" | "updated" = "initial";
+  let mutationCalls = 0;
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
+    const snapshot =
+      snapshotStage === "initial"
+        ? threadSnapshot({
+            last_message_at: "2026-04-21T09:03:00.000Z",
+            last_preview_text: "You can cache the morning briefing audio.",
+            messages: [
+              {
+                id: "msg_assistant_1",
+                thread_id: "thr_primary",
+                run_id: null,
+                role: "assistant",
+                status: "complete",
+                parts: [
+                  {
+                    type: "text",
+                    id: "part_text_1",
+                    text: "You can cache the morning briefing audio.",
+                  },
+                  {
+                    type: "card",
+                    id: "part_card_1",
+                    card: {
+                      kind: "briefing",
+                      version: 1,
+                      title: "Morning briefing",
+                      body: "The spoken briefing is ready to cache.",
+                      entity_ref: null,
+                      actions: [
+                        {
+                          id: "cache_audio",
+                          label: "Cache audio",
+                          kind: "mutation",
+                          payload: {
+                            endpoint: "/v1/briefings/briefing_1/audio/render",
+                            method: "POST",
+                            body: { provider_hint: "web_assistant" },
+                          },
+                          style: "primary",
+                          requires_confirmation: true,
+                        },
+                      ],
+                      metadata: {},
+                    },
+                  },
+                ],
+                metadata: {},
+                created_at: "2026-04-21T09:03:00.000Z",
+                updated_at: "2026-04-21T09:03:00.000Z",
+              },
+            ],
+          })
+        : threadSnapshot({
+            last_message_at: "2026-04-21T09:03:10.000Z",
+            last_preview_text: "Briefing audio cached for offline playback.",
+            messages: [
+              {
+                id: "msg_assistant_2",
+                thread_id: "thr_primary",
+                run_id: null,
+                role: "assistant",
+                status: "complete",
+                parts: [
+                  {
+                    type: "ambient_update",
+                    id: "part_ambient_1",
+                    update: {
+                      id: "ambient_1",
+                      event_id: "evt_1",
+                      label: "Briefing audio cached",
+                      body: "Offline playback is ready on this device.",
+                      entity_ref: null,
+                      actions: [],
+                      metadata: {},
+                      created_at: "2026-04-21T09:03:10.000Z",
+                    },
+                  },
+                ],
+                metadata: {},
+                created_at: "2026-04-21T09:03:10.000Z",
+                updated_at: "2026-04-21T09:03:10.000Z",
+              },
+            ],
+          });
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: "[]",
+      body: JSON.stringify(snapshot),
     });
   });
 
-  await page.route(`${API_BASE}/v1/ai/jobs*`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/updates*`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        id: "thr_primary",
-        slug: "primary",
-        title: "Primary conversation",
-        mode: "voice_native",
-        session_state: {},
-        tool_traces: [],
-        created_at: "2026-03-22T09:00:00.000Z",
-        updated_at: "2026-03-22T09:00:00.000Z",
-        messages: [],
+        thread_id: "thr_primary",
+        cursor: "2026-04-21T09:03:10.000Z",
+        deltas: [],
       }),
     });
   });
 
-  await page.goto("/assistant");
-  await page.reload();
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/stream`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: ": keep-alive\n\n",
+    });
+  });
 
-  await expect(page.getByRole("button", { name: "Show side lane" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Show diagnostics" })).toBeVisible();
-  await expect(page.getByText("Reuse prompts")).toHaveCount(0);
-  await expect(page.getByText("Queue state and session memory")).toHaveCount(0);
+  await page.route(`${API_BASE}/v1/briefings/briefing_1/audio/render`, async (route) => {
+    mutationCalls += 1;
+    snapshotStage = "updated";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "queued" }),
+    });
+  });
+
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain('Run "Cache audio"?');
+    await dialog.accept();
+  });
+
+  await page.goto("/assistant");
+  await page.getByRole("button", { name: "Cache audio" }).click();
+
+  await expect.poll(() => mutationCalls).toBe(1);
+  await expect(page.getByText("Briefing audio cached")).toBeVisible();
+  await expect(page.getByText("Offline playback is ready on this device.")).toBeVisible();
+});
+
+test("queued mutation replay preserves custom headers and raw body semantics", async ({ page }) => {
+  await seedSession(page);
+
+  const mutationRequests: Array<{ headers: Record<string, string>; body: string | null }> = [];
+
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      last_message_at: "2026-04-21T09:04:00.000Z",
+      last_preview_text: "Render the briefing payload.",
+      messages: [
+        {
+          id: "msg_assistant_1",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: "part_text_1",
+              text: "Render the briefing payload.",
+            },
+            {
+              type: "card",
+              id: "part_card_1",
+              card: {
+                kind: "briefing",
+                version: 1,
+                title: "Render briefing",
+                body: "Send the payload with a custom replay header.",
+                entity_ref: null,
+                actions: [
+                  {
+                    id: "render_payload",
+                    label: "Render payload",
+                    kind: "mutation",
+                    payload: {
+                      endpoint: "/v1/briefings/briefing_2/audio/render",
+                      method: "POST",
+                      body: "render=this",
+                      headers: {
+                        "X-Starlog-Replay": "preserve-me",
+                      },
+                    },
+                    style: "primary",
+                    requires_confirmation: false,
+                  },
+                ],
+                metadata: {},
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  );
+
+  await page.route(`${API_BASE}/v1/briefings/briefing_2/audio/render`, async (route) => {
+    mutationRequests.push({
+      headers: await route.request().allHeaders(),
+      body: route.request().postData(),
+    });
+    await route.fulfill({
+      status: mutationRequests.length === 1 ? 503 : 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: mutationRequests.length === 1 ? "retry" : "ok" }),
+    });
+  });
+
+  await page.goto("/assistant");
+  await page.getByRole("button", { name: "Render payload" }).click();
+
+  await expect(page.getByText('Queued "Render payload" for replay.')).toBeVisible();
+
+  await expect.poll(() => mutationRequests.length).toBe(2);
+
+  for (const request of mutationRequests) {
+    expect(request.headers["x-starlog-replay"]).toBe("preserve-me");
+    expect(request.headers["content-type"]).toContain("text/plain");
+    expect(request.body).toBe("render=this");
+  }
 });

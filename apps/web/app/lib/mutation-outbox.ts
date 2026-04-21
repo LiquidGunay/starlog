@@ -4,6 +4,7 @@ export type QueuedMutation = {
   path: string;
   method: string;
   body?: string;
+  headers?: Record<string, string>;
   entity: string;
   op: string;
   created_at: string;
@@ -97,6 +98,7 @@ export function createQueuedMutation(input: {
   path: string;
   method: string;
   body?: string;
+  headers?: Record<string, string>;
   entity: string;
   op: string;
   attempts?: number;
@@ -109,6 +111,7 @@ export function createQueuedMutation(input: {
     path: input.path,
     method: input.method.toUpperCase(),
     body: input.body,
+    headers: input.headers,
     entity: input.entity,
     op: input.op,
     created_at: now,

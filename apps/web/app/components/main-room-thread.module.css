@@ -125,14 +125,42 @@
   gap: 10px;
 }
 
-.actionChip {
+.actionButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  border: 0;
+  cursor: pointer;
   border-radius: 999px;
   padding: 8px 12px;
+  font-size: 13px;
+  font: inherit;
+}
+
+.action_secondary {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(244, 241, 232, 0.82);
-  font-size: 13px;
+}
+
+.action_primary {
+  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  color: #18130e;
+}
+
+.action_ghost {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 232, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.action_danger {
+  background: rgba(194, 87, 67, 0.18);
+  color: #ffd5c7;
+}
+
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .panelFields {
