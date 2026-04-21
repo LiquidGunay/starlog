@@ -24,6 +24,14 @@ type AssistantStreamEnvelope = {
   id: string | null;
 };
 
+type LiveStatus = "connecting" | "live" | "recovering" | "auth_required";
+
+const STREAM_AUTH_ERROR = "Session expired. Sign in again to reconnect the Assistant feed.";
+
+function hasApiStatus(error: unknown, status: number): error is { status: number; body?: string } {
+  return typeof error === "object" && error !== null && "status" in error && (error as { status?: unknown }).status === status;
+}
+
 function maxIso(left?: string | null, right?: string | null): string {
   if (!left) {
     return right || "";
@@ -148,6 +156,44 @@ function applyAssistantDelta(
   return snapshot;
 }
 
+function liveStatusLabel(status: LiveStatus): string {
+  if (status === "live") {
+    return "Live feed";
+  }
+  if (status === "recovering") {
+    return "Recovering feed";
+  }
+  if (status === "auth_required") {
+    return "Auth required";
+  }
+  return "Connecting feed";
+}
+
+function mutationHeaders(payload: Record<string, unknown>): Record<string, string> | undefined {
+  const rawHeaders = payload.headers;
+  if (!rawHeaders || typeof rawHeaders !== "object" || Array.isArray(rawHeaders)) {
+    return undefined;
+  }
+  const headers = Object.fromEntries(
+    Object.entries(rawHeaders).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function mutationBody(payload: Record<string, unknown>): { body?: string; isJson: boolean } {
+  if (!Object.prototype.hasOwnProperty.call(payload, "body")) {
+    return { body: undefined, isJson: false };
+  }
+  const rawBody = payload.body;
+  if (rawBody === undefined) {
+    return { body: undefined, isJson: false };
+  }
+  if (typeof rawBody === "string") {
+    return { body: rawBody, isJson: false };
+  }
+  return { body: JSON.stringify(rawBody), isJson: true };
+}
+
 function parseStreamEnvelope(block: string): AssistantStreamEnvelope | null {
   const normalized = block.trim();
   if (!normalized || normalized.startsWith(":")) {
@@ -253,12 +299,13 @@ export default function AssistantPage() {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const snapshotRef = useRef<AssistantThreadSnapshot | null>(null);
   const cursorRef = useRef<string | null>(null);
+  const authBlockedRef = useRef(false);
   const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [composer, setComposer] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "recovering">("connecting");
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -268,6 +315,16 @@ export default function AssistantPage() {
   useEffect(() => {
     cursorRef.current = cursor;
   }, [cursor]);
+
+  useEffect(() => {
+    authBlockedRef.current = liveStatus === "auth_required";
+  }, [liveStatus]);
+
+  const applyAuthFailure = useCallback(() => {
+    authBlockedRef.current = true;
+    setLiveStatus("auth_required");
+    setError(STREAM_AUTH_ERROR);
+  }, []);
 
   const loadSnapshot = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) {
@@ -285,13 +342,19 @@ export default function AssistantPage() {
         token,
         "/v1/assistant/threads/primary",
       );
+      authBlockedRef.current = false;
       startTransition(() => {
         setSnapshot(payload);
         setCursor(payload.next_cursor || null);
         setError(null);
+        setLiveStatus((current) => (current === "auth_required" ? "connecting" : current));
       });
       return payload;
     } catch (err) {
+      if (hasApiStatus(err, 401)) {
+        applyAuthFailure();
+        return null;
+      }
       if (!silent) {
         setError(err instanceof ApiError ? err.body : "Failed to load the Assistant thread.");
       }
@@ -301,7 +364,7 @@ export default function AssistantPage() {
         setLoading(false);
       }
     }
-  }, [apiBase, token]);
+  }, [apiBase, applyAuthFailure, token]);
 
   const loadUpdates = useCallback(async (threadId: string, nextCursor: string | null) => {
     if (!token) {
@@ -314,10 +377,13 @@ export default function AssistantPage() {
 
     try {
       return await apiRequest<AssistantDeltaList>(apiBase, token, path);
-    } catch {
+    } catch (err) {
+      if (hasApiStatus(err, 401)) {
+        applyAuthFailure();
+      }
       return null;
     }
-  }, [apiBase, token]);
+  }, [apiBase, applyAuthFailure, token]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -346,14 +412,18 @@ export default function AssistantPage() {
 
     const recoverFromPolling = async () => {
       const payload = await loadUpdates(threadId, cursorRef.current);
+      if (authBlockedRef.current) {
+        return false;
+      }
       if (payload) {
         startTransition(() => {
           setSnapshot((current) => payload.deltas.reduce<AssistantThreadSnapshot | null>(applyAssistantDelta, current));
           setCursor(payload.cursor || cursorRef.current);
         });
-        return;
+        return true;
       }
       await loadSnapshot({ silent: true });
+      return !authBlockedRef.current;
     };
 
     const openStream = async () => {
@@ -382,25 +452,29 @@ export default function AssistantPage() {
         if (controller.signal.aborted || cancelled) {
           return;
         }
-        if (!(err instanceof ApiError && err.status === 401)) {
-          setLiveStatus("recovering");
-          await recoverFromPolling();
-          reconnect();
+        if (hasApiStatus(err, 401)) {
+          applyAuthFailure();
           return;
         }
+        setLiveStatus("recovering");
+        if (await recoverFromPolling()) {
+          reconnect();
+        }
+        return;
       }
 
       if (!controller.signal.aborted && !cancelled) {
         setLiveStatus("recovering");
-        await recoverFromPolling();
-        reconnect();
+        if (await recoverFromPolling()) {
+          reconnect();
+        }
       }
     };
 
     void openStream();
 
     const refreshOnFocus = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && !authBlockedRef.current) {
         void loadSnapshot({ silent: true });
       }
     };
@@ -417,7 +491,7 @@ export default function AssistantPage() {
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, [apiBase, loadSnapshot, loadUpdates, snapshot?.id, token]);
+  }, [apiBase, applyAuthFailure, loadSnapshot, loadUpdates, snapshot?.id, token]);
 
   async function sendMessage(content: string) {
     if (!snapshot || !content.trim() || sending) {
@@ -487,7 +561,8 @@ export default function AssistantPage() {
 
     const endpoint = typeof payload.endpoint === "string" ? payload.endpoint : null;
     const method = typeof payload.method === "string" ? payload.method.toUpperCase() : "POST";
-    const body = payload.body && typeof payload.body === "object" ? payload.body : {};
+    const headers = mutationHeaders(payload);
+    const { body, isJson } = mutationBody(payload);
 
     if (!endpoint) {
       setError(`Card action "${action.label}" is missing an endpoint.`);
@@ -497,11 +572,16 @@ export default function AssistantPage() {
     setSending(true);
     setError(null);
     try {
+      const requestHeaders = {
+        ...(headers || {}),
+        ...(isJson && (!headers || !headers["Content-Type"]) ? { "Content-Type": "application/json" } : {}),
+      };
       const result = await mutateWithQueue(
         endpoint,
         {
           method,
-          body: JSON.stringify(body),
+          ...(Object.keys(requestHeaders).length > 0 ? { headers: requestHeaders } : {}),
+          ...(body !== undefined ? { body } : {}),
         },
         {
           label: action.label,
@@ -591,7 +671,7 @@ export default function AssistantPage() {
           </div>
           <div className={styles.heroMeta}>
             <span>{isOnline ? "Online" : "Offline"}</span>
-            <span>{liveStatus === "live" ? "Live feed" : liveStatus === "recovering" ? "Recovering feed" : "Connecting feed"}</span>
+            <span>{liveStatusLabel(liveStatus)}</span>
             <span>{activeRun ? `Run: ${activeRun.status}` : "Idle"}</span>
             <span>{activeInterrupt ? `Panel: ${activeInterrupt.title}` : "No open panel"}</span>
           </div>

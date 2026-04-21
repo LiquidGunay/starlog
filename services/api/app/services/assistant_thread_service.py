@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from collections import defaultdict
 from sqlite3 import Connection
@@ -8,6 +9,8 @@ from typing import Any
 from app.core.time import utc_now
 from app.services import assistant_projection_service, conversation_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
+
+_CURSOR_PREFIX = "assistant_cursor_v1."
 
 
 def _assistant_owner_user_id(conn: Connection) -> str:
@@ -215,7 +218,63 @@ def _max_timestamp(*values: object) -> str | None:
     return max(filtered) if filtered else None
 
 
-def _thread_watermark(conn: Connection, thread_id: str) -> str:
+def _encode_cursor(timestamp: str | None, seen_keys: set[str] | list[str] | None = None) -> str | None:
+    if not timestamp:
+        return None
+    payload: dict[str, Any] = {"ts": timestamp}
+    normalized_seen = sorted({str(item) for item in (seen_keys or []) if item})
+    if normalized_seen:
+        payload["seen"] = normalized_seen
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+    return f"{_CURSOR_PREFIX}{encoded.rstrip('=')}"
+
+
+def _decode_cursor(cursor: str | None) -> tuple[str | None, set[str]]:
+    if not cursor:
+        return None, set()
+    if not cursor.startswith(_CURSOR_PREFIX):
+        return cursor, set()
+
+    encoded = cursor.removeprefix(_CURSOR_PREFIX)
+    padding = "=" * ((4 - (len(encoded) % 4)) % 4)
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(f"{encoded}{padding}").decode("utf-8"))
+    except (ValueError, json.JSONDecodeError):
+        return cursor, set()
+
+    timestamp = payload.get("ts")
+    raw_seen = payload.get("seen") if isinstance(payload, dict) else None
+    seen = {str(item) for item in raw_seen} if isinstance(raw_seen, list) else set()
+    return (str(timestamp), seen) if isinstance(timestamp, str) and timestamp else (None, set())
+
+
+def _message_delta_metadata(row: dict[str, Any]) -> tuple[str, str]:
+    created_at = str(row["created_at"])
+    updated_at = str(row.get("updated_at") or created_at)
+    event_type = "message.updated" if updated_at > created_at else "message.created"
+    return event_type, f"message:{row['id']}:{event_type}"
+
+
+def _run_delta_metadata(row: dict[str, Any]) -> tuple[str, str]:
+    return "run.updated", f"run:{row['id']}:updated"
+
+
+def _run_step_delta_metadata(row: dict[str, Any]) -> tuple[str, str]:
+    return "run.step.updated", f"run_step:{row['id']}:updated"
+
+
+def _interrupt_delta_metadata(interrupt_id: str, phase: str) -> tuple[str, str]:
+    event_type = "interrupt.opened" if phase == "opened" else "interrupt.resolved"
+    return event_type, f"interrupt:{interrupt_id}:{phase}"
+
+
+def _surface_event_delta_metadata(event_id: str) -> tuple[str, str]:
+    return "surface_event.created", f"surface_event:{event_id}:created"
+
+
+def _thread_watermark_timestamp(conn: Connection, thread_id: str) -> str:
     thread = get_thread(conn, thread_id)
     message_row = execute_fetchone(
         conn,
@@ -257,6 +316,74 @@ def _thread_watermark(conn: Connection, thread_id: str) -> str:
         )
         or thread["updated_at"]
     )
+
+
+def _cursor_keys_at_timestamp(conn: Connection, thread_id: str, timestamp: str) -> set[str]:
+    keys: set[str] = set()
+
+    message_rows = execute_fetchall(
+        conn,
+        """
+        SELECT id, created_at, updated_at
+        FROM conversation_messages
+        WHERE thread_id = ? AND COALESCE(updated_at, created_at) = ?
+        """,
+        (thread_id, timestamp),
+    )
+    for row in message_rows:
+        _, key = _message_delta_metadata(row)
+        keys.add(key)
+
+    run_rows = execute_fetchall(
+        conn,
+        "SELECT id FROM conversation_runs WHERE thread_id = ? AND updated_at = ?",
+        (thread_id, timestamp),
+    )
+    for row in run_rows:
+        _, key = _run_delta_metadata(row)
+        keys.add(key)
+
+    step_rows = execute_fetchall(
+        conn,
+        "SELECT id FROM conversation_run_steps WHERE thread_id = ? AND updated_at = ?",
+        (thread_id, timestamp),
+    )
+    for row in step_rows:
+        _, key = _run_step_delta_metadata(row)
+        keys.add(key)
+
+    interrupt_rows = execute_fetchall(
+        conn,
+        """
+        SELECT id, created_at, resolved_at
+        FROM conversation_interrupts
+        WHERE thread_id = ? AND (created_at = ? OR resolved_at = ?)
+        """,
+        (thread_id, timestamp, timestamp),
+    )
+    for row in interrupt_rows:
+        if row["created_at"] == timestamp:
+            _, key = _interrupt_delta_metadata(str(row["id"]), "opened")
+            keys.add(key)
+        if row.get("resolved_at") == timestamp:
+            _, key = _interrupt_delta_metadata(str(row["id"]), "resolved")
+            keys.add(key)
+
+    surface_event_rows = execute_fetchall(
+        conn,
+        "SELECT id FROM conversation_surface_events WHERE thread_id = ? AND created_at = ?",
+        (thread_id, timestamp),
+    )
+    for row in surface_event_rows:
+        _, key = _surface_event_delta_metadata(str(row["id"]))
+        keys.add(key)
+
+    return keys
+
+
+def _thread_cursor(conn: Connection, thread_id: str) -> str:
+    watermark = _thread_watermark_timestamp(conn, thread_id)
+    return _encode_cursor(watermark, _cursor_keys_at_timestamp(conn, thread_id, watermark)) or watermark
 
 
 def _load_run_payloads(conn: Connection, run_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -415,7 +542,7 @@ def get_thread_snapshot(conn: Connection, thread_id: str, *, message_limit: int 
         "runs": runs,
         "interrupts": interrupt_payloads,
         "session_state": session["state_json"] if session else {},
-        "next_cursor": _thread_watermark(conn, thread["id"]),
+        "next_cursor": _thread_cursor(conn, thread["id"]),
     }
 
 
@@ -494,6 +621,7 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
     thread = get_thread(conn, thread_id, user_id=user_id)
     if cursor is None:
         snapshot = get_thread_snapshot(conn, thread["id"], user_id=user_id)
+        snapshot_cursor_timestamp, _ = _decode_cursor(snapshot.get("next_cursor"))
         return {
             "thread_id": snapshot["id"],
             "cursor": snapshot.get("next_cursor"),
@@ -503,9 +631,18 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
                     "thread_id": snapshot["id"],
                     "event_type": "thread.snapshot",
                     "payload": snapshot,
-                    "created_at": snapshot.get("next_cursor") or utc_now().isoformat(),
+                    "created_at": snapshot_cursor_timestamp or snapshot.get("updated_at") or utc_now().isoformat(),
                 }
             ],
+        }
+
+    cursor_timestamp, seen_keys = _decode_cursor(cursor)
+    if cursor_timestamp is None:
+        snapshot = get_thread_snapshot(conn, thread["id"], user_id=user_id)
+        return {
+            "thread_id": snapshot["id"],
+            "cursor": snapshot.get("next_cursor"),
+            "deltas": [],
         }
 
     message_rows = execute_fetchall(
@@ -513,10 +650,10 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
         """
         SELECT id, thread_id, run_id, role, content, cards_json, status, metadata_json, created_at, updated_at
         FROM conversation_messages
-        WHERE thread_id = ? AND COALESCE(updated_at, created_at) > ?
+        WHERE thread_id = ? AND COALESCE(updated_at, created_at) >= ?
         ORDER BY COALESCE(updated_at, created_at) ASC, id ASC
         """,
-        (thread["id"], cursor),
+        (thread["id"], cursor_timestamp),
     )
     parts_by_message = _load_message_parts(conn, [str(row["id"]) for row in message_rows])
 
@@ -525,40 +662,40 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
         """
         SELECT *
         FROM conversation_runs
-        WHERE thread_id = ? AND updated_at > ?
+        WHERE thread_id = ? AND updated_at >= ?
         ORDER BY updated_at ASC, id ASC
         """,
-        (thread["id"], cursor),
+        (thread["id"], cursor_timestamp),
     )
     step_rows = execute_fetchall(
         conn,
         """
         SELECT *
         FROM conversation_run_steps
-        WHERE thread_id = ? AND updated_at > ?
+        WHERE thread_id = ? AND updated_at >= ?
         ORDER BY updated_at ASC, id ASC
         """,
-        (thread["id"], cursor),
+        (thread["id"], cursor_timestamp),
     )
     interrupt_rows = execute_fetchall(
         conn,
         """
         SELECT *
         FROM conversation_interrupts
-        WHERE thread_id = ? AND (created_at > ? OR (resolved_at IS NOT NULL AND resolved_at > ?))
+        WHERE thread_id = ? AND (created_at >= ? OR (resolved_at IS NOT NULL AND resolved_at >= ?))
         ORDER BY created_at ASC, id ASC
         """,
-        (thread["id"], cursor, cursor),
+        (thread["id"], cursor_timestamp, cursor_timestamp),
     )
     event_rows = execute_fetchall(
         conn,
         """
         SELECT *
         FROM conversation_surface_events
-        WHERE thread_id = ? AND created_at > ?
+        WHERE thread_id = ? AND created_at >= ?
         ORDER BY created_at ASC, id ASC
         """,
-        (thread["id"], cursor),
+        (thread["id"], cursor_timestamp),
     )
 
     run_payloads = _load_run_payloads(
@@ -569,15 +706,17 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
     deltas: list[dict[str, Any]] = []
 
     for row in message_rows:
-        created_at = row["created_at"]
-        updated_at = row.get("updated_at") or created_at
+        created_at = str(row["created_at"])
+        updated_at = str(row.get("updated_at") or created_at)
+        event_type, cursor_key = _message_delta_metadata(row)
         deltas.append(
             {
                 "id": new_id("delta"),
                 "thread_id": thread["id"],
-                "event_type": "message.updated" if updated_at > created_at else "message.created",
+                "event_type": event_type,
                 "payload": _message_payload(row, parts_by_message),
                 "created_at": updated_at,
+                "_cursor_key": cursor_key,
             }
         )
 
@@ -585,13 +724,15 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
         run_payload = run_payloads.get(str(row["id"]))
         if run_payload is None:
             continue
+        event_type, cursor_key = _run_delta_metadata(row)
         deltas.append(
             {
                 "id": new_id("delta"),
                 "thread_id": thread["id"],
-                "event_type": "run.updated",
+                "event_type": event_type,
                 "payload": run_payload,
                 "created_at": row["updated_at"],
+                "_cursor_key": cursor_key,
             }
         )
 
@@ -599,55 +740,85 @@ def list_deltas(conn: Connection, thread_id: str, *, cursor: str | None = None, 
         run_payload = run_payloads.get(str(row["run_id"]))
         if run_payload is None:
             continue
+        event_type, cursor_key = _run_step_delta_metadata(row)
         deltas.append(
             {
                 "id": new_id("delta"),
                 "thread_id": thread["id"],
-                "event_type": "run.step.updated",
+                "event_type": event_type,
                 "payload": run_payload,
                 "created_at": row["updated_at"],
+                "_cursor_key": cursor_key,
             }
         )
 
     for row in interrupt_rows:
         interrupt_payload = _interrupt_payload(row)
-        if row["created_at"] > cursor:
+        if row["created_at"] >= cursor_timestamp:
+            event_type, cursor_key = _interrupt_delta_metadata(str(row["id"]), "opened")
             deltas.append(
                 {
                     "id": new_id("delta"),
                     "thread_id": thread["id"],
-                    "event_type": "interrupt.opened",
+                    "event_type": event_type,
                     "payload": interrupt_payload,
                     "created_at": row["created_at"],
+                    "_cursor_key": cursor_key,
                 }
             )
         resolved_at = row.get("resolved_at")
-        if isinstance(resolved_at, str) and resolved_at > cursor:
+        if isinstance(resolved_at, str) and resolved_at >= cursor_timestamp:
+            event_type, cursor_key = _interrupt_delta_metadata(str(row["id"]), "resolved")
             deltas.append(
                 {
                     "id": new_id("delta"),
                     "thread_id": thread["id"],
-                    "event_type": "interrupt.resolved",
+                    "event_type": event_type,
                     "payload": interrupt_payload,
                     "created_at": resolved_at,
+                    "_cursor_key": cursor_key,
                 }
             )
 
     for row in event_rows:
+        event_type, cursor_key = _surface_event_delta_metadata(str(row["id"]))
         deltas.append(
             {
                 "id": new_id("delta"),
                 "thread_id": thread["id"],
-                "event_type": "surface_event.created",
+                "event_type": event_type,
                 "payload": _surface_event_payload(row),
                 "created_at": row["created_at"],
+                "_cursor_key": cursor_key,
             }
         )
 
-    deltas.sort(key=lambda item: (str(item["created_at"]), str(item["id"])))
+    deltas.sort(key=lambda item: (str(item["created_at"]), str(item["_cursor_key"])))
+
+    visible_deltas = [
+        item
+        for item in deltas
+        if str(item["created_at"]) > cursor_timestamp
+        or (str(item["created_at"]) == cursor_timestamp and str(item["_cursor_key"]) not in seen_keys)
+    ]
+
+    next_cursor_timestamp = cursor_timestamp
+    next_seen_keys = set(seen_keys)
+    if visible_deltas:
+        next_cursor_timestamp = str(visible_deltas[-1]["created_at"])
+        next_seen_keys = {
+            str(item["_cursor_key"])
+            for item in visible_deltas
+            if str(item["created_at"]) == next_cursor_timestamp
+        }
+        if next_cursor_timestamp == cursor_timestamp:
+            next_seen_keys |= seen_keys
 
     return {
         "thread_id": thread["id"],
-        "cursor": _thread_watermark(conn, thread["id"]),
-        "deltas": deltas,
+        "cursor": _encode_cursor(next_cursor_timestamp, next_seen_keys),
+        "deltas": [
+            {key: value for key, value in item.items() if key != "_cursor_key"}
+            for item in visible_deltas
+        ],
     }

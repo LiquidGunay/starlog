@@ -390,6 +390,7 @@ def test_assistant_routes_enforce_primary_user_invariant(
 def test_assistant_stream_supports_resume_cursor(
     client: TestClient,
     auth_headers: dict[str, str],
+    monkeypatch,
 ) -> None:
     bootstrap = client.get("/v1/assistant/threads/primary", headers=auth_headers)
     assert bootstrap.status_code == 200
@@ -398,6 +399,9 @@ def test_assistant_stream_supports_resume_cursor(
 
     with get_connection() as conn:
         user_id = str(conn.execute("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()["id"])
+
+    fixed_time = utc_now()
+    monkeypatch.setattr(assistant_thread_service, "utc_now", lambda: fixed_time)
 
     with get_connection() as conn:
         assistant_thread_service.append_message(
@@ -462,3 +466,4 @@ def test_assistant_stream_supports_resume_cursor(
         if part["type"] == "text"
     ]
     assert texts == ["stream message beta"]
+    assert all(text != "stream message alpha" for text in texts)
