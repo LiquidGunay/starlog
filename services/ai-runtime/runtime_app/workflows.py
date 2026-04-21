@@ -168,9 +168,9 @@ def capability_request_spec(capability: RuntimeCapability, payload: dict[str, An
     title = str(payload.get("title") or "Untitled").strip() or "Untitled"
     if capability == "llm_agent_plan":
         return (
-            load_prompt("llm_agent_plan.system.txt"),
+            load_prompt("llm_agent_plan.system.md"),
             render_prompt(
-                "llm_agent_plan.user.txt",
+                "llm_agent_plan.user.md",
                 current_date=str(payload.get("current_date") or "unknown"),
                 command=str(payload.get("command") or _source_text(payload)),
                 intent_lines=payload.get("intent_lines") or _intent_lines(payload),
@@ -178,8 +178,8 @@ def capability_request_spec(capability: RuntimeCapability, payload: dict[str, An
             ),
         )
     return (
-        load_prompt(f"{capability}.system.txt"),
-        render_prompt(f"{capability}.user.txt", title=title, text=_source_text(payload)),
+        load_prompt(f"{capability}.system.md"),
+        render_prompt(f"{capability}.user.md", title=title, text=_source_text(payload)),
     )
 
 
@@ -210,9 +210,9 @@ def chat_preview(title: str | None, text: str, context: dict[str, Any]) -> Workf
     return WorkflowPreviewResponse(
         workflow="chat_turn",
         model=DEFAULT_MODEL,
-        system_prompt=render_prompt("chat_turn.system.txt"),
+        system_prompt=render_prompt("chat_turn.system.md"),
         user_prompt=render_prompt(
-            "chat_turn.user.txt",
+            "chat_turn.user.md",
             title=resolved_title,
             text=text,
             context=context,
@@ -276,15 +276,19 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
     return ChatTurnExecutionResponse(
         provider_used=DEFAULT_PROVIDER,
         model=DEFAULT_MODEL,
-        system_prompt=render_prompt("chat_turn.system.txt"),
+        system_prompt=render_prompt("chat_turn.system.md"),
         user_prompt=render_prompt(
-            "chat_turn.user.txt",
+            "chat_turn.user.md",
             title=resolved_title,
             text=text,
             context=context,
         ),
         response_text=response_text,
         cards=cards,
+        tool_calls=[],
+        interrupts=[],
+        ambient_updates=[],
+        attachments=[],
         session_state={
             "last_turn_kind": "chat_turn",
             "last_user_message": text,
@@ -308,9 +312,9 @@ def briefing_preview(title: str | None, text: str, context: dict[str, Any]) -> W
     return WorkflowPreviewResponse(
         workflow="briefing",
         model=DEFAULT_MODEL,
-        system_prompt=render_prompt("briefing.system.txt"),
+        system_prompt=render_prompt("briefing.system.md"),
         user_prompt=render_prompt(
-            "briefing.user.txt",
+            "briefing.user.md",
             title=resolved_title,
             text=text,
             context=context,
@@ -324,9 +328,9 @@ def research_digest_preview(title: str | None, text: str, context: dict[str, Any
     return WorkflowPreviewResponse(
         workflow="research_digest",
         model=DEFAULT_MODEL,
-        system_prompt=render_prompt("research_digest.system.txt"),
+        system_prompt=render_prompt("research_digest.system.md"),
         user_prompt=render_prompt(
-            "research_digest.user.txt",
+            "research_digest.user.md",
             title=resolved_title,
             text=text,
             context=context,

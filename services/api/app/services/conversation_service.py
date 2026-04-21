@@ -14,6 +14,16 @@ PRIMARY_THREAD_MODE = "voice_native"
 PROJECTION_THREAD_CONTEXT = "thread_context"
 
 
+def _primary_user_id(conn: Connection, user_id: str | None = None) -> str:
+    row = execute_fetchone(conn, "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
+    if row is None:
+        raise LookupError("Starlog has not been bootstrapped yet")
+    owner_user_id = str(row["id"])
+    if user_id and user_id != owner_user_id:
+        raise PermissionError("Conversation access is restricted to the primary Starlog user")
+    return user_id or owner_user_id
+
+
 def _message_cursor_clause(created_at: str, message_id: str) -> tuple[str, tuple[str, str]]:
     return "AND (created_at < ? OR (created_at = ? AND id < ?))", (created_at, created_at, message_id)
 
@@ -300,11 +310,17 @@ def _thread_payload(
 def ensure_primary_thread(
     conn: Connection,
     *,
+    user_id: str | None = None,
     message_limit: int = 200,
     trace_limit: int = 100,
     before_message_id: str | None = None,
 ) -> dict[str, Any]:
-    row = execute_fetchone(conn, "SELECT * FROM conversation_threads WHERE slug = ?", (PRIMARY_THREAD_SLUG,))
+    owner_user_id = _primary_user_id(conn, user_id)
+    row = execute_fetchone(
+        conn,
+        "SELECT * FROM conversation_threads WHERE slug = ? AND owner_user_id = ?",
+        (PRIMARY_THREAD_SLUG, owner_user_id),
+    )
     if row is not None:
         return _thread_payload(
             conn,
@@ -318,10 +334,10 @@ def ensure_primary_thread(
     thread_id = new_id("thr")
     conn.execute(
         """
-        INSERT INTO conversation_threads (id, slug, title, mode, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_threads (id, owner_user_id, slug, title, mode, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (thread_id, PRIMARY_THREAD_SLUG, PRIMARY_THREAD_TITLE, PRIMARY_THREAD_MODE, now, now),
+        (thread_id, owner_user_id, PRIMARY_THREAD_SLUG, PRIMARY_THREAD_TITLE, PRIMARY_THREAD_MODE, now, now),
     )
     conn.execute(
         "INSERT INTO conversation_session_state (thread_id, state_json, updated_at) VALUES (?, ?, ?)",
@@ -343,20 +359,22 @@ def ensure_primary_thread(
 def get_primary_thread(
     conn: Connection,
     *,
+    user_id: str | None = None,
     message_limit: int = 200,
     trace_limit: int = 100,
     before_message_id: str | None = None,
 ) -> dict[str, Any]:
     return ensure_primary_thread(
         conn,
+        user_id=user_id,
         message_limit=message_limit,
         trace_limit=trace_limit,
         before_message_id=before_message_id,
     )
 
 
-def get_session_state(conn: Connection) -> dict[str, Any]:
-    thread = ensure_primary_thread(conn)
+def get_session_state(conn: Connection, *, user_id: str | None = None) -> dict[str, Any]:
+    thread = ensure_primary_thread(conn, user_id=user_id)
     row = execute_fetchone(
         conn,
         "SELECT state_json FROM conversation_session_state WHERE thread_id = ?",
@@ -372,8 +390,9 @@ def append_message(
     content: str,
     cards: list[dict[str, Any]] | None = None,
     metadata: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
-    thread = ensure_primary_thread(conn)
+    thread = ensure_primary_thread(conn, user_id=user_id)
     now = utc_now().isoformat()
     message_id = new_id("msg")
     normalized_cards = _normalize_cards_for_storage(cards)
@@ -505,9 +524,9 @@ def merge_session_state(conn: Connection, state_patch: dict[str, Any]) -> dict[s
     return update_session_state(conn, next_state)
 
 
-def reset_session_state(conn: Connection) -> dict[str, Any]:
-    thread = ensure_primary_thread(conn)
-    previous_state = get_session_state(conn)
+def reset_session_state(conn: Connection, *, user_id: str | None = None) -> dict[str, Any]:
+    thread = ensure_primary_thread(conn, user_id=user_id)
+    previous_state = get_session_state(conn, user_id=user_id)
     message_count_row = execute_fetchone(
         conn,
         "SELECT COUNT(*) AS count FROM conversation_messages WHERE thread_id = ?",
@@ -638,8 +657,9 @@ def build_chat_preview_request(
     trace_limit: int = 10,
     metadata: dict[str, Any] | None = None,
     context_overrides: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
-    thread = get_primary_thread(conn, message_limit=message_limit, trace_limit=trace_limit)
+    thread = get_primary_thread(conn, user_id=user_id, message_limit=message_limit, trace_limit=trace_limit)
     context: dict[str, Any] = {
         "thread": {
             "id": thread["id"],

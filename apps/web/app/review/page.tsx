@@ -59,6 +59,7 @@ export default function ReviewPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
+  const [revealedCardId, setRevealedCardId] = useState<string | null>(null);
   const [status, setStatus] = useState("SRS queue idle.");
   const [stats, setStats] = useState<SessionStats>(emptyStats);
   const [attemptedInitialLoad, setAttemptedInitialLoad] = useState(false);
@@ -94,6 +95,7 @@ export default function ReviewPage() {
       setDecks(nextDecks);
       setStats(emptyStats());
       setShowAnswer(false);
+      setRevealedCardId(null);
       setStatus(`Loaded ${nextCards.length} due card(s) across ${nextDecks.length} deck(s).`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load the review queue");
@@ -109,6 +111,36 @@ export default function ReviewPage() {
     setAttemptedInitialLoad(true);
     void loadReviewData();
   }, [attemptedInitialLoad, loadReviewData, missingConfig]);
+
+  async function emitReviewReveal(card: Card) {
+    if (missingConfig) {
+      return;
+    }
+    try {
+      await apiRequest(apiBase, token, "/v1/assistant/threads/primary/events", {
+        method: "POST",
+        body: JSON.stringify({
+          source_surface: "review",
+          kind: "review.answer.revealed",
+          entity_ref: {
+            entity_type: "card",
+            entity_id: card.id,
+            href: "/review",
+            title: card.prompt,
+          },
+          payload: {
+            card_id: card.id,
+            prompt: card.prompt,
+            card_type: card.card_type,
+            due_at: card.due_at,
+          },
+          visibility: "assistant_message",
+        }),
+      });
+    } catch {
+      // The review surface remains usable even if assistant reflection fails.
+    }
+  }
 
   async function reviewCurrent(rating: 1 | 3 | 4 | 5) {
     if (!currentCard) {
@@ -134,6 +166,7 @@ export default function ReviewPage() {
         easy: previous.easy + (rating === 5 ? 1 : 0),
       }));
       setShowAnswer(false);
+      setRevealedCardId(null);
       setDecks((previous) => previous.map((deck) => (
         deck.id === currentCard.deck_id
           ? { ...deck, due_count: Math.max(0, deck.due_count - 1) }
@@ -217,7 +250,14 @@ export default function ReviewPage() {
                     <button
                       className="april-chip-button april-review-reveal-button"
                       type="button"
-                      onClick={() => setShowAnswer((previous) => !previous)}
+                      onClick={() => {
+                        const nextShowAnswer = !showAnswer;
+                        setShowAnswer(nextShowAnswer);
+                        if (nextShowAnswer && currentCard && revealedCardId !== currentCard.id) {
+                          setRevealedCardId(currentCard.id);
+                          void emitReviewReveal(currentCard);
+                        }
+                      }}
                     >
                       {showAnswer ? "Hide Answer" : "Reveal Answer"}
                     </button>

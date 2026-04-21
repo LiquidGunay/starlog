@@ -267,21 +267,26 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 CREATE TABLE IF NOT EXISTS conversation_threads (
   id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
   mode TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS conversation_messages (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
+  run_id TEXT,
   role TEXT NOT NULL,
   content TEXT NOT NULL,
   cards_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'complete',
   metadata_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  updated_at TEXT,
   FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
 );
 
@@ -312,6 +317,90 @@ CREATE TABLE IF NOT EXISTS conversation_memory_entries (
   entry_type TEXT NOT NULL,
   content TEXT NOT NULL,
   metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_runs (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  origin_message_id TEXT,
+  orchestrator TEXT NOT NULL,
+  status TEXT NOT NULL,
+  summary TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+  FOREIGN KEY (origin_message_id) REFERENCES conversation_messages(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_message_parts (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  run_id TEXT,
+  part_index INTEGER NOT NULL,
+  part_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (message_id) REFERENCES conversation_messages(id),
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+  FOREIGN KEY (run_id) REFERENCES conversation_runs(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_run_steps (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  message_id TEXT,
+  step_index INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  tool_name TEXT,
+  tool_kind TEXT,
+  status TEXT NOT NULL,
+  arguments_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  error_text TEXT,
+  interrupt_id TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES conversation_runs(id),
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+  FOREIGN KEY (message_id) REFERENCES conversation_messages(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_interrupts (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  interrupt_type TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  entity_ref_json TEXT,
+  fields_json TEXT NOT NULL,
+  primary_label TEXT NOT NULL,
+  secondary_label TEXT,
+  metadata_json TEXT NOT NULL,
+  resolution_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  FOREIGN KEY (run_id) REFERENCES conversation_runs(id),
+  FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_surface_events (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  source_surface TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  entity_ref_json TEXT,
+  payload_json TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  projected_message INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
 );
@@ -591,6 +680,11 @@ CREATE INDEX IF NOT EXISTS idx_conversation_threads_slug ON conversation_threads
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_thread_created ON conversation_messages(thread_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_tool_traces_thread_created ON conversation_tool_traces(thread_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_memory_thread_created ON conversation_memory_entries(thread_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversation_runs_thread_updated ON conversation_runs(thread_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversation_message_parts_message_part ON conversation_message_parts(message_id, part_index);
+CREATE INDEX IF NOT EXISTS idx_conversation_run_steps_run_step ON conversation_run_steps(run_id, step_index);
+CREATE INDEX IF NOT EXISTS idx_conversation_interrupts_thread_status ON conversation_interrupts(thread_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversation_surface_events_thread_created ON conversation_surface_events(thread_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_status_created ON ai_jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_provider_status ON ai_jobs(provider_hint, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_selected_target ON ai_jobs(selected_target, status, created_at);
@@ -661,6 +755,10 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "ai_jobs", "requested_targets_json", "TEXT")
     _ensure_column(conn, "ai_jobs", "selected_target", "TEXT")
     _ensure_column(conn, "ai_jobs", "claimed_worker_class", "TEXT")
+    _ensure_column(conn, "conversation_threads", "owner_user_id", "TEXT")
+    _ensure_column(conn, "conversation_messages", "run_id", "TEXT")
+    _ensure_column(conn, "conversation_messages", "status", "TEXT NOT NULL DEFAULT 'complete'")
+    _ensure_column(conn, "conversation_messages", "updated_at", "TEXT")
     _ensure_column(conn, "conversation_tool_traces", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "cards", "deck_id", "TEXT")
     _ensure_column(conn, "cards", "tags_json", "TEXT NOT NULL DEFAULT '[]'")
@@ -723,20 +821,25 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
         CREATE TABLE IF NOT EXISTS conversation_threads (
           id TEXT PRIMARY KEY,
+          owner_user_id TEXT NOT NULL,
           slug TEXT NOT NULL UNIQUE,
           title TEXT NOT NULL,
           mode TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (owner_user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS conversation_messages (
           id TEXT PRIMARY KEY,
           thread_id TEXT NOT NULL,
+          run_id TEXT,
           role TEXT NOT NULL,
           content TEXT NOT NULL,
           cards_json TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'complete',
           metadata_json TEXT NOT NULL,
           created_at TEXT NOT NULL,
+          updated_at TEXT,
           FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
         );
         CREATE TABLE IF NOT EXISTS conversation_session_state (
@@ -764,6 +867,85 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           entry_type TEXT NOT NULL,
           content TEXT NOT NULL,
           metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_runs (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          origin_message_id TEXT,
+          orchestrator TEXT NOT NULL,
+          status TEXT NOT NULL,
+          summary TEXT,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+          FOREIGN KEY (origin_message_id) REFERENCES conversation_messages(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_message_parts (
+          id TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          run_id TEXT,
+          part_index INTEGER NOT NULL,
+          part_type TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (message_id) REFERENCES conversation_messages(id),
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+          FOREIGN KEY (run_id) REFERENCES conversation_runs(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_run_steps (
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          message_id TEXT,
+          step_index INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          tool_name TEXT,
+          tool_kind TEXT,
+          status TEXT NOT NULL,
+          arguments_json TEXT NOT NULL,
+          result_json TEXT NOT NULL,
+          error_text TEXT,
+          interrupt_id TEXT,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (run_id) REFERENCES conversation_runs(id),
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id),
+          FOREIGN KEY (message_id) REFERENCES conversation_messages(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_interrupts (
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          interrupt_type TEXT NOT NULL,
+          tool_name TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT,
+          entity_ref_json TEXT,
+          fields_json TEXT NOT NULL,
+          primary_label TEXT NOT NULL,
+          secondary_label TEXT,
+          metadata_json TEXT NOT NULL,
+          resolution_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          resolved_at TEXT,
+          FOREIGN KEY (run_id) REFERENCES conversation_runs(id),
+          FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
+        );
+        CREATE TABLE IF NOT EXISTS conversation_surface_events (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          source_surface TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          entity_ref_json TEXT,
+          payload_json TEXT NOT NULL,
+          visibility TEXT NOT NULL,
+          projected_message INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
         );
@@ -911,6 +1093,11 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_conversation_messages_thread_created ON conversation_messages(thread_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_conversation_tool_traces_thread_created ON conversation_tool_traces(thread_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_conversation_memory_thread_created ON conversation_memory_entries(thread_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_conversation_runs_thread_updated ON conversation_runs(thread_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_conversation_message_parts_message_part ON conversation_message_parts(message_id, part_index);
+        CREATE INDEX IF NOT EXISTS idx_conversation_run_steps_run_step ON conversation_run_steps(run_id, step_index);
+        CREATE INDEX IF NOT EXISTS idx_conversation_interrupts_thread_status ON conversation_interrupts(thread_id, status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_conversation_surface_events_thread_created ON conversation_surface_events(thread_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_memory_pages_namespace_updated ON memory_pages(namespace, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_memory_pages_path ON memory_pages(path);
@@ -927,6 +1114,19 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_deck_due_at ON cards(deck_id, due_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_conversation_threads_owner ON conversation_threads(owner_user_id, updated_at DESC)")
+    owner_row = conn.execute("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()
+    if owner_row is not None:
+        conn.execute(
+            """
+            UPDATE conversation_threads
+            SET owner_user_id = ?
+            WHERE owner_user_id IS NULL OR owner_user_id = ''
+            """,
+            (owner_row["id"],),
+        )
+    conn.execute("UPDATE conversation_messages SET status = 'complete' WHERE status IS NULL OR status = ''")
+    conn.execute("UPDATE conversation_messages SET updated_at = created_at WHERE updated_at IS NULL")
     conn.execute("UPDATE cards SET tags_json = '[]' WHERE tags_json IS NULL OR tags_json = ''")
     conn.execute("UPDATE cards SET updated_at = created_at WHERE updated_at IS NULL")
 

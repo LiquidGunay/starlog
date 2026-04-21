@@ -11,8 +11,24 @@ class _SafePromptDict(dict[str, object]):
         return ""
 
 
+def resolve_prompt_path(name: str) -> Path:
+    requested = PROMPTS_ROOT / name
+    if requested.exists():
+        return requested
+
+    relative = Path(name)
+    stem = relative.stem if relative.suffix in {".md", ".txt"} else relative.name
+
+    for candidate_name in (f"{stem}.md", f"{stem}.txt"):
+        candidate = PROMPTS_ROOT / candidate_name
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(f"Prompt template not found: {name}")
+
+
 def load_prompt(name: str) -> str:
-    path = PROMPTS_ROOT / name
+    path = resolve_prompt_path(name)
     return path.read_text(encoding="utf-8").strip()
 
 

@@ -1,0 +1,159 @@
+.page {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(222, 178, 136, 0.12), transparent 30%),
+    linear-gradient(180deg, #101115 0%, #07080b 100%);
+  color: #f4f1e8;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 32px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 28px;
+  background: rgba(15, 16, 20, 0.84);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.kicker,
+.sideLabel {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 12px;
+  color: rgba(244, 241, 232, 0.56);
+}
+
+.hero h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2.4rem, 4vw, 4.1rem);
+  line-height: 1.02;
+}
+
+.lede {
+  margin: 0;
+  max-width: 760px;
+  font-size: 18px;
+  line-height: 1.7;
+  color: rgba(244, 241, 232, 0.78);
+}
+
+.heroMeta {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.heroMeta span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 232, 0.82);
+  font-size: 13px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.threadColumn {
+  display: grid;
+  gap: 18px;
+}
+
+.composer {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 11, 14, 0.92);
+}
+
+.composer textarea {
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  border-radius: 18px;
+  min-height: 120px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4f1e8;
+  font: inherit;
+}
+
+.composerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: rgba(244, 241, 232, 0.64);
+  font-size: 14px;
+}
+
+.composerBar button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  color: #15120d;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composerBar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.sideRail {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.sideCard {
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 13, 18, 0.92);
+}
+
+.sideCard h2 {
+  margin: 0 0 12px;
+  font-size: 24px;
+}
+
+.sideCard p,
+.sideCard li {
+  color: rgba(244, 241, 232, 0.76);
+  line-height: 1.7;
+}
+
+.sideCard ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+@media (max-width: 980px) {
+  .page {
+    padding: 18px;
+  }
+
+  .hero,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

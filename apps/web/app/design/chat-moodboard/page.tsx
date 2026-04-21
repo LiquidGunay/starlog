@@ -4,7 +4,7 @@ import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "Chat Moodboard | Starlog",
-  description: "Primary visual reference for the Starlog Assistant chat overhaul.",
+  description: "Historical reference from the pre-reset Starlog Assistant redesign.",
 };
 
 const palette = [
@@ -45,8 +45,8 @@ export default function ChatMoodboardPage() {
         <p className={styles.kicker}>Starlog chat overhaul</p>
         <h1>Build the thread like a nocturnal instrument panel, not a pastel concept mock.</h1>
         <p className={styles.lede}>
-          This moodboard is the active visual reference for the mobile app and PWA Assistant rewrite.
-          The April 2026 pack is now soft historical input, not the target.
+          This moodboard is historical-only. The active assistant reset reference now lives at
+          `/design/assistant-runtime-reference`.
         </p>
       </section>
 

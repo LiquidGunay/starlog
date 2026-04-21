@@ -8,7 +8,7 @@ prompt files and runtime scaffolding now live here.
 
 ## Responsibilities
 
-- file-based prompt templates
+- file-based markdown prompt templates
 - chat-turn workflow assembly
 - briefing and research-digest workflow assembly
 - provider adapter boundaries
@@ -24,3 +24,9 @@ prompt files and runtime scaffolding now live here.
 
 These preview endpoints currently render workflow inputs from the canonical prompt files. They are
 intended as the migration target for future OpenAI-backed execution.
+
+## Prompt editing rule
+
+Assistant and agent behavior prompts should live in `services/ai-runtime/prompts/*.md`.
+Treat those markdown files as the canonical user-editable behavior layer and avoid burying the
+primary prompt text in code literals.
