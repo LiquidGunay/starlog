@@ -60,6 +60,7 @@ def run_artifact_action(
         payload.action,
         defer=payload.defer,
         provider_hint=payload.provider_hint,
+        user_id=user_id,
     )
     try:
         assistant_event_service.reflect_artifact_action(

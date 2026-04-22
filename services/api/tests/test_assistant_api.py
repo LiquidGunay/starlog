@@ -461,6 +461,126 @@ def test_direct_planner_conflict_resolution_closes_pending_interrupt_and_emits_a
     )
 
 
+def test_dismissed_planner_conflict_does_not_reopen_on_identical_sync(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    conflict = {
+        "id": "cnf_dismiss_1",
+        "local_event_id": "evt_local_d1",
+        "remote_id": "remote_evt_d1",
+        "strategy": "prefer_local",
+        "detail": {"title": "Deep work overlap"},
+        "resolved": False,
+        "resolved_at": None,
+        "resolution_strategy": None,
+        "created_at": "2026-04-21T09:00:00+00:00",
+    }
+
+    monkeypatch.setattr(
+        google_calendar_service,
+        "run_two_way_sync",
+        lambda _conn: {
+            "run_id": "sync_dismiss_1",
+            "pushed": 0,
+            "pulled": 1,
+            "conflicts": 1,
+            "last_synced_at": "2026-04-21T09:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(google_calendar_service, "list_conflicts", lambda _conn, include_resolved=False: [conflict])
+
+    opened = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert opened.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    interrupt = next(
+        item
+        for item in snapshot.json()["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    )
+
+    dismissed = client.post(f"/v1/assistant/interrupts/{interrupt['id']}/dismiss", headers=auth_headers)
+    assert dismissed.status_code == 200
+
+    rerun = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert rerun.status_code == 200
+
+    final_snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert final_snapshot.status_code == 200
+    matching_interrupts = [
+        item
+        for item in final_snapshot.json()["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    ]
+    assert len(matching_interrupts) == 1
+    assert matching_interrupts[0]["status"] == "dismissed"
+
+
+def test_submitted_planner_conflict_does_not_reopen_on_identical_sync(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    conflict = {
+        "id": "cnf_submit_1",
+        "local_event_id": "evt_local_s1",
+        "remote_id": "remote_evt_s1",
+        "strategy": "prefer_local",
+        "detail": {"title": "Team sync overlap"},
+        "resolved": False,
+        "resolved_at": None,
+        "resolution_strategy": None,
+        "created_at": "2026-04-21T09:00:00+00:00",
+    }
+
+    monkeypatch.setattr(
+        google_calendar_service,
+        "run_two_way_sync",
+        lambda _conn: {
+            "run_id": "sync_submit_1",
+            "pushed": 0,
+            "pulled": 1,
+            "conflicts": 1,
+            "last_synced_at": "2026-04-21T09:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(google_calendar_service, "list_conflicts", lambda _conn, include_resolved=False: [conflict])
+
+    opened = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert opened.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    interrupt = next(
+        item
+        for item in snapshot.json()["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    )
+
+    submitted = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"resolution": "local_wins"}},
+        headers=auth_headers,
+    )
+    assert submitted.status_code == 200
+
+    rerun = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert rerun.status_code == 200
+
+    final_snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert final_snapshot.status_code == 200
+    matching_interrupts = [
+        item
+        for item in final_snapshot.json()["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    ]
+    assert len(matching_interrupts) == 1
+    assert matching_interrupts[0]["status"] == "submitted"
+
+
 def test_planner_conflict_replay_clear_dismisses_pending_interrupt_and_emits_ambient_update(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -647,6 +767,101 @@ def test_deferred_artifact_action_completion_reflects_library_ambient_update(
         for message in payload["messages"]
         for part in message["parts"]
     )
+
+
+def test_deferred_artifact_action_completion_does_not_reflect_to_primary_thread_for_secondary_user(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    bootstrap = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["messages"] == []
+
+    secondary_headers = _secondary_auth_headers()
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_manual",
+            "capture_source": "test-suite",
+            "title": "Secondary deferred capture",
+            "raw": {"text": "Keep this away from the owner thread.", "mime_type": "text/plain"},
+        },
+        headers=secondary_headers,
+    )
+    assert captured.status_code == 201
+    artifact_id = captured.json()["artifact"]["id"]
+
+    queued = client.post(
+        f"/v1/artifacts/{artifact_id}/actions",
+        json={"action": "tasks", "defer": True, "provider_hint": "desktop_bridge_codex"},
+        headers=secondary_headers,
+    )
+    assert queued.status_code == 200
+    job_id = queued.json()["output_ref"]
+    assert job_id
+
+    claim = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "secondary-worker"},
+        headers=secondary_headers,
+    )
+    assert claim.status_code == 200
+
+    complete = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "secondary-worker",
+            "provider_used": "desktop_bridge_codex",
+            "output": {"tasks": [{"title": "Secondary-only task", "estimate_min": 10, "priority": 2}]},
+        },
+        headers=secondary_headers,
+    )
+    assert complete.status_code == 200
+
+    owner_snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert owner_snapshot.status_code == 200
+    assert owner_snapshot.json()["messages"] == []
+
+
+def test_resolving_an_already_resolved_conflict_does_not_emit_duplicate_ambient_update(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        now = utc_now().isoformat()
+        conn.execute(
+            """
+            INSERT INTO calendar_sync_conflicts (
+              id, local_event_id, remote_id, strategy, detail_json, resolved, resolved_at, resolution_strategy, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("cnf_resolved_once", None, "remote_evt_resolved_once", "prefer_local", json.dumps({}, sort_keys=True), 0, None, None, now),
+        )
+        conn.commit()
+
+    first = client.post(
+        "/v1/calendar/sync/google/conflicts/cnf_resolved_once/resolve",
+        json={"resolution_strategy": "dismiss"},
+        headers=auth_headers,
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/v1/calendar/sync/google/conflicts/cnf_resolved_once/resolve",
+        json={"resolution_strategy": "dismiss"},
+        headers=auth_headers,
+    )
+    assert second.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    resolved_updates = [
+        part
+        for message in snapshot.json()["messages"]
+        for part in message["parts"]
+        if part["type"] == "ambient_update" and part["update"]["label"] == "Planner conflict resolved"
+    ]
+    assert len(resolved_updates) == 1
 
 
 def test_assistant_updates_endpoint_returns_real_deltas_after_cursor(

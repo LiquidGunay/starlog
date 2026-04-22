@@ -459,6 +459,7 @@ def run_action(
     action: str,
     defer: bool = False,
     provider_hint: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[str, str | None]:
     artifact = get_artifact(conn, artifact_id)
     if artifact is None:
@@ -485,6 +486,7 @@ def run_action(
             provider_hint=provider_hint
             or integrations_service.default_batch_provider_hint(conn, DEFERRED_CAPABILITIES[action])
             or "desktop_bridge_codex",
+            owner_user_id=user_id,
             requested_targets=integrations_service.capability_execution_order(
                 conn,
                 DEFERRED_CAPABILITIES[action],

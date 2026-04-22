@@ -64,6 +64,7 @@ def capture_voice(
         checksum_sha256=str(media["checksum_sha256"]),
         duration_ms=duration_ms,
         provider_hint=provider_hint,
+        user_id=user_id,
     )
     try:
         assistant_event_service.reflect_capture_created(db, artifact=artifact, user_id=user_id)

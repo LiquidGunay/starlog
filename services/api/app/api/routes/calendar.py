@@ -24,6 +24,7 @@ from app.schemas.google_sync import (
 )
 from app.services import calendar_service
 from app.services import assistant_event_service, google_calendar_service
+from app.services.common import execute_fetchone
 
 router = APIRouter(prefix="/calendar")
 
@@ -181,22 +182,25 @@ def resolve_conflict(
     user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> CalendarConflictResolveResponse:
+    existing = execute_fetchone(db, "SELECT resolved FROM calendar_sync_conflicts WHERE id = ?", (conflict_id,))
+    was_already_resolved = bool(existing.get("resolved")) if existing is not None else False
     try:
         resolved = google_calendar_service.resolve_conflict(db, conflict_id, payload.resolution_strategy)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync conflict not found")
-    try:
-        assistant_event_service.reflect_planner_conflict_resolved(
-            db,
-            conflict=resolved,
-            resolution_strategy=payload.resolution_strategy,
-            user_id=user_id,
-        )
-    except Exception:
-        # Planner resolution is primary; assistant reflection should not block the resolution path.
-        pass
+    if not was_already_resolved:
+        try:
+            assistant_event_service.reflect_planner_conflict_resolved(
+                db,
+                conflict=resolved,
+                resolution_strategy=payload.resolution_strategy,
+                user_id=user_id,
+            )
+        except Exception:
+            # Planner resolution is primary; assistant reflection should not block the resolution path.
+            pass
     return CalendarConflictResolveResponse(conflict=CalendarConflictResponse.model_validate(resolved))
 
 

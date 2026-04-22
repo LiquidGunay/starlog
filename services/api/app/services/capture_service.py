@@ -93,6 +93,7 @@ def ingest_voice_capture(
     checksum_sha256: str,
     duration_ms: int | None,
     provider_hint: str | None,
+    user_id: str | None = None,
 ) -> tuple[dict, str]:
     resolved_provider_hint = provider_hint or integrations_service.default_batch_provider_hint(conn, "stt") or "desktop_bridge_stt"
     metadata = {
@@ -127,6 +128,7 @@ def ingest_voice_capture(
             "title": title or artifact["id"],
         },
         provider_hint=resolved_provider_hint,
+        owner_user_id=user_id,
         requested_targets=integrations_service.capability_execution_order(
             conn,
             "stt",

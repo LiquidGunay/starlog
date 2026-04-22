@@ -14,6 +14,7 @@ def _job_payload(row: dict) -> dict:
         "status": row["status"],
         "provider_hint": row.get("provider_hint"),
         "provider_used": row.get("provider_used"),
+        "owner_user_id": row.get("owner_user_id"),
         "artifact_id": row.get("artifact_id"),
         "action": row.get("action"),
         "requested_targets": row.get("requested_targets_json", []),
@@ -34,6 +35,7 @@ def create_job(
     capability: str,
     payload: dict,
     provider_hint: str | None = None,
+    owner_user_id: str | None = None,
     artifact_id: str | None = None,
     action: str | None = None,
     requested_targets: list[str] | None = None,
@@ -55,10 +57,10 @@ def create_job(
     conn.execute(
         """
         INSERT INTO ai_jobs (
-          id, capability, status, provider_hint, provider_used, artifact_id, action,
+          id, capability, status, provider_hint, provider_used, owner_user_id, artifact_id, action,
           requested_targets_json, selected_target, claimed_worker_class,
           payload_json, output_json, error_text, worker_id, created_at, claimed_at, finished_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
@@ -66,6 +68,7 @@ def create_job(
             "pending",
             provider_hint,
             None,
+            owner_user_id,
             artifact_id,
             action,
             json.dumps(requested_targets or [], sort_keys=True),
@@ -265,6 +268,7 @@ def cancel_job(conn: Connection, job_id: str, reason: str | None = None) -> dict
                     action=str(job["action"]),
                     status="cancelled",
                     output_ref=str(job["id"]),
+                    user_id=str(job.get("owner_user_id") or "").strip() or None,
                 )
             except Exception:
                 pass
@@ -323,6 +327,7 @@ def complete_job(
                     action=str(job["action"]),
                     status="completed",
                     output_ref=created_ref,
+                    user_id=str(job.get("owner_user_id") or "").strip() or None,
                 )
             except Exception:
                 pass
@@ -435,6 +440,7 @@ def fail_job(
                     action=str(job["action"]),
                     status="failed",
                     output_ref=str(job["id"]),
+                    user_id=str(job.get("owner_user_id") or "").strip() or None,
                 )
             except Exception:
                 pass

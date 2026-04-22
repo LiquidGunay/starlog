@@ -62,6 +62,69 @@ def _find_pending_interrupt_for_entity(
     return None
 
 
+def _planner_conflict_fingerprint(payload: dict[str, Any]) -> dict[str, Any]:
+    detail = payload.get("detail") if isinstance(payload.get("detail"), dict) else {}
+    options = payload.get("options") if isinstance(payload.get("options"), list) else []
+    normalized_options = [
+        {
+            "label": str(item.get("label") or "").strip(),
+            "value": str(item.get("value") or "").strip(),
+        }
+        for item in options
+        if isinstance(item, dict)
+    ]
+    return {
+        "assistant_text": str(payload.get("assistant_text") or "").strip(),
+        "body": str(payload.get("body") or "").strip(),
+        "detail": detail,
+        "label": str(payload.get("label") or "").strip(),
+        "options": normalized_options,
+    }
+
+
+def _surface_event_fingerprint(kind: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    if kind == "planner.conflict.detected":
+        return _planner_conflict_fingerprint(payload)
+    return None
+
+
+def _find_latest_surface_event_for_entity(
+    conn: Connection,
+    *,
+    thread_id: str,
+    kind: str,
+    entity_ref: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    normalized = _normalize_entity_ref(entity_ref)
+    if normalized is None:
+        return None
+    rows = execute_fetchall(
+        conn,
+        """
+        SELECT *
+        FROM conversation_surface_events
+        WHERE thread_id = ? AND kind = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (thread_id, kind),
+    )
+    for row in rows:
+        existing_ref = row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else None
+        if _normalize_entity_ref(existing_ref) == normalized:
+            return {
+                "id": row["id"],
+                "thread_id": row["thread_id"],
+                "source_surface": row["source_surface"],
+                "kind": row["kind"],
+                "entity_ref": existing_ref,
+                "payload": row.get("payload_json") if isinstance(row.get("payload_json"), dict) else {},
+                "visibility": row["visibility"],
+                "projected_message": bool(row.get("projected_message")),
+                "created_at": row["created_at"],
+            }
+    return None
+
+
 def _summarize_text(value: Any, *, limit: int = 180) -> str | None:
     if not isinstance(value, str):
         return None
@@ -512,6 +575,21 @@ def create_surface_event(
         entity_ref=entity_ref,
     ):
         return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
+    fingerprint = _surface_event_fingerprint(kind, payload)
+    if fingerprint is not None:
+        previous_event = _find_latest_surface_event_for_entity(
+            conn,
+            thread_id=thread["id"],
+            kind=kind,
+            entity_ref=entity_ref,
+        )
+        if previous_event is not None:
+            previous_fingerprint = _surface_event_fingerprint(
+                kind,
+                previous_event.get("payload") if isinstance(previous_event.get("payload"), dict) else {},
+            )
+            if previous_fingerprint == fingerprint:
+                return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
     event = _insert_surface_event(
         conn,
         thread_id=thread["id"],
