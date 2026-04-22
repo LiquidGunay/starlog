@@ -11,7 +11,7 @@ from app.schemas.artifacts import (
     ArtifactResponse,
     ArtifactVersionsResponse,
 )
-from app.services import artifacts_service
+from app.services import artifacts_service, assistant_event_service
 
 router = APIRouter(prefix="/artifacts")
 
@@ -48,18 +48,32 @@ def list_artifacts(
 def run_artifact_action(
     artifact_id: str,
     payload: ArtifactActionRequest,
-    _user_id: str = Depends(require_user_id),
+    user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> ArtifactActionResponse:
+    artifact = artifacts_service.get_artifact(db, artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
     status_text, output_ref = artifacts_service.run_action(
         db,
         artifact_id,
         payload.action,
         defer=payload.defer,
         provider_hint=payload.provider_hint,
+        user_id=user_id,
     )
-    if status_text == "not_found":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+    try:
+        assistant_event_service.reflect_artifact_action(
+            db,
+            artifact=artifact,
+            action=payload.action,
+            status=status_text,
+            output_ref=output_ref,
+            user_id=user_id,
+        )
+    except Exception:
+        # Artifact action execution is primary; assistant reflection should not block Library actions.
+        pass
 
     return ArtifactActionResponse(
         artifact_id=artifact_id,

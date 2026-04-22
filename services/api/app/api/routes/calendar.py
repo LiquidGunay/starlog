@@ -23,9 +23,18 @@ from app.schemas.google_sync import (
     GoogleSyncRunResponse,
 )
 from app.services import calendar_service
-from app.services import google_calendar_service
+from app.services import assistant_event_service, google_calendar_service
+from app.services.common import execute_fetchone
 
 router = APIRouter(prefix="/calendar")
+
+
+def _reflect_unresolved_conflicts(db: Connection, *, user_id: str) -> None:
+    conflicts = google_calendar_service.list_conflicts(db, include_resolved=False)
+    for conflict in conflicts:
+        if bool(conflict.get("resolved")):
+            continue
+        assistant_event_service.reflect_planner_conflict_detected(db, conflict=conflict, user_id=user_id)
 
 
 @router.post("/events", response_model=CalendarEventResponse, status_code=status.HTTP_201_CREATED)
@@ -119,10 +128,15 @@ def google_oauth_status(
 
 @router.post("/sync/google/run", response_model=GoogleSyncRunResponse)
 def run_google_sync(
-    _user_id: str = Depends(require_user_id),
+    user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> GoogleSyncRunResponse:
     result = google_calendar_service.run_two_way_sync(db)
+    try:
+        _reflect_unresolved_conflicts(db, user_id=user_id)
+    except Exception:
+        # Calendar sync is primary; assistant reflection should not block the sync result.
+        pass
     return GoogleSyncRunResponse.model_validate(result)
 
 
@@ -165,28 +179,53 @@ def list_conflicts(
 def resolve_conflict(
     conflict_id: str,
     payload: CalendarConflictResolveRequest,
-    _user_id: str = Depends(require_user_id),
+    user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> CalendarConflictResolveResponse:
+    existing = execute_fetchone(db, "SELECT resolved FROM calendar_sync_conflicts WHERE id = ?", (conflict_id,))
+    was_already_resolved = bool(existing.get("resolved")) if existing is not None else False
     try:
         resolved = google_calendar_service.resolve_conflict(db, conflict_id, payload.resolution_strategy)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync conflict not found")
+    if not was_already_resolved:
+        try:
+            assistant_event_service.reflect_planner_conflict_resolved(
+                db,
+                conflict=resolved,
+                resolution_strategy=payload.resolution_strategy,
+                user_id=user_id,
+            )
+        except Exception:
+            # Planner resolution is primary; assistant reflection should not block the resolution path.
+            pass
     return CalendarConflictResolveResponse(conflict=CalendarConflictResponse.model_validate(resolved))
 
 
 @router.post("/sync/google/conflicts/{conflict_id}/replay", response_model=CalendarConflictReplayResponse)
 def replay_conflict(
     conflict_id: str,
-    _user_id: str = Depends(require_user_id),
+    user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> CalendarConflictReplayResponse:
     replayed = google_calendar_service.replay_conflict(db, conflict_id)
     if replayed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync conflict not found")
     conflict = replayed.get("conflict")
+    if isinstance(conflict, dict) and not bool(conflict.get("resolved")):
+        try:
+            assistant_event_service.reflect_planner_conflict_detected(db, conflict=conflict, user_id=user_id)
+        except Exception:
+            # Conflict replay is primary; assistant reflection should not block the replay path.
+            pass
+    elif conflict is None:
+        try:
+            assistant_event_service.reflect_planner_conflict_cleared(db, conflict_id=conflict_id, user_id=user_id)
+        except Exception:
+            # Conflict replay is primary; assistant reflection should not block the replay path.
+            pass
     return CalendarConflictReplayResponse(
         sync_run=GoogleSyncRunResponse.model_validate(replayed["sync_run"]),
         conflict=CalendarConflictResponse.model_validate(conflict) if isinstance(conflict, dict) else None,

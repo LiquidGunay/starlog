@@ -15,7 +15,7 @@ function jsonClone<T>(value: T): T {
 }
 
 export function normalizeAssistantRole(role: AssistantThreadMessage["role"]): "assistant" | "system" | "user" {
-  return role === "tool" ? "assistant" : role;
+  return role === "user" ? "user" : "assistant";
 }
 
 export function normalizeAssistantStatus(message: AssistantThreadMessage): ThreadMessageLike["status"] {

@@ -46,6 +46,7 @@ export type AssistantInterrupt = {
   metadata: Record<string, unknown>;
   created_at: string;
   resolved_at?: string | null;
+  resolution?: AssistantInterruptResolution | Record<string, unknown> | null;
 };
 
 export type AssistantInterruptResolution = {

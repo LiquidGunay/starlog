@@ -89,12 +89,14 @@ function renderField(
 
 function MessagePart({
   message,
+  interruptById,
   busy,
   onCardAction,
   onInterruptSubmit,
   onInterruptDismiss,
 }: {
   message: AssistantThreadMessage;
+  interruptById: Record<string, AssistantInterrupt>;
   busy: boolean;
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
@@ -198,28 +200,48 @@ function MessagePart({
             );
           }
           if (part.type === "interrupt_request") {
+            const liveInterrupt = interruptById[part.interrupt.id] || part.interrupt;
+            if (liveInterrupt.status !== "pending") {
+              const resolutionRecord =
+                liveInterrupt.resolution && typeof liveInterrupt.resolution === "object"
+                  ? (liveInterrupt.resolution as { values?: Record<string, unknown> })
+                  : null;
+              const resolutionValue = resolutionRecord?.values?.resolution;
+              const detail =
+                typeof resolutionValue === "string" && resolutionValue
+                  ? resolutionValue.replace(/_/g, " ")
+                  : liveInterrupt.status === "submitted"
+                    ? "resolved from another surface"
+                    : "no longer pending";
+              return (
+                <div key={part.id} className={styles.resolution}>
+                  <strong>{liveInterrupt.status === "submitted" ? "Resolved" : "Dismissed"}</strong>
+                  <span>{detail}</span>
+                </div>
+              );
+            }
             return (
               <section key={part.id} className={styles.panel}>
-                <p className={styles.cardKind}>{part.interrupt.tool_name.replace(/_/g, " ")}</p>
-                <h3>{part.interrupt.title}</h3>
-                {part.interrupt.body ? <p>{part.interrupt.body}</p> : null}
-                <div className={styles.panelFields}>{renderField(part.interrupt, values, setValues)}</div>
+                <p className={styles.cardKind}>{liveInterrupt.tool_name.replace(/_/g, " ")}</p>
+                <h3>{liveInterrupt.title}</h3>
+                {liveInterrupt.body ? <p>{liveInterrupt.body}</p> : null}
+                <div className={styles.panelFields}>{renderField(liveInterrupt, values, setValues)}</div>
                 <div className={styles.panelActions}>
                   <button
                     type="button"
-                    onClick={() => void onInterruptDismiss(part.interrupt.id)}
+                    onClick={() => void onInterruptDismiss(liveInterrupt.id)}
                     disabled={busy}
                     className={styles.secondaryButton}
                   >
-                    {part.interrupt.secondary_label || "Dismiss"}
+                    {liveInterrupt.secondary_label || "Dismiss"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => void onInterruptSubmit(part.interrupt.id, values)}
+                    onClick={() => void onInterruptSubmit(liveInterrupt.id, values)}
                     disabled={busy}
                     className={styles.primaryButton}
                   >
-                    {part.interrupt.primary_label}
+                    {liveInterrupt.primary_label}
                   </button>
                 </div>
               </section>
@@ -248,6 +270,8 @@ export function MainRoomThread({
     return <section className={styles.threadShell}>Assistant thread unavailable.</section>;
   }
 
+  const interruptById = Object.fromEntries(snapshot.interrupts.map((interrupt) => [interrupt.id, interrupt]));
+
   return (
     <section className={styles.threadShell}>
       {snapshot.messages.length === 0 ? (
@@ -260,6 +284,7 @@ export function MainRoomThread({
           <MessagePart
             key={message.id}
             message={message}
+            interruptById={interruptById}
             busy={busy}
             onCardAction={onCardAction}
             onInterruptSubmit={onInterruptSubmit}

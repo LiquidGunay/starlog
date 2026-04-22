@@ -122,6 +122,44 @@ function withInterrupt(snapshot: AssistantThreadSnapshot, interrupt: AssistantIn
   };
 }
 
+function normalizeSnapshot(snapshot: AssistantThreadSnapshot | null): AssistantThreadSnapshot | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const interruptsById = Object.fromEntries(snapshot.interrupts.map((interrupt) => [interrupt.id, interrupt]));
+  const messages = snapshot.messages.map((message) => {
+    let hasPendingInterrupt = false;
+    const parts = message.parts.map((part) => {
+      if (part.type !== "interrupt_request") {
+        return part;
+      }
+      const liveInterrupt = interruptsById[part.interrupt.id] || part.interrupt;
+      if (liveInterrupt.status === "pending") {
+        hasPendingInterrupt = true;
+      }
+      return {
+        ...part,
+        interrupt: {
+          ...part.interrupt,
+          ...liveInterrupt,
+        },
+      };
+    });
+
+    return {
+      ...message,
+      status: message.status === "requires_action" && !hasPendingInterrupt ? "complete" : message.status,
+      parts,
+    };
+  });
+
+  return {
+    ...snapshot,
+    messages,
+  };
+}
+
 function applyAssistantDelta(
   snapshot: AssistantThreadSnapshot | null,
   delta: AssistantThreadDelta,
@@ -660,10 +698,11 @@ export default function AssistantPage() {
 
   const activeRun = snapshot?.runs.find((run) => run.status === "running" || run.status === "interrupted");
   const activeInterrupt = snapshot?.interrupts.find((interrupt) => interrupt.status === "pending");
+  const normalizedSnapshot = normalizeSnapshot(snapshot);
 
   return (
     <StarlogAssistantRuntimeProvider
-      messages={snapshot?.messages ?? []}
+      messages={normalizedSnapshot?.messages ?? []}
       isRunning={sending || activeRun?.status === "running"}
       onSendMessage={sendMessage}
     >
@@ -688,7 +727,7 @@ export default function AssistantPage() {
         <section className={styles.layout}>
           <div className={styles.threadColumn}>
             <MainRoomThread
-              snapshot={snapshot}
+              snapshot={normalizedSnapshot}
               loading={loading}
               busy={sending}
               onCardAction={handleCardAction}

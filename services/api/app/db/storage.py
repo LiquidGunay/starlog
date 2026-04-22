@@ -562,6 +562,7 @@ CREATE TABLE IF NOT EXISTS ai_jobs (
   status TEXT NOT NULL,
   provider_hint TEXT,
   provider_used TEXT,
+  owner_user_id TEXT,
   artifact_id TEXT,
   action TEXT,
   requested_targets_json TEXT,
@@ -755,6 +756,7 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "ai_jobs", "requested_targets_json", "TEXT")
     _ensure_column(conn, "ai_jobs", "selected_target", "TEXT")
     _ensure_column(conn, "ai_jobs", "claimed_worker_class", "TEXT")
+    _ensure_column(conn, "ai_jobs", "owner_user_id", "TEXT")
     _ensure_column(conn, "conversation_threads", "owner_user_id", "TEXT")
     _ensure_column(conn, "conversation_messages", "run_id", "TEXT")
     _ensure_column(conn, "conversation_messages", "status", "TEXT NOT NULL DEFAULT 'complete'")

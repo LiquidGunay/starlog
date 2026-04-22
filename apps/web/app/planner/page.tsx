@@ -63,6 +63,21 @@ type ConflictReplayResult = {
   conflict?: Conflict | null;
 };
 
+type BriefingPackage = {
+  id: string;
+  date: string;
+  text: string;
+  audio_ref?: string | null;
+};
+
+type SyncSummary = {
+  run_id: string;
+  pushed: number;
+  pulled: number;
+  conflicts: number;
+  last_synced_at?: string | null;
+};
+
 type TimelineItem = {
   id: string;
   title: string;
@@ -167,6 +182,8 @@ export default function PlannerPage() {
   const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(
     () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
   );
+  const [latestBriefing, setLatestBriefing] = useState<BriefingPackage | null>(null);
+  const [latestSyncSummary, setLatestSyncSummary] = useState<SyncSummary | null>(null);
   const [status, setStatus] = useState("Ready");
   const sidecarPane = usePaneCollapsed(PLANNER_SIDECAR_PANE_SNAPSHOT);
   const timeline = useMemo<TimelineItem[]>(() => {
@@ -327,17 +344,29 @@ export default function PlannerPage() {
     }
   }
 
+  async function generateBriefing() {
+    try {
+      const briefing = await apiRequest<BriefingPackage>(apiBase, token, "/v1/briefings/generate", {
+        method: "POST",
+        body: JSON.stringify({ date, provider: "planner_web" }),
+      });
+      setLatestBriefing(briefing);
+      setStatus(`Generated briefing for ${briefing.date}. Assistant focus prompt is ready.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Briefing generation failed");
+    }
+  }
+
   async function runGoogleSync() {
     try {
-      const result = await apiRequest<{ run_id: string; pushed: number; pulled: number; conflicts: number }>(
+      const result = await apiRequest<SyncSummary>(
         apiBase,
         token,
         "/v1/calendar/sync/google/run",
         { method: "POST" },
       );
-      setStatus(
-        `Google sync ${result.run_id}: pushed ${result.pushed}, pulled ${result.pulled}, conflicts ${result.conflicts}`,
-      );
+      setLatestSyncSummary(result);
+      setStatus(`Google sync ${result.run_id} completed`);
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
@@ -588,16 +617,23 @@ export default function PlannerPage() {
                     <span>open conflicts</span>
                   </article>
                   <article className="chronos-summary-card">
-                    <strong>{oauthStatus?.connected ? "Live" : "Local"}</strong>
-                    <span>calendar mode</span>
+                    <strong>{latestBriefing ? "Ready" : oauthStatus?.connected ? "Live" : "Local"}</strong>
+                    <span>{latestBriefing ? "briefing prompt" : "calendar mode"}</span>
                   </article>
                 </div>
               </div>
               <div className="april-briefing-controls">
                 <button className="april-icon-button" type="button">◂</button>
-                <button className="april-play-button" type="button">Play</button>
+                <button className="april-play-button" type="button" onClick={() => generateBriefing()}>
+                  Generate briefing
+                </button>
                 <button className="april-icon-button" type="button">▸</button>
               </div>
+              {latestBriefing ? (
+                <p className="status">
+                  Latest briefing {latestBriefing.date}: {latestBriefing.audio_ref ? "audio cached" : "thread prompt ready"}
+                </p>
+              ) : null}
             </AprilPanel>
 
             <AprilPanel className="april-calendar-panel">
@@ -621,6 +657,11 @@ export default function PlannerPage() {
                   <button className="button" type="button" onClick={() => shiftMonth(1)}>Next</button>
                 </div>
               </div>
+              {latestSyncSummary ? (
+                <p className="status">
+                  Latest sync {latestSyncSummary.run_id}: pushed {latestSyncSummary.pushed}, pulled {latestSyncSummary.pulled}, conflicts {latestSyncSummary.conflicts}
+                </p>
+              ) : null}
               <div className="april-month-grid">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                   <span key={day} className="april-month-grid-label">{day}</span>
