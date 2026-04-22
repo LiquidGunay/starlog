@@ -17,6 +17,62 @@ function realpathIfPresent(targetPath) {
   }
 }
 
+function pathExists(targetPath) {
+  try {
+    fs.accessSync(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function collectDuplicatePackageRoots(packageName, preferredPath) {
+  const preferredRealPath = realpathIfPresent(preferredPath);
+  const candidates = new Set();
+
+  const directWorkspacePackage = path.resolve(workspaceNodeModulesRoot, packageName);
+  if (pathExists(directWorkspacePackage)) {
+    const resolved = realpathIfPresent(directWorkspacePackage);
+    if (resolved !== preferredRealPath) {
+      candidates.add(resolved);
+    }
+  }
+
+  const pnpmStoreRoot = path.resolve(workspaceNodeModulesRoot, ".pnpm");
+  if (!pathExists(pnpmStoreRoot)) {
+    return [...candidates];
+  }
+
+  for (const entry of fs.readdirSync(pnpmStoreRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const candidate = path.resolve(pnpmStoreRoot, entry.name, "node_modules", packageName);
+    if (!pathExists(candidate)) {
+      continue;
+    }
+    const resolved = realpathIfPresent(candidate);
+    if (resolved !== preferredRealPath) {
+      candidates.add(resolved);
+    }
+  }
+
+  return [...candidates];
+}
+
+function metroExclusionList(additionalExclusions = []) {
+  const defaults = [/\/__tests__\/.*/];
+  const patterns = [...additionalExclusions, ...defaults].map((pattern) => {
+    if (pattern instanceof RegExp) {
+      return pattern.source.replace(/\/|\\\//g, `\\${path.sep}`);
+    }
+    return pattern
+      .replace(/[\-\[\]\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&")
+      .replaceAll("/", `\\${path.sep}`);
+  });
+  return new RegExp(`(${patterns.join("|")})$`);
+}
+
 const watchFolders = Array.from(
   new Set([
     workspaceRoot,
@@ -37,7 +93,17 @@ config.resolver.nodeModulesPaths = [
   realpathIfPresent(workspaceNodeModulesRoot),
 ];
 config.resolver.unstable_enableSymlinks = true;
+config.resolver.blockList = metroExclusionList(
+  collectDuplicatePackageRoots("react", path.resolve(mobileNodeModulesRoot, "react")).map(
+    (blockedPackageRoot) => new RegExp(`^${blockedPackageRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:/.*)?$`),
+  ),
+);
 config.resolver.extraNodeModules = {
+  react: realpathIfPresent(path.resolve(mobileNodeModulesRoot, "react")),
+  "react/jsx-runtime": realpathIfPresent(path.resolve(mobileNodeModulesRoot, "react/jsx-runtime")),
+  "react/jsx-dev-runtime": realpathIfPresent(path.resolve(mobileNodeModulesRoot, "react/jsx-dev-runtime")),
+  "react-native": realpathIfPresent(path.resolve(mobileNodeModulesRoot, "react-native")),
+  scheduler: realpathIfPresent(path.resolve(mobileNodeModulesRoot, "scheduler")),
   "@babel/runtime": realpathIfPresent(path.resolve(mobileNodeModulesRoot, "@babel/runtime")),
 };
 

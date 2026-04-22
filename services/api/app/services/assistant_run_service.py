@@ -11,12 +11,14 @@ from app.schemas.agent import AgentCommandResponse, AgentCommandStep
 from app.services import (
     agent_command_service,
     agent_service,
+    ai_jobs_service,
     ai_service,
     assistant_projection_service,
     assistant_thread_service,
     artifacts_service,
     conversation_card_service,
     conversation_service,
+    integrations_service,
     memory_vault_service,
     srs_service,
 )
@@ -301,9 +303,9 @@ def _create_interrupt(
     }
 
 
-def _complete_interrupt(conn: Connection, *, interrupt_id: str, action: str, values: dict[str, Any]) -> dict[str, Any]:
+def _build_interrupt_resolution(*, interrupt_id: str, action: str, values: dict[str, Any]) -> dict[str, Any]:
     now = utc_now().isoformat()
-    resolution = {
+    return {
         "id": new_id("resolution"),
         "interrupt_id": interrupt_id,
         "action": action,
@@ -311,6 +313,18 @@ def _complete_interrupt(conn: Connection, *, interrupt_id: str, action: str, val
         "metadata": {},
         "created_at": now,
     }
+
+
+def _complete_interrupt(
+    conn: Connection,
+    *,
+    interrupt_id: str,
+    action: str,
+    values: dict[str, Any],
+    resolution: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    now = utc_now().isoformat()
+    resolution = resolution or _build_interrupt_resolution(interrupt_id=interrupt_id, action=action, values=values)
     next_status = "submitted" if action == "submit" else "dismissed"
     conn.execute(
         """
@@ -860,6 +874,55 @@ def start_run(
     }
 
 
+def queue_voice_run(
+    conn: Connection,
+    *,
+    thread_id: str,
+    blob_ref: str,
+    content_type: str | None,
+    title: str | None,
+    duration_ms: int | None,
+    device_target: str,
+    provider_hint: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
+    owner_user_id = assistant_thread_service._require_assistant_user(conn, user_id)
+    resolved_provider_hint = (
+        provider_hint
+        or integrations_service.default_batch_provider_hint(conn, "stt")
+        or "desktop_bridge_stt"
+    )
+    request_metadata = metadata or {}
+    return ai_jobs_service.create_job(
+        conn,
+        capability="stt",
+        payload={
+            "blob_ref": blob_ref,
+            "content_type": content_type,
+            "title": title or "Assistant voice message",
+            "duration_ms": duration_ms,
+            "assistant_thread": {
+                "thread_id": thread["id"],
+                "kind": "voice_message",
+                "input_mode": "voice",
+                "device_target": device_target,
+                "metadata": request_metadata,
+            },
+        },
+        provider_hint=resolved_provider_hint,
+        owner_user_id=owner_user_id,
+        requested_targets=integrations_service.capability_execution_order(
+            conn,
+            "stt",
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        ),
+        action="assistant_thread_voice",
+    )
+
+
 def _interrupt_row(conn: Connection, interrupt_id: str, *, user_id: str | None = None) -> dict[str, Any]:
     owner_user_id = assistant_thread_service._require_assistant_user(conn, user_id)
     sql = """
@@ -922,7 +985,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
     if row["tool_name"] == "request_due_date" and not due_date_raw:
         raise ValueError("due_date is required")
 
-    resolution = _complete_interrupt(conn, interrupt_id=interrupt_id, action="submit", values=values)
+    resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="submit", values=values)
     try:
         if row["tool_name"] == "request_due_date":
             client_timezone = _assistant_client_timezone(metadata.get("request_metadata"), values)
@@ -1023,6 +1086,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 status="executed",
                 tool_names=["create_task"],
             )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
+            )
             _update_run(conn, run_id=row["run_id"], status="completed", summary=response.summary)
         elif row["tool_name"] == "triage_capture":
             artifact_id = str(metadata.get("artifact_id") or "")
@@ -1070,6 +1140,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 interrupt_id=interrupt_id,
                 message_id=assistant_message["id"],
             )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
+            )
             _update_run(conn, run_id=row["run_id"], status="completed", summary="Capture triage saved")
         elif row["tool_name"] == "resolve_planner_conflict":
             resolution_choice = str(values.get("resolution") or "").strip() or "open_planner"
@@ -1099,6 +1176,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 interrupt_id=interrupt_id,
                 message_id=assistant_message["id"],
             )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
+            )
             _update_run(conn, run_id=row["run_id"], status="completed", summary="Planner conflict resolved")
         elif row["tool_name"] == "choose_morning_focus":
             focus = str(values.get("focus") or "").strip() or "review"
@@ -1127,6 +1211,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 result={"focus": focus},
                 interrupt_id=interrupt_id,
                 message_id=assistant_message["id"],
+            )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
             )
             _update_run(conn, run_id=row["run_id"], status="completed", summary="Morning focus selected")
         elif row["tool_name"] == "grade_review_recall":
@@ -1189,6 +1280,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 result=reviewed,
                 interrupt_id=interrupt_id,
                 message_id=assistant_message["id"],
+            )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
             )
             _update_run(conn, run_id=row["run_id"], status="completed", summary="Review grade recorded")
         else:

@@ -1,21 +1,21 @@
-import { useMemo, useState } from "react";
-import type { AssistantCard as ConversationCard, AssistantCardAction } from "@starlog/contracts";
+import { useEffect, useMemo, useState } from "react";
+import type {
+  AssistantAmbientUpdate,
+  AssistantAttachment,
+  AssistantCard as ConversationCard,
+  AssistantCardAction,
+  AssistantInterrupt,
+  AssistantInterruptField,
+  AssistantThreadMessage,
+  AssistantThreadSnapshot,
+} from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
-
-type ConversationMessage = {
-  id: string;
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  cards: ConversationCard[];
-  metadata?: Record<string, unknown>;
-  created_at: string;
-};
 
 type MobileAssistantRebuildProps = {
   styles: Record<string, any>;
@@ -30,19 +30,18 @@ type MobileAssistantRebuildProps = {
   voiceActionHint?: string | null;
   refreshThread: () => void;
   resetConversationSession: () => void;
-  visibleConversationMessages: ConversationMessage[];
-  hiddenConversationMessageCount: number;
+  threadSnapshot: AssistantThreadSnapshot | null;
+  visibleThreadMessages: AssistantThreadMessage[];
+  hiddenThreadMessageCount: number;
   previewCommandFlow: () => void;
   formatCardMeta: (card: ConversationCard) => string;
   onCardAction: (action: AssistantCardAction, card: ConversationCard) => void;
+  onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => void;
+  onInterruptDismiss: (interruptId: string) => void;
   reuseCardText: (value: string) => void;
 };
 
 type ThreadLens = "live" | "artifacts" | "actions";
-
-function isDiagnosticConversationCard(card: ConversationCard): boolean {
-  return DIAGNOSTIC_CARD_KINDS.has(card.kind);
-}
 
 function bodyLines(body?: string | null): string[] {
   return (body || "")
@@ -96,13 +95,78 @@ function cardTone(kind: string, palette: Record<string, string>) {
   };
 }
 
-function previewSuggestions(messages: ConversationMessage[]): string[] {
-  const fromCards = messages
-    .flatMap((message) => message.cards)
-    .flatMap((card) => card.actions.map((action) => action.label))
+function isDiagnosticConversationCard(card: ConversationCard): boolean {
+  return DIAGNOSTIC_CARD_KINDS.has(card.kind);
+}
+
+function textParts(message: AssistantThreadMessage) {
+  return message.parts.filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "text" }> => part.type === "text");
+}
+
+function cardParts(message: AssistantThreadMessage) {
+  return message.parts.filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "card" }> => part.type === "card");
+}
+
+function ambientParts(message: AssistantThreadMessage) {
+  return message.parts.filter(
+    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "ambient_update" }> => part.type === "ambient_update",
+  );
+}
+
+function attachmentParts(message: AssistantThreadMessage) {
+  return message.parts.filter(
+    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "attachment" }> => part.type === "attachment",
+  );
+}
+
+function toolCallParts(message: AssistantThreadMessage) {
+  return message.parts.filter(
+    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "tool_call" }> => part.type === "tool_call",
+  );
+}
+
+function toolResultParts(message: AssistantThreadMessage) {
+  return message.parts.filter(
+    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "tool_result" }> => part.type === "tool_result",
+  );
+}
+
+function statusParts(message: AssistantThreadMessage) {
+  return message.parts.filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "status" }> => part.type === "status");
+}
+
+function interruptRequestParts(message: AssistantThreadMessage) {
+  return message.parts.filter(
+    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_request" }> => part.type === "interrupt_request",
+  );
+}
+
+function interruptResolutionParts(message: AssistantThreadMessage) {
+  return message.parts.filter(
+    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_resolution" }> =>
+      part.type === "interrupt_resolution",
+  );
+}
+
+function assistantMessageText(message: AssistantThreadMessage): string {
+  return textParts(message)
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function previewSuggestions(messages: AssistantThreadMessage[], interrupts: AssistantInterrupt[]): string[] {
+  const labels = messages
+    .flatMap((message) => cardParts(message))
+    .flatMap((part) => part.card.actions.map((action) => action.label))
     .slice(-2);
-  if (fromCards.length > 0) {
-    return fromCards;
+  if (labels.length > 0) {
+    return labels;
+  }
+  const pendingInterrupt = interrupts.find((interrupt) => interrupt.status === "pending");
+  if (pendingInterrupt) {
+    return [pendingInterrupt.primary_label, pendingInterrupt.secondary_label || "Handle later"].filter(Boolean) as string[];
   }
   return ["Summarize latest artifact", "Ask follow-up"];
 }
@@ -191,8 +255,197 @@ function attachmentPreview(
   );
 }
 
+function defaultValues(interrupt: AssistantInterrupt): Record<string, unknown> {
+  return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
+    accumulator[field.id] = field.value ?? (field.kind === "toggle" ? false : "");
+    return accumulator;
+  }, {});
+}
+
+function messageHasArtifactContent(message: AssistantThreadMessage): boolean {
+  return cardParts(message).length > 0 || attachmentParts(message).length > 0;
+}
+
+function messageHasActionContent(message: AssistantThreadMessage): boolean {
+  return (
+    ambientParts(message).length > 0
+    || toolCallParts(message).length > 0
+    || toolResultParts(message).length > 0
+    || statusParts(message).length > 0
+    || interruptRequestParts(message).length > 0
+    || interruptResolutionParts(message).length > 0
+    || message.role === "system"
+    || message.role === "tool"
+  );
+}
+
+function interruptDetail(interrupt: AssistantInterrupt): string {
+  const resolution = interrupt.resolution;
+  if (resolution && typeof resolution === "object" && !Array.isArray(resolution)) {
+    const values = (resolution as { values?: Record<string, unknown> }).values;
+    const choice = values?.resolution ?? values?.focus ?? values?.next_step ?? values?.rating;
+    if (typeof choice === "string" && choice.trim()) {
+      return choice.replace(/_/g, " ");
+    }
+  }
+  return interrupt.status === "submitted" ? "resolved from another surface" : "no longer pending";
+}
+
+function fieldValue(values: Record<string, unknown>, field: AssistantInterruptField): string {
+  const value = values[field.id];
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return "";
+}
+
+function AttachmentRow({
+  attachment,
+  palette,
+}: {
+  attachment: AssistantAttachment;
+  palette: Record<string, string>;
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.05)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        gap: 4,
+      }}
+    >
+      <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+        {attachment.kind.replace(/_/g, " ")}
+      </Text>
+      <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>{attachment.label}</Text>
+      {attachment.mime_type ? <Text style={{ color: palette.muted, fontSize: 12 }}>{attachment.mime_type}</Text> : null}
+    </View>
+  );
+}
+
+function InterruptFieldInput({
+  field,
+  values,
+  palette,
+  setValue,
+}: {
+  field: AssistantInterruptField;
+  values: Record<string, unknown>;
+  palette: Record<string, string>;
+  setValue: (value: unknown) => void;
+}) {
+  if (field.kind === "toggle") {
+    return (
+      <View
+        style={{
+          borderRadius: 14,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.05)",
+          backgroundColor: "rgba(255,255,255,0.02)",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <Text style={{ flex: 1, color: palette.text, fontSize: 14, lineHeight: 20 }}>{field.label}</Text>
+        <Switch
+          value={Boolean(values[field.id])}
+          onValueChange={setValue}
+          trackColor={{ true: palette.accent, false: "rgba(255,255,255,0.12)" }}
+        />
+      </View>
+    );
+  }
+
+  if (field.kind === "select" || field.kind === "priority") {
+    const options =
+      field.options && field.options.length > 0
+        ? field.options
+        : field.kind === "priority"
+          ? [1, 2, 3, 4, 5].map((option) => ({ label: `Priority ${option}`, value: String(option) }))
+          : [];
+    return (
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+          {field.label}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+          {options.map((option) => {
+            const active = fieldValue(values, field) === option.value;
+            return (
+              <TouchableOpacity
+                key={`${field.id}-${option.value}`}
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 7,
+                  borderWidth: 1,
+                  borderColor: active ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                  backgroundColor: active ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                }}
+                onPress={() => setValue(option.value)}
+              >
+                <Text
+                  style={{
+                    color: active ? palette.text : palette.muted,
+                    fontSize: 11,
+                    fontWeight: "800",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.6,
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  const multiline = field.kind === "textarea";
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        {field.label}
+      </Text>
+      <TextInput
+        value={fieldValue(values, field)}
+        onChangeText={setValue}
+        placeholder={field.placeholder || ""}
+        placeholderTextColor={palette.muted}
+        multiline={multiline}
+        autoCapitalize="none"
+        style={{
+          minHeight: multiline ? 92 : 44,
+          borderRadius: 14,
+          paddingHorizontal: 12,
+          paddingVertical: multiline ? 12 : 10,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.05)",
+          backgroundColor: "rgba(255,255,255,0.02)",
+          color: palette.text,
+          fontSize: 14,
+          lineHeight: 20,
+          textAlignVertical: multiline ? "top" : "center",
+        }}
+      />
+    </View>
+  );
+}
+
 export function MobileAssistantRebuild({
-  styles,
   palette,
   pendingConversationTurn,
   homeDraft,
@@ -204,40 +457,64 @@ export function MobileAssistantRebuild({
   voiceActionHint,
   refreshThread,
   resetConversationSession,
-  visibleConversationMessages,
-  hiddenConversationMessageCount,
+  threadSnapshot,
+  visibleThreadMessages,
+  hiddenThreadMessageCount,
   previewCommandFlow,
   formatCardMeta,
   onCardAction,
+  onInterruptSubmit,
+  onInterruptDismiss,
   reuseCardText,
 }: MobileAssistantRebuildProps) {
   const [threadLens, setThreadLens] = useState<ThreadLens>("live");
   const [activeAttachmentByMessage, setActiveAttachmentByMessage] = useState<Record<string, number>>({});
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
+  const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
 
-  const messages = useMemo(() => visibleConversationMessages.slice(-8), [visibleConversationMessages]);
+  const liveInterrupts = threadSnapshot?.interrupts ?? [];
+  const liveInterruptById = useMemo(
+    () => Object.fromEntries(liveInterrupts.map((interrupt) => [interrupt.id, interrupt])),
+    [liveInterrupts],
+  );
+
+  useEffect(() => {
+    setInterruptValuesById((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      for (const interrupt of liveInterrupts) {
+        if (interrupt.status !== "pending" || next[interrupt.id]) {
+          continue;
+        }
+        next[interrupt.id] = defaultValues(interrupt);
+        changed = true;
+      }
+      return changed ? next : previous;
+    });
+  }, [liveInterrupts]);
+
   const attachmentCount = useMemo(
-    () => visibleConversationMessages.reduce((count, message) => count + message.cards.filter((card) => !isDiagnosticConversationCard(card)).length, 0),
-    [visibleConversationMessages],
+    () => visibleThreadMessages.reduce((count, message) => count + cardParts(message).length + attachmentParts(message).length, 0),
+    [visibleThreadMessages],
   );
   const assistantReplyCount = useMemo(
-    () => visibleConversationMessages.filter((message) => message.role === "assistant").length,
-    [visibleConversationMessages],
+    () => visibleThreadMessages.filter((message) => message.role === "assistant").length,
+    [visibleThreadMessages],
   );
-  const suggestionPills = useMemo(() => previewSuggestions(visibleConversationMessages), [visibleConversationMessages]);
+  const suggestionPills = useMemo(
+    () => previewSuggestions(visibleThreadMessages, liveInterrupts),
+    [liveInterrupts, visibleThreadMessages],
+  );
 
   const filteredMessages = useMemo(() => {
     if (threadLens === "live") {
-      return messages;
+      return visibleThreadMessages;
     }
-    return messages.filter((message) => {
-      if (threadLens === "artifacts") {
-        return message.cards.some((card) => !isDiagnosticConversationCard(card));
-      }
-      return message.cards.some(isDiagnosticConversationCard);
-    });
-  }, [messages, threadLens]);
+    return visibleThreadMessages.filter((message) =>
+      threadLens === "artifacts" ? messageHasArtifactContent(message) : messageHasActionContent(message),
+    );
+  }, [threadLens, visibleThreadMessages]);
 
   const voiceLabel =
     voiceActionState === "recording"
@@ -280,7 +557,7 @@ export function MobileAssistantRebuild({
           {[
             { id: "live", label: "Thread" },
             { id: "artifacts", label: `Artifacts ${attachmentCount}` },
-            { id: "actions", label: `System ${hiddenConversationMessageCount > 0 ? hiddenConversationMessageCount : ""}`.trim() },
+            { id: "actions", label: `System ${hiddenThreadMessageCount > 0 ? hiddenThreadMessageCount : ""}`.trim() },
             { id: "count", label: `${assistantReplyCount} replies`, passive: true },
           ].map((item) => {
             if ("passive" in item) {
@@ -338,13 +615,22 @@ export function MobileAssistantRebuild({
           filteredMessages.map((message, index) => {
             const previousRole = filteredMessages[index - 1]?.role;
             const isUser = message.role === "user";
-            const primaryCards = message.cards.filter((card) => !isDiagnosticConversationCard(card));
-            const diagnosticCards = message.cards.filter(isDiagnosticConversationCard);
+            const cards = cardParts(message).map((part) => part.card);
+            const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
+            const diagnosticCards = cards.filter(isDiagnosticConversationCard);
+            const ambientUpdates = ambientParts(message).map((part) => part.update);
+            const attachments = attachmentParts(message).map((part) => part.attachment);
+            const toolCalls = toolCallParts(message).map((part) => part.tool_call);
+            const toolResults = toolResultParts(message).map((part) => part.tool_result);
+            const statusLabels = statusParts(message).map((part) => part.label || part.status);
+            const interruptRequests = interruptRequestParts(message).map((part) => liveInterruptById[part.interrupt.id] || part.interrupt);
+            const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
             const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
             const activeAttachment = primaryCards[activeAttachmentIndex] ?? null;
-            const showMarker = (message.role === "assistant" || message.role === "tool" || message.role === "system")
-              && previousRole !== message.role;
+            const showMarker =
+              (message.role === "assistant" || message.role === "tool" || message.role === "system") && previousRole !== message.role;
             const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
+            const content = assistantMessageText(message);
 
             return (
               <View key={message.id} style={{ gap: 8, alignItems: isUser ? "flex-end" : "stretch" }}>
@@ -357,23 +643,59 @@ export function MobileAssistantRebuild({
                   </View>
                 ) : null}
 
-                <View
-                  style={{
-                    alignSelf: isUser ? "flex-end" : "stretch",
-                    maxWidth: isUser ? "85%" : "100%",
-                    paddingHorizontal: isUser ? 15 : 2,
-                    paddingVertical: isUser ? 11 : 0,
-                    borderRadius: 24,
-                    borderBottomRightRadius: isUser ? 8 : 24,
-                    borderWidth: isUser ? 1 : 0,
-                    borderColor: "rgba(255,255,255,0.05)",
-                    backgroundColor: isUser ? "rgba(255,255,255,0.055)" : "transparent",
-                  }}
-                >
-                  <Text style={{ color: palette.text, fontSize: isUser ? 15.5 : 18, lineHeight: isUser ? 23 : 31 }}>
-                    {message.content || (pendingConversationTurn && index === filteredMessages.length - 1 ? "Assistant reply in progress..." : "No content")}
-                  </Text>
-                </View>
+                {content || isUser || statusLabels.length > 0 ? (
+                  <View
+                    style={{
+                      alignSelf: isUser ? "flex-end" : "stretch",
+                      maxWidth: isUser ? "85%" : "100%",
+                      paddingHorizontal: isUser ? 15 : 2,
+                      paddingVertical: isUser ? 11 : 0,
+                      borderRadius: 24,
+                      borderBottomRightRadius: isUser ? 8 : 24,
+                      borderWidth: isUser ? 1 : 0,
+                      borderColor: "rgba(255,255,255,0.05)",
+                      backgroundColor: isUser ? "rgba(255,255,255,0.055)" : "transparent",
+                      gap: 6,
+                    }}
+                  >
+                    {content ? (
+                      <Text style={{ color: palette.text, fontSize: isUser ? 15.5 : 18, lineHeight: isUser ? 23 : 31 }}>
+                        {content}
+                      </Text>
+                    ) : (
+                      <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>
+                        {statusLabels[0] || "Assistant reply in progress..."}
+                      </Text>
+                    )}
+                    {!content && !isUser && statusLabels.length > 1 ? (
+                      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>{statusLabels.slice(1).join(" · ")}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {ambientUpdates.length > 0 ? (
+                  <View style={{ gap: 8, paddingLeft: 10 }}>
+                    {ambientUpdates.map((update: AssistantAmbientUpdate) => (
+                      <View
+                        key={update.id}
+                        style={{
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.05)",
+                          backgroundColor: "rgba(255,255,255,0.018)",
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                          {update.label}
+                        </Text>
+                        {update.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{update.body}</Text> : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
 
                 {primaryCards.length > 0 ? (
                   <View style={{ gap: 8, paddingLeft: 10 }}>
@@ -514,7 +836,114 @@ export function MobileAssistantRebuild({
                   </View>
                 ) : null}
 
-                {diagnosticCards.length > 0 ? (
+                {interruptRequests.length > 0 ? (
+                  <View style={{ gap: 10, paddingLeft: 10 }}>
+                    {interruptRequests.map((interrupt) => {
+                      const values = interruptValuesById[interrupt.id] || defaultValues(interrupt);
+                      const pending = interrupt.status === "pending";
+                      return (
+                        <View
+                          key={interrupt.id}
+                          style={{
+                            borderRadius: 16,
+                            paddingHorizontal: 12,
+                            paddingVertical: 12,
+                            borderWidth: 1,
+                            borderColor: pending ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.05)",
+                            backgroundColor: pending ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.012)",
+                            gap: 10,
+                          }}
+                        >
+                          <View style={{ gap: 4 }}>
+                            <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                              {interrupt.tool_name.replace(/_/g, " ")}
+                            </Text>
+                            <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24, fontWeight: "800" }}>{interrupt.title}</Text>
+                            {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
+                          </View>
+
+                          {pending ? (
+                            <>
+                              <View style={{ gap: 10 }}>
+                                {interrupt.fields.map((field) => (
+                                  <InterruptFieldInput
+                                    key={`${interrupt.id}-${field.id}`}
+                                    field={field}
+                                    values={values}
+                                    palette={palette}
+                                    setValue={(value) =>
+                                      setInterruptValuesById((previous) => ({
+                                        ...previous,
+                                        [interrupt.id]: {
+                                          ...(previous[interrupt.id] || defaultValues(interrupt)),
+                                          [field.id]: value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                ))}
+                              </View>
+
+                              <View style={{ flexDirection: "row", gap: 8 }}>
+                                <TouchableOpacity
+                                  style={{
+                                    flex: 1,
+                                    borderRadius: 999,
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 10,
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.06)",
+                                    backgroundColor: "rgba(255,255,255,0.03)",
+                                    alignItems: "center",
+                                  }}
+                                  onPress={() => onInterruptDismiss(interrupt.id)}
+                                >
+                                  <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    {interrupt.secondary_label || "Dismiss"}
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={{
+                                    flex: 1,
+                                    borderRadius: 999,
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 10,
+                                    backgroundColor: palette.accent,
+                                    alignItems: "center",
+                                  }}
+                                  onPress={() => onInterruptSubmit(interrupt.id, values)}
+                                >
+                                  <Text style={{ color: palette.onAccent, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    {interrupt.primary_label}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </>
+                          ) : (
+                            <View
+                              style={{
+                                borderRadius: 14,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                borderWidth: 1,
+                                borderColor: "rgba(255,255,255,0.05)",
+                                backgroundColor: "rgba(255,255,255,0.02)",
+                                gap: 4,
+                              }}
+                            >
+                              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                                {interrupt.status === "submitted" ? "Resolved" : "Dismissed"}
+                              </Text>
+                              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interruptDetail(interrupt)}</Text>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                {(attachments.length > 0 || toolCalls.length > 0 || toolResults.length > 0 || diagnosticCards.length > 0 || resolutions.length > 0) ? (
                   <View style={{ paddingLeft: 10, gap: 6 }}>
                     <TouchableOpacity
                       style={{
@@ -529,7 +958,7 @@ export function MobileAssistantRebuild({
                       onPress={() => setExpandedDiagnostics((previous) => ({ ...previous, [message.id]: !previous[message.id] }))}
                     >
                       <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                        {showDiagnostics ? "Trace open" : `Trace ${diagnosticCards.length}`}
+                        {showDiagnostics ? "Details open" : `Details ${attachments.length + toolCalls.length + toolResults.length + diagnosticCards.length + resolutions.length}`}
                       </Text>
                     </TouchableOpacity>
                     {showDiagnostics ? (
@@ -544,6 +973,68 @@ export function MobileAssistantRebuild({
                           gap: 8,
                         }}
                       >
+                        {attachments.map((attachment) => (
+                          <AttachmentRow key={attachment.id} attachment={attachment} palette={palette} />
+                        ))}
+                        {toolCalls.map((toolCall) => (
+                          <View
+                            key={toolCall.id}
+                            style={{
+                              borderRadius: 14,
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.04)",
+                              backgroundColor: "rgba(255,255,255,0.02)",
+                              gap: 4,
+                            }}
+                          >
+                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                              {toolCall.tool_name}
+                            </Text>
+                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolCall.status}</Text>
+                          </View>
+                        ))}
+                        {toolResults.map((toolResult) => (
+                          <View
+                            key={toolResult.id}
+                            style={{
+                              borderRadius: 14,
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.04)",
+                              backgroundColor: "rgba(255,255,255,0.02)",
+                              gap: 4,
+                            }}
+                          >
+                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                              Tool result
+                            </Text>
+                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                              {Object.keys(toolResult.output || {}).length} field{Object.keys(toolResult.output || {}).length === 1 ? "" : "s"} returned
+                            </Text>
+                          </View>
+                        ))}
+                        {resolutions.map((resolution) => (
+                          <View
+                            key={resolution.id}
+                            style={{
+                              borderRadius: 14,
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.04)",
+                              backgroundColor: "rgba(255,255,255,0.02)",
+                              gap: 4,
+                            }}
+                          >
+                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                              Panel saved
+                            </Text>
+                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{resolution.action}</Text>
+                          </View>
+                        ))}
                         {diagnosticCards.map((card, cardIndex) => (
                           <View
                             key={`${message.id}-diagnostic-${card.kind}-${cardIndex}`}
@@ -597,9 +1088,9 @@ export function MobileAssistantRebuild({
           )}
           <View style={{ flexDirection: "row", gap: 6 }}>
             {[
-              { icon: "tune-variant", action: previewCommandFlow, active: false },
-              { icon: "refresh", action: refreshThread, active: false },
-              { icon: "eraser-variant", action: resetConversationSession, active: false },
+              { icon: "tune-variant", action: previewCommandFlow },
+              { icon: "refresh", action: refreshThread },
+              { icon: "eraser-variant", action: resetConversationSession },
             ].map((item) => (
               <TouchableOpacity
                 key={item.icon}
@@ -666,10 +1157,29 @@ export function MobileAssistantRebuild({
                     ? "rgba(166, 222, 191, 0.18)"
                     : "rgba(255,255,255,0.04)",
             }}
-            onPress={voiceActionState === "ready" ? onCancelVoiceAction : onVoiceAction}
+            onPress={onVoiceAction}
           >
             <MaterialCommunityIcons name={voiceIcon as never} size={17} color={voiceActionState === "recording" ? palette.error : palette.text} />
           </TouchableOpacity>
+
+          {voiceActionState === "ready" ? (
+            <TouchableOpacity
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 4,
+                backgroundColor: "rgba(255,255,255,0.018)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.04)",
+              }}
+              onPress={onCancelVoiceAction}
+            >
+              <MaterialCommunityIcons name={"close" as never} size={14} color={palette.muted} />
+            </TouchableOpacity>
+          ) : null}
 
           <View
             style={{

@@ -2,11 +2,12 @@ import json
 import asyncio
 from sqlite3 import Connection
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_db, require_token_hash, require_user_id
 from app.db.storage import get_connection
+from app.schemas.ai import AIJobResponse
 from app.schemas.assistant import (
     AssistantCreateMessageRequest,
     AssistantCreateMessageResponse,
@@ -18,7 +19,7 @@ from app.schemas.assistant import (
     AssistantThreadSnapshot,
     AssistantThreadSummary,
 )
-from app.services import assistant_event_service, assistant_interrupt_service, assistant_run_service, assistant_thread_service, auth_service
+from app.services import assistant_event_service, assistant_interrupt_service, assistant_run_service, assistant_thread_service, auth_service, media_service
 
 router = APIRouter(prefix="/assistant")
 
@@ -127,6 +128,58 @@ def create_message_and_start_run(
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return AssistantCreateMessageResponse.model_validate(result)
+
+
+@router.post("/threads/{thread_id}/voice", response_model=AIJobResponse, status_code=status.HTTP_201_CREATED)
+def queue_voice_message(
+    thread_id: str,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    duration_ms: int | None = Form(default=None),
+    device_target: str = Form(default="mobile-native"),
+    provider_hint: str | None = Form(default=None),
+    metadata_json: str | None = Form(default=None),
+    user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AIJobResponse:
+    payload = file.file.read()
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded assistant voice message is empty")
+
+    metadata: dict[str, object] = {}
+    if metadata_json:
+        try:
+            parsed_metadata = json.loads(metadata_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="metadata_json must be valid JSON") from exc
+        if not isinstance(parsed_metadata, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="metadata_json must decode to an object")
+        metadata = parsed_metadata
+
+    media = media_service.create_media_asset(
+        db,
+        source_filename=file.filename,
+        content_type=file.content_type,
+        payload=payload,
+    )
+    try:
+        job = assistant_run_service.queue_voice_run(
+            db,
+            thread_id=thread_id,
+            blob_ref=str(media["blob_ref"]),
+            content_type=media.get("content_type"),
+            title=title,
+            duration_ms=duration_ms,
+            device_target=device_target,
+            provider_hint=provider_hint,
+            metadata=metadata,
+            user_id=user_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    return AIJobResponse.model_validate(job)
 
 
 @router.get("/threads/{thread_id}/runs/{run_id}", response_model=AssistantRun)

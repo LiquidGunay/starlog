@@ -27,12 +27,17 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 import {
   PRODUCT_SURFACES,
+  assistantThreadMessageToLegacyMessage,
 } from "@starlog/contracts";
 import type {
   AssistantCard as ConversationCard,
   AssistantCardAction,
   AssistantConversationMessage,
   AssistantConversationToolTrace,
+  AssistantMessagePart,
+  AssistantRun,
+  AssistantThreadMessage,
+  AssistantThreadSnapshot,
 } from "@starlog/contracts";
 import {
   MobileCalendarSurface,
@@ -188,6 +193,7 @@ type PersistedState = {
   assistantHistory?: AssistantCommandResponse[];
   assistantVoiceJobs?: AssistantVoiceJob[];
   assistantAiJobs?: AssistantQueuedJob[];
+  assistantThreadSnapshot?: MobileAssistantThreadSnapshot | null;
   conversationTitle?: string;
   conversationSessionState?: Record<string, unknown>;
   conversationMessages?: ConversationMessage[];
@@ -346,16 +352,6 @@ type ConversationMessage = Omit<AssistantConversationMessage, "metadata"> & {
 
 type ConversationToolTrace = AssistantConversationToolTrace;
 
-type ConversationSnapshot = {
-  id: string;
-  slug: string;
-  title: string;
-  mode: string;
-  session_state: Record<string, unknown>;
-  messages: ConversationMessage[];
-  tool_traces: ConversationToolTrace[];
-};
-
 type ConversationSessionResetResponse = {
   thread_id: string;
   session_state: Record<string, unknown>;
@@ -365,18 +361,14 @@ type ConversationSessionResetResponse = {
   updated_at: string;
 };
 
-type ConversationTurnResponse = {
-  thread_id: string;
-  user_message: ConversationMessage;
-  assistant_message: ConversationMessage;
-  trace: ConversationToolTrace;
-  session_state: Record<string, unknown>;
-};
-
 type PendingConversationTurn = {
   id: string;
   content: string;
   createdAt: string;
+};
+
+type MobileAssistantThreadSnapshot = AssistantThreadSnapshot & {
+  session_state?: Record<string, unknown>;
 };
 
 const RUNTIME_ENV = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
@@ -405,6 +397,79 @@ const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
   tts: "piper_local",
 };
 const DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES = 12;
+
+function assistantThreadSessionState(snapshot: MobileAssistantThreadSnapshot | null): Record<string, unknown> {
+  if (!snapshot || !snapshot.session_state || typeof snapshot.session_state !== "object") {
+    return {};
+  }
+  return snapshot.session_state;
+}
+
+function legacyConversationTracesFromRuns(runs: AssistantRun[]): ConversationToolTrace[] {
+  return [...runs]
+    .flatMap((run) =>
+      run.steps.map((step) => ({
+        id: step.id,
+        thread_id: run.thread_id,
+        message_id: null,
+        tool_name: step.tool_name || step.title,
+        arguments: step.arguments || {},
+        status: step.status,
+        result: step.result || {},
+        metadata: {
+          ...step.metadata,
+          tool_kind: step.tool_kind,
+          run_id: run.id,
+          step_index: step.step_index,
+          interrupt_id: step.interrupt_id,
+          error_text: step.error_text,
+        },
+        created_at: step.created_at,
+      })),
+    )
+    .sort((left, right) =>
+      left.created_at === right.created_at ? right.id.localeCompare(left.id) : right.created_at.localeCompare(left.created_at),
+    );
+}
+
+function pendingAssistantThreadMessages(pendingTurn: PendingConversationTurn): AssistantThreadMessage[] {
+  const createdAt = pendingTurn.createdAt;
+  return [
+    {
+      id: pendingTurn.id,
+      thread_id: "primary",
+      role: "user",
+      status: "complete",
+      parts: [
+        {
+          type: "text",
+          id: `${pendingTurn.id}:user:text`,
+          text: pendingTurn.content,
+        } satisfies AssistantMessagePart,
+      ],
+      metadata: { pending: true, submitted_via: "mobile_home" },
+      created_at: createdAt,
+      updated_at: createdAt,
+    },
+    {
+      id: `${pendingTurn.id}:assistant`,
+      thread_id: "primary",
+      role: "assistant",
+      status: "running",
+      parts: [
+        {
+          type: "status",
+          id: `${pendingTurn.id}:assistant:status`,
+          status: "running",
+          label: "Assistant reply in progress",
+        } satisfies AssistantMessagePart,
+      ],
+      metadata: { pending: true, status: "thinking" },
+      created_at: createdAt,
+      updated_at: createdAt,
+    },
+  ];
+}
 
 function supportedSttTargets(localSttAvailable: boolean): ExecutionTarget[] {
   return localSttAvailable ? ["on_device", "batch_local_bridge"] : ["batch_local_bridge"];
@@ -833,6 +898,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
+          assistantThreadSnapshot: null,
           conversationTitle: "Assistant Thread",
           conversationSessionState: {},
           conversationMessages: [],
@@ -855,6 +921,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
+          assistantThreadSnapshot: null,
           conversationTitle: "Assistant Thread",
           conversationSessionState: {},
           conversationMessages: [],
@@ -878,6 +945,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
           assistantHistory: [],
           assistantVoiceJobs: [],
           assistantAiJobs: [],
+          assistantThreadSnapshot: null,
           conversationTitle: "Assistant Thread",
           conversationSessionState: {},
           conversationMessages: [],
@@ -929,6 +997,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
       assistantHistory: [],
       assistantVoiceJobs: [],
       assistantAiJobs: [],
+      assistantThreadSnapshot: null,
       conversationTitle: "Assistant Thread",
       conversationSessionState: {},
       conversationMessages: [],
@@ -1219,6 +1288,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [assistantHistory, setAssistantHistory] = useState<AssistantCommandResponse[]>([]);
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
+  const [assistantThreadSnapshot, setAssistantThreadSnapshot] = useState<MobileAssistantThreadSnapshot | null>(null);
   const [conversationTitle, setConversationTitle] = useState("Assistant Thread");
   const [conversationSessionState, setConversationSessionState] = useState<Record<string, unknown>>({});
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
@@ -1266,41 +1336,29 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       : assistantVoiceActionState === "recording"
         ? "Recording voice input. Tap the mic again to stop."
         : assistantVoiceActionState === "ready"
-          ? "Voice clip ready. Tap the mic to send it as an Assistant command, or clear it."
+          ? "Voice clip ready. Tap the mic to send it into the Assistant thread, or clear it."
           : null;
   const threadMessages = useMemo(() => {
+    const baseMessages = assistantThreadSnapshot?.messages ?? [];
     if (!pendingConversationTurn) {
-      return conversationMessages;
+      return baseMessages;
     }
-    return [
-      ...conversationMessages,
-      {
-        id: pendingConversationTurn.id,
-        thread_id: "primary",
-        role: "user" as const,
-        content: pendingConversationTurn.content,
-        cards: [],
-        metadata: { pending: true, submitted_via: "mobile_home" },
-        created_at: pendingConversationTurn.createdAt,
-      },
-      {
-        id: `${pendingConversationTurn.id}:assistant`,
-        thread_id: "primary",
-        role: "assistant" as const,
-        content: "",
-        cards: [],
-        metadata: { pending: true, status: "thinking" },
-        created_at: pendingConversationTurn.createdAt,
-      },
-    ];
-  }, [conversationMessages, pendingConversationTurn]);
-  const visibleConversationMessages = useMemo(() => {
+    return [...baseMessages, ...pendingAssistantThreadMessages(pendingConversationTurn)];
+  }, [assistantThreadSnapshot, pendingConversationTurn]);
+  const visibleThreadMessages = useMemo(() => {
     if (showFullConversationThread) {
       return threadMessages;
     }
     return threadMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
   }, [showFullConversationThread, threadMessages]);
-  const hiddenConversationMessageCount = Math.max(0, threadMessages.length - visibleConversationMessages.length);
+  const hiddenThreadMessageCount = Math.max(0, threadMessages.length - visibleThreadMessages.length);
+  const visibleConversationMessages = useMemo(() => {
+    if (showFullConversationThread) {
+      return conversationMessages;
+    }
+    return conversationMessages.slice(-DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES);
+  }, [conversationMessages, showFullConversationThread]);
+  const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
   const llmResolution = useMemo(
     () =>
@@ -2550,6 +2608,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     setStatus("Loaded card text into Assistant");
   }
 
+  function applyAssistantSnapshot(snapshot: MobileAssistantThreadSnapshot) {
+    setAssistantThreadSnapshot(snapshot);
+    setConversationTitle(snapshot.title);
+    setConversationSessionState(assistantThreadSessionState(snapshot));
+    setConversationMessages(snapshot.messages.map((message) => assistantThreadMessageToLegacyMessage(message)));
+    setConversationToolTraces(legacyConversationTracesFromRuns(snapshot.runs));
+  }
+
   async function handleConversationCardAction(action: AssistantCardAction, card: ConversationCard) {
     if (action.kind === "navigate") {
       const href = typeof action.payload?.href === "string" ? action.payload.href : "";
@@ -2623,6 +2689,60 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function submitAssistantInterrupt(interruptId: string, values: Record<string, unknown>) {
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/interrupts/${interruptId}/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ values }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Interrupt submit failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as MobileAssistantThreadSnapshot;
+      applyAssistantSnapshot(payload);
+      setStatus("Assistant panel saved");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to submit assistant panel");
+    }
+  }
+
+  async function dismissAssistantInterrupt(interruptId: string) {
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/interrupts/${interruptId}/dismiss`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Interrupt dismiss failed: ${response.status} ${errorBody}`);
+      }
+
+      const payload = (await response.json()) as MobileAssistantThreadSnapshot;
+      applyAssistantSnapshot(payload);
+      setStatus("Assistant panel dismissed");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to dismiss assistant panel");
+    }
+  }
+
   async function sendConversationTurn(command: string, sourceLabel = "typed composer") {
     if (!command) {
       setStatus("Enter an Assistant message first");
@@ -2645,7 +2765,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     });
 
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary/chat`, {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/threads/primary/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2666,13 +2786,17 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         throw new Error(`Assistant turn failed: ${response.status} ${errorBody}`);
       }
 
-      const payload = (await response.json()) as ConversationTurnResponse;
-      setConversationMessages((previous) => [...previous, payload.user_message, payload.assistant_message]);
-      setConversationToolTraces((previous) => [payload.trace, ...previous].slice(0, 24));
-      setConversationSessionState(payload.session_state);
+      const payload = (await response.json()) as {
+        thread_id: string;
+        run: { status: string; current_interrupt?: { id: string } | null };
+        user_message: AssistantThreadMessage;
+        assistant_message: AssistantThreadMessage;
+        snapshot: MobileAssistantThreadSnapshot;
+      };
+      applyAssistantSnapshot(payload.snapshot);
       setHomeDraft("");
       setPendingConversationTurn(null);
-      setStatus("Assistant reply received");
+      setStatus(payload.run.status === "interrupted" ? "Assistant needs one more detail" : "Assistant reply received");
     } catch (error) {
       setPendingConversationTurn(null);
       setStatus(error instanceof Error ? error.message : "Assistant turn failed");
@@ -2754,7 +2878,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary`, {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/threads/primary`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -2763,14 +2887,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         const errorBody = await response.text();
         throw new Error(`Conversation fetch failed: ${response.status} ${errorBody}`);
       }
-      const payload = (await response.json()) as ConversationSnapshot;
-      setConversationTitle(payload.title);
-      setConversationSessionState(payload.session_state);
-      setConversationMessages(payload.messages);
-      setConversationToolTraces(payload.tool_traces);
+      const payload = (await response.json()) as MobileAssistantThreadSnapshot;
+      applyAssistantSnapshot(payload);
       const completedCommand = [...payload.messages]
         .reverse()
-        .map((message) => message.metadata?.assistant_command)
+        .map((message) => assistantThreadMessageToLegacyMessage(message).metadata?.assistant_command)
         .find((message): message is AssistantCommandResponse => !!message);
       if (completedCommand) {
         recordAssistantHistory(completedCommand);
@@ -2786,36 +2907,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function resetConversationSession() {
-    if (!token) {
-      setStatus("Add API token first");
-      return;
-    }
-
-    try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/conversations/primary/session/reset`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Conversation reset failed: ${response.status} ${errorBody}`);
-      }
-      const payload = (await response.json()) as ConversationSessionResetResponse;
-      setConversationSessionState(payload.session_state);
-      setLastConversationReset(payload);
-      const clearedKeys = payload.cleared_keys ?? Object.keys(conversationSessionState);
-      const preservedMessageCount = payload.preserved_message_count ?? conversationMessages.length;
-      const preservedTraceCount = payload.preserved_tool_trace_count ?? conversationToolTraces.length;
-      const clearedLabel =
-        clearedKeys.length > 0 ? `${clearedKeys.length} key${clearedKeys.length === 1 ? "" : "s"} cleared` : "Session already empty";
-      setStatus(
-        `${clearedLabel}; kept ${preservedMessageCount} messages and ${preservedTraceCount} traces`,
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to clear conversation state");
-    }
+    setHomeDraft("");
+    setPendingConversationTurn(null);
+    setLastConversationReset(null);
+    setStatus("Cleared the local composer state. Shared thread history remains intact.");
   }
 
   async function loadAssistantVoiceJobs(origin: "auto" | "manual") {
@@ -3088,6 +3183,65 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function submitVoiceAssistantTurn() {
+    if (sttResolution.active === "on_device") {
+      await submitLocalVoiceConversationTurn();
+      return;
+    }
+    if (!voiceClipUri) {
+      setStatus("Record a voice clip first");
+      return;
+    }
+    if (voiceClipTarget === "capture") {
+      setStatus("A Library voice note is ready. Upload it in Library or clear it before sending an Assistant voice message.");
+      return;
+    }
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("title", "Mobile assistant voice");
+      formData.append("duration_ms", String(voiceClipDurationMs));
+      formData.append("device_target", "mobile-native");
+      formData.append("provider_hint", BATCH_PROVIDER_HINT.stt ?? "whisper_local");
+      formData.append(
+        "metadata_json",
+        JSON.stringify({
+          surface: "assistant_mobile",
+          submitted_via: "voice_recording",
+        }),
+      );
+      formData.append(
+        "file",
+        {
+          uri: voiceClipUri,
+          name: `assistant-thread-${Date.now()}.m4a`,
+          type: DEFAULT_VOICE_MIME,
+        } as unknown as Blob,
+      );
+
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/threads/primary/voice`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Voice message upload failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as AssistantQueuedJob;
+      clearVoiceClip("assistant");
+      setStatus(`Queued Assistant voice message ${payload.id} via ${formatExecutionTarget(sttResolution.active)}. Refresh the thread when transcription finishes.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Voice message upload failed");
+    }
+  }
+
   function clearAssistantVoiceAction() {
     if (localSttListening) {
       setStatus("Wait for on-device listening to finish");
@@ -3119,7 +3273,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("A Library voice note is ready. Upload it in Library or clear it before using Assistant voice.");
         return;
       }
-      await submitVoiceAssistantCommand(true);
+      await submitVoiceAssistantTurn();
       return;
     }
     await startVoiceRecording("assistant");
@@ -3185,6 +3339,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setAssistantHistory(persisted.assistantHistory || []);
         setAssistantVoiceJobs(persisted.assistantVoiceJobs || []);
         setAssistantAiJobs(persisted.assistantAiJobs || []);
+        setAssistantThreadSnapshot(persisted.assistantThreadSnapshot ?? null);
         setConversationTitle(persisted.conversationTitle || "Assistant Thread");
         setConversationSessionState(persisted.conversationSessionState || {});
         setConversationMessages(persisted.conversationMessages || []);
@@ -3468,6 +3623,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       assistantHistory,
       assistantVoiceJobs,
       assistantAiJobs,
+      assistantThreadSnapshot,
       conversationTitle,
       conversationSessionState,
       conversationMessages,
@@ -3485,6 +3641,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     assistantHistory,
     assistantVoiceJobs,
     assistantAiJobs,
+    assistantThreadSnapshot,
     conversationTitle,
     conversationSessionState,
     conversationMessages,
@@ -3666,12 +3823,19 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               voiceActionHint={assistantVoiceActionHint}
               refreshThread={() => loadConversation("manual").catch(() => undefined)}
               resetConversationSession={resetConversationSession}
-              visibleConversationMessages={visibleConversationMessages}
-              hiddenConversationMessageCount={hiddenConversationMessageCount}
+              threadSnapshot={assistantThreadSnapshot}
+              visibleThreadMessages={visibleThreadMessages}
+              hiddenThreadMessageCount={hiddenThreadMessageCount}
               previewCommandFlow={() => previewHomeDraftCommandFlow().catch(() => undefined)}
               formatCardMeta={cardMetaText}
               onCardAction={(action, card) => {
                 handleConversationCardAction(action, card).catch(() => undefined);
+              }}
+              onInterruptSubmit={(interruptId, values) => {
+                submitAssistantInterrupt(interruptId, values).catch(() => undefined);
+              }}
+              onInterruptDismiss={(interruptId) => {
+                dismissAssistantInterrupt(interruptId).catch(() => undefined);
               }}
               reuseCardText={reuseConversationCardText}
             />
