@@ -261,11 +261,27 @@ import_local_srs_deck() {
 
 verify_local_review_queue() {
   local token
-  token="$(curl -fsS \
+  local login_body="$BUILD_DIR/auth-login.json"
+  local login_status
+  login_status="$(curl -sS -o "$login_body" -w '%{http_code}' \
     -X POST "$API_BASE/v1/auth/login" \
     -H 'Content-Type: application/json' \
-    -d "{\"passphrase\":\"${STARLOG_TEST_PASSPHRASE}\"}" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+    -d "{\"passphrase\":\"${STARLOG_TEST_PASSPHRASE}\"}")"
+  if [[ "$login_status" != "200" ]]; then
+    fail "Local auth login failed with HTTP $login_status: $(cat "$login_body")"
+  fi
+  token="$(python3 - "$login_body" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+payload = json.loads(Path(sys.argv[1]).read_text())
+token = payload.get("access_token")
+if not isinstance(token, str) or not token:
+    raise SystemExit("Login response did not include access_token")
+print(token)
+PY
+)"
 
   curl -fsS "$API_BASE/v1/cards/decks" -H "Authorization: Bearer $token" >"$BUILD_DIR/review-decks.json"
   curl -fsS "$API_BASE/v1/cards/due?limit=20" -H "Authorization: Bearer $token" >"$BUILD_DIR/due-cards.json"
@@ -676,7 +692,7 @@ wait_for_post_login_surface() {
   local deadline=$((SECONDS + 25))
   while (( SECONDS < deadline )); do
     dump_ui
-    if ! ui_has_text "Observer Identity"; then
+    if ! ui_has_text "PASSPHRASE" && ! ui_has_text "SIGN IN"; then
       return 0
     fi
     if ui_has_text "Network request failed" || ui_has_text "Login failed" || ui_has_text "Bootstrap failed"; then
@@ -695,17 +711,24 @@ scroll_review_controls() {
 
 launch_and_validate_review() {
   log "Launching app into fresh login state"
+  adb_cmd reverse "tcp:${API_PORT}" "tcp:${API_PORT}" >/dev/null
   adb_cmd shell am start -W -n "$APP_ACTIVITY" >/dev/null
 
-  wait_for_ui_text "Observer Identity"
+  wait_for_ui_text "PASSPHRASE"
   capture_screen "$SCREENSHOT_DIR/login.png"
+
+  tap_nth_edit_text 0
+  clear_focused_text_field
+  adb_cmd shell input text "$API_BASE" >/dev/null
+  adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+  sleep 1
 
   tap_nth_edit_text 1
   clear_focused_text_field
   adb_cmd shell input text "$STARLOG_TEST_PASSPHRASE" >/dev/null
   adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 1
-  tap_exact_text "Initiate Neural Sync"
+  tap_exact_text "SIGN IN"
   wait_for_post_login_surface
 
   local deadline=$((SECONDS + 60))

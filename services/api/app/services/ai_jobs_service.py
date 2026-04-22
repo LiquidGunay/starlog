@@ -366,6 +366,65 @@ def complete_job(
                     "steps": [],
                 },
             }
+    elif action == "assistant_thread_voice":
+        from app.services import assistant_projection_service, assistant_run_service, assistant_thread_service
+
+        transcript = str(output.get("transcript") or "").strip()
+        thread_payload = dict(payload.get("assistant_thread") or {})
+        thread_id = str(thread_payload.get("thread_id") or "").strip() or "primary"
+        request_metadata = dict(thread_payload.get("metadata") or {})
+        device_target = str(thread_payload.get("device_target") or "mobile-native")
+        if transcript:
+            run_result = assistant_run_service.start_run(
+                conn,
+                thread_id=thread_id,
+                content=transcript,
+                input_mode=str(thread_payload.get("input_mode") or "voice"),
+                device_target=device_target,
+                metadata=request_metadata,
+                user_id=str(job.get("owner_user_id") or "").strip() or None,
+            )
+            output = {
+                **output,
+                "assistant_thread": {
+                    "thread_id": thread_id,
+                    "run_id": run_result["run"]["id"],
+                    "run_status": run_result["run"]["status"],
+                    "user_message_id": run_result["user_message"]["id"],
+                    "assistant_message_id": run_result["assistant_message"]["id"],
+                    "transcript": transcript,
+                },
+            }
+        else:
+            assistant_thread_service.append_message(
+                conn,
+                thread_id=thread_id,
+                role="assistant",
+                status="error",
+                metadata={
+                    "voice_job_id": job_id,
+                    "voice_transcription": "empty",
+                    "request_metadata": request_metadata,
+                },
+                parts=[
+                    assistant_projection_service.text_part(
+                        "The voice message uploaded, but transcription returned no text. Try recording it again."
+                    ),
+                    assistant_projection_service.status_part("error", "Voice transcription empty"),
+                ],
+                user_id=str(job.get("owner_user_id") or "").strip() or None,
+            )
+            output = {
+                **output,
+                "assistant_thread": {
+                    "thread_id": thread_id,
+                    "run_id": None,
+                    "run_status": "failed",
+                    "user_message_id": None,
+                    "assistant_message_id": None,
+                    "transcript": "",
+                },
+            }
     elif action == "assistant_command_ai":
         assistant_payload = dict(payload.get("assistant_command") or {})
         command_result = agent_command_service.apply_ai_command_plan(
@@ -444,6 +503,34 @@ def fail_job(
                 )
             except Exception:
                 pass
+
+    if str(job.get("action") or "") == "assistant_thread_voice":
+        from app.services import assistant_projection_service, assistant_thread_service
+
+        payload = dict(job.get("payload") or {})
+        thread_payload = dict(payload.get("assistant_thread") or {})
+        thread_id = str(thread_payload.get("thread_id") or "").strip() or "primary"
+        try:
+            assistant_thread_service.append_message(
+                conn,
+                thread_id=thread_id,
+                role="assistant",
+                status="error",
+                metadata={
+                    "voice_job_id": job_id,
+                    "voice_transcription": "failed",
+                    "request_metadata": dict(thread_payload.get("metadata") or {}),
+                },
+                parts=[
+                    assistant_projection_service.text_part(
+                        "The voice message could not be transcribed. Try again when the speech worker is available."
+                    ),
+                    assistant_projection_service.status_part("error", "Voice transcription failed"),
+                ],
+                user_id=str(job.get("owner_user_id") or "").strip() or None,
+            )
+        except Exception:
+            pass
 
     finished_at = utc_now().isoformat()
     conn.execute(

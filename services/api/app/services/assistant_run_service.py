@@ -11,12 +11,14 @@ from app.schemas.agent import AgentCommandResponse, AgentCommandStep
 from app.services import (
     agent_command_service,
     agent_service,
+    ai_jobs_service,
     ai_service,
     assistant_projection_service,
     assistant_thread_service,
     artifacts_service,
     conversation_card_service,
     conversation_service,
+    integrations_service,
     memory_vault_service,
     srs_service,
 )
@@ -858,6 +860,55 @@ def start_run(
         "assistant_message": assistant_messages[-1],
         "snapshot": snapshot,
     }
+
+
+def queue_voice_run(
+    conn: Connection,
+    *,
+    thread_id: str,
+    blob_ref: str,
+    content_type: str | None,
+    title: str | None,
+    duration_ms: int | None,
+    device_target: str,
+    provider_hint: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
+    owner_user_id = assistant_thread_service._require_assistant_user(conn, user_id)
+    resolved_provider_hint = (
+        provider_hint
+        or integrations_service.default_batch_provider_hint(conn, "stt")
+        or "desktop_bridge_stt"
+    )
+    request_metadata = metadata or {}
+    return ai_jobs_service.create_job(
+        conn,
+        capability="stt",
+        payload={
+            "blob_ref": blob_ref,
+            "content_type": content_type,
+            "title": title or "Assistant voice message",
+            "duration_ms": duration_ms,
+            "assistant_thread": {
+                "thread_id": thread["id"],
+                "kind": "voice_message",
+                "input_mode": "voice",
+                "device_target": device_target,
+                "metadata": request_metadata,
+            },
+        },
+        provider_hint=resolved_provider_hint,
+        owner_user_id=owner_user_id,
+        requested_targets=integrations_service.capability_execution_order(
+            conn,
+            "stt",
+            executable_targets={"mobile_bridge", "desktop_bridge", "api"},
+            prefer_local=True,
+        ),
+        action="assistant_thread_voice",
+    )
 
 
 def _interrupt_row(conn: Connection, interrupt_id: str, *, user_id: str | None = None) -> dict[str, Any]:

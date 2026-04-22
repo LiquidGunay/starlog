@@ -259,6 +259,33 @@ Validation signing mode: tracked debug keystore under explicit `STARLOG_ALLOW_DE
    - preview remains the sideload feedback APK flow
    - production is the signed Play-upload AAB plus optional signed QA APK flow
 
+## Assistant thread convergence proof
+
+Date: 2026-04-22
+Device target: OPPO CPH2381 (`9dd62e84`)
+Repo branch: `codex/assistant-pr4`
+Artifact under test: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
+Validation API: fresh local API on `http://127.0.0.1:8000` with `adb reverse tcp:8000 tcp:8000`
+
+## Assistant thread convergence matrix
+
+| Flow | Result | Evidence |
+| --- | --- | --- |
+| Release APK launches on physical phone without the prior React hook crash | PASS | `/home/ubuntu/starlog/artifacts/pr4-device/login-surface.png` |
+| Native phone auth screen accepts explicit local API endpoint + passphrase flow | PASS | `/home/ubuntu/starlog/artifacts/pr4-device/login-surface.png` |
+| Mobile Assistant hydrates the shared `/v1/assistant/threads/primary` thread after login | PASS | `/home/ubuntu/starlog/artifacts/pr4-device/post-login.png` |
+| Typed mobile Assistant turn creates a real `request_due_date` interrupt in-thread | PASS | `/home/ubuntu/starlog/artifacts/pr4-device/thread-after-send.png` |
+| Inline interrupt submission on phone completes the task through the shared assistant backend | PASS | `/home/ubuntu/starlog/artifacts/pr4-device/after-interrupt-submit.png` |
+
+## Assistant thread convergence notes
+
+1. The Android release bundle had been pulling both `react@18.2.0` and `react@18.3.1`, which caused a phone-only `TypeError: Cannot read property 'useState' of null` crash on launch.
+   - Mitigation: pin Metro's mobile resolver to the app-local React/runtime packages and block the stray `react@18.3.1` path in `apps/mobile/metro.config.js`.
+2. `scripts/android_fresh_local_srs_validation.sh` had drifted behind the current native auth surface and release defaults.
+   - Mitigation: the script now sets `adb reverse tcp:8000 tcp:8000`, fills the API endpoint field explicitly, and uses the current `PASSPHRASE` / `SIGN IN` auth labels.
+3. The same validation script still has one remaining follow-up outside the core PR4 phone proof.
+   - Current state: its review-queue prep can still fail earlier with a local auth-related `401`, but the failure is now surfaced with the actual HTTP/body response instead of a JSON decode stack trace.
+
 ## WI-704 Assistant-first mobile stabilization
 
 Date: 2026-04-11

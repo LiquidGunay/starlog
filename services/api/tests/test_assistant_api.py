@@ -159,6 +159,114 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
     assert any(message["content"] == "create task Review the diffusion notes" for message in legacy_payload["messages"])
 
 
+def test_assistant_voice_message_queue_completes_into_shared_thread(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    queued = client.post(
+        "/v1/assistant/threads/primary/voice",
+        headers=auth_headers,
+        files={"file": ("assistant-voice.m4a", b"voice-bytes", "audio/mp4")},
+        data={
+            "title": "Assistant voice message",
+            "duration_ms": "2400",
+            "device_target": "android-phone",
+            "provider_hint": "whisper_local",
+            "metadata_json": json.dumps({"surface": "assistant_mobile", "submitted_via": "voice_recording"}),
+        },
+    )
+    assert queued.status_code == 201
+    payload = queued.json()
+    job_id = payload["id"]
+    assert payload["action"] == "assistant_thread_voice"
+
+    claim = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "assistant-voice-worker"},
+        headers=auth_headers,
+    )
+    assert claim.status_code == 200
+
+    complete = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "assistant-voice-worker",
+            "provider_used": "whisper_local",
+            "output": {"transcript": "create task Voice thread task due tomorrow priority 3"},
+        },
+        headers=auth_headers,
+    )
+    assert complete.status_code == 200
+    completed_payload = complete.json()
+    assert completed_payload["output"]["assistant_thread"]["run_status"] == "completed"
+    assert completed_payload["output"]["assistant_thread"]["transcript"] == "create task Voice thread task due tomorrow priority 3"
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    thread_payload = snapshot.json()
+    assert any(
+        part["type"] == "text" and part["text"] == "create task Voice thread task due tomorrow priority 3"
+        for message in thread_payload["messages"]
+        for part in message["parts"]
+    )
+
+    tasks = client.get("/v1/tasks", headers=auth_headers)
+    assert tasks.status_code == 200
+    assert any(task["title"] == "Voice thread task" for task in tasks.json())
+
+
+def test_assistant_voice_message_job_failure_emits_thread_error_message(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    queued = client.post(
+        "/v1/assistant/threads/primary/voice",
+        headers=auth_headers,
+        files={"file": ("assistant-voice.m4a", b"voice-bytes", "audio/mp4")},
+        data={
+            "title": "Assistant voice message",
+            "duration_ms": "1600",
+            "device_target": "android-phone",
+            "provider_hint": "whisper_local",
+        },
+    )
+    assert queued.status_code == 201
+    job_id = queued.json()["id"]
+
+    claim = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "assistant-voice-worker"},
+        headers=auth_headers,
+    )
+    assert claim.status_code == 200
+
+    failed = client.post(
+        f"/v1/ai/jobs/{job_id}/fail",
+        json={
+            "worker_id": "assistant-voice-worker",
+            "provider_used": "whisper_local",
+            "error_text": "speech worker unavailable",
+        },
+        headers=auth_headers,
+    )
+    assert failed.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    assert any(
+        part["type"] == "text" and "could not be transcribed" in part["text"]
+        for message in payload["messages"]
+        for part in message["parts"]
+        if part["type"] == "text"
+    )
+    assert any(
+        part["type"] == "status" and part["status"] == "error"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
 def test_assistant_surface_event_can_project_planner_conflict_interrupt(
     client: TestClient,
     auth_headers: dict[str, str],

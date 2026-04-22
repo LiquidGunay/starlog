@@ -5,6 +5,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Completed in this pass
 
+- Fresh Android phone proof on `2026-04-22` confirms the native app now converges on the shared assistant thread: the release APK launches cleanly, the phone logs into a fresh local API, a typed Assistant turn opens an inline `request_due_date` interrupt, and submitting that interrupt from the phone creates the task through `/v1/assistant`.
+- The Android release bundle no longer mixes `react@18.2.0` with `react@18.3.1`; Metro is now pinned to the mobile workspace React/runtime paths so the phone no longer crashes on launch with the prior hook-dispatcher failure.
+- The Android local-validation helper now matches the current native auth surface more closely by setting the API endpoint field explicitly, adding `adb reverse tcp:8000 tcp:8000`, and using the current `PASSPHRASE` / `SIGN IN` labels instead of the older auth copy.
 - Native mobile Assistant shell now uses a ChatGPT-style focused thread on phone: no separate returned-card rail, inline Assistant cards stay in the transcript, diagnostics remain collapsed, and the side drawer owns support-view navigation.
 - Native mobile mic flow now restores the Assistant composer mic as a first-class entrypoint and separates Assistant voice state from Library voice-note state, so the two flows no longer share one ambiguous queued clip.
 - The remaining large Assistant support/tools panel has been extracted out of [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) into [apps/mobile/src/mobile-support-panel-sections.tsx](/home/ubuntu/starlog/apps/mobile/src/mobile-support-panel-sections.tsx), leaving `App.tsx` focused more on runtime orchestration and top-level composition.
