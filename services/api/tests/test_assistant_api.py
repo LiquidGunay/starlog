@@ -466,6 +466,40 @@ def test_capture_creation_reflects_into_assistant_triage_interrupt(
     assert any("One quick choice" in text for text in _message_texts(payload))
 
 
+def test_desktop_helper_capture_reflects_with_desktop_helper_surface(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_desktop_helper",
+            "capture_source": "desktop_helper",
+            "title": "Codex clip",
+            "raw": {"text": "Clip from the desktop helper.", "mime_type": "text/plain"},
+            "normalized": {"text": "Clip from the desktop helper.", "mime_type": "text/plain"},
+            "extracted": {"text": "Clip from the desktop helper.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 201
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    helper_message = next(
+        message
+        for message in payload["messages"]
+        if message["metadata"].get("surface_event", {}).get("source_surface") == "desktop_helper"
+    )
+    assert any(
+        part["type"] == "text" and "desktop helper" in part["text"].lower()
+        for part in helper_message["parts"]
+    )
+    interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "triage_capture")
+    assert interrupt["metadata"]["surface_event"]["source_surface"] == "desktop_helper"
+
+
 def test_briefing_generation_reflects_into_choose_morning_focus_interrupt(
     client: TestClient,
     auth_headers: dict[str, str],

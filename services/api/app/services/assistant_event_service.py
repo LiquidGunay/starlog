@@ -136,19 +136,32 @@ def _summarize_text(value: Any, *, limit: int = 180) -> str | None:
     return f"{collapsed[: limit - 1].rstrip()}…"
 
 
+def _capture_source_surface(artifact: dict[str, Any]) -> str:
+    metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
+    capture = metadata.get("capture") if isinstance(metadata.get("capture"), dict) else {}
+    capture_source = str(capture.get("capture_source") or "").strip().lower()
+    if capture_source.startswith("desktop_helper"):
+        return "desktop_helper"
+    return "library"
+
+
 def reflect_capture_created(conn: Connection, *, artifact: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
     artifact_id = str(artifact.get("id") or "").strip()
     if not artifact_id:
         raise ValueError("Capture reflection requires an artifact id")
     title = str(artifact.get("title") or "Saved capture").strip() or "Saved capture"
     snippet = _summarize_text(((artifact.get("extracted") or {}) if isinstance(artifact.get("extracted"), dict) else {}).get("text"))
-    assistant_text = f"I saved {title}. One quick choice will help route it correctly."
+    source_surface = _capture_source_surface(artifact)
+    if source_surface == "desktop_helper":
+        assistant_text = f"I saved {title} from the desktop helper. One quick choice will help route it correctly."
+    else:
+        assistant_text = f"I saved {title}. One quick choice will help route it correctly."
     if snippet:
         assistant_text = f"{assistant_text} {snippet}"
     return create_surface_event(
         conn,
         thread_id="primary",
-        source_surface="library",
+        source_surface=source_surface,
         kind="capture.created",
         entity_ref={"entity_type": "artifact", "entity_id": artifact_id, "href": f"/artifacts?artifact={artifact_id}", "title": title},
         payload={"artifact_id": artifact_id, "assistant_text": assistant_text, "title": title},

@@ -770,9 +770,14 @@ function formatCapturedAt(value) {
 
 function assistantPromptForCapture(entry) {
   const summary = clipSummary(entry.summary || "");
+  const location = [entry.appName || "desktop", entry.windowTitle].filter(Boolean).join(" / ");
+  const captureKind = typeof entry.kind === "string" && entry.kind ? entry.kind : "capture";
+  const backend = typeof entry.captureBackend === "string" && entry.captureBackend ? entry.captureBackend : "";
   return [
-    `Help me process this capture from ${entry.appName || "desktop"}.`,
+    `Help me process this ${captureKind} capture from ${location || "desktop"}.`,
     `Artifact ID: ${entry.artifactId}`,
+    backend ? `Capture backend: ${backend}` : "",
+    entry.sourceUrl ? `Source URL: ${entry.sourceUrl}` : "",
     summary ? `Summary: ${summary}` : "",
   ]
     .filter(Boolean)
@@ -817,7 +822,7 @@ async function askAssistantAboutCapture(entry) {
   const { webBase } = readConfig();
   const prompt = assistantPromptForCapture(entry);
   await openSupportUrl(
-    `${webBase}/assistant?draft=${encodeURIComponent(prompt)}`,
+    `${webBase}/assistant?draft=${encodeURIComponent(prompt)}&artifact=${encodeURIComponent(entry.artifactId)}&source=desktop_helper`,
     `${productCopy.brand.name} Assistant`,
   );
   setStatus("Opened Assistant handoff for the selected capture");
@@ -1372,6 +1377,7 @@ async function clipClipboard() {
       contextBackend: captureContext.display.contextBackend,
       platform: captureContext.display.platform,
       captureBackend: clipboardResult.backend,
+      sourceUrl: "",
       summary: clipSummary(text),
     });
     updateCapabilityNote(
@@ -1444,6 +1450,7 @@ async function clipScreenshot() {
         platform: captureContext.display.platform,
         ocrEngine: result.ocr_engine || "",
         captureBackend: result.backend || "",
+        sourceUrl: "",
         summary: clipSummary(extractedText || result.message || fileName),
         previewDataUrl,
       });

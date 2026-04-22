@@ -71,6 +71,60 @@
   gap: 18px;
 }
 
+.handoffBanner {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(239, 205, 160, 0.28);
+  background: linear-gradient(135deg, rgba(239, 205, 160, 0.12), rgba(223, 157, 112, 0.08));
+}
+
+.handoffKicker {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: rgba(244, 241, 232, 0.58);
+}
+
+.handoffBanner h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.handoffBanner p {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.78);
+  line-height: 1.6;
+}
+
+.handoffActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.handoffActions button {
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  color: #15120d;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.handoffGhostButton {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #f4f1e8 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
 .composer {
   display: grid;
   gap: 14px;
@@ -155,5 +209,13 @@
   .hero,
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .handoffBanner {
+    flex-direction: column;
+  }
+
+  .handoffActions {
+    justify-content: flex-start;
   }
 }

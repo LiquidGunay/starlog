@@ -5,6 +5,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Completed in this pass
 
+- Desktop helper recent-capture handoff is now a real shared-assistant path instead of a nominal deep link: helper-originated captures reflect into the assistant thread as `desktop_helper` surface events, `Ask Assistant` opens a prefilled draft with artifact + provenance context, and the web Assistant shows an explicit handoff banner with `Open in Library` / `Clear handoff` actions before send.
+- The web Assistant now attaches `handoff_context` metadata when a helper-originated draft is submitted, so assistant runs can distinguish Desktop Helper follow-up from ordinary web chat turns.
+- Desktop helper browser coverage is clean again: the full Playwright helper suite passes against the current quick/workspace copy, including recent-capture handoff, diagnostics copying, setup checklist redaction, and quick-surface workspace switching.
 - Fresh Android phone proof on `2026-04-22` confirms the native app now converges on the shared assistant thread: the release APK launches cleanly, the phone logs into a fresh local API, a typed Assistant turn opens an inline `request_due_date` interrupt, and submitting that interrupt from the phone creates the task through `/v1/assistant`.
 - The Android release bundle no longer mixes `react@18.2.0` with `react@18.3.1`; Metro is now pinned to the mobile workspace React/runtime paths so the phone no longer crashes on launch with the prior hook-dispatcher failure.
 - The Android local-validation helper now matches the current native auth surface more closely by setting the API endpoint field explicitly, adding `adb reverse tcp:8000 tcp:8000`, and using the current `PASSPHRASE` / `SIGN IN` labels instead of the older auth copy.

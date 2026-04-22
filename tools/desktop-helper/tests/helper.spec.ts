@@ -25,7 +25,7 @@ test("quick popup can switch to workspace in browser fallback", async ({ page })
   await page.goto("/index.html?mode=quick");
   await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "quick");
 
-  await page.getByRole("button", { name: "Open Workspace" }).click();
+  await page.getByRole("button", { name: "Recent Captures" }).click();
   await expect(page.locator("body")).toHaveAttribute("data-helper-mode", "workspace");
 });
 
@@ -39,7 +39,7 @@ test("quick popup stays within the 390x430 browser viewport budget", async ({ pa
   await expect(page.locator(".quick-foot .quick-state")).toBeHidden();
   await expect(page.getByRole("button", { name: "Clip Clipboard" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Clip Screenshot" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open Workspace" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recent Captures" })).toBeVisible();
   await expect(page.locator("#status")).toBeVisible();
 
   const metrics = await page.evaluate(() => {
@@ -329,7 +329,7 @@ test("copy diagnostics includes the latest runtime note without the token", asyn
 
   await page.goto("/index.html?mode=quick");
   await page.getByRole("button", { name: "Clip Screenshot" }).click();
-  await page.getByRole("button", { name: "Open Workspace" }).click();
+  await page.getByRole("button", { name: "Recent Captures" }).click();
   await page.getByLabel("Bearer token").fill("token-123");
   await page.getByRole("button", { name: "Copy Diagnostics" }).click();
 
@@ -366,7 +366,7 @@ test("copy setup checklist redacts the token and includes readiness guidance", a
   await expect(page.locator("#status")).toHaveText("Setup checklist copied to clipboard");
 
   const copiedChecklist = await page.evaluate(() => window.__copiedDiagnostics || "");
-  expect(copiedChecklist).toContain("Starlog Desktop Helper Setup Checklist");
+  expect(copiedChecklist).toContain("Starlog Capture Companion Setup Checklist");
   expect(copiedChecklist).toContain("API base: https://starlog.example");
   expect(copiedChecklist).toContain("Bridge base: http://127.0.0.1:8099");
   expect(copiedChecklist).toContain("Bridge auth token configured: yes");
@@ -394,7 +394,7 @@ test("reset local state clears config, recent captures, and quick surface prefer
   });
 
   await page.goto("/index.html?mode=quick");
-  await page.getByRole("button", { name: "Open Workspace" }).click();
+  await page.getByRole("button", { name: "Recent Captures" }).click();
   await page.getByLabel("API base").fill("https://starlog.example");
   await page.getByLabel("Local bridge base").fill("http://127.0.0.1:8099");
   await page.getByLabel("Local bridge token").fill("bridge-secret");
@@ -454,6 +454,48 @@ test("recent helper captures persist across reloads", async ({ page }) => {
   await page.reload();
   await expect(page.locator("#recentCaptures")).toContainText("artifact-persisted");
   await expect(page.locator("#recentCaptures")).toContainText("Persisted helper clipboard text");
+});
+
+test("recent capture handoff actions open Library and Assistant with capture context", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "starlog.desktop-helper.recent-captures.v1",
+      JSON.stringify([
+        {
+          artifactId: "artifact-helper-1",
+          title: "Desktop clip",
+          kind: "clipboard",
+          summary: "Keep the transformer note handy.",
+          capturedAt: "2026-04-22T08:00:00.000Z",
+          appName: "Codex",
+          windowTitle: "Research",
+          captureBackend: "browser-clipboard",
+          sourceUrl: "https://example.com/transformers",
+        },
+      ]),
+    );
+    Object.defineProperty(window, "__openedUrls", {
+      configurable: true,
+      value: [],
+      writable: true,
+    });
+    window.open = (url) => {
+      window.__openedUrls.push(String(url));
+      return null;
+    };
+  });
+
+  await page.goto("/index.html");
+  await page.getByLabel("Web app base").fill("https://starlog.example");
+
+  await page.getByRole("button", { name: "Open in Library" }).click();
+  await page.getByRole("button", { name: "Ask Assistant" }).click();
+
+  const openedUrls = await page.evaluate(() => window.__openedUrls || []);
+  expect(openedUrls).toEqual([
+    "https://starlog.example/artifacts?artifact=artifact-helper-1",
+    "https://starlog.example/assistant?draft=Help%20me%20process%20this%20clipboard%20capture%20from%20Codex%20%2F%20Research.%0AArtifact%20ID%3A%20artifact-helper-1%0ACapture%20backend%3A%20browser-clipboard%0ASource%20URL%3A%20https%3A%2F%2Fexample.com%2Ftransformers%0ASummary%3A%20Keep%20the%20transformer%20note%20handy.&artifact=artifact-helper-1&source=desktop_helper",
+  ]);
 });
 
 test("recent screenshot captures render stored previews", async ({ page }) => {

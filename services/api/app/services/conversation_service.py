@@ -15,10 +15,22 @@ PROJECTION_THREAD_CONTEXT = "thread_context"
 
 
 def _primary_user_id(conn: Connection, user_id: str | None = None) -> str:
-    row = execute_fetchone(conn, "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
+    row = execute_fetchone(
+        conn,
+        """
+        SELECT owner_user_id
+        FROM conversation_threads
+        WHERE slug = ? AND owner_user_id IS NOT NULL AND owner_user_id != ''
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        """,
+        (PRIMARY_THREAD_SLUG,),
+    )
+    if row is None:
+        row = execute_fetchone(conn, "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
     if row is None:
         raise LookupError("Starlog has not been bootstrapped yet")
-    owner_user_id = str(row["id"])
+    owner_user_id = str(row.get("owner_user_id") or row.get("id"))
     if user_id and user_id != owner_user_id:
         raise PermissionError("Conversation access is restricted to the primary Starlog user")
     return user_id or owner_user_id

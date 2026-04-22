@@ -14,10 +14,22 @@ _CURSOR_PREFIX = "assistant_cursor_v1."
 
 
 def _assistant_owner_user_id(conn: Connection) -> str:
-    row = execute_fetchone(conn, "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
+    row = execute_fetchone(
+        conn,
+        """
+        SELECT owner_user_id
+        FROM conversation_threads
+        WHERE slug = ? AND owner_user_id IS NOT NULL AND owner_user_id != ''
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        """,
+        (conversation_service.PRIMARY_THREAD_SLUG,),
+    )
+    if row is None:
+        row = execute_fetchone(conn, "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
     if row is None:
         raise LookupError("Starlog has not been bootstrapped yet")
-    return str(row["id"])
+    return str(row.get("owner_user_id") or row.get("id"))
 
 
 def _require_assistant_user(conn: Connection, user_id: str | None) -> str | None:

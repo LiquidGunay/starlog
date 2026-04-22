@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type {
   AssistantCardAction,
   AssistantDeltaList,
@@ -25,6 +25,11 @@ type AssistantStreamEnvelope = {
 };
 
 type LiveStatus = "connecting" | "live" | "recovering" | "auth_required";
+type AssistantHandoff = {
+  artifactId: string | null;
+  source: string | null;
+  draft: string;
+};
 
 const STREAM_AUTH_ERROR = "Session expired. Sign in again to reconnect the Assistant feed.";
 
@@ -207,6 +212,20 @@ function liveStatusLabel(status: LiveStatus): string {
   return "Connecting feed";
 }
 
+function readHandoff(searchParams: ReturnType<typeof useSearchParams>): AssistantHandoff | null {
+  const draft = searchParams.get("draft")?.trim() || "";
+  const artifactId = searchParams.get("artifact")?.trim() || "";
+  const source = searchParams.get("source")?.trim() || "";
+  if (!draft && !artifactId && !source) {
+    return null;
+  }
+  return {
+    artifactId: artifactId || null,
+    source: source || null,
+    draft,
+  };
+}
+
 function mutationHeaders(payload: Record<string, unknown>): Record<string, string> | undefined {
   const rawHeaders = payload.headers;
   if (!rawHeaders || typeof rawHeaders !== "object" || Array.isArray(rawHeaders)) {
@@ -336,8 +355,9 @@ async function consumeAssistantStream({
   }
 }
 
-export default function AssistantPage() {
+function AssistantPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { apiBase, token, isOnline, mutateWithQueue } = useSessionConfig();
   const clientTimezone =
     typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
@@ -345,9 +365,11 @@ export default function AssistantPage() {
   const snapshotRef = useRef<AssistantThreadSnapshot | null>(null);
   const cursorRef = useRef<string | null>(null);
   const authBlockedRef = useRef(false);
+  const appliedDraftRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [composer, setComposer] = useState("");
+  const [handoff, setHandoff] = useState<AssistantHandoff | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>("connecting");
@@ -364,6 +386,21 @@ export default function AssistantPage() {
   useEffect(() => {
     authBlockedRef.current = liveStatus === "auth_required";
   }, [liveStatus]);
+
+  useEffect(() => {
+    const nextHandoff = readHandoff(searchParams);
+    const draft = nextHandoff?.draft || "";
+    setHandoff(nextHandoff);
+    if (!draft || appliedDraftRef.current === draft) {
+      return;
+    }
+
+    appliedDraftRef.current = draft;
+    setComposer((current) => current.trim() ? current : draft);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+    });
+  }, [searchParams]);
 
   const applyAuthFailure = useCallback(() => {
     authBlockedRef.current = true;
@@ -555,13 +592,30 @@ export default function AssistantPage() {
             content,
             input_mode: "text",
             device_target: "web-desktop",
-            metadata: { surface: "assistant_web", client_timezone: clientTimezone },
+            metadata: {
+              surface: "assistant_web",
+              client_timezone: clientTimezone,
+              ...(handoff
+                ? {
+                    handoff_context: {
+                      source: handoff.source,
+                      artifact_id: handoff.artifactId,
+                      draft: handoff.draft,
+                    },
+                  }
+                : {}),
+            },
           }),
         },
       );
       setSnapshot(payload.snapshot);
       setCursor(payload.snapshot.next_cursor || null);
       setComposer("");
+      if (handoff) {
+        setHandoff(null);
+        appliedDraftRef.current = null;
+        router.replace("/assistant");
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.body : "Failed to send the message.");
     } finally {
@@ -699,6 +753,7 @@ export default function AssistantPage() {
   const activeRun = snapshot?.runs.find((run) => run.status === "running" || run.status === "interrupted");
   const activeInterrupt = snapshot?.interrupts.find((interrupt) => interrupt.status === "pending");
   const normalizedSnapshot = normalizeSnapshot(snapshot);
+  const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
 
   return (
     <StarlogAssistantRuntimeProvider
@@ -734,6 +789,37 @@ export default function AssistantPage() {
               onInterruptSubmit={submitInterrupt}
               onInterruptDismiss={dismissInterrupt}
             />
+            {handoff ? (
+              <section className={styles.handoffBanner}>
+                <div>
+                  <p className={styles.handoffKicker}>{handoffSourceLabel} handoff</p>
+                  <h2>Continue from the latest capture</h2>
+                  <p>
+                    {handoff.artifactId
+                      ? `Artifact ${handoff.artifactId} is attached to this draft. Keep the Assistant thread focused on this capture or open it in Library for deeper editing.`
+                      : "This draft came from another Starlog surface. Keep the Assistant thread focused on that context or clear the handoff."}
+                  </p>
+                </div>
+                <div className={styles.handoffActions}>
+                  {handoff.artifactId ? (
+                    <button type="button" onClick={() => router.push(`/artifacts?artifact=${encodeURIComponent(handoff.artifactId || "")}`)}>
+                      Open in Library
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.handoffGhostButton}
+                    onClick={() => {
+                      setHandoff(null);
+                      appliedDraftRef.current = null;
+                      router.replace("/assistant");
+                    }}
+                  >
+                    Clear handoff
+                  </button>
+                </div>
+              </section>
+            ) : null}
             <form
               className={styles.composer}
               onSubmit={(event) => {
@@ -781,5 +867,13 @@ export default function AssistantPage() {
         </section>
       </main>
     </StarlogAssistantRuntimeProvider>
+  );
+}
+
+export default function AssistantPage() {
+  return (
+    <Suspense fallback={null}>
+      <AssistantPageContent />
+    </Suspense>
   );
 }
