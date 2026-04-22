@@ -1157,10 +1157,29 @@ export function MobileAssistantRebuild({
                     ? "rgba(166, 222, 191, 0.18)"
                     : "rgba(255,255,255,0.04)",
             }}
-            onPress={voiceActionState === "ready" ? onCancelVoiceAction : onVoiceAction}
+            onPress={onVoiceAction}
           >
             <MaterialCommunityIcons name={voiceIcon as never} size={17} color={voiceActionState === "recording" ? palette.error : palette.text} />
           </TouchableOpacity>
+
+          {voiceActionState === "ready" ? (
+            <TouchableOpacity
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 4,
+                backgroundColor: "rgba(255,255,255,0.018)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.04)",
+              }}
+              onPress={onCancelVoiceAction}
+            >
+              <MaterialCommunityIcons name={"close" as never} size={14} color={palette.muted} />
+            </TouchableOpacity>
+          ) : null}
 
           <View
             style={{

@@ -8,7 +8,7 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, assistant_projection_service, assistant_thread_service, google_calendar_service
+from app.services import ai_service, agent_service, assistant_projection_service, assistant_thread_service, google_calendar_service
 from app.services.common import new_id
 
 
@@ -157,6 +157,52 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
     assert legacy.status_code == 200
     legacy_payload = legacy.json()
     assert any(message["content"] == "create task Review the diffusion notes" for message in legacy_payload["messages"])
+
+
+def test_due_date_interrupt_failure_leaves_interrupt_pending_for_retry(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    create = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Retry the assistant failure path",
+            "input_mode": "text",
+            "device_target": "android-phone",
+            "metadata": {"surface": "assistant_mobile", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert create.status_code == 201
+    payload = create.json()
+    interrupt = payload["run"]["current_interrupt"]
+    assert interrupt is not None
+
+    def explode_execute_tool(*args, **kwargs):
+        raise RuntimeError("synthetic create_task failure")
+
+    monkeypatch.setattr(agent_service, "execute_tool", explode_execute_tool)
+
+    submit = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"due_date": "2026-04-22", "priority": "3", "client_timezone": "UTC"}},
+        headers=auth_headers,
+    )
+    assert submit.status_code == 200
+    snapshot = submit.json()
+
+    failed_run = next(run for run in snapshot["runs"] if run["id"] == payload["run"]["id"])
+    assert failed_run["status"] == "failed"
+
+    pending_interrupt = next(item for item in snapshot["interrupts"] if item["id"] == interrupt["id"])
+    assert pending_interrupt["status"] == "pending"
+    assert pending_interrupt["resolution"] == {}
+    assert any(
+        part["type"] == "status" and part["status"] == "error"
+        for message in snapshot["messages"]
+        for part in message["parts"]
+    )
 
 
 def test_assistant_voice_message_queue_completes_into_shared_thread(
