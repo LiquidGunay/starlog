@@ -228,6 +228,8 @@ def claim_next_job_for_worker(
 
 
 def cancel_job(conn: Connection, job_id: str, reason: str | None = None) -> dict | None:
+    from app.services import assistant_event_service, artifacts_service
+
     job = get_job(conn, job_id)
     if job is None:
         return None
@@ -254,6 +256,18 @@ def cancel_job(conn: Connection, job_id: str, reason: str | None = None) -> dict
             """,
             ("cancelled", job["artifact_id"], job["action"], job_id),
         )
+        artifact = artifacts_service.get_artifact(conn, str(job["artifact_id"]))
+        if artifact is not None:
+            try:
+                assistant_event_service.reflect_artifact_action(
+                    conn,
+                    artifact=artifact,
+                    action=str(job["action"]),
+                    status="cancelled",
+                    output_ref=str(job["id"]),
+                )
+            except Exception:
+                pass
 
     events_service.emit(
         conn,
@@ -271,7 +285,7 @@ def complete_job(
     provider_used: str,
     output: dict,
 ) -> dict | None:
-    from app.services import agent_command_service, artifacts_service, briefing_service
+    from app.services import agent_command_service, artifacts_service, assistant_event_service, briefing_service
 
     job = get_job(conn, job_id)
     if job is None:
@@ -282,7 +296,9 @@ def complete_job(
         raise ValueError("Job is claimed by a different worker")
 
     created_ref: str | None = None
+    artifact_for_reflection: dict | None = None
     if job.get("artifact_id") and job.get("action"):
+        artifact_for_reflection = artifacts_service.get_artifact(conn, str(job["artifact_id"]))
         created_ref = artifacts_service.apply_deferred_action_result(
             conn,
             artifact_id=str(job["artifact_id"]),
@@ -299,6 +315,17 @@ def complete_job(
                 """,
                 ("completed", created_ref, job["artifact_id"], job["action"], job_id),
             )
+        if artifact_for_reflection is not None:
+            try:
+                assistant_event_service.reflect_artifact_action(
+                    conn,
+                    artifact=artifact_for_reflection,
+                    action=str(job["action"]),
+                    status="completed",
+                    output_ref=created_ref,
+                )
+            except Exception:
+                pass
 
     payload = dict(job.get("payload") or {})
     action = str(job.get("action") or "")
@@ -380,6 +407,8 @@ def fail_job(
     error_text: str,
     provider_used: str | None = None,
 ) -> dict | None:
+    from app.services import assistant_event_service, artifacts_service
+
     job = get_job(conn, job_id)
     if job is None:
         return None
@@ -397,6 +426,18 @@ def fail_job(
             """,
             ("failed", job["artifact_id"], job["action"], job_id),
         )
+        artifact = artifacts_service.get_artifact(conn, str(job["artifact_id"]))
+        if artifact is not None:
+            try:
+                assistant_event_service.reflect_artifact_action(
+                    conn,
+                    artifact=artifact,
+                    action=str(job["action"]),
+                    status="failed",
+                    output_ref=str(job["id"]),
+                )
+            except Exception:
+                pass
 
     finished_at = utc_now().isoformat()
     conn.execute(

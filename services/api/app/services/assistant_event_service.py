@@ -6,8 +6,441 @@ from typing import Any
 
 from app.core.time import utc_now
 from app.services import assistant_projection_service, assistant_thread_service
-from app.services.assistant_run_service import _create_interrupt, _create_run, _record_step, _update_run
-from app.services.common import execute_fetchone, new_id
+from app.services.assistant_run_service import (
+    _complete_interrupt,
+    _create_interrupt,
+    _create_run,
+    _next_step_index,
+    _record_step,
+    _update_run,
+)
+from app.services.common import execute_fetchall, execute_fetchone, new_id
+
+
+_INTERRUPT_TOOL_BY_EVENT_KIND = {
+    "planner.conflict.detected": "resolve_planner_conflict",
+    "capture.created": "triage_capture",
+    "review.answer.revealed": "grade_review_recall",
+    "briefing.generated": "choose_morning_focus",
+}
+
+
+def _normalize_entity_ref(entity_ref: dict[str, Any] | None) -> tuple[str, str] | None:
+    if not isinstance(entity_ref, dict):
+        return None
+    entity_type = str(entity_ref.get("entity_type") or "").strip()
+    entity_id = str(entity_ref.get("entity_id") or "").strip()
+    if not entity_type or not entity_id:
+        return None
+    return entity_type, entity_id
+
+
+def _find_pending_interrupt_for_entity(
+    conn: Connection,
+    *,
+    thread_id: str,
+    tool_name: str,
+    entity_ref: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    normalized = _normalize_entity_ref(entity_ref)
+    if normalized is None:
+        return None
+    rows = execute_fetchall(
+        conn,
+        """
+        SELECT *
+        FROM conversation_interrupts
+        WHERE thread_id = ? AND status = 'pending' AND tool_name = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (thread_id, tool_name),
+    )
+    for row in rows:
+        existing_ref = row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else None
+        if _normalize_entity_ref(existing_ref) == normalized:
+            return row
+    return None
+
+
+def _summarize_text(value: Any, *, limit: int = 180) -> str | None:
+    if not isinstance(value, str):
+        return None
+    collapsed = " ".join(value.split()).strip()
+    if not collapsed:
+        return None
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[: limit - 1].rstrip()}…"
+
+
+def reflect_capture_created(conn: Connection, *, artifact: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+    artifact_id = str(artifact.get("id") or "").strip()
+    if not artifact_id:
+        raise ValueError("Capture reflection requires an artifact id")
+    title = str(artifact.get("title") or "Saved capture").strip() or "Saved capture"
+    snippet = _summarize_text(((artifact.get("extracted") or {}) if isinstance(artifact.get("extracted"), dict) else {}).get("text"))
+    assistant_text = f"I saved {title}. One quick choice will help route it correctly."
+    if snippet:
+        assistant_text = f"{assistant_text} {snippet}"
+    return create_surface_event(
+        conn,
+        thread_id="primary",
+        source_surface="library",
+        kind="capture.created",
+        entity_ref={"entity_type": "artifact", "entity_id": artifact_id, "href": f"/artifacts?artifact={artifact_id}", "title": title},
+        payload={"artifact_id": artifact_id, "assistant_text": assistant_text, "title": title},
+        visibility="assistant_message",
+        user_id=user_id,
+    )
+
+
+def reflect_briefing_generated(conn: Connection, *, briefing: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+    briefing_id = str(briefing.get("id") or "").strip()
+    if not briefing_id:
+        raise ValueError("Briefing reflection requires a briefing id")
+    briefing_date = str(briefing.get("date") or briefing_id).strip() or briefing_id
+    body = _summarize_text(briefing.get("text"))
+    return create_surface_event(
+        conn,
+        thread_id="primary",
+        source_surface="planner",
+        kind="briefing.generated",
+        entity_ref={
+            "entity_type": "briefing",
+            "entity_id": briefing_id,
+            "href": f"/planner?briefing={briefing_id}",
+            "title": briefing_date,
+        },
+        payload={"briefing_id": briefing_id, "date": briefing_date, "body": body},
+        visibility="assistant_message",
+        user_id=user_id,
+    )
+
+
+def reflect_planner_conflict_detected(
+    conn: Connection,
+    *,
+    conflict: dict[str, Any],
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    conflict_id = str(conflict.get("id") or "").strip()
+    if not conflict_id:
+        raise ValueError("Planner conflict reflection requires a conflict id")
+    remote_id = str(conflict.get("remote_id") or "remote event").strip() or "remote event"
+    strategy = str(conflict.get("strategy") or "prefer_local").strip() or "prefer_local"
+    detail = conflict.get("detail") if isinstance(conflict.get("detail"), dict) else {}
+    options = [
+        {"label": "Prefer local", "value": "local_wins"},
+        {"label": "Prefer remote", "value": "remote_wins"},
+        {"label": "Dismiss for now", "value": "dismiss"},
+    ]
+    return create_surface_event(
+        conn,
+        thread_id="primary",
+        source_surface="planner",
+        kind="planner.conflict.detected",
+        entity_ref={
+            "entity_type": "planner_conflict",
+            "entity_id": conflict_id,
+            "href": "/planner",
+            "title": remote_id,
+        },
+        payload={
+            "conflict_id": conflict_id,
+            "assistant_text": f"{remote_id} needs a quick planner decision.",
+            "options": options,
+            "label": f"Planner conflict: {remote_id}",
+            "body": f"Suggested sync policy: {strategy}",
+            "detail": detail,
+        },
+        visibility="assistant_message",
+        user_id=user_id,
+    )
+
+
+def _append_ambient_update_message(
+    conn: Connection,
+    *,
+    thread_id: str,
+    run_id: str | None,
+    event: dict[str, Any],
+    entity_ref: dict[str, Any] | None,
+    label: str,
+    body: str | None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    update = {
+        "id": new_id("ambient"),
+        "event_id": event["id"],
+        "label": label,
+        "body": body,
+        "entity_ref": entity_ref,
+        "actions": [],
+        "metadata": {"source_surface": event["source_surface"], "kind": event["kind"]},
+        "created_at": event["created_at"],
+    }
+    return assistant_thread_service.append_message(
+        conn,
+        thread_id=thread_id,
+        role="system",
+        status="complete",
+        run_id=run_id,
+        metadata={"surface_event": event, **(metadata or {})},
+        parts=[assistant_projection_service.ambient_update_part(update)],
+    )
+
+
+def _close_pending_interrupt_for_entity(
+    conn: Connection,
+    *,
+    thread_id: str,
+    tool_name: str,
+    entity_ref: dict[str, Any] | None,
+    action: str,
+    values: dict[str, Any],
+    step_title: str,
+    summary: str,
+    message_id: str | None,
+    tool_status: str = "completed",
+) -> dict[str, Any] | None:
+    pending_interrupt = _find_pending_interrupt_for_entity(
+        conn,
+        thread_id=thread_id,
+        tool_name=tool_name,
+        entity_ref=entity_ref,
+    )
+    if pending_interrupt is None:
+        return None
+
+    resolution = _complete_interrupt(
+        conn,
+        interrupt_id=str(pending_interrupt["id"]),
+        action=action,
+        values=values,
+    )
+    run_id = str(pending_interrupt["run_id"])
+    _record_step(
+        conn,
+        run_id=run_id,
+        thread_id=thread_id,
+        step_index=_next_step_index(conn, run_id=run_id),
+        title=step_title,
+        tool_name=tool_name,
+        tool_kind="surface_action",
+        status=tool_status,
+        arguments=values,
+        result={"source_surface": "planner"},
+        interrupt_id=str(pending_interrupt["id"]),
+        message_id=message_id,
+        metadata={"resolution_source": "planner_surface"},
+    )
+    _update_run(
+        conn,
+        run_id=run_id,
+        status="completed" if action == "submit" else "cancelled",
+        summary=summary,
+        metadata_patch={"external_resolution": resolution},
+    )
+    return resolution
+
+
+def reflect_planner_conflict_resolved(
+    conn: Connection,
+    *,
+    conflict: dict[str, Any],
+    resolution_strategy: str,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    conflict_id = str(conflict.get("id") or "").strip()
+    if not conflict_id:
+        raise ValueError("Planner conflict resolution reflection requires a conflict id")
+    remote_id = str(conflict.get("remote_id") or conflict_id).strip() or conflict_id
+    entity_ref = {
+        "entity_type": "planner_conflict",
+        "entity_id": conflict_id,
+        "href": "/planner",
+        "title": remote_id,
+    }
+    thread = assistant_thread_service.get_thread(conn, "primary", user_id=user_id)
+    label = "Planner conflict resolved"
+    body = f"{remote_id} was resolved in Planner with {resolution_strategy.replace('_', ' ')}."
+    event = _insert_surface_event(
+        conn,
+        thread_id=thread["id"],
+        source_surface="planner",
+        kind="planner.conflict.resolved",
+        entity_ref=entity_ref,
+        payload={
+            "conflict_id": conflict_id,
+            "resolution_strategy": resolution_strategy,
+            "label": label,
+            "body": body,
+        },
+        visibility="ambient",
+        projected_message=True,
+    )
+    assistant_message = _append_ambient_update_message(
+        conn,
+        thread_id=thread["id"],
+        run_id=None,
+        event=event,
+        entity_ref=entity_ref,
+        label=label,
+        body=body,
+    )
+    resolution = _close_pending_interrupt_for_entity(
+        conn,
+        thread_id=thread["id"],
+        tool_name="resolve_planner_conflict",
+        entity_ref=entity_ref,
+        action="submit",
+        values={
+            "resolution": resolution_strategy,
+            "resolution_source": "planner_surface",
+        },
+        step_title="Resolve planner conflict from Planner",
+        summary="Planner conflict resolved from Planner",
+        message_id=assistant_message["id"],
+    )
+    if resolution is not None:
+        assistant_message["metadata"] = {
+            **(assistant_message.get("metadata") or {}),
+            "interrupt_resolution": resolution,
+        }
+    return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
+
+
+def reflect_planner_conflict_cleared(
+    conn: Connection,
+    *,
+    conflict_id: str,
+    remote_id: str | None = None,
+    reason: str = "replayed_cleanly",
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_conflict_id = str(conflict_id or "").strip()
+    if not normalized_conflict_id:
+        raise ValueError("Planner conflict clear reflection requires a conflict id")
+    remote_label = str(remote_id or normalized_conflict_id).strip() or normalized_conflict_id
+    entity_ref = {
+        "entity_type": "planner_conflict",
+        "entity_id": normalized_conflict_id,
+        "href": "/planner",
+        "title": remote_label,
+    }
+    thread = assistant_thread_service.get_thread(conn, "primary", user_id=user_id)
+    label = "Planner conflict cleared"
+    body = f"{remote_label} no longer needs attention after the Planner replay."
+    event = _insert_surface_event(
+        conn,
+        thread_id=thread["id"],
+        source_surface="planner",
+        kind="planner.conflict.cleared",
+        entity_ref=entity_ref,
+        payload={
+            "conflict_id": normalized_conflict_id,
+            "reason": reason,
+            "label": label,
+            "body": body,
+        },
+        visibility="ambient",
+        projected_message=True,
+    )
+    assistant_message = _append_ambient_update_message(
+        conn,
+        thread_id=thread["id"],
+        run_id=None,
+        event=event,
+        entity_ref=entity_ref,
+        label=label,
+        body=body,
+    )
+    resolution = _close_pending_interrupt_for_entity(
+        conn,
+        thread_id=thread["id"],
+        tool_name="resolve_planner_conflict",
+        entity_ref=entity_ref,
+        action="dismiss",
+        values={"reason": reason, "resolution_source": "planner_surface"},
+        step_title="Clear planner conflict after replay",
+        summary="Planner conflict cleared after replay",
+        message_id=assistant_message["id"],
+        tool_status="cancelled",
+    )
+    if resolution is not None:
+        assistant_message["metadata"] = {
+            **(assistant_message.get("metadata") or {}),
+            "interrupt_resolution": resolution,
+        }
+    return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
+
+
+def reflect_artifact_action(
+    conn: Connection,
+    *,
+    artifact: dict[str, Any],
+    action: str,
+    status: str,
+    output_ref: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    artifact_id = str(artifact.get("id") or "").strip()
+    if not artifact_id:
+        raise ValueError("Artifact action reflection requires an artifact id")
+    title = str(artifact.get("title") or "artifact").strip() or "artifact"
+    action_label = action.replace("_", " ")
+    action_title = {
+        "summarize": "Summary",
+        "cards": "Review cards",
+        "tasks": "Task suggestions",
+        "append_note": "Note draft",
+    }.get(action, action_label.replace("_", " ").title())
+    normalized_status = status.strip() or "completed"
+
+    if normalized_status == "queued":
+        kind = "artifact.action.queued"
+        label = f"{action_title} queued"
+        body = f"{title} is queued for the local runner."
+    elif normalized_status == "completed":
+        kind = "artifact.action.completed"
+        label = f"{action_title} ready"
+        body = {
+            "summarize": f"{title} now has a fresh summary draft.",
+            "cards": f"{title} now has new review cards.",
+            "tasks": f"{title} now has suggested next actions.",
+            "append_note": f"{title} now has a linked note draft.",
+        }.get(action, f"{title} produced a new {action_label} result.")
+    elif normalized_status == "failed":
+        kind = "artifact.action.failed"
+        label = f"{action_title} failed"
+        body = f"{title} did not complete its {action_label} action."
+    elif normalized_status == "cancelled":
+        kind = "artifact.action.cancelled"
+        label = f"{action_title} cancelled"
+        body = f"{title} no longer has a pending {action_label} action."
+    else:
+        kind = f"artifact.action.{normalized_status}"
+        label = f"{action_title} {normalized_status}"
+        body = f"{title} updated its {action_label} action."
+
+    payload = {
+        "artifact_id": artifact_id,
+        "action": action,
+        "status": normalized_status,
+        "output_ref": output_ref,
+        "label": label,
+        "body": body,
+    }
+    return create_surface_event(
+        conn,
+        thread_id="primary",
+        source_surface="library",
+        kind=kind,
+        entity_ref={"entity_type": "artifact", "entity_id": artifact_id, "href": f"/artifacts?artifact={artifact_id}", "title": title},
+        payload=payload,
+        visibility="ambient",
+        user_id=user_id,
+    )
 
 
 def _insert_surface_event(
@@ -71,6 +504,14 @@ def create_surface_event(
     user_id: str | None = None,
 ) -> dict[str, Any]:
     thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
+    interrupt_tool = _INTERRUPT_TOOL_BY_EVENT_KIND.get(kind)
+    if interrupt_tool and _find_pending_interrupt_for_entity(
+        conn,
+        thread_id=thread["id"],
+        tool_name=interrupt_tool,
+        entity_ref=entity_ref,
+    ):
+        return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
     event = _insert_surface_event(
         conn,
         thread_id=thread["id"],

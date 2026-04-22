@@ -53,6 +53,43 @@ async function routeAssistantShell(page: import("@playwright/test").Page, snapsh
   });
 }
 
+async function routeDynamicAssistantShell(
+  page: import("@playwright/test").Page,
+  getSnapshot: () => Record<string, unknown>,
+) {
+  await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
+    const snapshot = getSnapshot();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(snapshot),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/updates*`, async (route) => {
+    const snapshot = getSnapshot();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        thread_id: "thr_primary",
+        cursor: snapshot.next_cursor,
+        deltas: [],
+      }),
+    });
+  });
+}
+
+async function routeIdleAssistantStream(page: import("@playwright/test").Page) {
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/stream`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: ": keep-alive\n\n",
+    });
+  });
+}
+
 test("renders rich assistant thread parts from the snapshot", async ({ page }) => {
   await seedSession(page);
   await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
@@ -445,4 +482,537 @@ test("queued mutation replay preserves custom headers and raw body semantics", a
     expect(request.headers["content-type"]).toContain("text/plain");
     expect(request.body).toBe("render=this");
   }
+});
+
+test("library capture flows into the assistant triage interrupt", async ({ page }) => {
+  await seedSession(page);
+
+  let assistantStage: "empty" | "capture" = "empty";
+  const artifact = {
+    id: "artifact_cap_1",
+    source_type: "clip_manual",
+    title: "Reading capture",
+    created_at: "2026-04-21T09:05:00.000Z",
+  };
+
+  await routeDynamicAssistantShell(page, () =>
+    assistantStage === "capture"
+      ? threadSnapshot({
+          last_message_at: "2026-04-21T09:05:05.000Z",
+          last_preview_text: "I saved Reading capture. One quick choice will help route it correctly.",
+          interrupts: [
+            {
+              id: "interrupt_capture_1",
+              thread_id: "thr_primary",
+              run_id: "run_capture_1",
+              status: "pending",
+              interrupt_type: "form",
+              tool_name: "triage_capture",
+              title: "Triage this capture",
+              body: "Tell Starlog what this capture is and what to do next.",
+              entity_ref: { entity_type: "artifact", entity_id: artifact.id, href: `/artifacts?artifact=${artifact.id}` },
+              fields: [],
+              primary_label: "Save choice",
+              secondary_label: "Not now",
+              metadata: {},
+              created_at: "2026-04-21T09:05:05.000Z",
+              resolved_at: null,
+              resolution: {},
+            },
+          ],
+          messages: [
+            {
+              id: "msg_capture_1",
+              thread_id: "thr_primary",
+              run_id: "run_capture_1",
+              role: "assistant",
+              status: "requires_action",
+              parts: [
+                {
+                  type: "text",
+                  id: "part_capture_text",
+                  text: "I saved Reading capture. One quick choice will help route it correctly.",
+                },
+                {
+                  type: "interrupt_request",
+                  id: "part_capture_interrupt",
+                  interrupt: {
+                    id: "interrupt_capture_1",
+                    thread_id: "thr_primary",
+                    run_id: "run_capture_1",
+                    status: "pending",
+                    interrupt_type: "form",
+                    tool_name: "triage_capture",
+                    title: "Triage this capture",
+                    body: "Tell Starlog what this capture is and what to do next.",
+                    entity_ref: { entity_type: "artifact", entity_id: artifact.id, href: `/artifacts?artifact=${artifact.id}` },
+                    fields: [
+                      {
+                        id: "capture_kind",
+                        kind: "select",
+                        label: "Capture kind",
+                        required: true,
+                        options: [{ label: "Research source", value: "research_source" }],
+                      },
+                    ],
+                    primary_label: "Save choice",
+                    secondary_label: "Not now",
+                    metadata: {},
+                    created_at: "2026-04-21T09:05:05.000Z",
+                    resolved_at: null,
+                    resolution: {},
+                  },
+                },
+              ],
+              metadata: {},
+              created_at: "2026-04-21T09:05:05.000Z",
+              updated_at: "2026-04-21T09:05:05.000Z",
+            },
+          ],
+        })
+      : threadSnapshot(),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(assistantStage === "capture" ? [artifact] : []),
+    });
+  });
+  await page.route(`${API_BASE}/v1/artifacts/${artifact.id}/graph`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        artifact,
+        summaries: [],
+        cards: [],
+        tasks: [],
+        notes: [],
+        relations: [],
+      }),
+    });
+  });
+  await page.route(`${API_BASE}/v1/artifacts/${artifact.id}/versions`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        summaries: [],
+        card_sets: [],
+        actions: [],
+      }),
+    });
+  });
+  await page.route(`${API_BASE}/v1/capture`, async (route) => {
+    assistantStage = "capture";
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ artifact }),
+    });
+  });
+
+  await page.goto("/artifacts");
+  await page.getByLabel("Title").fill("Reading capture");
+  await page.getByLabel("Quick clip").fill("Remember the synthesis idea for tomorrow.");
+  await page.locator("details.artifact-quick-capture").getByRole("button", { name: "Create Clip" }).click();
+  await expect(page.getByRole("button", { name: /Reading capture \(clip_manual\)/ })).toBeVisible();
+
+  await page.goto("/assistant");
+  await expect(page.getByText("I saved Reading capture. One quick choice will help route it correctly.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Triage this capture" })).toBeVisible();
+});
+
+test("planner briefing generation feeds the morning focus interrupt", async ({ page }) => {
+  await seedSession(page);
+
+  let assistantStage: "empty" | "briefing" = "empty";
+  const briefing = {
+    id: "briefing_1",
+    date: "2026-04-21",
+    text: "Morning briefing text.",
+    audio_ref: null,
+  };
+  const oauthStatus = {
+    connected: true,
+    mode: "oauth_google",
+    source: "google_oauth",
+    expires_at: "2026-04-22T09:00:00.000Z",
+    has_refresh_token: true,
+    detail: "Google calendar link active",
+  };
+
+  await routeDynamicAssistantShell(page, () =>
+    assistantStage === "briefing"
+      ? threadSnapshot({
+          last_message_at: "2026-04-21T09:06:00.000Z",
+          last_preview_text: "Here is your morning briefing. Choose one focused way to start.",
+          interrupts: [
+            {
+              id: "interrupt_briefing_1",
+              thread_id: "thr_primary",
+              run_id: "run_briefing_1",
+              status: "pending",
+              interrupt_type: "choice",
+              tool_name: "choose_morning_focus",
+              title: "Start with one thing",
+              body: "Choose today’s first bounded move.",
+              entity_ref: { entity_type: "briefing", entity_id: briefing.id, href: `/planner?briefing=${briefing.id}` },
+              fields: [],
+              primary_label: "Begin",
+              secondary_label: "Later",
+              metadata: {},
+              created_at: "2026-04-21T09:06:00.000Z",
+              resolved_at: null,
+              resolution: {},
+            },
+          ],
+          messages: [
+            {
+              id: "msg_briefing_1",
+              thread_id: "thr_primary",
+              run_id: "run_briefing_1",
+              role: "assistant",
+              status: "requires_action",
+              parts: [
+                {
+                  type: "text",
+                  id: "part_briefing_text",
+                  text: "Here is your morning briefing. Choose one focused way to start.",
+                },
+                {
+                  type: "interrupt_request",
+                  id: "part_briefing_interrupt",
+                  interrupt: {
+                    id: "interrupt_briefing_1",
+                    thread_id: "thr_primary",
+                    run_id: "run_briefing_1",
+                    status: "pending",
+                    interrupt_type: "choice",
+                    tool_name: "choose_morning_focus",
+                    title: "Start with one thing",
+                    body: "Choose today’s first bounded move.",
+                    entity_ref: { entity_type: "briefing", entity_id: briefing.id, href: `/planner?briefing=${briefing.id}` },
+                    fields: [
+                      {
+                        id: "focus",
+                        kind: "select",
+                        label: "First move",
+                        required: true,
+                        options: [{ label: "30m review queue", value: "review" }],
+                      },
+                    ],
+                    primary_label: "Begin",
+                    secondary_label: "Later",
+                    metadata: {},
+                    created_at: "2026-04-21T09:06:00.000Z",
+                    resolved_at: null,
+                    resolution: {},
+                  },
+                },
+              ],
+              metadata: {},
+              created_at: "2026-04-21T09:06:00.000Z",
+              updated_at: "2026-04-21T09:06:00.000Z",
+            },
+          ],
+        })
+      : threadSnapshot(),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.route(`${API_BASE}/v1/planning/blocks/*`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route(`${API_BASE}/v1/calendar/events`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route(`${API_BASE}/v1/calendar/sync/google/oauth/status`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(oauthStatus) });
+  });
+  await page.route(`${API_BASE}/v1/briefings/generate`, async (route) => {
+    assistantStage = "briefing";
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify(briefing),
+    });
+  });
+
+  await page.goto("/planner");
+  await page.getByRole("button", { name: "Generate briefing" }).click();
+  await expect(page.getByText(`Generated briefing for ${briefing.date}. Assistant focus prompt is ready.`)).toBeVisible();
+
+  await page.goto("/assistant");
+  await expect(page.getByText("Here is your morning briefing. Choose one focused way to start.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start with one thing" })).toBeVisible();
+});
+
+test("planner sync conflicts surface a resolve-planner-conflict interrupt", async ({ page }) => {
+  await seedSession(page);
+
+  let assistantStage: "empty" | "conflict" = "empty";
+  const oauthStatus = {
+    connected: true,
+    mode: "oauth_google",
+    source: "google_oauth",
+    expires_at: "2026-04-22T09:00:00.000Z",
+    has_refresh_token: true,
+    detail: "Google calendar link active",
+  };
+  const conflict = {
+    id: "cnf_1",
+    remote_id: "remote_evt_1",
+    strategy: "prefer_local",
+    detail: { title: "Team Sync" },
+    resolved: false,
+    resolved_at: null,
+    resolution_strategy: null,
+  };
+
+  await routeDynamicAssistantShell(page, () =>
+    assistantStage === "conflict"
+      ? threadSnapshot({
+          last_message_at: "2026-04-21T09:07:00.000Z",
+          last_preview_text: "remote_evt_1 needs a quick planner decision.",
+          interrupts: [
+            {
+              id: "interrupt_conflict_1",
+              thread_id: "thr_primary",
+              run_id: "run_conflict_1",
+              status: "pending",
+              interrupt_type: "choice",
+              tool_name: "resolve_planner_conflict",
+              title: "Resolve scheduling conflict",
+              body: "Choose how Starlog should resolve this overlap.",
+              entity_ref: { entity_type: "planner_conflict", entity_id: conflict.id, href: "/planner" },
+              fields: [],
+              primary_label: "Apply choice",
+              secondary_label: "Open Planner",
+              metadata: {},
+              created_at: "2026-04-21T09:07:00.000Z",
+              resolved_at: null,
+              resolution: {},
+            },
+          ],
+          messages: [
+            {
+              id: "msg_conflict_1",
+              thread_id: "thr_primary",
+              run_id: "run_conflict_1",
+              role: "assistant",
+              status: "requires_action",
+              parts: [
+                {
+                  type: "text",
+                  id: "part_conflict_text",
+                  text: "remote_evt_1 needs a quick planner decision.",
+                },
+                {
+                  type: "interrupt_request",
+                  id: "part_conflict_interrupt",
+                  interrupt: {
+                    id: "interrupt_conflict_1",
+                    thread_id: "thr_primary",
+                    run_id: "run_conflict_1",
+                    status: "pending",
+                    interrupt_type: "choice",
+                    tool_name: "resolve_planner_conflict",
+                    title: "Resolve scheduling conflict",
+                    body: "Choose how Starlog should resolve this overlap.",
+                    entity_ref: { entity_type: "planner_conflict", entity_id: conflict.id, href: "/planner" },
+                    fields: [
+                      {
+                        id: "resolution",
+                        kind: "select",
+                        label: "Resolution",
+                        required: true,
+                        options: [{ label: "Prefer local", value: "local_wins" }],
+                      },
+                    ],
+                    primary_label: "Apply choice",
+                    secondary_label: "Open Planner",
+                    metadata: {},
+                    created_at: "2026-04-21T09:07:00.000Z",
+                    resolved_at: null,
+                    resolution: {},
+                  },
+                },
+              ],
+              metadata: {},
+              created_at: "2026-04-21T09:07:00.000Z",
+              updated_at: "2026-04-21T09:07:00.000Z",
+            },
+          ],
+        })
+      : threadSnapshot(),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.route(`${API_BASE}/v1/planning/blocks/*`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route(`${API_BASE}/v1/calendar/events`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route(`${API_BASE}/v1/calendar/sync/google/oauth/status`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(oauthStatus) });
+  });
+  await page.route(`${API_BASE}/v1/calendar/sync/google/run`, async (route) => {
+    assistantStage = "conflict";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: "sync_1",
+        pushed: 0,
+        pulled: 1,
+        conflicts: 1,
+        last_synced_at: "2026-04-21T09:07:00.000Z",
+      }),
+    });
+  });
+  await page.route(`${API_BASE}/v1/calendar/sync/google/conflicts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([conflict]),
+    });
+  });
+
+  await page.goto("/planner");
+  await page.getByRole("button", { name: "Run Google sync" }).click();
+  await expect(page.getByText(/Latest sync sync_1: pushed 0, pulled 1, conflicts 1/)).toBeVisible();
+
+  await page.goto("/assistant");
+  await expect(page.getByText("remote_evt_1 needs a quick planner decision.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resolve scheduling conflict" })).toBeVisible();
+});
+
+test("planner conflict resolution clears the assistant interrupt and leaves a follow-up update", async ({ page }) => {
+  await seedSession(page);
+
+  const conflict = {
+    id: "cnf_resolved_1",
+    remote_id: "remote_evt_2",
+    strategy: "prefer_local",
+    detail: { title: "Team Sync" },
+    resolved: false,
+    resolved_at: null,
+    resolution_strategy: null,
+  };
+
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      last_message_at: "2026-04-21T09:09:00.000Z",
+      last_preview_text: "Planner conflict resolved",
+      interrupts: [
+        {
+          id: "interrupt_conflict_resolved_1",
+          thread_id: "thr_primary",
+          run_id: "run_conflict_resolved_1",
+          status: "submitted",
+          interrupt_type: "choice",
+          tool_name: "resolve_planner_conflict",
+          title: "Resolve scheduling conflict",
+          body: "Choose how Starlog should resolve this overlap.",
+          entity_ref: { entity_type: "planner_conflict", entity_id: conflict.id, href: "/planner" },
+          fields: [],
+          primary_label: "Apply choice",
+          secondary_label: "Open Planner",
+          metadata: {},
+          created_at: "2026-04-21T09:08:00.000Z",
+          resolved_at: "2026-04-21T09:09:00.000Z",
+          resolution: {
+            id: "resolution_conflict_resolved_1",
+            interrupt_id: "interrupt_conflict_resolved_1",
+            action: "submit",
+            values: {
+              resolution: "local_wins",
+              resolution_source: "planner_surface",
+            },
+            metadata: {},
+            created_at: "2026-04-21T09:09:00.000Z",
+          },
+        },
+      ],
+      messages: [
+        {
+          id: "msg_conflict_resolved_1",
+          thread_id: "thr_primary",
+          run_id: "run_conflict_resolved_1",
+          role: "assistant",
+          status: "requires_action",
+          parts: [
+            {
+              type: "text",
+              id: "part_conflict_resolved_text",
+              text: "remote_evt_2 needs a quick planner decision.",
+            },
+            {
+              type: "interrupt_request",
+              id: "part_conflict_resolved_interrupt",
+              interrupt: {
+                id: "interrupt_conflict_resolved_1",
+                thread_id: "thr_primary",
+                run_id: "run_conflict_resolved_1",
+                status: "pending",
+                interrupt_type: "choice",
+                tool_name: "resolve_planner_conflict",
+                title: "Resolve scheduling conflict",
+                body: "Choose how Starlog should resolve this overlap.",
+                entity_ref: { entity_type: "planner_conflict", entity_id: conflict.id, href: "/planner" },
+                fields: [],
+                primary_label: "Apply choice",
+                secondary_label: "Open Planner",
+                metadata: {},
+                created_at: "2026-04-21T09:08:00.000Z",
+                resolved_at: null,
+                resolution: {},
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:08:00.000Z",
+          updated_at: "2026-04-21T09:08:00.000Z",
+        },
+        {
+          id: "msg_conflict_resolved_2",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "system",
+          status: "complete",
+          parts: [
+            {
+              type: "ambient_update",
+              id: "part_conflict_resolved_ambient",
+              update: {
+                id: "ambient_conflict_resolved_1",
+                event_id: "event_conflict_resolved_1",
+                label: "Planner conflict resolved",
+                body: "remote_evt_2 was resolved in Planner with local wins.",
+                entity_ref: { entity_type: "planner_conflict", entity_id: conflict.id, href: "/planner" },
+                actions: [],
+                metadata: {},
+                created_at: "2026-04-21T09:09:00.000Z",
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:09:00.000Z",
+          updated_at: "2026-04-21T09:09:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+  await expect(page.getByText("Planner conflict resolved")).toBeVisible();
+  await expect(page.getByText("remote_evt_2 was resolved in Planner with local wins.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply choice" })).toHaveCount(0);
 });

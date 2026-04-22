@@ -8,7 +8,7 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, assistant_projection_service, assistant_thread_service
+from app.services import ai_service, assistant_projection_service, assistant_thread_service, google_calendar_service
 from app.services.common import new_id
 
 
@@ -280,6 +280,370 @@ def test_direct_review_submission_emits_assistant_ambient_update(
     payload = snapshot.json()
     assert any(
         part["type"] == "ambient_update" and part["update"]["label"] == "Review graded: Easy"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
+def test_capture_creation_reflects_into_assistant_triage_interrupt(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_manual",
+            "capture_source": "test-suite",
+            "title": "Research clip",
+            "raw": {"text": "Capture the transformer note for later.", "mime_type": "text/plain"},
+            "normalized": {"text": "Capture the transformer note for later.", "mime_type": "text/plain"},
+            "extracted": {"text": "Capture the transformer note for later.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 201
+    artifact_id = captured.json()["artifact"]["id"]
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "triage_capture")
+    assert interrupt["entity_ref"]["entity_id"] == artifact_id
+    assert any("One quick choice" in text for text in _message_texts(payload))
+
+
+def test_briefing_generation_reflects_into_choose_morning_focus_interrupt(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    generated = client.post(
+        "/v1/briefings/generate",
+        json={"date": "2026-04-22", "provider": "test-suite"},
+        headers=auth_headers,
+    )
+    assert generated.status_code == 201
+    briefing_id = generated.json()["id"]
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "choose_morning_focus")
+    assert interrupt["entity_ref"]["entity_id"] == briefing_id
+    assert any("morning briefing" in text.lower() for text in _message_texts(payload))
+
+
+def test_google_sync_conflict_reflection_dedupes_pending_planner_interrupts(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    conflict = {
+        "id": "cnf_1",
+        "local_event_id": "evt_local_1",
+        "remote_id": "remote_evt_1",
+        "strategy": "prefer_local",
+        "detail": {"title": "Team Sync"},
+        "resolved": False,
+        "resolved_at": None,
+        "resolution_strategy": None,
+        "created_at": "2026-04-21T09:00:00+00:00",
+    }
+    run_counter = {"value": 0}
+
+    def fake_run_two_way_sync(_conn):
+        run_counter["value"] += 1
+        return {
+            "run_id": f"sync_{run_counter['value']}",
+            "pushed": 0,
+            "pulled": 1,
+            "conflicts": 1,
+            "last_synced_at": "2026-04-21T09:00:00+00:00",
+        }
+
+    monkeypatch.setattr(google_calendar_service, "run_two_way_sync", fake_run_two_way_sync)
+    monkeypatch.setattr(google_calendar_service, "list_conflicts", lambda _conn, include_resolved=False: [conflict])
+
+    first = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert first.status_code == 200
+
+    snapshot_after_first = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot_after_first.status_code == 200
+    first_payload = snapshot_after_first.json()
+    first_interrupts = [
+        item
+        for item in first_payload["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    ]
+    assert len(first_interrupts) == 1
+
+    second = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert second.status_code == 200
+
+    snapshot_after_second = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot_after_second.status_code == 200
+    second_payload = snapshot_after_second.json()
+    second_interrupts = [
+        item
+        for item in second_payload["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    ]
+    assert len(second_interrupts) == 1
+
+
+def test_direct_planner_conflict_resolution_closes_pending_interrupt_and_emits_ambient_update(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    conflict = {
+        "id": "cnf_resolve_1",
+        "local_event_id": "evt_local_1",
+        "remote_id": "remote_evt_1",
+        "strategy": "prefer_local",
+        "detail": {"title": "Team Sync"},
+        "resolved": False,
+        "resolved_at": None,
+        "resolution_strategy": None,
+        "created_at": "2026-04-21T09:00:00+00:00",
+    }
+
+    monkeypatch.setattr(
+        google_calendar_service,
+        "run_two_way_sync",
+        lambda _conn: {
+            "run_id": "sync_open_1",
+            "pushed": 0,
+            "pulled": 1,
+            "conflicts": 1,
+            "last_synced_at": "2026-04-21T09:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(google_calendar_service, "list_conflicts", lambda _conn, include_resolved=False: [conflict])
+    monkeypatch.setattr(
+        google_calendar_service,
+        "resolve_conflict",
+        lambda _conn, _conflict_id, resolution_strategy: {
+            **conflict,
+            "resolved": True,
+            "resolved_at": "2026-04-21T09:05:00+00:00",
+            "resolution_strategy": resolution_strategy,
+        },
+    )
+
+    opened = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert opened.status_code == 200
+
+    resolved = client.post(
+        f"/v1/calendar/sync/google/conflicts/{conflict['id']}/resolve",
+        json={"resolution_strategy": "local_wins"},
+        headers=auth_headers,
+    )
+    assert resolved.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    interrupt = next(
+        item
+        for item in payload["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    )
+    assert interrupt["status"] == "submitted"
+    assert interrupt["resolution"]["values"]["resolution"] == "local_wins"
+    run = next(item for item in payload["runs"] if item["id"] == interrupt["run_id"])
+    assert run["current_interrupt"] is None
+    assert any(
+        part["type"] == "ambient_update"
+        and part["update"]["label"] == "Planner conflict resolved"
+        and "local wins" in (part["update"].get("body") or "")
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
+def test_planner_conflict_replay_clear_dismisses_pending_interrupt_and_emits_ambient_update(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    conflict = {
+        "id": "cnf_replay_1",
+        "local_event_id": "evt_local_2",
+        "remote_id": "remote_evt_2",
+        "strategy": "prefer_local",
+        "detail": {"title": "Review sync"},
+        "resolved": False,
+        "resolved_at": None,
+        "resolution_strategy": None,
+        "created_at": "2026-04-21T09:00:00+00:00",
+    }
+
+    monkeypatch.setattr(
+        google_calendar_service,
+        "run_two_way_sync",
+        lambda _conn: {
+            "run_id": "sync_open_2",
+            "pushed": 0,
+            "pulled": 1,
+            "conflicts": 1,
+            "last_synced_at": "2026-04-21T09:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(google_calendar_service, "list_conflicts", lambda _conn, include_resolved=False: [conflict])
+    monkeypatch.setattr(
+        google_calendar_service,
+        "replay_conflict",
+        lambda _conn, _conflict_id: {
+            "sync_run": {
+                "run_id": "sync_replay_1",
+                "pushed": 1,
+                "pulled": 0,
+                "conflicts": 0,
+                "last_synced_at": "2026-04-21T09:07:00+00:00",
+            },
+            "conflict": None,
+        },
+    )
+
+    opened = client.post("/v1/calendar/sync/google/run", headers=auth_headers)
+    assert opened.status_code == 200
+
+    replayed = client.post(
+        f"/v1/calendar/sync/google/conflicts/{conflict['id']}/replay",
+        headers=auth_headers,
+    )
+    assert replayed.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    interrupt = next(
+        item
+        for item in payload["interrupts"]
+        if item["tool_name"] == "resolve_planner_conflict" and item["entity_ref"]["entity_id"] == conflict["id"]
+    )
+    assert interrupt["status"] == "dismissed"
+    assert interrupt["resolution"]["values"]["reason"] == "replayed_cleanly"
+    run = next(item for item in payload["runs"] if item["id"] == interrupt["run_id"])
+    assert run["current_interrupt"] is None
+    assert any(
+        part["type"] == "ambient_update"
+        and part["update"]["label"] == "Planner conflict cleared"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
+def test_artifact_action_reflects_immediate_library_ambient_update(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    def fake_run(_conn, capability: str, payload: dict, prefer_local: bool):
+        assert capability == "llm_summary"
+        return "codex_bridge", "ok", {"summary": f"Summary for {payload['title']}"}
+
+    monkeypatch.setattr(ai_service, "run", fake_run)
+
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_manual",
+            "capture_source": "test-suite",
+            "title": "Library capture",
+            "raw": {"text": "Immediate summary please.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 201
+    artifact_id = captured.json()["artifact"]["id"]
+
+    response = client.post(
+        f"/v1/artifacts/{artifact_id}/actions",
+        json={"action": "summarize"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    assert any(
+        part["type"] == "ambient_update"
+        and part["update"]["label"] == "Summary ready"
+        and "fresh summary draft" in (part["update"].get("body") or "")
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
+def test_deferred_artifact_action_completion_reflects_library_ambient_update(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_manual",
+            "capture_source": "test-suite",
+            "title": "Deferred capture",
+            "raw": {"text": "Turn this into tasks later.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 201
+    artifact_id = captured.json()["artifact"]["id"]
+
+    queued = client.post(
+        f"/v1/artifacts/{artifact_id}/actions",
+        json={"action": "tasks", "defer": True, "provider_hint": "desktop_bridge_codex"},
+        headers=auth_headers,
+    )
+    assert queued.status_code == 200
+    job_id = queued.json()["output_ref"]
+    assert queued.json()["status"] == "queued"
+    assert job_id
+
+    claim = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "test-worker"},
+        headers=auth_headers,
+    )
+    assert claim.status_code == 200
+
+    complete = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "test-worker",
+            "provider_used": "desktop_bridge_codex",
+            "output": {
+                "tasks": [
+                    {
+                        "title": "Review deferred capture",
+                        "estimate_min": 20,
+                        "priority": 4,
+                    }
+                ]
+            },
+        },
+        headers=auth_headers,
+    )
+    assert complete.status_code == 200
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    assert any(
+        part["type"] == "ambient_update"
+        and part["update"]["label"] == "Task suggestions queued"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+    assert any(
+        part["type"] == "ambient_update"
+        and part["update"]["label"] == "Task suggestions ready"
+        and "suggested next actions" in (part["update"].get("body") or "")
         for message in payload["messages"]
         for part in message["parts"]
     )

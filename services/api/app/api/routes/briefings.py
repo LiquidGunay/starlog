@@ -11,7 +11,7 @@ from app.schemas.briefings import (
     BriefingGenerateRequest,
     BriefingPackageResponse,
 )
-from app.services import briefing_service
+from app.services import assistant_event_service, briefing_service
 
 router = APIRouter()
 
@@ -19,10 +19,15 @@ router = APIRouter()
 @router.post("/briefings/generate", response_model=BriefingPackageResponse, status_code=status.HTTP_201_CREATED)
 def generate_briefing(
     payload: BriefingGenerateRequest,
-    _user_id: str = Depends(require_user_id),
+    user_id: str = Depends(require_user_id),
     db: Connection = Depends(get_db),
 ) -> BriefingPackageResponse:
     briefing = briefing_service.generate_briefing(db, payload.date, payload.provider)
+    try:
+        assistant_event_service.reflect_briefing_generated(db, briefing=briefing, user_id=user_id)
+    except Exception:
+        # Briefing generation is primary; assistant reflection should not block the planner path.
+        pass
     return BriefingPackageResponse.model_validate(briefing)
 
 
