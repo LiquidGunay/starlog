@@ -86,6 +86,7 @@ def test_local_chat_turn_returns_tool_call_and_tool_result_parts_for_recent_trac
     tool_result = next(part["tool_result"] for part in payload["parts"] if part["type"] == "tool_result")
     assert tool_call["id"] == "trace_task_1"
     assert tool_call["tool_name"] == "create_task"
+    assert tool_call["status"] == "complete"
     assert tool_result["tool_call_id"] == "trace_task_1"
     assert tool_result["card"]["kind"] == "task_list"
 

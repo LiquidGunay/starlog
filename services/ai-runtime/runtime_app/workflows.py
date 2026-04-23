@@ -15,6 +15,17 @@ DEFAULT_MODEL = "gpt-5.4-nano"
 DEFAULT_PROVIDER = "runtime_prompt_fallback"
 
 
+def _normalize_part_status(status: str | None, *, default: str = "complete") -> str:
+    normalized = str(status or "").strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"completed", "ok", "done"}:
+        return "complete"
+    if normalized in {"failed", "failure"}:
+        return "error"
+    return normalized
+
+
 def _source_text(payload: dict[str, Any]) -> str:
     return str(payload.get("text") or payload.get("content") or payload.get("text_hint") or "").strip()
 
@@ -155,7 +166,7 @@ def _tool_call_part(*, tool_call_id: str, tool_name: str, status: str = "complet
             "id": tool_call_id,
             "tool_name": tool_name,
             "tool_kind": "system_tool",
-            "status": status,
+            "status": _normalize_part_status(status, default="complete"),
             "arguments": {},
             "title": title,
             "metadata": metadata or {},
@@ -469,7 +480,7 @@ def _tool_call_part_from_trace(trace: dict[str, Any]) -> dict[str, Any]:
     return _tool_call_part(
         tool_call_id=trace_id,
         tool_name=tool_name,
-        status=str(trace.get("status") or "complete").strip() or "complete",
+        status=_normalize_part_status(trace.get("status"), default="complete"),
         title=_humanize_tool_name(tool_name),
         metadata={
             "projection": "runtime_recent_trace",

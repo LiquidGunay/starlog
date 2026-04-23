@@ -6,6 +6,17 @@ from app.services import conversation_card_service
 from app.services.common import new_id
 
 
+def normalize_part_status(status: str | None, *, default: str = "complete") -> str:
+    normalized = str(status or "").strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"completed", "ok", "done"}:
+        return "complete"
+    if normalized in {"failed", "failure"}:
+        return "error"
+    return normalized
+
+
 def text_part(text: str) -> dict[str, Any]:
     return {
         "type": "text",
@@ -119,7 +130,7 @@ def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str
             continue
 
         if part_type == "status":
-            status = str(raw_part.get("status") or "").strip() or "complete"
+            status = normalize_part_status(raw_part.get("status"), default="complete")
             label = raw_part.get("label")
             normalized.append({"type": "status", "id": part_id, "status": status, "label": str(label) if label is not None else None})
             continue
@@ -175,7 +186,7 @@ def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str
                             "id": str(tool_call.get("id") or new_id("tool")),
                             "tool_name": str(tool_call.get("tool_name") or "").strip(),
                             "tool_kind": str(tool_call.get("tool_kind") or "system_tool"),
-                            "status": str(tool_call.get("status") or "complete"),
+                            "status": normalize_part_status(tool_call.get("status"), default="complete"),
                             "arguments": tool_call.get("arguments") if isinstance(tool_call.get("arguments"), dict) else {},
                             "title": str(tool_call.get("title")) if tool_call.get("title") is not None else None,
                             "metadata": tool_call.get("metadata") if isinstance(tool_call.get("metadata"), dict) else {},
@@ -195,7 +206,7 @@ def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str
                         "tool_result": {
                             "id": str(tool_result.get("id") or new_id("tool_result")),
                             "tool_call_id": str(tool_result.get("tool_call_id") or new_id("tool")),
-                            "status": str(tool_result.get("status") or "complete"),
+                            "status": normalize_part_status(tool_result.get("status"), default="complete"),
                             "output": tool_result.get("output") if isinstance(tool_result.get("output"), dict) else {},
                             "card": conversation_card_service.normalize_card(card) if isinstance(card, dict) else None,
                             "entity_ref": tool_result.get("entity_ref") if isinstance(tool_result.get("entity_ref"), dict) else None,
@@ -279,6 +290,12 @@ def legacy_projection_from_parts(parts: list[dict[str, Any]]) -> tuple[str, list
             card = part.get("card")
             if isinstance(card, dict):
                 cards.append(conversation_card_service.normalize_card(card))
+        elif part_type == "tool_result":
+            tool_result = part.get("tool_result")
+            if isinstance(tool_result, dict):
+                card = tool_result.get("card")
+                if isinstance(card, dict):
+                    cards.append(conversation_card_service.normalize_card(card))
         elif part_type == "ambient_update":
             update = part.get("update")
             if isinstance(update, dict):

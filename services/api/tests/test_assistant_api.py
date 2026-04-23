@@ -8,7 +8,7 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_thread_service, google_calendar_service
+from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_run_service, assistant_thread_service, google_calendar_service
 from app.services.common import new_id
 
 
@@ -275,12 +275,30 @@ def test_assistant_runtime_turn_emits_tool_result_part_for_recent_trace(
     assistant_message = runtime_turn.json()["assistant_message"]
     tool_call_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_call")
     assert tool_call_part["tool_call"]["tool_name"] == "list_due_cards"
+    assert tool_call_part["tool_call"]["status"] == "complete"
     assert tool_call_part["tool_call"]["metadata"]["projection"] == "runtime_recent_trace"
     tool_result_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_result")
     assert tool_result_part["tool_result"]["tool_call_id"] == tool_call_part["tool_call"]["id"]
     assert tool_result_part["tool_result"]["metadata"]["projection"] == "runtime_recent_trace"
     assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "list_due_cards"
     assert tool_result_part["tool_result"]["card"]["kind"] == "review_queue"
+
+    with get_connection() as conn:
+        trace_row = conn.execute(
+            """
+            SELECT result_json
+            FROM conversation_tool_traces
+            WHERE tool_name = 'chat_turn_runtime'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert trace_row is not None
+    trace_result = trace_row["result_json"]
+    if isinstance(trace_result, str):
+        trace_result = json.loads(trace_result)
+    trace_cards = trace_result["cards"]
+    assert any(card["kind"] == "review_queue" for card in trace_cards)
 
 
 def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
@@ -314,10 +332,22 @@ def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
     assistant_message = runtime_turn.json()["assistant_message"]
     tool_call_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_call")
     assert tool_call_part["tool_call"]["tool_name"] == "create_task"
+    assert tool_call_part["tool_call"]["status"] == "complete"
     tool_result_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_result")
     assert tool_result_part["tool_result"]["tool_call_id"] == tool_call_part["tool_call"]["id"]
     assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "create_task"
     assert tool_result_part["tool_result"]["card"]["kind"] == "task_list"
+
+    with get_connection() as conn:
+        thread = assistant_thread_service.get_thread(conn, "primary")
+        runtime_request = assistant_run_service._build_runtime_request(  # noqa: SLF001
+            conn,
+            thread_id=thread["id"],
+            content="What just changed next?",
+            metadata={"surface": "assistant_web", "client_timezone": "UTC"},
+        )
+    recent_message_cards = runtime_request["context"]["recent_messages"][-1]["cards"]
+    assert any(card["kind"] == "task_list" for card in recent_message_cards)
 
 
 def test_assistant_handoff_rejects_artifact_source_mismatch(
