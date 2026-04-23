@@ -5,6 +5,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Completed in this pass
 
+- The AI runtime chat-turn path now emits native assistant `parts` instead of only `response_text + cards`: runtime responses can now carry `text`, `card`, `tool_call`, `tool_result`, and `status` parts directly from [services/ai-runtime/runtime_app/workflows.py](/home/ubuntu/starlog/services/ai-runtime/runtime_app/workflows.py).
+- The assistant backend now preserves runtime-native parts end-to-end instead of immediately rebuilding everything from legacy text/cards. [services/api/app/services/assistant_projection_service.py](/home/ubuntu/starlog/services/api/app/services/assistant_projection_service.py) now normalizes runtime parts, and [services/api/app/services/assistant_run_service.py](/home/ubuntu/starlog/services/api/app/services/assistant_run_service.py) prefers those native parts when storing assistant messages, run steps, and legacy compatibility projections.
+- Runtime fallback responses now project more Starlog-native thread content from current context instead of defaulting straight to `assistant_summary`: helper handoffs can emit `capture_item`, recent review/task/briefing traces can emit a native `tool_call` / projected `tool_result` pair plus `review_queue` / `task_list` / `briefing` cards, and relevant memory matches can emit `knowledge_note`.
 - Desktop web Assistant is now visibly closer to the target control-plane model: Starlog card kinds render with richer inline treatment instead of raw generic panels, entity refs surface direct `Open in Library` / `Open in Planner` / `Open in Review` links from the thread, and the right rail now summarizes active `Library`, `Planner`, and `Review` work from the live thread state instead of showing only static protocol copy.
 - Desktop Assistant Playwright coverage now checks those desktop-specific behaviors directly, including inline card metadata badges, support-surface summaries, and live card/composer actions from the thread.
 - Desktop helper recent-capture handoff is now a real shared-assistant path instead of a nominal deep link: helper-originated captures reflect into the assistant thread as `desktop_helper` surface events, `Ask Assistant` now requests a signed server handoff token for the artifact + draft context, and the web Assistant shows an explicit handoff banner with `Open in Library` / `Clear handoff` actions before send.
@@ -158,6 +161,8 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Validation run for this pass
 
+- `cd /home/ubuntu/starlog/services/ai-runtime && uv run pytest -s tests/test_workflows.py`
+- `cd /home/ubuntu/starlog/services/api && uv run pytest -s tests/test_conversations.py tests/test_ai_runtime_service.py tests/test_assistant_api.py`
 - `cd /home/ubuntu/starlog/apps/mobile && ./node_modules/.bin/tsc --noEmit -p tsconfig.json`
 - `export JAVA_HOME="$HOME/.local/jdks/temurin-17" ANDROID_HOME="$HOME/.local/android" ANDROID_SDK_ROOT="$HOME/.local/android" EXPO_PUBLIC_STARLOG_API_BASE="http://localhost:8000" EXPO_PUBLIC_STARLOG_PWA_BASE="http://localhost:3000" && cd /home/ubuntu/starlog/apps/mobile/android && APP_VARIANT=development STARLOG_ALLOW_DEBUG_RELEASE_SIGNING=true STARLOG_VERSION_NAME=0.1.0-assistant-dev STARLOG_ANDROID_VERSION_CODE=1261010943 ./gradlew :app:assembleRelease --console=plain`
 - `cp /home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk /mnt/c/Temp/starlog-dev-1261010943.apk && "/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe" -s 9dd62e84 install -r "C:\\Temp\\starlog-dev-1261010943.apk"`
@@ -175,9 +180,9 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 1. Finish the remaining native mobile Assistant-shell cleanup: preserve per-tab state more intentionally, keep aligning mobile in-thread cards with the richer desktop thread treatment, and continue shrinking [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) by extracting runtime/conversation helpers into focused modules.
 2. Tighten the native mobile voice path so the mic flow handles permission, listening, recording, stop/send, cancel, on-device STT, and recorded-upload fallback without state ambiguity.
-3. Keep extending deterministic Assistant card projection and inline action behavior so common chat turns return `review_queue`, `knowledge_note`, `task_list`, `briefing`, or `capture_item` instead of generic summary fallbacks, and reduce the remaining `assistant_summary` fallback cases.
+3. Keep extending deterministic Assistant card projection and inline action behavior so more common chat turns return `review_queue`, `knowledge_note`, `task_list`, `briefing`, or `capture_item` instead of generic summary fallbacks, and reduce the remaining `assistant_summary` cases that still do not have a stronger Starlog-native projection.
 4. Complete the desktop-web Assistant pass with the remaining support-view copy cleanup, richer attachment/tool-result rendering, and any missing desktop inline-action states that still sit outside the main thread surface.
 5. Finish the desktop helper capture-first redesign and validate the `Open in Library` / `Ask Assistant` handoff path on real host setups, not only browser mocks.
-6. Continue moving the AI runtime off the legacy `response_text + cards` execution shape so the runtime boundary becomes natively tool-call / interrupt-aware instead of relying on API-side legacy synthesis.
+6. Continue moving the AI runtime off the legacy `response_text + cards` execution shape beyond the new native-parts foundation so the runtime boundary becomes natively tool-call / interrupt-aware instead of relying on API-side legacy synthesis.
 7. Expand automated and manual proof across API, web Playwright, Android device screenshots, and helper validation so Assistant hydration, inline actions, cross-surface updates, and support-surface navigation stay covered.
 8. Run the final repo-wide copy and docs audit so README, auth text, navigation, manifest metadata, helper copy, and self-host instructions all match the current Assistant-first product language.

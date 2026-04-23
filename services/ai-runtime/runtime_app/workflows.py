@@ -134,6 +134,403 @@ def _memory_counts(context: dict[str, Any]) -> tuple[int, int, int]:
     )
 
 
+def _text_part(text: str) -> dict[str, Any]:
+    return {
+        "type": "text",
+        "text": text,
+    }
+
+
+def _card_part(card: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "card",
+        "card": card,
+    }
+
+
+def _tool_call_part(*, tool_call_id: str, tool_name: str, status: str = "complete", title: str | None = None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "type": "tool_call",
+        "tool_call": {
+            "id": tool_call_id,
+            "tool_name": tool_name,
+            "tool_kind": "system_tool",
+            "status": status,
+            "arguments": {},
+            "title": title,
+            "metadata": metadata or {},
+        },
+    }
+
+
+def _status_part(status: str, label: str | None = None) -> dict[str, Any]:
+    return {
+        "type": "status",
+        "status": status,
+        "label": label,
+    }
+
+
+def _tool_result_part(*, tool_call_id: str, output: dict[str, Any], card: dict[str, Any] | None = None, entity_ref: dict[str, Any] | None = None, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "type": "tool_result",
+        "tool_result": {
+            "tool_call_id": tool_call_id,
+            "status": "complete",
+            "output": output,
+            "card": card,
+            "entity_ref": entity_ref,
+            "metadata": metadata or {},
+        },
+    }
+
+
+def _artifact_entity_ref(artifact_id: str, title: str) -> dict[str, Any]:
+    return {
+        "entity_type": "artifact",
+        "entity_id": artifact_id,
+        "href": f"/notes?artifact={artifact_id}",
+        "title": title,
+    }
+
+
+def _note_entity_ref(note_id: str, title: str) -> dict[str, Any]:
+    return {
+        "entity_type": "note",
+        "entity_id": note_id,
+        "href": f"/notes?note={note_id}",
+        "title": title,
+    }
+
+
+def _task_entity_ref(task_id: str, title: str) -> dict[str, Any]:
+    return {
+        "entity_type": "task",
+        "entity_id": task_id,
+        "href": f"/planner?task={task_id}",
+        "title": title,
+    }
+
+
+def _briefing_entity_ref(briefing_id: str, title: str) -> dict[str, Any]:
+    return {
+        "entity_type": "briefing",
+        "entity_id": briefing_id,
+        "href": f"/planner?briefing={briefing_id}",
+        "title": title,
+    }
+
+
+def _card_entity_ref(card_id: str, title: str) -> dict[str, Any]:
+    return {
+        "entity_type": "card",
+        "entity_id": card_id,
+        "href": "/review",
+        "title": title,
+    }
+
+
+def _assistant_summary_card(response_text: str) -> dict[str, Any]:
+    return {
+        "kind": "assistant_summary",
+        "version": 1,
+        "title": "Chat turn",
+        "body": response_text,
+        "metadata": {
+            "workflow": "chat_turn",
+            "provider": DEFAULT_PROVIDER,
+            "model": DEFAULT_MODEL,
+        },
+    }
+
+
+def _thread_context_card(*, last_intent: str, latest_tool: str | None) -> dict[str, Any]:
+    return {
+        "kind": "thread_context",
+        "version": 1,
+        "title": "Thread context",
+        "body": (
+            f"Last intent: {last_intent.replace('_', ' ')}"
+            if last_intent
+            else f"Latest trace: {str(latest_tool or '').replace('_', ' ')}"
+        ),
+        "metadata": {
+            "last_matched_intent": last_intent,
+            "latest_tool_name": latest_tool,
+        },
+    }
+
+
+def _capture_card_from_handoff(context: dict[str, Any]) -> dict[str, Any] | None:
+    request_metadata = context.get("request_metadata")
+    if not isinstance(request_metadata, dict):
+        return None
+    handoff = request_metadata.get("handoff_context")
+    if not isinstance(handoff, dict):
+        return None
+    artifact_id = str(handoff.get("artifact_id") or "").strip()
+    if not artifact_id:
+        return None
+    source = str(handoff.get("source") or "").strip() or "support_surface"
+    draft = str(handoff.get("draft") or "").strip()
+    title = f"{source.replace('_', ' ').title()} capture"
+    return {
+        "kind": "capture_item",
+        "version": 1,
+        "title": title,
+        "body": draft or "A captured item is attached to this thread handoff.",
+        "entity_ref": _artifact_entity_ref(artifact_id, title),
+        "metadata": {
+            "artifact_id": artifact_id,
+            "source_surface": source,
+            "projection": "runtime_handoff",
+        },
+    }
+
+
+def _knowledge_note_card_from_memory(context: dict[str, Any]) -> dict[str, Any] | None:
+    memory = context.get("memory_context")
+    if not isinstance(memory, dict):
+        return None
+    matches = memory.get("artifact_matches")
+    if not isinstance(matches, list) or not matches:
+        return None
+    first = matches[0]
+    if not isinstance(first, dict):
+        return None
+    artifact_id = str(first.get("id") or "").strip()
+    if not artifact_id:
+        return None
+    title = str(first.get("title") or "Relevant note").strip() or "Relevant note"
+    return {
+        "kind": "knowledge_note",
+        "version": 1,
+        "title": title,
+        "body": _excerpt(str(first.get("excerpt") or ""), limit=220) or "Relevant context is available in Library.",
+        "entity_ref": _artifact_entity_ref(artifact_id, title),
+        "metadata": {
+            "artifact_id": artifact_id,
+            "projection": "runtime_memory_match",
+            "source_type": first.get("source_type"),
+        },
+    }
+
+
+def _trace_result(trace: dict[str, Any]) -> dict[str, Any]:
+    result = trace.get("result")
+    return result if isinstance(result, dict) else {}
+
+
+def _humanize_tool_name(tool_name: str) -> str:
+    humanized = " ".join(tool_name.strip().split("_"))
+    return humanized.capitalize() if humanized else "Recent trace"
+
+
+def _project_card_from_trace(trace: dict[str, Any]) -> dict[str, Any] | None:
+    projected_card = trace.get("projected_card")
+    if isinstance(projected_card, dict):
+        return projected_card
+
+    tool_name = str(trace.get("tool_name") or "").strip()
+    result = _trace_result(trace)
+
+    if tool_name == "capture_text_as_artifact":
+        artifact = result.get("artifact")
+        if isinstance(artifact, dict):
+            artifact_id = str(artifact.get("id") or "").strip()
+            if artifact_id:
+                title = str(artifact.get("title") or "Saved capture").strip() or "Saved capture"
+                body = _excerpt(
+                    str(artifact.get("normalized_content") or artifact.get("extracted_content") or artifact.get("raw_content") or ""),
+                    limit=220,
+                ) or "Capture saved to Starlog."
+                return {
+                    "kind": "capture_item",
+                    "version": 1,
+                    "title": title,
+                    "body": body,
+                    "entity_ref": _artifact_entity_ref(artifact_id, title),
+                    "metadata": {
+                        "artifact_id": artifact_id,
+                        "source_type": artifact.get("source_type"),
+                        "projection": "runtime_recent_trace",
+                    },
+                }
+
+    if tool_name in {"create_note", "update_note", "get_note"}:
+        note = result.get("note")
+        if isinstance(note, dict):
+            note_id = str(note.get("id") or "").strip()
+            if note_id:
+                title = str(note.get("title") or "Note").strip() or "Note"
+                return {
+                    "kind": "knowledge_note",
+                    "version": 1,
+                    "title": title,
+                    "body": _excerpt(str(note.get("body_md") or ""), limit=220) or "Note updated.",
+                    "entity_ref": _note_entity_ref(note_id, title),
+                    "metadata": {
+                        "note_id": note_id,
+                        "version": note.get("version"),
+                        "projection": "runtime_recent_trace",
+                    },
+                }
+
+    if tool_name in {"create_task", "update_task"}:
+        task = result.get("task")
+        if isinstance(task, dict):
+            task_id = str(task.get("id") or "").strip()
+            if task_id:
+                title = str(task.get("title") or "Task updated").strip() or "Task updated"
+                due = f" due {task['due_at']}" if task.get("due_at") else ""
+                body = f"- {title} [{task.get('status') or 'todo'}]{due}"
+                return {
+                    "kind": "task_list",
+                    "version": 1,
+                    "title": "Task updated",
+                    "body": body,
+                    "entity_ref": _task_entity_ref(task_id, title),
+                    "metadata": {
+                        "task_count": 1,
+                        "task_ids": [task_id],
+                        "projection": "runtime_recent_trace",
+                    },
+                }
+
+    if tool_name == "list_due_cards":
+        cards = result.get("cards")
+        due_cards = cards if isinstance(cards, list) else result.get("value")
+        if isinstance(due_cards, list) and due_cards:
+            first = due_cards[0] if isinstance(due_cards[0], dict) else {}
+            title = str(first.get("prompt") or "Review queue").strip() or "Review queue"
+            return {
+                "kind": "review_queue",
+                "version": 1,
+                "title": "Review queue",
+                "body": f"{len(due_cards)} card{'s' if len(due_cards) != 1 else ''} ready now.\n{title}",
+                "entity_ref": _card_entity_ref(str(first.get("id") or "review_queue"), title),
+                "metadata": {
+                    "due_count": len(due_cards),
+                    "card_id": first.get("id"),
+                    "projection": "runtime_recent_trace",
+                },
+            }
+
+    if tool_name == "list_tasks":
+        tasks = result.get("tasks")
+        if isinstance(tasks, list) and tasks:
+            body_lines = []
+            for task in tasks[:4]:
+                if not isinstance(task, dict):
+                    continue
+                due = f" due {task['due_at']}" if task.get("due_at") else ""
+                body_lines.append(f"- {task.get('title') or task.get('id') or 'Task'} [{task.get('status') or 'todo'}]{due}")
+            first = tasks[0] if isinstance(tasks[0], dict) else {}
+            return {
+                "kind": "task_list",
+                "version": 1,
+                "title": "Current plan",
+                "body": "\n".join(body_lines) or "No current tasks are available.",
+                "entity_ref": _task_entity_ref(str(first.get("id") or "plan"), str(first.get("title") or "Current plan")),
+                "metadata": {
+                    "task_count": len(tasks),
+                    "task_ids": [item.get("id") for item in tasks[:6] if isinstance(item, dict) and item.get("id")],
+                    "projection": "runtime_recent_trace",
+                },
+            }
+
+    if tool_name in {"generate_briefing", "render_briefing_audio", "schedule_morning_brief_alarm"}:
+        briefing = result.get("briefing")
+        if isinstance(briefing, dict):
+            briefing_id = str(briefing.get("id") or "").strip()
+            if not briefing_id:
+                return None
+            title = str(briefing.get("date") or briefing_id).strip() or briefing_id
+            return {
+                "kind": "briefing",
+                "version": 1,
+                "title": "Morning briefing",
+                "body": _excerpt(str(briefing.get("text") or ""), limit=240) or "Briefing ready.",
+                "entity_ref": _briefing_entity_ref(briefing_id, title),
+                "metadata": {
+                    "briefing_id": briefing_id,
+                    "date": briefing.get("date"),
+                    "audio_ref": briefing.get("audio_ref"),
+                    "projection": "runtime_recent_trace",
+                },
+            }
+
+    return None
+
+
+def _tool_call_part_from_trace(trace: dict[str, Any]) -> dict[str, Any]:
+    trace_id = str(trace.get("id") or trace.get("tool_name") or "recent_trace").strip() or "recent_trace"
+    tool_name = str(trace.get("tool_name") or "").strip() or "recent_trace"
+    return _tool_call_part(
+        tool_call_id=trace_id,
+        tool_name=tool_name,
+        status=str(trace.get("status") or "complete").strip() or "complete",
+        title=_humanize_tool_name(tool_name),
+        metadata={
+            "projection": "runtime_recent_trace",
+            "trace_id": str(trace.get("id") or "").strip() or None,
+        },
+    )
+
+
+def _tool_result_part_from_trace(trace: dict[str, Any]) -> dict[str, Any] | None:
+    projected_card = _project_card_from_trace(trace)
+    if projected_card is None:
+        return None
+
+    trace_id = str(trace.get("id") or trace.get("tool_name") or "recent_trace").strip() or "recent_trace"
+    output = _trace_result(trace)
+    entity_ref = projected_card.get("entity_ref") if isinstance(projected_card.get("entity_ref"), dict) else None
+    return _tool_result_part(
+        tool_call_id=trace_id,
+        output=output,
+        card=projected_card,
+        entity_ref=entity_ref,
+        metadata={
+            "projection": "runtime_recent_trace",
+            "tool_name": str(trace.get("tool_name") or "").strip(),
+            "trace_id": str(trace.get("id") or "").strip() or None,
+        },
+    )
+
+
+def _project_chat_turn_cards(context: dict[str, Any], *, response_text: str, last_intent: str, latest_tool: str | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    cards: list[dict[str, Any]] = [_assistant_summary_card(response_text)]
+    if last_intent or latest_tool:
+        cards.append(_thread_context_card(last_intent=last_intent, latest_tool=latest_tool))
+
+    handoff_card = _capture_card_from_handoff(context)
+    if handoff_card is not None:
+        cards.append(handoff_card)
+
+    projected_trace_parts: list[dict[str, Any]] = []
+    traces = context.get("recent_tool_traces")
+    if isinstance(traces, list):
+        for item in traces:
+            if not isinstance(item, dict):
+                continue
+            projected = _project_card_from_trace(item)
+            if projected is not None:
+                cards.append(projected)
+                projected_trace_parts = [_tool_call_part_from_trace(item)]
+                projected_tool_result_part = _tool_result_part_from_trace(item)
+                if projected_tool_result_part is not None:
+                    projected_trace_parts.append(projected_tool_result_part)
+                break
+
+    if handoff_card is None:
+        memory_card = _knowledge_note_card_from_memory(context)
+        if memory_card is not None:
+            cards.append(memory_card)
+
+    return cards, projected_trace_parts
+
+
 def _agent_plan_output(payload: dict[str, Any]) -> dict[str, Any]:
     command = str(payload.get("command") or _source_text(payload) or "").strip()
     tool_catalog = payload.get("tool_catalog")
@@ -242,36 +639,32 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
         )
     response_text = " ".join(response_parts)
 
-    cards: list[dict[str, Any]] = [
-        {
-            "kind": "assistant_summary",
-            "version": 1,
-            "title": "Chat turn",
-            "body": response_text,
-            "metadata": {
-                "workflow": "chat_turn",
-                "provider": DEFAULT_PROVIDER,
-                "model": DEFAULT_MODEL,
-            },
-        }
-    ]
-    if last_intent or latest_tool:
-        cards.append(
-            {
-                "kind": "thread_context",
-                "version": 1,
-                "title": "Thread context",
-                "body": (
-                    f"Last intent: {last_intent.replace('_', ' ')}"
-                    if last_intent
-                    else f"Latest trace: {latest_tool.replace('_', ' ')}"
-                ),
-                "metadata": {
-                    "last_matched_intent": last_intent,
-                    "latest_tool_name": latest_tool,
-                },
-            }
-        )
+    cards, projected_trace_parts = _project_chat_turn_cards(
+        context,
+        response_text=response_text,
+        last_intent=last_intent,
+        latest_tool=latest_tool,
+    )
+    parts = [_text_part(response_text)]
+    projected_tool_result_part = next(
+        (
+            part
+            for part in projected_trace_parts
+            if isinstance(part, dict) and part.get("type") == "tool_result"
+        ),
+        None,
+    )
+    trace_projection_card = (
+        projected_tool_result_part.get("tool_result", {}).get("card")
+        if isinstance(projected_tool_result_part, dict)
+        else None
+    )
+    for card in cards:
+        if trace_projection_card is not None and card is trace_projection_card:
+            continue
+        parts.append(_card_part(card))
+    parts.extend(projected_trace_parts)
+    parts.append(_status_part("complete", "Ready"))
 
     return ChatTurnExecutionResponse(
         provider_used=DEFAULT_PROVIDER,
@@ -284,6 +677,7 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
             context=context,
         ),
         response_text=response_text,
+        parts=parts,
         cards=cards,
         tool_calls=[],
         interrupts=[],
