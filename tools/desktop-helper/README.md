@@ -30,6 +30,7 @@ Desktop capture companion for Starlog.
 - Queued upload to Starlog API.
 - Best-effort cleanup of temporary screenshot files after upload.
 - In-app recent-capture history with artifact IDs, clip summaries, screenshot thumbnails, captured context, and the backend used for the capture.
+- Recent capture handoff now carries artifact id, app/window context, backend, and summary into a signed shared Assistant handoff, and the web Assistant renders that helper handoff as an explicit banner with `Open in Library` / `Clear handoff` actions.
 
 ## Validation matrix
 
@@ -39,7 +40,7 @@ Desktop capture companion for Starlog.
 | Screenshot capture | Validated via local helper build; requires `grim+slurp`, `gnome-screenshot`, `import`, `grim`, or `scrot` | Expected via `screencapture -i`; real-host validation still pending | Validated on 2026-03-10 via host PowerShell full-screen capture into `%TEMP%` | Linux falls back to full-screen capture when only `grim` or `scrot` is present. macOS/Windows failures now map to explicit permission guidance. |
 | Active window metadata | Validated via local helper build; uses `xdotool` or `hyprctl` | Expected via `osascript`/System Events; real-host validation still pending | Validated on 2026-03-10 via host PowerShell user32 bridge after fixing the `$PID` variable collision in the probe script | Missing metadata does not block capture; diagnostics now degrade with actionable host guidance instead of silently implying success. |
 | OCR | `tesseract` | `tesseract` | `tesseract` | OCR is intentionally local-only. |
-| Recent capture actions | Pending rerun on the current Assistant/Library handoff build | Pending rerun | Pending rerun | Validate both `Open in Library` and `Ask Assistant about this capture`. |
+| Recent capture actions | Browser-path validated on 2026-04-22 via Playwright helper + web Assistant suites; real-host rerun still pending | Pending rerun | Pending rerun | `Open in Library` and `Ask Assistant` now preserve artifact and capture-context handoff into the shared Assistant composer. |
 | Shortcut wiring | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Global shortcut plugin plus window fallback | Window-local key handling remains the last-resort fallback. |
 
 ## Host validation evidence

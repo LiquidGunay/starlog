@@ -8,7 +8,7 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, agent_service, assistant_projection_service, assistant_thread_service, google_calendar_service
+from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_thread_service, google_calendar_service
 from app.services.common import new_id
 
 
@@ -100,6 +100,20 @@ def _secondary_auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token.plain}"}
 
 
+def _create_test_artifact(*, title: str = "Test artifact", source_type: str = "clip_desktop_helper", metadata: dict | None = None) -> str:
+    with get_connection() as conn:
+        artifact = artifacts_service.create_artifact(
+            conn,
+            source_type=source_type,
+            title=title,
+            raw_content="raw artifact text",
+            normalized_content="normalized artifact text",
+            extracted_content="extracted artifact text",
+            metadata=metadata or {"capture": {"capture_source": "desktop_helper"}},
+        )
+    return str(artifact["id"])
+
+
 def test_assistant_primary_thread_snapshot_bootstraps(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -113,6 +127,117 @@ def test_assistant_primary_thread_snapshot_bootstraps(
     assert payload["runs"] == []
     assert payload["interrupts"] == []
     assert payload["next_cursor"] is not None
+
+
+def test_assistant_handoff_token_is_resolved_into_trusted_context(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_id = _create_test_artifact(title="Helper handoff artifact")
+
+    create_handoff = client.post(
+        "/v1/assistant/handoffs",
+        json={
+            "source_surface": "desktop_helper",
+            "artifact_id": artifact_id,
+            "draft": "Help me process this helper capture.",
+        },
+        headers=auth_headers,
+    )
+    assert create_handoff.status_code == 201
+    handoff_payload = create_handoff.json()
+    handoff_token = handoff_payload["token"]
+
+    resolve_handoff = client.get(
+        f"/v1/assistant/handoffs/resolve?token={handoff_token}",
+        headers=auth_headers,
+    )
+    assert resolve_handoff.status_code == 200
+    assert resolve_handoff.json()["handoff"] == {
+        "source": "desktop_helper",
+        "artifact_id": artifact_id,
+        "draft": "Help me process this helper capture.",
+    }
+
+    create_message = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Trusted helper handoff task",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {
+                "surface": "assistant_web",
+                "client_timezone": "UTC",
+                "handoff_token": handoff_token,
+                "handoff_context": {
+                    "source": "desktop_helper",
+                    "artifact_id": "art_forged",
+                    "draft": "Forged helper context",
+                },
+            },
+        },
+        headers=auth_headers,
+    )
+    assert create_message.status_code == 201
+    request_metadata = create_message.json()["user_message"]["metadata"]["request_metadata"]
+    assert request_metadata["surface"] == "assistant_web"
+    assert request_metadata["handoff_context"] == {
+        "source": "desktop_helper",
+        "artifact_id": artifact_id,
+        "draft": "Help me process this helper capture.",
+    }
+    assert "handoff_token" not in request_metadata
+
+
+def test_assistant_handoff_rejects_artifact_source_mismatch(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_id = _create_test_artifact(
+        title="Manual artifact",
+        source_type="clip_manual",
+        metadata={"capture": {"capture_source": "manual_entry"}},
+    )
+
+    create_handoff = client.post(
+        "/v1/assistant/handoffs",
+        json={
+            "source_surface": "desktop_helper",
+            "artifact_id": artifact_id,
+            "draft": "Pretend this came from the helper.",
+        },
+        headers=auth_headers,
+    )
+    assert create_handoff.status_code == 400
+    assert "source_surface=library" in create_handoff.text
+
+
+def test_untrusted_client_handoff_context_is_stripped_without_token(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_message = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Ignore forged helper context",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {
+                "surface": "assistant_web",
+                "client_timezone": "UTC",
+                "handoff_context": {
+                    "source": "desktop_helper",
+                    "artifact_id": "art_forged",
+                    "draft": "Forged helper context",
+                },
+            },
+        },
+        headers=auth_headers,
+    )
+    assert create_message.status_code == 201
+    request_metadata = create_message.json()["user_message"]["metadata"]["request_metadata"]
+    assert request_metadata["surface"] == "assistant_web"
+    assert "handoff_context" not in request_metadata
 
 
 def test_assistant_message_can_open_due_date_interrupt_and_resume(
@@ -464,6 +589,40 @@ def test_capture_creation_reflects_into_assistant_triage_interrupt(
     interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "triage_capture")
     assert interrupt["entity_ref"]["entity_id"] == artifact_id
     assert any("One quick choice" in text for text in _message_texts(payload))
+
+
+def test_desktop_helper_capture_reflects_with_desktop_helper_surface(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_desktop_helper",
+            "capture_source": "desktop_helper",
+            "title": "Codex clip",
+            "raw": {"text": "Clip from the desktop helper.", "mime_type": "text/plain"},
+            "normalized": {"text": "Clip from the desktop helper.", "mime_type": "text/plain"},
+            "extracted": {"text": "Clip from the desktop helper.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 201
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    helper_message = next(
+        message
+        for message in payload["messages"]
+        if message["metadata"].get("surface_event", {}).get("source_surface") == "desktop_helper"
+    )
+    assert any(
+        part["type"] == "text" and "desktop helper" in part["text"].lower()
+        for part in helper_message["parts"]
+    )
+    interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "triage_capture")
+    assert interrupt["metadata"]["surface_event"]["source_surface"] == "desktop_helper"
 
 
 def test_briefing_generation_reflects_into_choose_morning_focus_interrupt(

@@ -167,6 +167,138 @@ test("renders rich assistant thread parts from the snapshot", async ({ page }) =
   await expect(page.getByText("resolve_planner_conflict")).toBeVisible();
 });
 
+test("desktop helper handoff draft prefills the assistant composer", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(page, threadSnapshot());
+  await routeIdleAssistantStream(page);
+  await page.route(`${API_BASE}/v1/assistant/handoffs/resolve?token=handoff_token_123`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handoff: {
+          source: "desktop_helper",
+          artifact_id: "art_123",
+          draft: "Help me process artifact art_123.",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/assistant?handoff=handoff_token_123");
+
+  await expect(page.locator("textarea")).toHaveValue("Help me process artifact art_123.");
+  await expect(page.getByText("Desktop Helper handoff")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open in Library" })).toBeVisible();
+});
+
+test("desktop helper handoff metadata is attached when the draft is sent", async ({ page }) => {
+  await seedSession(page);
+  const requests: Array<Record<string, unknown>> = [];
+  await routeAssistantShell(page, threadSnapshot());
+  await routeIdleAssistantStream(page);
+  await page.route(`${API_BASE}/v1/assistant/handoffs/resolve?token=handoff_token_123`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handoff: {
+          source: "desktop_helper",
+          artifact_id: "art_123",
+          draft: "Help me process artifact art_123.",
+        },
+      }),
+    });
+  });
+  await page.route(`${API_BASE}/v1/assistant/threads/thr_primary/messages`, async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    requests.push(body);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        thread_id: "thr_primary",
+        run: {
+          id: "run_1",
+          thread_id: "thr_primary",
+          origin_message_id: "msg_user_1",
+          orchestrator: "hybrid",
+          status: "completed",
+          summary: "ok",
+          metadata: {},
+          steps: [],
+          current_interrupt: null,
+          created_at: "2026-04-21T09:05:00.000Z",
+          updated_at: "2026-04-21T09:05:01.000Z",
+        },
+        user_message: {
+          id: "msg_user_1",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "user",
+          status: "complete",
+          parts: [{ type: "text", id: "part_user_1", text: "Help me process artifact art_123." }],
+          metadata: {},
+          created_at: "2026-04-21T09:05:00.000Z",
+          updated_at: "2026-04-21T09:05:00.000Z",
+        },
+        assistant_message: {
+          id: "msg_assistant_1",
+          thread_id: "thr_primary",
+          run_id: "run_1",
+          role: "assistant",
+          status: "complete",
+          parts: [{ type: "text", id: "part_assistant_1", text: "Done." }],
+          metadata: {},
+          created_at: "2026-04-21T09:05:01.000Z",
+          updated_at: "2026-04-21T09:05:01.000Z",
+        },
+        snapshot: threadSnapshot({
+          last_message_at: "2026-04-21T09:05:01.000Z",
+          last_preview_text: "Done.",
+          messages: [
+            {
+              id: "msg_user_1",
+              thread_id: "thr_primary",
+              run_id: null,
+              role: "user",
+              status: "complete",
+              parts: [{ type: "text", id: "part_user_1", text: "Help me process artifact art_123." }],
+              metadata: {},
+              created_at: "2026-04-21T09:05:00.000Z",
+              updated_at: "2026-04-21T09:05:00.000Z",
+            },
+            {
+              id: "msg_assistant_1",
+              thread_id: "thr_primary",
+              run_id: "run_1",
+              role: "assistant",
+              status: "complete",
+              parts: [{ type: "text", id: "part_assistant_1", text: "Done." }],
+              metadata: {},
+              created_at: "2026-04-21T09:05:01.000Z",
+              updated_at: "2026-04-21T09:05:01.000Z",
+            },
+          ],
+          runs: [],
+          interrupts: [],
+          next_cursor: "2026-04-21T09:05:01.000Z",
+        }),
+      }),
+    });
+  });
+
+  await page.goto("/assistant?handoff=handoff_token_123");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0].metadata).toEqual(
+    expect.objectContaining({
+      handoff_token: "handoff_token_123",
+    }),
+  );
+});
+
 test("navigation and composer card actions stay live in the assistant thread", async ({ page }) => {
   await seedSession(page);
   await routeAssistantShell(

@@ -770,9 +770,13 @@ function formatCapturedAt(value) {
 
 function assistantPromptForCapture(entry) {
   const summary = clipSummary(entry.summary || "");
+  const location = [entry.appName || "desktop", entry.windowTitle].filter(Boolean).join(" / ");
+  const captureKind = typeof entry.kind === "string" && entry.kind ? entry.kind : "capture";
+  const backend = typeof entry.captureBackend === "string" && entry.captureBackend ? entry.captureBackend : "";
   return [
-    `Help me process this capture from ${entry.appName || "desktop"}.`,
+    `Help me process this ${captureKind} capture from ${location || "desktop"}.`,
     `Artifact ID: ${entry.artifactId}`,
+    backend ? `Capture backend: ${backend}` : "",
     summary ? `Summary: ${summary}` : "",
   ]
     .filter(Boolean)
@@ -814,13 +818,46 @@ async function openCaptureInLibrary(entry) {
 }
 
 async function askAssistantAboutCapture(entry) {
-  const { webBase } = readConfig();
+  const { apiBase, webBase, token } = readConfig();
   const prompt = assistantPromptForCapture(entry);
+  if (token) {
+    try {
+      const response = await fetch(`${apiBase}/v1/assistant/handoffs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          source_surface: "desktop_helper",
+          artifact_id: entry.artifactId,
+          draft: prompt,
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      const payload = await response.json();
+      if (typeof payload?.token === "string" && payload.token) {
+        await openSupportUrl(
+          `${webBase}/assistant?handoff=${encodeURIComponent(payload.token)}`,
+          `${productCopy.brand.name} Assistant`,
+        );
+        setStatus("Opened Assistant handoff for the selected capture");
+        return;
+      }
+      throw new Error("Assistant handoff token missing from response");
+    } catch (error) {
+      console.warn("Assistant handoff token request failed", error);
+    }
+  }
+
   await openSupportUrl(
     `${webBase}/assistant?draft=${encodeURIComponent(prompt)}`,
     `${productCopy.brand.name} Assistant`,
   );
-  setStatus("Opened Assistant handoff for the selected capture");
+  setStatus("Opened Assistant draft without verified helper context");
 }
 
 function renderRecentCaptures(entries) {

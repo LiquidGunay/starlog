@@ -13,6 +13,7 @@ from app.services import (
     agent_service,
     ai_jobs_service,
     ai_service,
+    assistant_handoff_service,
     assistant_projection_service,
     assistant_thread_service,
     artifacts_service,
@@ -761,8 +762,18 @@ def start_run(
     metadata: dict[str, Any] | None = None,
     user_id: str | None = None,
 ) -> dict[str, Any]:
-    request_metadata = metadata or {}
     thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
+    raw_request_metadata = metadata if isinstance(metadata, dict) else {}
+    request_metadata = {
+        key: value for key, value in raw_request_metadata.items() if key not in {"handoff_context", "handoff_token"}
+    }
+    handoff_token = str(raw_request_metadata.get("handoff_token") or "").strip()
+    if handoff_token:
+        request_metadata["handoff_context"] = assistant_handoff_service.resolve_handoff(
+            conn,
+            token=handoff_token,
+            user_id=str(thread.get("owner_user_id") or user_id or ""),
+        )
     user_message = assistant_thread_service.append_message(
         conn,
         thread_id=thread["id"],

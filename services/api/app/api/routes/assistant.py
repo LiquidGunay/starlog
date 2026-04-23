@@ -9,17 +9,28 @@ from app.api.deps import get_db, require_token_hash, require_user_id
 from app.db.storage import get_connection
 from app.schemas.ai import AIJobResponse
 from app.schemas.assistant import (
+    AssistantCreateHandoffRequest,
+    AssistantCreateHandoffResponse,
     AssistantCreateMessageRequest,
     AssistantCreateMessageResponse,
     AssistantCreateThreadResponse,
     AssistantDeltaListResponse,
     AssistantInterruptSubmitRequest,
+    AssistantResolveHandoffResponse,
     AssistantRun,
     AssistantSurfaceEventCreateRequest,
     AssistantThreadSnapshot,
     AssistantThreadSummary,
 )
-from app.services import assistant_event_service, assistant_interrupt_service, assistant_run_service, assistant_thread_service, auth_service, media_service
+from app.services import (
+    assistant_event_service,
+    assistant_handoff_service,
+    assistant_interrupt_service,
+    assistant_run_service,
+    assistant_thread_service,
+    auth_service,
+    media_service,
+)
 
 router = APIRouter(prefix="/assistant")
 
@@ -128,6 +139,44 @@ def create_message_and_start_run(
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return AssistantCreateMessageResponse.model_validate(result)
+
+
+@router.post("/handoffs", response_model=AssistantCreateHandoffResponse, status_code=status.HTTP_201_CREATED)
+def create_handoff(
+    payload: AssistantCreateHandoffRequest,
+    user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AssistantCreateHandoffResponse:
+    try:
+        handoff = assistant_handoff_service.issue_handoff(
+            db,
+            user_id=user_id,
+            source=payload.source_surface,
+            draft=payload.draft,
+            artifact_id=payload.artifact_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return AssistantCreateHandoffResponse.model_validate(handoff)
+
+
+@router.get("/handoffs/resolve", response_model=AssistantResolveHandoffResponse)
+def resolve_handoff(
+    token: str = Query(..., min_length=1),
+    user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AssistantResolveHandoffResponse:
+    try:
+        handoff = assistant_handoff_service.resolve_handoff(db, token=token, user_id=user_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return AssistantResolveHandoffResponse.model_validate({"handoff": handoff})
 
 
 @router.post("/threads/{thread_id}/voice", response_model=AIJobResponse, status_code=status.HTTP_201_CREATED)

@@ -1,7 +1,9 @@
 import base64
+import hmac
 import hashlib
 import json
 import secrets
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -86,6 +88,55 @@ def _fernet_key() -> bytes:
     material, _ = _secret_material()
     digest = hashlib.sha256(material.encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest)
+
+
+def _signing_key(*, purpose: str) -> bytes:
+    material, _ = _secret_material()
+    return hashlib.sha256(f"sign:{purpose}:{material}".encode("utf-8")).digest()
+
+
+def create_signed_token(*, purpose: str, payload: dict[str, Any], ttl_seconds: int) -> str:
+    envelope = {
+        "purpose": purpose,
+        "exp": int(time.time()) + max(ttl_seconds, 1),
+        "payload": payload,
+    }
+    encoded_payload = _b64(json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    signature = _b64(hmac.new(_signing_key(purpose=purpose), encoded_payload.encode("utf-8"), hashlib.sha256).digest())
+    return f"{encoded_payload}.{signature}"
+
+
+def verify_signed_token(*, purpose: str, token: str) -> dict[str, Any]:
+    encoded_payload, separator, signature = token.partition(".")
+    if not separator or not encoded_payload or not signature:
+        raise ValueError("Invalid token format")
+
+    expected_signature = _b64(
+        hmac.new(_signing_key(purpose=purpose), encoded_payload.encode("utf-8"), hashlib.sha256).digest()
+    )
+    if not secrets.compare_digest(expected_signature, signature):
+        raise ValueError("Invalid token signature")
+
+    try:
+        envelope = json.loads(_unb64(encoded_payload).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid token payload") from exc
+
+    if not isinstance(envelope, dict):
+        raise ValueError("Invalid token payload")
+    if envelope.get("purpose") != purpose:
+        raise ValueError("Invalid token purpose")
+    try:
+        expires_at = int(envelope.get("exp"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid token expiry") from exc
+    if expires_at < int(time.time()):
+        raise ValueError("Token expired")
+
+    payload = envelope.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid token payload")
+    return payload
 
 
 def _encrypt_scalar(value: Any) -> Any:
