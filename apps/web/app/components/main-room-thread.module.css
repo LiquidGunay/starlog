@@ -69,6 +69,7 @@
   margin: 0;
   line-height: 1.7;
   color: rgba(244, 241, 232, 0.92);
+  white-space: pre-wrap;
 }
 
 .ambient,
@@ -87,6 +88,16 @@
   color: rgba(244, 241, 232, 0.78);
 }
 
+.toolCallPanel,
+.statusPanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .card,
 .panel {
   display: grid;
@@ -94,6 +105,30 @@
   padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cardTone_review {
+  background: linear-gradient(180deg, rgba(102, 88, 45, 0.28), rgba(255, 255, 255, 0.05));
+}
+
+.cardTone_task {
+  background: linear-gradient(180deg, rgba(53, 79, 76, 0.3), rgba(255, 255, 255, 0.05));
+}
+
+.cardTone_brief {
+  background: linear-gradient(180deg, rgba(98, 66, 31, 0.3), rgba(255, 255, 255, 0.05));
+}
+
+.cardTone_knowledge {
+  background: linear-gradient(180deg, rgba(57, 66, 96, 0.28), rgba(255, 255, 255, 0.05));
+}
+
+.cardTone_context {
+  background: linear-gradient(180deg, rgba(60, 60, 60, 0.26), rgba(255, 255, 255, 0.05));
+}
+
+.cardTone_default {
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -110,12 +145,73 @@
   line-height: 1.7;
 }
 
+.cardHeader,
+.ambientTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cardEyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(244, 241, 232, 0.6);
+}
+
+.cardGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
 .cardKind {
   margin: 0;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(244, 241, 232, 0.48);
+}
+
+.cardBody {
+  white-space: pre-wrap;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge,
+.entityLink {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 241, 232, 0.84);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.entityLink {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  text-decoration: none;
+}
+
+.entityLink:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .actions,
@@ -161,6 +257,58 @@
 .actionButton:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.ambientDetail {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 232, 0.78);
+}
+
+.ambientCopy {
+  display: grid;
+  gap: 8px;
+}
+
+.toolResultPanel,
+.attachmentPanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.outputGrid {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.outputRow {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.outputRow dt {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(244, 241, 232, 0.48);
+}
+
+.outputRow dd {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.86);
+  word-break: break-word;
 }
 
 .panelFields {

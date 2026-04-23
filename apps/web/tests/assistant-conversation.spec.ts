@@ -140,6 +140,45 @@ test("renders rich assistant thread parts from the snapshot", async ({ page }) =
                     metadata: {},
                   },
                 },
+                {
+                  type: "status",
+                  id: "part_status_1",
+                  status: "running",
+                  label: "Planner sync is still reconciling background changes.",
+                },
+                {
+                  type: "tool_result",
+                  id: "part_tool_result_1",
+                  tool_result: {
+                    id: "tool_result_1",
+                    tool_call_id: "tool_1",
+                    status: "complete",
+                    output: {
+                      job_id: "briefing_job_1",
+                      status: "queued",
+                      provider: "web_assistant",
+                    },
+                    entity_ref: {
+                      entity_type: "briefing",
+                      entity_id: "briefing_1",
+                      href: "/planner?briefing=briefing_1",
+                      title: "Morning briefing",
+                    },
+                    metadata: {},
+                  },
+                },
+                {
+                  type: "attachment",
+                  id: "part_attachment_1",
+                  attachment: {
+                    id: "attachment_1",
+                    kind: "audio",
+                    label: "Morning briefing audio",
+                    url: "/v1/media/media_briefing_1/content",
+                    mime_type: "audio/mpeg",
+                    metadata: {},
+                  },
+                },
               ],
               metadata: {},
               created_at: "2026-04-21T09:01:00.000Z",
@@ -164,7 +203,13 @@ test("renders rich assistant thread parts from the snapshot", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Assistant thread", exact: true })).toBeVisible();
   await expect(page.getByText("Planner noticed a conflict and surfaced it in the thread.")).toBeVisible();
   await expect(page.getByText("Planner conflict detected")).toBeVisible();
-  await expect(page.getByText("resolve_planner_conflict")).toBeVisible();
+  await expect(page.getByText("Resolve overlap")).toBeVisible();
+  await expect(page.getByText("Awaiting thread decision")).toBeVisible();
+  await expect(page.getByText("tb_1")).toBeVisible();
+  await expect(page.getByText("Planner sync is still reconciling background changes.")).toBeVisible();
+  await expect(page.getByText("briefing_job_1")).toBeVisible();
+  await expect(page.getByText("Morning briefing audio")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open audio" })).toBeVisible();
 });
 
 test("desktop helper handoff draft prefills the assistant composer", async ({ page }) => {
@@ -299,6 +344,278 @@ test("desktop helper handoff metadata is attached when the draft is sent", async
   );
 });
 
+test("support surfaces dedupe repeated entities across the current thread tail", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      messages: [
+        {
+          id: "msg_note_1",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "card",
+              id: "part_note_1",
+              card: {
+                kind: "knowledge_note",
+                version: 1,
+                title: "Meeting note",
+                body: "First pass.",
+                entity_ref: {
+                  entity_type: "note",
+                  entity_id: "note_dup_1",
+                  href: "/artifacts?note=note_dup_1",
+                  title: "Meeting note",
+                },
+                actions: [],
+                metadata: {
+                  note_id: "note_dup_1",
+                },
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:01:00.000Z",
+          updated_at: "2026-04-21T09:01:00.000Z",
+        },
+        {
+          id: "msg_note_2",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "card",
+              id: "part_note_2",
+              card: {
+                kind: "knowledge_note",
+                version: 1,
+                title: "Meeting note",
+                body: "Updated pass.",
+                entity_ref: {
+                  entity_type: "note",
+                  entity_id: "note_dup_1",
+                  href: "/artifacts?note=note_dup_1",
+                  title: "Meeting note",
+                },
+                actions: [],
+                metadata: {
+                  note_id: "note_dup_1",
+                  version: 2,
+                },
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:02:00.000Z",
+          updated_at: "2026-04-21T09:02:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("1 knowledge item is active from this thread.")).toBeVisible();
+  await expect(page.getByText("2 knowledge items are active from this thread.")).toHaveCount(0);
+});
+
+test("resolved planner activity no longer keeps the planner surface active", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      interrupts: [
+        {
+          id: "interrupt_conflict_done_1",
+          thread_id: "thr_primary",
+          run_id: "run_conflict_done_1",
+          status: "submitted",
+          interrupt_type: "choice",
+          tool_name: "resolve_planner_conflict",
+          title: "Resolve scheduling conflict",
+          body: "Choose how Starlog should resolve this overlap.",
+          entity_ref: { entity_type: "planner_conflict", entity_id: "conflict_done_1", href: "/planner" },
+          fields: [],
+          primary_label: "Apply choice",
+          secondary_label: "Open Planner",
+          metadata: {},
+          created_at: "2026-04-21T09:08:00.000Z",
+          resolved_at: "2026-04-21T09:09:00.000Z",
+          resolution: {
+            id: "resolution_conflict_done_1",
+            interrupt_id: "interrupt_conflict_done_1",
+            action: "submit",
+            values: {
+              resolution: "local_wins",
+            },
+            metadata: {},
+            created_at: "2026-04-21T09:09:00.000Z",
+          },
+        },
+      ],
+      messages: [
+        {
+          id: "msg_conflict_old",
+          thread_id: "thr_primary",
+          run_id: "run_conflict_done_1",
+          role: "assistant",
+          status: "requires_action",
+          parts: [
+            {
+              type: "interrupt_request",
+              id: "part_conflict_old",
+              interrupt: {
+                id: "interrupt_conflict_done_1",
+                thread_id: "thr_primary",
+                run_id: "run_conflict_done_1",
+                status: "pending",
+                interrupt_type: "choice",
+                tool_name: "resolve_planner_conflict",
+                title: "Resolve scheduling conflict",
+                body: "Choose how Starlog should resolve this overlap.",
+                entity_ref: { entity_type: "planner_conflict", entity_id: "conflict_done_1", href: "/planner" },
+                fields: [],
+                primary_label: "Apply choice",
+                secondary_label: "Open Planner",
+                metadata: {},
+                created_at: "2026-04-21T09:08:00.000Z",
+                resolved_at: null,
+                resolution: {},
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:08:00.000Z",
+          updated_at: "2026-04-21T09:08:00.000Z",
+        },
+        {
+          id: "msg_conflict_resolved",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "ambient_update",
+              id: "part_conflict_resolved",
+              update: {
+                id: "ambient_conflict_resolved",
+                event_id: "evt_conflict_resolved",
+                label: "Planner conflict resolved",
+                body: "Team Sync was resolved in Planner with local wins.",
+                entity_ref: {
+                  entity_type: "planner_conflict",
+                  entity_id: "conflict_done_1",
+                  href: "/planner",
+                  title: "Team Sync",
+                },
+                actions: [],
+                metadata: {},
+                created_at: "2026-04-21T09:09:00.000Z",
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:09:00.000Z",
+          updated_at: "2026-04-21T09:09:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("Planner conflict resolved")).toBeVisible();
+  await expect(page.getByText("Tasks, calendar, time blocks, and briefings.")).toBeVisible();
+  await expect(page.getByText("1 planning item is active from this thread.")).toHaveCount(0);
+});
+
+test("tool results can activate support surfaces without top-level cards", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      messages: [
+        {
+          id: "msg_tool_only",
+          thread_id: "thr_primary",
+          run_id: "run_tool_only",
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "tool_result",
+              id: "part_tool_result_review",
+              tool_result: {
+                id: "tool_result_review",
+                tool_call_id: "tool_call_review",
+                status: "complete",
+                output: {
+                  cards_ready: 3,
+                },
+                card: {
+                  kind: "review_queue",
+                  version: 1,
+                  title: "Review queue",
+                  body: "Three cards are ready now.",
+                  entity_ref: {
+                    entity_type: "card",
+                    entity_id: "card_from_tool_1",
+                    href: "/review",
+                    title: "Tool card",
+                  },
+                  actions: [],
+                  metadata: {
+                    due_count: 3,
+                    card_id: "card_from_tool_1",
+                  },
+                },
+                metadata: {},
+              },
+            },
+            {
+              type: "tool_result",
+              id: "part_tool_result_planner",
+              tool_result: {
+                id: "tool_result_planner",
+                tool_call_id: "tool_call_planner",
+                status: "complete",
+                output: {
+                  briefing_id: "briefing_from_tool_1",
+                },
+                entity_ref: {
+                  entity_type: "briefing",
+                  entity_id: "briefing_from_tool_1",
+                  href: "/planner?briefing=briefing_from_tool_1",
+                  title: "2026-04-21",
+                },
+                metadata: {},
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:10:00.000Z",
+          updated_at: "2026-04-21T09:10:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("1 review item is active from this thread.")).toBeVisible();
+  await expect(page.getByText("1 planning item is active from this thread.")).toBeVisible();
+});
+
 test("navigation and composer card actions stay live in the assistant thread", async ({ page }) => {
   await seedSession(page);
   await routeAssistantShell(
@@ -327,7 +644,12 @@ test("navigation and composer card actions stay live in the assistant thread", a
                 version: 1,
                 title: "Due cards",
                 body: "Two cards are ready in Review.",
-                entity_ref: null,
+                entity_ref: {
+                  entity_type: "card",
+                  entity_id: "card_1",
+                  href: "/review",
+                  title: "Queue review",
+                },
                 actions: [
                   {
                     id: "open_review",
@@ -338,7 +660,9 @@ test("navigation and composer card actions stay live in the assistant thread", a
                     requires_confirmation: false,
                   },
                 ],
-                metadata: {},
+                metadata: {
+                  due_count: 2,
+                },
               },
             },
             {
@@ -349,7 +673,12 @@ test("navigation and composer card actions stay live in the assistant thread", a
                 version: 1,
                 title: "Follow-up prompt",
                 body: "Ask for a tighter summary before you schedule it.",
-                entity_ref: null,
+                entity_ref: {
+                  entity_type: "note",
+                  entity_id: "note_1",
+                  href: "/artifacts?note=note_1",
+                  title: "Follow-up note",
+                },
                 actions: [
                   {
                     id: "ask_follow_up",
@@ -360,7 +689,10 @@ test("navigation and composer card actions stay live in the assistant thread", a
                     requires_confirmation: false,
                   },
                 ],
-                metadata: {},
+                metadata: {
+                  version: 3,
+                  search_result: true,
+                },
               },
             },
           ],
@@ -382,12 +714,18 @@ test("navigation and composer card actions stay live in the assistant thread", a
 
   await page.goto("/assistant");
 
+  await expect(page.getByText("2 due now")).toBeVisible();
+  await expect(page.getByText("v3")).toBeVisible();
+  await expect(page.getByText("Search match")).toBeVisible();
+  await expect(page.getByText("1 review item is active from this thread.")).toBeVisible();
+  await expect(page.getByText("1 knowledge item is active from this thread.")).toBeVisible();
+
   await page.getByRole("button", { name: "Ask follow-up" }).click();
   await expect(
     page.getByPlaceholder("Capture, plan, review, or ask the Assistant to move something forward."),
   ).toHaveValue("Summarize the current review queue and suggest the first card to grade.");
 
-  await page.getByRole("button", { name: "Open Review" }).click();
+  await page.locator("article").filter({ hasText: "Due cards" }).getByRole("button", { name: "Open Review" }).click();
   await expect(page).toHaveURL(/\/review$/);
 });
 
@@ -424,7 +762,12 @@ test("mutation card actions confirm, execute, and refresh the thread snapshot", 
                       version: 1,
                       title: "Morning briefing",
                       body: "The spoken briefing is ready to cache.",
-                      entity_ref: null,
+                      entity_ref: {
+                        entity_type: "briefing",
+                        entity_id: "briefing_1",
+                        href: "/planner?briefing=briefing_1",
+                        title: "2026-04-21",
+                      },
                       actions: [
                         {
                           id: "cache_audio",
@@ -439,7 +782,10 @@ test("mutation card actions confirm, execute, and refresh the thread snapshot", 
                           requires_confirmation: true,
                         },
                       ],
-                      metadata: {},
+                      metadata: {
+                        briefing_id: "briefing_1",
+                        date: "2026-04-21",
+                      },
                     },
                   },
                 ],
@@ -525,6 +871,8 @@ test("mutation card actions confirm, execute, and refresh the thread snapshot", 
   });
 
   await page.goto("/assistant");
+  await expect(page.getByText("Thread prompt ready")).toBeVisible();
+  await expect(page.getByText("1 planning item is active from this thread.")).toBeVisible();
   await page.getByRole("button", { name: "Cache audio" }).click();
 
   await expect.poll(() => mutationCalls).toBe(1);

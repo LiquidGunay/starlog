@@ -5,6 +5,8 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Completed in this pass
 
+- Desktop web Assistant is now visibly closer to the target control-plane model: Starlog card kinds render with richer inline treatment instead of raw generic panels, entity refs surface direct `Open in Library` / `Open in Planner` / `Open in Review` links from the thread, and the right rail now summarizes active `Library`, `Planner`, and `Review` work from the live thread state instead of showing only static protocol copy.
+- Desktop Assistant Playwright coverage now checks those desktop-specific behaviors directly, including inline card metadata badges, support-surface summaries, and live card/composer actions from the thread.
 - Desktop helper recent-capture handoff is now a real shared-assistant path instead of a nominal deep link: helper-originated captures reflect into the assistant thread as `desktop_helper` surface events, `Ask Assistant` now requests a signed server handoff token for the artifact + draft context, and the web Assistant shows an explicit handoff banner with `Open in Library` / `Clear handoff` actions before send.
 - The web Assistant no longer trusts raw helper provenance from query params. Helper-originated follow-up is rehydrated from a server-validated handoff token before assistant runs see `handoff_context`.
 - Desktop helper browser coverage is clean again: the full Playwright helper suite passes against the current quick/workspace copy, including recent-capture handoff, diagnostics copying, setup checklist redaction, and quick-surface workspace switching.
@@ -171,11 +173,11 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 
 ## Next implementation targets
 
-1. Tighten the native mobile voice path so the mic flow cleanly handles permission, listening, recording, stop/send, cancel, on-device STT, and recorded-upload fallback without state ambiguity.
-2. Finish the native mobile Assistant shell pass: keep the drawer intentional, preserve per-tab state, and continue aligning in-thread cards with the desktop Assistant visual language.
-3. Continue shrinking [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) by extracting remaining runtime/conversation helpers into focused modules now that the support-panel JSX split is in place.
-4. Keep extending deterministic Assistant card projection and inline action behavior so common chat turns return `review_queue`, `knowledge_note`, `task_list`, `briefing`, or `capture_item` instead of generic summary fallbacks.
-5. Complete the desktop-web Assistant pass around the desktop main-room reference, including support-view copy cleanup and stronger desktop inline-card coverage.
-6. Finish the desktop helper capture-first redesign and validate the `Open in Library` / `Ask Assistant` handoff path on real host setups.
-7. Expand automated and manual proof across API, web Playwright, Android device screenshots, and helper validation so Assistant hydration, inline actions, and support-view navigation stay covered.
+1. Finish the remaining native mobile Assistant-shell cleanup: preserve per-tab state more intentionally, keep aligning mobile in-thread cards with the richer desktop thread treatment, and continue shrinking [apps/mobile/App.tsx](/home/ubuntu/starlog/apps/mobile/App.tsx) by extracting runtime/conversation helpers into focused modules.
+2. Tighten the native mobile voice path so the mic flow handles permission, listening, recording, stop/send, cancel, on-device STT, and recorded-upload fallback without state ambiguity.
+3. Keep extending deterministic Assistant card projection and inline action behavior so common chat turns return `review_queue`, `knowledge_note`, `task_list`, `briefing`, or `capture_item` instead of generic summary fallbacks, and reduce the remaining `assistant_summary` fallback cases.
+4. Complete the desktop-web Assistant pass with the remaining support-view copy cleanup, richer attachment/tool-result rendering, and any missing desktop inline-action states that still sit outside the main thread surface.
+5. Finish the desktop helper capture-first redesign and validate the `Open in Library` / `Ask Assistant` handoff path on real host setups, not only browser mocks.
+6. Continue moving the AI runtime off the legacy `response_text + cards` execution shape so the runtime boundary becomes natively tool-call / interrupt-aware instead of relying on API-side legacy synthesis.
+7. Expand automated and manual proof across API, web Playwright, Android device screenshots, and helper validation so Assistant hydration, inline actions, cross-surface updates, and support-surface navigation stay covered.
 8. Run the final repo-wide copy and docs audit so README, auth text, navigation, manifest metadata, helper copy, and self-host instructions all match the current Assistant-first product language.

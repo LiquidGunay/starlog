@@ -16,6 +16,7 @@ import { MainRoomThread } from "../components/main-room-thread";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
+import { summarizeSupportSurfaces } from "./support-surfaces";
 import styles from "./page.module.css";
 
 type AssistantStreamEnvelope = {
@@ -811,6 +812,7 @@ function AssistantPageContent() {
   const activeInterrupt = snapshot?.interrupts.find((interrupt) => interrupt.status === "pending");
   const normalizedSnapshot = normalizeSnapshot(snapshot);
   const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
+  const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
 
   return (
     <StarlogAssistantRuntimeProvider
@@ -902,6 +904,26 @@ function AssistantPageContent() {
           </div>
 
           <aside className={styles.sideRail}>
+            <article className={styles.sideCard}>
+              <p className={styles.sideLabel}>Support Surfaces</p>
+              <div className={styles.supportSurfaceList}>
+                {supportSurfaces.map((surface) => (
+                  <section
+                    key={surface.key}
+                    className={`${styles.supportSurfaceCard} ${surface.active ? styles.supportSurfaceActive : ""}`}
+                  >
+                    <div>
+                      <h3>{surface.title}</h3>
+                      <p>{surface.summary}</p>
+                    </div>
+                    <button type="button" onClick={() => router.push(surface.href)}>
+                      Open {surface.title}
+                    </button>
+                  </section>
+                ))}
+              </div>
+            </article>
+
             <article className={styles.sideCard}>
               <p className={styles.sideLabel}>Protocol</p>
               <h2>assistant-ui runtime boundary</h2>
