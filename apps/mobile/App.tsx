@@ -26,7 +26,6 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 import {
-  PRODUCT_SURFACES,
   assistantThreadMessageToLegacyMessage,
 } from "@starlog/contracts";
 import type {
@@ -69,6 +68,10 @@ import {
   deriveAssistantVoiceActionState,
   runAssistantLocalSttFlow,
 } from "./src/assistant-mobile-voice";
+import {
+  handleAssistantCardActionOnMobile,
+  openAssistantEntityOnMobile,
+} from "./src/assistant-mobile-thread-actions";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -2617,77 +2620,35 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     setConversationToolTraces(legacyConversationTracesFromRuns(snapshot.runs));
   }
 
+  function activateMobileSurface(tab: MobileTab) {
+    setActiveTab(tab);
+    setStatus(`${mobileTabLabel(tab)} ready`);
+  }
+
+  async function openAssistantEntity(entityRef: { entity_type: string; entity_id: string; href?: string | null }) {
+    await openAssistantEntityOnMobile(entityRef, {
+      activateSurface: activateMobileSurface,
+      openWebPath,
+      setStatus,
+    });
+  }
+
   async function handleConversationCardAction(action: AssistantCardAction, card: ConversationCard) {
-    if (action.kind === "navigate") {
-      const href = typeof action.payload?.href === "string" ? action.payload.href : "";
-      if (!href) {
-        setStatus(`Action "${action.label}" is missing a destination`);
-        return;
-      }
-      if (href === "/assistant" || href.startsWith("/assistant?")) {
-        setActiveTab("assistant");
-        setStatus(`${PRODUCT_SURFACES.assistant.label} ready`);
-        return;
-      }
-      if (href === "/review" || href.startsWith("/review")) {
-        setActiveTab("review");
-        setStatus(`${PRODUCT_SURFACES.review.label} ready`);
-        return;
-      }
-      if (href === "/planner" || href.startsWith("/planner")) {
-        setActiveTab("planner");
-        setStatus(`${PRODUCT_SURFACES.planner.label} ready`);
-        return;
-      }
-      if (href === "/notes" || href.startsWith("/notes?") || href.startsWith("/notes/")) {
-        setActiveTab("library");
-        setStatus(`${PRODUCT_SURFACES.library.label} ready`);
-        return;
-      }
-      await openWebPath(href, `Failed to open ${action.label.toLowerCase()}`);
-      return;
-    }
-
-    if (action.kind === "composer") {
-      const prompt = typeof action.payload?.prompt === "string" ? action.payload.prompt : card.body || card.title || "";
-      setActiveTab("assistant");
-      setHomeDraft(prompt);
-      setStatus(`Loaded "${action.label}" into Assistant`);
-      return;
-    }
-
-    const endpoint = typeof action.payload?.endpoint === "string" ? action.payload.endpoint : "";
-    const method = typeof action.payload?.method === "string" ? action.payload.method : "POST";
-    const body = action.payload?.body ?? {};
-    if (!endpoint) {
-      setStatus(`Action "${action.label}" is missing an endpoint`);
-      return;
-    }
-    setStatus(`${action.label}...`);
-    try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}${endpoint}`, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`${action.label} failed: ${response.status} ${errorBody}`);
-      }
-      await loadConversation("auto");
-      if (card.kind === "capture_item" || card.kind === "knowledge_note") {
+    await handleAssistantCardActionOnMobile(action, card, {
+      apiBase: normalizeBaseUrl(apiBase),
+      token,
+      activateSurface: activateMobileSurface,
+      setHomeDraft,
+      setStatus,
+      openWebPath,
+      reloadConversation: () => loadConversation("auto"),
+      reloadArtifacts: () => {
         loadArtifacts().catch(() => undefined);
-      }
-      if (card.kind === "review_queue") {
+      },
+      reloadDueCards: () => {
         loadDueCards().catch(() => undefined);
-      }
-      setStatus(`${action.label} complete`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : `${action.label} failed`);
-    }
+      },
+    });
   }
 
   async function submitAssistantInterrupt(interruptId: string, values: Record<string, unknown>) {
@@ -3794,6 +3755,19 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 dismissAssistantInterrupt(interruptId).catch(() => undefined);
               }}
               reuseCardText={reuseConversationCardText}
+              onOpenEntityRef={(entityRef) => {
+                openAssistantEntity(entityRef).catch(() => undefined);
+              }}
+              onOpenAttachment={(url, label) => {
+                const target = url?.trim();
+                if (!target) {
+                  setStatus(`${label} is not available yet`);
+                  return;
+                }
+                Linking.openURL(target).catch((error) => {
+                  setStatus(error instanceof Error ? error.message : `Failed to open ${label.toLowerCase()}`);
+                });
+              }}
             />
           </View>
         ) : null}
@@ -3895,8 +3869,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             nextActionPreview={nextActionPreview}
             openPwa={openPwa}
             openReview={() => {
-              setActiveTab("review");
-              setStatus(`${PRODUCT_SURFACES.review.label} ready`);
+              activateMobileSurface("review");
             }}
             alarmScheduled={Boolean(alarmNotificationId)}
             toggleAlarm={() => (alarmNotificationId ? clearMorningAlarm().catch(() => undefined) : scheduleMorningAlarm().catch(() => undefined))}
