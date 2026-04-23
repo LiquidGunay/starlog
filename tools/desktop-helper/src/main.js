@@ -777,7 +777,6 @@ function assistantPromptForCapture(entry) {
     `Help me process this ${captureKind} capture from ${location || "desktop"}.`,
     `Artifact ID: ${entry.artifactId}`,
     backend ? `Capture backend: ${backend}` : "",
-    entry.sourceUrl ? `Source URL: ${entry.sourceUrl}` : "",
     summary ? `Summary: ${summary}` : "",
   ]
     .filter(Boolean)
@@ -819,13 +818,46 @@ async function openCaptureInLibrary(entry) {
 }
 
 async function askAssistantAboutCapture(entry) {
-  const { webBase } = readConfig();
+  const { apiBase, webBase, token } = readConfig();
   const prompt = assistantPromptForCapture(entry);
+  if (token) {
+    try {
+      const response = await fetch(`${apiBase}/v1/assistant/handoffs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          source_surface: "desktop_helper",
+          artifact_id: entry.artifactId,
+          draft: prompt,
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      const payload = await response.json();
+      if (typeof payload?.token === "string" && payload.token) {
+        await openSupportUrl(
+          `${webBase}/assistant?handoff=${encodeURIComponent(payload.token)}`,
+          `${productCopy.brand.name} Assistant`,
+        );
+        setStatus("Opened Assistant handoff for the selected capture");
+        return;
+      }
+      throw new Error("Assistant handoff token missing from response");
+    } catch (error) {
+      console.warn("Assistant handoff token request failed", error);
+    }
+  }
+
   await openSupportUrl(
-    `${webBase}/assistant?draft=${encodeURIComponent(prompt)}&artifact=${encodeURIComponent(entry.artifactId)}&source=desktop_helper`,
+    `${webBase}/assistant?draft=${encodeURIComponent(prompt)}`,
     `${productCopy.brand.name} Assistant`,
   );
-  setStatus("Opened Assistant handoff for the selected capture");
+  setStatus("Opened Assistant draft without verified helper context");
 }
 
 function renderRecentCaptures(entries) {
@@ -1377,7 +1409,6 @@ async function clipClipboard() {
       contextBackend: captureContext.display.contextBackend,
       platform: captureContext.display.platform,
       captureBackend: clipboardResult.backend,
-      sourceUrl: "",
       summary: clipSummary(text),
     });
     updateCapabilityNote(
@@ -1450,7 +1481,6 @@ async function clipScreenshot() {
         platform: captureContext.display.platform,
         ocrEngine: result.ocr_engine || "",
         captureBackend: result.backend || "",
-        sourceUrl: "",
         summary: clipSummary(extractedText || result.message || fileName),
         previewDataUrl,
       });

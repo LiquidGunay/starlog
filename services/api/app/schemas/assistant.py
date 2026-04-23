@@ -140,6 +140,28 @@ class AssistantCreateMessageRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class AssistantHandoff(BaseModel):
+    source: Literal["assistant", "library", "planner", "review", "desktop_helper", "system"]
+    artifact_id: str | None = None
+    draft: str = Field(..., min_length=1)
+
+
+class AssistantCreateHandoffRequest(BaseModel):
+    source_surface: Literal["assistant", "library", "planner", "review", "desktop_helper", "system"]
+    artifact_id: str | None = None
+    draft: str = Field(..., min_length=1)
+
+
+class AssistantCreateHandoffResponse(BaseModel):
+    token: str = Field(..., min_length=1)
+    handoff: AssistantHandoff
+    expires_at: datetime
+
+
+class AssistantResolveHandoffResponse(BaseModel):
+    handoff: AssistantHandoff
+
+
 class AssistantCreateMessageResponse(BaseModel):
     thread_id: str
     run: AssistantRun

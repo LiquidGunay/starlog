@@ -30,7 +30,7 @@ Desktop capture companion for Starlog.
 - Queued upload to Starlog API.
 - Best-effort cleanup of temporary screenshot files after upload.
 - In-app recent-capture history with artifact IDs, clip summaries, screenshot thumbnails, captured context, and the backend used for the capture.
-- Recent capture handoff now carries artifact id, app/window context, backend, source URL, and summary into the shared Assistant draft, and the web Assistant renders that helper handoff as an explicit banner with `Open in Library` / `Clear handoff` actions.
+- Recent capture handoff now carries artifact id, app/window context, backend, and summary into a signed shared Assistant handoff, and the web Assistant renders that helper handoff as an explicit banner with `Open in Library` / `Clear handoff` actions.
 
 ## Validation matrix
 

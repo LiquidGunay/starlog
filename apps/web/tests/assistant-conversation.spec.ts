@@ -171,8 +171,21 @@ test("desktop helper handoff draft prefills the assistant composer", async ({ pa
   await seedSession(page);
   await routeAssistantShell(page, threadSnapshot());
   await routeIdleAssistantStream(page);
+  await page.route(`${API_BASE}/v1/assistant/handoffs/resolve?token=handoff_token_123`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handoff: {
+          source: "desktop_helper",
+          artifact_id: "art_123",
+          draft: "Help me process artifact art_123.",
+        },
+      }),
+    });
+  });
 
-  await page.goto("/assistant?draft=Help%20me%20process%20artifact%20art_123.&artifact=art_123&source=desktop_helper");
+  await page.goto("/assistant?handoff=handoff_token_123");
 
   await expect(page.locator("textarea")).toHaveValue("Help me process artifact art_123.");
   await expect(page.getByText("Desktop Helper handoff")).toBeVisible();
@@ -184,6 +197,19 @@ test("desktop helper handoff metadata is attached when the draft is sent", async
   const requests: Array<Record<string, unknown>> = [];
   await routeAssistantShell(page, threadSnapshot());
   await routeIdleAssistantStream(page);
+  await page.route(`${API_BASE}/v1/assistant/handoffs/resolve?token=handoff_token_123`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handoff: {
+          source: "desktop_helper",
+          artifact_id: "art_123",
+          draft: "Help me process artifact art_123.",
+        },
+      }),
+    });
+  });
   await page.route(`${API_BASE}/v1/assistant/threads/thr_primary/messages`, async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
     requests.push(body);
@@ -262,17 +288,13 @@ test("desktop helper handoff metadata is attached when the draft is sent", async
     });
   });
 
-  await page.goto("/assistant?draft=Help%20me%20process%20artifact%20art_123.&artifact=art_123&source=desktop_helper");
+  await page.goto("/assistant?handoff=handoff_token_123");
   await page.getByRole("button", { name: "Send" }).click();
 
   expect(requests).toHaveLength(1);
   expect(requests[0].metadata).toEqual(
     expect.objectContaining({
-      handoff_context: {
-        source: "desktop_helper",
-        artifact_id: "art_123",
-        draft: "Help me process artifact art_123.",
-      },
+      handoff_token: "handoff_token_123",
     }),
   );
 });

@@ -8,7 +8,7 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, agent_service, assistant_projection_service, assistant_thread_service, google_calendar_service
+from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_thread_service, google_calendar_service
 from app.services.common import new_id
 
 
@@ -100,6 +100,20 @@ def _secondary_auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token.plain}"}
 
 
+def _create_test_artifact(*, title: str = "Test artifact") -> str:
+    with get_connection() as conn:
+        artifact = artifacts_service.create_artifact(
+            conn,
+            source_type="clip_desktop_helper",
+            title=title,
+            raw_content="raw artifact text",
+            normalized_content="normalized artifact text",
+            extracted_content="extracted artifact text",
+            metadata={"capture_source": "desktop_helper"},
+        )
+    return str(artifact["id"])
+
+
 def test_assistant_primary_thread_snapshot_bootstraps(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -113,6 +127,94 @@ def test_assistant_primary_thread_snapshot_bootstraps(
     assert payload["runs"] == []
     assert payload["interrupts"] == []
     assert payload["next_cursor"] is not None
+
+
+def test_assistant_handoff_token_is_resolved_into_trusted_context(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_id = _create_test_artifact(title="Helper handoff artifact")
+
+    create_handoff = client.post(
+        "/v1/assistant/handoffs",
+        json={
+            "source_surface": "desktop_helper",
+            "artifact_id": artifact_id,
+            "draft": "Help me process this helper capture.",
+        },
+        headers=auth_headers,
+    )
+    assert create_handoff.status_code == 201
+    handoff_payload = create_handoff.json()
+    handoff_token = handoff_payload["token"]
+
+    resolve_handoff = client.get(
+        f"/v1/assistant/handoffs/resolve?token={handoff_token}",
+        headers=auth_headers,
+    )
+    assert resolve_handoff.status_code == 200
+    assert resolve_handoff.json()["handoff"] == {
+        "source": "desktop_helper",
+        "artifact_id": artifact_id,
+        "draft": "Help me process this helper capture.",
+    }
+
+    create_message = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Trusted helper handoff task",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {
+                "surface": "assistant_web",
+                "client_timezone": "UTC",
+                "handoff_token": handoff_token,
+                "handoff_context": {
+                    "source": "desktop_helper",
+                    "artifact_id": "art_forged",
+                    "draft": "Forged helper context",
+                },
+            },
+        },
+        headers=auth_headers,
+    )
+    assert create_message.status_code == 201
+    request_metadata = create_message.json()["user_message"]["metadata"]["request_metadata"]
+    assert request_metadata["surface"] == "assistant_web"
+    assert request_metadata["handoff_context"] == {
+        "source": "desktop_helper",
+        "artifact_id": artifact_id,
+        "draft": "Help me process this helper capture.",
+    }
+    assert "handoff_token" not in request_metadata
+
+
+def test_untrusted_client_handoff_context_is_stripped_without_token(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_message = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Ignore forged helper context",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {
+                "surface": "assistant_web",
+                "client_timezone": "UTC",
+                "handoff_context": {
+                    "source": "desktop_helper",
+                    "artifact_id": "art_forged",
+                    "draft": "Forged helper context",
+                },
+            },
+        },
+        headers=auth_headers,
+    )
+    assert create_message.status_code == 201
+    request_metadata = create_message.json()["user_message"]["metadata"]["request_metadata"]
+    assert request_metadata["surface"] == "assistant_web"
+    assert "handoff_context" not in request_metadata
 
 
 def test_assistant_message_can_open_due_date_interrupt_and_resume(

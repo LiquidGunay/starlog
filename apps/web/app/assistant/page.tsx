@@ -26,9 +26,17 @@ type AssistantStreamEnvelope = {
 
 type LiveStatus = "connecting" | "live" | "recovering" | "auth_required";
 type AssistantHandoff = {
+  token: string;
   artifactId: string | null;
   source: string | null;
   draft: string;
+};
+type AssistantResolveHandoffResponse = {
+  handoff: {
+    artifact_id?: string | null;
+    source?: string | null;
+    draft: string;
+  };
 };
 
 const STREAM_AUTH_ERROR = "Session expired. Sign in again to reconnect the Assistant feed.";
@@ -212,18 +220,12 @@ function liveStatusLabel(status: LiveStatus): string {
   return "Connecting feed";
 }
 
-function readHandoff(searchParams: ReturnType<typeof useSearchParams>): AssistantHandoff | null {
-  const draft = searchParams.get("draft")?.trim() || "";
-  const artifactId = searchParams.get("artifact")?.trim() || "";
-  const source = searchParams.get("source")?.trim() || "";
-  if (!draft && !artifactId && !source) {
-    return null;
-  }
-  return {
-    artifactId: artifactId || null,
-    source: source || null,
-    draft,
-  };
+function readGenericDraft(searchParams: ReturnType<typeof useSearchParams>): string {
+  return searchParams.get("draft")?.trim() || "";
+}
+
+function readHandoffToken(searchParams: ReturnType<typeof useSearchParams>): string {
+  return searchParams.get("handoff")?.trim() || "";
 }
 
 function mutationHeaders(payload: Record<string, unknown>): Record<string, string> | undefined {
@@ -358,6 +360,8 @@ async function consumeAssistantStream({
 function AssistantPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const genericDraft = readGenericDraft(searchParams);
+  const handoffToken = readHandoffToken(searchParams);
   const { apiBase, token, isOnline, mutateWithQueue } = useSessionConfig();
   const clientTimezone =
     typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
@@ -375,6 +379,12 @@ function AssistantPageContent() {
   const [liveStatus, setLiveStatus] = useState<LiveStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
 
+  const applyAuthFailure = useCallback(() => {
+    authBlockedRef.current = true;
+    setLiveStatus("auth_required");
+    setError(STREAM_AUTH_ERROR);
+  }, []);
+
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
@@ -388,25 +398,76 @@ function AssistantPageContent() {
   }, [liveStatus]);
 
   useEffect(() => {
-    const nextHandoff = readHandoff(searchParams);
-    const draft = nextHandoff?.draft || "";
-    setHandoff(nextHandoff);
-    if (!draft || appliedDraftRef.current === draft) {
+    if (handoffToken) {
       return;
     }
+    setHandoff(null);
+  }, [handoffToken]);
 
-    appliedDraftRef.current = draft;
-    setComposer((current) => current.trim() ? current : draft);
+  useEffect(() => {
+    if (handoffToken || !genericDraft || appliedDraftRef.current === `draft:${genericDraft}`) {
+      return;
+    }
+    appliedDraftRef.current = `draft:${genericDraft}`;
+    setComposer((current) => current.trim() ? current : genericDraft);
     window.requestAnimationFrame(() => {
       composerRef.current?.focus();
     });
-  }, [searchParams]);
+  }, [genericDraft, handoffToken]);
 
-  const applyAuthFailure = useCallback(() => {
-    authBlockedRef.current = true;
-    setLiveStatus("auth_required");
-    setError(STREAM_AUTH_ERROR);
-  }, []);
+  useEffect(() => {
+    if (!handoffToken) {
+      return;
+    }
+    if (!token) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveHandoff = async () => {
+      try {
+        const payload = await apiRequest<AssistantResolveHandoffResponse>(
+          apiBase,
+          token,
+          `/v1/assistant/handoffs/resolve?token=${encodeURIComponent(handoffToken)}`,
+        );
+        if (cancelled) {
+          return;
+        }
+        const nextHandoff: AssistantHandoff = {
+          token: handoffToken,
+          artifactId: payload.handoff.artifact_id || null,
+          source: payload.handoff.source || null,
+          draft: payload.handoff.draft,
+        };
+        setHandoff(nextHandoff);
+        setError(null);
+        if (appliedDraftRef.current !== `handoff:${handoffToken}`) {
+          appliedDraftRef.current = `handoff:${handoffToken}`;
+          setComposer((current) => current.trim() ? current : nextHandoff.draft);
+          window.requestAnimationFrame(() => {
+            composerRef.current?.focus();
+          });
+        }
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        if (hasApiStatus(err, 401)) {
+          applyAuthFailure();
+          return;
+        }
+        setHandoff(null);
+        setError(err instanceof ApiError ? err.body : "The handoff could not be verified.");
+      }
+    };
+
+    void resolveHandoff();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, applyAuthFailure, handoffToken, token]);
 
   const loadSnapshot = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) {
@@ -597,11 +658,7 @@ function AssistantPageContent() {
               client_timezone: clientTimezone,
               ...(handoff
                 ? {
-                    handoff_context: {
-                      source: handoff.source,
-                      artifact_id: handoff.artifactId,
-                      draft: handoff.draft,
-                    },
+                    handoff_token: handoff.token,
                   }
                 : {}),
             },

@@ -470,7 +470,6 @@ test("recent capture handoff actions open Library and Assistant with capture con
           appName: "Codex",
           windowTitle: "Research",
           captureBackend: "browser-clipboard",
-          sourceUrl: "https://example.com/transformers",
         },
       ]),
     );
@@ -483,18 +482,50 @@ test("recent capture handoff actions open Library and Assistant with capture con
       window.__openedUrls.push(String(url));
       return null;
     };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = String(input);
+      if (url === "http://localhost:8000/v1/assistant/handoffs") {
+        const headers = new Headers(init?.headers);
+        if (headers.get("authorization") !== "Bearer token-123") {
+          throw new Error(`Unexpected auth header: ${headers.get("authorization")}`);
+        }
+        const payload = JSON.parse(String(init?.body || "{}"));
+        if (payload.source_surface !== "desktop_helper") {
+          throw new Error(`Unexpected source surface: ${String(payload.source_surface)}`);
+        }
+        if (payload.artifact_id !== "artifact-helper-1") {
+          throw new Error(`Unexpected artifact id: ${String(payload.artifact_id)}`);
+        }
+        if (payload.draft.includes("Source URL:")) {
+          throw new Error("Draft should not claim source URL support");
+        }
+        return new Response(
+          JSON.stringify({ token: "handoff-token-123" }),
+          {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      return realFetch(input, init);
+    };
   });
 
   await page.goto("/index.html");
+  await page.getByLabel("Bearer token").fill("token-123");
   await page.getByLabel("Web app base").fill("https://starlog.example");
 
   await page.getByRole("button", { name: "Open in Library" }).click();
   await page.getByRole("button", { name: "Ask Assistant" }).click();
 
+  await expect
+    .poll(async () => page.evaluate(() => (window.__openedUrls || []).length))
+    .toBe(2);
   const openedUrls = await page.evaluate(() => window.__openedUrls || []);
   expect(openedUrls).toEqual([
     "https://starlog.example/artifacts?artifact=artifact-helper-1",
-    "https://starlog.example/assistant?draft=Help%20me%20process%20this%20clipboard%20capture%20from%20Codex%20%2F%20Research.%0AArtifact%20ID%3A%20artifact-helper-1%0ACapture%20backend%3A%20browser-clipboard%0ASource%20URL%3A%20https%3A%2F%2Fexample.com%2Ftransformers%0ASummary%3A%20Keep%20the%20transformer%20note%20handy.&artifact=artifact-helper-1&source=desktop_helper",
+    "https://starlog.example/assistant?handoff=handoff-token-123",
   ]);
 });
 
