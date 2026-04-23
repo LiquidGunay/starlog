@@ -6,6 +6,17 @@ from app.services import conversation_card_service
 from app.services.common import new_id
 
 
+def normalize_part_status(status: str | None, *, default: str = "complete") -> str:
+    normalized = str(status or "").strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"completed", "ok", "done"}:
+        return "complete"
+    if normalized in {"failed", "failure"}:
+        return "error"
+    return normalized
+
+
 def text_part(text: str) -> dict[str, Any]:
     return {
         "type": "text",
@@ -93,6 +104,132 @@ def attachment_part(attachment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not isinstance(parts, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for raw_part in parts:
+        if not isinstance(raw_part, dict):
+            continue
+        part_type = str(raw_part.get("type") or "").strip()
+        if not part_type:
+            continue
+        part_id = str(raw_part.get("id") or new_id("part"))
+
+        if part_type == "text":
+            text = str(raw_part.get("text") or "").strip()
+            if text:
+                normalized.append({"type": "text", "id": part_id, "text": text})
+            continue
+
+        if part_type == "card":
+            card = raw_part.get("card")
+            if isinstance(card, dict):
+                normalized.append({"type": "card", "id": part_id, "card": conversation_card_service.normalize_card(card)})
+            continue
+
+        if part_type == "status":
+            status = normalize_part_status(raw_part.get("status"), default="complete")
+            label = raw_part.get("label")
+            normalized.append({"type": "status", "id": part_id, "status": status, "label": str(label) if label is not None else None})
+            continue
+
+        if part_type == "attachment":
+            attachment = raw_part.get("attachment")
+            if isinstance(attachment, dict):
+                normalized.append(
+                    {
+                        "type": "attachment",
+                        "id": part_id,
+                        "attachment": {
+                            "id": str(attachment.get("id") or new_id("attachment")),
+                            "kind": str(attachment.get("kind") or "file"),
+                            "label": str(attachment.get("label") or "Attachment"),
+                            "url": attachment.get("url"),
+                            "mime_type": attachment.get("mime_type"),
+                            "metadata": attachment.get("metadata") if isinstance(attachment.get("metadata"), dict) else {},
+                        },
+                    }
+                )
+            continue
+
+        if part_type == "ambient_update":
+            update = raw_part.get("update")
+            if isinstance(update, dict):
+                normalized.append(
+                    {
+                        "type": "ambient_update",
+                        "id": part_id,
+                        "update": {
+                            "id": str(update.get("id") or new_id("ambient")),
+                            "event_id": str(update.get("event_id") or new_id("event")),
+                            "label": str(update.get("label") or "").strip(),
+                            "body": str(update.get("body") or "").strip() or None,
+                            "entity_ref": update.get("entity_ref") if isinstance(update.get("entity_ref"), dict) else None,
+                            "actions": update.get("actions") if isinstance(update.get("actions"), list) else [],
+                            "metadata": update.get("metadata") if isinstance(update.get("metadata"), dict) else {},
+                            "created_at": str(update.get("created_at") or ""),
+                        },
+                    }
+                )
+            continue
+
+        if part_type == "tool_call":
+            tool_call = raw_part.get("tool_call")
+            if isinstance(tool_call, dict):
+                normalized.append(
+                    {
+                        "type": "tool_call",
+                        "id": part_id,
+                        "tool_call": {
+                            "id": str(tool_call.get("id") or new_id("tool")),
+                            "tool_name": str(tool_call.get("tool_name") or "").strip(),
+                            "tool_kind": str(tool_call.get("tool_kind") or "system_tool"),
+                            "status": normalize_part_status(tool_call.get("status"), default="complete"),
+                            "arguments": tool_call.get("arguments") if isinstance(tool_call.get("arguments"), dict) else {},
+                            "title": str(tool_call.get("title")) if tool_call.get("title") is not None else None,
+                            "metadata": tool_call.get("metadata") if isinstance(tool_call.get("metadata"), dict) else {},
+                        },
+                    }
+                )
+            continue
+
+        if part_type == "tool_result":
+            tool_result = raw_part.get("tool_result")
+            if isinstance(tool_result, dict):
+                card = tool_result.get("card")
+                normalized.append(
+                    {
+                        "type": "tool_result",
+                        "id": part_id,
+                        "tool_result": {
+                            "id": str(tool_result.get("id") or new_id("tool_result")),
+                            "tool_call_id": str(tool_result.get("tool_call_id") or new_id("tool")),
+                            "status": normalize_part_status(tool_result.get("status"), default="complete"),
+                            "output": tool_result.get("output") if isinstance(tool_result.get("output"), dict) else {},
+                            "card": conversation_card_service.normalize_card(card) if isinstance(card, dict) else None,
+                            "entity_ref": tool_result.get("entity_ref") if isinstance(tool_result.get("entity_ref"), dict) else None,
+                            "metadata": tool_result.get("metadata") if isinstance(tool_result.get("metadata"), dict) else {},
+                        },
+                    }
+                )
+            continue
+
+        if part_type == "interrupt_request":
+            interrupt = raw_part.get("interrupt")
+            if isinstance(interrupt, dict):
+                normalized.append({"type": "interrupt_request", "id": part_id, "interrupt": interrupt})
+            continue
+
+        if part_type == "interrupt_resolution":
+            resolution = raw_part.get("resolution")
+            if isinstance(resolution, dict):
+                normalized.append({"type": "interrupt_resolution", "id": part_id, "resolution": resolution})
+
+    return normalized
+
+
 def draft_task_card(*, title: str, priority: int = 3) -> dict[str, Any]:
     return conversation_card_service.normalize_card(
         {
@@ -153,6 +290,12 @@ def legacy_projection_from_parts(parts: list[dict[str, Any]]) -> tuple[str, list
             card = part.get("card")
             if isinstance(card, dict):
                 cards.append(conversation_card_service.normalize_card(card))
+        elif part_type == "tool_result":
+            tool_result = part.get("tool_result")
+            if isinstance(tool_result, dict):
+                card = tool_result.get("card")
+                if isinstance(card, dict):
+                    cards.append(conversation_card_service.normalize_card(card))
         elif part_type == "ambient_update":
             update = part.get("update")
             if isinstance(update, dict):

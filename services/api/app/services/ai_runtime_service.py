@@ -166,6 +166,7 @@ def execute_chat_turn(payload: dict) -> dict:
                 "system_prompt": str(decoded.get("system_prompt") or ""),
                 "user_prompt": str(decoded.get("user_prompt") or ""),
                 "response_text": str(decoded.get("response_text") or ""),
+                "parts": decoded.get("parts") if isinstance(decoded.get("parts"), list) else [],
                 "cards": decoded.get("cards") if isinstance(decoded.get("cards"), list) else [],
                 "tool_calls": decoded.get("tool_calls") if isinstance(decoded.get("tool_calls"), list) else [],
                 "interrupts": decoded.get("interrupts") if isinstance(decoded.get("interrupts"), list) else [],

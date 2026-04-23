@@ -32,6 +32,7 @@ class ChatTurnExecutionResponse(BaseModel):
     system_prompt: str
     user_prompt: str
     response_text: str
+    parts: list[dict[str, Any]] = Field(default_factory=list)
     cards: list[dict[str, Any]] = Field(default_factory=list)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     interrupts: list[dict[str, Any]] = Field(default_factory=list)

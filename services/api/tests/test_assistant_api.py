@@ -8,7 +8,7 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_thread_service, google_calendar_service
+from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_run_service, assistant_thread_service, google_calendar_service
 from app.services.common import new_id
 
 
@@ -187,6 +187,167 @@ def test_assistant_handoff_token_is_resolved_into_trusted_context(
         "draft": "Help me process this helper capture.",
     }
     assert "handoff_token" not in request_metadata
+
+
+def test_assistant_runtime_turn_prefers_native_parts_from_handoff_context(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_id = _create_test_artifact(title="Runtime helper handoff artifact")
+
+    create_handoff = client.post(
+        "/v1/assistant/handoffs",
+        json={
+            "source_surface": "desktop_helper",
+            "artifact_id": artifact_id,
+            "draft": "Help me process this helper capture.",
+        },
+        headers=auth_headers,
+    )
+    assert create_handoff.status_code == 201
+    handoff_token = create_handoff.json()["token"]
+
+    create_message = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "What should I do with this?",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {
+                "surface": "assistant_web",
+                "client_timezone": "UTC",
+                "handoff_token": handoff_token,
+            },
+        },
+        headers=auth_headers,
+    )
+
+    assert create_message.status_code == 201
+    assistant_message = create_message.json()["assistant_message"]
+    card_parts = [part for part in assistant_message["parts"] if part["type"] == "card"]
+    assert any(part["card"]["kind"] == "capture_item" for part in card_parts)
+    assert any(part["type"] == "status" and part["status"] == "complete" for part in assistant_message["parts"])
+    capture_card = next(part["card"] for part in card_parts if part["card"]["kind"] == "capture_item")
+    assert capture_card["metadata"]["projection"] == "runtime_handoff"
+    assert capture_card["metadata"]["artifact_id"] == artifact_id
+
+
+def test_assistant_runtime_turn_emits_tool_result_part_for_recent_trace(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create_card = client.post(
+        "/v1/cards",
+        json={
+            "prompt": "Explain spaced repetition.",
+            "answer": "Active recall over time.",
+            "card_type": "qa",
+            "due_at": (utc_now() - timedelta(hours=1)).isoformat(),
+        },
+        headers=auth_headers,
+    )
+    assert create_card.status_code == 201
+
+    seed_trace = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "load due cards",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert seed_trace.status_code == 201
+
+    runtime_turn = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "What should I focus on next?",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert runtime_turn.status_code == 201
+
+    assistant_message = runtime_turn.json()["assistant_message"]
+    tool_call_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_call")
+    assert tool_call_part["tool_call"]["tool_name"] == "list_due_cards"
+    assert tool_call_part["tool_call"]["status"] == "complete"
+    assert tool_call_part["tool_call"]["metadata"]["projection"] == "runtime_recent_trace"
+    tool_result_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_result")
+    assert tool_result_part["tool_result"]["tool_call_id"] == tool_call_part["tool_call"]["id"]
+    assert tool_result_part["tool_result"]["metadata"]["projection"] == "runtime_recent_trace"
+    assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "list_due_cards"
+    assert tool_result_part["tool_result"]["card"]["kind"] == "review_queue"
+
+    with get_connection() as conn:
+        trace_row = conn.execute(
+            """
+            SELECT result_json
+            FROM conversation_tool_traces
+            WHERE tool_name = 'chat_turn_runtime'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert trace_row is not None
+    trace_result = trace_row["result_json"]
+    if isinstance(trace_result, str):
+        trace_result = json.loads(trace_result)
+    trace_cards = trace_result["cards"]
+    assert any(card["kind"] == "review_queue" for card in trace_cards)
+
+
+def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    seed_trace = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Review runtime migration due tomorrow priority 4",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert seed_trace.status_code == 201
+
+    runtime_turn = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "What just changed?",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert runtime_turn.status_code == 201
+
+    assistant_message = runtime_turn.json()["assistant_message"]
+    tool_call_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_call")
+    assert tool_call_part["tool_call"]["tool_name"] == "create_task"
+    assert tool_call_part["tool_call"]["status"] == "complete"
+    tool_result_part = next(part for part in assistant_message["parts"] if part["type"] == "tool_result")
+    assert tool_result_part["tool_result"]["tool_call_id"] == tool_call_part["tool_call"]["id"]
+    assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "create_task"
+    assert tool_result_part["tool_result"]["card"]["kind"] == "task_list"
+
+    with get_connection() as conn:
+        thread = assistant_thread_service.get_thread(conn, "primary")
+        runtime_request = assistant_run_service._build_runtime_request(  # noqa: SLF001
+            conn,
+            thread_id=thread["id"],
+            content="What just changed next?",
+            metadata={"surface": "assistant_web", "client_timezone": "UTC"},
+        )
+    recent_message_cards = runtime_request["context"]["recent_messages"][-1]["cards"]
+    assert any(card["kind"] == "task_list" for card in recent_message_cards)
 
 
 def test_assistant_handoff_rejects_artifact_source_mismatch(

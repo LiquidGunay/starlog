@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, time, timezone
 from sqlite3 import Connection
+from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -422,6 +423,31 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
         """,
         (thread_id,),
     )
+    recent_tool_traces: list[dict[str, Any]] = []
+    for trace in traces:
+        result_payload = trace.get("result_json") if isinstance(trace.get("result_json"), dict) else {}
+        metadata_payload = trace.get("metadata_json") if isinstance(trace.get("metadata_json"), dict) else {}
+        projected_cards = conversation_card_service.project_step_cards(
+            conn,
+            SimpleNamespace(
+                tool_name=trace["tool_name"],
+                result=result_payload,
+                arguments={},
+                status=trace["status"],
+            ),
+        )
+        recent_tool_traces.append(
+            {
+                "id": trace["id"],
+                "message_id": trace.get("message_id"),
+                "tool_name": trace["tool_name"],
+                "status": trace["status"],
+                "result": result_payload,
+                "metadata": metadata_payload,
+                "created_at": trace["created_at"],
+                "projected_card": projected_cards[0] if projected_cards else None,
+            }
+        )
     return {
         "thread_id": snapshot["id"],
         "title": snapshot["title"],
@@ -434,18 +460,7 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
             },
             "session_state": snapshot.get("session_state", {}),
             "recent_messages": recent_messages,
-            "recent_tool_traces": [
-                {
-                    "id": trace["id"],
-                    "message_id": trace.get("message_id"),
-                    "tool_name": trace["tool_name"],
-                    "status": trace["status"],
-                    "result": trace.get("result_json") if isinstance(trace.get("result_json"), dict) else {},
-                    "metadata": trace.get("metadata_json") if isinstance(trace.get("metadata_json"), dict) else {},
-                    "created_at": trace["created_at"],
-                }
-                for trace in traces
-            ],
+            "recent_tool_traces": recent_tool_traces,
             "request_metadata": metadata,
             "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
             "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],
@@ -674,11 +689,23 @@ def _assistant_message_from_runtime_turn(
             }
         ]
     )
+    runtime_parts = assistant_projection_service.normalize_runtime_parts(
+        turn.get("parts") if isinstance(turn.get("parts"), list) else []
+    )
+    if runtime_parts:
+        if runtime_cards and not any(part.get("type") == "card" for part in runtime_parts):
+            runtime_parts.extend(assistant_projection_service.card_part(card) for card in runtime_cards)
+        if str(turn.get("response_text") or "").strip() and not any(part.get("type") == "text" for part in runtime_parts):
+            runtime_parts.insert(0, assistant_projection_service.text_part(str(turn.get("response_text") or "")))
+    else:
+        runtime_parts = assistant_projection_service.synthesize_parts_from_legacy(
+            content=str(turn.get("response_text") or ""),
+            cards=runtime_cards,
+        )
     suggestion_cards = conversation_card_service.memory_suggestion_cards(conn, surface="assistant", limit=2)
-    all_cards = runtime_cards + suggestion_cards
-    parts = [assistant_projection_service.text_part(str(turn.get("response_text") or ""))]
-    for card in all_cards:
-        parts.append(assistant_projection_service.card_part(card))
+    for card in suggestion_cards:
+        runtime_parts.append(assistant_projection_service.card_part(card))
+    response_text, all_cards = assistant_projection_service.legacy_projection_from_parts(runtime_parts)
     assistant_message = assistant_thread_service.append_message(
         conn,
         thread_id=thread_id,
@@ -697,7 +724,7 @@ def _assistant_message_from_runtime_turn(
             "device_target": device_target,
             "request_metadata": metadata,
         },
-        parts=parts,
+        parts=runtime_parts,
     )
     _record_step(
         conn,
@@ -710,8 +737,9 @@ def _assistant_message_from_runtime_turn(
         status="completed",
         arguments={"content": content},
         result={
-            "response_text": str(turn.get("response_text") or ""),
+            "response_text": response_text,
             "cards": all_cards,
+            "parts": runtime_parts,
         },
         message_id=assistant_message["id"],
         metadata={
@@ -727,7 +755,7 @@ def _assistant_message_from_runtime_turn(
         tool_name="chat_turn_runtime",
         arguments={"content": content},
         status="completed",
-        result={"response_text": str(turn.get("response_text") or ""), "cards": all_cards},
+        result={"response_text": response_text, "cards": all_cards, "parts": runtime_parts},
         metadata={
             "workflow": turn.get("workflow") or "chat_turn",
             "provider_used": turn.get("provider_used") or "local_prompt_preview",
@@ -743,12 +771,12 @@ def _assistant_message_from_runtime_turn(
             **(turn.get("session_state") if isinstance(turn.get("session_state"), dict) else {}),
             "last_turn_kind": "chat_turn",
             "last_user_message": content,
-            "last_assistant_response": str(turn.get("response_text") or ""),
+            "last_assistant_response": response_text,
             "last_chat_turn_provider": turn.get("provider_used") or "local_prompt_preview",
             "last_chat_turn_model": turn.get("model") or "",
         },
     )
-    _update_run(conn, run_id=run_id, status="completed", summary=str(turn.get("response_text") or ""))
+    _update_run(conn, run_id=run_id, status="completed", summary=response_text)
     return assistant_message
 
 
