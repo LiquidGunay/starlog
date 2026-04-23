@@ -100,16 +100,16 @@ def _secondary_auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token.plain}"}
 
 
-def _create_test_artifact(*, title: str = "Test artifact") -> str:
+def _create_test_artifact(*, title: str = "Test artifact", source_type: str = "clip_desktop_helper", metadata: dict | None = None) -> str:
     with get_connection() as conn:
         artifact = artifacts_service.create_artifact(
             conn,
-            source_type="clip_desktop_helper",
+            source_type=source_type,
             title=title,
             raw_content="raw artifact text",
             normalized_content="normalized artifact text",
             extracted_content="extracted artifact text",
-            metadata={"capture_source": "desktop_helper"},
+            metadata=metadata or {"capture": {"capture_source": "desktop_helper"}},
         )
     return str(artifact["id"])
 
@@ -187,6 +187,29 @@ def test_assistant_handoff_token_is_resolved_into_trusted_context(
         "draft": "Help me process this helper capture.",
     }
     assert "handoff_token" not in request_metadata
+
+
+def test_assistant_handoff_rejects_artifact_source_mismatch(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_id = _create_test_artifact(
+        title="Manual artifact",
+        source_type="clip_manual",
+        metadata={"capture": {"capture_source": "manual_entry"}},
+    )
+
+    create_handoff = client.post(
+        "/v1/assistant/handoffs",
+        json={
+            "source_surface": "desktop_helper",
+            "artifact_id": artifact_id,
+            "draft": "Pretend this came from the helper.",
+        },
+        headers=auth_headers,
+    )
+    assert create_handoff.status_code == 400
+    assert "source_surface=library" in create_handoff.text
 
 
 def test_untrusted_client_handoff_context_is_stripped_without_token(

@@ -11,14 +11,28 @@ HANDOFF_TOKEN_PURPOSE = "assistant_handoff"
 HANDOFF_TOKEN_TTL_SECONDS = 15 * 60
 
 
-def _validated_artifact_id(conn: Connection, artifact_id: str | None) -> str | None:
+def _artifact_capture_source(artifact: dict) -> str:
+    metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
+    capture = metadata.get("capture") if isinstance(metadata.get("capture"), dict) else {}
+    return str(capture.get("capture_source") or metadata.get("capture_source") or "").strip().lower()
+
+
+def _artifact_handoff_source(artifact: dict) -> str:
+    capture_source = _artifact_capture_source(artifact)
+    source_type = str(artifact.get("source_type") or "").strip().lower()
+    if capture_source.startswith("desktop_helper") or source_type == "clip_desktop_helper":
+        return "desktop_helper"
+    return "library"
+
+
+def _validated_artifact(conn: Connection, artifact_id: str | None) -> dict | None:
     normalized = str(artifact_id or "").strip() or None
     if normalized is None:
         return None
     artifact = artifacts_service.get_artifact(conn, normalized)
     if artifact is None:
         raise LookupError(f"Artifact not found: {normalized}")
-    return normalized
+    return artifact
 
 
 def _handoff_payload(*, user_id: str, source: str, artifact_id: str | None, draft: str) -> dict[str, str]:
@@ -42,10 +56,19 @@ def issue_handoff(
     if not normalized_draft:
         raise ValueError("Handoff draft cannot be empty")
 
-    validated_artifact_id = _validated_artifact_id(conn, artifact_id)
+    artifact = _validated_artifact(conn, artifact_id)
+    validated_artifact_id = str(artifact.get("id")) if artifact else None
+    resolved_source = source
+    if artifact is not None:
+        resolved_source = _artifact_handoff_source(artifact)
+        if source != resolved_source:
+            raise ValueError(
+                f"Artifact origin requires source_surface={resolved_source}, not {source}"
+            )
+
     payload = _handoff_payload(
         user_id=user_id,
-        source=source,
+        source=resolved_source,
         artifact_id=validated_artifact_id,
         draft=normalized_draft,
     )
@@ -58,7 +81,7 @@ def issue_handoff(
     return {
         "token": token,
         "handoff": {
-            "source": source,
+            "source": resolved_source,
             "artifact_id": validated_artifact_id,
             "draft": normalized_draft,
         },
@@ -78,7 +101,10 @@ def resolve_handoff(conn: Connection, *, token: str, user_id: str) -> dict:
     draft = str(payload.get("draft") or "").strip()
     if not draft:
         raise ValueError("Handoff token is missing a draft")
-    artifact_id = _validated_artifact_id(conn, payload.get("artifact_id"))
+    artifact = _validated_artifact(conn, payload.get("artifact_id"))
+    artifact_id = str(artifact.get("id")) if artifact else None
+    if artifact is not None:
+        source = _artifact_handoff_source(artifact)
 
     return {
         "source": source,
