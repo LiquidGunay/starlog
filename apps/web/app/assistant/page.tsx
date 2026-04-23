@@ -11,12 +11,12 @@ import type {
   AssistantThreadMessage,
   AssistantThreadSnapshot,
 } from "@starlog/contracts";
-import { PRODUCT_SURFACES } from "@starlog/contracts";
 
 import { MainRoomThread } from "../components/main-room-thread";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
+import { summarizeSupportSurfaces } from "./support-surfaces";
 import styles from "./page.module.css";
 
 type AssistantStreamEnvelope = {
@@ -38,14 +38,6 @@ type AssistantResolveHandoffResponse = {
     source?: string | null;
     draft: string;
   };
-};
-type SupportSurfaceKey = "library" | "planner" | "review";
-type SupportSurfaceState = {
-  key: SupportSurfaceKey;
-  title: string;
-  href: string;
-  summary: string;
-  active: boolean;
 };
 
 const STREAM_AUTH_ERROR = "Session expired. Sign in again to reconnect the Assistant feed.";
@@ -267,111 +259,6 @@ function hasContentTypeHeader(headers?: Record<string, string>): boolean {
     return false;
   }
   return Object.keys(headers).some((key) => key.toLowerCase() === "content-type");
-}
-
-function supportSurfaceForEntityType(entityType: string): SupportSurfaceKey | null {
-  if (entityType === "artifact" || entityType === "note" || entityType === "memory_page") {
-    return "library";
-  }
-  if (entityType === "task" || entityType === "briefing" || entityType === "planner_conflict") {
-    return "planner";
-  }
-  if (entityType === "card" || entityType === "review_queue") {
-    return "review";
-  }
-  return null;
-}
-
-function summarizeSupportSurfaces(
-  snapshot: AssistantThreadSnapshot | null,
-  handoff: AssistantHandoff | null,
-): SupportSurfaceState[] {
-  const items: Record<SupportSurfaceKey, Set<string>> = {
-    library: new Set<string>(),
-    planner: new Set<string>(),
-    review: new Set<string>(),
-  };
-  const notes: Record<SupportSurfaceKey, string[]> = {
-    library: [],
-    planner: [],
-    review: [],
-  };
-  const track = (surface: SupportSurfaceKey, key: string, note?: string) => {
-    items[surface].add(key);
-    if (note && !notes[surface].includes(note)) {
-      notes[surface].push(note);
-    }
-  };
-
-  if (handoff?.artifactId) {
-    track("library", `handoff:${handoff.artifactId}`, "Helper handoff is attached");
-  }
-
-  for (const interrupt of snapshot?.interrupts || []) {
-    if (interrupt.status !== "pending") {
-      continue;
-    }
-    if (interrupt.tool_name === "triage_capture") {
-      track("library", `interrupt:${interrupt.id}`, interrupt.title);
-    } else if (
-      interrupt.tool_name === "resolve_planner_conflict" ||
-      interrupt.tool_name === "request_due_date" ||
-      interrupt.tool_name === "choose_morning_focus"
-    ) {
-      track("planner", `interrupt:${interrupt.id}`, interrupt.title);
-    } else if (interrupt.tool_name === "grade_review_recall") {
-      track("review", `interrupt:${interrupt.id}`, interrupt.title);
-    }
-  }
-
-  for (const message of snapshot?.messages || []) {
-    for (const part of message.parts) {
-      if (part.type === "card") {
-        if (part.card.kind === "capture_item" || part.card.kind === "knowledge_note" || part.card.kind === "memory_suggestion") {
-          track("library", `card:${part.id}`);
-        } else if (part.card.kind === "task_list" || part.card.kind === "briefing") {
-          track("planner", `card:${part.id}`);
-        } else if (part.card.kind === "review_queue") {
-          track("review", `card:${part.id}`);
-        }
-      }
-      if (part.type === "ambient_update" && part.update.entity_ref) {
-        const supportSurface = supportSurfaceForEntityType(part.update.entity_ref.entity_type);
-        if (supportSurface) {
-          track(supportSurface, `ambient:${part.update.id}`);
-        }
-      }
-      if (part.type === "interrupt_request" && part.interrupt.entity_ref) {
-        const supportSurface = supportSurfaceForEntityType(part.interrupt.entity_ref.entity_type);
-        if (supportSurface) {
-          track(supportSurface, `interrupt:${part.interrupt.id}`);
-        }
-      }
-    }
-  }
-
-  return (["library", "planner", "review"] as const).map((key) => {
-    const surface = PRODUCT_SURFACES[key];
-    const count = items[key].size;
-    const note = notes[key][0];
-    let summary = surface.description;
-    if (count > 0) {
-      const noun = key === "planner" ? "planning item" : key === "review" ? "review item" : "knowledge item";
-      const verb = count === 1 ? "is" : "are";
-      summary = note
-        ? `${note}. ${count} ${noun}${count === 1 ? "" : "s"} ${verb} active from this thread.`
-        : `${count} ${noun}${count === 1 ? "" : "s"} ${verb} active from this thread.`;
-    } else if (key === "library" && handoff) {
-      summary = "A support-surface draft is in progress. Keep the thread anchored to the captured source or open Library for deeper editing.";
-    }
-    return {
-      key,
-      title: surface.label,
-      href: surface.href,
-      summary,
-      active: count > 0 || (key === "library" && Boolean(handoff)),
-    };
-  });
 }
 
 function parseStreamEnvelope(block: string): AssistantStreamEnvelope | null {

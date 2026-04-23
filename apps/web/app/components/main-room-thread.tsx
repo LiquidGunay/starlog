@@ -14,6 +14,7 @@ import type {
   AssistantThreadSnapshot,
 } from "@starlog/contracts";
 
+import { supportSurfaceActionLabel } from "../assistant/support-surfaces";
 import { getConversationCardRegistryEntry } from "./conversation-card-registry";
 import styles from "./main-room-thread.module.css";
 
@@ -99,20 +100,6 @@ function renderField(
   });
 }
 
-function entityActionLabel(entityRef: AssistantEntityRef): string {
-  const entityType = entityRef.entity_type;
-  if (entityType === "artifact" || entityType === "note" || entityType === "memory_page") {
-    return "Open in Library";
-  }
-  if (entityType === "task" || entityType === "briefing" || entityType === "planner_conflict") {
-    return "Open in Planner";
-  }
-  if (entityType === "card" || entityType === "review_queue") {
-    return "Open in Review";
-  }
-  return "Open item";
-}
-
 function cardMetadataBadges(card: AssistantCard): string[] {
   const metadata = card.metadata || {};
   const badges: string[] = [];
@@ -185,7 +172,7 @@ function EntityLink({ entityRef }: { entityRef: AssistantEntityRef | null | unde
 
   return (
     <a className={styles.entityLink} href={entityRef.href}>
-      {entityActionLabel(entityRef)}
+      {supportSurfaceActionLabel(entityRef)}
     </a>
   );
 }

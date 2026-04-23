@@ -344,6 +344,278 @@ test("desktop helper handoff metadata is attached when the draft is sent", async
   );
 });
 
+test("support surfaces dedupe repeated entities across the current thread tail", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      messages: [
+        {
+          id: "msg_note_1",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "card",
+              id: "part_note_1",
+              card: {
+                kind: "knowledge_note",
+                version: 1,
+                title: "Meeting note",
+                body: "First pass.",
+                entity_ref: {
+                  entity_type: "note",
+                  entity_id: "note_dup_1",
+                  href: "/artifacts?note=note_dup_1",
+                  title: "Meeting note",
+                },
+                actions: [],
+                metadata: {
+                  note_id: "note_dup_1",
+                },
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:01:00.000Z",
+          updated_at: "2026-04-21T09:01:00.000Z",
+        },
+        {
+          id: "msg_note_2",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "card",
+              id: "part_note_2",
+              card: {
+                kind: "knowledge_note",
+                version: 1,
+                title: "Meeting note",
+                body: "Updated pass.",
+                entity_ref: {
+                  entity_type: "note",
+                  entity_id: "note_dup_1",
+                  href: "/artifacts?note=note_dup_1",
+                  title: "Meeting note",
+                },
+                actions: [],
+                metadata: {
+                  note_id: "note_dup_1",
+                  version: 2,
+                },
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:02:00.000Z",
+          updated_at: "2026-04-21T09:02:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("1 knowledge item is active from this thread.")).toBeVisible();
+  await expect(page.getByText("2 knowledge items are active from this thread.")).toHaveCount(0);
+});
+
+test("resolved planner activity no longer keeps the planner surface active", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      interrupts: [
+        {
+          id: "interrupt_conflict_done_1",
+          thread_id: "thr_primary",
+          run_id: "run_conflict_done_1",
+          status: "submitted",
+          interrupt_type: "choice",
+          tool_name: "resolve_planner_conflict",
+          title: "Resolve scheduling conflict",
+          body: "Choose how Starlog should resolve this overlap.",
+          entity_ref: { entity_type: "planner_conflict", entity_id: "conflict_done_1", href: "/planner" },
+          fields: [],
+          primary_label: "Apply choice",
+          secondary_label: "Open Planner",
+          metadata: {},
+          created_at: "2026-04-21T09:08:00.000Z",
+          resolved_at: "2026-04-21T09:09:00.000Z",
+          resolution: {
+            id: "resolution_conflict_done_1",
+            interrupt_id: "interrupt_conflict_done_1",
+            action: "submit",
+            values: {
+              resolution: "local_wins",
+            },
+            metadata: {},
+            created_at: "2026-04-21T09:09:00.000Z",
+          },
+        },
+      ],
+      messages: [
+        {
+          id: "msg_conflict_old",
+          thread_id: "thr_primary",
+          run_id: "run_conflict_done_1",
+          role: "assistant",
+          status: "requires_action",
+          parts: [
+            {
+              type: "interrupt_request",
+              id: "part_conflict_old",
+              interrupt: {
+                id: "interrupt_conflict_done_1",
+                thread_id: "thr_primary",
+                run_id: "run_conflict_done_1",
+                status: "pending",
+                interrupt_type: "choice",
+                tool_name: "resolve_planner_conflict",
+                title: "Resolve scheduling conflict",
+                body: "Choose how Starlog should resolve this overlap.",
+                entity_ref: { entity_type: "planner_conflict", entity_id: "conflict_done_1", href: "/planner" },
+                fields: [],
+                primary_label: "Apply choice",
+                secondary_label: "Open Planner",
+                metadata: {},
+                created_at: "2026-04-21T09:08:00.000Z",
+                resolved_at: null,
+                resolution: {},
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:08:00.000Z",
+          updated_at: "2026-04-21T09:08:00.000Z",
+        },
+        {
+          id: "msg_conflict_resolved",
+          thread_id: "thr_primary",
+          run_id: null,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "ambient_update",
+              id: "part_conflict_resolved",
+              update: {
+                id: "ambient_conflict_resolved",
+                event_id: "evt_conflict_resolved",
+                label: "Planner conflict resolved",
+                body: "Team Sync was resolved in Planner with local wins.",
+                entity_ref: {
+                  entity_type: "planner_conflict",
+                  entity_id: "conflict_done_1",
+                  href: "/planner",
+                  title: "Team Sync",
+                },
+                actions: [],
+                metadata: {},
+                created_at: "2026-04-21T09:09:00.000Z",
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:09:00.000Z",
+          updated_at: "2026-04-21T09:09:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("Planner conflict resolved")).toBeVisible();
+  await expect(page.getByText("Tasks, calendar, time blocks, and briefings.")).toBeVisible();
+  await expect(page.getByText("1 planning item is active from this thread.")).toHaveCount(0);
+});
+
+test("tool results can activate support surfaces without top-level cards", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      messages: [
+        {
+          id: "msg_tool_only",
+          thread_id: "thr_primary",
+          run_id: "run_tool_only",
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "tool_result",
+              id: "part_tool_result_review",
+              tool_result: {
+                id: "tool_result_review",
+                tool_call_id: "tool_call_review",
+                status: "complete",
+                output: {
+                  cards_ready: 3,
+                },
+                card: {
+                  kind: "review_queue",
+                  version: 1,
+                  title: "Review queue",
+                  body: "Three cards are ready now.",
+                  entity_ref: {
+                    entity_type: "card",
+                    entity_id: "card_from_tool_1",
+                    href: "/review",
+                    title: "Tool card",
+                  },
+                  actions: [],
+                  metadata: {
+                    due_count: 3,
+                    card_id: "card_from_tool_1",
+                  },
+                },
+                metadata: {},
+              },
+            },
+            {
+              type: "tool_result",
+              id: "part_tool_result_planner",
+              tool_result: {
+                id: "tool_result_planner",
+                tool_call_id: "tool_call_planner",
+                status: "complete",
+                output: {
+                  briefing_id: "briefing_from_tool_1",
+                },
+                entity_ref: {
+                  entity_type: "briefing",
+                  entity_id: "briefing_from_tool_1",
+                  href: "/planner?briefing=briefing_from_tool_1",
+                  title: "2026-04-21",
+                },
+                metadata: {},
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:10:00.000Z",
+          updated_at: "2026-04-21T09:10:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("1 review item is active from this thread.")).toBeVisible();
+  await expect(page.getByText("1 planning item is active from this thread.")).toBeVisible();
+});
+
 test("navigation and composer card actions stay live in the assistant thread", async ({ page }) => {
   await seedSession(page);
   await routeAssistantShell(
