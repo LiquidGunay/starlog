@@ -1,8 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { AssistantCardAction, AssistantInterrupt, AssistantThreadMessage, AssistantThreadSnapshot } from "@starlog/contracts";
+import type {
+  AssistantAttachment,
+  AssistantAmbientUpdate,
+  AssistantCard,
+  AssistantCardAction,
+  AssistantEntityRef,
+  AssistantInterrupt,
+  AssistantToolCall,
+  AssistantToolResult,
+  AssistantThreadMessage,
+  AssistantThreadSnapshot,
+} from "@starlog/contracts";
 
+import { getConversationCardRegistryEntry } from "./conversation-card-registry";
 import styles from "./main-room-thread.module.css";
 
 type MainRoomThreadProps = {
@@ -87,6 +99,351 @@ function renderField(
   });
 }
 
+function entityActionLabel(entityRef: AssistantEntityRef): string {
+  const entityType = entityRef.entity_type;
+  if (entityType === "artifact" || entityType === "note" || entityType === "memory_page") {
+    return "Open in Library";
+  }
+  if (entityType === "task" || entityType === "briefing" || entityType === "planner_conflict") {
+    return "Open in Planner";
+  }
+  if (entityType === "card" || entityType === "review_queue") {
+    return "Open in Review";
+  }
+  return "Open item";
+}
+
+function cardMetadataBadges(card: AssistantCard): string[] {
+  const metadata = card.metadata || {};
+  const badges: string[] = [];
+
+  if (card.kind === "review_queue") {
+    const dueCount = Number(metadata.due_count);
+    if (Number.isFinite(dueCount) && dueCount > 0) {
+      badges.push(`${dueCount} due now`);
+    }
+  }
+
+  if (card.kind === "task_list") {
+    const taskCount = Number(metadata.task_count);
+    if (Number.isFinite(taskCount) && taskCount > 0) {
+      badges.push(`${taskCount} task${taskCount === 1 ? "" : "s"}`);
+    }
+  }
+
+  if (card.kind === "briefing") {
+    if (typeof metadata.date === "string" && metadata.date.trim()) {
+      badges.push(metadata.date.trim());
+    }
+    if (typeof metadata.audio_ref === "string" && metadata.audio_ref.trim()) {
+      badges.push("Audio cached");
+    } else if (typeof metadata.briefing_id === "string" && metadata.briefing_id.trim()) {
+      badges.push("Thread prompt ready");
+    }
+  }
+
+  if (card.kind === "capture_item") {
+    if (typeof metadata.source_type === "string" && metadata.source_type.trim()) {
+      badges.push(metadata.source_type.trim().replace(/_/g, " "));
+    }
+    if (typeof metadata.artifact_id === "string" && metadata.artifact_id.trim()) {
+      badges.push(`Artifact ${metadata.artifact_id.trim()}`);
+    }
+  }
+
+  if (card.kind === "knowledge_note") {
+    const version = Number(metadata.version);
+    if (Number.isFinite(version) && version > 0) {
+      badges.push(`v${version}`);
+    }
+    if (metadata.search_result === true) {
+      badges.push("Search match");
+    }
+  }
+
+  if (card.kind === "memory_suggestion") {
+    if (typeof metadata.suggestion_type === "string" && metadata.suggestion_type.trim()) {
+      badges.push(metadata.suggestion_type.trim().replace(/_/g, " "));
+    }
+    const weight = Number(metadata.weight);
+    if (Number.isFinite(weight) && weight > 0) {
+      badges.push(`Weight ${weight.toFixed(1)}`);
+    }
+  }
+
+  if (metadata.draft === true) {
+    badges.push("Draft");
+  }
+
+  return badges;
+}
+
+function EntityLink({ entityRef }: { entityRef: AssistantEntityRef | null | undefined }) {
+  if (!entityRef?.href) {
+    return null;
+  }
+
+  return (
+    <a className={styles.entityLink} href={entityRef.href}>
+      {entityActionLabel(entityRef)}
+    </a>
+  );
+}
+
+function attachmentActionLabel(attachment: AssistantAttachment): string {
+  if (attachment.kind === "audio") {
+    return "Open audio";
+  }
+  if (attachment.kind === "image") {
+    return "Open image";
+  }
+  if (attachment.kind === "citation") {
+    return "Open source";
+  }
+  if (attachment.kind === "artifact") {
+    return "Open artifact";
+  }
+  return "Open attachment";
+}
+
+function summarizeOutput(output: Record<string, unknown>): Array<[string, string]> {
+  return Object.entries(output)
+    .filter((entry) => entry[1] !== null && entry[1] !== undefined)
+    .slice(0, 4)
+    .map(([key, value]) => {
+      if (typeof value === "string") {
+        return [key, value];
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        return [key, String(value)];
+      }
+      if (Array.isArray(value)) {
+        return [key, `${value.length} item${value.length === 1 ? "" : "s"}`];
+      }
+      if (typeof value === "object" && value) {
+        const fieldCount = Object.keys(value).length;
+        return [key, `${fieldCount} field${fieldCount === 1 ? "" : "s"}`];
+      }
+      return [key, String(value)];
+    });
+}
+
+function toolStatusSummary(toolCall: AssistantToolCall): string {
+  if (toolCall.status === "requires_action") {
+    return "Awaiting thread decision";
+  }
+  if (toolCall.status === "running") {
+    return "Running now";
+  }
+  if (toolCall.status === "queued") {
+    return "Queued to run";
+  }
+  if (toolCall.status === "error") {
+    return "Tool execution failed";
+  }
+  if (toolCall.status === "cancelled") {
+    return "Tool execution cancelled";
+  }
+  return "Completed";
+}
+
+function CardSection({
+  card,
+  busy,
+  onCardAction,
+}: {
+  card: AssistantCard;
+  busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  const registry = getConversationCardRegistryEntry(card.kind, card.title);
+  const badges = cardMetadataBadges(card);
+
+  return (
+    <section className={`${styles.card} ${styles[`cardTone_${registry.tone}`] || ""}`}>
+      <div className={styles.cardHeader}>
+        <div className={styles.cardEyebrow}>
+          <span className={styles.cardGlyph}>{registry.glyph || "•"}</span>
+          <span>{registry.label}</span>
+        </div>
+        <EntityLink entityRef={card.entity_ref} />
+      </div>
+      {card.title ? <h3>{card.title}</h3> : null}
+      {card.body ? <p className={styles.cardBody}>{card.body}</p> : null}
+      {badges.length > 0 ? (
+        <div className={styles.badges}>
+          {badges.map((badge) => (
+            <span key={`${card.kind}-${badge}`} className={styles.badge}>
+              {badge}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {card.actions.length > 0 ? (
+        <div className={styles.actions}>
+          {card.actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
+              onClick={() => void onCardAction(action)}
+              disabled={busy}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AmbientUpdateSection({
+  update,
+  busy,
+  onCardAction,
+}: {
+  update: AssistantAmbientUpdate;
+  busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  return (
+    <div className={styles.ambientDetail}>
+      <div className={styles.ambientCopy}>
+        <div className={styles.ambientTitleRow}>
+          <strong>{update.label}</strong>
+          <EntityLink entityRef={update.entity_ref} />
+        </div>
+        {update.body ? <span>{update.body}</span> : null}
+      </div>
+      {update.actions && update.actions.length > 0 ? (
+        <div className={styles.actions}>
+          {update.actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
+              onClick={() => void onCardAction(action)}
+              disabled={busy}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ToolResultSection({
+  result,
+  busy,
+  onCardAction,
+}: {
+  result: AssistantToolResult;
+  busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  const rows = summarizeOutput(result.output || {});
+  const badges = [result.status.replace(/_/g, " "), `${Object.keys(result.output || {}).length} field${Object.keys(result.output || {}).length === 1 ? "" : "s"}`];
+
+  return (
+    <section className={styles.toolResultPanel}>
+      <div className={styles.cardHeader}>
+        <div className={styles.cardEyebrow}>
+          <span className={styles.cardGlyph}>⊹</span>
+          <span>Tool result</span>
+        </div>
+        <EntityLink entityRef={result.entity_ref} />
+      </div>
+      <div className={styles.badges}>
+        {badges.map((badge) => (
+          <span key={`${result.id}-${badge}`} className={styles.badge}>
+            {badge}
+          </span>
+        ))}
+      </div>
+      {rows.length > 0 ? (
+        <dl className={styles.outputGrid}>
+          {rows.map(([key, value]) => (
+            <div key={`${result.id}-${key}`} className={styles.outputRow}>
+              <dt>{key.replace(/_/g, " ")}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {result.card ? <CardSection card={result.card} busy={busy} onCardAction={onCardAction} /> : null}
+    </section>
+  );
+}
+
+function ToolCallSection({ toolCall }: { toolCall: AssistantToolCall }) {
+  const argumentRows = summarizeOutput(toolCall.arguments || {});
+  const badges = [toolCall.tool_kind.replace(/_/g, " "), toolCall.status.replace(/_/g, " ")];
+
+  return (
+    <section className={styles.toolCallPanel}>
+      <div className={styles.cardHeader}>
+        <div className={styles.cardEyebrow}>
+          <span className={styles.cardGlyph}>⋯</span>
+          <span>Tool call</span>
+        </div>
+      </div>
+      <h3>{toolCall.title || toolCall.tool_name}</h3>
+      <p className={styles.cardBody}>{toolStatusSummary(toolCall)}</p>
+      <div className={styles.badges}>
+        {badges.map((badge) => (
+          <span key={`${toolCall.id}-${badge}`} className={styles.badge}>
+            {badge}
+          </span>
+        ))}
+      </div>
+      {argumentRows.length > 0 ? (
+        <dl className={styles.outputGrid}>
+          {argumentRows.map(([key, value]) => (
+            <div key={`${toolCall.id}-${key}`} className={styles.outputRow}>
+              <dt>{key.replace(/_/g, " ")}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </section>
+  );
+}
+
+function AttachmentSection({ attachment }: { attachment: AssistantAttachment }) {
+  const badges: string[] = [attachment.kind];
+  if (attachment.mime_type) {
+    badges.push(attachment.mime_type);
+  }
+
+  return (
+    <section className={styles.attachmentPanel}>
+      <div className={styles.cardHeader}>
+        <div className={styles.cardEyebrow}>
+          <span className={styles.cardGlyph}>⎘</span>
+          <span>Attachment</span>
+        </div>
+        {attachment.url ? (
+          <a className={styles.entityLink} href={attachment.url}>
+            {attachmentActionLabel(attachment)}
+          </a>
+        ) : null}
+      </div>
+      <strong>{attachment.label}</strong>
+      <div className={styles.badges}>
+        {badges.map((badge) => (
+          <span key={`${attachment.id}-${badge}`} className={styles.badge}>
+            {badge}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function MessagePart({
   message,
   interruptById,
@@ -131,51 +488,22 @@ function MessagePart({
           }
           if (part.type === "ambient_update") {
             return (
-              <div key={part.id} className={styles.ambient}>
-                <strong>{part.update.label}</strong>
-                {part.update.body ? <span>{part.update.body}</span> : null}
-              </div>
+              <AmbientUpdateSection
+                key={part.id}
+                update={part.update}
+                busy={busy}
+                onCardAction={onCardAction}
+              />
             );
           }
           if (part.type === "card") {
-            return (
-              <section key={part.id} className={styles.card}>
-                <p className={styles.cardKind}>{part.card.kind.replace(/_/g, " ")}</p>
-                {part.card.title ? <h3>{part.card.title}</h3> : null}
-                {part.card.body ? <p>{part.card.body}</p> : null}
-                {part.card.actions.length > 0 ? (
-                  <div className={styles.actions}>
-                    {part.card.actions.map((action) => (
-                      <button
-                        key={action.id}
-                        type="button"
-                        className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
-                        onClick={() => void onCardAction(action)}
-                        disabled={busy}
-                      >
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-            );
+            return <CardSection key={part.id} card={part.card} busy={busy} onCardAction={onCardAction} />;
           }
           if (part.type === "tool_call") {
-            return (
-              <div key={part.id} className={styles.toolCall}>
-                <strong>{part.tool_call.tool_name}</strong>
-                <span>{part.tool_call.status}</span>
-              </div>
-            );
+            return <ToolCallSection key={part.id} toolCall={part.tool_call} />;
           }
           if (part.type === "tool_result") {
-            return (
-              <div key={part.id} className={styles.toolResult}>
-                <strong>Tool result</strong>
-                <span>{Object.keys(part.tool_result.output || {}).length} fields returned</span>
-              </div>
-            );
+            return <ToolResultSection key={part.id} result={part.tool_result} busy={busy} onCardAction={onCardAction} />;
           }
           if (part.type === "interrupt_resolution") {
             return (
@@ -187,17 +515,14 @@ function MessagePart({
           }
           if (part.type === "status") {
             return (
-              <div key={part.id} className={styles.status}>
-                {part.label || part.status}
+              <div key={part.id} className={styles.statusPanel}>
+                <strong>Status</strong>
+                <span>{part.label || part.status}</span>
               </div>
             );
           }
           if (part.type === "attachment") {
-            return (
-              <div key={part.id} className={styles.attachment}>
-                {part.attachment.label}
-              </div>
-            );
+            return <AttachmentSection key={part.id} attachment={part.attachment} />;
           }
           if (part.type === "interrupt_request") {
             const liveInterrupt = interruptById[part.interrupt.id] || part.interrupt;
@@ -222,7 +547,10 @@ function MessagePart({
             }
             return (
               <section key={part.id} className={styles.panel}>
-                <p className={styles.cardKind}>{liveInterrupt.tool_name.replace(/_/g, " ")}</p>
+                <div className={styles.cardHeader}>
+                  <p className={styles.cardKind}>{liveInterrupt.tool_name.replace(/_/g, " ")}</p>
+                  <EntityLink entityRef={liveInterrupt.entity_ref} />
+                </div>
                 <h3>{liveInterrupt.title}</h3>
                 {liveInterrupt.body ? <p>{liveInterrupt.body}</p> : null}
                 <div className={styles.panelFields}>{renderField(liveInterrupt, values, setValues)}</div>
