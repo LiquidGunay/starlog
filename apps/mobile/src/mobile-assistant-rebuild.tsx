@@ -54,6 +54,17 @@ type MobileAssistantRebuildProps = {
 };
 
 type ThreadLens = "live" | "artifacts" | "actions";
+type PanelTone = "focus" | "task" | "capture" | "conflict" | "review" | "clarify" | "defer" | "default";
+
+const DYNAMIC_PANEL_TOOL_TONES: Record<string, PanelTone> = {
+  choose_morning_focus: "focus",
+  request_due_date: "task",
+  triage_capture: "capture",
+  resolve_planner_conflict: "conflict",
+  grade_review_recall: "review",
+  clarify_assistant_request: "clarify",
+  defer_recommendation: "defer",
+};
 
 function bodyLines(body?: string | null): string[] {
   return (body || "")
@@ -269,7 +280,7 @@ function attachmentPreview(
 
 function defaultValues(interrupt: AssistantInterrupt): Record<string, unknown> {
   return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
-    accumulator[field.id] = field.value ?? (field.kind === "toggle" ? false : "");
+    accumulator[field.id] = interrupt.recommended_defaults?.[field.id] ?? field.value ?? (field.kind === "toggle" ? false : "");
     return accumulator;
   }, {});
 }
@@ -312,6 +323,102 @@ function fieldValue(values: Record<string, unknown>, field: AssistantInterruptFi
     return String(value);
   }
   return "";
+}
+
+function panelTone(interrupt: AssistantInterrupt): PanelTone {
+  return DYNAMIC_PANEL_TOOL_TONES[interrupt.tool_name] || "default";
+}
+
+function panelAccent(tone: PanelTone, palette: Record<string, string>) {
+  if (tone === "focus") {
+    return { text: "#d8f3e2", bg: "rgba(166, 222, 191, 0.11)", border: "rgba(166, 222, 191, 0.2)" };
+  }
+  if (tone === "task") {
+    return { text: "#f4ddb0", bg: "rgba(243, 207, 122, 0.11)", border: "rgba(243, 207, 122, 0.2)" };
+  }
+  if (tone === "capture") {
+    return { text: "#d9e8ff", bg: "rgba(151, 188, 255, 0.11)", border: "rgba(151, 188, 255, 0.2)" };
+  }
+  if (tone === "conflict") {
+    return { text: "#ffd8dc", bg: "rgba(255, 180, 183, 0.1)", border: "rgba(255, 180, 183, 0.2)" };
+  }
+  if (tone === "review") {
+    return { text: "#d7d4ff", bg: "rgba(178, 168, 255, 0.1)", border: "rgba(178, 168, 255, 0.2)" };
+  }
+  return { text: palette.accent, bg: "rgba(241, 182, 205, 0.1)", border: "rgba(241, 182, 205, 0.18)" };
+}
+
+function panelKicker(interrupt: AssistantInterrupt): string {
+  if (interrupt.tool_name === "choose_morning_focus") {
+    return "Morning focus";
+  }
+  if (interrupt.tool_name === "request_due_date") {
+    return "Task details";
+  }
+  if (interrupt.tool_name === "triage_capture") {
+    return "Capture triage";
+  }
+  if (interrupt.tool_name === "resolve_planner_conflict") {
+    return "Planner conflict";
+  }
+  if (interrupt.tool_name === "grade_review_recall") {
+    return "Review grade";
+  }
+  if (interrupt.tool_name.includes("clarif")) {
+    return "Clarification";
+  }
+  if (interrupt.tool_name.includes("defer")) {
+    return "Defer";
+  }
+  return interrupt.tool_name.replace(/_/g, " ");
+}
+
+function fieldSummary(field: AssistantInterruptField): string | null {
+  if (field.kind === "date") {
+    return "Today, tomorrow, or a picked date.";
+  }
+  if (field.kind === "time" || field.kind === "datetime") {
+    return "Choose a specific time when needed.";
+  }
+  if (field.kind === "entity_search") {
+    return "Search opens as a larger picker when wired.";
+  }
+  return null;
+}
+
+function valueLabel(field: AssistantInterruptField, value: unknown): string {
+  const normalized = typeof value === "string" || typeof value === "number" ? String(value) : "";
+  const optionLabel = field.options?.find((option) => option.value === normalized)?.label;
+  return optionLabel || normalized.replace(/_/g, " ");
+}
+
+function selectedValueLabel(interrupt: AssistantInterrupt, values: Record<string, unknown>): string | null {
+  const field = interrupt.fields.find((candidate) => {
+    const value = values[candidate.id];
+    return value !== undefined && value !== null && String(value).trim().length > 0;
+  });
+  if (!field) {
+    return null;
+  }
+  return valueLabel(field, values[field.id]);
+}
+
+function visibleContextChips(interrupts: AssistantInterrupt[], attachmentCount: number, hiddenThreadMessageCount: number): string[] {
+  const pending = interrupts.find((interrupt) => interrupt.status === "pending");
+  const chips = ["Assistant"];
+  if (pending) {
+    chips.push(panelKicker(pending));
+    chips.push(pending.display_mode === "bottom_sheet" ? "Sheet ready" : "Inline panel");
+  } else {
+    chips.push("Synced thread");
+  }
+  if (attachmentCount > 0) {
+    chips.push(`${attachmentCount} artifact${attachmentCount === 1 ? "" : "s"}`);
+  }
+  if (hiddenThreadMessageCount > 0) {
+    chips.push(`${hiddenThreadMessageCount} system`);
+  }
+  return chips.slice(0, 4);
 }
 
 function AttachmentRow({
@@ -546,11 +653,13 @@ function InterruptFieldInput({
   field,
   values,
   palette,
+  accent,
   setValue,
 }: {
   field: AssistantInterruptField;
   values: Record<string, unknown>;
   palette: Record<string, string>;
+  accent?: { text: string; bg: string; border: string };
   setValue: (value: unknown) => void;
 }) {
   if (field.kind === "toggle") {
@@ -573,7 +682,7 @@ function InterruptFieldInput({
         <Switch
           value={Boolean(values[field.id])}
           onValueChange={setValue}
-          trackColor={{ true: palette.accent, false: "rgba(255,255,255,0.12)" }}
+          trackColor={{ true: accent?.text || palette.accent, false: "rgba(255,255,255,0.12)" }}
         />
       </View>
     );
@@ -602,14 +711,14 @@ function InterruptFieldInput({
                   paddingHorizontal: 10,
                   paddingVertical: 7,
                   borderWidth: 1,
-                  borderColor: active ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
-                  backgroundColor: active ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  borderColor: active ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                  backgroundColor: active ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
                 }}
                 onPress={() => setValue(option.value)}
               >
                 <Text
                   style={{
-                    color: active ? palette.text : palette.muted,
+                    color: active ? accent?.text || palette.text : palette.muted,
                     fontSize: 11,
                     fontWeight: "800",
                     textTransform: "uppercase",
@@ -653,6 +762,214 @@ function InterruptFieldInput({
           textAlignVertical: multiline ? "top" : "center",
         }}
       />
+    </View>
+  );
+}
+
+function ConsequencePreview({
+  interrupt,
+  palette,
+  accent,
+}: {
+  interrupt: AssistantInterrupt;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+}) {
+  if (!interrupt.consequence_preview) {
+    return null;
+  }
+
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: accent.border,
+        backgroundColor: accent.bg,
+        paddingHorizontal: 11,
+        paddingVertical: 9,
+        flexDirection: "row",
+        gap: 9,
+        alignItems: "flex-start",
+      }}
+    >
+      <MaterialCommunityIcons name={"arrow-decision-outline" as never} size={15} color={accent.text} style={{ marginTop: 1 }} />
+      <Text style={{ flex: 1, color: palette.text, fontSize: 12.5, lineHeight: 18 }}>{interrupt.consequence_preview}</Text>
+    </View>
+  );
+}
+
+function DynamicPanelRenderer({
+  interrupt,
+  values,
+  palette,
+  active,
+  onValueChange,
+  onSubmit,
+  onDismiss,
+  onOpenEntityRef,
+}: {
+  interrupt: AssistantInterrupt;
+  values: Record<string, unknown>;
+  palette: Record<string, string>;
+  active: boolean;
+  onValueChange: (fieldId: string, value: unknown) => void;
+  onSubmit: () => void;
+  onDismiss: () => void;
+  onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
+}) {
+  const pending = interrupt.status === "pending";
+  const tone = panelTone(interrupt);
+  const accent = panelAccent(tone, palette);
+  const selectedLabel = selectedValueLabel(interrupt, values);
+  const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
+  const displayModeLabel =
+    interrupt.display_mode === "bottom_sheet"
+      ? "opens as sheet"
+      : interrupt.display_mode === "sidecar"
+        ? "inline on mobile"
+        : "inline";
+
+  return (
+    <View
+      style={{
+        borderRadius: 18,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: pending && active ? accent.border : "rgba(255,255,255,0.055)",
+        backgroundColor: pending && active ? "rgba(255,255,255,0.022)" : "rgba(255,255,255,0.012)",
+        gap: 11,
+      }}
+    >
+      <View style={{ gap: 5 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <View
+            style={{
+              alignSelf: "flex-start",
+              borderRadius: 999,
+              paddingHorizontal: 9,
+              paddingVertical: 4,
+              borderWidth: 1,
+              borderColor: accent.border,
+              backgroundColor: accent.bg,
+            }}
+          >
+            <Text style={{ color: accent.text, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              {panelKicker(interrupt)}
+            </Text>
+          </View>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+            {displayModeLabel}
+          </Text>
+        </View>
+        <Text style={{ color: palette.text, fontSize: 17, lineHeight: 23, fontWeight: "800" }}>{interrupt.title}</Text>
+        {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
+        <EntityActionChip entityRef={interrupt.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+      </View>
+
+      {pending ? (
+        <>
+          {selectedLabel ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+              <MaterialCommunityIcons name={"star-four-points-outline" as never} size={14} color={accent.text} />
+              <Text style={{ flex: 1, color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+                Recommended default: <Text style={{ color: palette.text, fontWeight: "800" }}>{selectedLabel}</Text>
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={{ gap: 10 }}>
+            {interrupt.fields.map((field) => (
+              <View key={`${interrupt.id}-${field.id}`} style={{ gap: 5 }}>
+                <InterruptFieldInput
+                  field={field}
+                  values={values}
+                  palette={palette}
+                  accent={accent}
+                  setValue={(value) => onValueChange(field.id, value)}
+                />
+                {fieldSummary(field) ? <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>{fieldSummary(field)}</Text> : null}
+              </View>
+            ))}
+          </View>
+
+          {complexFields.length > 0 ? (
+            <View
+              style={{
+                borderRadius: 14,
+                paddingHorizontal: 11,
+                paddingVertical: 9,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+                backgroundColor: "rgba(255,255,255,0.018)",
+                gap: 4,
+              }}
+            >
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                More detail
+              </Text>
+              <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                {complexFields.map((field) => field.label).join(", ")} can use a larger picker when native mobile search is available.
+              </Text>
+            </View>
+          ) : null}
+
+          <ConsequencePreview interrupt={interrupt} palette={palette} accent={accent} />
+
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
+                backgroundColor: "rgba(255,255,255,0.03)",
+                alignItems: "center",
+              }}
+              onPress={onDismiss}
+            >
+              <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                {interrupt.secondary_label || interrupt.defer_label || "Dismiss"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: accent.text,
+                alignItems: "center",
+              }}
+              onPress={onSubmit}
+            >
+              <Text style={{ color: palette.onAccent, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                {interrupt.primary_label}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <View
+          style={{
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.05)",
+            backgroundColor: "rgba(255,255,255,0.02)",
+            gap: 4,
+          }}
+        >
+          <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+            {interrupt.status === "submitted" ? "Resolved" : "Dismissed"}
+          </Text>
+          <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interruptDetail(interrupt)}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -708,6 +1025,7 @@ export function MobileAssistantRebuild({
     });
   }, [liveInterrupts]);
 
+  const activePendingInterruptId = liveInterrupts.find((interrupt) => interrupt.status === "pending")?.id ?? null;
   const attachmentCount = useMemo(
     () => visibleThreadMessages.reduce((count, message) => count + cardParts(message).length + attachmentParts(message).length, 0),
     [visibleThreadMessages],
@@ -719,6 +1037,10 @@ export function MobileAssistantRebuild({
   const suggestionPills = useMemo(
     () => previewSuggestions(visibleThreadMessages, liveInterrupts),
     [liveInterrupts, visibleThreadMessages],
+  );
+  const contextChips = useMemo(
+    () => visibleContextChips(liveInterrupts, attachmentCount, hiddenThreadMessageCount),
+    [attachmentCount, hiddenThreadMessageCount, liveInterrupts],
   );
 
   const filteredMessages = useMemo(() => {
@@ -746,26 +1068,49 @@ export function MobileAssistantRebuild({
 
   return (
     <View style={{ gap: 16, paddingTop: 4 }}>
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 15, fontWeight: "700" }}>
-            Shared thread · mobile + web
-          </Text>
+          <View style={{ gap: 2, flex: 1 }}>
+            <Text style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "800" }}>Starlog Assistant</Text>
+            <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 15, fontWeight: "700" }}>
+              {pendingConversationTurn ? "Syncing reply" : "Synced just now"}
+            </Text>
+          </View>
           <View
             style={{
-              borderRadius: 999,
-              paddingHorizontal: 9,
-              paddingVertical: 4,
-              backgroundColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.08)" : "rgba(255,255,255,0.025)",
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.1)" : "rgba(255,255,255,0.025)",
               borderWidth: 1,
               borderColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.05)",
             }}
           >
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>
-              {pendingConversationTurn ? "Reply pending" : "Live"}
-            </Text>
+            <MaterialCommunityIcons name={"account-outline" as never} size={17} color={palette.accent} />
           </View>
         </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+          {contextChips.map((label) => (
+            <View
+              key={label}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                backgroundColor: label === "Inline panel" ? "rgba(166, 222, 191, 0.1)" : "rgba(255,255,255,0.018)",
+                borderWidth: 1,
+                borderColor: label === "Inline panel" ? "rgba(166, 222, 191, 0.18)" : "rgba(255,255,255,0.04)",
+              }}
+            >
+              <Text style={{ color: label === "Inline panel" ? "#d8f3e2" : palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
           {[
@@ -1125,105 +1470,50 @@ export function MobileAssistantRebuild({
                   <View style={{ gap: 10, paddingLeft: 10 }}>
                     {interruptRequests.map((interrupt) => {
                       const values = interruptValuesById[interrupt.id] || defaultValues(interrupt);
-                      const pending = interrupt.status === "pending";
-                      return (
-                        <View
-                          key={interrupt.id}
-                          style={{
-                            borderRadius: 16,
-                            paddingHorizontal: 12,
-                            paddingVertical: 12,
-                            borderWidth: 1,
-                            borderColor: pending ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.05)",
-                            backgroundColor: pending ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.012)",
-                            gap: 10,
-                          }}
-                        >
-                          <View style={{ gap: 4 }}>
-                            <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                              {interrupt.tool_name.replace(/_/g, " ")}
+                      const isActivePanel = interrupt.status !== "pending" || interrupt.id === activePendingInterruptId;
+                      if (!isActivePanel) {
+                        return (
+                          <View
+                            key={interrupt.id}
+                            style={{
+                              borderRadius: 14,
+                              paddingHorizontal: 11,
+                              paddingVertical: 9,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.05)",
+                              backgroundColor: "rgba(255,255,255,0.014)",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            <MaterialCommunityIcons name={"clock-outline" as never} size={14} color={palette.muted} />
+                            <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                              {panelKicker(interrupt)} is waiting behind the active decision.
                             </Text>
-                            <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24, fontWeight: "800" }}>{interrupt.title}</Text>
-                            {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
-                            <EntityActionChip entityRef={interrupt.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
                           </View>
-
-                          {pending ? (
-                            <>
-                              <View style={{ gap: 10 }}>
-                                {interrupt.fields.map((field) => (
-                                  <InterruptFieldInput
-                                    key={`${interrupt.id}-${field.id}`}
-                                    field={field}
-                                    values={values}
-                                    palette={palette}
-                                    setValue={(value) =>
-                                      setInterruptValuesById((previous) => ({
-                                        ...previous,
-                                        [interrupt.id]: {
-                                          ...(previous[interrupt.id] || defaultValues(interrupt)),
-                                          [field.id]: value,
-                                        },
-                                      }))
-                                    }
-                                  />
-                                ))}
-                              </View>
-
-                              <View style={{ flexDirection: "row", gap: 8 }}>
-                                <TouchableOpacity
-                                  style={{
-                                    flex: 1,
-                                    borderRadius: 999,
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 10,
-                                    borderWidth: 1,
-                                    borderColor: "rgba(255,255,255,0.06)",
-                                    backgroundColor: "rgba(255,255,255,0.03)",
-                                    alignItems: "center",
-                                  }}
-                                  onPress={() => onInterruptDismiss(interrupt.id)}
-                                >
-                                  <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                    {interrupt.secondary_label || "Dismiss"}
-                                  </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={{
-                                    flex: 1,
-                                    borderRadius: 999,
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 10,
-                                    backgroundColor: palette.accent,
-                                    alignItems: "center",
-                                  }}
-                                  onPress={() => onInterruptSubmit(interrupt.id, values)}
-                                >
-                                  <Text style={{ color: palette.onAccent, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                    {interrupt.primary_label}
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                            </>
-                          ) : (
-                            <View
-                              style={{
-                                borderRadius: 14,
-                                paddingHorizontal: 12,
-                                paddingVertical: 10,
-                                borderWidth: 1,
-                                borderColor: "rgba(255,255,255,0.05)",
-                                backgroundColor: "rgba(255,255,255,0.02)",
-                                gap: 4,
-                              }}
-                            >
-                              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-                                {interrupt.status === "submitted" ? "Resolved" : "Dismissed"}
-                              </Text>
-                              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interruptDetail(interrupt)}</Text>
-                            </View>
-                          )}
-                        </View>
+                        );
+                      }
+                      return (
+                        <DynamicPanelRenderer
+                          key={interrupt.id}
+                          interrupt={interrupt}
+                          values={values}
+                          palette={palette}
+                          active={interrupt.id === activePendingInterruptId}
+                          onValueChange={(fieldId, value) =>
+                            setInterruptValuesById((previous) => ({
+                              ...previous,
+                              [interrupt.id]: {
+                                ...(previous[interrupt.id] || defaultValues(interrupt)),
+                                [fieldId]: value,
+                              },
+                            }))
+                          }
+                          onSubmit={() => onInterruptSubmit(interrupt.id, values)}
+                          onDismiss={() => onInterruptDismiss(interrupt.id)}
+                          onOpenEntityRef={onOpenEntityRef}
+                        />
                       );
                     })}
                   </View>
