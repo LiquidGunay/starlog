@@ -1,23 +1,28 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+GoalHorizon = Literal["today", "week", "month", "quarter", "long_term"]
+StrategicStatus = Literal["active", "paused", "completed", "archived"]
+CommitmentStatus = Literal["open", "done", "dropped", "archived"]
 
 
 class GoalCreateRequest(BaseModel):
     title: str = Field(..., min_length=1)
-    horizon: str = Field(default="near_term", min_length=1)
+    horizon: GoalHorizon = "quarter"
     why: str | None = None
     success_criteria: str | None = None
-    status: str = Field(default="active", min_length=1)
+    status: StrategicStatus = "active"
     review_cadence: str = Field(default="weekly", min_length=1)
 
 
 class GoalUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1)
-    horizon: str | None = Field(default=None, min_length=1)
+    horizon: GoalHorizon | None = None
     why: str | None = None
     success_criteria: str | None = None
-    status: str | None = Field(default=None, min_length=1)
+    status: StrategicStatus | None = None
     review_cadence: str | None = Field(default=None, min_length=1)
     last_reviewed_at: datetime | None = None
 
@@ -43,7 +48,7 @@ class ProjectCreateRequest(BaseModel):
     next_action_id: str | None = None
     open_questions: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
-    status: str = Field(default="active", min_length=1)
+    status: StrategicStatus = "active"
 
 
 class ProjectUpdateRequest(BaseModel):
@@ -54,7 +59,7 @@ class ProjectUpdateRequest(BaseModel):
     next_action_id: str | None = None
     open_questions: list[str] | None = None
     risks: list[str] | None = None
-    status: str | None = Field(default=None, min_length=1)
+    status: StrategicStatus | None = None
     last_reviewed_at: datetime | None = None
 
 
@@ -79,7 +84,7 @@ class CommitmentCreateRequest(BaseModel):
     title: str = Field(..., min_length=1)
     promised_to: str | None = None
     due_at: datetime | None = None
-    status: str = Field(default="open", min_length=1)
+    status: CommitmentStatus = "open"
     recovery_plan: str | None = None
 
 
@@ -89,7 +94,7 @@ class CommitmentUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1)
     promised_to: str | None = None
     due_at: datetime | None = None
-    status: str | None = Field(default=None, min_length=1)
+    status: CommitmentStatus | None = None
     recovery_plan: str | None = None
 
 

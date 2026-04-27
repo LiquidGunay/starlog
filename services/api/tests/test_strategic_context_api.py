@@ -9,7 +9,7 @@ def test_goal_create_list_update(client: TestClient, auth_headers: dict[str, str
         headers=auth_headers,
         json={
             "title": "Build the learning engine",
-            "horizon": "year",
+            "horizon": "long_term",
             "why": "Make daily learning compounding.",
             "success_criteria": "Daily review and project progress feel connected.",
             "review_cadence": "weekly",
@@ -69,11 +69,11 @@ def test_project_create_list_update_links_to_goal(client: TestClient, auth_heade
     updated = client.patch(
         f"/v1/projects/{project['id']}",
         headers=auth_headers,
-        json={"status": "blocked", "open_questions": ["Which Planner view owns this?"]},
+        json={"status": "paused", "open_questions": ["Which Planner view owns this?"]},
     )
     assert updated.status_code == 200
     assert updated.json()["goal_id"] == goal["id"]
-    assert updated.json()["status"] == "blocked"
+    assert updated.json()["status"] == "paused"
     assert updated.json()["open_questions"] == ["Which Planner view owns this?"]
 
 
@@ -113,11 +113,83 @@ def test_commitment_create_list_update(client: TestClient, auth_headers: dict[st
     updated = client.patch(
         f"/v1/commitments/{commitment['id']}",
         headers=auth_headers,
-        json={"status": "recovered", "recovery_plan": "Send a shorter note now."},
+        json={"status": "done", "recovery_plan": "Sent a shorter note."},
     )
     assert updated.status_code == 200
-    assert updated.json()["status"] == "recovered"
-    assert updated.json()["recovery_plan"] == "Send a shorter note now."
+    assert updated.json()["status"] == "done"
+    assert updated.json()["recovery_plan"] == "Sent a shorter note."
+
+
+def test_goal_rejects_invalid_horizon(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/v1/goals",
+        headers=auth_headers,
+        json={"title": "Ambiguous horizon", "horizon": "soonish"},
+    )
+    assert created.status_code == 422
+
+    goal = client.post(
+        "/v1/goals",
+        headers=auth_headers,
+        json={"title": "Concrete horizon", "horizon": "month"},
+    ).json()
+    updated = client.patch(
+        f"/v1/goals/{goal['id']}",
+        headers=auth_headers,
+        json={"horizon": "eventually"},
+    )
+    assert updated.status_code == 422
+
+
+def test_strategic_context_rejects_invalid_statuses(client: TestClient, auth_headers: dict[str, str]) -> None:
+    invalid_goal = client.post(
+        "/v1/goals",
+        headers=auth_headers,
+        json={"title": "Invalid goal status", "status": "in_progress"},
+    )
+    assert invalid_goal.status_code == 422
+
+    invalid_project = client.post(
+        "/v1/projects",
+        headers=auth_headers,
+        json={"title": "Invalid project status", "status": "blocked"},
+    )
+    assert invalid_project.status_code == 422
+
+    invalid_commitment = client.post(
+        "/v1/commitments",
+        headers=auth_headers,
+        json={"source_type": "assistant", "title": "Invalid commitment status", "status": "recovered"},
+    )
+    assert invalid_commitment.status_code == 422
+
+    goal = client.post("/v1/goals", headers=auth_headers, json={"title": "Valid goal"}).json()
+    invalid_goal_update = client.patch(
+        f"/v1/goals/{goal['id']}",
+        headers=auth_headers,
+        json={"status": "in_progress"},
+    )
+    assert invalid_goal_update.status_code == 422
+
+    project = client.post("/v1/projects", headers=auth_headers, json={"title": "Valid project"}).json()
+    invalid_project_update = client.patch(
+        f"/v1/projects/{project['id']}",
+        headers=auth_headers,
+        json={"status": "blocked"},
+    )
+    assert invalid_project_update.status_code == 422
+
+    commitment = client.post(
+        "/v1/commitments",
+        headers=auth_headers,
+        json={"source_type": "assistant", "title": "Valid commitment"},
+    ).json()
+    invalid_commitment_update = client.patch(
+        f"/v1/commitments/{commitment['id']}",
+        headers=auth_headers,
+        json={"status": "recovered"},
+    )
+    assert invalid_commitment_update.status_code == 422
 
 
 def test_strategic_context_cards_use_existing_contract_kinds() -> None:
@@ -125,7 +197,7 @@ def test_strategic_context_cards_use_existing_contract_kinds() -> None:
         {
             "id": "goal_test",
             "title": "Learn deliberately",
-            "horizon": "year",
+            "horizon": "long_term",
             "status": "active",
             "review_cadence": "weekly",
             "last_reviewed_at": None,
