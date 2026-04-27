@@ -7,7 +7,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import assistant_projection_service, conversation_service
+from app.services import assistant_projection_service, conversation_card_service, conversation_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 _CURSOR_PREFIX = "assistant_cursor_v1."
@@ -561,6 +561,7 @@ def get_thread_snapshot(conn: Connection, thread_id: str, *, message_limit: int 
         "messages": [_message_payload(row, parts_by_message) for row in message_rows],
         "runs": runs,
         "interrupts": interrupt_payloads,
+        "context_cards": conversation_card_service.strategic_context_cards(conn, per_kind_limit=1),
         "session_state": session["state_json"] if session else {},
         "next_cursor": _thread_cursor(conn, thread["id"]),
     }

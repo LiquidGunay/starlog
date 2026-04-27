@@ -134,6 +134,51 @@ def test_assistant_primary_thread_snapshot_bootstraps(
     assert payload["next_cursor"] is not None
 
 
+def test_assistant_snapshot_exposes_strategic_context_cards(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    goal = client.post(
+        "/v1/goals",
+        json={"title": "Make strategic context visible"},
+        headers=auth_headers,
+    ).json()
+    project = client.post(
+        "/v1/projects",
+        json={"goal_id": goal["id"], "title": "Assistant context cards"},
+        headers=auth_headers,
+    ).json()
+    commitment = client.post(
+        "/v1/commitments",
+        json={"source_type": "assistant", "title": "Check the Assistant rail"},
+        headers=auth_headers,
+    ).json()
+
+    response = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+
+    assert response.status_code == 200
+    context_cards = response.json()["context_cards"]
+    assert [card["kind"] for card in context_cards] == ["goal_status", "project_status", "commitment_status"]
+    assert context_cards[0]["metadata"]["goal_id"] == goal["id"]
+    assert context_cards[0]["entity_ref"]["href"] is None
+    assert context_cards[1]["metadata"]["project_id"] == project["id"]
+    assert context_cards[1]["entity_ref"]["href"] is None
+    assert context_cards[2]["metadata"]["commitment_id"] == commitment["id"]
+    assert context_cards[2]["entity_ref"]["href"] is None
+
+    with get_connection() as conn:
+        thread = assistant_thread_service.get_thread(conn, "primary")
+        runtime_request = assistant_run_service._build_runtime_request(  # noqa: SLF001
+            conn,
+            thread_id=thread["id"],
+            content="What strategic context is active?",
+            metadata={"surface": "assistant_web"},
+        )
+
+    runtime_context_cards = runtime_request["context"]["strategic_context_cards"]
+    assert [card["kind"] for card in runtime_context_cards] == ["goal_status", "project_status", "commitment_status"]
+
+
 def test_assistant_handoff_token_is_resolved_into_trusted_context(
     client: TestClient,
     auth_headers: dict[str, str],

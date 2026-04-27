@@ -112,6 +112,7 @@ export type AssistantThreadSnapshot = AssistantThreadSummary & {
   messages: AssistantThreadMessage[];
   runs: AssistantRun[];
   interrupts: AssistantInterrupt[];
+  context_cards?: AssistantCard[];
   next_cursor?: string | null;
 };
 

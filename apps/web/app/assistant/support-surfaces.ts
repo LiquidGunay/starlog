@@ -80,7 +80,13 @@ function surfaceForCard(card: AssistantCard): SupportSurfaceKey | null {
   if (card.kind === "capture_item" || card.kind === "knowledge_note" || card.kind === "memory_suggestion") {
     return "library";
   }
-  if (card.kind === "task_list" || card.kind === "briefing") {
+  if (
+    card.kind === "task_list" ||
+    card.kind === "briefing" ||
+    card.kind === "goal_status" ||
+    card.kind === "project_status" ||
+    card.kind === "commitment_status"
+  ) {
     return "planner";
   }
   if (card.kind === "review_queue") {
@@ -104,7 +110,14 @@ export function supportSurfaceForEntityType(entityType: string): SupportSurfaceK
   if (entityType === "artifact" || entityType === "note" || entityType === "memory_page") {
     return "library";
   }
-  if (entityType === "task" || entityType === "briefing" || entityType === "planner_conflict") {
+  if (
+    entityType === "task" ||
+    entityType === "briefing" ||
+    entityType === "planner_conflict" ||
+    entityType === "goal" ||
+    entityType === "project" ||
+    entityType === "commitment"
+  ) {
     return "planner";
   }
   if (entityType === "card" || entityType === "review_queue") {
@@ -231,6 +244,13 @@ function collectLatestMessageActivities(
   }
 
   collectPendingInterrupts(snapshot?.interrupts || [], activities);
+
+  for (const card of snapshot?.context_cards || []) {
+    const activity = surfaceActivityForCard(card);
+    if (activity) {
+      registerActivity(activities, activity);
+    }
+  }
 
   const messages = currentActivityMessages(snapshot?.messages || []);
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {

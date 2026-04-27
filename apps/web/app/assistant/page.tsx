@@ -286,6 +286,15 @@ function pendingInterruptLabel(interrupt: AssistantInterrupt): string {
 }
 
 function cardRailLabel(kind: string): string | null {
+  if (kind === "goal_status") {
+    return "Goal";
+  }
+  if (kind === "project_status") {
+    return "Project";
+  }
+  if (kind === "commitment_status") {
+    return "Commitment";
+  }
   if (kind === "task_list") {
     return "Planner update";
   }
@@ -312,6 +321,19 @@ function collectRailCards(snapshot: AssistantThreadSnapshot | null): RailItem[] 
     return [];
   }
   const items: RailItem[] = [];
+  for (const card of snapshot.context_cards || []) {
+    const label = cardRailLabel(card.kind);
+    if (!label) {
+      continue;
+    }
+    items.push({
+      label: card.title ? `${label}: ${card.title}` : label,
+      href: card.entity_ref?.href || undefined,
+    });
+    if (items.length >= 4) {
+      return items;
+    }
+  }
   for (const message of [...snapshot.messages].reverse()) {
     for (const part of [...message.parts].reverse()) {
       if (part.type !== "card") {

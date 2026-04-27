@@ -702,6 +702,7 @@ def build_chat_preview_request(
             }
             for trace in thread["tool_traces"]
         ],
+        "strategic_context_cards": conversation_card_service.strategic_context_cards(conn, per_kind_limit=1),
         "request_metadata": metadata or {},
         "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
         "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],

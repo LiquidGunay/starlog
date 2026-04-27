@@ -49,6 +49,12 @@ def _json_list(values: list[str] | None) -> str:
     return json.dumps(_clean_string_list(values), sort_keys=True)
 
 
+def _limit_sql(limit: int | None) -> tuple[str, tuple[int, ...]]:
+    if limit is None:
+        return "", ()
+    return " LIMIT ?", (max(0, int(limit)),)
+
+
 def _reject_null_required(changes: dict[str, Any], required_fields: set[str]) -> None:
     null_fields = sorted(field for field in required_fields if field in changes and changes[field] is None)
     if null_fields:
@@ -84,10 +90,15 @@ def create_goal(
     return created
 
 
-def list_goals(conn: Connection, *, status: str | None = None) -> list[dict]:
+def list_goals(conn: Connection, *, status: str | None = None, limit: int | None = None) -> list[dict]:
+    limit_clause, limit_params = _limit_sql(limit)
     if status:
-        return execute_fetchall(conn, "SELECT * FROM goals WHERE status = ? ORDER BY updated_at DESC", (status,))
-    return execute_fetchall(conn, "SELECT * FROM goals ORDER BY updated_at DESC")
+        return execute_fetchall(
+            conn,
+            f"SELECT * FROM goals WHERE status = ? ORDER BY updated_at DESC{limit_clause}",
+            (status, *limit_params),
+        )
+    return execute_fetchall(conn, f"SELECT * FROM goals ORDER BY updated_at DESC{limit_clause}", limit_params)
 
 
 def get_goal(conn: Connection, goal_id: str) -> dict | None:
@@ -186,9 +197,15 @@ def create_project(
     return created
 
 
-def list_projects(conn: Connection, *, status: str | None = None, goal_id: str | None = None) -> list[dict]:
+def list_projects(
+    conn: Connection,
+    *,
+    status: str | None = None,
+    goal_id: str | None = None,
+    limit: int | None = None,
+) -> list[dict]:
     clauses: list[str] = []
-    params: list[str] = []
+    params: list[Any] = []
     if status:
         clauses.append("status = ?")
         params.append(status)
@@ -196,8 +213,13 @@ def list_projects(conn: Connection, *, status: str | None = None, goal_id: str |
         clauses.append("goal_id = ?")
         params.append(goal_id)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    limit_clause, limit_params = _limit_sql(limit)
     return _format_projects(
-        execute_fetchall(conn, f"SELECT * FROM projects{where} ORDER BY updated_at DESC", tuple(params))
+        execute_fetchall(
+            conn,
+            f"SELECT * FROM projects{where} ORDER BY updated_at DESC{limit_clause}",
+            (*params, *limit_params),
+        )
     )
 
 
@@ -301,9 +323,15 @@ def create_commitment(
     return created
 
 
-def list_commitments(conn: Connection, *, status: str | None = None, source_type: str | None = None) -> list[dict]:
+def list_commitments(
+    conn: Connection,
+    *,
+    status: str | None = None,
+    source_type: str | None = None,
+    limit: int | None = None,
+) -> list[dict]:
     clauses: list[str] = []
-    params: list[str] = []
+    params: list[Any] = []
     if status:
         clauses.append("status = ?")
         params.append(status)
@@ -311,7 +339,12 @@ def list_commitments(conn: Connection, *, status: str | None = None, source_type
         clauses.append("source_type = ?")
         params.append(source_type)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-    return execute_fetchall(conn, f"SELECT * FROM commitments{where} ORDER BY COALESCE(due_at, '9999') ASC, updated_at DESC", tuple(params))
+    limit_clause, limit_params = _limit_sql(limit)
+    return execute_fetchall(
+        conn,
+        f"SELECT * FROM commitments{where} ORDER BY COALESCE(due_at, '9999') ASC, updated_at DESC{limit_clause}",
+        (*params, *limit_params),
+    )
 
 
 def get_commitment(conn: Connection, commitment_id: str) -> dict | None:

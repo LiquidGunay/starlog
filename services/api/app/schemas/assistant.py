@@ -130,6 +130,7 @@ class AssistantThreadSnapshot(AssistantThreadSummary):
     messages: list[AssistantThreadMessage] = Field(default_factory=list)
     runs: list[AssistantRun] = Field(default_factory=list)
     interrupts: list[AssistantInterrupt] = Field(default_factory=list)
+    context_cards: list[AssistantCard] = Field(default_factory=list)
     session_state: dict[str, Any] = Field(default_factory=dict)
     next_cursor: str | None = None
 
