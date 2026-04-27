@@ -118,6 +118,16 @@ def _default_actions(card: dict[str, Any]) -> list[dict[str, Any]]:
         actions.append(_navigate_action("open_planner", "Open Planner", "/planner"))
         return actions
 
+    if kind in {"goal_status", "project_status", "commitment_status"}:
+        actions = []
+        if href:
+            actions.append(_navigate_action("open_planner", "Open Planner", href, style="primary"))
+        else:
+            actions.append(_navigate_action("open_planner", "Open Planner", "/planner", style="primary"))
+        prompt_subject = title or body or kind.replace("_", " ")
+        actions.append(_composer_action("move_forward", "Move forward", f"What should move forward next for {prompt_subject}?"))
+        return actions
+
     if kind == "review_queue":
         actions: list[dict[str, Any]] = []
         if entity_type == "card" and entity_id:
@@ -256,6 +266,36 @@ def _task_entity_ref(task: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _goal_entity_ref(goal: dict[str, Any]) -> dict[str, Any]:
+    goal_id = str(goal["id"])
+    return {
+        "entity_type": "goal",
+        "entity_id": goal_id,
+        "href": f"/planner?goal={goal_id}",
+        "title": goal.get("title") or goal_id,
+    }
+
+
+def _project_entity_ref(project: dict[str, Any]) -> dict[str, Any]:
+    project_id = str(project["id"])
+    return {
+        "entity_type": "project",
+        "entity_id": project_id,
+        "href": f"/planner?project={project_id}",
+        "title": project.get("title") or project_id,
+    }
+
+
+def _commitment_entity_ref(commitment: dict[str, Any]) -> dict[str, Any]:
+    commitment_id = str(commitment["id"])
+    return {
+        "entity_type": "commitment",
+        "entity_id": commitment_id,
+        "href": f"/planner?commitment={commitment_id}",
+        "title": commitment.get("title") or commitment_id,
+    }
+
+
 def _briefing_entity_ref(briefing: dict[str, Any]) -> dict[str, Any]:
     briefing_id = str(briefing["id"])
     return {
@@ -368,6 +408,81 @@ def _task_list_card(tasks: list[dict[str, Any]], *, title: str, metadata: dict[s
                 "task_count": len(tasks),
                 "task_ids": [task["id"] for task in tasks[:6]],
                 **(metadata or {}),
+            },
+        }
+    )
+
+
+def goal_status_card(goal: dict[str, Any]) -> dict[str, Any]:
+    body_parts = [
+        f"Horizon: {goal.get('horizon') or 'unspecified'}",
+        f"Status: {goal.get('status') or 'active'}",
+    ]
+    if goal.get("success_criteria"):
+        body_parts.append(f"Success: {goal['success_criteria']}")
+    return normalize_card(
+        {
+            "kind": "goal_status",
+            "title": goal.get("title") or "Goal",
+            "body": "\n".join(body_parts),
+            "entity_ref": _goal_entity_ref(goal),
+            "metadata": {
+                "goal_id": goal["id"],
+                "horizon": goal.get("horizon"),
+                "status": goal.get("status"),
+                "review_cadence": goal.get("review_cadence"),
+                "last_reviewed_at": goal.get("last_reviewed_at"),
+            },
+        }
+    )
+
+
+def project_status_card(project: dict[str, Any]) -> dict[str, Any]:
+    body_parts = [
+        f"Status: {project.get('status') or 'active'}",
+        project.get("current_state") or "",
+    ]
+    if project.get("desired_outcome"):
+        body_parts.append(f"Outcome: {project['desired_outcome']}")
+    return normalize_card(
+        {
+            "kind": "project_status",
+            "title": project.get("title") or "Project",
+            "body": "\n".join(part for part in body_parts if part),
+            "entity_ref": _project_entity_ref(project),
+            "metadata": {
+                "project_id": project["id"],
+                "goal_id": project.get("goal_id"),
+                "next_action_id": project.get("next_action_id"),
+                "open_question_count": len(project.get("open_questions") or []),
+                "risk_count": len(project.get("risks") or []),
+                "status": project.get("status"),
+                "last_reviewed_at": project.get("last_reviewed_at"),
+            },
+        }
+    )
+
+
+def commitment_status_card(commitment: dict[str, Any]) -> dict[str, Any]:
+    body_parts = [f"Status: {commitment.get('status') or 'open'}"]
+    if commitment.get("promised_to"):
+        body_parts.append(f"Promised to: {commitment['promised_to']}")
+    if commitment.get("due_at"):
+        body_parts.append(f"Due: {commitment['due_at']}")
+    if commitment.get("recovery_plan"):
+        body_parts.append(f"Recovery: {commitment['recovery_plan']}")
+    return normalize_card(
+        {
+            "kind": "commitment_status",
+            "title": commitment.get("title") or "Commitment",
+            "body": "\n".join(body_parts),
+            "entity_ref": _commitment_entity_ref(commitment),
+            "metadata": {
+                "commitment_id": commitment["id"],
+                "source_type": commitment.get("source_type"),
+                "source_id": commitment.get("source_id"),
+                "due_at": commitment.get("due_at"),
+                "status": commitment.get("status"),
             },
         }
     )

@@ -25,6 +25,7 @@ from app.api.routes import (
     research,
     search,
     srs,
+    strategic_context,
     sync,
     tasks,
     workers,
@@ -44,6 +45,7 @@ api_router.include_router(artifacts.router, tags=["artifacts"])
 api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(notes.router, tags=["notes"])
 api_router.include_router(tasks.router, tags=["tasks"])
+api_router.include_router(strategic_context.router, tags=["strategic-context"])
 api_router.include_router(calendar.router, tags=["calendar"])
 api_router.include_router(planning.router, tags=["planning"])
 api_router.include_router(srs.router, tags=["srs"])
