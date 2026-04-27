@@ -5,7 +5,12 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import assistant_projection_service, assistant_thread_service, review_mode_service
+from app.services import (
+    assistant_event_policy,
+    assistant_projection_service,
+    assistant_thread_service,
+    review_mode_service,
+)
 from app.services.assistant_run_service import (
     _complete_interrupt,
     _create_interrupt,
@@ -24,28 +29,6 @@ _INTERRUPT_TOOL_BY_EVENT_KIND = {
     "briefing.generated": "choose_morning_focus",
 }
 
-_EVENT_VISIBILITY_POLICY = {
-    "capture.created": "dynamic_panel",
-    "capture.enriched": "ambient",
-    "artifact.opened": "ambient",
-    "artifact.summarized": "ambient",
-    "task.created": "ambient",
-    "task.completed": "ambient",
-    "task.snoozed": "ambient",
-    "time_block.started": "ambient",
-    "time_block.completed": "ambient",
-    "planner.conflict.detected": "dynamic_panel",
-    "review.session.started": "ambient",
-    "review.answer.revealed": "dynamic_panel",
-    "review.answer.graded": "ambient",
-    "briefing.generated": "dynamic_panel",
-    "briefing.played": "ambient",
-    "assistant.card.action_used": "internal",
-    "assistant.panel.submitted": "ambient",
-    "voice.capture.transcribed": "ambient",
-}
-
-_VALID_VISIBILITIES = {"internal", "ambient", "assistant_message", "dynamic_panel"}
 _DEFAULT_MORNING_FOCUS_OPTIONS = [
     {"label": "Review queue", "value": "review"},
     {"label": "Process latest capture", "value": "capture"},
@@ -53,18 +36,6 @@ _DEFAULT_MORNING_FOCUS_OPTIONS = [
     {"label": "Plan today", "value": "plan_day"},
 ]
 _MAX_MORNING_FOCUS_OPTIONS = 5
-
-
-def _event_visibility(kind: str, requested: str | None) -> str:
-    if requested is None:
-        return _EVENT_VISIBILITY_POLICY.get(kind, "internal")
-    if requested == "internal":
-        return "internal"
-    if requested == "assistant_message":
-        return _EVENT_VISIBILITY_POLICY.get(kind, "assistant_message")
-    if requested in _VALID_VISIBILITIES:
-        return requested
-    return _EVENT_VISIBILITY_POLICY.get(kind, "internal")
 
 
 def _normalize_entity_ref(entity_ref: dict[str, Any] | None) -> tuple[str, str] | None:
@@ -888,7 +859,7 @@ def create_surface_event(
     user_id: str | None = None,
 ) -> dict[str, Any]:
     thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
-    visibility = _event_visibility(kind, visibility)
+    visibility = assistant_event_policy.resolve_event_visibility(kind, visibility)
     interrupt_tool = _INTERRUPT_TOOL_BY_EVENT_KIND.get(kind)
     if interrupt_tool and _find_pending_interrupt_for_entity(
         conn,
