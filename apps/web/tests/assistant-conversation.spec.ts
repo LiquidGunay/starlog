@@ -90,6 +90,55 @@ async function routeIdleAssistantStream(page: import("@playwright/test").Page) {
   });
 }
 
+test("opens an empty assistant thread to the Today state", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      interrupts: [
+        {
+          id: "interrupt_capture_today",
+          thread_id: "thr_primary",
+          run_id: "run_today",
+          tool_name: "triage_capture",
+          interrupt_type: "form",
+          status: "pending",
+          title: "Triage latest capture",
+          body: "Decide where this saved source should land.",
+          primary_label: "Save route",
+          secondary_label: "Skip",
+          defer_label: "Later",
+          fields: [],
+          entity_ref: {
+            entity_type: "artifact",
+            entity_id: "art_today",
+            href: "/artifacts?artifact=art_today",
+            title: "Inbox capture",
+          },
+          consequence_preview: null,
+          resolution: null,
+          created_at: "2026-04-21T09:01:00.000Z",
+          resolved_at: null,
+          metadata: {},
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("Today in Starlog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose the next useful move." })).toBeVisible();
+  await expect(page.getByLabel("Today quick starts").getByRole("button", { name: "Plan today" })).toBeVisible();
+  await expect(page.getByText("Capture triage ready")).toBeVisible();
+
+  await page.getByRole("button", { name: "Process captures" }).click();
+  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
+    "Process my latest captures and route anything actionable.",
+  );
+});
+
 test("renders rich assistant thread parts from the snapshot", async ({ page }) => {
   await seedSession(page);
   await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {

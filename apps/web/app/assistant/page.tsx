@@ -814,6 +814,13 @@ function AssistantPageContent() {
     }
   }
 
+  function handleQuickStart(prompt: string) {
+    setComposer(prompt);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+    });
+  }
+
   async function handleCardAction(action: AssistantCardAction) {
     const payload = action.payload || {};
     if (action.requires_confirmation && typeof window !== "undefined") {
@@ -988,6 +995,9 @@ function AssistantPageContent() {
               snapshot={normalizedSnapshot}
               loading={loading}
               busy={sending}
+              todayOpenLoops={openLoops.filter((item) => item.label !== "No open loops in this thread")}
+              todayContextItems={contextItems}
+              onQuickStart={handleQuickStart}
               onCardAction={handleCardAction}
               onInterruptSubmit={submitInterrupt}
               onInterruptDismiss={dismissInterrupt}
