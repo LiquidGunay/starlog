@@ -7,7 +7,7 @@ before persisting the event.
 
 | Signal | Resolved visibility |
 | --- | --- |
-| `assistant.card.action_used` | `silent/internal` |
+| `assistant.card.action_used` | `internal` |
 | `capture.enriched`, `artifact.opened`, `artifact.summarized` | `ambient` |
 | `task.created`, `task.completed`, `task.snoozed` | `ambient` |
 | `time_block.started`, `time_block.completed` | `ambient` |
