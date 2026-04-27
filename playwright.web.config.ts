@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./apps/web/tests",
-  testIgnore: "hosted-smoke.spec.ts",
+  testIgnore: ["hosted-smoke.spec.ts", "ui-functional/**"],
   timeout: 60_000,
   outputDir: "./artifacts/pwa-release-gate/test-results",
   use: {

@@ -1,0 +1,248 @@
+import { expect, test } from "@playwright/test";
+
+import {
+  API_BASE,
+  assistantThreadSnapshot,
+  morningFocusInterrupt,
+  plannerConflictInterrupt,
+  routeAssistantThread,
+  seedAssistantSession,
+} from "./assistant-concept-fixtures";
+
+test("mobile viewport assistant keeps one inline pending decision and fires submit/dismiss callbacks", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  const olderSubmittedInterrupt = morningFocusInterrupt("submitted");
+  const pendingInterrupt = plannerConflictInterrupt();
+  const submittedInterrupt = plannerConflictInterrupt("submitted");
+  const dismissedInterrupt = {
+    ...pendingInterrupt,
+    status: "dismissed",
+    resolved_at: "2026-04-27T09:23:00.000Z",
+    resolution: null,
+  };
+  let snapshot = assistantThreadSnapshot({
+    last_message_at: "2026-04-27T09:20:00.000Z",
+    last_preview_text: "Here are your best options to resolve this cleanly.",
+    interrupts: [olderSubmittedInterrupt, pendingInterrupt],
+    messages: [
+      {
+        id: "msg_old_focus",
+        thread_id: "thr_primary",
+        run_id: "run_morning_focus",
+        role: "assistant",
+        status: "complete",
+        parts: [
+          {
+            type: "interrupt_request",
+            id: "part_old_focus_interrupt",
+            interrupt: olderSubmittedInterrupt,
+          },
+        ],
+        metadata: {},
+        created_at: "2026-04-27T09:10:00.000Z",
+        updated_at: "2026-04-27T09:10:00.000Z",
+      },
+      {
+        id: "msg_conflict_ambient",
+        thread_id: "thr_primary",
+        run_id: null,
+        role: "assistant",
+        status: "complete",
+        parts: [
+          {
+            type: "ambient_update",
+            id: "part_conflict_ambient",
+            update: {
+              id: "ambient_conflict",
+              event_id: "evt_conflict",
+              label: "Planner flagged a 30m overlap",
+              body: "Deep Work overlaps with Team Sync.",
+              entity_ref: { entity_type: "planner_conflict", entity_id: "conflict_team_sync", href: "/planner" },
+              actions: [],
+              metadata: { visibility: "current" },
+              created_at: "2026-04-27T09:18:00.000Z",
+            },
+          },
+        ],
+        metadata: {},
+        created_at: "2026-04-27T09:18:00.000Z",
+        updated_at: "2026-04-27T09:18:00.000Z",
+      },
+      {
+        id: "msg_user_conflict",
+        thread_id: "thr_primary",
+        run_id: null,
+        role: "user",
+        status: "complete",
+        parts: [
+          {
+            type: "text",
+            id: "part_user_conflict",
+            text: "My product review overlaps with deep work. What should I do?",
+          },
+        ],
+        metadata: {},
+        created_at: "2026-04-27T09:19:00.000Z",
+        updated_at: "2026-04-27T09:19:00.000Z",
+      },
+      {
+        id: "msg_assistant_conflict",
+        thread_id: "thr_primary",
+        run_id: "run_planner_conflict",
+        role: "assistant",
+        status: "requires_action",
+        parts: [
+          {
+            type: "text",
+            id: "part_conflict_text",
+            text:
+              "Here are your best options to resolve this cleanly. Protect the longer focus block and move it to a safe later slot.",
+          },
+          {
+            type: "interrupt_request",
+            id: "part_conflict_interrupt",
+            interrupt: pendingInterrupt,
+          },
+        ],
+        metadata: {},
+        created_at: "2026-04-27T09:20:00.000Z",
+        updated_at: "2026-04-27T09:20:00.000Z",
+      },
+    ],
+  });
+  const submissions: Array<Record<string, unknown>> = [];
+  const dismissals: string[] = [];
+
+  await routeAssistantThread(page, () => snapshot);
+  await page.route(`${API_BASE}/v1/assistant/interrupts/interrupt_planner_conflict/submit`, async (route) => {
+    submissions.push(route.request().postDataJSON() as Record<string, unknown>);
+    snapshot = assistantThreadSnapshot({
+      ...snapshot,
+      updated_at: "2026-04-27T09:22:00.000Z",
+      interrupts: [olderSubmittedInterrupt, submittedInterrupt],
+      messages: [
+        ...((snapshot.messages as Array<Record<string, unknown>>) || []).slice(0, 3),
+        {
+          ...((snapshot.messages as Array<Record<string, unknown>>) || [])[3],
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: "part_conflict_text",
+              text:
+                "Here are your best options to resolve this cleanly. Protect the longer focus block and move it to a safe later slot.",
+            },
+            {
+              type: "interrupt_request",
+              id: "part_conflict_interrupt",
+              interrupt: submittedInterrupt,
+            },
+          ],
+        },
+      ],
+      next_cursor: "2026-04-27T09:22:00.000Z",
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(snapshot),
+    });
+  });
+  await page.route(`${API_BASE}/v1/assistant/interrupts/interrupt_planner_conflict/dismiss`, async (route) => {
+    dismissals.push("interrupt_planner_conflict");
+    snapshot = assistantThreadSnapshot({
+      ...snapshot,
+      updated_at: "2026-04-27T09:23:00.000Z",
+      interrupts: [olderSubmittedInterrupt, dismissedInterrupt],
+      messages: [
+        ...((snapshot.messages as Array<Record<string, unknown>>) || []).slice(0, 3),
+        {
+          ...((snapshot.messages as Array<Record<string, unknown>>) || [])[3],
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: "part_conflict_text",
+              text:
+                "Here are your best options to resolve this cleanly. Protect the longer focus block and move it to a safe later slot.",
+            },
+            {
+              type: "interrupt_request",
+              id: "part_conflict_interrupt",
+              interrupt: dismissedInterrupt,
+            },
+          ],
+        },
+      ],
+      next_cursor: "2026-04-27T09:23:00.000Z",
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(snapshot),
+    });
+  });
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  const viewport = page.viewportSize();
+  expect(viewport?.width).toBeLessThanOrEqual(430);
+  await expect(page.getByText("Planner flagged a 30m overlap")).toBeVisible();
+  await expect(page.getByText("My product review overlaps with deep work. What should I do?")).toBeVisible();
+  await expect(page.getByText("Decision", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Resolve schedule conflict" })).toBeVisible();
+  await expect(page.getByText("Deep work overlaps with Team Sync from 9:45-10:15 AM.")).toBeVisible();
+  await expect(page.locator("select").filter({ hasText: "Move deep work" })).toHaveValue("move_deep_work");
+  await expect(page.getByLabel("Notify participants")).toBeChecked();
+  await expect(page.getByText("Starlog can move deep work to 10:30 AM")).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(horizontalOverflow).toBe(false);
+
+  await page.getByRole("button", { name: "Apply resolution" }).click();
+
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0].values).toEqual(
+    expect.objectContaining({
+      resolution: "move_deep_work",
+      notify_participants: true,
+      client_timezone: expect.any(String),
+    }),
+  );
+  await expect(page.getByRole("button", { name: "Apply resolution" })).toHaveCount(0);
+  await expect(page.getByText("move deep work")).toBeVisible();
+
+  snapshot = assistantThreadSnapshot({
+    ...(snapshot as Record<string, unknown>),
+    updated_at: "2026-04-27T09:24:00.000Z",
+    interrupts: [olderSubmittedInterrupt, pendingInterrupt],
+    messages: [
+      ...((snapshot.messages as Array<Record<string, unknown>>) || []).slice(0, 3),
+      {
+        ...((snapshot.messages as Array<Record<string, unknown>>) || [])[3],
+        status: "requires_action",
+        parts: [
+          {
+            type: "text",
+            id: "part_conflict_text",
+            text:
+              "Here are your best options to resolve this cleanly. Protect the longer focus block and move it to a safe later slot.",
+          },
+          {
+            type: "interrupt_request",
+            id: "part_conflict_interrupt",
+            interrupt: pendingInterrupt,
+          },
+        ],
+      },
+    ],
+    next_cursor: "2026-04-27T09:24:00.000Z",
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Decision", { exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: "Later" }).click();
+
+  expect(dismissals).toEqual(["interrupt_planner_conflict"]);
+  await expect(page.getByText("Dismissed", { exact: true })).toBeVisible();
+});
