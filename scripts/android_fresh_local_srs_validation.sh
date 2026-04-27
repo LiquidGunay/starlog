@@ -15,7 +15,7 @@ ADB="${ADB:-/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe}"
 ADB_SERIAL="${ADB_SERIAL:-}"
 APP_VARIANT="${APP_VARIANT:-development}"
 APP_PACKAGE="${APP_PACKAGE:-com.starlog.app.dev}"
-APP_ACTIVITY="${APP_ACTIVITY:-com.starlog.app.dev/.MainActivity}"
+APP_ACTIVITY="${APP_ACTIVITY:-.MainActivity}"
 WINDOWS_TEMP_ROOT="${WINDOWS_TEMP_ROOT:-/mnt/c/Temp}"
 API_PORT="${API_PORT:-8000}"
 API_BASE="${API_BASE:-http://127.0.0.1:${API_PORT}}"
@@ -67,7 +67,7 @@ Environment overrides:
   ADB_SERIAL                    explicit Android serial
   APP_VARIANT                   development | preview | production
   APP_PACKAGE                   Android package to install/launch
-  APP_ACTIVITY                  Fully qualified launcher activity
+  APP_ACTIVITY                  Activity class or component; normalized onto APP_PACKAGE
   DECK_PATH                     JSONL deck to import
   STARLOG_VERSION_NAME          explicit Android versionName
   STARLOG_ANDROID_VERSION_CODE  explicit Android versionCode
@@ -89,6 +89,30 @@ fail() {
   printf '[android-local-srs] %s\n' "$1" >&2
   exit 1
 }
+
+resolve_app_component() {
+  if [[ "$APP_ACTIVITY" == */* ]]; then
+    local activity_package="${APP_ACTIVITY%%/*}"
+    local activity_path="${APP_ACTIVITY#*/}"
+    if [[ "$activity_package" == "$APP_PACKAGE" ]]; then
+      printf '%s' "$APP_ACTIVITY"
+      return
+    fi
+    if [[ "$activity_path" == .* ]]; then
+      printf '%s/%s%s' "$APP_PACKAGE" "$activity_package" "$activity_path"
+      return
+    fi
+    printf '%s/%s' "$APP_PACKAGE" "$activity_path"
+    return
+  fi
+  if [[ "$APP_ACTIVITY" == .* ]]; then
+    printf '%s/%s' "$APP_PACKAGE" "$APP_ACTIVITY"
+    return
+  fi
+  printf '%s/%s' "$APP_PACKAGE" "$APP_ACTIVITY"
+}
+
+APP_COMPONENT="$(resolve_app_component)"
 
 adb_cmd() {
   if [[ -n "$ADB_SERIAL" ]]; then
@@ -384,9 +408,31 @@ preflight_phone_state() {
 }
 
 current_top_activity() {
-  adb_cmd shell dumpsys activity top 2>/dev/null \
-    | sed -n 's/^.*ACTIVITY \([^ ]*\) .*$/\1/p' \
-    | head -n 1
+  local focus_line=""
+  focus_line="$(adb_cmd shell dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp' | head -n 1 || true)"
+  if [[ -z "$focus_line" ]]; then
+    adb_cmd shell dumpsys activity top 2>/dev/null \
+      | sed -n 's/^.*ACTIVITY \([^ ]*\) .*$/\1/p' \
+      | head -n 1
+    return
+  fi
+  sed -n 's/^.* \([^ ]*\/[^ }]*\).*$/\1/p' <<<"$focus_line" | head -n 1
+}
+
+app_is_foreground() {
+  local top_activity=""
+  top_activity="$(current_top_activity || true)"
+  [[ "$top_activity" == "${APP_PACKAGE}/"* ]]
+}
+
+bring_app_to_foreground() {
+  local top_activity=""
+  top_activity="$(current_top_activity || true)"
+  if [[ "$top_activity" == "${APP_PACKAGE}/"* ]]; then
+    return 0
+  fi
+  adb_cmd shell am start -W -n "$APP_COMPONENT" >/dev/null 2>&1 || true
+  sleep 2
 }
 
 phone_locked() {
@@ -524,8 +570,8 @@ install_apk() {
 }
 
 dump_ui() {
-  adb_cmd shell uiautomator dump /sdcard/window_dump.xml >/dev/null
-  adb_cmd pull /sdcard/window_dump.xml "$UI_XML" >/dev/null
+  adb_cmd shell uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1 || return 1
+  adb_cmd pull /sdcard/window_dump.xml "$UI_XML" >/dev/null 2>&1 || return 1
 }
 
 ui_has_text() {
@@ -628,12 +674,16 @@ wait_for_ui_text() {
   local needle="$1"
   local deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
-    dump_ui
-    if ui_has_text "$needle"; then
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if dump_ui && ui_has_text "$needle"; then
       return 0
     fi
     sleep 1
   done
+  capture_screen "$SCREENSHOT_DIR/wait-for-ui-text-timeout.png"
+  snapshot_phone_state "wait-for-ui-text-timeout"
   fail "Timed out waiting for UI text: $needle"
 }
 
@@ -641,7 +691,13 @@ wait_for_any_ui_text() {
   local deadline=$((SECONDS + 60))
   local needles=("$@")
   while (( SECONDS < deadline )); do
-    dump_ui
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
     for needle in "${needles[@]}"; do
       if ui_has_text "$needle"; then
         return 0
@@ -649,7 +705,31 @@ wait_for_any_ui_text() {
     done
     sleep 1
   done
+  capture_screen "$SCREENSHOT_DIR/wait-for-any-ui-text-timeout.png"
+  snapshot_phone_state "wait-for-any-ui-text-timeout"
   fail "Timed out waiting for any UI text: ${needles[*]}"
+}
+
+scroll_until_any_ui_text() {
+  local deadline=$((SECONDS + 30))
+  local needles=("$@")
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if dump_ui; then
+      for needle in "${needles[@]}"; do
+        if ui_has_text "$needle"; then
+          return 0
+        fi
+      done
+    fi
+    scroll_review_controls
+    sleep 1
+  done
+  capture_screen "$SCREENSHOT_DIR/scroll-until-ui-text-timeout.png"
+  snapshot_phone_state "scroll-until-ui-text-timeout"
+  fail "Timed out scrolling for any UI text: ${needles[*]}"
 }
 
 tap_text() {
@@ -691,7 +771,13 @@ capture_screen() {
 wait_for_post_login_surface() {
   local deadline=$((SECONDS + 25))
   while (( SECONDS < deadline )); do
-    dump_ui
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
     if ! ui_has_text "PASSPHRASE" && ! ui_has_text "SIGN IN"; then
       return 0
     fi
@@ -712,29 +798,30 @@ scroll_review_controls() {
 launch_and_validate_review() {
   log "Launching app into fresh login state"
   adb_cmd reverse "tcp:${API_PORT}" "tcp:${API_PORT}" >/dev/null
-  adb_cmd shell am start -W -n "$APP_ACTIVITY" >/dev/null
+  adb_cmd shell am start -W -n "$APP_COMPONENT" >/dev/null
+  sleep 2
 
-  wait_for_ui_text "PASSPHRASE"
+  wait_for_any_ui_text "PASSPHRASE" "API ENDPOINT" "SIGN IN"
   capture_screen "$SCREENSHOT_DIR/login.png"
 
   tap_nth_edit_text 0
   clear_focused_text_field
   adb_cmd shell input text "$API_BASE" >/dev/null
-  adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 1
 
+  bring_app_to_foreground
   tap_nth_edit_text 1
   clear_focused_text_field
   adb_cmd shell input text "$STARLOG_TEST_PASSPHRASE" >/dev/null
-  adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
   sleep 1
+  bring_app_to_foreground
   tap_exact_text "SIGN IN"
   wait_for_post_login_surface
 
   local deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
     sleep 2
-    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=review" -n "$APP_ACTIVITY" >/dev/null || true
+    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=review" -n "$APP_COMPONENT" >/dev/null || true
     dump_ui
     if ui_has_text "Knowledge Health" || ui_has_text "Load due cards" || ui_has_text "Focused Review"; then
       break
@@ -750,12 +837,12 @@ launch_and_validate_review() {
   wait_for_any_ui_text "Focused Review" "Reveal answer" "Hide answer"
   capture_screen "$SCREENSHOT_DIR/review-loaded.png"
 
-  scroll_review_controls
-  sleep 1
+  scroll_until_any_ui_text "Reveal answer" "Hide answer"
   tap_exact_text "Reveal answer"
   sleep 2
   capture_screen "$SCREENSHOT_DIR/review-answer.png"
 
+  scroll_until_any_ui_text "Good" "Again" "Easy" "Hard"
   tap_exact_text "Good"
   sleep 2
   capture_screen "$SCREENSHOT_DIR/review-rated.png"
