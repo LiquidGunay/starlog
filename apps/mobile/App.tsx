@@ -59,6 +59,16 @@ import {
 import { MobileAssistantDrawer, MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
+import {
+  assistantVoiceActionHint,
+  assistantVoiceClipConflictMessage,
+  assistantLocalSttBlockedReason,
+  assistantPrimaryVoiceAction,
+  assistantRecordedVoiceBlockedReason,
+  assistantVoicePanelStatus,
+  deriveAssistantVoiceActionState,
+  runAssistantLocalSttFlow,
+} from "./src/assistant-mobile-voice";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -1322,22 +1332,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const isAssistantMode = activeTab === "assistant";
   const captureVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "capture";
   const captureVoiceClipReady = Boolean(voiceClipUri) && voiceClipTarget === "capture";
-  const assistantVoiceActionState =
-    localSttListening
-      ? "listening"
-      : Boolean(voiceRecording) && voiceClipTarget === "assistant"
-        ? "recording"
-        : Boolean(voiceClipUri) && voiceClipTarget === "assistant"
-          ? "ready"
-          : "idle";
-  const assistantVoiceActionHint =
-    assistantVoiceActionState === "listening"
-      ? "Listening for an on-device message..."
-      : assistantVoiceActionState === "recording"
-        ? "Recording voice input. Tap the mic again to stop."
-        : assistantVoiceActionState === "ready"
-          ? "Voice clip ready. Tap the mic to send it into the Assistant thread, or clear it."
-          : null;
+  const assistantVoiceActionState = deriveAssistantVoiceActionState({
+    localSttListening,
+    voiceRecording: Boolean(voiceRecording),
+    voiceClipReady: Boolean(voiceClipUri),
+    voiceClipTarget,
+  });
+  const assistantVoiceActionHintText = assistantVoiceActionHint(assistantVoiceActionState);
   const threadMessages = useMemo(() => {
     const baseMessages = assistantThreadSnapshot?.messages ?? [];
     if (!pendingConversationTurn) {
@@ -3027,106 +3028,63 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function submitLocalVoiceAssistantCommand(execute: boolean) {
-    if (localSttListening) {
-      setStatus("On-device STT is already listening");
-      return;
-    }
-    if (!token) {
-      setStatus("Add API token first");
-      return;
-    }
-    if (!localSttAvailable || sttResolution.active !== "on_device") {
-      setStatus("On-device STT is unavailable; use the queued Whisper voice path instead.");
-      return;
-    }
-    if (voiceRecording) {
-      setStatus("Stop the current voice recording before starting on-device STT");
-      return;
-    }
-    if (voiceClipUri) {
-      setStatus(
-        voiceClipTarget === "capture"
-          ? "A Library voice note is ready. Upload it in Library or clear it before starting Assistant STT."
-          : "An Assistant voice clip is ready. Send it or clear it before starting on-device STT.",
-      );
+    const blockedReason = assistantLocalSttBlockedReason({
+      usage: "command",
+      localSttListening,
+      hasToken: Boolean(token),
+      localSttAvailable,
+      sttUsesOnDevice: sttResolution.active === "on_device",
+      hasVoiceRecording: Boolean(voiceRecording),
+      hasVoiceClip: Boolean(voiceClipUri),
+      voiceClipTarget,
+    });
+    if (blockedReason) {
+      setStatus(blockedReason);
       return;
     }
 
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
-        setStatus("Microphone permission denied");
-        return;
-      }
-
-      setLocalSttListening(true);
-      setStatus("Listening for an on-device voice command...");
-      const transcriptPayload = await recognizeSpeechOnce({
-        prompt: execute ? "Speak the command to execute" : "Speak the command to plan",
-      });
-      const transcript = transcriptPayload.transcript.trim();
-      if (!transcript) {
-        throw new Error("On-device STT returned no transcript");
-      }
-
-      setHomeDraft(transcript);
-      await submitAssistantCommand(transcript, execute, "on-device STT");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "On-device STT failed");
-    } finally {
-      setLocalSttListening(false);
-    }
+    await runAssistantLocalSttFlow({
+      prompt: execute ? "Speak the command to execute" : "Speak the command to plan",
+      listeningStatus: "Listening for an on-device voice command...",
+      requestPermission: () => Audio.requestPermissionsAsync(),
+      recognizeSpeechOnce,
+      setListening: setLocalSttListening,
+      setStatus,
+      onTranscript: async (transcript) => {
+        setHomeDraft(transcript);
+        await submitAssistantCommand(transcript, execute, "on-device STT");
+      },
+    });
   }
 
   async function submitLocalVoiceConversationTurn() {
-    if (localSttListening) {
-      setStatus("On-device STT is already listening");
-      return;
-    }
-    if (!token) {
-      setStatus("Add API token first");
-      return;
-    }
-    if (!localSttAvailable || sttResolution.active !== "on_device") {
-      setStatus("On-device STT is unavailable; use the recording fallback.");
-      return;
-    }
-    if (voiceRecording) {
-      setStatus("Stop the current voice recording before starting on-device STT");
-      return;
-    }
-    if (voiceClipUri) {
-      setStatus(
-        voiceClipTarget === "capture"
-          ? "A Library voice note is ready. Upload it in Library or clear it before using Assistant voice."
-          : "An Assistant voice clip is ready. Send it or clear it before starting on-device STT.",
-      );
+    const blockedReason = assistantLocalSttBlockedReason({
+      usage: "message",
+      localSttListening,
+      hasToken: Boolean(token),
+      localSttAvailable,
+      sttUsesOnDevice: sttResolution.active === "on_device",
+      hasVoiceRecording: Boolean(voiceRecording),
+      hasVoiceClip: Boolean(voiceClipUri),
+      voiceClipTarget,
+    });
+    if (blockedReason) {
+      setStatus(blockedReason);
       return;
     }
 
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
-        setStatus("Microphone permission denied");
-        return;
-      }
-
-      setLocalSttListening(true);
-      setStatus("Listening for an Assistant message...");
-      const transcriptPayload = await recognizeSpeechOnce({
-        prompt: "Speak your message for Assistant",
-      });
-      const transcript = transcriptPayload.transcript.trim();
-      if (!transcript) {
-        throw new Error("On-device STT returned no transcript");
-      }
-      setHomeDraft(transcript);
-      await sendConversationTurn(transcript, "voice");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "On-device STT failed");
-    } finally {
-      setLocalSttListening(false);
-    }
+    await runAssistantLocalSttFlow({
+      prompt: "Speak your message for Assistant",
+      listeningStatus: "Listening for an Assistant message...",
+      requestPermission: () => Audio.requestPermissionsAsync(),
+      recognizeSpeechOnce,
+      setListening: setLocalSttListening,
+      setStatus,
+      onTranscript: async (transcript) => {
+        setHomeDraft(transcript);
+        await sendConversationTurn(transcript, "voice");
+      },
+    });
   }
 
   async function submitVoiceAssistantCommand(execute: boolean) {
@@ -3134,16 +3092,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       await submitLocalVoiceAssistantCommand(execute);
       return;
     }
-    if (!voiceClipUri) {
-      setStatus("Record a voice clip first");
-      return;
-    }
-    if (voiceClipTarget === "capture") {
-      setStatus("A Library voice note is ready. Upload it in Library or clear it before sending an Assistant voice command.");
-      return;
-    }
-    if (!token) {
-      setStatus("Add API token first");
+    const blockedReason = assistantRecordedVoiceBlockedReason({
+      usage: "command",
+      hasVoiceClip: Boolean(voiceClipUri),
+      voiceClipTarget,
+      hasToken: Boolean(token),
+    });
+    if (blockedReason) {
+      setStatus(blockedReason);
       return;
     }
 
@@ -3188,16 +3144,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       await submitLocalVoiceConversationTurn();
       return;
     }
-    if (!voiceClipUri) {
-      setStatus("Record a voice clip first");
-      return;
-    }
-    if (voiceClipTarget === "capture") {
-      setStatus("A Library voice note is ready. Upload it in Library or clear it before sending an Assistant voice message.");
-      return;
-    }
-    if (!token) {
-      setStatus("Add API token first");
+    const blockedReason = assistantRecordedVoiceBlockedReason({
+      usage: "message",
+      hasVoiceClip: Boolean(voiceClipUri),
+      voiceClipTarget,
+      hasToken: Boolean(token),
+    });
+    if (blockedReason) {
+      setStatus(blockedReason);
       return;
     }
 
@@ -3252,27 +3206,29 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function handleAssistantVoiceAction() {
-    if (pendingConversationTurn) {
-      setStatus("Wait for the current Assistant reply to finish");
+    const nextAction = assistantPrimaryVoiceAction({
+      pendingConversationTurn: Boolean(pendingConversationTurn),
+      localSttListening,
+      sttUsesOnDevice: sttResolution.active === "on_device",
+      localSttAvailable,
+      hasToken: Boolean(token),
+      hasVoiceRecording: Boolean(voiceRecording),
+      hasVoiceClip: Boolean(voiceClipUri),
+      voiceClipTarget,
+    });
+    if (nextAction.kind === "blocked") {
+      setStatus(nextAction.message);
       return;
     }
-    if (sttResolution.active === "on_device") {
+    if (nextAction.kind === "listen") {
       await submitLocalVoiceConversationTurn();
       return;
     }
-    if (voiceRecording) {
-      if (voiceClipTarget !== "assistant") {
-        setStatus("A Library voice note is recording. Finish it in Library before recording for Assistant.");
-        return;
-      }
+    if (nextAction.kind === "stop_recording") {
       await stopVoiceRecording();
       return;
     }
-    if (voiceClipUri) {
-      if (voiceClipTarget !== "assistant") {
-        setStatus("A Library voice note is ready. Upload it in Library or clear it before using Assistant voice.");
-        return;
-      }
+    if (nextAction.kind === "send_clip") {
       await submitVoiceAssistantTurn();
       return;
     }
@@ -3820,7 +3776,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               onVoiceAction={() => handleAssistantVoiceAction().catch(() => undefined)}
               onCancelVoiceAction={clearAssistantVoiceAction}
               voiceActionState={assistantVoiceActionState}
-              voiceActionHint={assistantVoiceActionHint}
+              voiceActionHint={assistantVoiceActionHintText}
               refreshThread={() => loadConversation("manual").catch(() => undefined)}
               resetConversationSession={resetConversationSession}
               threadSnapshot={assistantThreadSnapshot}
@@ -4060,17 +4016,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                     resetConversationSession().catch(() => undefined);
                   }}
                   localSttLabel={localSttProbeLabel(localSttAvailable)}
-                  voiceCommandStatus={
-                    sttResolution.active === "on_device"
-                      ? "Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint."
-                      : `Voice clip for commands: ${
-                          voiceRecording && voiceClipTarget === "assistant"
-                            ? "recording..."
-                            : voiceClipUri && voiceClipTarget === "assistant"
-                              ? `${Math.round(voiceClipDurationMs / 1000)}s ready`
-                              : "none"
-                        }`
-                  }
+                  voiceCommandStatus={assistantVoicePanelStatus({
+                    sttUsesOnDevice: sttResolution.active === "on_device",
+                    voiceRecording: Boolean(voiceRecording),
+                    voiceClipTarget,
+                    voiceClipReady: Boolean(voiceClipUri),
+                    voiceClipDurationMs,
+                  })}
                   conversationTitle={conversationTitle}
                   conversationSessionState={conversationSessionState}
                   conversationMessages={conversationMessages}
