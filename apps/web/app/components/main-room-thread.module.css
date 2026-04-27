@@ -98,6 +98,23 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.toolCallPanel summary,
+.activityDetails summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: rgba(244, 241, 232, 0.86);
+  font-weight: 600;
+}
+
+.toolCallPanel summary small {
+  color: rgba(244, 241, 232, 0.58);
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .card,
 .panel {
   display: grid;
@@ -261,10 +278,11 @@
 
 .ambientDetail {
   display: grid;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  gap: 10px;
+  padding: 10px 0 10px 14px;
+  border-left: 2px solid rgba(143, 181, 210, 0.45);
+  border-radius: 0;
+  background: transparent;
   color: rgba(244, 241, 232, 0.78);
 }
 
@@ -281,6 +299,11 @@
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.activityDetails {
+  display: grid;
+  gap: 12px;
 }
 
 .outputGrid {
@@ -338,6 +361,14 @@
 .field input[type="checkbox"] {
   width: auto;
   justify-self: start;
+}
+
+.consequencePreview {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(239, 205, 160, 0.08);
+  color: rgba(244, 241, 232, 0.76) !important;
+  font-size: 13px;
 }
 
 .primaryButton,

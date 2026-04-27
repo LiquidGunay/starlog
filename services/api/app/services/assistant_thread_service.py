@@ -172,6 +172,7 @@ def _message_payload(row: dict[str, Any], parts_by_message: dict[str, list[dict[
 
 
 def _interrupt_payload(row: dict[str, Any]) -> dict[str, Any]:
+    metadata = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
     return {
         "id": row["id"],
         "thread_id": row["thread_id"],
@@ -185,7 +186,14 @@ def _interrupt_payload(row: dict[str, Any]) -> dict[str, Any]:
         "fields": row.get("fields_json") if isinstance(row.get("fields_json"), list) else [],
         "primary_label": row["primary_label"],
         "secondary_label": row.get("secondary_label"),
-        "metadata": row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {},
+        "display_mode": metadata.get("display_mode"),
+        "consequence_preview": metadata.get("consequence_preview"),
+        "defer_label": metadata.get("defer_label"),
+        "destructive": bool(metadata.get("destructive", False)),
+        "recommended_defaults": metadata.get("recommended_defaults")
+        if isinstance(metadata.get("recommended_defaults"), dict)
+        else None,
+        "metadata": metadata,
         "created_at": row["created_at"],
         "resolved_at": row.get("resolved_at"),
         "resolution": row.get("resolution_json") if isinstance(row.get("resolution_json"), dict) else {},

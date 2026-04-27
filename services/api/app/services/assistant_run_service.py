@@ -285,6 +285,7 @@ def _create_interrupt(
     row = execute_fetchone(conn, "SELECT * FROM conversation_interrupts WHERE id = ?", (interrupt_id,))
     if row is None:
         raise RuntimeError("Failed to create assistant interrupt")
+    presentation = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
     return {
         "id": row["id"],
         "thread_id": row["thread_id"],
@@ -298,7 +299,14 @@ def _create_interrupt(
         "fields": row.get("fields_json") if isinstance(row.get("fields_json"), list) else [],
         "primary_label": row["primary_label"],
         "secondary_label": row.get("secondary_label"),
-        "metadata": row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {},
+        "display_mode": presentation.get("display_mode"),
+        "consequence_preview": presentation.get("consequence_preview"),
+        "defer_label": presentation.get("defer_label"),
+        "destructive": bool(presentation.get("destructive", False)),
+        "recommended_defaults": presentation.get("recommended_defaults")
+        if isinstance(presentation.get("recommended_defaults"), dict)
+        else None,
+        "metadata": presentation,
         "created_at": row["created_at"],
         "resolved_at": row.get("resolved_at"),
         "resolution": row.get("resolution_json") if isinstance(row.get("resolution_json"), dict) else {},
@@ -492,6 +500,13 @@ def _request_due_date_interrupt(conn: Connection, *, thread_id: str, run_id: str
             "input_mode": input_mode,
             "device_target": device_target,
             "request_metadata": metadata,
+            "display_mode": "composer",
+            "consequence_preview": "Creates a Planner task. Time blocking can be handled next.",
+            "defer_label": "Not now",
+            "recommended_defaults": {
+                "priority": int(arguments.get("priority") or 3),
+                "create_time_block": False,
+            },
         },
         entity_ref={"entity_type": "task", "entity_id": f"draft:{title}", "title": title},
     )
@@ -1136,13 +1151,18 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
         elif row["tool_name"] == "triage_capture":
             artifact_id = str(metadata.get("artifact_id") or "")
             artifact = artifacts_service.get_artifact(conn, artifact_id) if artifact_id else None
+            next_step_value = str(values.get("next_step") or "follow_up").strip()
+            action_status: str | None = None
+            output_ref: str | None = None
             if artifact is not None:
                 artifact_metadata = dict(artifact.get("metadata") or {})
                 artifact_metadata["triage"] = {
                     "capture_kind": values.get("capture_kind"),
-                    "next_step": values.get("next_step"),
+                    "next_step": next_step_value,
                     "updated_at": utc_now().isoformat(),
                 }
+                if next_step_value == "archive":
+                    artifact_metadata["triage"]["archived_as_reference"] = True
                 conn.execute(
                     "UPDATE artifacts SET metadata_json = ?, updated_at = ? WHERE id = ?",
                     (
@@ -1152,17 +1172,43 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                     ),
                 )
                 conn.commit()
-            next_step = str(values.get("next_step") or "follow_up").replace("_", " ")
+                if next_step_value in {"summarize", "cards", "tasks", "append_note"}:
+                    action_status, output_ref = artifacts_service.run_action(
+                        conn,
+                        artifact_id,
+                        next_step_value,
+                        defer=False,
+                        user_id=user_id,
+                    )
+                    artifact = artifacts_service.get_artifact(conn, artifact_id) or artifact
+            next_step = next_step_value.replace("_", " ")
+            result_card = (
+                assistant_projection_service.capture_triage_card(artifact=artifact)
+                if artifact is not None
+                else None
+            )
             assistant_message = assistant_thread_service.append_message(
                 conn,
                 thread_id=row["thread_id"],
                 role="assistant",
                 status="complete",
                 run_id=row["run_id"],
-                metadata={"interrupt_resolution": resolution},
+                metadata={
+                    "interrupt_resolution": resolution,
+                    "capture_triage": {
+                        "artifact_id": artifact_id,
+                        "next_step": next_step_value,
+                        "action_status": action_status,
+                        "output_ref": output_ref,
+                    },
+                },
                 parts=[
-                    assistant_projection_service.text_part(f"Saved the capture triage. Next step: {next_step}."),
+                    assistant_projection_service.text_part(
+                        f"Saved the capture triage. Next step: {next_step}."
+                        + (f" Action {action_status}." if action_status else "")
+                    ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
+                    *([assistant_projection_service.card_part(result_card)] if result_card else []),
                 ],
             )
             _record_step(
@@ -1175,7 +1221,12 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 tool_kind="ui_tool",
                 status="completed",
                 arguments=values,
-                result={"artifact_id": artifact_id, "next_step": values.get("next_step")},
+                result={
+                    "artifact_id": artifact_id,
+                    "next_step": next_step_value,
+                    "action_status": action_status,
+                    "output_ref": output_ref,
+                },
                 interrupt_id=interrupt_id,
                 message_id=assistant_message["id"],
             )

@@ -15,7 +15,11 @@ const REGISTRY: Record<string, ConversationCardRegistryEntry> = {
   knowledge_note: { label: productCardLabel("knowledge_note"), tone: "knowledge", glyph: "✳" },
   capture_item: { label: productCardLabel("capture_item"), tone: "knowledge", glyph: "⬒" },
   memory_suggestion: { label: productCardLabel("memory_suggestion"), tone: "knowledge", glyph: "⟲" },
-  tool_step: { label: "Tool step", tone: "context", glyph: "⊹" },
+  tool_step: { label: productCardLabel("tool_step"), tone: "context", glyph: "⊹" },
+  project_status: { label: productCardLabel("project_status"), tone: "task", glyph: "▣" },
+  goal_status: { label: productCardLabel("goal_status"), tone: "brief", glyph: "◎" },
+  commitment_status: { label: productCardLabel("commitment_status"), tone: "task", glyph: "◧" },
+  learning_drill: { label: productCardLabel("learning_drill"), tone: "review", glyph: "◈" },
 };
 
 export function getConversationCardRegistryEntry(kind: string, title?: string | null): ConversationCardRegistryEntry {

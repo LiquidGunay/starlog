@@ -749,7 +749,21 @@ def test_capture_creation_reflects_into_assistant_triage_interrupt(
     payload = snapshot.json()
     interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "triage_capture")
     assert interrupt["entity_ref"]["entity_id"] == artifact_id
+    assert interrupt["display_mode"] == "inline"
+    assert interrupt["consequence_preview"]
+    assert any(option["value"] == "tasks" for field in interrupt["fields"] for option in field.get("options", []))
     assert any("One quick choice" in text for text in _message_texts(payload))
+
+    submitted = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"capture_kind": "task", "next_step": "tasks"}},
+        headers=auth_headers,
+    )
+    assert submitted.status_code == 200
+    graph = client.get(f"/v1/artifacts/{artifact_id}/graph", headers=auth_headers)
+    assert graph.status_code == 200
+    assert graph.json()["tasks"]
+    assert all(task["source_artifact_id"] == artifact_id for task in graph.json()["tasks"])
 
 
 def test_desktop_helper_capture_reflects_with_desktop_helper_surface(

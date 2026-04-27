@@ -7,7 +7,7 @@
     "assistant": {
       "label": "Assistant",
       "shortLabel": "Assistant",
-      "description": "Persistent thread for commands, confirmations, and returned cards.",
+      "description": "Daily cockpit for focus, capture, planning, review, and follow-through.",
       "href": "/assistant"
     },
     "library": {
@@ -25,7 +25,7 @@
     "review": {
       "label": "Review",
       "shortLabel": "Review",
-      "description": "Flashcards and recall sessions.",
+      "description": "Recall, understanding checks, drills, and focused reinforcement.",
       "href": "/review"
     }
   },
@@ -38,12 +38,16 @@
     "knowledge_note": "Library note",
     "capture_item": "Capture",
     "memory_suggestion": "Memory suggestion",
-    "tool_step": "Tool detail"
+    "tool_step": "Activity",
+    "project_status": "Project",
+    "goal_status": "Goal",
+    "commitment_status": "Commitment",
+    "learning_drill": "Learning drill"
   },
   "assistant": {
-    "emptyTitle": "Start with a clear request.",
-    "emptyBody": "The assistant thread keeps the answer, the next move, and the supporting tool details in one place.",
-    "inputPlaceholder": "Ask Starlog to capture, plan, review, or follow up..."
+    "emptyTitle": "Start with today.",
+    "emptyBody": "Starlog can help pick a focus, process captures, create tasks, or start review from this thread.",
+    "inputPlaceholder": "Ask, capture, plan, review, or move something forward..."
   },
   "auth": {
     "readyStatus": "Single-user passphrase access is required before Starlog opens.",
