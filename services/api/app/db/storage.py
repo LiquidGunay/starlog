@@ -190,6 +190,49 @@ CREATE TABLE IF NOT EXISTS tasks (
   FOREIGN KEY (source_artifact_id) REFERENCES artifacts(id)
 );
 
+CREATE TABLE IF NOT EXISTS goals (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  horizon TEXT NOT NULL,
+  why TEXT,
+  success_criteria TEXT,
+  status TEXT NOT NULL,
+  review_cadence TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_reviewed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT,
+  title TEXT NOT NULL,
+  desired_outcome TEXT,
+  current_state TEXT,
+  next_action_id TEXT,
+  open_questions_json TEXT NOT NULL,
+  risks_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_reviewed_at TEXT,
+  FOREIGN KEY (goal_id) REFERENCES goals(id),
+  FOREIGN KEY (next_action_id) REFERENCES tasks(id)
+);
+
+CREATE TABLE IF NOT EXISTS commitments (
+  id TEXT PRIMARY KEY,
+  source_type TEXT NOT NULL,
+  source_id TEXT,
+  title TEXT NOT NULL,
+  promised_to TEXT,
+  due_at TEXT,
+  status TEXT NOT NULL,
+  recovery_plan TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS calendar_events (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -709,6 +752,9 @@ CREATE INDEX IF NOT EXISTS idx_memory_activation_events_page_created ON memory_a
 CREATE INDEX IF NOT EXISTS idx_memory_suggestions_surface_weight ON memory_suggestions(surface, weight DESC, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_research_items_source_updated ON research_items(source_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_research_digests_date ON research_digests(digest_date, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_goals_status_updated ON goals(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_goal_status_updated ON projects(goal_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_commitments_status_due ON commitments(status, due_at);
 """
 
 
@@ -817,10 +863,53 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           resolution_strategy TEXT,
           resolution_payload_json TEXT
         );
+        CREATE TABLE IF NOT EXISTS goals (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          horizon TEXT NOT NULL,
+          why TEXT,
+          success_criteria TEXT,
+          status TEXT NOT NULL,
+          review_cadence TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_reviewed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY,
+          goal_id TEXT,
+          title TEXT NOT NULL,
+          desired_outcome TEXT,
+          current_state TEXT,
+          next_action_id TEXT,
+          open_questions_json TEXT NOT NULL,
+          risks_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_reviewed_at TEXT,
+          FOREIGN KEY (goal_id) REFERENCES goals(id),
+          FOREIGN KEY (next_action_id) REFERENCES tasks(id)
+        );
+        CREATE TABLE IF NOT EXISTS commitments (
+          id TEXT PRIMARY KEY,
+          source_type TEXT NOT NULL,
+          source_id TEXT,
+          title TEXT NOT NULL,
+          promised_to TEXT,
+          due_at TEXT,
+          status TEXT NOT NULL,
+          recovery_plan TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_ai_jobs_selected_target ON ai_jobs(selected_target, status, created_at);
         CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expires_at);
         CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
         CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_goals_status_updated ON goals(status, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_projects_goal_status_updated ON projects(goal_id, status, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_commitments_status_due ON commitments(status, due_at);
         CREATE TABLE IF NOT EXISTS conversation_threads (
           id TEXT PRIMARY KEY,
           owner_user_id TEXT NOT NULL,
