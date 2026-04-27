@@ -26,6 +26,148 @@
   line-height: 1.2;
 }
 
+.todayPanel {
+  align-self: start;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(239, 205, 160, 0.1), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.todayHeader {
+  display: grid;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.todayKicker {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(239, 205, 160, 0.78);
+}
+
+.todayHeader h2 {
+  margin: 0;
+  color: #f4f1e8;
+  font-size: 30px;
+  line-height: 1.12;
+}
+
+.todayHeader p {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.72);
+  line-height: 1.55;
+}
+
+.todayMoves {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.todayMoves button {
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 241, 232, 0.9);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.todayMoves button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.todayMoves button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.todayGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.todayBlock {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.todayBlockHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(244, 241, 232, 0.58);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.todayBlockHeader strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(239, 205, 160, 0.14);
+  color: #f4f1e8;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.todayList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todayList li {
+  min-width: 0;
+}
+
+.todayList a,
+.todayList span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(244, 241, 232, 0.84);
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.todayList a:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.todayEmptyCopy {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.62);
+  line-height: 1.5;
+}
+
 .message {
   display: grid;
   gap: 8px;
@@ -394,4 +536,26 @@
 .secondaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+@media (max-width: 720px) {
+  .threadShell {
+    padding: 12px;
+    border-radius: 20px;
+    min-height: 520px;
+  }
+
+  .todayPanel {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .todayHeader h2 {
+    font-size: 24px;
+  }
+
+  .todayMoves,
+  .todayGrid {
+    grid-template-columns: 1fr;
+  }
 }

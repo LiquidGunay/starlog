@@ -22,16 +22,128 @@ type MainRoomThreadProps = {
   snapshot: AssistantThreadSnapshot | null;
   loading: boolean;
   busy: boolean;
+  todayOpenLoops?: TodayItem[];
+  todayContextItems?: TodayItem[];
+  onQuickStart: (prompt: string) => void;
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 };
+
+type TodayItem = {
+  label: string;
+  href?: string;
+};
+
+type TodayMove = {
+  label: string;
+  prompt: string;
+};
+
+const TODAY_MOVES: TodayMove[] = [
+  {
+    label: "Plan today",
+    prompt: "Plan today around my schedule, tasks, and open loops.",
+  },
+  {
+    label: "Process captures",
+    prompt: "Process my latest captures and route anything actionable.",
+  },
+  {
+    label: "Start review",
+    prompt: "Start a focused review session for what is due now.",
+  },
+  {
+    label: "Create task",
+    prompt: "Create a task for ",
+  },
+];
 
 function defaultValues(interrupt: AssistantInterrupt): Record<string, unknown> {
   return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
     accumulator[field.id] = field.value ?? (field.kind === "toggle" ? false : "");
     return accumulator;
   }, {});
+}
+
+function pendingInterruptTodayLabel(interrupt: AssistantInterrupt): string {
+  if (interrupt.tool_name === "request_due_date") {
+    return "Task details needed";
+  }
+  if (interrupt.tool_name === "triage_capture") {
+    return "Capture triage ready";
+  }
+  if (interrupt.tool_name === "choose_morning_focus") {
+    return "Morning focus waiting";
+  }
+  if (interrupt.tool_name === "resolve_planner_conflict") {
+    return "Planner conflict to resolve";
+  }
+  if (interrupt.tool_name === "grade_review_recall") {
+    return "Review grade pending";
+  }
+  return interrupt.title;
+}
+
+function cardTodayLabel(card: AssistantCard): string | null {
+  if (card.kind === "task_list") {
+    return card.title ? `Planner: ${card.title}` : "Planner update ready";
+  }
+  if (card.kind === "review_queue") {
+    return card.title ? `Review: ${card.title}` : "Review queue ready";
+  }
+  if (card.kind === "capture_item") {
+    return card.title ? `Capture: ${card.title}` : "Capture ready to process";
+  }
+  if (card.kind === "briefing") {
+    return card.title ? `Briefing: ${card.title}` : "Briefing ready";
+  }
+  if (card.kind === "knowledge_note") {
+    return card.title ? `Library: ${card.title}` : "Relevant note ready";
+  }
+  return null;
+}
+
+function collectTodayOpenLoops(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
+  const explicitItems = (providedItems || []).filter((item) => item.label !== "No open loops in this thread").slice(0, 4);
+  if (explicitItems.length > 0) {
+    return explicitItems;
+  }
+  return snapshot.interrupts
+    .filter((interrupt) => interrupt.status === "pending")
+    .slice(0, 4)
+    .map((interrupt) => ({
+      label: pendingInterruptTodayLabel(interrupt),
+      href: interrupt.entity_ref?.href || undefined,
+    }));
+}
+
+function collectTodayContext(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
+  const explicitItems = (providedItems || []).slice(0, 4);
+  if (explicitItems.length > 0) {
+    return explicitItems;
+  }
+
+  const context: TodayItem[] = [];
+  for (const message of [...snapshot.messages].reverse()) {
+    for (const part of [...message.parts].reverse()) {
+      if (part.type !== "card") {
+        continue;
+      }
+      const label = cardTodayLabel(part.card);
+      if (!label) {
+        continue;
+      }
+      context.push({
+        label,
+        href: part.card.entity_ref?.href || undefined,
+      });
+      if (context.length >= 4) {
+        return context;
+      }
+    }
+  }
+  return context;
 }
 
 function renderField(
@@ -474,6 +586,87 @@ function AttachmentSection({ attachment }: { attachment: AssistantAttachment }) 
   );
 }
 
+function TodayPanel({
+  snapshot,
+  openLoops,
+  contextItems,
+  busy,
+  onQuickStart,
+}: {
+  snapshot: AssistantThreadSnapshot;
+  openLoops: TodayItem[];
+  contextItems: TodayItem[];
+  busy: boolean;
+  onQuickStart: (prompt: string) => void;
+}) {
+  const hasOpenLoops = openLoops.length > 0;
+  const hasContext = contextItems.length > 0;
+
+  return (
+    <section className={styles.todayPanel} aria-labelledby="assistant-today-title">
+      <div className={styles.todayHeader}>
+        <p className={styles.todayKicker}>Today in Starlog</p>
+        <h2 id="assistant-today-title">Choose the next useful move.</h2>
+        <p>
+          Start with planning, captures, review, or a task. Starlog will keep the work connected across
+          Assistant, Library, Planner, and Review.
+        </p>
+      </div>
+
+      <div className={styles.todayMoves} aria-label="Today quick starts">
+        {TODAY_MOVES.map((move) => (
+          <button
+            key={move.label}
+            type="button"
+            onClick={() => onQuickStart(move.prompt)}
+            disabled={busy}
+          >
+            {move.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.todayGrid}>
+        <section className={styles.todayBlock}>
+          <div className={styles.todayBlockHeader}>
+            <span>Open loops</span>
+            <strong>{hasOpenLoops ? openLoops.length : 0}</strong>
+          </div>
+          {hasOpenLoops ? (
+            <ul className={styles.todayList}>
+              {openLoops.map((item, index) => (
+                <li key={`loop-${item.label}-${index}`}>
+                  {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.todayEmptyCopy}>No pending decisions right now.</p>
+          )}
+        </section>
+
+        <section className={styles.todayBlock}>
+          <div className={styles.todayBlockHeader}>
+            <span>Useful context</span>
+            <strong>{hasContext ? contextItems.length : snapshot.messages.length}</strong>
+          </div>
+          {hasContext ? (
+            <ul className={styles.todayList}>
+              {contextItems.map((item, index) => (
+                <li key={`context-${item.label}-${index}`}>
+                  {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.todayEmptyCopy}>No active items yet. Start with a plan, capture, review, or task.</p>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function MessagePart({
   message,
   interruptById,
@@ -619,6 +812,9 @@ export function MainRoomThread({
   snapshot,
   loading,
   busy,
+  todayOpenLoops,
+  todayContextItems,
+  onQuickStart,
   onCardAction,
   onInterruptSubmit,
   onInterruptDismiss,
@@ -632,14 +828,19 @@ export function MainRoomThread({
   }
 
   const interruptById = Object.fromEntries(snapshot.interrupts.map((interrupt) => [interrupt.id, interrupt]));
+  const openLoops = collectTodayOpenLoops(snapshot, todayOpenLoops);
+  const contextItems = collectTodayContext(snapshot, todayContextItems);
 
   return (
     <section className={styles.threadShell}>
       {snapshot.messages.length === 0 ? (
-        <div className={styles.emptyState}>
-          <p>No messages yet.</p>
-          <h2>The Assistant thread is ready for capture, planning, review, and follow-through.</h2>
-        </div>
+        <TodayPanel
+          snapshot={snapshot}
+          openLoops={openLoops}
+          contextItems={contextItems}
+          busy={busy}
+          onQuickStart={onQuickStart}
+        />
       ) : (
         snapshot.messages.map((message) => (
           <MessagePart
