@@ -68,6 +68,37 @@ def _assistant_client_timezone(metadata: dict[str, Any] | None, values: dict[str
     return raw_timezone
 
 
+def _capture_triage_result_card(
+    conn: Connection,
+    *,
+    artifact_id: str,
+    artifact: dict[str, Any] | None,
+    action: str,
+    action_status: str | None,
+    output_ref: str | None,
+) -> dict[str, Any] | None:
+    if artifact is None:
+        return None
+    if action in {"summarize", "cards", "tasks", "append_note"}:
+        cards = conversation_card_service.project_step_cards(
+            conn,
+            SimpleNamespace(
+                tool_name="run_artifact_action",
+                result={
+                    "artifact_id": artifact_id,
+                    "action": action,
+                    "status": action_status or "completed",
+                    "output_ref": output_ref,
+                },
+                arguments={"artifact_id": artifact_id, "action": action},
+                status=action_status or "completed",
+            ),
+        )
+        if cards:
+            return cards[0]
+    return assistant_projection_service.capture_triage_card(artifact=artifact)
+
+
 def _due_date_to_utc_start(due_date_raw: str, *, client_timezone: str) -> datetime:
     due_date = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
     local_start = datetime.combine(due_date, time.min, tzinfo=ZoneInfo(client_timezone))
@@ -1182,10 +1213,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                     )
                     artifact = artifacts_service.get_artifact(conn, artifact_id) or artifact
             next_step = next_step_value.replace("_", " ")
-            result_card = (
-                assistant_projection_service.capture_triage_card(artifact=artifact)
-                if artifact is not None
-                else None
+            result_card = _capture_triage_result_card(
+                conn,
+                artifact_id=artifact_id,
+                artifact=artifact,
+                action=next_step_value,
+                action_status=action_status,
+                output_ref=output_ref,
             )
             assistant_message = assistant_thread_service.append_message(
                 conn,

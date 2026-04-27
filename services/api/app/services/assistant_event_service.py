@@ -49,8 +49,10 @@ _VALID_VISIBILITIES = {"internal", "ambient", "assistant_message", "dynamic_pane
 
 
 def _event_visibility(kind: str, requested: str | None) -> str:
-    if requested in {None, "internal"}:
+    if requested is None:
         return _EVENT_VISIBILITY_POLICY.get(kind, "internal")
+    if requested == "internal":
+        return "internal"
     if requested == "assistant_message":
         return _EVENT_VISIBILITY_POLICY.get(kind, "assistant_message")
     if requested in _VALID_VISIBILITIES:
