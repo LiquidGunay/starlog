@@ -626,6 +626,69 @@ def test_assistant_surface_event_can_project_planner_conflict_interrupt(
     assert any(interrupt["tool_name"] == "resolve_planner_conflict" for interrupt in payload["interrupts"])
 
 
+def test_assistant_surface_event_explicit_internal_task_created_stays_internal(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    before = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert before.status_code == 200
+    before_payload = before.json()
+
+    response = client.post(
+        "/v1/assistant/threads/primary/events",
+        json={
+            "source_surface": "planner",
+            "kind": "task.created",
+            "entity_ref": {"entity_type": "task", "entity_id": "task_internal_1", "href": "/planner"},
+            "payload": {"label": "Task created", "body": "This should remain internal."},
+            "visibility": "internal",
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert len(payload["messages"]) == len(before_payload["messages"])
+    assert len(payload["interrupts"]) == len(before_payload["interrupts"])
+    assert not any(
+        part["type"] == "ambient_update" and part["update"]["metadata"].get("kind") == "task.created"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
+def test_assistant_surface_event_explicit_internal_capture_created_stays_internal(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    artifact_id = _create_test_artifact(title="Internal capture", source_type="clip_manual")
+    before = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert before.status_code == 200
+    before_payload = before.json()
+
+    response = client.post(
+        "/v1/assistant/threads/primary/events",
+        json={
+            "source_surface": "library",
+            "kind": "capture.created",
+            "entity_ref": {"entity_type": "artifact", "entity_id": artifact_id, "href": f"/artifacts?artifact={artifact_id}"},
+            "payload": {"artifact_id": artifact_id, "assistant_text": "This should remain internal."},
+            "visibility": "internal",
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert len(payload["messages"]) == len(before_payload["messages"])
+    assert not any(interrupt["tool_name"] == "triage_capture" for interrupt in payload["interrupts"])
+    assert not any(
+        part["type"] == "ambient_update" and part["update"]["metadata"].get("kind") == "capture.created"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+
+
 def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_review(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -749,7 +812,33 @@ def test_capture_creation_reflects_into_assistant_triage_interrupt(
     payload = snapshot.json()
     interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "triage_capture")
     assert interrupt["entity_ref"]["entity_id"] == artifact_id
+    assert interrupt["display_mode"] == "inline"
+    assert interrupt["consequence_preview"]
+    assert any(option["value"] == "tasks" for field in interrupt["fields"] for option in field.get("options", []))
     assert any("One quick choice" in text for text in _message_texts(payload))
+
+    submitted = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"capture_kind": "task", "next_step": "tasks"}},
+        headers=auth_headers,
+    )
+    assert submitted.status_code == 200
+    submitted_payload = submitted.json()
+    triage_message = next(
+        message
+        for message in reversed(submitted_payload["messages"])
+        if message["metadata"].get("capture_triage", {}).get("next_step") == "tasks"
+    )
+    result_cards = [part["card"] for part in triage_message["parts"] if part["type"] == "card"]
+    assert result_cards
+    assert result_cards[0]["kind"] == "task_list"
+    assert result_cards[0]["metadata"]["artifact_id"] == artifact_id
+    assert result_cards[0]["entity_ref"]["href"].startswith("/planner?task=")
+    assert any(action["id"] == "open_planner" for action in result_cards[0]["actions"])
+    graph = client.get(f"/v1/artifacts/{artifact_id}/graph", headers=auth_headers)
+    assert graph.status_code == 200
+    assert graph.json()["tasks"]
+    assert all(task["source_artifact_id"] == artifact_id for task in graph.json()["tasks"])
 
 
 def test_desktop_helper_capture_reflects_with_desktop_helper_surface(

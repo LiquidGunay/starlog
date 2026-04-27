@@ -210,15 +210,15 @@ function applyAssistantDelta(
 
 function liveStatusLabel(status: LiveStatus): string {
   if (status === "live") {
-    return "Live feed";
+    return "Synced";
   }
   if (status === "recovering") {
-    return "Recovering feed";
+    return "Reconnecting";
   }
   if (status === "auth_required") {
-    return "Auth required";
+    return "Sign in needed";
   }
-  return "Connecting feed";
+  return "Connecting";
 }
 
 function readGenericDraft(searchParams: ReturnType<typeof useSearchParams>): string {
@@ -259,6 +259,139 @@ function hasContentTypeHeader(headers?: Record<string, string>): boolean {
     return false;
   }
   return Object.keys(headers).some((key) => key.toLowerCase() === "content-type");
+}
+
+type RailItem = {
+  label: string;
+  href?: string;
+};
+
+function pendingInterruptLabel(interrupt: AssistantInterrupt): string {
+  if (interrupt.tool_name === "request_due_date") {
+    return "Task needs details";
+  }
+  if (interrupt.tool_name === "triage_capture") {
+    return "Capture needs triage";
+  }
+  if (interrupt.tool_name === "resolve_planner_conflict") {
+    return "Planner conflict";
+  }
+  if (interrupt.tool_name === "grade_review_recall") {
+    return "Review grade pending";
+  }
+  if (interrupt.tool_name === "choose_morning_focus") {
+    return "Morning focus choice";
+  }
+  return interrupt.title;
+}
+
+function cardRailLabel(kind: string): string | null {
+  if (kind === "task_list") {
+    return "Planner update";
+  }
+  if (kind === "review_queue") {
+    return "Review queue";
+  }
+  if (kind === "capture_item") {
+    return "Library capture";
+  }
+  if (kind === "briefing") {
+    return "Briefing ready";
+  }
+  if (kind === "knowledge_note") {
+    return "Relevant note";
+  }
+  if (kind === "learning_drill") {
+    return "Learning drill";
+  }
+  return null;
+}
+
+function collectRailCards(snapshot: AssistantThreadSnapshot | null): RailItem[] {
+  if (!snapshot) {
+    return [];
+  }
+  const items: RailItem[] = [];
+  for (const message of [...snapshot.messages].reverse()) {
+    for (const part of [...message.parts].reverse()) {
+      if (part.type !== "card") {
+        continue;
+      }
+      const label = cardRailLabel(part.card.kind);
+      if (!label) {
+        continue;
+      }
+      items.push({
+        label: part.card.title ? `${label}: ${part.card.title}` : label,
+        href: part.card.entity_ref?.href || undefined,
+      });
+      if (items.length >= 4) {
+        return items;
+      }
+    }
+  }
+  return items;
+}
+
+function buildOpenLoops(snapshot: AssistantThreadSnapshot | null, handoff: AssistantHandoff | null): RailItem[] {
+  const loops: RailItem[] = [];
+  const pendingInterrupts = (snapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending");
+  for (const interrupt of pendingInterrupts.slice(0, 4)) {
+    loops.push({
+      label: pendingInterruptLabel(interrupt),
+      href: interrupt.entity_ref?.href || undefined,
+    });
+  }
+  if (handoff?.artifactId) {
+    loops.push({ label: "Helper capture ready", href: `/artifacts?artifact=${encodeURIComponent(handoff.artifactId)}` });
+  }
+  return loops.length > 0 ? loops : [{ label: "No open loops in this thread" }];
+}
+
+function buildSuggestions(snapshot: AssistantThreadSnapshot | null): RailItem[] {
+  const pendingTools = new Set((snapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").map((interrupt) => interrupt.tool_name));
+  const suggestions: RailItem[] = [];
+  if (pendingTools.has("triage_capture")) {
+    suggestions.push({ label: "Process latest capture" });
+  }
+  if (pendingTools.has("request_due_date")) {
+    suggestions.push({ label: "Finish task details" });
+  }
+  if (pendingTools.has("choose_morning_focus")) {
+    suggestions.push({ label: "Pick a focus" });
+  }
+  suggestions.push({ label: "Plan today", href: "/planner" });
+  suggestions.push({ label: "Start review", href: "/review" });
+  return suggestions.slice(0, 4);
+}
+
+function RailSection({
+  title,
+  items,
+  onNavigate,
+}: {
+  title: string;
+  items: RailItem[];
+  onNavigate: (href: string) => void;
+}) {
+  return (
+    <section className={styles.railGroup}>
+      <h3>{title}</h3>
+      <ul className={styles.railList}>
+        {items.map((item, index) => (
+          <li key={`${title}-${item.label}-${index}`}>
+            {item.href ? (
+              <button type="button" onClick={() => onNavigate(item.href || "")}>
+                {item.label}
+              </button>
+            ) : (
+              <span>{item.label}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function parseStreamEnvelope(block: string): AssistantStreamEnvelope | null {
@@ -813,6 +946,18 @@ function AssistantPageContent() {
   const normalizedSnapshot = normalizeSnapshot(snapshot);
   const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
   const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
+  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(new Date());
+  const openLoops = buildOpenLoops(normalizedSnapshot, handoff);
+  const openLoopCount = (normalizedSnapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").length + (handoff ? 1 : 0);
+  const contextItems = [
+    ...collectRailCards(normalizedSnapshot),
+    ...supportSurfaces.filter((surface) => surface.active).map((surface) => ({ label: surface.title, href: surface.href })),
+  ].slice(0, 4);
+  const nowItems: RailItem[] = [
+    activeInterrupt ? { label: activeInterrupt.title, href: activeInterrupt.entity_ref?.href || undefined } : { label: "Ready for the next move" },
+    activeRun ? { label: `Assistant is ${activeRun.status}` } : { label: `${liveStatusLabel(liveStatus)} · ${isOnline ? "Online" : "Offline"}` },
+  ];
+  const suggestions = buildSuggestions(normalizedSnapshot);
 
   return (
     <StarlogAssistantRuntimeProvider
@@ -823,18 +968,17 @@ function AssistantPageContent() {
       <main className={styles.page}>
         <section className={styles.hero}>
           <div>
-            <p className={styles.kicker}>Assistant Runtime</p>
-            <h1>{snapshot?.title || "Assistant thread"}</h1>
+            <p className={styles.kicker}>Today · {todayLabel}</p>
+            <h1>Starlog Assistant</h1>
             <p className={styles.lede}>
-              Starlog is now centered on a server-owned assistant thread with runs, interrupts,
-              ambient updates, and support-surface events.
+              Move today forward with one thread for capture, planning, review, and follow-through.
             </p>
           </div>
           <div className={styles.heroMeta}>
             <span>{isOnline ? "Online" : "Offline"}</span>
             <span>{liveStatusLabel(liveStatus)}</span>
-            <span>{activeRun ? `Run: ${activeRun.status}` : "Idle"}</span>
-            <span>{activeInterrupt ? `Panel: ${activeInterrupt.title}` : "No open panel"}</span>
+            <span>{openLoopCount} open loop{openLoopCount === 1 ? "" : "s"}</span>
+            <span>{activeInterrupt ? activeInterrupt.title : "No pending action"}</span>
           </div>
         </section>
 
@@ -855,8 +999,8 @@ function AssistantPageContent() {
                   <h2>Continue from the latest capture</h2>
                   <p>
                     {handoff.artifactId
-                      ? `Artifact ${handoff.artifactId} is attached to this draft. Keep the Assistant thread focused on this capture or open it in Library for deeper editing.`
-                      : "This draft came from another Starlog surface. Keep the Assistant thread focused on that context or clear the handoff."}
+                      ? "A recent capture is attached to this draft. You can route it from here or open it in Library for deeper editing."
+                      : "This draft came from another Starlog surface. Keep it in the thread or clear the handoff."}
                   </p>
                 </div>
                 <div className={styles.handoffActions}>
@@ -886,16 +1030,34 @@ function AssistantPageContent() {
                 void sendMessage(composer);
               }}
             >
+              <div className={styles.composerChips} aria-label="Assistant shortcuts">
+                {[
+                  "Capture",
+                  "Plan today",
+                  "Process latest capture",
+                  "Start review",
+                  "Create task",
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setComposer((current) => (current.trim() ? current : chip))}
+                    disabled={!snapshot || sending}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
               <textarea
                 ref={composerRef}
                 value={composer}
                 onChange={(event) => setComposer(event.target.value)}
-                placeholder="Capture, plan, review, or ask the Assistant to move something forward."
+                placeholder="Ask, capture, plan, review, or move something forward..."
                 rows={4}
                 disabled={!snapshot || sending}
               />
               <div className={styles.composerBar}>
-                <span>{error || (sending ? "Assistant is working..." : "The thread remains the control plane.")}</span>
+                <span>{error || (sending ? "Starlog is working..." : "Voice, capture, planning, and review all land in this thread.")}</span>
                 <button type="submit" disabled={!snapshot || sending || !composer.trim()}>
                   Send
                 </button>
@@ -905,42 +1067,31 @@ function AssistantPageContent() {
 
           <aside className={styles.sideRail}>
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Support Surfaces</p>
-              <div className={styles.supportSurfaceList}>
-                {supportSurfaces.map((surface) => (
-                  <section
-                    key={surface.key}
-                    className={`${styles.supportSurfaceCard} ${surface.active ? styles.supportSurfaceActive : ""}`}
-                  >
-                    <div>
-                      <h3>{surface.title}</h3>
-                      <p>{surface.summary}</p>
-                    </div>
-                    <button type="button" onClick={() => router.push(surface.href)}>
-                      Open {surface.title}
-                    </button>
-                  </section>
-                ))}
-              </div>
+              <p className={styles.sideLabel}>Today</p>
+              <RailSection title="Now" items={nowItems} onNavigate={(href) => router.push(href)} />
+              <RailSection title="Open Loops" items={openLoops} onNavigate={(href) => router.push(href)} />
             </article>
 
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Protocol</p>
-              <h2>assistant-ui runtime boundary</h2>
-              <p>
-                This web surface now hydrates from the new `/v1/assistant/...` contract, streams
-                batch-safe live deltas, and preserves cards, tool calls, attachments, and
-                interrupts inside the runtime message content instead of flattening to plain text.
-              </p>
+              <p className={styles.sideLabel}>Context</p>
+              <RailSection
+                title="Relevant"
+                items={contextItems.length > 0 ? contextItems : [{ label: "No active context yet" }]}
+                onNavigate={(href) => router.push(href)}
+              />
             </article>
 
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Open Work</p>
-              <ul>
-                <li>{activeRun ? `${activeRun.orchestrator} run is ${activeRun.status}` : "No active run"}</li>
-                <li>{activeInterrupt ? activeInterrupt.title : "No pending interrupt"}</li>
-                <li>{snapshot ? `${snapshot.messages.length} thread messages loaded` : "No thread snapshot yet"}</li>
-              </ul>
+              <p className={styles.sideLabel}>Suggestions</p>
+              <RailSection title="Next" items={suggestions} onNavigate={(href) => router.push(href)} />
+              <details className={styles.diagnostics}>
+                <summary>Diagnostics</summary>
+                <ul>
+                  <li>{activeRun ? `${activeRun.orchestrator} run is ${activeRun.status}` : "No active run"}</li>
+                  <li>{activeInterrupt ? activeInterrupt.title : "No pending action"}</li>
+                  <li>{snapshot ? `${snapshot.messages.length} messages loaded` : "No thread snapshot yet"}</li>
+                </ul>
+              </details>
             </article>
           </aside>
         </section>

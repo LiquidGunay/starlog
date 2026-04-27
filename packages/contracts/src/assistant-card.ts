@@ -8,6 +8,10 @@ export const ASSISTANT_CARD_KINDS = [
   "capture_item",
   "memory_suggestion",
   "tool_step",
+  "project_status",
+  "goal_status",
+  "commitment_status",
+  "learning_drill",
 ] as const;
 
 export type AssistantCardKind = (typeof ASSISTANT_CARD_KINDS)[number];

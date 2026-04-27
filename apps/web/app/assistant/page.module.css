@@ -134,6 +134,32 @@
   background: rgba(10, 11, 14, 0.92);
 }
 
+.composerChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composerChips button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 241, 232, 0.82);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.composerChips button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.composerChips button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .composer textarea {
   width: 100%;
   resize: vertical;
@@ -191,8 +217,8 @@
 }
 
 .sideCard h3 {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 10px;
+  font-size: 16px;
 }
 
 .sideCard p,
@@ -203,7 +229,71 @@
 
 .sideCard ul {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.railGroup {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.railGroup:first-of-type {
+  margin-top: 0;
+}
+
+.railList {
+  display: grid;
+  gap: 8px;
+}
+
+.railList li {
+  margin: 0;
+}
+
+.railList span,
+.railList button {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 232, 0.82);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.railList button {
+  cursor: pointer;
+}
+
+.railList button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.diagnostics {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(244, 241, 232, 0.72);
+}
+
+.diagnostics summary {
+  cursor: pointer;
+  color: rgba(244, 241, 232, 0.82);
+  font-size: 14px;
+}
+
+.diagnostics ul {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding-left: 0;
+  list-style: none;
 }
 
 .supportSurfaceList {

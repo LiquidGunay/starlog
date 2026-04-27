@@ -29,6 +29,7 @@ export type AssistantInterruptField = {
 
 export type AssistantInterruptType = "choice" | "form" | "confirm";
 export type AssistantInterruptStatus = "pending" | "submitted" | "dismissed" | "expired";
+export type AssistantInterruptDisplayMode = "inline" | "composer" | "sidecar" | "bottom_sheet";
 
 export type AssistantInterrupt = {
   id: string;
@@ -43,6 +44,11 @@ export type AssistantInterrupt = {
   fields: AssistantInterruptField[];
   primary_label: string;
   secondary_label?: string | null;
+  display_mode?: AssistantInterruptDisplayMode | null;
+  consequence_preview?: string | null;
+  defer_label?: string | null;
+  destructive?: boolean;
+  recommended_defaults?: Record<string, unknown> | null;
   metadata: Record<string, unknown>;
   created_at: string;
   resolved_at?: string | null;

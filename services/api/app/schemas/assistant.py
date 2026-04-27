@@ -61,6 +61,11 @@ class AssistantInterrupt(BaseModel):
     fields: list[AssistantInterruptField] = Field(default_factory=list)
     primary_label: str
     secondary_label: str | None = None
+    display_mode: Literal["inline", "composer", "sidecar", "bottom_sheet"] | None = None
+    consequence_preview: str | None = None
+    defer_label: str | None = None
+    destructive: bool = False
+    recommended_defaults: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     resolved_at: datetime | None = None
@@ -179,7 +184,7 @@ class AssistantSurfaceEventCreateRequest(BaseModel):
     kind: str = Field(..., min_length=1)
     entity_ref: AssistantEntityRef | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
-    visibility: Literal["internal", "ambient", "assistant_message"] = "internal"
+    visibility: Literal["internal", "ambient", "assistant_message", "dynamic_panel"] = "internal"
 
 
 class AssistantThreadDelta(BaseModel):

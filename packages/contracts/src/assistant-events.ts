@@ -31,7 +31,7 @@ export type AssistantSurfaceEvent = {
   kind: StarlogSurfaceEventKind | string;
   entity_ref?: AssistantEntityRef | null;
   payload: Record<string, unknown>;
-  visibility?: "internal" | "ambient" | "assistant_message";
+  visibility?: "internal" | "ambient" | "assistant_message" | "dynamic_panel";
   projected_message?: boolean;
   created_at: string;
 };

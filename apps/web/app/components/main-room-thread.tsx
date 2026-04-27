@@ -51,6 +51,20 @@ function renderField(
             onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
           />
         ) : null}
+        {field.kind === "time" ? (
+          <input
+            type="time"
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+          />
+        ) : null}
+        {field.kind === "datetime" ? (
+          <input
+            type="datetime-local"
+            value={typeof value === "string" ? value : ""}
+            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+          />
+        ) : null}
         {field.kind === "toggle" ? (
           <input
             type="checkbox"
@@ -234,6 +248,39 @@ function toolStatusSummary(toolCall: AssistantToolCall): string {
   return "Completed";
 }
 
+function roleLabel(role: AssistantThreadMessage["role"]): string {
+  if (role === "assistant") {
+    return "Starlog";
+  }
+  if (role === "user") {
+    return "You";
+  }
+  if (role === "system") {
+    return "Update";
+  }
+  return "Activity";
+}
+
+function toolActionLabel(toolName: string): string {
+  const normalized = toolName.replace(/_/g, " ");
+  if (toolName === "create_task") {
+    return "Created task";
+  }
+  if (toolName === "update_task") {
+    return "Updated task";
+  }
+  if (toolName === "list_due_cards") {
+    return "Checked review queue";
+  }
+  if (toolName === "generate_briefing") {
+    return "Prepared briefing";
+  }
+  if (toolName === "capture_text_as_artifact") {
+    return "Saved capture";
+  }
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function CardSection({
   card,
   busy,
@@ -333,33 +380,33 @@ function ToolResultSection({
 }) {
   const rows = summarizeOutput(result.output || {});
   const badges = [result.status.replace(/_/g, " "), `${Object.keys(result.output || {}).length} field${Object.keys(result.output || {}).length === 1 ? "" : "s"}`];
+  const toolName = typeof result.metadata?.tool_name === "string" ? result.metadata.tool_name : "tool";
 
   return (
     <section className={styles.toolResultPanel}>
-      <div className={styles.cardHeader}>
-        <div className={styles.cardEyebrow}>
-          <span className={styles.cardGlyph}>⊹</span>
-          <span>Tool result</span>
-        </div>
-        <EntityLink entityRef={result.entity_ref} />
-      </div>
-      <div className={styles.badges}>
-        {badges.map((badge) => (
-          <span key={`${result.id}-${badge}`} className={styles.badge}>
-            {badge}
-          </span>
-        ))}
-      </div>
-      {rows.length > 0 ? (
-        <dl className={styles.outputGrid}>
-          {rows.map(([key, value]) => (
-            <div key={`${result.id}-${key}`} className={styles.outputRow}>
-              <dt>{key.replace(/_/g, " ")}</dt>
-              <dd>{value}</dd>
-            </div>
+      <details className={styles.activityDetails}>
+        <summary>
+          <span>{toolActionLabel(toolName)}</span>
+          <EntityLink entityRef={result.entity_ref} />
+        </summary>
+        <div className={styles.badges}>
+          {badges.map((badge) => (
+            <span key={`${result.id}-${badge}`} className={styles.badge}>
+              {badge}
+            </span>
           ))}
-        </dl>
-      ) : null}
+        </div>
+        {rows.length > 0 ? (
+          <dl className={styles.outputGrid}>
+            {rows.map(([key, value]) => (
+              <div key={`${result.id}-${key}`} className={styles.outputRow}>
+                <dt>{key.replace(/_/g, " ")}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+      </details>
       {result.card ? <CardSection card={result.card} busy={busy} onCardAction={onCardAction} /> : null}
     </section>
   );
@@ -370,15 +417,11 @@ function ToolCallSection({ toolCall }: { toolCall: AssistantToolCall }) {
   const badges = [toolCall.tool_kind.replace(/_/g, " "), toolCall.status.replace(/_/g, " ")];
 
   return (
-    <section className={styles.toolCallPanel}>
-      <div className={styles.cardHeader}>
-        <div className={styles.cardEyebrow}>
-          <span className={styles.cardGlyph}>⋯</span>
-          <span>Tool call</span>
-        </div>
-      </div>
-      <h3>{toolCall.title || toolCall.tool_name}</h3>
-      <p className={styles.cardBody}>{toolStatusSummary(toolCall)}</p>
+    <details className={styles.toolCallPanel}>
+      <summary>
+        <span>{toolActionLabel(toolCall.tool_name)}</span>
+        <small>{toolStatusSummary(toolCall)}</small>
+      </summary>
       <div className={styles.badges}>
         {badges.map((badge) => (
           <span key={`${toolCall.id}-${badge}`} className={styles.badge}>
@@ -396,7 +439,7 @@ function ToolCallSection({ toolCall }: { toolCall: AssistantToolCall }) {
           ))}
         </dl>
       ) : null}
-    </section>
+    </details>
   );
 }
 
@@ -460,9 +503,9 @@ function MessagePart({
   return (
     <article className={`${styles.message} ${styles[`role_${message.role}`]}`}>
       <div className={styles.meta}>
-        <span>{message.role}</span>
+        <span>{roleLabel(message.role)}</span>
         <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-        <span>{message.status}</span>
+        {message.status !== "complete" ? <span>{message.status.replace(/_/g, " ")}</span> : null}
       </div>
       <div className={styles.bubble}>
         {message.parts.map((part) => {
@@ -535,12 +578,15 @@ function MessagePart({
             return (
               <section key={part.id} className={styles.panel}>
                 <div className={styles.cardHeader}>
-                  <p className={styles.cardKind}>{liveInterrupt.tool_name.replace(/_/g, " ")}</p>
+                  <p className={styles.cardKind}>Decision</p>
                   <EntityLink entityRef={liveInterrupt.entity_ref} />
                 </div>
                 <h3>{liveInterrupt.title}</h3>
                 {liveInterrupt.body ? <p>{liveInterrupt.body}</p> : null}
                 <div className={styles.panelFields}>{renderField(liveInterrupt, values, setValues)}</div>
+                {liveInterrupt.consequence_preview ? (
+                  <p className={styles.consequencePreview}>{liveInterrupt.consequence_preview}</p>
+                ) : null}
                 <div className={styles.panelActions}>
                   <button
                     type="button"
@@ -548,7 +594,7 @@ function MessagePart({
                     disabled={busy}
                     className={styles.secondaryButton}
                   >
-                    {liveInterrupt.secondary_label || "Dismiss"}
+                    {liveInterrupt.defer_label || liveInterrupt.secondary_label || "Dismiss"}
                   </button>
                   <button
                     type="button"

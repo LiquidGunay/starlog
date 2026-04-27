@@ -24,6 +24,41 @@ _INTERRUPT_TOOL_BY_EVENT_KIND = {
     "briefing.generated": "choose_morning_focus",
 }
 
+_EVENT_VISIBILITY_POLICY = {
+    "capture.created": "dynamic_panel",
+    "capture.enriched": "ambient",
+    "artifact.opened": "ambient",
+    "artifact.summarized": "ambient",
+    "task.created": "ambient",
+    "task.completed": "ambient",
+    "task.snoozed": "ambient",
+    "time_block.started": "ambient",
+    "time_block.completed": "ambient",
+    "planner.conflict.detected": "dynamic_panel",
+    "review.session.started": "ambient",
+    "review.answer.revealed": "dynamic_panel",
+    "review.answer.graded": "ambient",
+    "briefing.generated": "dynamic_panel",
+    "briefing.played": "ambient",
+    "assistant.card.action_used": "internal",
+    "assistant.panel.submitted": "ambient",
+    "voice.capture.transcribed": "ambient",
+}
+
+_VALID_VISIBILITIES = {"internal", "ambient", "assistant_message", "dynamic_panel"}
+
+
+def _event_visibility(kind: str, requested: str | None) -> str:
+    if requested is None:
+        return _EVENT_VISIBILITY_POLICY.get(kind, "internal")
+    if requested == "internal":
+        return "internal"
+    if requested == "assistant_message":
+        return _EVENT_VISIBILITY_POLICY.get(kind, "assistant_message")
+    if requested in _VALID_VISIBILITIES:
+        return requested
+    return _EVENT_VISIBILITY_POLICY.get(kind, "internal")
+
 
 def _normalize_entity_ref(entity_ref: dict[str, Any] | None) -> tuple[str, str] | None:
     if not isinstance(entity_ref, dict):
@@ -580,6 +615,7 @@ def create_surface_event(
     user_id: str | None = None,
 ) -> dict[str, Any]:
     thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
+    visibility = _event_visibility(kind, visibility)
     interrupt_tool = _INTERRUPT_TOOL_BY_EVENT_KIND.get(kind)
     if interrupt_tool and _find_pending_interrupt_for_entity(
         conn,
@@ -663,7 +699,13 @@ def create_surface_event(
             ],
             primary_label="Apply choice",
             secondary_label="Open Planner",
-            metadata={"surface_event": event, "conflict_payload": payload},
+            metadata={
+                "surface_event": event,
+                "conflict_payload": payload,
+                "display_mode": "sidecar",
+                "consequence_preview": "Applies the selected planner conflict resolution.",
+                "defer_label": "Open Planner",
+            },
             entity_ref=entity_ref,
         )
         assistant_thread_service.append_message(
@@ -709,29 +751,40 @@ def create_surface_event(
                 {
                     "id": "capture_kind",
                     "kind": "select",
-                    "label": "Capture kind",
+                    "label": "What is this?",
                     "required": True,
                     "options": [
+                        {"label": "Reference", "value": "reference"},
+                        {"label": "Idea", "value": "idea"},
+                        {"label": "Task", "value": "task"},
+                        {"label": "Review material", "value": "review_material"},
+                        {"label": "Project input", "value": "project_input"},
                         {"label": "Research source", "value": "research_source"},
-                        {"label": "Fleeting note", "value": "fleeting_note"},
-                        {"label": "Reference image", "value": "reference_image"},
                     ],
                 },
                 {
                     "id": "next_step",
                     "kind": "select",
-                    "label": "Next step",
+                    "label": "Best next step",
                     "required": True,
                     "options": [
                         {"label": "Summarize", "value": "summarize"},
                         {"label": "Make cards", "value": "cards"},
+                        {"label": "Create tasks", "value": "tasks"},
                         {"label": "Append to note", "value": "append_note"},
+                        {"label": "Archive as reference", "value": "archive"},
                     ],
                 },
             ],
             primary_label="Save choice",
             secondary_label="Not now",
-            metadata={"surface_event": event, "artifact_id": payload.get("artifact_id")},
+            metadata={
+                "surface_event": event,
+                "artifact_id": payload.get("artifact_id"),
+                "display_mode": "inline",
+                "consequence_preview": "Routes this capture into Library, Planner, or Review without losing the original source.",
+                "defer_label": "Not now",
+            },
             entity_ref=entity_ref,
         )
         assistant_thread_service.append_message(
@@ -791,7 +844,14 @@ def create_surface_event(
             ],
             primary_label="Save grade",
             secondary_label="Keep in Review",
-            metadata={"surface_event": event, "card_id": card_id, "prompt": prompt_text},
+            metadata={
+                "surface_event": event,
+                "card_id": card_id,
+                "prompt": prompt_text,
+                "display_mode": "inline",
+                "consequence_preview": "Updates the review schedule for this item.",
+                "defer_label": "Keep in Review",
+            },
             entity_ref=entity_ref,
         )
         assistant_thread_service.append_message(
@@ -840,15 +900,21 @@ def create_surface_event(
                     "label": "First move",
                     "required": True,
                     "options": [
-                        {"label": "30m review queue", "value": "review"},
+                        {"label": "Review queue", "value": "review"},
                         {"label": "Process latest capture", "value": "capture"},
                         {"label": "Start deep work block", "value": "deep_work"},
+                        {"label": "Plan today", "value": "plan_day"},
                     ],
                 }
             ],
             primary_label="Begin",
             secondary_label="Later",
-            metadata={"surface_event": event},
+            metadata={
+                "surface_event": event,
+                "display_mode": "composer",
+                "consequence_preview": "Starts the selected focus from the Assistant thread.",
+                "defer_label": "Later",
+            },
             entity_ref=entity_ref,
         )
         assistant_thread_service.append_message(
