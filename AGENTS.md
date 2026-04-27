@@ -73,6 +73,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
+- `docs/CODEX_AGENT_PROVIDER_FEASIBILITY.md` — Codex SDK/provider feasibility note, server-side bridge recommendation, and client-secret guardrails for PWA/mobile agent work.
 - `docs/CODEX_PARALLEL_WORK_ITEMS.md` — archived human-readable queue snapshot; not the live coordination surface.
 - `docs/ENGINEERING_ISSUE_HISTORY.md` — archived dated issue chronology and host-specific debugging history that should not live inline in `AGENTS.md`.
 - `docs/PARALLEL_AGENT_WORKFLOW.md` — subagent-only workflow for workitem locking, extra worktrees, branch cleanup, and shared dependency reuse.
@@ -131,6 +132,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - Preserve explicitly stated interaction contracts when redesigning assistant and support surfaces.
 - For major UI overhauls, refresh the repo-local reference artifact before changing shared components.
 - Keep assistant and agent behavior prompts in repo-local `.md` files under `services/ai-runtime/prompts/` so users can inspect and edit them directly; do not bury canonical prompt behavior in code literals.
+- Keep OpenAI/Codex credentials out of PWA and mobile clients; route agent work through the API, AI runtime, desktop helper, or paired worker with server-side/worker-local secret handling.
 - Keep docs-scoped workflow plans under `docs/`; replace them with updated versions rather than deleting them when the plan changes.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.
