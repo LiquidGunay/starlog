@@ -22,6 +22,7 @@ from app.services import (
     conversation_service,
     integrations_service,
     memory_vault_service,
+    review_mode_service,
     srs_service,
 )
 from app.services.common import execute_fetchall, execute_fetchone, new_id
@@ -1374,6 +1375,14 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 raise LookupError(f"Review card not found: {card_id}")
 
             prompt_text = str(metadata.get("prompt") or "that card").strip() or "that card"
+            card_type = str(metadata.get("card_type") or reviewed.get("card_type") or "").strip() or None
+            raw_review_mode = str(metadata.get("review_mode") or reviewed.get("review_mode") or "").strip()
+            review_mode = (
+                raw_review_mode
+                if raw_review_mode in review_mode_service.REVIEW_MODE_ORDER
+                else review_mode_service.review_mode_for_card_type(card_type)
+            )
+            review_mode_label = review_mode.replace("_", " ")
             rating_label = _review_rating_label(rating)
             next_due_at = str(reviewed.get("next_due_at") or "")
             next_due_label = next_due_at[:10] if next_due_at else "the next review window"
@@ -1383,10 +1392,15 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 role="assistant",
                 status="complete",
                 run_id=row["run_id"],
-                metadata={"interrupt_resolution": resolution, "review_result": reviewed},
+                metadata={
+                    "interrupt_resolution": resolution,
+                    "review_result": reviewed,
+                    "card_type": card_type,
+                    "review_mode": review_mode,
+                },
                 parts=[
                     assistant_projection_service.text_part(
-                        f"Recorded {rating_label} for {prompt_text}. Next due: {next_due_label}."
+                        f"Recorded {rating_label} for {review_mode_label} review: {prompt_text}. Next due: {next_due_label}."
                     ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],
@@ -1400,7 +1414,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 tool_name="grade_review_recall",
                 tool_kind="ui_tool",
                 status="completed",
-                arguments={"rating": rating, "latency_ms": latency_ms},
+                arguments={"rating": rating, "latency_ms": latency_ms, "card_type": card_type, "review_mode": review_mode},
                 result=reviewed,
                 interrupt_id=interrupt_id,
                 message_id=assistant_message["id"],

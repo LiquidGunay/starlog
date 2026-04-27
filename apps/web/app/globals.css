@@ -1112,6 +1112,27 @@ a {
   letter-spacing: 0.12em;
 }
 
+.april-review-side-metrics .april-review-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid rgba(225, 113, 79, 0.34);
+  border-radius: 999px;
+  color: var(--primary);
+  background: rgba(225, 113, 79, 0.12);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
 .april-review-control-bar {
   display: flex;
   flex-wrap: wrap;

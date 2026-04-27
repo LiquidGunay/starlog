@@ -59,6 +59,29 @@ const TODAY_MOVES: TodayMove[] = [
   },
 ];
 
+const REVIEW_MODE_ORDER = ["recall", "understanding", "application", "synthesis", "judgment"] as const;
+
+const REVIEW_MODE_LABELS: Record<(typeof REVIEW_MODE_ORDER)[number], string> = {
+  recall: "Recall",
+  understanding: "Understanding",
+  application: "Application",
+  synthesis: "Synthesis",
+  judgment: "Judgment",
+};
+
+function reviewModeBadges(modeCounts: unknown): string[] {
+  if (!modeCounts || typeof modeCounts !== "object") {
+    return [];
+  }
+  return REVIEW_MODE_ORDER
+    .map((mode) => {
+      const count = Number((modeCounts as Record<string, unknown>)[mode]);
+      return Number.isFinite(count) && count > 0 ? `${REVIEW_MODE_LABELS[mode]} ${count}` : null;
+    })
+    .filter((badge): badge is string => Boolean(badge))
+    .slice(0, 3);
+}
+
 function defaultValues(interrupt: AssistantInterrupt): Record<string, unknown> {
   return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
     accumulator[field.id] = field.value ?? (field.kind === "toggle" ? false : "");
@@ -235,6 +258,7 @@ function cardMetadataBadges(card: AssistantCard): string[] {
     if (Number.isFinite(dueCount) && dueCount > 0) {
       badges.push(`${dueCount} due now`);
     }
+    badges.push(...reviewModeBadges(metadata.mode_counts));
   }
 
   if (card.kind === "task_list") {

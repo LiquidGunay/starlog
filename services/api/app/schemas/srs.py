@@ -27,6 +27,7 @@ class CardResponse(BaseModel):
     note_block_id: str | None = None
     deck_id: str | None = None
     card_type: str
+    review_mode: str = "recall"
     prompt: str
     answer: str
     tags: list[str] = Field(default_factory=list)
@@ -86,6 +87,8 @@ class ReviewCreateRequest(BaseModel):
 
 class ReviewResponse(BaseModel):
     card_id: str
+    card_type: str | None = None
+    review_mode: str = "recall"
     next_due_at: datetime
     interval_days: int
     repetitions: int

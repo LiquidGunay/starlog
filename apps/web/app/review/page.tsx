@@ -11,6 +11,7 @@ type Card = {
   id: string;
   deck_id?: string | null;
   card_type: string;
+  review_mode?: ReviewMode;
   prompt: string;
   answer: string;
   due_at: string;
@@ -32,6 +33,36 @@ type SessionStats = {
   easy: number;
 };
 
+type ReviewMode = "recall" | "understanding" | "application" | "synthesis" | "judgment";
+
+const REVIEW_MODE_ORDER: ReviewMode[] = ["recall", "understanding", "application", "synthesis", "judgment"];
+
+const REVIEW_MODE_BY_CARD_TYPE: Record<string, ReviewMode> = {
+  qa: "recall",
+  cloze: "recall",
+  recall: "recall",
+  understanding: "understanding",
+  explain: "understanding",
+  why: "understanding",
+  application: "application",
+  scenario: "application",
+  drill: "application",
+  synthesis: "synthesis",
+  compare: "synthesis",
+  connect: "synthesis",
+  judgment: "judgment",
+  tradeoff: "judgment",
+  critique: "judgment",
+};
+
+const REVIEW_MODE_LABELS: Record<ReviewMode, string> = {
+  recall: "Recall",
+  understanding: "Understanding",
+  application: "Application",
+  synthesis: "Synthesis",
+  judgment: "Judgment",
+};
+
 const REVIEW_OPTIONS = [
   { label: "Again", hint: "< 1m", rating: 1 as const, tone: "again" },
   { label: "Hard", hint: "1d", rating: 3 as const, tone: "hard" },
@@ -50,8 +81,33 @@ function deckProgress(deck: Deck | null): number {
   return Math.max(0, Math.min(100, Math.round(((deck.card_count - deck.due_count) / deck.card_count) * 100)));
 }
 
-function humanizeCardType(cardType: string): string {
-  return cardType.replace(/_/g, " ");
+function reviewModeForCard(card: Pick<Card, "card_type" | "review_mode">): ReviewMode {
+  if (card.review_mode && REVIEW_MODE_ORDER.includes(card.review_mode)) {
+    return card.review_mode;
+  }
+  const normalized = card.card_type.trim().toLowerCase().replace(/\s+/g, "_");
+  return REVIEW_MODE_BY_CARD_TYPE[normalized] ?? "recall";
+}
+
+function reviewModeCounts(cards: Card[]): Record<ReviewMode, number> {
+  return cards.reduce<Record<ReviewMode, number>>(
+    (counts, card) => {
+      counts[reviewModeForCard(card)] += 1;
+      return counts;
+    },
+    { recall: 0, understanding: 0, application: 0, synthesis: 0, judgment: 0 },
+  );
+}
+
+function primaryReviewMode(counts: Record<ReviewMode, number>): ReviewMode {
+  return REVIEW_MODE_ORDER.reduce((primary, mode) => (counts[mode] > counts[primary] ? mode : primary), "recall");
+}
+
+function queueSplitSummary(counts: Record<ReviewMode, number>): string {
+  const parts = REVIEW_MODE_ORDER
+    .filter((mode) => counts[mode] > 0)
+    .map((mode) => `${REVIEW_MODE_LABELS[mode]} ${counts[mode]}`);
+  return parts.length > 0 ? parts.join(" · ") : "No ladder items due";
 }
 
 export default function ReviewPage() {
@@ -76,8 +132,11 @@ export default function ReviewPage() {
   );
   const reviewedTotal = stats.reviewed + cards.length;
   const sessionProgress = reviewedTotal > 0 ? (stats.reviewed / reviewedTotal) * 100 : 0;
-  const sessionRetention = stats.reviewed > 0 ? Math.round(((stats.good + stats.easy) / stats.reviewed) * 100) : 0;
   const focusTier = currentDeck ? Math.min(4, Math.max(1, Math.ceil(currentDeck.due_count / 6))) : 1;
+  const modeCounts = useMemo(() => reviewModeCounts(cards), [cards]);
+  const primaryMode = primaryReviewMode(modeCounts);
+  const currentMode = currentCard ? reviewModeForCard(currentCard) : primaryMode;
+  const queueSplit = queueSplitSummary(modeCounts);
 
   const loadReviewData = useCallback(async () => {
     if (missingConfig) {
@@ -132,6 +191,7 @@ export default function ReviewPage() {
             card_id: card.id,
             prompt: card.prompt,
             card_type: card.card_type,
+            review_mode: reviewModeForCard(card),
             due_at: card.due_at,
           },
           visibility: "assistant_message",
@@ -181,7 +241,7 @@ export default function ReviewPage() {
   return (
     <AprilWorkspaceShell
       activeSurface="srs-review"
-      statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${cards.length} due` : "Focused review ready"}
+      statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${REVIEW_MODE_LABELS[currentMode]} · ${cards.length} due` : "Focused review ready"}
       queueLabel={`${cards.length} due`}
       searchPlaceholder="Search decks..."
       railSlot={(
@@ -240,7 +300,7 @@ export default function ReviewPage() {
               <>
                 <div className="april-review-focus-meta">
                   <span>Complexity: Tier {focusTier}</span>
-                  <span>{humanizeCardType(currentCard.card_type)}</span>
+                  <span>{REVIEW_MODE_LABELS[currentMode]}</span>
                 </div>
                 <div className="april-review-card-body">
                   <div className="april-review-question">
@@ -322,8 +382,8 @@ export default function ReviewPage() {
                   <span>Cards Due</span>
                 </div>
                 <div>
-                  <strong>{sessionRetention}%</strong>
-                  <span>Retention</span>
+                  <span className="april-review-mode-chip">{REVIEW_MODE_LABELS[primaryMode]}</span>
+                  <span>Primary Mode</span>
                 </div>
               </div>
               <div className="review-sidebar-chart" aria-hidden="true">
@@ -334,7 +394,9 @@ export default function ReviewPage() {
             </AprilPanel>
 
             <AprilPanel className="april-review-side-card">
-              <span className="review-sidebar-kicker">Session Split</span>
+              <span className="review-sidebar-kicker">Queue Ladder</span>
+              <p className="review-copy">{queueSplit}</p>
+              <span className="review-sidebar-kicker">Session Grades</span>
               <p className="review-copy">
                 Again {stats.again} | Hard {stats.hard} | Good {stats.good} | Easy {stats.easy}
               </p>

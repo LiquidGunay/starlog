@@ -734,7 +734,9 @@ def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_revie
     assert response.status_code == 201
     payload = response.json()
     interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "grade_review_recall")
-    assert interrupt["title"] == "Grade recall"
+    assert interrupt["title"] == "Grade Recall"
+    assert interrupt["metadata"]["card_type"] == "qa"
+    assert interrupt["metadata"]["review_mode"] == "recall"
 
     submit = client.post(
         f"/v1/assistant/interrupts/{interrupt['id']}/submit",
@@ -747,7 +749,7 @@ def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_revie
     run = next(item for item in snapshot["runs"] if item["id"] == interrupt["run_id"])
     assert run["status"] == "completed"
     assert any(
-        part["type"] == "text" and "Recorded Good" in part["text"]
+        part["type"] == "text" and "Recorded Good for recall review" in part["text"]
         for message in snapshot["messages"]
         for part in message["parts"]
         if part["type"] == "text"
