@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import type {
   AssistantAttachment,
   AssistantAmbientUpdate,
@@ -16,6 +15,7 @@ import type {
 
 import { supportSurfaceActionLabel } from "../assistant/support-surfaces";
 import { getConversationCardRegistryEntry } from "./conversation-card-registry";
+import { DynamicPanelRenderer } from "./dynamic-panel-renderer";
 import styles from "./main-room-thread.module.css";
 
 type MainRoomThreadProps = {
@@ -80,13 +80,6 @@ function reviewModeBadges(modeCounts: unknown): string[] {
     })
     .filter((badge): badge is string => Boolean(badge))
     .slice(0, 3);
-}
-
-function defaultValues(interrupt: AssistantInterrupt): Record<string, unknown> {
-  return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
-    accumulator[field.id] = field.value ?? (field.kind === "toggle" ? false : "");
-    return accumulator;
-  }, {});
 }
 
 function pendingInterruptTodayLabel(interrupt: AssistantInterrupt): string {
@@ -167,86 +160,6 @@ function collectTodayContext(snapshot: AssistantThreadSnapshot, providedItems: T
     }
   }
   return context;
-}
-
-function renderField(
-  interrupt: AssistantInterrupt,
-  values: Record<string, unknown>,
-  setValues: (next: Record<string, unknown>) => void,
-) {
-  return interrupt.fields.map((field) => {
-    const value = values[field.id] ?? "";
-    const commonLabel = (
-      <label key={`${interrupt.id}-${field.id}`} className={styles.field}>
-        <span>{field.label}</span>
-        {field.kind === "date" ? (
-          <input
-            type="date"
-            value={typeof value === "string" ? value : ""}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-          />
-        ) : null}
-        {field.kind === "time" ? (
-          <input
-            type="time"
-            value={typeof value === "string" ? value : ""}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-          />
-        ) : null}
-        {field.kind === "datetime" ? (
-          <input
-            type="datetime-local"
-            value={typeof value === "string" ? value : ""}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-          />
-        ) : null}
-        {field.kind === "toggle" ? (
-          <input
-            type="checkbox"
-            checked={Boolean(value)}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })}
-          />
-        ) : null}
-        {(field.kind === "select" || field.kind === "priority") ? (
-          <select
-            value={String(value || "")}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-          >
-            {!field.required ? <option value="">Choose…</option> : null}
-            {(field.options || []).map((option) => (
-              <option key={`${field.id}-${option.value}`} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-            {field.kind === "priority" && !(field.options || []).length
-              ? [1, 2, 3, 4, 5].map((option) => (
-                  <option key={`${field.id}-${option}`} value={String(option)}>
-                    Priority {option}
-                  </option>
-                ))
-              : null}
-          </select>
-        ) : null}
-        {(field.kind === "text" || field.kind === "entity_search") ? (
-          <input
-            type="text"
-            value={typeof value === "string" ? value : ""}
-            placeholder={field.placeholder || ""}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-          />
-        ) : null}
-        {field.kind === "textarea" ? (
-          <textarea
-            rows={4}
-            value={typeof value === "string" ? value : ""}
-            placeholder={field.placeholder || ""}
-            onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-          />
-        ) : null}
-      </label>
-    );
-    return commonLabel;
-  });
 }
 
 function cardMetadataBadges(card: AssistantCard): string[] {
@@ -706,17 +619,6 @@ function MessagePart({
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 }) {
-  const interruptPart = message.parts.find(
-    (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_request" }> =>
-      part.type === "interrupt_request",
-  );
-  const initialValues = useMemo(() => (interruptPart ? defaultValues(interruptPart.interrupt) : {}), [interruptPart]);
-  const [values, setValues] = useState<Record<string, unknown>>(initialValues);
-
-  useEffect(() => {
-    setValues(initialValues);
-  }, [initialValues]);
-
   return (
     <article className={`${styles.message} ${styles[`role_${message.role}`]}`}>
       <div className={styles.meta}>
@@ -793,36 +695,13 @@ function MessagePart({
               );
             }
             return (
-              <section key={part.id} className={styles.panel}>
-                <div className={styles.cardHeader}>
-                  <p className={styles.cardKind}>Decision</p>
-                  <EntityLink entityRef={liveInterrupt.entity_ref} />
-                </div>
-                <h3>{liveInterrupt.title}</h3>
-                {liveInterrupt.body ? <p>{liveInterrupt.body}</p> : null}
-                <div className={styles.panelFields}>{renderField(liveInterrupt, values, setValues)}</div>
-                {liveInterrupt.consequence_preview ? (
-                  <p className={styles.consequencePreview}>{liveInterrupt.consequence_preview}</p>
-                ) : null}
-                <div className={styles.panelActions}>
-                  <button
-                    type="button"
-                    onClick={() => void onInterruptDismiss(liveInterrupt.id)}
-                    disabled={busy}
-                    className={styles.secondaryButton}
-                  >
-                    {liveInterrupt.defer_label || liveInterrupt.secondary_label || "Dismiss"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void onInterruptSubmit(liveInterrupt.id, values)}
-                    disabled={busy}
-                    className={styles.primaryButton}
-                  >
-                    {liveInterrupt.primary_label}
-                  </button>
-                </div>
-              </section>
+              <DynamicPanelRenderer
+                key={part.id}
+                interrupt={liveInterrupt}
+                busy={busy}
+                onSubmit={onInterruptSubmit}
+                onDismiss={onInterruptDismiss}
+              />
             );
           }
           return null;
