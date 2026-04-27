@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlite3 import Connection
 from typing import Any
 
-from app.services import artifacts_service, memory_vault_service
+from app.services import artifacts_service, memory_vault_service, review_mode_service
 
 
 def _snippet(text: str | None, *, limit: int = 220) -> str:
@@ -375,7 +375,10 @@ def _task_list_card(tasks: list[dict[str, Any]], *, title: str, metadata: dict[s
 
 def _review_queue_card(cards: list[dict[str, Any]], *, title: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     first = cards[0] if cards else None
-    body = f"{len(cards)} card{'s' if len(cards) != 1 else ''} ready now."
+    mode_counts = review_mode_service.mode_counts_for_cards(cards)
+    primary_mode = review_mode_service.primary_mode_for_counts(mode_counts)
+    mode_summary = review_mode_service.review_queue_summary(mode_counts)
+    body = mode_summary or f"{len(cards)} card{'s' if len(cards) != 1 else ''} ready now."
     if first:
         body = f"{body}\n{first.get('prompt') or 'Open Review to continue.'}"
     return normalize_card(
@@ -389,6 +392,10 @@ def _review_queue_card(cards: list[dict[str, Any]], *, title: str, metadata: dic
                 "card_id": first.get("id") if first else None,
                 "prompt": first.get("prompt") if first else None,
                 "answer": first.get("answer") if first else None,
+                "card_type": first.get("card_type") if first else None,
+                "review_mode": review_mode_service.review_mode_for_card_type(first.get("card_type")) if first else primary_mode,
+                "mode_counts": mode_counts,
+                "primary_mode": primary_mode,
                 **(metadata or {}),
             },
         }

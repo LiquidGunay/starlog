@@ -5,7 +5,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import assistant_projection_service, assistant_thread_service
+from app.services import assistant_projection_service, assistant_thread_service, review_mode_service
 from app.services.assistant_run_service import (
     _complete_interrupt,
     _create_interrupt,
@@ -1093,19 +1093,27 @@ def create_surface_event(
     if kind == "review.answer.revealed":
         card_id = str(payload.get("card_id") or (entity_ref or {}).get("entity_id") or "").strip()
         prompt_text = str(payload.get("prompt") or (entity_ref or {}).get("title") or "this card").strip() or "this card"
+        card_type = str(payload.get("card_type") or "").strip() or None
+        raw_review_mode = str(payload.get("review_mode") or "").strip()
+        review_mode = (
+            raw_review_mode
+            if raw_review_mode in review_mode_service.REVIEW_MODE_ORDER
+            else review_mode_service.review_mode_for_card_type(card_type)
+        )
+        review_mode_label = review_mode.replace("_", " ").title()
         interrupt = _create_interrupt(
             conn,
             run_id=run["id"],
             thread_id=thread["id"],
             tool_name="grade_review_recall",
             interrupt_type="choice",
-            title="Grade recall",
-            body=f"How well did you recall: {prompt_text}?",
+            title=f"Grade {review_mode_label}",
+            body=f"How well did this {review_mode_label.lower()} item go: {prompt_text}?",
             fields=[
                 {
                     "id": "rating",
                     "kind": "select",
-                    "label": "Recall quality",
+                    "label": f"{review_mode_label} quality",
                     "required": True,
                     "options": [
                         {"label": "Again", "value": "1"},
@@ -1121,6 +1129,8 @@ def create_surface_event(
                 "surface_event": event,
                 "card_id": card_id,
                 "prompt": prompt_text,
+                "card_type": card_type,
+                "review_mode": review_mode,
                 "display_mode": "inline",
                 "consequence_preview": "Updates the review schedule for this item.",
                 "defer_label": "Keep in Review",
@@ -1136,7 +1146,7 @@ def create_surface_event(
             metadata={"surface_event": event, "interrupt_id": interrupt["id"]},
             parts=[
                 assistant_projection_service.text_part(
-                    "You revealed the answer in Review. Record the recall grade here if you want the thread to track the result."
+                    "You revealed the answer in Review. Record the grade here if you want the thread to track the result."
                 ),
                 assistant_projection_service.interrupt_request_part(interrupt),
             ],

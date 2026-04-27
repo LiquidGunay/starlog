@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlite3 import Connection, IntegrityError
 
 from app.core.time import utc_now
-from app.services import events_service
+from app.services import events_service, review_mode_service
 from app.services.common import execute_fetchall, execute_fetchone, iso, new_id
 
 DEFAULT_DECK_NAME = "Inbox"
@@ -42,6 +42,7 @@ def _format_card(row: dict) -> dict:
     payload = dict(row)
     payload["tags"] = _normalize_tags(payload.pop("tags_json", []))
     payload["suspended"] = bool(payload.get("suspended", 0))
+    payload["review_mode"] = review_mode_service.review_mode_for_card_type(payload.get("card_type"))
     return payload
 
 
@@ -424,12 +425,20 @@ def review_card(conn: Connection, card_id: str, rating: int, latency_ms: int | N
     events_service.emit(
         conn,
         "card.reviewed",
-        {"card_id": card_id, "rating": rating, "interval_days": interval},
+        {
+            "card_id": card_id,
+            "rating": rating,
+            "interval_days": interval,
+            "card_type": card.get("card_type"),
+            "review_mode": review_mode_service.review_mode_for_card_type(card.get("card_type")),
+        },
     )
     conn.commit()
 
     return {
         "card_id": card_id,
+        "card_type": card.get("card_type"),
+        "review_mode": review_mode_service.review_mode_for_card_type(card.get("card_type")),
         "next_due_at": next_due.isoformat(),
         "interval_days": interval,
         "repetitions": repetitions,
