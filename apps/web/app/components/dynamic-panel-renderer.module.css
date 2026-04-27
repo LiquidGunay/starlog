@@ -1,0 +1,322 @@
+.panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.035)),
+    rgba(12, 13, 17, 0.84);
+}
+
+.tone_task {
+  border-color: rgba(90, 156, 146, 0.32);
+  background: linear-gradient(180deg, rgba(53, 79, 76, 0.34), rgba(255, 255, 255, 0.045));
+}
+
+.tone_capture {
+  border-color: rgba(137, 150, 211, 0.32);
+  background: linear-gradient(180deg, rgba(57, 66, 96, 0.34), rgba(255, 255, 255, 0.045));
+}
+
+.tone_planner {
+  border-color: rgba(226, 161, 112, 0.34);
+  background: linear-gradient(180deg, rgba(98, 66, 31, 0.34), rgba(255, 255, 255, 0.045));
+}
+
+.tone_review {
+  border-color: rgba(185, 163, 86, 0.34);
+  background: linear-gradient(180deg, rgba(102, 88, 45, 0.34), rgba(255, 255, 255, 0.045));
+}
+
+.tone_focus {
+  border-color: rgba(151, 188, 211, 0.34);
+  background: linear-gradient(180deg, rgba(45, 71, 86, 0.34), rgba(255, 255, 255, 0.045));
+}
+
+.mode_composer {
+  box-shadow: inset 0 0 0 1px rgba(239, 205, 160, 0.08);
+}
+
+.mode_sidecar {
+  border-style: dashed;
+}
+
+.mode_bottom_sheet {
+  border-radius: 22px 22px 18px 18px;
+}
+
+.header,
+.eyebrowRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.eyebrowRow {
+  justify-content: flex-start;
+}
+
+.eyebrowRow p,
+.eyebrowRow span {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(244, 241, 232, 0.58);
+}
+
+.eyebrowRow span {
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.07);
+  letter-spacing: 0.08em;
+}
+
+.copy {
+  display: grid;
+  gap: 8px;
+}
+
+.copy h3 {
+  margin: 0;
+  color: #f4f1e8;
+  font-size: 22px;
+  line-height: 1.22;
+}
+
+.copy p,
+.confirmCopy {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.78);
+  line-height: 1.6;
+}
+
+.entityLink {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 241, 232, 0.84);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.entityLink:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.fields {
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: rgba(244, 241, 232, 0.82);
+  font-size: 14px;
+}
+
+.fieldLabel {
+  font-weight: 650;
+}
+
+.field input,
+.field select,
+.field textarea,
+.dateField input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(12, 13, 17, 0.92);
+  color: #f4f1e8;
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(244, 241, 232, 0.84);
+}
+
+.toggleRow input {
+  width: 18px;
+  height: 18px;
+  accent-color: #efcda0;
+}
+
+.dateField {
+  display: grid;
+  gap: 8px;
+}
+
+.quickDates,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.quickDates button,
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.quickDates button {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 241, 232, 0.84);
+}
+
+.optionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.optionCard {
+  display: grid;
+  gap: 5px;
+  min-height: 64px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(244, 241, 232, 0.86);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.optionCard span {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.optionCard small {
+  color: rgba(244, 241, 232, 0.58);
+  line-height: 1.35;
+}
+
+.optionCard:hover,
+.optionCardSelected {
+  border-color: rgba(239, 205, 160, 0.55);
+  background: rgba(239, 205, 160, 0.12);
+}
+
+.conflictPreview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.conflictPreview span,
+.conflictPreview strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-radius: 12px;
+  padding: 9px 10px;
+}
+
+.conflictPreview span {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 241, 232, 0.84);
+}
+
+.conflictPreview strong {
+  color: #f4f1e8;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+}
+
+.defaults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.defaults span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(244, 241, 232, 0.72);
+  font-size: 12px;
+}
+
+.consequencePreview {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(239, 205, 160, 0.09);
+  color: rgba(244, 241, 232, 0.78);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  color: #18130e;
+}
+
+.secondaryButton {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f1e8;
+}
+
+.dangerButton {
+  background: rgba(194, 87, 67, 0.2);
+  color: #ffd5c7;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.quickDates button:disabled,
+.optionCard:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 720px) {
+  .panel {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .copy h3 {
+    font-size: 19px;
+  }
+
+  .conflictPreview {
+    grid-template-columns: 1fr;
+  }
+
+  .conflictPreview strong {
+    justify-self: start;
+  }
+}
