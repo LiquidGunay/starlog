@@ -119,14 +119,8 @@ def _default_actions(card: dict[str, Any]) -> list[dict[str, Any]]:
         return actions
 
     if kind in {"goal_status", "project_status", "commitment_status"}:
-        actions = []
-        if href:
-            actions.append(_navigate_action("open_planner", "Open Planner", href, style="primary"))
-        else:
-            actions.append(_navigate_action("open_planner", "Open Planner", "/planner", style="primary"))
         prompt_subject = title or body or kind.replace("_", " ")
-        actions.append(_composer_action("move_forward", "Move forward", f"What should move forward next for {prompt_subject}?"))
-        return actions
+        return [_composer_action("move_forward", "Move forward", f"What should move forward next for {prompt_subject}?")]
 
     if kind == "review_queue":
         actions: list[dict[str, Any]] = []
@@ -271,7 +265,6 @@ def _goal_entity_ref(goal: dict[str, Any]) -> dict[str, Any]:
     return {
         "entity_type": "goal",
         "entity_id": goal_id,
-        "href": f"/planner?goal={goal_id}",
         "title": goal.get("title") or goal_id,
     }
 
@@ -281,7 +274,6 @@ def _project_entity_ref(project: dict[str, Any]) -> dict[str, Any]:
     return {
         "entity_type": "project",
         "entity_id": project_id,
-        "href": f"/planner?project={project_id}",
         "title": project.get("title") or project_id,
     }
 
@@ -291,7 +283,6 @@ def _commitment_entity_ref(commitment: dict[str, Any]) -> dict[str, Any]:
     return {
         "entity_type": "commitment",
         "entity_id": commitment_id,
-        "href": f"/planner?commitment={commitment_id}",
         "title": commitment.get("title") or commitment_id,
     }
 
@@ -494,14 +485,14 @@ def strategic_context_cards(conn: Connection, *, per_kind_limit: int = 1) -> lis
         return []
 
     cards: list[dict[str, Any]] = []
-    cards.extend(goal_status_card(goal) for goal in strategic_context_service.list_goals(conn, status="active")[:limit])
+    cards.extend(goal_status_card(goal) for goal in strategic_context_service.list_goals(conn, status="active", limit=limit))
     cards.extend(
         project_status_card(project)
-        for project in strategic_context_service.list_projects(conn, status="active")[:limit]
+        for project in strategic_context_service.list_projects(conn, status="active", limit=limit)
     )
     cards.extend(
         commitment_status_card(commitment)
-        for commitment in strategic_context_service.list_commitments(conn, status="open")[:limit]
+        for commitment in strategic_context_service.list_commitments(conn, status="open", limit=limit)
     )
     return cards
 

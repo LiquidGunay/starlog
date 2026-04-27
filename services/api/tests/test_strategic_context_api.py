@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.services import conversation_card_service
+from app.services import conversation_card_service, strategic_context_service
 
 
 def test_goal_create_list_update(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -233,7 +233,12 @@ def test_strategic_context_cards_use_existing_contract_kinds() -> None:
     assert goal_card["kind"] == "goal_status"
     assert project_card["kind"] == "project_status"
     assert commitment_card["kind"] == "commitment_status"
-    assert goal_card["actions"][0]["payload"]["href"] == "/planner?goal=goal_test"
+    assert "href" not in goal_card["entity_ref"]
+    assert "href" not in project_card["entity_ref"]
+    assert "href" not in commitment_card["entity_ref"]
+    assert [action["kind"] for action in goal_card["actions"]] == ["composer"]
+    assert [action["kind"] for action in project_card["actions"]] == ["composer"]
+    assert [action["kind"] for action in commitment_card["actions"]] == ["composer"]
 
 
 def test_strategic_context_cards_collect_active_records(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -267,3 +272,21 @@ def test_strategic_context_cards_collect_active_records(client: TestClient, auth
     assert cards[0]["metadata"]["goal_id"] == goal["id"]
     assert cards[1]["metadata"]["project_id"] == project["id"]
     assert cards[2]["metadata"]["commitment_id"] == commitment["id"]
+
+
+def test_strategic_context_list_queries_accept_optional_limit(monkeypatch) -> None:
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def fake_execute_fetchall(_conn, sql: str, params: tuple[object, ...] = ()) -> list[dict]:
+        calls.append((sql, params))
+        return []
+
+    monkeypatch.setattr(strategic_context_service, "execute_fetchall", fake_execute_fetchall)
+
+    strategic_context_service.list_goals(object(), status="active", limit=2)
+    strategic_context_service.list_projects(object(), status="active", limit=2)
+    strategic_context_service.list_commitments(object(), status="open", limit=2)
+
+    assert len(calls) == 3
+    assert all(" LIMIT ?" in sql for sql, _params in calls)
+    assert all(params[-1] == 2 for _sql, params in calls)

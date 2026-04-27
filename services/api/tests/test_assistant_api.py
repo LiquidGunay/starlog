@@ -160,9 +160,11 @@ def test_assistant_snapshot_exposes_strategic_context_cards(
     context_cards = response.json()["context_cards"]
     assert [card["kind"] for card in context_cards] == ["goal_status", "project_status", "commitment_status"]
     assert context_cards[0]["metadata"]["goal_id"] == goal["id"]
-    assert context_cards[0]["entity_ref"]["href"] == f"/planner?goal={goal['id']}"
+    assert context_cards[0]["entity_ref"]["href"] is None
     assert context_cards[1]["metadata"]["project_id"] == project["id"]
+    assert context_cards[1]["entity_ref"]["href"] is None
     assert context_cards[2]["metadata"]["commitment_id"] == commitment["id"]
+    assert context_cards[2]["entity_ref"]["href"] is None
 
     with get_connection() as conn:
         thread = assistant_thread_service.get_thread(conn, "primary")
