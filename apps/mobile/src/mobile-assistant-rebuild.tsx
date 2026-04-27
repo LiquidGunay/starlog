@@ -24,6 +24,20 @@ import {
   toolResultBadges,
   toolStatusSummary,
 } from "./assistant-mobile-ui";
+import {
+  activePendingInterruptId,
+  defaultPanelValues,
+  fieldSummary,
+  fieldValue,
+  mobileDynamicPanelStates,
+  panelDismissPayload,
+  panelKicker,
+  panelSubmitPayload,
+  panelTone,
+  selectedValueLabel,
+  visibleContextChips,
+  type PanelTone,
+} from "./mobile-assistant-panel-state";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
@@ -54,17 +68,6 @@ type MobileAssistantRebuildProps = {
 };
 
 type ThreadLens = "live" | "artifacts" | "actions";
-type PanelTone = "focus" | "task" | "capture" | "conflict" | "review" | "clarify" | "defer" | "default";
-
-const DYNAMIC_PANEL_TOOL_TONES: Record<string, PanelTone> = {
-  choose_morning_focus: "focus",
-  request_due_date: "task",
-  triage_capture: "capture",
-  resolve_planner_conflict: "conflict",
-  grade_review_recall: "review",
-  clarify_assistant_request: "clarify",
-  defer_recommendation: "defer",
-};
 
 function bodyLines(body?: string | null): string[] {
   return (body || "")
@@ -278,13 +281,6 @@ function attachmentPreview(
   );
 }
 
-function defaultValues(interrupt: AssistantInterrupt): Record<string, unknown> {
-  return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
-    accumulator[field.id] = interrupt.recommended_defaults?.[field.id] ?? field.value ?? (field.kind === "toggle" ? false : "");
-    return accumulator;
-  }, {});
-}
-
 function messageHasArtifactContent(message: AssistantThreadMessage): boolean {
   return cardParts(message).length > 0 || attachmentParts(message).length > 0;
 }
@@ -314,21 +310,6 @@ function interruptDetail(interrupt: AssistantInterrupt): string {
   return interrupt.status === "submitted" ? "resolved from another surface" : "no longer pending";
 }
 
-function fieldValue(values: Record<string, unknown>, field: AssistantInterruptField): string {
-  const value = values[field.id];
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number") {
-    return String(value);
-  }
-  return "";
-}
-
-function panelTone(interrupt: AssistantInterrupt): PanelTone {
-  return DYNAMIC_PANEL_TOOL_TONES[interrupt.tool_name] || "default";
-}
-
 function panelAccent(tone: PanelTone, palette: Record<string, string>) {
   if (tone === "focus") {
     return { text: "#d8f3e2", bg: "rgba(166, 222, 191, 0.11)", border: "rgba(166, 222, 191, 0.2)" };
@@ -346,79 +327,6 @@ function panelAccent(tone: PanelTone, palette: Record<string, string>) {
     return { text: "#d7d4ff", bg: "rgba(178, 168, 255, 0.1)", border: "rgba(178, 168, 255, 0.2)" };
   }
   return { text: palette.accent, bg: "rgba(241, 182, 205, 0.1)", border: "rgba(241, 182, 205, 0.18)" };
-}
-
-function panelKicker(interrupt: AssistantInterrupt): string {
-  if (interrupt.tool_name === "choose_morning_focus") {
-    return "Morning focus";
-  }
-  if (interrupt.tool_name === "request_due_date") {
-    return "Task details";
-  }
-  if (interrupt.tool_name === "triage_capture") {
-    return "Capture triage";
-  }
-  if (interrupt.tool_name === "resolve_planner_conflict") {
-    return "Planner conflict";
-  }
-  if (interrupt.tool_name === "grade_review_recall") {
-    return "Review grade";
-  }
-  if (interrupt.tool_name.includes("clarif")) {
-    return "Clarification";
-  }
-  if (interrupt.tool_name.includes("defer")) {
-    return "Defer";
-  }
-  return interrupt.tool_name.replace(/_/g, " ");
-}
-
-function fieldSummary(field: AssistantInterruptField): string | null {
-  if (field.kind === "date") {
-    return "Today, tomorrow, or a picked date.";
-  }
-  if (field.kind === "time" || field.kind === "datetime") {
-    return "Choose a specific time when needed.";
-  }
-  if (field.kind === "entity_search") {
-    return "Search opens as a larger picker when wired.";
-  }
-  return null;
-}
-
-function valueLabel(field: AssistantInterruptField, value: unknown): string {
-  const normalized = typeof value === "string" || typeof value === "number" ? String(value) : "";
-  const optionLabel = field.options?.find((option) => option.value === normalized)?.label;
-  return optionLabel || normalized.replace(/_/g, " ");
-}
-
-function selectedValueLabel(interrupt: AssistantInterrupt, values: Record<string, unknown>): string | null {
-  const field = interrupt.fields.find((candidate) => {
-    const value = values[candidate.id];
-    return value !== undefined && value !== null && String(value).trim().length > 0;
-  });
-  if (!field) {
-    return null;
-  }
-  return valueLabel(field, values[field.id]);
-}
-
-function visibleContextChips(interrupts: AssistantInterrupt[], attachmentCount: number, hiddenThreadMessageCount: number): string[] {
-  const pending = interrupts.find((interrupt) => interrupt.status === "pending");
-  const chips = ["Assistant"];
-  if (pending) {
-    chips.push(panelKicker(pending));
-    chips.push(pending.display_mode === "bottom_sheet" ? "Sheet ready" : "Inline panel");
-  } else {
-    chips.push("Synced thread");
-  }
-  if (attachmentCount > 0) {
-    chips.push(`${attachmentCount} artifact${attachmentCount === 1 ? "" : "s"}`);
-  }
-  if (hiddenThreadMessageCount > 0) {
-    chips.push(`${hiddenThreadMessageCount} system`);
-  }
-  return chips.slice(0, 4);
 }
 
 function AttachmentRow({
@@ -804,6 +712,7 @@ function DynamicPanelRenderer({
   values,
   palette,
   active,
+  displayModeLabel,
   onValueChange,
   onSubmit,
   onDismiss,
@@ -813,6 +722,7 @@ function DynamicPanelRenderer({
   values: Record<string, unknown>;
   palette: Record<string, string>;
   active: boolean;
+  displayModeLabel: string;
   onValueChange: (fieldId: string, value: unknown) => void;
   onSubmit: () => void;
   onDismiss: () => void;
@@ -823,12 +733,6 @@ function DynamicPanelRenderer({
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
   const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
-  const displayModeLabel =
-    interrupt.display_mode === "bottom_sheet"
-      ? "opens as sheet"
-      : interrupt.display_mode === "sidecar"
-        ? "inline on mobile"
-        : "inline";
 
   return (
     <View
@@ -1018,14 +922,14 @@ export function MobileAssistantRebuild({
         if (interrupt.status !== "pending" || next[interrupt.id]) {
           continue;
         }
-        next[interrupt.id] = defaultValues(interrupt);
+        next[interrupt.id] = defaultPanelValues(interrupt);
         changed = true;
       }
       return changed ? next : previous;
     });
   }, [liveInterrupts]);
 
-  const activePendingInterruptId = liveInterrupts.find((interrupt) => interrupt.status === "pending")?.id ?? null;
+  const activePanelId = activePendingInterruptId(liveInterrupts);
   const attachmentCount = useMemo(
     () => visibleThreadMessages.reduce((count, message) => count + cardParts(message).length + attachmentParts(message).length, 0),
     [visibleThreadMessages],
@@ -1041,6 +945,10 @@ export function MobileAssistantRebuild({
   const contextChips = useMemo(
     () => visibleContextChips(liveInterrupts, attachmentCount, hiddenThreadMessageCount),
     [attachmentCount, hiddenThreadMessageCount, liveInterrupts],
+  );
+  const panelStates = useMemo(
+    () => mobileDynamicPanelStates(liveInterrupts, interruptValuesById),
+    [interruptValuesById, liveInterrupts],
   );
 
   const filteredMessages = useMemo(() => {
@@ -1469,9 +1377,9 @@ export function MobileAssistantRebuild({
                 {interruptRequests.length > 0 ? (
                   <View style={{ gap: 10, paddingLeft: 10 }}>
                     {interruptRequests.map((interrupt) => {
-                      const values = interruptValuesById[interrupt.id] || defaultValues(interrupt);
-                      const isActivePanel = interrupt.status !== "pending" || interrupt.id === activePendingInterruptId;
-                      if (!isActivePanel) {
+                      const panelState = panelStates.find((state) => state.interrupt.id === interrupt.id);
+                      const values = panelState?.values || defaultPanelValues(interrupt);
+                      if (panelState?.renderState === "queued") {
                         return (
                           <View
                             key={interrupt.id}
@@ -1500,18 +1408,25 @@ export function MobileAssistantRebuild({
                           interrupt={interrupt}
                           values={values}
                           palette={palette}
-                          active={interrupt.id === activePendingInterruptId}
+                          active={interrupt.id === activePanelId}
+                          displayModeLabel={panelState?.displayModeLabel || "inline"}
                           onValueChange={(fieldId, value) =>
                             setInterruptValuesById((previous) => ({
                               ...previous,
                               [interrupt.id]: {
-                                ...(previous[interrupt.id] || defaultValues(interrupt)),
+                                ...(previous[interrupt.id] || defaultPanelValues(interrupt)),
                                 [fieldId]: value,
                               },
                             }))
                           }
-                          onSubmit={() => onInterruptSubmit(interrupt.id, values)}
-                          onDismiss={() => onInterruptDismiss(interrupt.id)}
+                          onSubmit={() => {
+                            const payload = panelSubmitPayload(interrupt, interruptValuesById);
+                            onInterruptSubmit(payload.interruptId, payload.values);
+                          }}
+                          onDismiss={() => {
+                            const payload = panelDismissPayload(interrupt);
+                            onInterruptDismiss(payload.interruptId);
+                          }}
                           onOpenEntityRef={onOpenEntityRef}
                         />
                       );
