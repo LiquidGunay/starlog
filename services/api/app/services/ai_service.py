@@ -165,15 +165,16 @@ def _invoke_openai_compatible(provider_name: str, config: dict, capability: str,
 
     text = _extract_message_text(decoded).strip()
     structured = decoded if isinstance(decoded, dict) else {}
-    if capability in {"llm_cards", "llm_tasks"}:
-        parsed_text = _parse_json_object(text)
-        if parsed_text:
-            structured = {**structured, **parsed_text}
+    parsed_text = _parse_json_object(text)
+    if parsed_text:
+        structured = {**structured, **parsed_text}
 
     return {
         "provider": provider_name,
         "model": model,
         "text": text,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
         **structured,
     }
 
@@ -243,6 +244,22 @@ def _api_provider(conn: Connection | None, capability: str, payload: dict) -> di
     raise ProviderError("Unsupported capability")
 
 
+def _normalize_llm_output(capability: str, output: dict, *, default_provider: str) -> tuple[str, dict]:
+    normalized_output = dict(output)
+    provider = str(normalized_output.pop("provider", "") or default_provider)
+    model = str(normalized_output.pop("model", "") or AI_RUNTIME_DEFAULT_MODEL)
+    system_prompt = str(normalized_output.pop("system_prompt", "") or "")
+    user_prompt = str(normalized_output.pop("user_prompt", "") or "")
+    normalized_output["_runtime"] = {
+        "capability": capability,
+        "model": model,
+        "provider_used": provider,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+    }
+    return provider, normalized_output
+
+
 def run(
     conn: Connection | None,
     capability: str,
@@ -263,21 +280,33 @@ def run(
     for target in execution_order:
         try:
             if target in {"mobile_bridge", "desktop_bridge"}:
-                # Bridge targets run via queued workers; synchronous API execution keeps walking.
+                if target == "desktop_bridge" and capability in LLM_CAPABILITIES:
+                    output = _codex_bridge_provider(conn, capability, payload)
+                    provider, normalized_output = _normalize_llm_output(
+                        capability,
+                        output,
+                        default_provider="codex_bridge",
+                    )
+                    return provider, "ok", normalized_output
+                # Other bridge targets run via queued workers; synchronous API execution keeps walking.
                 continue
             if target == "api":
                 output = _api_provider(conn, capability, payload)
                 if capability in LLM_CAPABILITIES:
                     runtime_output = output.get("output")
                     normalized_output = dict(runtime_output) if isinstance(runtime_output, dict) else {}
-                    normalized_output["_runtime"] = {
-                        "capability": str(output.get("capability") or capability),
-                        "model": str(output.get("model") or AI_RUNTIME_DEFAULT_MODEL),
-                        "provider_used": str(output.get("provider_used") or "ai_runtime"),
-                        "system_prompt": str(output.get("system_prompt") or ""),
-                        "user_prompt": str(output.get("user_prompt") or ""),
-                    }
-                    return str(output.get("provider_used") or "ai_runtime"), "ok", normalized_output
+                    provider, normalized_output = _normalize_llm_output(
+                        str(output.get("capability") or capability),
+                        {
+                            **normalized_output,
+                            "provider": str(output.get("provider_used") or "ai_runtime"),
+                            "model": str(output.get("model") or AI_RUNTIME_DEFAULT_MODEL),
+                            "system_prompt": str(output.get("system_prompt") or ""),
+                            "user_prompt": str(output.get("user_prompt") or ""),
+                        },
+                        default_provider="ai_runtime",
+                    )
+                    return provider, "ok", normalized_output
                 return "api", "fallback", output
         except ProviderError:
             continue

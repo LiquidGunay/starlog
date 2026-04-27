@@ -1884,7 +1884,9 @@ def test_codex_bridge_requires_explicit_opt_in_for_execution(
         headers=auth_headers,
     )
     assert live.status_code == 200
-    assert live.json()["provider_used"] == "local_ai_runtime"
+    assert live.json()["provider_used"] == "codex_bridge"
+    assert live.json()["output"]["summary"] == "Codex bridge summary"
+    assert live.json()["output"]["_runtime"]["provider_used"] == "codex_bridge"
     assert live.json()["output"]["_runtime"]["capability"] == "llm_summary"
 
 
