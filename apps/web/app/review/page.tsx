@@ -382,7 +382,7 @@ export default function ReviewPage() {
                   <span>Cards Due</span>
                 </div>
                 <div>
-                  <strong>{REVIEW_MODE_LABELS[primaryMode]}</strong>
+                  <span className="april-review-mode-chip">{REVIEW_MODE_LABELS[primaryMode]}</span>
                   <span>Primary Mode</span>
                 </div>
               </div>
