@@ -87,6 +87,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable preview/semi-stable release checklist spanning docs, validation, artifacts, and signoff.
 - `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped execution companion to `PLAN.md`; keep it aligned with the assistant reset direction.
+- `docs/UI_FUNCTIONAL_TEST_HARNESSES.md` — repeatable PWA and mobile-viewport functional smoke commands for assistant dynamic-panel UI validation.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
 - `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.
