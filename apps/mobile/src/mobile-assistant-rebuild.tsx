@@ -4,16 +4,26 @@ import type {
   AssistantAttachment,
   AssistantCard as ConversationCard,
   AssistantCardAction,
+  AssistantEntityRef,
   AssistantInterrupt,
   AssistantInterruptField,
   AssistantThreadMessage,
   AssistantThreadSnapshot,
+  AssistantToolCall,
+  AssistantToolResult,
 } from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
+import {
+  attachmentActionLabel,
+  summarizeOutput,
+  supportSurfaceActionLabel,
+  toolResultBadges,
+  toolStatusSummary,
+} from "./assistant-mobile-ui";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
@@ -39,6 +49,8 @@ type MobileAssistantRebuildProps = {
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => void;
   onInterruptDismiss: (interruptId: string) => void;
   reuseCardText: (value: string) => void;
+  onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
+  onOpenAttachment: (url: string | null | undefined, label: string) => void;
 };
 
 type ThreadLens = "live" | "artifacts" | "actions";
@@ -305,9 +317,11 @@ function fieldValue(values: Record<string, unknown>, field: AssistantInterruptFi
 function AttachmentRow({
   attachment,
   palette,
+  onOpenAttachment,
 }: {
   attachment: AssistantAttachment;
   palette: Record<string, string>;
+  onOpenAttachment: (url: string | null | undefined, label: string) => void;
 }) {
   return (
     <View
@@ -326,6 +340,204 @@ function AttachmentRow({
       </Text>
       <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>{attachment.label}</Text>
       {attachment.mime_type ? <Text style={{ color: palette.muted, fontSize: 12 }}>{attachment.mime_type}</Text> : null}
+      {attachment.url ? (
+        <TouchableOpacity
+          style={{
+            alignSelf: "flex-start",
+            borderRadius: 999,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            backgroundColor: "rgba(255,255,255,0.025)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.05)",
+          }}
+          onPress={() => onOpenAttachment(attachment.url, attachmentActionLabel(attachment))}
+        >
+          <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            {attachmentActionLabel(attachment)}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+function EntityActionChip({
+  entityRef,
+  palette,
+  onOpenEntityRef,
+}: {
+  entityRef?: AssistantEntityRef | null;
+  palette: Record<string, string>;
+  onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
+}) {
+  if (!entityRef) {
+    return null;
+  }
+
+  return (
+    <TouchableOpacity
+      style={{
+        alignSelf: "flex-start",
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        backgroundColor: "rgba(255,255,255,0.025)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.05)",
+      }}
+      onPress={() => onOpenEntityRef(entityRef)}
+    >
+      <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        {supportSurfaceActionLabel(entityRef)}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ToolCallRow({
+  toolCall,
+  palette,
+}: {
+  toolCall: AssistantToolCall;
+  palette: Record<string, string>;
+}) {
+  const argumentRows = summarizeOutput(toolCall.arguments || {});
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.05)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        gap: 6,
+      }}
+    >
+      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        Tool call
+      </Text>
+      <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: "800" }}>
+        {toolCall.title || toolCall.tool_name}
+      </Text>
+      <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolStatusSummary(toolCall)}</Text>
+      {argumentRows.map(([key, value]) => (
+        <View key={`${toolCall.id}-${key}`} style={{ gap: 2 }}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+            {key.replace(/_/g, " ")}
+          </Text>
+          <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function ToolResultRow({
+  toolResult,
+  palette,
+  formatCardMeta,
+  onCardAction,
+  onOpenEntityRef,
+}: {
+  toolResult: AssistantToolResult;
+  palette: Record<string, string>;
+  formatCardMeta: (card: ConversationCard) => string;
+  onCardAction: (action: AssistantCardAction, card: ConversationCard) => void;
+  onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
+}) {
+  const outputRows = summarizeOutput(toolResult.output || {});
+  const badges = toolResultBadges(toolResult);
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.05)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        gap: 7,
+      }}
+    >
+      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        Tool result
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {badges.map((badge) => (
+          <View
+            key={`${toolResult.id}-${badge}`}
+            style={{
+              borderRadius: 999,
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+              backgroundColor: "rgba(255,255,255,0.024)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.05)",
+            }}
+          >
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+              {badge}
+            </Text>
+          </View>
+        ))}
+      </View>
+      {outputRows.map(([key, value]) => (
+        <View key={`${toolResult.id}-${key}`} style={{ gap: 2 }}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+            {key.replace(/_/g, " ")}
+          </Text>
+          <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{value}</Text>
+        </View>
+      ))}
+      <EntityActionChip entityRef={toolResult.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+      {toolResult.card ? (
+        <View
+          style={{
+            borderRadius: 12,
+            paddingHorizontal: 10,
+            paddingVertical: 9,
+            backgroundColor: "rgba(255,255,255,0.02)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.05)",
+            gap: 6,
+          }}
+        >
+          <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
+            {toolResult.card.title || mobileConversationCardLabel(toolResult.card.kind, toolResult.card.title)}
+          </Text>
+          {toolResult.card.body ? <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolResult.card.body}</Text> : null}
+          {formatCardMeta(toolResult.card) ? (
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
+              {compactMeta(formatCardMeta(toolResult.card))}
+            </Text>
+          ) : null}
+          <EntityActionChip entityRef={toolResult.card.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+          {toolResult.card.actions.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+              {toolResult.card.actions.map((action) => (
+                <TouchableOpacity
+                  key={`${toolResult.card?.kind}-${action.id}`}
+                  style={{
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    backgroundColor: action.style === "primary" ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.03)",
+                    borderWidth: 1,
+                    borderColor: action.style === "primary" ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                  }}
+                  onPress={() => onCardAction(action, toolResult.card!)}
+                >
+                  <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -466,6 +678,8 @@ export function MobileAssistantRebuild({
   onInterruptSubmit,
   onInterruptDismiss,
   reuseCardText,
+  onOpenEntityRef,
+  onOpenAttachment,
 }: MobileAssistantRebuildProps) {
   const [threadLens, setThreadLens] = useState<ThreadLens>("live");
   const [activeAttachmentByMessage, setActiveAttachmentByMessage] = useState<Record<string, number>>({});
@@ -692,6 +906,39 @@ export function MobileAssistantRebuild({
                           {update.label}
                         </Text>
                         {update.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{update.body}</Text> : null}
+                        <EntityActionChip entityRef={update.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+                        {update.actions && update.actions.length > 0 ? (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+                            {update.actions.map((action) => (
+                              <TouchableOpacity
+                                key={`${update.id}-${action.id}`}
+                                style={{
+                                  borderRadius: 999,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 6,
+                                  backgroundColor: action.style === "primary" ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.03)",
+                                  borderWidth: 1,
+                                  borderColor: action.style === "primary" ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                                }}
+                                onPress={() =>
+                                  onCardAction(action, {
+                                    kind: "assistant_summary",
+                                    version: 1,
+                                    title: update.label,
+                                    body: update.body || null,
+                                    entity_ref: update.entity_ref || null,
+                                    actions: update.actions || [],
+                                    metadata: update.metadata || {},
+                                  })
+                                }
+                              >
+                                <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                  {action.label}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        ) : null}
                       </View>
                     ))}
                   </View>
@@ -763,6 +1010,8 @@ export function MobileAssistantRebuild({
                               color={tone.accent}
                             />
                           </View>
+
+                          <EntityActionChip entityRef={activeAttachment.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
 
                           <View
                             style={{
@@ -836,6 +1085,42 @@ export function MobileAssistantRebuild({
                   </View>
                 ) : null}
 
+                {attachments.length > 0 ? (
+                  <View style={{ gap: 8, paddingLeft: 10 }}>
+                    {attachments.map((attachment) => (
+                      <AttachmentRow
+                        key={attachment.id}
+                        attachment={attachment}
+                        palette={palette}
+                        onOpenAttachment={onOpenAttachment}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {toolCalls.length > 0 ? (
+                  <View style={{ gap: 8, paddingLeft: 10 }}>
+                    {toolCalls.map((toolCall) => (
+                      <ToolCallRow key={toolCall.id} toolCall={toolCall} palette={palette} />
+                    ))}
+                  </View>
+                ) : null}
+
+                {toolResults.length > 0 ? (
+                  <View style={{ gap: 8, paddingLeft: 10 }}>
+                    {toolResults.map((toolResult) => (
+                      <ToolResultRow
+                        key={toolResult.id}
+                        toolResult={toolResult}
+                        palette={palette}
+                        formatCardMeta={formatCardMeta}
+                        onCardAction={onCardAction}
+                        onOpenEntityRef={onOpenEntityRef}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
                 {interruptRequests.length > 0 ? (
                   <View style={{ gap: 10, paddingLeft: 10 }}>
                     {interruptRequests.map((interrupt) => {
@@ -860,6 +1145,7 @@ export function MobileAssistantRebuild({
                             </Text>
                             <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24, fontWeight: "800" }}>{interrupt.title}</Text>
                             {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
+                            <EntityActionChip entityRef={interrupt.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
                           </View>
 
                           {pending ? (
@@ -943,7 +1229,7 @@ export function MobileAssistantRebuild({
                   </View>
                 ) : null}
 
-                {(attachments.length > 0 || toolCalls.length > 0 || toolResults.length > 0 || diagnosticCards.length > 0 || resolutions.length > 0) ? (
+                {(diagnosticCards.length > 0 || resolutions.length > 0) ? (
                   <View style={{ paddingLeft: 10, gap: 6 }}>
                     <TouchableOpacity
                       style={{
@@ -958,7 +1244,7 @@ export function MobileAssistantRebuild({
                       onPress={() => setExpandedDiagnostics((previous) => ({ ...previous, [message.id]: !previous[message.id] }))}
                     >
                       <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                        {showDiagnostics ? "Details open" : `Details ${attachments.length + toolCalls.length + toolResults.length + diagnosticCards.length + resolutions.length}`}
+                        {showDiagnostics ? "Details open" : `Details ${diagnosticCards.length + resolutions.length}`}
                       </Text>
                     </TouchableOpacity>
                     {showDiagnostics ? (
@@ -973,49 +1259,6 @@ export function MobileAssistantRebuild({
                           gap: 8,
                         }}
                       >
-                        {attachments.map((attachment) => (
-                          <AttachmentRow key={attachment.id} attachment={attachment} palette={palette} />
-                        ))}
-                        {toolCalls.map((toolCall) => (
-                          <View
-                            key={toolCall.id}
-                            style={{
-                              borderRadius: 14,
-                              paddingHorizontal: 10,
-                              paddingVertical: 9,
-                              borderWidth: 1,
-                              borderColor: "rgba(255,255,255,0.04)",
-                              backgroundColor: "rgba(255,255,255,0.02)",
-                              gap: 4,
-                            }}
-                          >
-                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
-                              {toolCall.tool_name}
-                            </Text>
-                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolCall.status}</Text>
-                          </View>
-                        ))}
-                        {toolResults.map((toolResult) => (
-                          <View
-                            key={toolResult.id}
-                            style={{
-                              borderRadius: 14,
-                              paddingHorizontal: 10,
-                              paddingVertical: 9,
-                              borderWidth: 1,
-                              borderColor: "rgba(255,255,255,0.04)",
-                              backgroundColor: "rgba(255,255,255,0.02)",
-                              gap: 4,
-                            }}
-                          >
-                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
-                              Tool result
-                            </Text>
-                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                              {Object.keys(toolResult.output || {}).length} field{Object.keys(toolResult.output || {}).length === 1 ? "" : "s"} returned
-                            </Text>
-                          </View>
-                        ))}
                         {resolutions.map((resolution) => (
                           <View
                             key={resolution.id}
