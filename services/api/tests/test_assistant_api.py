@@ -21,6 +21,11 @@ def _message_texts(payload: dict) -> list[str]:
     ]
 
 
+def _focus_options(interrupt: dict) -> list[dict[str, str]]:
+    field = next(field for field in interrupt["fields"] if field["id"] == "focus")
+    return field["options"]
+
+
 def _parse_sse_events(raw_stream: str, *, stop_event: str = "cursor", limit: int = 32) -> list[dict]:
     events: list[dict] = []
     current_event = "message"
@@ -875,7 +880,72 @@ def test_desktop_helper_capture_reflects_with_desktop_helper_surface(
     assert interrupt["metadata"]["surface_event"]["source_surface"] == "desktop_helper"
 
 
-def test_briefing_generation_reflects_into_choose_morning_focus_interrupt(
+def test_briefing_with_due_open_task_produces_task_specific_focus_option(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    task = client.post(
+        "/v1/tasks",
+        json={
+            "title": "Draft release summary",
+            "status": "todo",
+            "priority": 5,
+            "due_at": (utc_now() - timedelta(hours=1)).isoformat(),
+        },
+        headers=auth_headers,
+    )
+    assert task.status_code == 201
+    task_id = task.json()["id"]
+
+    generated = client.post(
+        "/v1/briefings/generate",
+        json={"date": "2026-04-22", "provider": "test-suite"},
+        headers=auth_headers,
+    )
+    assert generated.status_code == 201
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    interrupt = next(item for item in snapshot.json()["interrupts"] if item["tool_name"] == "choose_morning_focus")
+    assert {"label": "Task: Draft release summary", "value": f"task:{task_id}"} in _focus_options(interrupt)
+    assert interrupt["metadata"]["focus_options"]["source"] == "derived"
+    assert interrupt["metadata"]["focus_options"]["counts"]["task"] == 1
+
+
+def test_briefing_with_pending_capture_triage_produces_capture_focus_option(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    captured = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_manual",
+            "capture_source": "test-suite",
+            "title": "Unprocessed clip",
+            "raw": {"text": "Capture this for later.", "mime_type": "text/plain"},
+            "normalized": {"text": "Capture this for later.", "mime_type": "text/plain"},
+            "extracted": {"text": "Capture this for later.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert captured.status_code == 201
+
+    generated = client.post(
+        "/v1/briefings/generate",
+        json={"date": "2026-04-22", "provider": "test-suite"},
+        headers=auth_headers,
+    )
+    assert generated.status_code == 201
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    interrupt = next(item for item in snapshot.json()["interrupts"] if item["tool_name"] == "choose_morning_focus")
+    assert {"label": "Process latest capture", "value": "capture"} in _focus_options(interrupt)
+    assert interrupt["metadata"]["focus_options"]["source"] == "derived"
+    assert interrupt["metadata"]["focus_options"]["counts"]["capture"] == 1
+
+
+def test_briefing_without_open_loops_falls_back_to_default_focus_options(
     client: TestClient,
     auth_headers: dict[str, str],
 ) -> None:
@@ -892,7 +962,52 @@ def test_briefing_generation_reflects_into_choose_morning_focus_interrupt(
     payload = snapshot.json()
     interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "choose_morning_focus")
     assert interrupt["entity_ref"]["entity_id"] == briefing_id
+    assert _focus_options(interrupt) == [
+        {"label": "Review queue", "value": "review"},
+        {"label": "Process latest capture", "value": "capture"},
+        {"label": "Start deep work block", "value": "deep_work"},
+        {"label": "Plan today", "value": "plan_day"},
+    ]
+    assert interrupt["metadata"]["focus_options"]["source"] == "fallback"
     assert any("morning briefing" in text.lower() for text in _message_texts(payload))
+
+
+def test_submitted_morning_focus_value_is_preserved(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    event = client.post(
+        "/v1/assistant/threads/primary/events",
+        json={
+            "source_surface": "planner",
+            "kind": "briefing.generated",
+            "entity_ref": {
+                "entity_type": "briefing",
+                "entity_id": "brf_custom_focus",
+                "href": "/planner?briefing=brf_custom_focus",
+                "title": "2026-04-22",
+            },
+            "payload": {
+                "briefing_id": "brf_custom_focus",
+                "date": "2026-04-22",
+                "focus_options": [{"label": "Task: Preserve focus", "value": "task:tsk_custom_focus"}],
+            },
+            "visibility": "assistant_message",
+        },
+        headers=auth_headers,
+    )
+    assert event.status_code == 201
+    interrupt = next(item for item in event.json()["interrupts"] if item["tool_name"] == "choose_morning_focus")
+
+    submitted = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"focus": "task:tsk_custom_focus"}},
+        headers=auth_headers,
+    )
+    assert submitted.status_code == 200
+    resolved_interrupt = next(item for item in submitted.json()["interrupts"] if item["id"] == interrupt["id"])
+    assert resolved_interrupt["status"] == "submitted"
+    assert resolved_interrupt["resolution"]["values"]["focus"] == "task:tsk_custom_focus"
 
 
 def test_google_sync_conflict_reflection_dedupes_pending_planner_interrupts(

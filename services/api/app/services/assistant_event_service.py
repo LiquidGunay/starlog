@@ -46,6 +46,13 @@ _EVENT_VISIBILITY_POLICY = {
 }
 
 _VALID_VISIBILITIES = {"internal", "ambient", "assistant_message", "dynamic_panel"}
+_DEFAULT_MORNING_FOCUS_OPTIONS = [
+    {"label": "Review queue", "value": "review"},
+    {"label": "Process latest capture", "value": "capture"},
+    {"label": "Start deep work block", "value": "deep_work"},
+    {"label": "Plan today", "value": "plan_day"},
+]
+_MAX_MORNING_FOCUS_OPTIONS = 5
 
 
 def _event_visibility(kind: str, requested: str | None) -> str:
@@ -171,6 +178,264 @@ def _summarize_text(value: Any, *, limit: int = 180) -> str | None:
     return f"{collapsed[: limit - 1].rstrip()}…"
 
 
+def _short_label(value: Any, *, fallback: str, limit: int = 42) -> str:
+    label = _summarize_text(value, limit=limit)
+    return label or fallback
+
+
+def _normalize_focus_option(item: Any) -> dict[str, str] | None:
+    if not isinstance(item, dict):
+        return None
+    label = _short_label(item.get("label") or item.get("title"), fallback="")
+    value = str(item.get("value") or item.get("id") or "").strip()
+    if not label or not value or len(value) > 128:
+        return None
+    return {"label": label, "value": value}
+
+
+def _explicit_morning_focus_options(
+    payload: dict[str, Any],
+) -> tuple[list[dict[str, str]], dict[str, Any]] | None:
+    for key in ("focus_options", "focus_candidates", "options"):
+        raw_options = payload.get(key)
+        if not isinstance(raw_options, list):
+            continue
+        options: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in raw_options:
+            option = _normalize_focus_option(item)
+            if option is None or option["value"] in seen:
+                continue
+            seen.add(option["value"])
+            options.append(option)
+            if len(options) >= _MAX_MORNING_FOCUS_OPTIONS:
+                break
+        if options:
+            return options, {
+                "source": "payload",
+                "counts": {"payload": len(options)},
+                "option_sources": [
+                    {"value": option["value"], "source": "payload"} for option in options
+                ],
+                "payload_key": key,
+            }
+    return None
+
+
+def _add_morning_focus_option(
+    options: list[dict[str, str]],
+    option_sources: list[dict[str, Any]],
+    seen_values: set[str],
+    *,
+    label: str,
+    value: str,
+    source: str,
+    entity_id: str | None = None,
+    count: int | None = None,
+) -> None:
+    if len(options) >= _MAX_MORNING_FOCUS_OPTIONS or value in seen_values:
+        return
+    options.append({"label": label, "value": value})
+    seen_values.add(value)
+    source_metadata: dict[str, Any] = {"value": value, "source": source}
+    if entity_id:
+        source_metadata["entity_id"] = entity_id
+    if count is not None:
+        source_metadata["count"] = count
+    option_sources.append(source_metadata)
+
+
+def _briefing_has_section_items(payload: dict[str, Any], kinds: set[str]) -> bool:
+    sections = payload.get("sections")
+    if not isinstance(sections, list):
+        return False
+    for section in sections:
+        if not isinstance(section, dict) or section.get("kind") not in kinds:
+            continue
+        items = section.get("items")
+        if isinstance(items, list) and items:
+            return True
+    return False
+
+
+def _build_morning_focus_options(
+    conn: Connection,
+    *,
+    thread_id: str,
+    payload: dict[str, Any],
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    explicit = _explicit_morning_focus_options(payload)
+    if explicit is not None:
+        return explicit
+
+    now = utc_now().isoformat()
+    counts: dict[str, int] = {}
+    options: list[dict[str, str]] = []
+    option_sources: list[dict[str, Any]] = []
+    seen_values: set[str] = set()
+
+    open_task_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM tasks
+        WHERE LOWER(status) NOT IN ('done', 'completed', 'cancelled', 'canceled')
+        """,
+    ).fetchone()[0]
+    counts["task"] = int(open_task_count)
+    task_rows = execute_fetchall(
+        conn,
+        """
+        SELECT id, title, status, due_at, priority
+        FROM tasks
+        WHERE LOWER(status) NOT IN ('done', 'completed', 'cancelled', 'canceled')
+        ORDER BY
+          CASE WHEN due_at IS NOT NULL AND due_at <= ? THEN 0 WHEN due_at IS NULL THEN 1 ELSE 2 END,
+          COALESCE(due_at, '9999') ASC,
+          priority DESC,
+          created_at ASC
+        LIMIT 2
+        """,
+        (now,),
+    )
+    for task in task_rows:
+        task_id = str(task["id"])
+        _add_morning_focus_option(
+            options,
+            option_sources,
+            seen_values,
+            label=f"Task: {_short_label(task.get('title'), fallback='Open task', limit=34)}",
+            value=f"task:{task_id}",
+            source="task",
+            entity_id=task_id,
+        )
+
+    capture_rows = execute_fetchall(
+        conn,
+        """
+        SELECT id, entity_ref_json, metadata_json
+        FROM conversation_interrupts
+        WHERE thread_id = ? AND status = 'pending' AND tool_name = 'triage_capture'
+        ORDER BY created_at DESC, id DESC
+        """,
+        (thread_id,),
+    )
+    counts["capture"] = len(capture_rows)
+    if capture_rows:
+        latest_ref = (
+            capture_rows[0].get("entity_ref_json")
+            if isinstance(capture_rows[0].get("entity_ref_json"), dict)
+            else {}
+        )
+        capture_id = str(latest_ref.get("entity_id") or "")
+        _add_morning_focus_option(
+            options,
+            option_sources,
+            seen_values,
+            label="Process latest capture",
+            value="capture",
+            source="capture",
+            entity_id=capture_id or None,
+            count=len(capture_rows),
+        )
+
+    cards_due_count = conn.execute(
+        "SELECT COUNT(*) FROM cards WHERE suspended = 0 AND due_at <= ?",
+        (now,),
+    ).fetchone()[0]
+    counts["review"] = int(cards_due_count)
+    if int(cards_due_count) > 0:
+        _add_morning_focus_option(
+            options,
+            option_sources,
+            seen_values,
+            label="Review queue",
+            value="review",
+            source="review",
+            count=int(cards_due_count),
+        )
+
+    pending_conflicts = execute_fetchall(
+        conn,
+        """
+        SELECT entity_ref_json
+        FROM conversation_interrupts
+        WHERE thread_id = ? AND status = 'pending' AND tool_name = 'resolve_planner_conflict'
+        ORDER BY created_at DESC, id DESC
+        """,
+        (thread_id,),
+    )
+    unresolved_conflicts = execute_fetchall(
+        conn,
+        """
+        SELECT id, remote_id
+        FROM calendar_sync_conflicts
+        WHERE resolved = 0
+        ORDER BY created_at DESC
+        LIMIT 5
+        """,
+    )
+    conflict_candidates: list[dict[str, str]] = []
+    conflict_seen: set[str] = set()
+    for row in pending_conflicts:
+        entity_ref = row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else {}
+        conflict_id = str(entity_ref.get("entity_id") or "").strip()
+        if not conflict_id or conflict_id in conflict_seen:
+            continue
+        conflict_seen.add(conflict_id)
+        conflict_candidates.append(
+            {"id": conflict_id, "title": str(entity_ref.get("title") or "planner conflict")}
+        )
+    for row in unresolved_conflicts:
+        conflict_id = str(row.get("id") or "").strip()
+        if not conflict_id or conflict_id in conflict_seen:
+            continue
+        conflict_seen.add(conflict_id)
+        conflict_candidates.append(
+            {"id": conflict_id, "title": str(row.get("remote_id") or "planner conflict")}
+        )
+    counts["planner_conflict"] = len(conflict_candidates)
+    for conflict in conflict_candidates[:1]:
+        _add_morning_focus_option(
+            options,
+            option_sources,
+            seen_values,
+            label=f"Resolve {_short_label(conflict.get('title'), fallback='planner conflict', limit=32)}",
+            value=f"planner_conflict:{conflict['id']}",
+            source="planner_conflict",
+            entity_id=conflict["id"],
+            count=len(conflict_candidates),
+        )
+
+    briefing_context_count = 0
+    if _briefing_has_section_items(payload, {"calendar", "research"}):
+        briefing_context_count += 1
+        _add_morning_focus_option(
+            options,
+            option_sources,
+            seen_values,
+            label="Plan around briefing",
+            value="plan_day",
+            source="briefing_context",
+            count=briefing_context_count,
+        )
+    source_refs = payload.get("source_refs")
+    if isinstance(source_refs, list):
+        briefing_context_count += len(source_refs)
+    counts["briefing_context"] = briefing_context_count
+
+    if options:
+        return options, {"source": "derived", "counts": counts, "option_sources": option_sources}
+
+    return list(_DEFAULT_MORNING_FOCUS_OPTIONS), {
+        "source": "fallback",
+        "counts": {**counts, "fallback": len(_DEFAULT_MORNING_FOCUS_OPTIONS)},
+        "option_sources": [
+            {"value": option["value"], "source": "fallback"}
+            for option in _DEFAULT_MORNING_FOCUS_OPTIONS
+        ],
+    }
+
+
 def _capture_source_surface(artifact: dict[str, Any]) -> str:
     metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
     capture = metadata.get("capture") if isinstance(metadata.get("capture"), dict) else {}
@@ -222,7 +487,15 @@ def reflect_briefing_generated(conn: Connection, *, briefing: dict[str, Any], us
             "href": f"/planner?briefing={briefing_id}",
             "title": briefing_date,
         },
-        payload={"briefing_id": briefing_id, "date": briefing_date, "body": body},
+        payload={
+            "briefing_id": briefing_id,
+            "date": briefing_date,
+            "body": body,
+            "sections": briefing.get("sections") if isinstance(briefing.get("sections"), list) else [],
+            "source_refs": briefing.get("source_refs")
+            if isinstance(briefing.get("source_refs"), list)
+            else [],
+        },
         visibility="assistant_message",
         user_id=user_id,
     )
@@ -885,6 +1158,11 @@ def create_surface_event(
         return assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
 
     if kind == "briefing.generated":
+        focus_options, focus_options_metadata = _build_morning_focus_options(
+            conn,
+            thread_id=thread["id"],
+            payload=payload,
+        )
         interrupt = _create_interrupt(
             conn,
             run_id=run["id"],
@@ -899,18 +1177,15 @@ def create_surface_event(
                     "kind": "select",
                     "label": "First move",
                     "required": True,
-                    "options": [
-                        {"label": "Review queue", "value": "review"},
-                        {"label": "Process latest capture", "value": "capture"},
-                        {"label": "Start deep work block", "value": "deep_work"},
-                        {"label": "Plan today", "value": "plan_day"},
-                    ],
+                    "options": focus_options,
+                    "metadata": focus_options_metadata,
                 }
             ],
             primary_label="Begin",
             secondary_label="Later",
             metadata={
                 "surface_event": event,
+                "focus_options": focus_options_metadata,
                 "display_mode": "composer",
                 "consequence_preview": "Starts the selected focus from the Assistant thread.",
                 "defer_label": "Later",
