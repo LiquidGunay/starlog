@@ -44,6 +44,31 @@ function initialValues(interrupt: AssistantInterrupt): Record<string, unknown> {
   }, {});
 }
 
+function domIdSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function priorityOptions(field: AssistantInterruptField): Array<{ label: string; value: string }> {
+  const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 1;
+  const max = Number.isFinite(Number(field.max)) ? Number(field.max) : 5;
+  const start = Math.max(1, Math.min(min, max));
+  const end = Math.max(start, max);
+  return Array.from({ length: end - start + 1 }, (_, index) => {
+    const priority = start + index;
+    return { label: `Priority ${priority}`, value: String(priority) };
+  });
+}
+
+function fieldOptions(field: AssistantInterruptField): Array<{ label: string; value: string }> {
+  if (field.options && field.options.length > 0) {
+    return field.options;
+  }
+  if (field.kind === "priority") {
+    return priorityOptions(field);
+  }
+  return [];
+}
+
 function panelTone(interrupt: AssistantInterrupt): PanelTone {
   if (interrupt.tool_name === "request_due_date") {
     return "task";
@@ -136,7 +161,7 @@ function OptionCards({
   variant: PanelTone;
 }) {
   const current = String(values[field.id] ?? "");
-  const options = field.options || [];
+  const options = fieldOptions(field);
   if (options.length === 0) {
     return null;
   }
@@ -262,18 +287,12 @@ function FieldControl({
   }
 
   if (field.kind === "select" || field.kind === "priority") {
-    const priorityOptions =
-      field.kind === "priority" && !(field.options || []).length
-        ? Array.from({ length: Math.max(1, Number(field.max || 5)) }, (_, index) => {
-            const priority = index + 1;
-            return { label: `Priority ${priority}`, value: String(priority) };
-          })
-        : field.options || [];
+    const options = fieldOptions(field);
 
     return (
       <select id={controlId} value={stringValue} onChange={(event) => setFieldValue(setValues, field.id, event.target.value)}>
         {!field.required ? <option value="">Choose</option> : null}
-        {priorityOptions.map((option) => (
+        {options.map((option) => (
           <option key={`${field.id}-${option.value}`} value={option.value}>
             {option.label}
           </option>
@@ -310,13 +329,15 @@ function FieldRow({
   values,
   setValues,
   variant,
+  interruptId,
 }: {
   field: AssistantInterruptField;
   values: Record<string, unknown>;
   setValues: SetValues;
   variant: PanelTone;
+  interruptId: string;
 }) {
-  const controlId = `dynamic-panel-${field.id}`;
+  const controlId = `dynamic-panel-${domIdSegment(interruptId)}-${domIdSegment(field.id)}`;
   if (field.kind === "toggle") {
     return <FieldControl field={field} values={values} setValues={setValues} variant={variant} controlId={controlId} />;
   }
@@ -422,6 +443,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
               values={values}
               setValues={setValues}
               variant={variant}
+              interruptId={interrupt.id}
             />
           ))}
         </div>

@@ -265,6 +265,62 @@ function dynamicPanelSnapshot() {
   });
 }
 
+function duplicateFieldIdSnapshot() {
+  const interrupts = [
+    baseInterrupt({
+      id: "interrupt_due_date_a",
+      run_id: "run_due_date_a",
+      title: "First task details",
+      fields: [
+        { id: "due_date", kind: "date", label: "Due date", required: true },
+        { id: "priority", kind: "priority", label: "Priority", value: 2, min: 1, max: 5 },
+      ],
+    }),
+    baseInterrupt({
+      id: "interrupt_due_date_b",
+      run_id: "run_due_date_b",
+      title: "Second task details",
+      fields: [
+        { id: "due_date", kind: "date", label: "Due date", required: true },
+        { id: "priority", kind: "priority", label: "Priority", value: 4, min: 1, max: 5 },
+      ],
+    }),
+  ];
+
+  return threadSnapshot({
+    interrupts,
+    messages: interrupts.map((interrupt, index) => assistantMessage(interrupt, index + 1)),
+  });
+}
+
+function priorityWithoutOptionsSnapshot() {
+  const interrupt = baseInterrupt({
+    id: "interrupt_priority_planner",
+    run_id: "run_priority_planner",
+    interrupt_type: "choice",
+    tool_name: "resolve_planner_conflict",
+    title: "Prioritize conflict response",
+    body: "Choose how urgent this scheduling conflict is.",
+    fields: [{ id: "priority", kind: "priority", label: "Conflict priority", required: true, min: 1, max: 3 }],
+    primary_label: "Apply priority",
+    secondary_label: "Open Planner",
+    defer_label: "Open Planner",
+    display_mode: "sidecar",
+    consequence_preview: "Updates the planner conflict priority.",
+    metadata: {
+      conflict_payload: {
+        local_title: "Deep Work",
+        remote_title: "Team Sync",
+      },
+    },
+  });
+
+  return threadSnapshot({
+    interrupts: [interrupt],
+    messages: [assistantMessage(interrupt, 1)],
+  });
+}
+
 async function routeAssistant(page: import("@playwright/test").Page, snapshot: Record<string, unknown>) {
   await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
@@ -349,4 +405,51 @@ test("submits and dismisses dynamic panels through existing assistant interrupt 
   await page.locator('[data-panel-tool="defer_recommendation"]').getByRole("button", { name: "No thanks, keep it in view" }).click();
   await expect.poll(() => dismissals.length).toBe(1);
   expect(dismissals[0]).toContain("/v1/assistant/interrupts/interrupt_defer/dismiss");
+});
+
+test("keeps control ids unique when pending panels reuse field ids", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistant(page, duplicateFieldIdSnapshot());
+
+  await page.goto("/assistant");
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(2);
+
+  const controlIds = await page.locator('[id^="dynamic-panel-"]').evaluateAll((nodes) =>
+    nodes.map((node) => (node as HTMLElement).id),
+  );
+  expect(controlIds).toContain("dynamic-panel-interrupt_due_date_a-due_date");
+  expect(controlIds).toContain("dynamic-panel-interrupt_due_date_b-due_date");
+  expect(new Set(controlIds).size).toBe(controlIds.length);
+
+  const secondPanel = page.locator('[data-panel-tool="request_due_date"]').nth(1);
+  await secondPanel.locator("label", { hasText: "Priority" }).click();
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement instanceof HTMLElement ? document.activeElement.id : ""))
+    .toBe("dynamic-panel-interrupt_due_date_b-priority");
+});
+
+test("renders priority choices for option-card panel tones when options are omitted", async ({ page }) => {
+  await seedSession(page);
+  const snapshot = priorityWithoutOptionsSnapshot();
+  const submissions: Array<{ values: Record<string, unknown> }> = [];
+
+  await routeAssistant(page, snapshot);
+  await page.route(`${API_BASE}/v1/assistant/interrupts/*/submit`, async (route) => {
+    const payload = route.request().postDataJSON() as { values: Record<string, unknown> };
+    submissions.push({ values: payload.values });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  });
+
+  await page.goto("/assistant");
+
+  const plannerPanel = page.locator('[data-panel-tool="resolve_planner_conflict"]');
+  await expect(plannerPanel.getByRole("radio", { name: /Priority 1/ })).toBeVisible();
+  await expect(plannerPanel.getByRole("radio", { name: /Priority 2/ })).toBeVisible();
+  await expect(plannerPanel.getByRole("radio", { name: /Priority 3/ })).toBeVisible();
+
+  await plannerPanel.getByRole("radio", { name: /Priority 2/ }).click();
+  await plannerPanel.getByRole("button", { name: "Apply priority" }).click();
+
+  await expect.poll(() => submissions.length).toBe(1);
+  expect(submissions[0].values).toMatchObject({ priority: "2" });
 });
