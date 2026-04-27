@@ -234,3 +234,36 @@ def test_strategic_context_cards_use_existing_contract_kinds() -> None:
     assert project_card["kind"] == "project_status"
     assert commitment_card["kind"] == "commitment_status"
     assert goal_card["actions"][0]["payload"]["href"] == "/planner?goal=goal_test"
+
+
+def test_strategic_context_cards_collect_active_records(client: TestClient, auth_headers: dict[str, str]) -> None:
+    goal = client.post(
+        "/v1/goals",
+        headers=auth_headers,
+        json={"title": "Keep strategy visible"},
+    ).json()
+    project = client.post(
+        "/v1/projects",
+        headers=auth_headers,
+        json={"goal_id": goal["id"], "title": "Wire Assistant context"},
+    ).json()
+    commitment = client.post(
+        "/v1/commitments",
+        headers=auth_headers,
+        json={"source_type": "assistant", "title": "Review context rail"},
+    ).json()
+    client.post(
+        "/v1/goals",
+        headers=auth_headers,
+        json={"title": "Paused goal stays out", "status": "paused"},
+    )
+
+    from app.db.storage import get_connection
+
+    with get_connection() as conn:
+        cards = conversation_card_service.strategic_context_cards(conn, per_kind_limit=1)
+
+    assert [card["kind"] for card in cards] == ["goal_status", "project_status", "commitment_status"]
+    assert cards[0]["metadata"]["goal_id"] == goal["id"]
+    assert cards[1]["metadata"]["project_id"] == project["id"]
+    assert cards[2]["metadata"]["commitment_id"] == commitment["id"]

@@ -501,6 +501,7 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
             "session_state": snapshot.get("session_state", {}),
             "recent_messages": recent_messages,
             "recent_tool_traces": recent_tool_traces,
+            "strategic_context_cards": snapshot.get("context_cards", []),
             "request_metadata": metadata,
             "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
             "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],

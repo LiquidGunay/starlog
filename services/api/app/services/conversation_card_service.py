@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlite3 import Connection
 from typing import Any
 
-from app.services import artifacts_service, memory_vault_service, review_mode_service
+from app.services import artifacts_service, memory_vault_service, review_mode_service, strategic_context_service
 
 
 def _snippet(text: str | None, *, limit: int = 220) -> str:
@@ -486,6 +486,24 @@ def commitment_status_card(commitment: dict[str, Any]) -> dict[str, Any]:
             },
         }
     )
+
+
+def strategic_context_cards(conn: Connection, *, per_kind_limit: int = 1) -> list[dict[str, Any]]:
+    limit = max(0, min(per_kind_limit, 3))
+    if limit <= 0:
+        return []
+
+    cards: list[dict[str, Any]] = []
+    cards.extend(goal_status_card(goal) for goal in strategic_context_service.list_goals(conn, status="active")[:limit])
+    cards.extend(
+        project_status_card(project)
+        for project in strategic_context_service.list_projects(conn, status="active")[:limit]
+    )
+    cards.extend(
+        commitment_status_card(commitment)
+        for commitment in strategic_context_service.list_commitments(conn, status="open")[:limit]
+    )
+    return cards
 
 
 def _review_queue_card(cards: list[dict[str, Any]], *, title: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
