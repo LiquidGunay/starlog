@@ -453,7 +453,9 @@ def _assistant_at_a_glance(counts: dict[str, int]) -> list[dict[str, Any]]:
     ]
 
 
-def _assistant_quick_actions() -> list[dict[str, Any]]:
+def _assistant_quick_actions(counts: dict[str, int]) -> list[dict[str, Any]]:
+    unprocessed_library = counts["unprocessed_library"]
+    due_reviews = counts["due_reviews"]
     return [
         {
             "key": "plan_today",
@@ -462,6 +464,9 @@ def _assistant_quick_actions() -> list[dict[str, Any]]:
             "href": "/planner",
             "action_label": "Plan today",
             "prompt": "Help me plan today.",
+            "enabled": True,
+            "count": counts["open_tasks"] + counts["open_commitments"],
+            "reason": None,
             "priority": 10,
         },
         {
@@ -470,7 +475,14 @@ def _assistant_quick_actions() -> list[dict[str, Any]]:
             "surface": "library",
             "href": "/library",
             "action_label": "Process captures",
-            "prompt": "Help me process my unprocessed captures.",
+            "prompt": (
+                f"Help me process {_count_phrase(unprocessed_library, 'unprocessed capture')}."
+                if unprocessed_library > 0
+                else None
+            ),
+            "enabled": unprocessed_library > 0,
+            "count": unprocessed_library,
+            "reason": None if unprocessed_library > 0 else "No unprocessed captures.",
             "priority": 20,
         },
         {
@@ -479,7 +491,10 @@ def _assistant_quick_actions() -> list[dict[str, Any]]:
             "surface": "review",
             "href": "/review",
             "action_label": "Start review",
-            "prompt": "Start my due review queue.",
+            "prompt": f"Start my {_count_phrase(due_reviews, 'due review card')}." if due_reviews > 0 else None,
+            "enabled": due_reviews > 0,
+            "count": due_reviews,
+            "reason": None if due_reviews > 0 else "No review cards due.",
             "priority": 30,
         },
         {
@@ -489,6 +504,9 @@ def _assistant_quick_actions() -> list[dict[str, Any]]:
             "href": "/planner",
             "action_label": "Create task",
             "prompt": "Create a task.",
+            "enabled": True,
+            "count": 0,
+            "reason": None,
             "priority": 40,
         },
     ]
@@ -582,6 +600,6 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         "recommended_next_move": _assistant_recommended_next_move(counts),
         "reason_stack": _assistant_reason_stack(counts),
         "at_a_glance": _assistant_at_a_glance(counts),
-        "quick_actions": _assistant_quick_actions(),
+        "quick_actions": _assistant_quick_actions(counts),
         "generated_at": generated_at,
     }

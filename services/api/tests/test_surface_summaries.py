@@ -25,6 +25,10 @@ def _at_a_glance(payload: dict, key: str) -> int:
     return next(item["count"] for item in payload["at_a_glance"] if item["key"] == key)
 
 
+def _quick_action(payload: dict, key: str) -> dict:
+    return next(item for item in payload["quick_actions"] if item["key"] == key)
+
+
 def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
     now = utc_now()
     today = now.date()
@@ -383,6 +387,11 @@ def _mark_library_inbox_processed(conn, seeded: dict[str, str]) -> None:
     )
 
 
+def _defer_due_reviews(conn) -> None:
+    later = utc_now() + timedelta(days=2)
+    conn.execute("UPDATE cards SET due_at = ?, updated_at = ? WHERE suspended = 0", (_iso(later), _iso(utc_now())))
+
+
 def test_surface_summary_endpoints_expose_representative_counts(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -496,6 +505,16 @@ def test_assistant_today_summary_is_read_only_and_composes_open_loops(
         "create_task",
     ]
     assert all(item["href"] or item["prompt"] for item in payload["quick_actions"])
+    process_captures = _quick_action(payload, "process_captures")
+    assert process_captures["enabled"] is True
+    assert process_captures["count"] == 1
+    assert process_captures["reason"] is None
+    assert process_captures["prompt"] == "Help me process 1 unprocessed capture."
+    start_review = _quick_action(payload, "start_review")
+    assert start_review["enabled"] is True
+    assert start_review["count"] == 2
+    assert start_review["reason"] is None
+    assert start_review["prompt"] == "Start my 2 due review cards."
 
     with get_connection() as conn:
         after_threads = conn.execute("SELECT COUNT(*) FROM conversation_threads").fetchone()[0]
@@ -540,6 +559,18 @@ def test_assistant_today_summary_defaults_to_plan_today_without_open_loops(
         "review": 0,
         "commitments": 0,
     }
+    process_captures = _quick_action(payload, "process_captures")
+    assert process_captures["enabled"] is False
+    assert process_captures["count"] == 0
+    assert process_captures["prompt"] is None
+    assert process_captures["reason"] == "No unprocessed captures."
+    start_review = _quick_action(payload, "start_review")
+    assert start_review["enabled"] is False
+    assert start_review["count"] == 0
+    assert start_review["prompt"] is None
+    assert start_review["reason"] == "No review cards due."
+    assert _quick_action(payload, "plan_today")["enabled"] is True
+    assert _quick_action(payload, "create_task")["enabled"] is True
 
 
 @pytest.mark.parametrize(
@@ -549,6 +580,7 @@ def test_assistant_today_summary_defaults_to_plan_today_without_open_loops(
         ("overdue_task", "clear_overdue_tasks"),
         ("unprocessed_library", "process_library_inbox"),
         ("due_review", "start_due_review"),
+        ("open_loops", "plan_open_loops"),
     ],
 )
 def test_assistant_today_recommended_next_move_priority_order(
@@ -566,8 +598,11 @@ def test_assistant_today_recommended_next_move_priority_order(
             _demote_pending_interrupts(conn)
         if scenario in {"unprocessed_library", "due_review"}:
             _demote_overdue_task(conn, seeded)
-        if scenario == "due_review":
+        if scenario in {"due_review", "open_loops"}:
             _mark_library_inbox_processed(conn, seeded)
+        if scenario == "open_loops":
+            _demote_overdue_task(conn, seeded)
+            _defer_due_reviews(conn)
         conn.commit()
 
     response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)

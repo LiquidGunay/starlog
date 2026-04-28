@@ -97,6 +97,9 @@ class AssistantQuickAction(BaseModel):
     href: str | None = None
     action_label: str | None = None
     prompt: str | None = None
+    enabled: bool
+    count: int
+    reason: str | None = None
     priority: int
 
 
