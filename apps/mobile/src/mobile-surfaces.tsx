@@ -17,6 +17,12 @@ import {
   type MobilePlannerSummary,
   type MobilePlannerTimelineBlock,
 } from "./mobile-planner-view-model";
+import {
+  deriveMobileReviewViewModel,
+  type MobileReviewGradeOption,
+  type MobileReviewStageChip,
+  type MobileReviewStats,
+} from "./mobile-review-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
@@ -94,6 +100,7 @@ type MobileReviewSurfaceProps = SharedProps & {
   reviewMeta: string;
   reviewRetentionLabel: string;
   reviewReviewedCount: number;
+  reviewStats: MobileReviewStats;
   reviewStatus: string;
   reviewDecks: Array<{
     id: string;
@@ -573,6 +580,29 @@ function plannerMetricTone(tone: string, palette: Record<string, string>) {
     return { color: palette.accent, background: "rgba(241, 182, 205, 0.08)", border: "rgba(241, 182, 205, 0.14)" };
   }
   return { color: "#c8b9c1", background: "rgba(255, 255, 255, 0.04)", border: "rgba(255, 255, 255, 0.08)" };
+}
+
+function reviewStageTone(stage: MobileReviewStageChip, palette: Record<string, string>) {
+  if (stage.active) {
+    return { color: palette.onAccent, background: palette.accent, border: "rgba(241, 182, 205, 0.2)" };
+  }
+  if (stage.tone === "due") {
+    return { color: "#f3cf7a", background: "rgba(243, 207, 122, 0.08)", border: "rgba(243, 207, 122, 0.18)" };
+  }
+  return { color: palette.muted, background: palette.surfaceHigh, border: palette.border };
+}
+
+function reviewGradeTone(option: MobileReviewGradeOption, palette: Record<string, string>) {
+  if (option.tone === "again") {
+    return { color: palette.error, background: "rgba(255, 180, 171, 0.08)", border: "rgba(255, 180, 171, 0.18)" };
+  }
+  if (option.tone === "good") {
+    return { color: palette.accent, background: "rgba(241, 182, 205, 0.12)", border: "rgba(241, 182, 205, 0.2)" };
+  }
+  if (option.tone === "easy") {
+    return { color: "#a6debf", background: "rgba(166, 222, 191, 0.08)", border: "rgba(166, 222, 191, 0.18)" };
+  }
+  return { color: palette.text, background: palette.surfaceHigh, border: palette.border };
 }
 
 function libraryStatChip(palette: Record<string, string>, label: string, value: string) {
@@ -1673,6 +1703,7 @@ export function MobileReviewSurface({
   reviewMeta,
   reviewRetentionLabel,
   reviewReviewedCount,
+  reviewStats,
   reviewStatus,
   reviewDecks,
   showAnswer,
@@ -1684,145 +1715,173 @@ export function MobileReviewSurface({
   showAdvancedReview,
   toggleMissionTools,
 }: MobileReviewSurfaceProps) {
-  const deckCards = reviewDecks.length > 0
-    ? reviewDecks
-      .filter((deck) => deck.card_count > 0)
-      .sort((left, right) => right.due_count - left.due_count)
-      .slice(0, 4)
-    : [];
+  const model = deriveMobileReviewViewModel({
+    prompt: reviewPrompt,
+    answer: reviewAnswer,
+    dueCount: reviewDueCount,
+    cardType: reviewCardType,
+    meta: reviewMeta,
+    retentionLabel: reviewRetentionLabel,
+    stats: reviewStats,
+    decks: reviewDecks,
+    showAnswer,
+    hasReviewCard,
+    status: reviewStatus,
+  });
+  const primaryDeck = reviewDecks
+    .filter((deck) => deck.card_count > 0)
+    .sort((left, right) => right.due_count - left.due_count)[0] ?? null;
 
   return (
-    <View style={{ gap: 20 }}>
+    <View style={{ gap: 16 }}>
       <View style={{ gap: 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Review Overview</Text>
-          <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
-            {reviewReviewedCount > 0 ? `${reviewReviewedCount} reviewed` : "Last updated now"}
-          </Text>
-        </View>
-        <View style={{ ...cardBase(palette), gap: 18 }}>
-          <View style={{ flexDirection: "row", gap: 18 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.1 }}>Cards due</Text>
-              <Text style={{ color: palette.accent, fontSize: 38, fontWeight: "800" }}>{reviewDueCount}</Text>
-              <Text style={bodyStyle(palette)}>Current queue pressure</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.1 }}>Retention</Text>
-              <Text style={{ color: palette.accent, fontSize: 38, fontWeight: "800" }}>{reviewRetentionLabel}</Text>
-              <Text style={bodyStyle(palette)}>{reviewReviewedCount > 0 ? "Current session" : "No pass started"}</Text>
-            </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={kickerStyle(palette)}>Starlog Review</Text>
+            <Text style={[headingStyle(palette), { fontSize: 28, lineHeight: 34 }]}>Train the next judgment</Text>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, height: 64 }}>
-            {[40, 56, 52, 76, 84, 74, 90].map((height, index) => (
-              <View
-                key={index}
-                style={{
-                  flex: 1,
-                  height,
-                  borderTopLeftRadius: 4,
-                  borderTopRightRadius: 4,
-                  backgroundColor: index >= 4 ? palette.accent : "rgba(73, 71, 63, 0.44)",
-                }}
-              />
-            ))}
-          </View>
-        </View>
-      </View>
-
-      <View style={{ gap: 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Active Decks</Text>
-          <TouchableOpacity style={pillStyle(palette)} onPress={openReviewWorkspace}>
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Open Review</Text>
-          </TouchableOpacity>
-        </View>
-        {(deckCards.length > 0 ? deckCards : [
-          {
-            id: "review-workspace",
-            name: "Review queue",
-            description: "Open the full review workspace when you need deck analytics or editing.",
-            due_count: reviewDueCount,
-            card_count: Math.max(reviewDueCount, 1),
-          },
-        ]).map((deck) => (
-          <TouchableOpacity
-            key={deck.id}
+          <View
             style={{
-              ...cardBase(palette),
-              backgroundColor: palette.surfaceLow,
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              backgroundColor: palette.surfaceHigh,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: palette.border,
             }}
-            onPress={openReviewWorkspace}
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>{deck.name}</Text>
-                <Text style={bodyStyle(palette)} numberOfLines={2}>
-                  {deck.description?.trim() || "Deck ready for focused review."}
-                </Text>
-              </View>
-              <View style={{ ...pillStyle(palette, deck.due_count > 0) }}>
-                <Text style={{ color: deck.due_count > 0 ? palette.accent : palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-                  {deck.due_count > 0 ? `${deck.due_count} Due` : "Stable"}
-                </Text>
-              </View>
-            </View>
-            <View style={{ gap: 6 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ color: palette.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.1 }}>Progress</Text>
-                <Text style={{ color: palette.text, fontSize: 10, fontWeight: "700" }}>
-                  {deck.card_count > 0 ? `${Math.round(((deck.card_count - deck.due_count) / deck.card_count) * 100)}%` : "0%"}
-                </Text>
-              </View>
-              <View style={{ height: 4, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
-                <View
-                  style={{
-                    width: `${deck.card_count > 0 ? Math.max(0, Math.min(100, ((deck.card_count - deck.due_count) / deck.card_count) * 100)) : 0}%`,
-                    height: "100%",
-                    backgroundColor: deck.due_count > 0 ? palette.accent : palette.secondary,
-                  }}
-                />
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={{ gap: 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Focused Review</Text>
-          <View style={pillStyle(palette, showAnswer)}>
-            <Text style={{ color: showAnswer ? palette.accent : palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase" }}>
-              {showAnswer ? "Answer open" : "Answer sealed"}
-            </Text>
+            <MaterialCommunityIcons name="brain" size={20} color={palette.accent} />
           </View>
         </View>
-
-        {hasReviewCard ? (
-          <View style={{ ...cardBase(palette), gap: 14 }}>
-            <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.3 }}>{reviewCardType}</Text>
-            <Text style={{ color: palette.text, fontSize: 28, lineHeight: 38, textAlign: "center" }}>{reviewPrompt}</Text>
-            <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 22, textAlign: "center" }}>{reviewMeta}</Text>
-            <Text style={{ color: palette.muted, fontSize: 15, lineHeight: 24, textAlign: "center" }}>
-              {showAnswer ? reviewAnswer : "Keep the answer sealed until you commit to retrieval."}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity style={{ ...pillStyle(palette, true), flex: 1, alignItems: "center" }} onPress={revealAnswer}>
-                <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
-                  {showAnswer ? "Hide answer" : "Reveal answer"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={{ ...pillStyle(palette), flex: 1, alignItems: "center" }} onPress={loadDueCards}>
-                <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Refresh queue</Text>
-              </TouchableOpacity>
+        <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+          {model.syncedLabel}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
+          {model.statusChips.map((chip) => (
+            <View key={chip.label} style={{ ...pillStyle(palette, chip.active), minHeight: 34, justifyContent: "center" }}>
+              <Text style={{ color: chip.active ? palette.accent : palette.muted, fontSize: 11, fontWeight: "800" }}>
+                {chip.label} {chip.value}
+              </Text>
             </View>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              {[
-                { label: "Again", eta: "1m", rating: 1, tone: "rgba(255, 180, 171, 0.08)" },
-                { label: "Hard", eta: "1d", rating: 3, tone: palette.surfaceHigh },
-                { label: "Good", eta: "3d", rating: 4, tone: "rgba(241, 182, 205, 0.12)" },
-                { label: "Easy", eta: "5d", rating: 5, tone: palette.surfaceHigh },
-              ].map((option) => (
+          ))}
+        </ScrollView>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 12 }}>
+        {model.ladder.map((stage, index) => {
+          const tone = reviewStageTone(stage, palette);
+          return (
+            <View
+              key={stage.label}
+              style={{
+                minWidth: 126,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: tone.border,
+                backgroundColor: tone.background,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                gap: 8,
+              }}
+            >
+              <Text style={{ color: tone.color, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                Step {index + 1}
+              </Text>
+              <Text style={{ color: tone.color, fontSize: 15, fontWeight: "800" }}>{stage.label}</Text>
+              <Text style={{ color: stage.active ? palette.onAccent : palette.muted, fontSize: 12 }}>{stage.countLabel}</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {hasReviewCard ? (
+        <View style={{ ...cardBase(palette), gap: 16, padding: 16 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text style={kickerStyle(palette)}>{model.activeStage}</Text>
+              <Text style={{ color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "800" }}>
+                {reviewCardType}
+              </Text>
+            </View>
+            <View style={{ ...pillStyle(palette, true), alignItems: "center" }}>
+              <Text style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                {model.cardProgressLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: palette.text, fontSize: 25, lineHeight: 34, fontWeight: "700" }}>{reviewPrompt}</Text>
+            <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{model.dueStateLabel}</Text>
+          </View>
+
+          {model.answerChoices.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              {model.answerChoices.map((choice) => (
+                <View
+                  key={choice.key}
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: palette.border,
+                    backgroundColor: palette.surfaceHigh,
+                    padding: 12,
+                    flexDirection: "row",
+                    gap: 10,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Text style={{ color: palette.accent, fontSize: 13, fontWeight: "900" }}>{choice.key}</Text>
+                  <Text style={{ flex: 1, color: palette.text, fontSize: 14, lineHeight: 20 }}>{choice.label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View
+              style={{
+                borderRadius: 16,
+                backgroundColor: palette.surfaceHigh,
+                borderWidth: 1,
+                borderColor: palette.border,
+                padding: 12,
+              }}
+            >
+              <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
+                Free-recall card. Hold the answer in mind before revealing it.
+              </Text>
+            </View>
+          )}
+
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette, true), minHeight: 44, justifyContent: "center" }}
+              onPress={revealAnswer}
+            >
+              <Text style={{ color: palette.accent, fontSize: 12, fontWeight: "800" }}>{model.revealLabel}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette), minHeight: 44, justifyContent: "center" }}
+              onPress={openReviewWorkspace}
+            >
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Worked solution</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette), minHeight: 44, justifyContent: "center" }}
+              onPress={loadDueCards}
+            >
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Refresh queue</Text>
+            </TouchableOpacity>
+            <View style={{ ...pillStyle(palette), minHeight: 44, justifyContent: "center", opacity: 0.7 }}>
+              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Flag in workspace</Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {model.gradeOptions.map((option) => {
+              const tone = reviewGradeTone(option, palette);
+              return (
                 <TouchableOpacity
                   key={option.label}
                   style={{
@@ -1830,42 +1889,116 @@ export function MobileReviewSurface({
                     minHeight: 78,
                     borderRadius: 18,
                     borderWidth: 1,
-                    borderColor: palette.border,
-                    backgroundColor: option.tone,
+                    borderColor: tone.border,
+                    backgroundColor: tone.background,
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 4,
-                    opacity: showAnswer ? 1 : 0.56,
+                    gap: 5,
+                    opacity: option.enabled ? 1 : 0.5,
                   }}
-                  disabled={!showAnswer}
+                  disabled={!option.enabled}
                   onPress={() => submitReview(option.rating)}
                 >
-                  <Text style={{ color: option.label === "Good" ? palette.accent : palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.2 }}>
+                  <Text style={{ color: tone.color, fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.6 }}>
                     {option.label}
                   </Text>
-                  <Text style={{ color: palette.text, fontSize: 24, fontWeight: "800" }}>{option.eta}</Text>
+                  <Text style={{ color: palette.text, fontSize: 22, fontWeight: "800" }}>{option.intervalLabel}</Text>
                 </TouchableOpacity>
-              ))}
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <View style={cardBase(palette)}>
+          <Text style={kickerStyle(palette)}>Focused review</Text>
+          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Load due cards to begin the next pass.</Text>
+          <Text style={bodyStyle(palette)}>This surface stays quiet until the shared review queue is requested.</Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.button} onPress={loadDueCards}>
+              <Text style={styles.buttonText}>Load due cards</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.button} onPress={openReviewWorkspace}>
+              <Text style={styles.buttonText}>Open Review</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      <View style={{ gap: 10 }}>
+        <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <Text style={kickerStyle(palette)}>Correct</Text>
+            <View style={pillStyle(palette, showAnswer)}>
+              <Text style={{ color: showAnswer ? palette.accent : palette.muted, fontSize: 10, fontWeight: "800" }}>
+                {model.answerStateLabel}
+              </Text>
             </View>
           </View>
-        ) : (
-          <View style={cardBase(palette)}>
-            <Text style={kickerStyle(palette)}>Focused review</Text>
-            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Load due cards to begin the next pass.</Text>
-            <Text style={bodyStyle(palette)}>This surface stays quiet until the shared review queue is requested.</Text>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.button} onPress={loadDueCards}>
-                <Text style={styles.buttonText}>Load due cards</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.button} onPress={openReviewWorkspace}>
-                <Text style={styles.buttonText}>Open Review</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+          <Text style={{ color: palette.text, fontSize: 14, lineHeight: 21 }}>{model.correctExplanation}</Text>
       </View>
 
-      <Text style={bodyStyle(palette)}>{reviewStatus}</Text>
+        <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
+          <Text style={kickerStyle(palette)}>Why this now?</Text>
+          <Text style={{ color: palette.text, fontSize: 14, lineHeight: 21 }}>{model.whyThisNow}</Text>
+          {primaryDeck ? (
+            <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+              Source: {primaryDeck.name}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={{ ...cardBase(palette), gap: 14 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={kickerStyle(palette)}>Knowledge health</Text>
+            <Text style={{ color: palette.text, fontSize: 22, fontWeight: "800" }}>{model.health.value}</Text>
+            <Text style={bodyStyle(palette)}>{model.health.detail}</Text>
+          </View>
+          <View style={{ ...pillStyle(palette, model.health.label === "Stable"), alignSelf: "flex-start" }}>
+            <Text style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+              {model.health.label}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ gap: 8 }}>
+          <Text style={kickerStyle(palette)}>Queue ladder</Text>
+          {model.queueLadder.map((stage) => (
+            <View key={stage.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text style={{ width: 104, color: stage.active ? palette.accent : palette.muted, fontSize: 12, fontWeight: "800" }}>
+                {stage.label}
+              </Text>
+              <View style={{ flex: 1, height: 6, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
+                <View
+                  style={{
+                    width: `${Math.min(100, Math.max(8, Number(stage.value) * 18))}%`,
+                    height: "100%",
+                    backgroundColor: stage.active ? palette.accent : "rgba(255,255,255,0.18)",
+                  }}
+                />
+              </View>
+              <Text style={{ width: 20, textAlign: "right", color: palette.text, fontSize: 12, fontWeight: "800" }}>
+                {stage.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <Text style={kickerStyle(palette)}>Session progress</Text>
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
+              {reviewReviewedCount > 0 ? model.session.label : "Session not started"}
+            </Text>
+          </View>
+          <View style={{ height: 8, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
+            <View style={{ width: `${model.session.progressRatio * 100}%`, height: "100%", backgroundColor: palette.accent }} />
+          </View>
+          <Text style={bodyStyle(palette)}>{model.session.detail}</Text>
+        </View>
+      </View>
+
       <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
         <Text style={[kickerStyle(palette), { fontSize: 11 }]}>
           {showAdvancedReview ? "Close advanced tools" : "Advanced tools"}

@@ -3872,6 +3872,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewMeta={reviewMetaLabel}
             reviewRetentionLabel={reviewRetentionLabel}
             reviewReviewedCount={reviewStats.reviewed}
+            reviewStats={reviewStats}
             reviewStatus={status}
             reviewDecks={reviewDecks}
             showAnswer={showAnswer}
