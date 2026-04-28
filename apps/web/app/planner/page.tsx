@@ -17,12 +17,33 @@ import {
 import { usePaneCollapsed } from "../lib/pane-state";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
+import styles from "./page.module.css";
+
+type CountBucket = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+type PlannerSurfaceSummary = {
+  date: string;
+  task_buckets: CountBucket[];
+  block_buckets: CountBucket[];
+  calendar_event_count: number;
+  conflict_count: number;
+  focus_minutes: number;
+  buffer_minutes: number;
+  generated_at: string;
+};
 
 type Block = {
   id: string;
+  task_id?: string | null;
   title: string;
   starts_at: string;
   ends_at: string;
+  locked?: boolean;
+  created_at?: string;
 };
 
 type EventItem = {
@@ -83,14 +104,23 @@ type TimelineItem = {
   title: string;
   startsAt: string;
   endsAt: string;
-  kind: "block" | "event";
+  kind: "focus" | "commitment" | "flexible" | "buffer" | "conflict";
   source: string;
+  detail: string;
+};
+
+type PlanGroup = {
+  id: "commitments" | "focus" | "flexible" | "buffer";
+  title: string;
+  description: string;
+  items: TimelineItem[];
 };
 
 const PLANNER_BLOCKS_SNAPSHOT = "planner.blocks";
 const PLANNER_EVENTS_SNAPSHOT = "planner.events";
 const PLANNER_CONFLICTS_SNAPSHOT = "planner.conflicts";
 const PLANNER_OAUTH_STATUS_SNAPSHOT = "planner.oauth_status";
+const PLANNER_SUMMARY_SNAPSHOT = "planner.summary";
 const PLANNER_DATE_SNAPSHOT = "planner.date";
 const PLANNER_CACHE_PREFIXES = ["planner.", "calendar."];
 const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
@@ -98,6 +128,19 @@ const PLANNER_EVENTS_ENTITY_SCOPE = "planner.events";
 const PLANNER_CONFLICTS_ENTITY_SCOPE = "planner.conflicts";
 const PLANNER_OAUTH_ENTITY_SCOPE = "planner.oauth";
 const PLANNER_SIDECAR_PANE_SNAPSHOT = "planner.sidecar_pane.collapsed";
+const DAY_START_HOUR = 7;
+const DAY_END_HOUR = 21;
+const HOUR_HEIGHT = 76;
+const EMPTY_SUMMARY: PlannerSurfaceSummary = {
+  date: "",
+  task_buckets: [],
+  block_buckets: [],
+  calendar_event_count: 0,
+  conflict_count: 0,
+  focus_minutes: 0,
+  buffer_minutes: 0,
+  generated_at: "",
+};
 
 function cachePlannerBlocks(blocks: Block[]): void {
   void replaceEntityCacheScope(
@@ -165,10 +208,55 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatDateLabel(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function isoDateFromOffset(baseDate: string, offset: number): string {
   const stamp = new Date(`${baseDate}T00:00:00`);
   stamp.setDate(stamp.getDate() + offset);
   return stamp.toISOString().slice(0, 10);
+}
+
+function bucketCount(summary: PlannerSurfaceSummary | null, collection: "task_buckets" | "block_buckets", key: string): number {
+  return summary?.[collection].find((bucket) => bucket.key === key)?.count ?? 0;
+}
+
+function classifyBlock(block: Block): TimelineItem["kind"] {
+  const lowerTitle = block.title.toLowerCase();
+  if (lowerTitle.includes("buffer")) {
+    return "buffer";
+  }
+  if (block.locked) {
+    return "commitment";
+  }
+  if (block.task_id) {
+    return "focus";
+  }
+  return "flexible";
+}
+
+function timelineTop(iso: string): number {
+  const minutes = Math.max(0, toMinutes(iso) - DAY_START_HOUR * 60);
+  return Math.round((minutes / 60) * HOUR_HEIGHT);
+}
+
+function timelineHeight(startsAt: string, endsAt: string): number {
+  const minutes = Math.max(30, toMinutes(endsAt) - toMinutes(startsAt));
+  return Math.max(46, Math.round((minutes / 60) * HOUR_HEIGHT) - 6);
+}
+
+function itemClassName(kind: TimelineItem["kind"]): string {
+  return [styles.timelineItem, styles[kind]].join(" ");
+}
+
+function detailValue(detail: Record<string, unknown>, key: string): string | null {
+  const value = detail[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 export default function PlannerPage() {
@@ -176,6 +264,9 @@ export default function PlannerPage() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const initialDate = useMemo(() => readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today), [today]);
   const [date, setDate] = useState(initialDate);
+  const [summary, setSummary] = useState<PlannerSurfaceSummary | null>(
+    () => readEntitySnapshot<PlannerSurfaceSummary | null>(PLANNER_SUMMARY_SNAPSHOT, null),
+  );
   const [blocks, setBlocks] = useState<Block[]>(() => readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []));
   const [events, setEvents] = useState<EventItem[]>(() => readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []));
   const [conflicts, setConflicts] = useState<Conflict[]>(() => readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []));
@@ -185,18 +276,29 @@ export default function PlannerPage() {
   const [latestBriefing, setLatestBriefing] = useState<BriefingPackage | null>(null);
   const [latestSyncSummary, setLatestSyncSummary] = useState<SyncSummary | null>(null);
   const [status, setStatus] = useState("Ready");
+  const [planningPrompt, setPlanningPrompt] = useState("");
   const sidecarPane = usePaneCollapsed(PLANNER_SIDECAR_PANE_SNAPSHOT);
+
+  const activeSummary = summary || EMPTY_SUMMARY;
+  const unresolvedConflicts = useMemo(() => conflicts.filter((conflict) => !conflict.resolved), [conflicts]);
+  const conflictCount = Math.max(activeSummary.conflict_count, unresolvedConflicts.length);
+
   const timeline = useMemo<TimelineItem[]>(() => {
     const blockItems = blocks
       .filter((block) => isSameDay(block.starts_at, date))
-      .map<TimelineItem>((block) => ({
-        id: `blk-${block.id}`,
-        title: block.title,
-        startsAt: block.starts_at,
-        endsAt: block.ends_at,
-        kind: "block",
-        source: "planner",
-      }));
+      .map<TimelineItem>((block) => {
+        const kind = classifyBlock(block);
+        const label = kind === "focus" ? "Focus block" : kind === "buffer" ? "Buffer" : kind === "commitment" ? "Fixed block" : "Flexible block";
+        return {
+          id: `blk-${block.id}`,
+          title: block.title,
+          startsAt: block.starts_at,
+          endsAt: block.ends_at,
+          kind,
+          source: "planner",
+          detail: label,
+        };
+      });
     const eventItems = events
       .filter((event) => isSameDay(event.starts_at, date))
       .map<TimelineItem>((event) => ({
@@ -204,17 +306,66 @@ export default function PlannerPage() {
         title: event.title,
         startsAt: event.starts_at,
         endsAt: event.ends_at,
-        kind: "event",
+        kind: "commitment",
         source: event.source,
+        detail: `${event.source || "calendar"} commitment`,
       }));
+    const conflictItems = unresolvedConflicts.slice(0, 2).map<TimelineItem>((conflict, index) => ({
+      id: `conflict-${conflict.id}`,
+      title: detailValue(conflict.detail, "title") || `Conflict ${conflict.remote_id}`,
+      startsAt: `${date}T${String(10 + index).padStart(2, "0")}:00:00+00:00`,
+      endsAt: `${date}T${String(10 + index).padStart(2, "0")}:30:00+00:00`,
+      kind: "conflict",
+      source: "calendar",
+      detail: `Needs repair: ${conflict.strategy}`,
+    }));
 
-    return [...blockItems, ...eventItems].sort(
+    return [...blockItems, ...eventItems, ...conflictItems].sort(
       (left, right) => toMinutes(left.startsAt) - toMinutes(right.startsAt),
     );
-  }, [blocks, events, date]);
+  }, [blocks, events, date, unresolvedConflicts]);
+
+  const planGroups = useMemo<PlanGroup[]>(() => [
+    {
+      id: "commitments",
+      title: "Commitments",
+      description: "Fixed meetings and locked blocks that the plan must work around.",
+      items: timeline.filter((item) => item.kind === "commitment"),
+    },
+    {
+      id: "focus",
+      title: "Focus",
+      description: "Protected work blocks connected to tasks.",
+      items: timeline.filter((item) => item.kind === "focus"),
+    },
+    {
+      id: "flexible",
+      title: "Flexible work",
+      description: "Moveable blocks that can absorb changes.",
+      items: timeline.filter((item) => item.kind === "flexible"),
+    },
+    {
+      id: "buffer",
+      title: "Buffer",
+      description: "Recovery space and overflow protection.",
+      items: timeline.filter((item) => item.kind === "buffer"),
+    },
+  ], [timeline]);
+
+  const loadSummary = useCallback(async () => {
+    const payload = await apiRequest<PlannerSurfaceSummary>(
+      apiBase,
+      token,
+      `/v1/surfaces/planner/summary?date=${encodeURIComponent(date)}`,
+    );
+    setSummary(payload);
+    writeEntitySnapshot(PLANNER_SUMMARY_SNAPSHOT, payload);
+    return payload;
+  }, [apiBase, date, token]);
 
   useEffect(() => {
     setDate((previous) => previous || readEntitySnapshot<string>(PLANNER_DATE_SNAPSHOT, today));
+    setSummary((previous) => previous ?? readEntitySnapshot<PlannerSurfaceSummary | null>(PLANNER_SUMMARY_SNAPSHOT, null));
     setBlocks((previous) => previous.length > 0 ? previous : readEntitySnapshot<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []));
     setEvents((previous) => previous.length > 0 ? previous : readEntitySnapshot<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []));
     setConflicts((previous) => previous.length > 0 ? previous : readEntitySnapshot<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []));
@@ -225,8 +376,9 @@ export default function PlannerPage() {
     let cancelled = false;
 
     void (async () => {
-      const [cachedDate, cachedBlocks, cachedEvents, cachedConflicts, cachedOauth] = await Promise.all([
+      const [cachedDate, cachedSummary, cachedBlocks, cachedEvents, cachedConflicts, cachedOauth] = await Promise.all([
         readEntitySnapshotAsync<string>(PLANNER_DATE_SNAPSHOT, today),
+        readEntitySnapshotAsync<PlannerSurfaceSummary | null>(PLANNER_SUMMARY_SNAPSHOT, null),
         readEntitySnapshotAsync<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []),
         readEntitySnapshotAsync<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []),
         readEntitySnapshotAsync<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []),
@@ -239,6 +391,9 @@ export default function PlannerPage() {
 
       if (cachedDate) {
         setDate(cachedDate);
+      }
+      if (cachedSummary) {
+        setSummary(cachedSummary);
       }
       if (cachedBlocks.length > 0) {
         setBlocks(cachedBlocks);
@@ -273,6 +428,7 @@ export default function PlannerPage() {
       setBlocks(payload.blocks);
       writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, payload.blocks);
       cachePlannerBlocks(payload.blocks);
+      await loadSummary();
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(`Generated ${payload.generated} blocks for ${date}`);
     } catch (error) {
@@ -293,26 +449,31 @@ export default function PlannerPage() {
 
   const load = useCallback(async () => {
     try {
-      const [blockPayload, eventPayload, oauthPayload] = await Promise.all([
+      const [summaryPayload, blockPayload, eventPayload, conflictPayload, oauthPayload] = await Promise.all([
+        loadSummary(),
         apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
         apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
+        apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts"),
         apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
       ]);
       setBlocks(blockPayload);
       setEvents(eventPayload);
+      setConflicts(conflictPayload);
       setOauthStatus(oauthPayload);
       writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, blockPayload);
       writeEntitySnapshot(PLANNER_EVENTS_SNAPSHOT, eventPayload);
+      writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
       writeEntitySnapshot(PLANNER_OAUTH_STATUS_SNAPSHOT, oauthPayload);
       cachePlannerBlocks(blockPayload);
       cachePlannerEvents(eventPayload);
+      cachePlannerConflicts(conflictPayload);
       cachePlannerOauthStatus(oauthPayload);
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
-      setStatus(`Loaded ${blockPayload.length} blocks and ${eventPayload.length} events`);
+      setStatus(`Loaded ${summaryPayload.date}: ${blockPayload.length} blocks and ${eventPayload.length} commitments`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Load failed");
     }
-  }, [apiBase, date, token]);
+  }, [apiBase, date, loadSummary, token]);
 
   async function addSampleEvent() {
     try {
@@ -351,7 +512,7 @@ export default function PlannerPage() {
         body: JSON.stringify({ date, provider: "planner_web" }),
       });
       setLatestBriefing(briefing);
-      setStatus(`Generated briefing for ${briefing.date}. Assistant focus prompt is ready.`);
+      setStatus(`Prepared briefing for ${briefing.date}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Briefing generation failed");
     }
@@ -387,7 +548,7 @@ export default function PlannerPage() {
         method: "POST",
         body: JSON.stringify({ resolution_strategy: resolutionStrategy }),
       });
-      setStatus(`Resolved conflict ${conflictId} with ${resolutionStrategy}`);
+      setStatus(`Resolved conflict ${conflictId}`);
       const conflictPayload = await apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts");
       setConflicts(conflictPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
@@ -415,8 +576,8 @@ export default function PlannerPage() {
       clearEntityCachesStale(PLANNER_CACHE_PREFIXES);
       setStatus(
         payload.conflict
-          ? `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; conflict still present`
-          : `Replayed conflict ${conflictId} in sync ${payload.sync_run.run_id}; no unresolved conflict remains`,
+          ? `Replayed conflict ${conflictId}; repair still needed`
+          : `Replayed conflict ${conflictId}; repair cleared`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Conflict replay failed");
@@ -436,6 +597,13 @@ export default function PlannerPage() {
     if (!token) {
       return;
     }
+    load().catch(() => undefined);
+  }, [load, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
 
     const refreshIfStale = () => {
       if (!window.navigator.onLine || !hasStaleEntityCache(PLANNER_CACHE_PREFIXES)) {
@@ -443,8 +611,6 @@ export default function PlannerPage() {
       }
       load().catch(() => undefined);
     };
-
-    refreshIfStale();
 
     const onInvalidation = (event: Event) => {
       const detail = (event as CustomEvent<{ prefixes: string[] }>).detail;
@@ -459,391 +625,329 @@ export default function PlannerPage() {
     };
   }, [load, token]);
 
-  const cycleDays = useMemo(
+  const dayOptions = useMemo(
     () => [
-      { id: "cycle1", label: "Cycle 1", offsetLabel: "T-0", date: isoDateFromOffset(date, 0) },
-      { id: "cycle2", label: "Cycle 2", offsetLabel: "T+1", date: isoDateFromOffset(date, 1) },
-      { id: "cycle3", label: "Cycle 3", offsetLabel: "T+2", date: isoDateFromOffset(date, 2) },
+      { label: "Yesterday", date: isoDateFromOffset(date, -1) },
+      { label: "Today", date: today },
+      { label: "Tomorrow", date: isoDateFromOffset(date, 1) },
     ],
-    [date],
+    [date, today],
   );
 
-  const unscheduledPool = useMemo(() => {
-    const unresolvedConflicts = conflicts
-      .filter((conflict) => !conflict.resolved)
-      .slice(0, 3)
-      .map((conflict) => ({
-        id: conflict.id,
-        title: `Resolve ${conflict.remote_id}`,
-        subtitle: `policy ${conflict.strategy}`,
-        type: "conflict" as const,
-      }));
-    if (unresolvedConflicts.length > 0) {
-      return unresolvedConflicts;
-    }
-    return events
-      .filter((event) => !cycleDays.some((cycleDay) => isSameDay(event.starts_at, cycleDay.date)))
-      .slice(0, 3)
-      .map((event) => ({
-        id: event.id,
-        title: event.title,
-        subtitle: `${event.source} • ${formatTime(event.starts_at)}`,
-        type: "event" as const,
-      }));
-  }, [conflicts, cycleDays, events]);
-
-  const calendarMonth = useMemo(() => {
-    const selected = new Date(`${date}T00:00:00`);
-    const monthStart = new Date(selected.getFullYear(), selected.getMonth(), 1);
-    const firstWeekday = (monthStart.getDay() + 6) % 7;
-    const gridStart = new Date(monthStart);
-    gridStart.setDate(monthStart.getDate() - firstWeekday);
-
-    const days = Array.from({ length: 35 }, (_, index) => {
-      const day = new Date(gridStart);
-      day.setDate(gridStart.getDate() + index);
-      const iso = day.toISOString().slice(0, 10);
-      const itemCount = [...blocks, ...events].filter((item) => isSameDay(item.starts_at, iso)).length;
-      return {
-        iso,
-        label: day.getDate(),
-        inMonth: day.getMonth() === selected.getMonth(),
-        current: iso === date,
-        itemCount,
-      };
-    });
-
-    return {
-      heading: selected.toLocaleDateString([], { month: "long", year: "numeric" }),
-      days,
-    };
-  }, [blocks, date, events]);
-
-  const agendaItems = useMemo(
-    () => timeline.map((item) => ({
-      id: item.id,
-      time: formatTime(item.startsAt),
-      title: item.title,
-      detail: item.kind === "event" ? `${item.source} event` : "focus block",
-      critical: item.kind === "event",
-    })),
-    [timeline],
-  );
-  const ritualCompletion = useMemo(() => {
-    const connected = oauthStatus?.connected ? 1 : 0;
-    const loadFactor = timeline.length > 0 ? 1 : 0;
-    const syncFactor = conflicts.some((conflict) => !conflict.resolved) ? 0 : 1;
-    const ratio = (connected + loadFactor + syncFactor) / 3;
-    return Math.round(ratio * 100);
-  }, [conflicts, oauthStatus?.connected, timeline.length]);
-  const ritualChecklist = useMemo(
-    () => [
-      {
-        id: "briefing",
-        title: "Morning briefing ready",
-        done: timeline.length > 0,
-        detail: timeline.length > 0 ? `${timeline.length} scheduled item(s) staged` : "Generate or load blocks first",
-      },
-      {
-        id: "sync",
-        title: "Calendar sync stable",
-        done: Boolean(oauthStatus?.connected) && !conflicts.some((conflict) => !conflict.resolved),
-        detail: oauthStatus?.connected ? "Google calendar link active" : "Internal Planner mode",
-      },
-      {
-        id: "pool",
-        title: "Ritual pool triaged",
-        done: unscheduledPool.length === 0,
-        detail: unscheduledPool.length === 0 ? "No unscheduled drift" : `${unscheduledPool.length} item(s) still waiting`,
-      },
-    ],
-    [conflicts, oauthStatus?.connected, timeline.length, unscheduledPool.length],
+  const timelineHours = useMemo(
+    () => Array.from({ length: DAY_END_HOUR - DAY_START_HOUR + 1 }, (_, index) => DAY_START_HOUR + index),
+    [],
   );
 
-  function shiftMonth(offset: number) {
-    const stamp = new Date(`${date}T00:00:00`);
-    stamp.setMonth(stamp.getMonth() + offset);
-    setDate(stamp.toISOString().slice(0, 10));
-  }
+  const topConflict = unresolvedConflicts[0] || null;
+  const topConflictRange = topConflict
+    ? detailValue(topConflict.detail, "time_range") || detailValue(topConflict.detail, "window") || "Affected time needs review"
+    : null;
+  const topConflictSeverity = topConflict
+    ? detailValue(topConflict.detail, "severity") || (conflictCount > 1 ? "High" : "Medium")
+    : null;
+  const topConflictRepair = topConflict
+    ? detailValue(topConflict.detail, "suggested_repair") || "Choose the source of truth or replay sync after adjusting the block."
+    : null;
+  const openTasks = bucketCount(summary, "task_buckets", "open_tasks");
+  const dueTodayTasks = bucketCount(summary, "task_buckets", "due_today_tasks");
+  const overdueTasks = bucketCount(summary, "task_buckets", "overdue_tasks");
+  const unscheduledTasks = bucketCount(summary, "task_buckets", "unscheduled_tasks");
+  const fixedBlocks = bucketCount(summary, "block_buckets", "fixed_blocks");
+  const flexibleBlocks = bucketCount(summary, "block_buckets", "flexible_blocks");
+  const focusBlocks = bucketCount(summary, "block_buckets", "focus_blocks");
+  const bufferBlocks = bucketCount(summary, "block_buckets", "buffer_blocks");
+  const totalKnownBlocks = fixedBlocks + flexibleBlocks;
+  const focusHours = Math.round((activeSummary.focus_minutes / 60) * 10) / 10;
 
   return (
     <AprilWorkspaceShell
       activeSurface="planner"
-      statusLabel={oauthStatus?.connected ? "Calendar sync connected" : "Internal Planner only"}
-      queueLabel={`${timeline.length} scheduled`}
-      searchPlaceholder="Search Planner..."
+      statusLabel={conflictCount > 0 ? `${conflictCount} plan repair${conflictCount === 1 ? "" : "s"} needed` : "Plan ready"}
+      queueLabel={`${openTasks} open tasks`}
+      brandMeta="Execution planner"
+      ctaLabel="New block"
+      searchLabel="Planner search"
+      searchAriaLabel="Search Planner"
+      searchPlaceholder="Search tasks, blocks, commitments"
+      profileTitle="Planning context"
       railSlot={(
         <>
           <div className="april-rail-section">
-            <span className="april-rail-section-label">Planner rhythm</span>
+            <span className="april-rail-section-label">Today</span>
             <div className="april-rail-metric-stack">
               <div className="april-rail-metric-card">
-                <strong>{timeline.length}</strong>
-                <span>Scheduled</span>
+                <strong>{focusBlocks}</strong>
+                <span>Focus blocks</span>
               </div>
               <div className="april-rail-metric-card">
-                <strong>{unscheduledPool.length}</strong>
-                <span>Pool items</span>
+                <strong>{bufferBlocks}</strong>
+                <span>Buffers</span>
               </div>
             </div>
           </div>
           <div className="april-rail-section">
-            <span className="april-rail-section-label">Briefing readiness</span>
-            <p className="console-copy">{oauthStatus?.detail || "Internal blocks can still guide the next ritual cycle."}</p>
+            <span className="april-rail-section-label">Suggestion</span>
+            <p className="console-copy">
+              {conflictCount > 0
+                ? "Repair conflicts before adding more work."
+                : unscheduledTasks > 0
+                  ? "Place unscheduled tasks into the flexible parts of the day."
+                  : "Protect the focus blocks and keep buffers open."}
+            </p>
           </div>
         </>
       )}
     >
-      <section className="april-agenda-layout">
-        <div className="april-agenda-grid">
-          <div className="april-agenda-main">
-            <AprilPanel className="april-briefing-panel">
-              <div className="april-briefing-copy">
-                <span className="april-panel-kicker">System transmission</span>
-                <h2>Morning Briefing</h2>
-                <p>{oauthStatus?.detail || "Good morning. Today's forecast is clear for focus and synthesis."}</p>
-                <div className="april-briefing-wave">
-                  {Array.from({ length: 18 }, (_, index) => (
-                    <span key={`brief-wave-${index}`} style={{ height: `${28 + ((index * 11) % 42)}%` }} />
+      <section className={styles.surface} aria-labelledby="planner-title">
+        <div className={styles.heroPanel}>
+          <div>
+            <span className={styles.kicker}>Starlog Planner</span>
+            <h1 id="planner-title">Execution plan for {formatDateLabel(date)}</h1>
+            <p>
+              Balance fixed commitments, focus work, flexible tasks, and buffer time before the day starts drifting.
+            </p>
+          </div>
+          <div className={styles.dateControls} aria-label="Planner date controls">
+            <button className="button" type="button" onClick={() => setDate(isoDateFromOffset(date, -1))}>Previous day</button>
+            <label className={styles.dateInputLabel}>
+              <span>Date</span>
+              <input className="input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </label>
+            <button className="button" type="button" onClick={() => setDate(today)}>Today</button>
+            <button className="button" type="button" onClick={() => setDate(isoDateFromOffset(date, 1))}>Next day</button>
+          </div>
+        </div>
+
+        <section className={styles.metricGrid} aria-label="Planner stats">
+          <article>
+            <strong>{activeSummary.focus_minutes}</strong>
+            <span>Focus minutes</span>
+          </article>
+          <article>
+            <strong>{activeSummary.buffer_minutes}</strong>
+            <span>Buffer minutes</span>
+          </article>
+          <article>
+            <strong>{activeSummary.calendar_event_count}</strong>
+            <span>Meetings</span>
+          </article>
+          <article>
+            <strong>{dueTodayTasks}</strong>
+            <span>Due today</span>
+          </article>
+          <article className={conflictCount > 0 ? styles.warningMetric : undefined}>
+            <strong>{conflictCount}</strong>
+            <span>Conflicts</span>
+          </article>
+        </section>
+
+        <div className={styles.workspaceGrid}>
+          <div className={styles.mainColumn}>
+            <AprilPanel className={styles.timelinePanel} aria-labelledby="day-timeline-heading">
+              <div className="april-panel-head">
+                <div>
+                  <span className="april-panel-kicker">Day timeline</span>
+                  <h2 id="day-timeline-heading">Focus, commitments, flexibility, and buffers</h2>
+                </div>
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => load()}>Refresh plan</button>
+                  <button className="button" type="button" onClick={() => generate()}>Generate blocks</button>
+                </div>
+              </div>
+              <div className={styles.timelineCanvas}>
+                <div className={styles.hourRail} aria-hidden="true">
+                  {timelineHours.map((hour) => (
+                    <span key={hour}>{String(hour).padStart(2, "0")}:00</span>
                   ))}
                 </div>
-                <div className="chronos-summary-grid">
-                  <article className="chronos-summary-card">
-                    <strong>{timeline.length}</strong>
-                    <span>scheduled items</span>
-                  </article>
-                  <article className="chronos-summary-card">
-                    <strong>{conflicts.filter((conflict) => !conflict.resolved).length}</strong>
-                    <span>open conflicts</span>
-                  </article>
-                  <article className="chronos-summary-card">
-                    <strong>{latestBriefing ? "Ready" : oauthStatus?.connected ? "Live" : "Local"}</strong>
-                    <span>{latestBriefing ? "briefing prompt" : "calendar mode"}</span>
-                  </article>
-                </div>
-              </div>
-              <div className="april-briefing-controls">
-                <button className="april-icon-button" type="button">◂</button>
-                <button className="april-play-button" type="button" onClick={() => generateBriefing()}>
-                  Generate briefing
-                </button>
-                <button className="april-icon-button" type="button">▸</button>
-              </div>
-              {latestBriefing ? (
-                <p className="status">
-                  Latest briefing {latestBriefing.date}: {latestBriefing.audio_ref ? "audio cached" : "thread prompt ready"}
-                </p>
-              ) : null}
-            </AprilPanel>
-
-            <AprilPanel className="april-calendar-panel">
-              <div className="april-panel-head">
-                <div>
-                  <span className="april-panel-kicker">Planner ritual</span>
-                  <h2>Calendar constellation</h2>
-                </div>
-                <div className="button-row">
-                  <button className="button" type="button" onClick={() => load()}>Refresh Planner</button>
-                  <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
-                </div>
-              </div>
-              <div className="april-month-head">
-                <div>
-                  <h3>{calendarMonth.heading}</h3>
-                  <p>{oauthStatus?.connected ? "Lunar cycle synced" : "Internal orbit mode"}</p>
-                </div>
-                <div className="button-row">
-                  <button className="button" type="button" onClick={() => shiftMonth(-1)}>Previous</button>
-                  <button className="button" type="button" onClick={() => shiftMonth(1)}>Next</button>
-                </div>
-              </div>
-              {latestSyncSummary ? (
-                <p className="status">
-                  Latest sync {latestSyncSummary.run_id}: pushed {latestSyncSummary.pushed}, pulled {latestSyncSummary.pulled}, conflicts {latestSyncSummary.conflicts}
-                </p>
-              ) : null}
-              <div className="april-month-grid">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                  <span key={day} className="april-month-grid-label">{day}</span>
-                ))}
-                {calendarMonth.days.map((day) => (
-                  <button
-                    key={day.iso}
-                    type="button"
-                    className={day.current ? "april-month-cell active" : day.inMonth ? "april-month-cell" : "april-month-cell muted"}
-                    onClick={() => setDate(day.iso)}
-                  >
-                    <strong>{day.label}</strong>
-                    {day.itemCount > 0 ? <small>{day.itemCount} item{day.itemCount === 1 ? "" : "s"}</small> : null}
-                  </button>
-                ))}
-              </div>
-            </AprilPanel>
-
-            <AprilPanel className="april-timeline-panel">
-              <div className="april-panel-head">
-                <div>
-                  <span className="april-panel-kicker">Today&apos;s plan</span>
-                  <h2>Ritual timeline</h2>
-                </div>
-              </div>
-              <div className="april-agenda-list">
-                {agendaItems.length === 0 ? (
-                  <p className="console-copy">No timeline items for this day yet.</p>
-                ) : (
-                  agendaItems.map((item) => (
-                    <article key={item.id} className={item.critical ? "april-agenda-item critical" : "april-agenda-item"}>
-                      <div className="april-agenda-item-track">
-                        <span />
-                      </div>
-                      <div className="april-agenda-item-card">
-                        <div className="april-agenda-item-head">
-                          <strong>{item.time}</strong>
-                          {item.critical ? <small>Critical</small> : null}
-                        </div>
-                        <h3>{item.title}</h3>
-                        <p>{item.detail}</p>
-                      </div>
-                    </article>
-                  ))
-                )}
-              </div>
-              <div className="button-row">
-                <button className="button" type="button" onClick={() => generate()}>Generate Blocks</button>
-                <button className="button" type="button" onClick={() => addSampleEvent()}>Add Event</button>
-              </div>
-              <p className="status">{status}</p>
-            </AprilPanel>
-          </div>
-
-          <div className="april-agenda-side">
-            <PaneRestoreStrip
-              actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show ritual sidecar", onClick: sidecarPane.expand }] : []}
-            />
-            {!sidecarPane.collapsed ? (
-              <AprilPanel className="april-ritual-panel">
-                <div className="april-panel-head">
-                  <div>
-                    <span className="april-panel-kicker">Daily rituals</span>
-                    <h2>Ritual readiness and sync drift</h2>
-                  </div>
-                  <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
-                </div>
-                <div className="chronos-pool">
-                  <section className="april-ritual-progress-card">
-                    <div className="april-ritual-progress-ring" aria-hidden="true">
-                      <svg viewBox="0 0 120 120">
-                        <circle cx="60" cy="60" r="44" />
-                        <circle
-                          className="active"
-                          cx="60"
-                          cy="60"
-                          r="44"
-                          pathLength="100"
-                          strokeDasharray="100"
-                          strokeDashoffset={100 - ritualCompletion}
-                        />
-                      </svg>
-                      <strong>{ritualCompletion}%</strong>
-                    </div>
-                    <div className="april-ritual-progress-copy">
-                      <span className="chronos-pool-tag">daily return point</span>
-                      <h3>{date}</h3>
-                      <p>{oauthStatus?.connected ? "Google sync connected and feeding the ritual cycle." : "Internal Planner mode active for this ritual cycle."}</p>
-                    </div>
-                  </section>
-
-                  <section className="april-ritual-checklist">
-                    {ritualChecklist.map((item) => (
-                      <article key={item.id} className={item.done ? "april-ritual-checkpoint done" : "april-ritual-checkpoint"}>
-                        <span className="april-ritual-check-glyph" aria-hidden="true">{item.done ? "●" : "○"}</span>
-                        <div>
-                          <strong>{item.title}</strong>
-                          <small>{item.detail}</small>
-                        </div>
-                      </article>
-                    ))}
-                  </section>
-
-                  <article className="chronos-pool-card">
-                    <strong>{timeline.length} scheduled item(s)</strong>
-                    <small>Across {cycleDays.length} ritual cycles</small>
-                  </article>
-
-                  <h2>Unscheduled pool</h2>
-                  {unscheduledPool.length === 0 ? (
-                    <p className="console-copy">No unscheduled tasks or conflicts.</p>
+                <div className={styles.timelineTrack} style={{ minHeight: (DAY_END_HOUR - DAY_START_HOUR + 1) * HOUR_HEIGHT }}>
+                  {timelineHours.map((hour) => (
+                    <span key={hour} className={styles.timelineLine} style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }} />
+                  ))}
+                  {timeline.length === 0 ? (
+                    <div className={styles.emptyTimeline}>No blocks or commitments loaded for this day.</div>
                   ) : (
-                    unscheduledPool.map((item) => (
-                      <article key={item.id} className="chronos-pool-card">
-                        <span className={item.type === "conflict" ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>
-                          {item.type === "conflict" ? "sync conflict" : "event spillover"}
-                        </span>
+                    timeline.map((item) => (
+                      <article
+                        key={item.id}
+                        className={itemClassName(item.kind)}
+                        style={{ top: timelineTop(item.startsAt), minHeight: timelineHeight(item.startsAt, item.endsAt) }}
+                      >
+                        <span>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</span>
                         <strong>{item.title}</strong>
-                        <small>{item.subtitle}</small>
+                        <small>{item.detail}</small>
                       </article>
                     ))
                   )}
+                </div>
+              </div>
+              <div className={styles.legend} aria-label="Timeline legend">
+                <span><i className={styles.focusDot} />Focus</span>
+                <span><i className={styles.commitmentDot} />Commitment</span>
+                <span><i className={styles.flexibleDot} />Flexible</span>
+                <span><i className={styles.bufferDot} />Buffer</span>
+                <span><i className={styles.conflictDot} />Conflict</span>
+              </div>
+            </AprilPanel>
 
-                  <article className="chronos-pool-card">
-                    <strong>{timeline.length} scheduled item(s) on {date}</strong>
-                    <small>Blocks: {blocks.length} • Calendar events: {events.length}</small>
-                  </article>
-
-                  <details>
-                    <summary className="label">Sync conflicts</summary>
-                    {conflicts.length === 0 ? (
-                      <p className="console-copy">No conflicts.</p>
+            <AprilPanel className={styles.groupPanel} aria-labelledby="today-plan-heading">
+              <div className="april-panel-head">
+                <div>
+                  <span className="april-panel-kicker">Today plan</span>
+                  <h2 id="today-plan-heading">Work grouped by execution role</h2>
+                </div>
+                <span className={styles.generatedAt}>{summary?.generated_at ? `Updated ${formatTime(summary.generated_at)}` : "Waiting for summary"}</span>
+              </div>
+              <div className={styles.groupGrid}>
+                {planGroups.map((group) => (
+                  <section key={group.id} className={styles.planGroup} aria-label={group.title}>
+                    <div>
+                      <h3>{group.title}</h3>
+                      <p>{group.description}</p>
+                    </div>
+                    {group.items.length === 0 ? (
+                      <span className={styles.emptyGroup}>None scheduled</span>
                     ) : (
-                      conflicts.map((conflict) => (
-                        <article key={conflict.id} className="chronos-pool-card">
-                          <strong>Remote {conflict.remote_id}</strong>
-                          <small>policy {conflict.strategy}</small>
-                          <div className="button-row">
-                            <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>
-                              Replay Sync
-                            </button>
-                            <button
-                              className="button"
-                              type="button"
-                              onClick={() => resolveConflict(conflict.id, "local_wins")}
-                            >
-                              Local Wins
-                            </button>
-                            <button
-                              className="button"
-                              type="button"
-                              onClick={() => resolveConflict(conflict.id, "remote_wins")}
-                            >
-                              Remote Wins
-                            </button>
-                            <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>
-                              Dismiss
-                            </button>
-                          </div>
+                      group.items.map((item) => (
+                        <article key={item.id} className={styles.groupItem}>
+                          <strong>{item.title}</strong>
+                          <small>{formatTime(item.startsAt)} - {formatTime(item.endsAt)}</small>
                         </article>
                       ))
                     )}
-                  </details>
+                  </section>
+                ))}
+              </div>
+            </AprilPanel>
 
-                  <details>
-                    <summary className="label">Google OAuth</summary>
-                    {!oauthStatus ? (
-                      <p className="console-copy">OAuth status not loaded.</p>
-                    ) : (
-                      <>
-                        <p className="console-copy">Connected: {oauthStatus.connected ? "yes" : "no"}</p>
-                        <p className="console-copy">Mode: {oauthStatus.mode || "n/a"}</p>
-                        <p className="console-copy">Source: {oauthStatus.source || "n/a"}</p>
-                        <p className="console-copy">Refresh token: {oauthStatus.has_refresh_token ? "yes" : "no"}</p>
-                        <p className="console-copy">{oauthStatus.detail}</p>
-                      </>
-                    )}
-                  </details>
+            <AprilPanel className={styles.composerPanel} aria-labelledby="planner-composer-heading">
+              <div>
+                <span className="april-panel-kicker">Planning assistant</span>
+                <h2 id="planner-composer-heading">Ask for a safer plan</h2>
+                <p className="console-copy">Describe the change you want. Starlog can prepare a plan, but major writes still need confirmation.</p>
+              </div>
+              <div className={styles.composerRow}>
+                <input
+                  className="input"
+                  aria-label="Planning request"
+                  value={planningPrompt}
+                  onChange={(event) => setPlanningPrompt(event.target.value)}
+                  placeholder="Move deep work after the team sync and preserve 30 minutes of buffer"
+                />
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={() => {
+                    setStatus(planningPrompt.trim() ? "Planning request staged for assistant review" : "Add a planning request first");
+                  }}
+                >
+                  Stage request
+                </button>
+              </div>
+            </AprilPanel>
+          </div>
+
+          <aside className={styles.sideColumn}>
+            <PaneRestoreStrip
+              actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show planner context", onClick: sidecarPane.expand }] : []}
+            />
+            {!sidecarPane.collapsed ? (
+              <AprilPanel className={styles.sidePanel} aria-labelledby="planner-context-heading">
+                <div className="april-panel-head">
+                  <div>
+                    <span className="april-panel-kicker">Context</span>
+                    <h2 id="planner-context-heading">Plan pressure</h2>
+                  </div>
+                  <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
                 </div>
+
+                <section className={styles.pressureCard}>
+                  <span className="chronos-pool-tag">Workload</span>
+                  <strong>{openTasks} open tasks</strong>
+                  <small>{dueTodayTasks} due today, {overdueTasks} overdue, {unscheduledTasks} unscheduled</small>
+                </section>
+
+                <section className={styles.pressureCard}>
+                  <span className="chronos-pool-tag">Capacity</span>
+                  <strong>{focusHours} focus hours</strong>
+                  <small>{totalKnownBlocks} fixed or flexible blocks, {activeSummary.calendar_event_count} calendar commitments</small>
+                </section>
+
+                <section className={topConflict ? styles.conflictCard : styles.pressureCard} aria-label="Conflict repair">
+                  <span className={topConflict ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>Conflict repair</span>
+                  {topConflict ? (
+                    <>
+                      <strong>{detailValue(topConflict.detail, "title") || `Remote ${topConflict.remote_id}`}</strong>
+                      <small>{topConflictRange}</small>
+                      <small>Severity: {topConflictSeverity}</small>
+                      <small>{detailValue(topConflict.detail, "reason") || `Strategy: ${topConflict.strategy}`}</small>
+                      <p>{topConflictRepair}</p>
+                      <div className={styles.repairActions}>
+                        <button className="button" type="button" onClick={() => replayConflict(topConflict.id)}>Replay sync</button>
+                        <button className="button" type="button" onClick={() => resolveConflict(topConflict.id, "local_wins")}>Keep Starlog</button>
+                        <button className="button" type="button" onClick={() => resolveConflict(topConflict.id, "remote_wins")}>Use Google</button>
+                        <button className="button" type="button" onClick={() => resolveConflict(topConflict.id, "dismiss")}>Dismiss</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <strong>No active conflicts</strong>
+                      <small>Calendar and planner state are aligned.</small>
+                    </>
+                  )}
+                </section>
+
+                <section className={styles.suggestionList} aria-label="Planner suggestions">
+                  <h3>Suggestions</h3>
+                  <article>
+                    <strong>{conflictCount > 0 ? "Repair first" : "Protect focus"}</strong>
+                    <small>{conflictCount > 0 ? "Resolve calendar drift before generating more blocks." : "Keep task-backed focus blocks stable unless a commitment moves."}</small>
+                  </article>
+                  <article>
+                    <strong>{activeSummary.buffer_minutes < 30 ? "Add buffer" : "Use buffer carefully"}</strong>
+                    <small>{activeSummary.buffer_minutes < 30 ? "The day has less than 30 minutes of recovery space." : `${activeSummary.buffer_minutes} minutes are available for overflow.`}</small>
+                  </article>
+                  <article>
+                    <strong>{unscheduledTasks > 0 ? "Place loose tasks" : "No loose tasks"}</strong>
+                    <small>{unscheduledTasks > 0 ? `${unscheduledTasks} tasks still need a block or a deliberate defer.` : "Task placement is clear for this date."}</small>
+                  </article>
+                </section>
+
+                <section className={styles.syncActions}>
+                  <h3>Calendar sync</h3>
+                  <p className="console-copy">{oauthStatus?.detail || "Internal planner mode is available without Google Calendar."}</p>
+                  {latestSyncSummary ? (
+                    <p className="status">Latest sync {latestSyncSummary.run_id}: pushed {latestSyncSummary.pushed}, pulled {latestSyncSummary.pulled}, conflicts {latestSyncSummary.conflicts}</p>
+                  ) : null}
+                  {latestBriefing ? (
+                    <p className="status">Briefing prepared for {latestBriefing.date}</p>
+                  ) : null}
+                  <div className="button-row">
+                    <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
+                    <button className="button" type="button" onClick={() => addSampleEvent()}>Add event</button>
+                    <button className="button" type="button" onClick={() => generateBriefing()}>Prepare briefing</button>
+                  </div>
+                </section>
               </AprilPanel>
             ) : null}
-          </div>
+          </aside>
+        </div>
+
+        <p className="status" aria-live="polite">{status}</p>
+
+        <div className={styles.quickDates} aria-label="Quick date choices">
+          {dayOptions.map((option) => (
+            <button
+              key={`${option.label}-${option.date}`}
+              className={option.date === date ? styles.activeQuickDate : undefined}
+              type="button"
+              onClick={() => setDate(option.date)}
+            >
+              <strong>{option.label}</strong>
+              <span>{formatDateLabel(option.date)}</span>
+            </button>
+          ))}
         </div>
       </section>
     </AprilWorkspaceShell>

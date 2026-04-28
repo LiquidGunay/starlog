@@ -1,0 +1,427 @@
+.surface {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0.9rem;
+}
+
+.heroPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 20%);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  padding: 1rem;
+}
+
+.heroPanel h1 {
+  margin: 0.2rem 0 0;
+  font-family: "Rajdhani", sans-serif;
+  font-size: clamp(2rem, 3.4vw, 3.35rem);
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.heroPanel p {
+  max-width: 760px;
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.kicker,
+.generatedAt {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.dateControls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.dateInputLabel {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.metricGrid article {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 20%);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--chip), transparent 14%);
+  padding: 0.8rem;
+  min-height: 90px;
+  display: grid;
+  align-content: space-between;
+}
+
+.metricGrid strong {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.metricGrid span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.warningMetric {
+  border-color: color-mix(in srgb, var(--warning), transparent 25%) !important;
+  background: color-mix(in srgb, var(--warning), transparent 88%) !important;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.mainColumn,
+.sideColumn {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.timelinePanel,
+.groupPanel,
+.composerPanel,
+.sidePanel {
+  min-width: 0;
+}
+
+.timelineCanvas {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 25%);
+  border-radius: 0.65rem;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg), transparent 4%);
+}
+
+.hourRail {
+  border-right: 1px solid color-mix(in srgb, var(--panel-border), transparent 30%);
+  background: color-mix(in srgb, var(--panel), transparent 22%);
+}
+
+.hourRail span {
+  display: block;
+  height: 76px;
+  padding: 0.3rem 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border), transparent 55%);
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  text-align: right;
+}
+
+.timelineTrack {
+  position: relative;
+  overflow: hidden;
+}
+
+.timelineLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 62%);
+}
+
+.timelineItem {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+  display: grid;
+  align-content: start;
+  gap: 0.08rem;
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 30%);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--chip), transparent 5%);
+  padding: 0.42rem 0.55rem;
+  overflow: hidden;
+}
+
+.timelineItem span,
+.timelineItem small,
+.groupItem small,
+.pressureCard small,
+.conflictCard small,
+.conflictCard p,
+.suggestionList small {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timelineItem strong {
+  font-size: 0.9rem;
+  line-height: 1.1;
+}
+
+.focus {
+  border-color: color-mix(in srgb, var(--primary), transparent 18%);
+  background: color-mix(in srgb, var(--primary), transparent 84%);
+}
+
+.commitment {
+  border-color: color-mix(in srgb, var(--warning), transparent 24%);
+  background: color-mix(in srgb, var(--warning), transparent 88%);
+}
+
+.flexible {
+  border-color: color-mix(in srgb, var(--success), transparent 26%);
+  background: color-mix(in srgb, var(--success), transparent 88%);
+}
+
+.buffer {
+  border-color: color-mix(in srgb, var(--primary-soft), transparent 25%);
+  background: color-mix(in srgb, var(--primary-soft), transparent 88%);
+}
+
+.conflict {
+  border-color: color-mix(in srgb, var(--danger), transparent 20%);
+  background: color-mix(in srgb, var(--danger), transparent 88%);
+}
+
+.emptyTimeline {
+  position: absolute;
+  inset: 1rem;
+  display: grid;
+  place-items: center;
+  border: 1px dashed color-mix(in srgb, var(--panel-border), transparent 25%);
+  border-radius: 0.6rem;
+  color: var(--muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend i {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+}
+
+.focusDot { background: var(--primary); }
+.commitmentDot { background: var(--warning); }
+.flexibleDot { background: var(--success); }
+.bufferDot { background: var(--primary-soft); }
+.conflictDot { background: var(--danger); }
+
+.groupGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.planGroup,
+.pressureCard,
+.conflictCard,
+.suggestionList,
+.syncActions {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 22%);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--chip), transparent 12%);
+  padding: 0.72rem;
+}
+
+.planGroup {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+}
+
+.planGroup h3,
+.suggestionList h3,
+.syncActions h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.planGroup p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.groupItem {
+  border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 45%);
+  padding-top: 0.48rem;
+}
+
+.groupItem strong,
+.pressureCard strong,
+.conflictCard strong,
+.suggestionList strong {
+  display: block;
+}
+
+.emptyGroup {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.composerPanel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.composerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+}
+
+.sidePanel {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.pressureCard,
+.conflictCard,
+.suggestionList,
+.syncActions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.conflictCard {
+  border-color: color-mix(in srgb, var(--warning), transparent 25%);
+  background: color-mix(in srgb, var(--warning), transparent 90%);
+}
+
+.repairActions,
+.syncActions :global(.button-row) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.conflictCard p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.suggestionList article {
+  border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 45%);
+  padding-top: 0.5rem;
+}
+
+.quickDates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.quickDates button {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 24%);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--chip), transparent 16%);
+  color: var(--text);
+  padding: 0.62rem;
+  text-align: left;
+}
+
+.quickDates strong,
+.quickDates span {
+  display: block;
+}
+
+.quickDates span {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.activeQuickDate {
+  border-color: color-mix(in srgb, var(--primary), transparent 18%) !important;
+  color: var(--primary-soft) !important;
+}
+
+@media (max-width: 1180px) {
+  .heroPanel,
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dateControls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .surface {
+    padding: 0.65rem;
+  }
+
+  .metricGrid,
+  .groupGrid,
+  .quickDates {
+    grid-template-columns: 1fr;
+  }
+
+  .composerRow {
+    grid-template-columns: 1fr;
+  }
+
+  .timelineCanvas {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .hourRail span {
+    font-size: 0.58rem;
+    padding-right: 0.25rem;
+  }
+
+  .timelineItem {
+    left: 0.45rem;
+    right: 0.45rem;
+  }
+}
