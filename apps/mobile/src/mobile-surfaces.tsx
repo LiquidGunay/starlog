@@ -616,8 +616,8 @@ function mobileCaptureRow(palette: Record<string, string>, row: MobileLibraryInb
             {row.statusLabel}
           </Text>
         </View>
-        <TouchableOpacity
-          accessibilityLabel={`${row.overflowLabel} actions for ${row.title}`}
+        <View
+          accessibilityLabel={`${row.overflowLabel} options for ${row.title}`}
           style={{
             width: 34,
             height: 34,
@@ -628,11 +628,11 @@ function mobileCaptureRow(palette: Record<string, string>, row: MobileLibraryInb
           }}
         >
           <MaterialCommunityIcons name="dots-horizontal" size={18} color={palette.muted} />
-        </TouchableOpacity>
+        </View>
       </View>
       <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-        {row.primaryActions.slice(0, 2).map((action, actionIndex) => (
-          <TouchableOpacity
+        {row.actionLabels.slice(0, 2).map((action, actionIndex) => (
+          <View
             key={action}
             style={{
               borderRadius: 999,
@@ -644,7 +644,7 @@ function mobileCaptureRow(palette: Record<string, string>, row: MobileLibraryInb
             <Text style={{ color: actionIndex === 0 ? palette.onAccent : palette.text, fontSize: 12, fontWeight: "800" }}>
               {action}
             </Text>
-          </TouchableOpacity>
+          </View>
         ))}
       </View>
     </View>

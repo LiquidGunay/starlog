@@ -55,13 +55,13 @@ assert.deepEqual(model.stats, [
 assert.equal(model.inboxRows.length, 2);
 assert.equal(model.inboxRows[0].sourceLabel, "Recorder");
 assert.equal(model.inboxRows[0].captureTypeLabel, "Voice memo");
-assert.deepEqual(model.inboxRows[0].primaryActions, ["Transcribe", "Summarize"]);
-assert.equal(model.inboxRows[0].primaryActions.length <= 2, true);
+assert.deepEqual(model.inboxRows[0].actionLabels, ["Transcribe", "Summarize"]);
+assert.equal(model.inboxRows[0].actionLabels.length <= 2, true);
 assert.equal(model.inboxRows[0].statusLabel, "Queued retry");
 
 assert.equal(model.inboxRows[1].sourceLabel, "example.com");
 assert.equal(model.inboxRows[1].timestampLabel, "2h ago");
-assert.deepEqual(model.inboxRows[1].primaryActions, ["Summarize", "Make cards"]);
+assert.deepEqual(model.inboxRows[1].actionLabels, ["Summarize", "Make cards"]);
 
 const emptyQueue = deriveMobileLibraryViewModel({
   now,
@@ -79,7 +79,7 @@ const emptyQueue = deriveMobileLibraryViewModel({
 assert.equal(emptyQueue.statusLabel, "Queue clear");
 assert.equal(emptyQueue.inboxRows[0].statusLabel, "Processed");
 assert.equal(emptyQueue.inboxRows[0].sourceLabel, "Voice Memo");
-assert.deepEqual(emptyQueue.inboxRows[0].primaryActions, ["Open", "Review"]);
+assert.deepEqual(emptyQueue.inboxRows[0].actionLabels, ["Open", "Review"]);
 
 assert.equal(formatMobileLibraryTimestamp("not-a-date", now), "Unknown time");
 

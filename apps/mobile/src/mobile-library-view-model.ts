@@ -31,7 +31,7 @@ export type MobileLibraryInboxRow = {
   captureTypeLabel: string;
   timestampLabel: string;
   statusLabel: string;
-  primaryActions: string[];
+  actionLabels: string[];
   overflowLabel: string;
   icon: "text" | "file" | "voice" | "artifact";
 };
@@ -104,7 +104,7 @@ function pendingCaptureRow(capture: MobileLibraryPendingCapture, now?: Date): Mo
     captureTypeLabel: captureTypeLabel(capture),
     timestampLabel: formatMobileLibraryTimestamp(capture.createdAt, now),
     statusLabel: capture.lastError ? "Retry needed" : capture.attempts > 0 ? "Queued retry" : "Unprocessed",
-    primaryActions: primaryActionsForCapture(capture.kind),
+    actionLabels: actionLabelsForCapture(capture.kind),
     overflowLabel: "More",
     icon: capture.kind,
   };
@@ -118,7 +118,7 @@ function artifactRow(artifact: MobileLibraryArtifact, now?: Date): MobileLibrary
     captureTypeLabel: "Artifact",
     timestampLabel: formatMobileLibraryTimestamp(artifact.created_at, now),
     statusLabel: "Processed",
-    primaryActions: ["Open", "Review"],
+    actionLabels: ["Open", "Review"],
     overflowLabel: "More",
     icon: "artifact",
   };
@@ -157,7 +157,7 @@ function captureTypeLabel(capture: MobileLibraryPendingCapture): string {
   return "Text";
 }
 
-function primaryActionsForCapture(kind: MobileLibraryPendingCapture["kind"]): string[] {
+function actionLabelsForCapture(kind: MobileLibraryPendingCapture["kind"]): string[] {
   if (kind === "voice") {
     return ["Transcribe", "Summarize"];
   }
