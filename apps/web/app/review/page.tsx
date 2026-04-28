@@ -216,7 +216,6 @@ function decrementBucket(buckets: CountBucket[], keyCandidates: string[]): Count
 function reconcileSummaryAfterReview(
   currentSummary: ReviewSurfaceSummary | null,
   card: Card,
-  deck: Deck | null,
 ): ReviewSurfaceSummary | null {
   if (!currentSummary) {
     return null;
@@ -224,12 +223,10 @@ function reconcileSummaryAfterReview(
 
   const mode = reviewModeForCard(card);
   const wasOverdue = new Date(card.due_at).getTime() < Date.now();
-  const deckKeys = [card.deck_id || "", deck?.id || "", deck?.name || ""];
 
   return {
     ...currentSummary,
     ladder_counts: decrementBucket(currentSummary.ladder_counts, [mode]),
-    deck_buckets: decrementBucket(currentSummary.deck_buckets, deckKeys),
     queue_health: {
       ...currentSummary.queue_health,
       due_count: Math.max(0, currentSummary.queue_health.due_count - 1),
@@ -356,9 +353,8 @@ export default function ReviewPage() {
         body: JSON.stringify({ card_id: currentCard.id, rating }),
       });
       const reviewedCard = currentCard;
-      const reviewedDeck = currentDeck;
       setCards((previous) => previous.filter((card) => card.id !== currentCard.id));
-      setSummary((previous) => reconcileSummaryAfterReview(previous, reviewedCard, reviewedDeck));
+      setSummary((previous) => reconcileSummaryAfterReview(previous, reviewedCard));
       setStats((previous) => ({
         reviewed: previous.reviewed + 1,
         again: previous.again + (rating === 1 ? 1 : 0),

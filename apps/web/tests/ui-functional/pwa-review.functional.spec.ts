@@ -131,6 +131,7 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await expect(page.getByText("Current queue context by card mode")).toBeVisible();
   await expect(page.getByText("Generated drills and deeper scenario flows are not active here yet.")).toBeVisible();
   await expect(page.getByText("Projects deck")).toBeVisible();
+  await expect(page.locator(".april-review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
   await expect(page.getByText("Onboarding flow polish")).toBeVisible();
 
   const goodButton = page.getByRole("button", { name: /Good/ });
@@ -153,5 +154,6 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 2 · Synthesis 1")).toBeVisible();
   await expect(page.locator(".april-review-side-metrics").getByText("6", { exact: true })).toBeVisible();
   await expect(page.locator(".april-review-health-list").getByText("1", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".april-review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
   await expect(page.getByText("What does source fidelity preserve?")).toBeVisible();
 });
