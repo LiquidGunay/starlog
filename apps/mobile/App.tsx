@@ -53,6 +53,10 @@ import {
 } from "./src/mobile-library-detail-view-model";
 import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
 import {
+  emitReviewAnswerRevealedEvent,
+  resolveReviewAnswerRevealTransition,
+} from "./src/mobile-review-assistant-events";
+import {
   buildAssistantWeeklyQueryWeekStart,
   buildAssistantTodayQueryDate,
   localDateStringForAssistantToday,
@@ -265,6 +269,7 @@ type DueCard = {
   id: string;
   deck_id?: string | null;
   card_type: string;
+  review_mode?: string | null;
   prompt: string;
   answer: string;
   due_at: string;
@@ -1352,6 +1357,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [reviewSummary, setReviewSummary] = useState<MobileReviewSurfaceSummary | null>(null);
   const reviewSummaryRequestRef = useRef<MobileReviewSummaryRequestToken>({ requestId: 0, token: "", apiBase: "" });
   const reviewSummarySessionRef = useRef({ token: "", apiBase: normalizeBaseUrl(DEFAULT_API_BASE) });
+  const reviewRevealEventCardIdRef = useRef<string | null>(null);
   const [selectedPlannerDate, setSelectedPlannerDate] = useState(todayDateString());
   const [plannerSummary, setPlannerSummary] = useState<MobilePlannerSummary | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
@@ -2451,6 +2457,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       void loadReviewSummary("auto");
       setReviewStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
       setShowAnswer(false);
+      reviewRevealEventCardIdRef.current = null;
       cardPromptStartedAt.current = payload.length > 0 ? Date.now() : null;
       setStatus(`Loaded ${payload.length} due card(s)`);
     } catch (error) {
@@ -2499,12 +2506,33 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         easy: previous.easy + (rating === 5 ? 1 : 0),
       }));
       setShowAnswer(false);
+      reviewRevealEventCardIdRef.current = null;
       cardPromptStartedAt.current = remaining.length > 0 ? Date.now() : null;
       void loadReviewDecks();
       void loadReviewSummary("auto");
       setStatus(`Recorded rating ${rating}. ${remaining.length} due card(s) left`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to submit review");
+    }
+  }
+
+  function revealPrimaryReviewAnswer() {
+    const current = dueCards[0];
+    const transition = resolveReviewAnswerRevealTransition({
+      card: current,
+      showAnswer,
+      emittedCardId: reviewRevealEventCardIdRef.current,
+    });
+
+    if (transition.shouldLoadCard) {
+      loadDueCards().catch(() => undefined);
+      return;
+    }
+
+    setShowAnswer(transition.nextShowAnswer);
+    reviewRevealEventCardIdRef.current = transition.emittedCardId;
+    if (transition.shouldEmit) {
+      emitReviewAnswerRevealedEvent({ apiBase, token, card: current }).catch(() => undefined);
     }
   }
 
@@ -4150,13 +4178,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewRecommendedDrill={reviewSummary?.recommended_drill ?? null}
             reviewDecks={reviewDecks}
             showAnswer={showAnswer}
-            revealAnswer={() => {
-              if (!reviewCard) {
-                loadDueCards().catch(() => undefined);
-                return;
-              }
-              setShowAnswer((value) => !value);
-            }}
+            revealAnswer={revealPrimaryReviewAnswer}
             loadDueCards={() => {
               loadDueCards().catch(() => undefined);
             }}

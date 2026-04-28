@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/mobile-review-assistant-events-functional-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-review-assistant-events.ts",
+    "src/mobile-review-view-model.ts",
+    "tests/mobile-review-assistant-events.functional.test.ts"
+  ]
+}
