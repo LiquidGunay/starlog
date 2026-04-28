@@ -52,6 +52,7 @@ import {
   type MobileArtifactDetailRequestToken,
 } from "./src/mobile-library-detail-view-model";
 import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
+import { emitReviewAnswerRevealedEvent } from "./src/mobile-review-assistant-events";
 import {
   buildAssistantWeeklyQueryWeekStart,
   buildAssistantTodayQueryDate,
@@ -265,6 +266,7 @@ type DueCard = {
   id: string;
   deck_id?: string | null;
   card_type: string;
+  review_mode?: string | null;
   prompt: string;
   answer: string;
   due_at: string;
@@ -2508,6 +2510,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  function revealPrimaryReviewAnswer() {
+    const current = dueCards[0];
+    if (!current) {
+      loadDueCards().catch(() => undefined);
+      return;
+    }
+    if (showAnswer) {
+      setShowAnswer(false);
+      return;
+    }
+    setShowAnswer(true);
+    emitReviewAnswerRevealedEvent({ apiBase, token, card: current }).catch(() => undefined);
+  }
+
   async function requestNotificationPermission(): Promise<boolean> {
     const permission = await Notifications.requestPermissionsAsync();
     setNotificationPermission(permission.status);
@@ -4150,13 +4166,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewRecommendedDrill={reviewSummary?.recommended_drill ?? null}
             reviewDecks={reviewDecks}
             showAnswer={showAnswer}
-            revealAnswer={() => {
-              if (!reviewCard) {
-                loadDueCards().catch(() => undefined);
-                return;
-              }
-              setShowAnswer((value) => !value);
-            }}
+            revealAnswer={revealPrimaryReviewAnswer}
             loadDueCards={() => {
               loadDueCards().catch(() => undefined);
             }}
