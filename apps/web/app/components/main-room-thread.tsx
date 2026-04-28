@@ -22,6 +22,7 @@ type MainRoomThreadProps = {
   snapshot: AssistantThreadSnapshot | null;
   loading: boolean;
   busy: boolean;
+  todaySummary?: AssistantTodaySummary | null;
   todayOpenLoops?: TodayItem[];
   todayContextItems?: TodayItem[];
   onQuickStart: (prompt: string) => void;
@@ -35,29 +36,63 @@ type TodayItem = {
   href?: string;
 };
 
-type TodayMove = {
+type TodayAction = {
   label: string;
-  prompt: string;
+  prompt?: string;
+  href?: string;
+  enabled?: boolean;
+  count?: number;
+  reason?: string | null;
 };
 
-const TODAY_MOVES: TodayMove[] = [
-  {
-    label: "Plan today",
-    prompt: "Plan today around my schedule, tasks, and open loops.",
-  },
-  {
-    label: "Process captures",
-    prompt: "Process my latest captures and route anything actionable.",
-  },
-  {
-    label: "Start review",
-    prompt: "Start a focused review session for what is due now.",
-  },
-  {
-    label: "Create task",
-    prompt: "Create a task for ",
-  },
-];
+type TodayOpenLoopSummary = {
+  key: string;
+  label: string;
+  count: number;
+  href?: string | null;
+};
+
+export type AssistantTodaySummary = {
+  date: string;
+  thread_id?: string | null;
+  active_run_count?: number;
+  open_interrupt_count?: number;
+  recent_surface_event_count?: number;
+  open_loops?: TodayOpenLoopSummary[];
+  recommended_next_move?: {
+    key?: string;
+    title?: string;
+    body?: string;
+    surface?: string;
+    href?: string | null;
+    action_label?: string | null;
+    prompt?: string | null;
+    priority?: number;
+    urgency?: string;
+  } | null;
+  reason_stack?: string[];
+  at_a_glance?: TodayOpenLoopSummary[];
+  quick_actions?: Array<{
+    key?: string;
+    title: string;
+    surface?: string;
+    href?: string | null;
+    action_label?: string | null;
+    prompt?: string | null;
+    enabled?: boolean;
+    count?: number;
+    reason?: string | null;
+    priority?: number;
+  }>;
+  generated_at?: string;
+};
+
+type RecommendedMove = {
+  title: string;
+  reasons: string[];
+  primaryAction: TodayAction;
+  secondaryActions: TodayAction[];
+};
 
 const REVIEW_MODE_ORDER = ["recall", "understanding", "application", "synthesis", "judgment"] as const;
 
@@ -118,6 +153,187 @@ function cardTodayLabel(card: AssistantCard): string | null {
     return card.title ? `Library: ${card.title}` : "Relevant note ready";
   }
   return null;
+}
+
+function countForLoop(todaySummary: AssistantTodaySummary | null | undefined, key: string): number {
+  const rawCount = todaySummary?.open_loops?.find((loop) => loop.key === key)?.count;
+  return Number.isFinite(rawCount) ? Number(rawCount) : 0;
+}
+
+function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function buildFallbackRecommendedMove(
+  todaySummary: AssistantTodaySummary | null | undefined,
+  openLoops: TodayItem[],
+  contextItems: TodayItem[],
+  snapshot: AssistantThreadSnapshot,
+): RecommendedMove {
+  const openInterrupts = Number(todaySummary?.open_interrupt_count || 0);
+  const activeRuns = Number(todaySummary?.active_run_count || 0);
+  const overdueTasks = countForLoop(todaySummary, "overdue_tasks");
+  const dueReviews = countForLoop(todaySummary, "due_reviews");
+  const libraryInbox = countForLoop(todaySummary, "unprocessed_library");
+  const openTasks = countForLoop(todaySummary, "open_tasks");
+  const openCommitments = countForLoop(todaySummary, "open_commitments");
+
+  if (openInterrupts > 0 || (!todaySummary && openLoops.length > 0)) {
+    return {
+      title: "Resolve the waiting decision",
+      reasons: [
+        openInterrupts > 0
+          ? `${formatCount(openInterrupts, "Assistant decision")} waiting`
+          : `${formatCount(openLoops.length, "open loop")} in the thread`,
+        activeRuns > 0 ? `${formatCount(activeRuns, "active run")} may continue after this` : "Clearing it keeps the cockpit current",
+        openTasks > 0 ? `${formatCount(openTasks, "open task")} still needs planning` : "No separate dashboard step needed",
+      ],
+      primaryAction: {
+        label: "Review decision",
+        prompt: "Help me resolve the pending Assistant decision and explain the next step.",
+      },
+      secondaryActions: [
+        { label: "Open Planner", href: "/planner" },
+        { label: "Show options", prompt: "Show me the other reasonable next moves for today." },
+      ],
+    };
+  }
+
+  if (overdueTasks > 0) {
+    return {
+      title: "Triage overdue tasks",
+      reasons: [
+        `${formatCount(overdueTasks, "task")} overdue`,
+        openTasks > overdueTasks ? `${formatCount(openTasks, "open task")} total` : "Planner pressure is the clearest signal",
+        dueReviews > 0 ? `${formatCount(dueReviews, "review")} also due` : "Review queue is not the first blocker",
+      ],
+      primaryAction: { label: "Plan recovery", prompt: "Triage my overdue tasks and propose the next bounded move." },
+      secondaryActions: [
+        { label: "Open Planner", href: "/planner" },
+        { label: "Start review", href: "/review" },
+      ],
+    };
+  }
+
+  if (dueReviews > 0) {
+    return {
+      title: "Clear the review queue",
+      reasons: [
+        `${formatCount(dueReviews, "review")} due now`,
+        openTasks > 0 ? `${formatCount(openTasks, "open task")} can wait behind a short review pass` : "No higher task pressure is visible",
+        "A focused review session keeps learning fresh",
+      ],
+      primaryAction: { label: "Start review", href: "/review" },
+      secondaryActions: [
+        { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
+        { label: "Show options", prompt: "Show me the other reasonable next moves for today." },
+      ],
+    };
+  }
+
+  if (libraryInbox > 0) {
+    return {
+      title: "Process the Library inbox",
+      reasons: [
+        `${formatCount(libraryInbox, "capture")} still needs routing`,
+        openTasks > 0 ? `${formatCount(openTasks, "open task")} may be linked to captured material` : "Processing captures can create the right tasks",
+        "Source fidelity stays intact when captures are routed early",
+      ],
+      primaryAction: { label: "Process captures", prompt: "Process my latest Library captures and route anything actionable." },
+      secondaryActions: [
+        { label: "Open Library", href: "/library" },
+        { label: "Create task", prompt: "Create a task for " },
+      ],
+    };
+  }
+
+  return {
+    title: openTasks > 0 || openCommitments > 0 ? "Shape today’s plan" : "Set the first useful move",
+    reasons: [
+      openTasks > 0 ? `${formatCount(openTasks, "open task")} available to schedule` : "No urgent open loop is visible",
+      openCommitments > 0 ? `${formatCount(openCommitments, "open commitment")} needs follow-through` : "Commitment pressure is low",
+      contextItems.length > 0 || snapshot.messages.length > 0
+        ? "Starlog has current context to work from"
+        : "A short plan gives the day a clean starting point",
+    ],
+    primaryAction: { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
+    secondaryActions: [
+      { label: "Open Planner", href: "/planner" },
+      { label: "Capture something", prompt: "Capture this for Starlog: " },
+    ],
+  };
+}
+
+function buildRecommendedMove(
+  todaySummary: AssistantTodaySummary | null | undefined,
+  openLoops: TodayItem[],
+  contextItems: TodayItem[],
+  snapshot: AssistantThreadSnapshot,
+): RecommendedMove {
+  const enriched = todaySummary?.recommended_next_move;
+  const title = enriched?.title;
+  const primaryLabel = enriched?.action_label || title;
+  const primaryHref = enriched?.href || undefined;
+  const primaryPrompt = enriched?.prompt || undefined;
+  if (title && primaryLabel && (primaryHref || primaryPrompt)) {
+    return {
+      title,
+      reasons: [
+        ...(todaySummary?.reason_stack || []).filter(Boolean),
+        ...(enriched.body ? [enriched.body] : []),
+      ].slice(0, 4),
+      primaryAction: {
+        label: primaryLabel,
+        href: primaryHref,
+        prompt: primaryPrompt,
+      },
+      secondaryActions: buildQuickActions(todaySummary)
+        .filter((action) => action.label !== primaryLabel && (action.href || action.prompt))
+        .slice(0, 3),
+    };
+  }
+  return buildFallbackRecommendedMove(todaySummary, openLoops, contextItems, snapshot);
+}
+
+function buildAtAGlanceItems(
+  todaySummary: AssistantTodaySummary | null | undefined,
+  openLoops: TodayItem[],
+  contextItems: TodayItem[],
+): Array<{ label: string; value: number }> {
+  const loops = todaySummary?.at_a_glance?.length ? todaySummary.at_a_glance : todaySummary?.open_loops || [];
+  if (loops.length > 0) {
+    return loops.slice(0, 5).map((loop) => ({
+      label: loop.label,
+      value: Number.isFinite(loop.count) ? loop.count : 0,
+    }));
+  }
+  return [
+    { label: "Open loops", value: openLoops.length },
+    { label: "Current context", value: contextItems.length },
+  ];
+}
+
+function buildQuickActions(todaySummary: AssistantTodaySummary | null | undefined): TodayAction[] {
+  const enrichedActions = (todaySummary?.quick_actions || [])
+    .map((action) => ({
+      label: action.action_label || action.title,
+      href: action.href || undefined,
+      prompt: action.prompt || undefined,
+      enabled: action.enabled ?? true,
+      count: action.count,
+      reason: action.reason,
+    }))
+    .filter((action) => action.label && action.enabled !== false && (action.href || action.prompt))
+    .slice(0, 4);
+  if (enrichedActions.length > 0) {
+    return enrichedActions;
+  }
+  return [
+    { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
+    { label: "Open Planner", href: "/planner" },
+    { label: "Start review", href: "/review" },
+    { label: "Process captures", prompt: "Process my latest Library captures and route anything actionable." },
+  ];
 }
 
 function collectTodayOpenLoops(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
@@ -525,53 +741,103 @@ function AttachmentSection({ attachment }: { attachment: AssistantAttachment }) 
 
 function TodayPanel({
   snapshot,
+  todaySummary,
   openLoops,
   contextItems,
   busy,
   onQuickStart,
 }: {
   snapshot: AssistantThreadSnapshot;
+  todaySummary?: AssistantTodaySummary | null;
   openLoops: TodayItem[];
   contextItems: TodayItem[];
   busy: boolean;
   onQuickStart: (prompt: string) => void;
 }) {
-  const hasOpenLoops = openLoops.length > 0;
-  const hasContext = contextItems.length > 0;
+  const recommendedMove = buildRecommendedMove(todaySummary, openLoops, contextItems, snapshot);
+  const reasons = recommendedMove.reasons.length > 0 ? recommendedMove.reasons : ["Starlog has enough current context to recommend one next move."];
+  const atAGlanceItems = buildAtAGlanceItems(todaySummary, openLoops, contextItems);
+  const quickActions = buildQuickActions(todaySummary);
+
+  const renderAction = (action: TodayAction, className?: string) => {
+    if (action.href) {
+      return (
+        <a className={className} href={action.href}>
+          {action.label}
+        </a>
+      );
+    }
+    return (
+      <button
+        className={className}
+        type="button"
+        onClick={() => onQuickStart(action.prompt || "")}
+        disabled={busy || !action.prompt}
+      >
+        {action.label}
+      </button>
+    );
+  };
 
   return (
     <section className={styles.todayPanel} aria-labelledby="assistant-today-title">
       <div className={styles.todayHeader}>
         <p className={styles.todayKicker}>Today in Starlog</p>
-        <h2 id="assistant-today-title">Choose the next useful move.</h2>
-        <p>
-          Start with planning, captures, review, or a task. Starlog will keep the work connected across
-          Assistant, Library, Planner, and Review.
-        </p>
+        <h2 id="assistant-today-title">Recommended next move</h2>
       </div>
 
-      <div className={styles.todayMoves} aria-label="Today quick starts">
-        {TODAY_MOVES.map((move) => (
-          <button
-            key={move.label}
-            type="button"
-            onClick={() => onQuickStart(move.prompt)}
-            disabled={busy}
-          >
-            {move.label}
-          </button>
+      <article className={styles.recommendedMove}>
+        <div className={styles.recommendedMoveCopy}>
+          <p className={styles.recommendedMoveLabel}>Do this next</p>
+          <h3>{recommendedMove.title}</h3>
+          <div className={styles.reasonStack} aria-label="Why this recommendation">
+            <span>Why</span>
+            <ul>
+              {reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className={styles.recommendedActions}>
+          {renderAction(recommendedMove.primaryAction, styles.primaryAction)}
+          {recommendedMove.secondaryActions.length > 0 ? (
+            <div className={styles.secondaryActions} aria-label="Secondary options">
+              {recommendedMove.secondaryActions.map((action) => (
+                <span key={`${action.label}-${action.href || action.prompt}`}>{renderAction(action)}</span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </article>
+
+      <div className={styles.atAGlance} aria-label="At a glance">
+        {atAGlanceItems.map((item) => (
+          <div key={item.label}>
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.quickActions} aria-label="Quick actions">
+        {quickActions.map((action) => (
+          <span key={`${action.label}-${action.href || action.prompt}`}>
+            {renderAction(action)}
+            {typeof action.count === "number" && action.count > 0 ? <small>{action.count}</small> : null}
+          </span>
         ))}
       </div>
 
       <div className={styles.todayGrid}>
         <section className={styles.todayBlock}>
           <div className={styles.todayBlockHeader}>
-            <span>Open loops</span>
-            <strong>{hasOpenLoops ? openLoops.length : 0}</strong>
+            <span>Needs attention</span>
+            <strong>{openLoops.length}</strong>
           </div>
-          {hasOpenLoops ? (
+          {openLoops.length > 0 ? (
             <ul className={styles.todayList}>
-              {openLoops.map((item, index) => (
+              {openLoops.slice(0, 4).map((item, index) => (
                 <li key={`loop-${item.label}-${index}`}>
                   {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
                 </li>
@@ -584,12 +850,12 @@ function TodayPanel({
 
         <section className={styles.todayBlock}>
           <div className={styles.todayBlockHeader}>
-            <span>Useful context</span>
-            <strong>{hasContext ? contextItems.length : snapshot.messages.length}</strong>
+            <span>Current context</span>
+            <strong>{contextItems.length}</strong>
           </div>
-          {hasContext ? (
+          {contextItems.length > 0 ? (
             <ul className={styles.todayList}>
-              {contextItems.map((item, index) => (
+              {contextItems.slice(0, 4).map((item, index) => (
                 <li key={`context-${item.label}-${index}`}>
                   {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
                 </li>
@@ -715,6 +981,7 @@ export function MainRoomThread({
   snapshot,
   loading,
   busy,
+  todaySummary,
   todayOpenLoops,
   todayContextItems,
   onQuickStart,
@@ -739,6 +1006,7 @@ export function MainRoomThread({
       {snapshot.messages.length === 0 ? (
         <TodayPanel
           snapshot={snapshot}
+          todaySummary={todaySummary}
           openLoops={openLoops}
           contextItems={contextItems}
           busy={busy}
