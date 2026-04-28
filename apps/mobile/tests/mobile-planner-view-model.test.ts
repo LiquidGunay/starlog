@@ -78,7 +78,9 @@ assert.deepEqual(fallback.metrics, [
   { label: "Tasks", value: "Unknown", caption: "Refresh Planner", tone: "task" },
   { label: "Buffer", value: "Unknown", caption: "Refresh Planner", tone: "buffer" },
 ]);
-assert.equal(fallback.timelineBlocks[0].detail, "No briefing alarm is scheduled for this date.");
+assert.equal(fallback.timelineBlocks[0].durationLabel, "Unknown");
+assert.equal(fallback.timelineBlocks[0].title, "Briefing unknown");
+assert.equal(fallback.timelineBlocks[0].detail, "Refresh Planner to load briefing readiness for this date.");
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
 assert.equal(fallback.nextFocus.title, "Focus unknown");
@@ -116,6 +118,18 @@ const fallbackWithAlarm = deriveMobilePlannerViewModel({
 });
 
 assert.equal(fallbackWithAlarm.statusLabel, "No Planner summary loaded");
+assert.equal(fallbackWithAlarm.timelineBlocks.find((block) => block.id === "briefing")?.durationLabel, "Unknown");
+assert.equal(fallbackWithAlarm.timelineBlocks.find((block) => block.id === "briefing")?.title, "Briefing unknown");
+assert.equal(
+  fallbackWithAlarm.timelineBlocks.find((block) => block.id === "briefing")?.detail,
+  "Refresh Planner to load briefing readiness for this date.",
+);
+assert.equal(
+  fallbackWithAlarm.timelineBlocks.some(
+    (block) => block.durationLabel === "Scheduled" || block.detail.includes("Offline playback is scheduled"),
+  ),
+  false,
+);
 assert.deepEqual(fallbackWithAlarm.planGroups[0].items, []);
 assert.equal(fallbackWithAlarm.planGroups[0].summaryLabel, "Unknown");
 assert.equal(fallbackWithAlarm.planGroups[0].emptyLabel, "Refresh Planner to load scheduled commitments for this date.");

@@ -377,9 +377,11 @@ function buildTimelineBlocks(input: {
     {
       id: "briefing",
       timeLabel: "Briefing",
-      durationLabel: input.alarmScheduled ? "Scheduled" : "Optional",
-      title: "Morning briefing",
-      detail: input.alarmScheduled ? "Offline playback is scheduled for the first check-in." : "No briefing alarm is scheduled for this date.",
+      durationLabel: input.hasSummary ? input.alarmScheduled ? "Scheduled" : "Optional" : "Unknown",
+      title: input.hasSummary ? "Morning briefing" : "Briefing unknown",
+      detail: input.hasSummary
+        ? input.alarmScheduled ? "Offline playback is scheduled for the first check-in." : "No briefing alarm is scheduled for this date."
+        : "Refresh Planner to load briefing readiness for this date.",
       type: "away",
     },
     {
