@@ -1141,6 +1141,23 @@ function AmbientUpdateSection({
   );
 }
 
+function AmbientTimelineRow({
+  update,
+  busy,
+  onCardAction,
+}: {
+  update: AssistantAmbientUpdate;
+  busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  return (
+    <div className={styles.ambientRow} aria-label="Ambient update">
+      <span>{new Date(update.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+      <AmbientUpdateSection update={update} busy={busy} onCardAction={onCardAction} />
+    </div>
+  );
+}
+
 function ToolResultSection({
   result,
   busy,
@@ -1416,7 +1433,7 @@ function TodayPanel({
     <section className={styles.todayPanel} aria-labelledby="assistant-today-title">
       <div className={styles.todayHeader}>
         <div className={styles.cockpitMark} aria-hidden="true">✦</div>
-        <p className={styles.todayKicker}>Good morning</p>
+        <p className={styles.todayKicker}>Today</p>
         <h2 id="assistant-today-title">Recommended next move</h2>
       </div>
 
@@ -1599,6 +1616,8 @@ function MessagePart({
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 }) {
   const partGroups = groupMessageParts(message.parts);
+  const ambientParts = message.parts.filter((part): part is Extract<AssistantMessagePart, { type: "ambient_update" }> => part.type === "ambient_update");
+  const bubbleGroups = partGroups.filter((group) => group.kind === "activity" || group.part.type !== "ambient_update");
 
   const renderPart = (part: AssistantMessagePart) => {
     if (part.type === "text") {
@@ -1682,19 +1701,31 @@ function MessagePart({
 
   return (
     <article className={`${styles.message} ${styles[`role_${message.role}`]}`}>
-      <div className={styles.meta}>
-        <span>{roleLabel(message.role)}</span>
-        <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-      </div>
-      <div className={styles.bubble}>
-        {partGroups.map((group) =>
-          group.kind === "activity" ? (
-            <ActivityStrip key={group.id} parts={group.parts} busy={busy} onCardAction={onCardAction} />
-          ) : (
-            renderPart(group.part)
-          ),
-        )}
-      </div>
+      {bubbleGroups.length > 0 ? (
+        <>
+          <div className={styles.meta}>
+            <span>{roleLabel(message.role)}</span>
+            <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          <div className={styles.bubble}>
+            {bubbleGroups.map((group) =>
+              group.kind === "activity" ? (
+                <ActivityStrip key={group.id} parts={group.parts} busy={busy} onCardAction={onCardAction} />
+              ) : (
+                renderPart(group.part)
+              ),
+            )}
+          </div>
+        </>
+      ) : null}
+      {ambientParts.map((part) => (
+        <AmbientTimelineRow
+          key={`ambient-row:${part.id}`}
+          update={part.update}
+          busy={busy}
+          onCardAction={onCardAction}
+        />
+      ))}
     </article>
   );
 }

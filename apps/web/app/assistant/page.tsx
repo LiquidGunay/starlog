@@ -208,6 +208,19 @@ function applyAssistantDelta(
   return snapshot;
 }
 
+function liveStatusLabel(status: LiveStatus, loading: boolean): string {
+  if (status === "auth_required") {
+    return "Sign in needed";
+  }
+  if (status === "recovering") {
+    return "Reconnecting";
+  }
+  if (loading || status === "connecting") {
+    return "Connecting";
+  }
+  return "Synced";
+}
+
 function localDateKey(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -397,6 +410,50 @@ function buildSuggestions(snapshot: AssistantThreadSnapshot | null): RailItem[] 
   suggestions.push({ label: "Plan today", href: "/planner" });
   suggestions.push({ label: "Start review", href: "/review" });
   return suggestions.slice(0, 4);
+}
+
+function partOfDayLabel(date: Date): string {
+  const hour = date.getHours();
+  if (hour < 12) {
+    return "Morning";
+  }
+  if (hour < 17) {
+    return "Afternoon";
+  }
+  return "Evening";
+}
+
+function buildStateChips({
+  now,
+  activeRun,
+  activeInterrupt,
+  todaySummary,
+  weeklySummary,
+  handoff,
+}: {
+  now: Date;
+  activeRun: AssistantRun | undefined;
+  activeInterrupt: AssistantInterrupt | undefined;
+  todaySummary: AssistantTodaySummary | null;
+  weeklySummary: AssistantWeeklySummary | null;
+  handoff: AssistantHandoff | null;
+}): string[] {
+  const chips = [partOfDayLabel(now)];
+  if (activeInterrupt) {
+    chips.push("Decision waiting");
+  } else if (activeRun?.status === "running") {
+    chips.push("Working");
+  } else if (todaySummary?.recommended_next_move?.urgency) {
+    chips.push(`${todaySummary.recommended_next_move.urgency} priority`);
+  } else if (todaySummary) {
+    chips.push("Today ready");
+  }
+  if (handoff) {
+    chips.push("Handoff ready");
+  } else if (weeklySummary) {
+    chips.push("Weekly review");
+  }
+  return chips.slice(0, 3);
 }
 
 function RailSection({
@@ -1053,6 +1110,7 @@ function AssistantPageContent() {
   const threadOpenLoopCount = (normalizedSnapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").length + (handoff ? 1 : 0);
   const summaryOpenLoopCount = (todaySummary?.open_loops || []).reduce((total, loop) => total + (Number(loop.count) || 0), 0);
   const openLoopCount = threadOpenLoopCount || summaryOpenLoopCount;
+  const railOpenLoops = cockpitOpenLoops.length > 0 ? cockpitOpenLoops : openLoops;
   const contextItems = [
     ...collectRailCards(normalizedSnapshot),
     ...supportSurfaces.filter((surface) => surface.active).map((surface) => ({ label: surface.title, href: surface.href })),
@@ -1071,6 +1129,8 @@ function AssistantPageContent() {
         : { label: "No urgent open loop is visible" },
   ];
   const suggestions = buildSuggestions(normalizedSnapshot);
+  const stateChips = buildStateChips({ now, activeRun, activeInterrupt, todaySummary, weeklySummary, handoff });
+  const statusLabel = liveStatusLabel(liveStatus, loading);
 
   return (
     <StarlogAssistantRuntimeProvider
@@ -1083,13 +1143,13 @@ function AssistantPageContent() {
           <div>
             <h1>Starlog Assistant</h1>
             <div className={styles.stateChips} aria-label="Assistant state">
-              <span>Morning</span>
-              <span>Focus</span>
-              <span>Briefing ready</span>
+              {stateChips.map((chip) => (
+                <span key={chip}>{chip}</span>
+              ))}
             </div>
           </div>
           <div className={styles.topMeta}>
-            <span className={styles.syncState}>Synced just now</span>
+            <span className={styles.syncState}>{statusLabel}</span>
             <span className={styles.avatar} aria-label="Account">
               AM
             </span>
@@ -1197,7 +1257,7 @@ function AssistantPageContent() {
             <article className={styles.sideCard}>
               <h2 className={styles.sideLabel}>Open loops</h2>
               <div className={styles.loopCount}>{openLoopCount}</div>
-              <RailSection title="Needs attention" items={openLoops} onNavigate={(href) => router.push(href)} />
+              <RailSection title="Needs attention" items={railOpenLoops} onNavigate={(href) => router.push(href)} />
             </article>
 
             <article className={styles.sideCard}>
