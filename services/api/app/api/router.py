@@ -26,6 +26,7 @@ from app.api.routes import (
     search,
     srs,
     strategic_context,
+    surfaces,
     sync,
     tasks,
     workers,
@@ -53,6 +54,7 @@ api_router.include_router(search.router, tags=["search"])
 api_router.include_router(research.router, tags=["research"])
 api_router.include_router(briefings.router, tags=["briefings"])
 api_router.include_router(events.router, tags=["events"])
+api_router.include_router(surfaces.router, tags=["surfaces"])
 api_router.include_router(integrations.router, tags=["integrations"])
 api_router.include_router(plugins.router, tags=["plugins"])
 api_router.include_router(importing.router, tags=["import"])
