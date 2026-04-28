@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { AssistantCard as ConversationCard, AssistantCardAction } from "@starlog/contracts";
 import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -928,7 +928,7 @@ function mobileLibraryCompactRows(
   palette: Record<string, string>,
   title: string,
   subtitle: string,
-  ctaLabel: string,
+  statusLabel: string,
   rows: Array<{ id: string; title: string; metaLabel: string; tagLabel: string; timestampLabel: string }>,
   emptyLabel: string,
 ) {
@@ -939,7 +939,7 @@ function mobileLibraryCompactRows(
           <Text style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "800" }}>{title}</Text>
           <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text>
         </View>
-        <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 12, fontWeight: "800" }}>{ctaLabel}</Text>
+        <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>{statusLabel}</Text>
       </View>
       {rows.length > 0 ? rows.slice(0, 3).map((row) => (
         <View key={row.id} style={{ flexDirection: "row", gap: 10, alignItems: "center", borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10 }}>
@@ -1188,7 +1188,7 @@ function mobileArtifactDetailView(
                     <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{row.label}</Text>
                     <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{row.value}</Text>
                   </View>
-                  {row.actionLabel ? <Text style={{ color: "#9fbfff", fontSize: 12, fontWeight: "800" }}>{row.actionLabel}</Text> : null}
+                  {row.actionLabel ? <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>Referenced</Text> : null}
                 </View>
               ))}
             </View>
@@ -1981,7 +1981,6 @@ export function MobileNotesSurface({
   palette,
   pendingCaptures,
   artifacts,
-  selectedArtifactId: appSelectedArtifactId,
   selectedArtifactDetail,
   artifactDetailStatus,
   openArtifactDetail,
@@ -2017,7 +2016,7 @@ export function MobileNotesSurface({
 }: MobileNotesSurfaceProps) {
   const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
   const [showArtifactDetail, setShowArtifactDetail] = useState(false);
-  const [surfaceSelectedArtifactId, setSurfaceSelectedArtifactId] = useState<string | null>(appSelectedArtifactId || null);
+  const [surfaceSelectedArtifactId, setSurfaceSelectedArtifactId] = useState<string | null>(null);
   const [expandedArtifactSections, setExpandedArtifactSections] = useState<Record<string, boolean>>({
     detail: true,
     preview: true,
@@ -2052,17 +2051,6 @@ export function MobileNotesSurface({
     setActiveSegment("Artifacts");
     setShowArtifactDetail(true);
   }
-
-  useEffect(() => {
-    if (!appSelectedArtifactId) {
-      return;
-    }
-    setSurfaceSelectedArtifactId(appSelectedArtifactId);
-    if (artifacts.some((artifact) => artifact.id === appSelectedArtifactId)) {
-      setActiveSegment("Artifacts");
-      setShowArtifactDetail(true);
-    }
-  }, [appSelectedArtifactId, artifacts]);
 
   function toggleArtifactSection(section: string) {
     setExpandedArtifactSections((current) => ({ ...current, [section]: !current[section] }));
@@ -2317,7 +2305,7 @@ export function MobileNotesSurface({
             palette,
             "Recent artifacts",
             "Artifacts created from your captures. Ready to use.",
-            "View all",
+            "Top 3",
             libraryModel.recentArtifacts,
             "No artifacts are loaded yet.",
           )
@@ -2328,7 +2316,7 @@ export function MobileNotesSurface({
             palette,
             "Notes & saved items",
             "Long-form notes, references, and saved knowledge.",
-            "View all",
+            "Top 3",
             libraryModel.noteRows,
             libraryModel.notesAggregate.emptyLabel,
           )
