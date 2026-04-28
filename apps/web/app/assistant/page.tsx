@@ -208,17 +208,17 @@ function applyAssistantDelta(
   return snapshot;
 }
 
-function liveStatusLabel(status: LiveStatus): string {
-  if (status === "live") {
-    return "Synced";
+function liveStatusLabel(status: LiveStatus, loading: boolean): string {
+  if (status === "auth_required") {
+    return "Sign in needed";
   }
   if (status === "recovering") {
     return "Reconnecting";
   }
-  if (status === "auth_required") {
-    return "Sign in needed";
+  if (loading || status === "connecting") {
+    return "Connecting";
   }
-  return "Connecting";
+  return "Synced";
 }
 
 function localDateKey(date = new Date()): string {
@@ -412,6 +412,50 @@ function buildSuggestions(snapshot: AssistantThreadSnapshot | null): RailItem[] 
   return suggestions.slice(0, 4);
 }
 
+function partOfDayLabel(date: Date): string {
+  const hour = date.getHours();
+  if (hour < 12) {
+    return "Morning";
+  }
+  if (hour < 17) {
+    return "Afternoon";
+  }
+  return "Evening";
+}
+
+function buildStateChips({
+  now,
+  activeRun,
+  activeInterrupt,
+  todaySummary,
+  weeklySummary,
+  handoff,
+}: {
+  now: Date;
+  activeRun: AssistantRun | undefined;
+  activeInterrupt: AssistantInterrupt | undefined;
+  todaySummary: AssistantTodaySummary | null;
+  weeklySummary: AssistantWeeklySummary | null;
+  handoff: AssistantHandoff | null;
+}): string[] {
+  const chips = [partOfDayLabel(now)];
+  if (activeInterrupt) {
+    chips.push("Decision waiting");
+  } else if (activeRun?.status === "running") {
+    chips.push("Working");
+  } else if (todaySummary?.recommended_next_move?.urgency) {
+    chips.push(`${todaySummary.recommended_next_move.urgency} priority`);
+  } else if (todaySummary) {
+    chips.push("Today ready");
+  }
+  if (handoff) {
+    chips.push("Handoff ready");
+  } else if (weeklySummary) {
+    chips.push("Weekly review");
+  }
+  return chips.slice(0, 3);
+}
+
 function RailSection({
   title,
   items,
@@ -543,7 +587,7 @@ function AssistantPageContent() {
   const searchParams = useSearchParams();
   const genericDraft = readGenericDraft(searchParams);
   const handoffToken = readHandoffToken(searchParams);
-  const { apiBase, token, isOnline, mutateWithQueue } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const clientTimezone =
     typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1054,7 +1098,9 @@ function AssistantPageContent() {
   const normalizedSnapshot = normalizeSnapshot(snapshot);
   const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
   const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
-  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(new Date());
+  const now = new Date();
+  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(now);
+  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(now);
   const openLoops = buildOpenLoops(normalizedSnapshot, handoff);
   const summaryOpenLoops = buildTodaySummaryOpenLoops(todaySummary);
   const cockpitOpenLoops =
@@ -1064,6 +1110,7 @@ function AssistantPageContent() {
   const threadOpenLoopCount = (normalizedSnapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").length + (handoff ? 1 : 0);
   const summaryOpenLoopCount = (todaySummary?.open_loops || []).reduce((total, loop) => total + (Number(loop.count) || 0), 0);
   const openLoopCount = threadOpenLoopCount || summaryOpenLoopCount;
+  const railOpenLoops = cockpitOpenLoops.length > 0 ? cockpitOpenLoops : openLoops;
   const contextItems = [
     ...collectRailCards(normalizedSnapshot),
     ...supportSurfaces.filter((surface) => surface.active).map((surface) => ({ label: surface.title, href: surface.href })),
@@ -1082,6 +1129,8 @@ function AssistantPageContent() {
         : { label: "No urgent open loop is visible" },
   ];
   const suggestions = buildSuggestions(normalizedSnapshot);
+  const stateChips = buildStateChips({ now, activeRun, activeInterrupt, todaySummary, weeklySummary, handoff });
+  const statusLabel = liveStatusLabel(liveStatus, loading);
 
   return (
     <StarlogAssistantRuntimeProvider
@@ -1090,19 +1139,22 @@ function AssistantPageContent() {
       onSendMessage={sendMessage}
     >
       <main className={styles.page}>
-        <section className={styles.hero}>
+        <header className={styles.topBar}>
           <div>
-            <p className={styles.kicker}>Today · {todayLabel}</p>
             <h1>Starlog Assistant</h1>
-            <p className={styles.lede}>
-              Move today forward with one thread for capture, planning, review, and follow-through.
-            </p>
+            <div className={styles.stateChips} aria-label="Assistant state">
+              {stateChips.map((chip) => (
+                <span key={chip}>{chip}</span>
+              ))}
+            </div>
           </div>
-          <div className={styles.heroMeta}>
-            <span>{openLoopCount} open loop{openLoopCount === 1 ? "" : "s"}</span>
-            <span>{todaySummary?.recommended_next_move?.urgency ? `${todaySummary.recommended_next_move.urgency} priority` : "Ready for the next move"}</span>
+          <div className={styles.topMeta}>
+            <span className={styles.syncState}>{statusLabel}</span>
+            <span className={styles.avatar} aria-label="Account">
+              AM
+            </span>
           </div>
-        </section>
+        </header>
 
         <section className={styles.layout}>
           <div className={styles.threadColumn}>
@@ -1194,32 +1246,28 @@ function AssistantPageContent() {
 
           <aside className={styles.sideRail}>
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Today</p>
-              <RailSection title="Now" items={nowItems} onNavigate={(href) => router.push(href)} />
-              <RailSection title="Open Loops" items={openLoops} onNavigate={(href) => router.push(href)} />
+              <div className={styles.nowHeader}>
+                <h2 className={styles.sideLabel}>Now</h2>
+                <strong>{timeLabel}</strong>
+                <span>{todayLabel}</span>
+              </div>
+              <RailSection title="Focus block" items={nowItems} onNavigate={(href) => router.push(href)} />
             </article>
 
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Context</p>
+              <h2 className={styles.sideLabel}>Open loops</h2>
+              <div className={styles.loopCount}>{openLoopCount}</div>
+              <RailSection title="Needs attention" items={railOpenLoops} onNavigate={(href) => router.push(href)} />
+            </article>
+
+            <article className={styles.sideCard}>
+              <h2 className={styles.sideLabel}>Current context</h2>
               <RailSection
                 title="Relevant"
                 items={contextItems.length > 0 ? contextItems : [{ label: "No active context yet" }]}
                 onNavigate={(href) => router.push(href)}
               />
-            </article>
-
-            <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Suggestions</p>
-              <RailSection title="Next" items={suggestions} onNavigate={(href) => router.push(href)} />
-              <details className={styles.diagnostics}>
-                <summary>Diagnostics</summary>
-                <ul>
-                  <li>{activeRun ? `${activeRun.orchestrator} run is ${activeRun.status}` : "No active run"}</li>
-                  <li>{activeInterrupt ? activeInterrupt.title : "No pending action"}</li>
-                  <li>{liveStatusLabel(liveStatus)} · {isOnline ? "Online" : "Offline"}</li>
-                  <li>{snapshot ? `${snapshot.messages.length} messages loaded` : "No thread snapshot yet"}</li>
-                </ul>
-              </details>
+              <RailSection title="Suggestions" items={suggestions} onNavigate={(href) => router.push(href)} />
             </article>
           </aside>
         </section>
