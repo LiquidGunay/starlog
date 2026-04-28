@@ -582,6 +582,102 @@
   font-weight: 400;
 }
 
+.activityStrip {
+  display: grid;
+  gap: 10px;
+}
+
+.activityStripDetails {
+  display: grid;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(143, 181, 210, 0.16);
+  background: rgba(143, 181, 210, 0.08);
+}
+
+.activityStripDetails summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+  color: rgba(244, 241, 232, 0.88);
+  font-weight: 650;
+  list-style-position: outside;
+}
+
+.activityStripDetails summary::marker {
+  color: rgba(143, 181, 210, 0.72);
+}
+
+.activityChips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.activityChips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 241, 232, 0.78);
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.activityTechnicalList {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.activityTechnicalSection {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.activityTechnicalSection small {
+  color: rgba(244, 241, 232, 0.58);
+  font-size: 12px;
+}
+
+.rawJsonBlock {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rawJsonBlock span {
+  color: rgba(244, 241, 232, 0.56);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.rawJsonBlock pre {
+  max-width: 100%;
+  margin: 0;
+  overflow-x: auto;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.24);
+  color: rgba(244, 241, 232, 0.86);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  white-space: pre;
+}
+
 .card,
 .panel {
   display: grid;

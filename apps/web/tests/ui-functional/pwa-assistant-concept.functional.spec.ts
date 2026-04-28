@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   API_BASE,
   assistantTodaySummary,
+  assistantThreadActivitySnapshot,
   assistantThreadSnapshot,
   assistantWeeklySummary,
   morningFocusInterrupt,
@@ -526,4 +527,43 @@ test("PWA assistant Today cockpit falls back to count-derived recommendation wit
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
     "Triage my overdue tasks and propose the next bounded move.",
   );
+});
+
+test("PWA assistant renders compact tool activity without console-like labels", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  await routeAssistantThread(page, () => assistantThreadActivitySnapshot());
+  await routeAssistantToday(page, () => assistantTodaySummary());
+  await routeAssistantWeekly(page, () => assistantWeeklySummary());
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByText("I found the current launch context and added the next concrete task.")).toBeVisible();
+  const activity = page.getByLabel("Assistant activity");
+  await expect(activity).toBeVisible();
+  const activitySummary = activity.locator("summary");
+  await expect(activitySummary.getByText("What I checked").first()).toBeVisible();
+  await expect(activitySummary.getByText("Checked Planner").first()).toBeVisible();
+  await expect(activitySummary.getByText("Checked Review").first()).toBeVisible();
+  await expect(activitySummary.getByText("Created task").first()).toBeVisible();
+  await expect(activity.getByText("tool_call")).toHaveCount(0);
+  await expect(activity.getByText("tool_result")).toHaveCount(0);
+  await expect(activity.getByText("domain tool").first()).toBeHidden();
+  await expect(activity.getByText("task_id").first()).toBeHidden();
+
+  await expect(page.getByRole("heading", { name: "Launch polish next task" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open task" })).toBeVisible();
+  await expect(page.getByText("The task is now attached to Android release prep")).toBeVisible();
+
+  await activitySummary.click();
+  await expect(activity.getByText("domain tool").first()).toBeVisible();
+  await expect(activity.getByText("task_id").first()).toBeVisible();
+  await expect(activity.getByText("checklist")).toBeVisible();
+  await expect(activity.getByText("Review mobile screenshots")).toBeVisible();
+  await expect(activity.getByText("Confirm preview handoff")).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(horizontalOverflow).toBe(false);
+
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-tool-activity-strip.png", fullPage: true });
 });

@@ -33,6 +33,134 @@ export function assistantThreadSnapshot(overrides: SnapshotOverrides = {}): Reco
   };
 }
 
+export function assistantThreadActivitySnapshot(overrides: SnapshotOverrides = {}): Record<string, unknown> {
+  return assistantThreadSnapshot({
+    last_message_at: "2026-04-28T09:12:00.000Z",
+    last_preview_text: "I checked Planner and Review, then created the task.",
+    messages: [
+      {
+        id: "msg_user_activity",
+        thread_id: "thr_primary",
+        run_id: null,
+        role: "user",
+        status: "complete",
+        parts: [{ type: "text", id: "part_user_activity", text: "Turn the launch polish note into the next task." }],
+        metadata: {},
+        created_at: "2026-04-28T09:10:00.000Z",
+        updated_at: "2026-04-28T09:10:00.000Z",
+      },
+      {
+        id: "msg_assistant_activity",
+        thread_id: "thr_primary",
+        run_id: "run_activity",
+        role: "assistant",
+        status: "complete",
+        parts: [
+          {
+            type: "text",
+            id: "part_activity_intro",
+            text: "I found the current launch context and added the next concrete task.",
+          },
+          {
+            type: "tool_call",
+            id: "part_tool_call_planner",
+            tool_call: {
+              id: "tool_call_planner",
+              tool_name: "search_planner",
+              tool_kind: "domain_tool",
+              status: "complete",
+              arguments: { query: "launch polish", include_completed: false },
+              title: null,
+              metadata: { trace_id: "trace_planner" },
+            },
+          },
+          {
+            type: "tool_result",
+            id: "part_tool_result_planner",
+            tool_result: {
+              id: "tool_result_planner",
+              tool_call_id: "tool_call_planner",
+              status: "complete",
+              output: { task_count: 2, project: "Android release prep" },
+              entity_ref: { entity_type: "project", entity_id: "project_android_release", href: "/planner", title: "Android release prep" },
+              metadata: { tool_name: "search_planner" },
+            },
+          },
+          {
+            type: "status",
+            id: "part_status_review",
+            status: "running",
+            label: "Checked Review",
+          },
+          {
+            type: "tool_call",
+            id: "part_tool_call_create_task",
+            tool_call: {
+              id: "tool_call_create_task",
+              tool_name: "create_task",
+              tool_kind: "domain_tool",
+              status: "complete",
+              arguments: { title: "Polish Android launch preview", surface: "planner" },
+              title: null,
+              metadata: { trace_id: "trace_create_task" },
+            },
+          },
+          {
+            type: "tool_result",
+            id: "part_tool_result_create_task",
+            tool_result: {
+              id: "tool_result_create_task",
+              tool_call_id: "tool_call_create_task",
+              status: "complete",
+              output: {
+                task_id: "task_launch_polish",
+                due_at: "2026-04-28T17:00:00.000Z",
+                checklist: [
+                  { label: "Review mobile screenshots", owner: "assistant" },
+                  { label: "Confirm preview handoff", owner: "user" },
+                ],
+              },
+              card: {
+                kind: "task_list",
+                version: 1,
+                title: "Launch polish next task",
+                body: "Polish Android launch preview is ready in Planner.",
+                entity_ref: {
+                  entity_type: "task",
+                  entity_id: "task_launch_polish",
+                  href: "/planner?task=task_launch_polish",
+                  title: "Polish Android launch preview",
+                },
+                actions: [
+                  {
+                    id: "open_task",
+                    label: "Open task",
+                    kind: "navigation",
+                    href: "/planner?task=task_launch_polish",
+                    style: "primary",
+                  },
+                ],
+                metadata: { task_count: 1 },
+              },
+              entity_ref: { entity_type: "task", entity_id: "task_launch_polish", href: "/planner?task=task_launch_polish", title: "Polish Android launch preview" },
+              metadata: { tool_name: "create_task" },
+            },
+          },
+          {
+            type: "text",
+            id: "part_activity_outro",
+            text: "The task is now attached to Android release prep so today's plan has a clear next move.",
+          },
+        ],
+        metadata: {},
+        created_at: "2026-04-28T09:12:00.000Z",
+        updated_at: "2026-04-28T09:12:00.000Z",
+      },
+    ],
+    ...overrides,
+  });
+}
+
 export function assistantTodaySummary(overrides: SnapshotOverrides = {}): Record<string, unknown> {
   return {
     date: "2026-04-28",
