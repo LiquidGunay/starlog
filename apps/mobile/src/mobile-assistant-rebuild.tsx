@@ -38,6 +38,11 @@ import {
   visibleContextChips,
   type PanelTone,
 } from "./mobile-assistant-panel-state";
+import {
+  buildMobileAssistantTodayViewModel,
+  type MobileAssistantTodayAction,
+  type MobileAssistantTodaySummary,
+} from "./mobile-assistant-today-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
@@ -65,6 +70,8 @@ type MobileAssistantRebuildProps = {
   reuseCardText: (value: string) => void;
   onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
   onOpenAttachment: (url: string | null | undefined, label: string) => void;
+  assistantTodaySummary?: MobileAssistantTodaySummary | null;
+  onAssistantTodayAction: (action: MobileAssistantTodayAction) => void;
 };
 
 type ThreadLens = "live" | "artifacts" | "actions";
@@ -901,6 +908,8 @@ export function MobileAssistantRebuild({
   reuseCardText,
   onOpenEntityRef,
   onOpenAttachment,
+  assistantTodaySummary,
+  onAssistantTodayAction,
 }: MobileAssistantRebuildProps) {
   const [threadLens, setThreadLens] = useState<ThreadLens>("live");
   const [activeAttachmentByMessage, setActiveAttachmentByMessage] = useState<Record<string, number>>({});
@@ -973,6 +982,10 @@ export function MobileAssistantRebuild({
     voiceActionState === "recording" ? "stop" : voiceActionState === "listening" ? "waveform" : "microphone-outline";
   const showVoiceHint = voiceActionState !== "idle" || Boolean(voiceActionHint);
   const displaySuggestions = homeDraft.trim().length === 0 ? suggestionPills : suggestionPills.slice(0, 1);
+  const todayViewModel = useMemo(
+    () => buildMobileAssistantTodayViewModel(assistantTodaySummary),
+    [assistantTodaySummary],
+  );
 
   return (
     <View style={{ gap: 16, paddingTop: 4 }}>
@@ -1069,15 +1082,111 @@ export function MobileAssistantRebuild({
 
       <View style={{ gap: 16, paddingBottom: 4 }}>
         {filteredMessages.length === 0 ? (
-          <View style={{ alignItems: "center", gap: 10, paddingTop: 40, paddingHorizontal: 28 }}>
-            <MaterialCommunityIcons name="message-outline" size={26} color={palette.accent} />
-            <Text style={{ color: palette.text, fontSize: 22, lineHeight: 26, fontWeight: "800", textAlign: "center" }}>
-              {productCopy.assistant.emptyTitle}
-            </Text>
-            <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21, textAlign: "center" }}>
-              {productCopy.assistant.emptyBody}
-            </Text>
-          </View>
+          visibleThreadMessages.length === 0 && todayViewModel ? (
+            <View
+              style={{
+                borderRadius: 20,
+                paddingHorizontal: 14,
+                paddingVertical: 14,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+                backgroundColor: "rgba(255,255,255,0.018)",
+                gap: 13,
+              }}
+            >
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                    Today · {todayViewModel.urgency} focus
+                  </Text>
+                  <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "700" }}>{todayViewModel.dateLabel}</Text>
+                </View>
+                <Text style={{ color: palette.text, fontSize: 24, lineHeight: 29, fontWeight: "800" }}>
+                  {todayViewModel.title}
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>
+                  {todayViewModel.body}
+                </Text>
+              </View>
+
+              <View style={{ gap: 7 }}>
+                {todayViewModel.reasonStack.map((reason) => (
+                  <View key={reason} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                    <MaterialCommunityIcons name={"check-circle-outline" as never} size={15} color={palette.accent} style={{ marginTop: 2 }} />
+                    <Text style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 19 }}>{reason}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={{
+                  minHeight: 46,
+                  borderRadius: 999,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: palette.accent,
+                }}
+                onPress={() => onAssistantTodayAction(todayViewModel.primaryAction)}
+              >
+                <Text style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                  {todayViewModel.primaryAction.label}
+                </Text>
+              </TouchableOpacity>
+
+              {todayViewModel.promptChips.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+                  {todayViewModel.promptChips.map((action) => (
+                    <TouchableOpacity
+                      key={action.key}
+                      style={{
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        backgroundColor: "rgba(255,255,255,0.025)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.05)",
+                      }}
+                      onPress={() => onAssistantTodayAction(action)}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                        {action.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : null}
+
+              {todayViewModel.openLoops.length > 0 ? (
+                <View
+                  style={{
+                    borderTopWidth: 1,
+                    borderTopColor: "rgba(255,255,255,0.05)",
+                    paddingTop: 11,
+                    gap: 7,
+                  }}
+                >
+                  {todayViewModel.openLoops.map((loop) => (
+                    <View key={loop.key} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 17 }}>{loop.label}</Text>
+                      <Text style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{loop.count}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <View style={{ alignItems: "center", gap: 10, paddingTop: 40, paddingHorizontal: 28 }}>
+              <MaterialCommunityIcons name="message-outline" size={26} color={palette.accent} />
+              <Text style={{ color: palette.text, fontSize: 22, lineHeight: 26, fontWeight: "800", textAlign: "center" }}>
+                {productCopy.assistant.emptyTitle}
+              </Text>
+              <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21, textAlign: "center" }}>
+                {productCopy.assistant.emptyBody}
+              </Text>
+            </View>
+          )
         ) : (
           filteredMessages.map((message, index) => {
             const previousRole = filteredMessages[index - 1]?.role;
