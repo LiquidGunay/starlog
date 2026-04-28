@@ -85,7 +85,7 @@ export function AprilWorkspaceShell({
         </button>
         {railSlot ? <div className="april-rail-slot">{railSlot}</div> : null}
         <div className="april-rail-footer">
-          <Link className="april-rail-footer-link" href={PRODUCT_SURFACES.library.href}>
+          <Link className="april-rail-footer-link" href="/library">
             {PRODUCT_SURFACES.library.label}
           </Link>
           <Link className="april-rail-footer-link" href="/runtime">
