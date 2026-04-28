@@ -22,6 +22,15 @@ def _bucket(key: str, label: str, count: int) -> dict[str, Any]:
     return {"key": key, "label": label, "count": int(count)}
 
 
+def _linked_bucket(key: str, label: str, count: int, href: str) -> dict[str, Any]:
+    return {"key": key, "label": label, "count": int(count), "href": href}
+
+
+def _count_phrase(count: int, singular: str, plural: str | None = None) -> str:
+    noun = singular if count == 1 else (plural or f"{singular}s")
+    return f"{count} {noun}"
+
+
 def _today() -> date:
     return utc_now().date()
 
@@ -335,6 +344,156 @@ def review_summary(conn: Connection) -> dict[str, Any]:
     }
 
 
+def _assistant_recommended_next_move(counts: dict[str, int]) -> dict[str, Any]:
+    if counts["open_interrupt_count"] > 0:
+        return {
+            "key": "resolve_interrupt",
+            "title": "Resolve pending assistant decision",
+            "body": f"{_count_phrase(counts['open_interrupt_count'], 'assistant decision')} waiting before the current run can continue.",
+            "surface": "assistant",
+            "href": "/assistant",
+            "action_label": "Review decision",
+            "prompt": "Show my pending assistant decisions.",
+            "priority": 100,
+            "urgency": "high",
+        }
+    if counts["overdue_tasks"] > 0:
+        return {
+            "key": "clear_overdue_tasks",
+            "title": "Clear overdue tasks",
+            "body": f"{_count_phrase(counts['overdue_tasks'], 'task')} overdue and needs a decision today.",
+            "surface": "planner",
+            "href": "/planner",
+            "action_label": "Open planner",
+            "prompt": "Help me triage my overdue tasks.",
+            "priority": 90,
+            "urgency": "high",
+        }
+    if counts["unprocessed_library"] > 0:
+        return {
+            "key": "process_library_inbox",
+            "title": "Process new captures",
+            "body": f"{_count_phrase(counts['unprocessed_library'], 'capture')} unprocessed in the library inbox.",
+            "surface": "library",
+            "href": "/library",
+            "action_label": "Process captures",
+            "prompt": "Help me process my unprocessed captures.",
+            "priority": 80,
+            "urgency": "medium",
+        }
+    if counts["due_reviews"] > 0:
+        return {
+            "key": "start_due_review",
+            "title": "Start due review",
+            "body": f"{_count_phrase(counts['due_reviews'], 'review card')} due now.",
+            "surface": "review",
+            "href": "/review",
+            "action_label": "Start review",
+            "prompt": "Start my due review queue.",
+            "priority": 70,
+            "urgency": "medium",
+        }
+    if counts["open_tasks"] > 0 or counts["open_commitments"] > 0:
+        body_parts = []
+        if counts["open_tasks"] > 0:
+            body_parts.append(_count_phrase(counts["open_tasks"], "open task"))
+        if counts["open_commitments"] > 0:
+            body_parts.append(_count_phrase(counts["open_commitments"], "open commitment"))
+        return {
+            "key": "plan_open_loops",
+            "title": "Plan open loops",
+            "body": f"{' and '.join(body_parts)} ready to organize.",
+            "surface": "planner",
+            "href": "/planner",
+            "action_label": "Plan today",
+            "prompt": "Help me plan my open tasks and commitments.",
+            "priority": 60,
+            "urgency": "normal",
+        }
+    return {
+        "key": "plan_today",
+        "title": "Plan today",
+        "body": "No urgent open loops are visible; choose the next focus for today.",
+        "surface": "planner",
+        "href": "/planner",
+        "action_label": "Plan today",
+        "prompt": "Help me plan today.",
+        "priority": 10,
+        "urgency": "low",
+    }
+
+
+def _assistant_reason_stack(counts: dict[str, int]) -> list[str]:
+    reasons: list[str] = []
+    if counts["open_interrupt_count"] > 0:
+        reasons.append(f"{_count_phrase(counts['open_interrupt_count'], 'assistant decision')} pending")
+    if counts["overdue_tasks"] > 0:
+        reasons.append(f"{_count_phrase(counts['overdue_tasks'], 'task')} overdue")
+    if counts["unprocessed_library"] > 0:
+        reasons.append(f"{_count_phrase(counts['unprocessed_library'], 'library capture')} unprocessed")
+    if counts["due_reviews"] > 0:
+        reasons.append(f"{_count_phrase(counts['due_reviews'], 'review card')} due")
+    if len(reasons) < 4 and counts["open_commitments"] > 0:
+        reasons.append(f"{_count_phrase(counts['open_commitments'], 'commitment')} open")
+    if len(reasons) < 4 and counts["open_tasks"] > 0:
+        reasons.append(f"{_count_phrase(counts['open_tasks'], 'task')} open")
+    if len(reasons) < 4 and counts["active_run_count"] > 0:
+        reasons.append(f"{_count_phrase(counts['active_run_count'], 'assistant run')} active")
+    if reasons:
+        return reasons[:4]
+    return ["No pending interrupts, overdue tasks, unprocessed captures, or due reviews are visible."]
+
+
+def _assistant_at_a_glance(counts: dict[str, int]) -> list[dict[str, Any]]:
+    return [
+        _linked_bucket("planner", "Planner", counts["open_tasks"], "/planner"),
+        _linked_bucket("library", "Library inbox", counts["unprocessed_library"], "/library"),
+        _linked_bucket("review", "Review due", counts["due_reviews"], "/review"),
+        _linked_bucket("commitments", "Open commitments", counts["open_commitments"], "/planner"),
+    ]
+
+
+def _assistant_quick_actions() -> list[dict[str, Any]]:
+    return [
+        {
+            "key": "plan_today",
+            "title": "Plan today",
+            "surface": "planner",
+            "href": "/planner",
+            "action_label": "Plan today",
+            "prompt": "Help me plan today.",
+            "priority": 10,
+        },
+        {
+            "key": "process_captures",
+            "title": "Process captures",
+            "surface": "library",
+            "href": "/library",
+            "action_label": "Process captures",
+            "prompt": "Help me process my unprocessed captures.",
+            "priority": 20,
+        },
+        {
+            "key": "start_review",
+            "title": "Start review",
+            "surface": "review",
+            "href": "/review",
+            "action_label": "Start review",
+            "prompt": "Start my due review queue.",
+            "priority": 30,
+        },
+        {
+            "key": "create_task",
+            "title": "Create task",
+            "surface": "planner",
+            "href": "/planner",
+            "action_label": "Create task",
+            "prompt": "Create a task.",
+            "priority": 40,
+        },
+    ]
+
+
 def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | None = None) -> dict[str, Any]:
     day = _parse_date(day_value)
     start, end = _date_bounds(day)
@@ -396,6 +555,16 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         """,
     )
     open_commitments = _count(conn, "SELECT COUNT(*) FROM commitments WHERE status = 'open'")
+    counts = {
+        "active_run_count": active_run_count,
+        "open_interrupt_count": open_interrupt_count,
+        "recent_surface_event_count": recent_surface_event_count,
+        "open_tasks": open_tasks,
+        "overdue_tasks": overdue_tasks,
+        "due_reviews": due_reviews,
+        "unprocessed_library": unprocessed_library,
+        "open_commitments": open_commitments,
+    }
 
     return {
         "date": day.isoformat(),
@@ -404,11 +573,15 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         "open_interrupt_count": open_interrupt_count,
         "recent_surface_event_count": recent_surface_event_count,
         "open_loops": [
-            {"key": "open_tasks", "label": "Open tasks", "count": open_tasks, "href": "/planner"},
-            {"key": "overdue_tasks", "label": "Overdue tasks", "count": overdue_tasks, "href": "/planner"},
-            {"key": "due_reviews", "label": "Reviews due", "count": due_reviews, "href": "/review"},
-            {"key": "unprocessed_library", "label": "Library inbox", "count": unprocessed_library, "href": "/library"},
-            {"key": "open_commitments", "label": "Open commitments", "count": open_commitments, "href": "/planner"},
+            _linked_bucket("open_tasks", "Open tasks", open_tasks, "/planner"),
+            _linked_bucket("overdue_tasks", "Overdue tasks", overdue_tasks, "/planner"),
+            _linked_bucket("due_reviews", "Reviews due", due_reviews, "/review"),
+            _linked_bucket("unprocessed_library", "Library inbox", unprocessed_library, "/library"),
+            _linked_bucket("open_commitments", "Open commitments", open_commitments, "/planner"),
         ],
+        "recommended_next_move": _assistant_recommended_next_move(counts),
+        "reason_stack": _assistant_reason_stack(counts),
+        "at_a_glance": _assistant_at_a_glance(counts),
+        "quick_actions": _assistant_quick_actions(),
         "generated_at": generated_at,
     }

@@ -78,6 +78,28 @@ class AssistantOpenLoopSummary(BaseModel):
     href: str | None = None
 
 
+class AssistantRecommendedNextMove(BaseModel):
+    key: str
+    title: str
+    body: str
+    surface: str
+    href: str | None = None
+    action_label: str | None = None
+    prompt: str | None = None
+    priority: int
+    urgency: str
+
+
+class AssistantQuickAction(BaseModel):
+    key: str
+    title: str
+    surface: str
+    href: str | None = None
+    action_label: str | None = None
+    prompt: str | None = None
+    priority: int
+
+
 class AssistantTodaySummary(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     thread_id: str | None = None
@@ -85,4 +107,8 @@ class AssistantTodaySummary(BaseModel):
     open_interrupt_count: int
     recent_surface_event_count: int
     open_loops: list[AssistantOpenLoopSummary]
+    recommended_next_move: AssistantRecommendedNextMove
+    reason_stack: list[str]
+    at_a_glance: list[AssistantOpenLoopSummary]
+    quick_actions: list[AssistantQuickAction]
     generated_at: datetime
