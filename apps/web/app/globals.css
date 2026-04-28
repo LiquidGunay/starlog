@@ -998,11 +998,125 @@ a {
   gap: 1.4rem;
 }
 
+.april-review-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.april-review-heading h1 {
+  margin: 0.1rem 0 0;
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(2.2rem, 4vw, 4rem);
+  line-height: 0.95;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.april-review-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.april-review-tabs button {
+  border: 1px solid rgba(73, 71, 63, 0.18);
+  border-radius: 999px;
+  background: rgba(43, 27, 35, 0.74);
+  color: var(--muted);
+  padding: 0.62rem 0.82rem;
+  font-family: "Manrope", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.april-review-tabs button.active {
+  border-color: rgba(225, 113, 79, 0.36);
+  background: rgba(225, 113, 79, 0.14);
+  color: var(--primary-soft);
+}
+
 .april-review-focus-panel {
   min-height: 41rem;
   display: grid;
   gap: 1.3rem;
   align-content: start;
+}
+
+.april-review-ladder-panel {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.april-review-ladder-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.april-review-ladder-step {
+  display: grid;
+  gap: 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.16);
+  background: rgba(39, 23, 30, 0.72);
+  padding: 0.9rem;
+}
+
+.april-review-ladder-step.active {
+  border-color: rgba(225, 113, 79, 0.36);
+  background: rgba(79, 44, 43, 0.62);
+}
+
+.april-review-ladder-step-head,
+.april-review-health-list div,
+.april-review-rail-health div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.april-review-ladder-step strong {
+  color: var(--primary-soft);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.april-review-ladder-step-head span {
+  color: var(--primary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.april-review-ladder-step p,
+.april-review-ladder-step small,
+.april-review-context-grid p,
+.april-review-health-list span,
+.april-review-health-list strong,
+.april-review-rail-health span,
+.april-review-rail-health strong {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted), white 6%);
+  line-height: 1.55;
+}
+
+.april-review-ladder-step small,
+.april-review-health-list span,
+.april-review-rail-health span {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .april-review-focus-meta,
@@ -1080,6 +1194,43 @@ a {
 .april-review-side-card {
   display: grid;
   gap: 0.9rem;
+}
+
+.april-review-context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.april-review-context-grid div {
+  display: grid;
+  gap: 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.14);
+  background: rgba(39, 23, 30, 0.64);
+  padding: 0.85rem;
+}
+
+.april-review-health-list,
+.april-review-rail-health {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.april-review-health-list div,
+.april-review-rail-health div {
+  border-radius: 0.9rem;
+  background: rgba(39, 23, 30, 0.66);
+  padding: 0.65rem 0.75rem;
+}
+
+.april-review-health-list strong,
+.april-review-rail-health strong {
+  color: var(--primary-soft);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-align: right;
 }
 
 .april-review-side-metrics {
@@ -1516,7 +1667,7 @@ a {
 }
 
 .april-review-grid {
-  grid-template-columns: minmax(0, 1.2fr) minmax(19rem, 0.65fr);
+  grid-template-columns: minmax(15rem, 0.55fr) minmax(0, 1.2fr) minmax(19rem, 0.65fr);
   align-items: start;
 }
 
@@ -1826,6 +1977,15 @@ a {
 
   .april-shell-content {
     padding: 1rem;
+  }
+
+  .april-review-heading,
+  .april-review-tabs {
+    justify-content: flex-start;
+  }
+
+  .april-review-context-grid {
+    grid-template-columns: 1fr;
   }
 
   .april-review-ratings {
