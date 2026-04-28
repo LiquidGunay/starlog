@@ -25,6 +25,30 @@ type Deck = {
   due_count: number;
 };
 
+type CountBucket = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+type ReviewQueueHealth = {
+  due_count: number;
+  overdue_count: number;
+  due_soon_count: number;
+  suspended_count: number;
+  reviewed_today_count: number;
+  last_reviewed_at?: string | null;
+  average_latency_ms?: number | null;
+};
+
+type ReviewSurfaceSummary = {
+  ladder_counts: CountBucket[];
+  total_ladder_counts: CountBucket[];
+  deck_buckets: CountBucket[];
+  queue_health: ReviewQueueHealth;
+  generated_at: string;
+};
+
 type SessionStats = {
   reviewed: number;
   again: number;
@@ -61,6 +85,29 @@ const REVIEW_MODE_LABELS: Record<ReviewMode, string> = {
   application: "Application",
   synthesis: "Synthesis",
   judgment: "Judgment",
+};
+
+const REVIEW_MODE_DETAILS: Record<ReviewMode, { purpose: string; schedule: string }> = {
+  recall: {
+    purpose: "Remember facts.",
+    schedule: "Grouped by due recall cards now; richer drill tuning later.",
+  },
+  understanding: {
+    purpose: "Explain and connect.",
+    schedule: "Grouped by explanation-mode cards now; quality scoring later.",
+  },
+  application: {
+    purpose: "Apply to new situations.",
+    schedule: "Grouped by scenario-style cards now; generated drills later.",
+  },
+  synthesis: {
+    purpose: "Combine and create.",
+    schedule: "Grouped by connection cards now; project-aware synthesis later.",
+  },
+  judgment: {
+    purpose: "Evaluate and decide.",
+    schedule: "Grouped by decision cards now; uncertainty signals later.",
+  },
 };
 
 const REVIEW_OPTIONS = [
@@ -110,10 +157,91 @@ function queueSplitSummary(counts: Record<ReviewMode, number>): string {
   return parts.length > 0 ? parts.join(" · ") : "No ladder items due";
 }
 
+function bucketCount(buckets: CountBucket[] | undefined, key: string): number {
+  return buckets?.find((bucket) => bucket.key === key)?.count ?? 0;
+}
+
+function bucketCountsByMode(buckets: CountBucket[] | undefined, fallback: Record<ReviewMode, number>): Record<ReviewMode, number> {
+  return REVIEW_MODE_ORDER.reduce<Record<ReviewMode, number>>((counts, mode) => {
+    counts[mode] = bucketCount(buckets, mode) || fallback[mode] || 0;
+    return counts;
+  }, { recall: 0, understanding: 0, application: 0, synthesis: 0, judgment: 0 });
+}
+
+function summaryDeckBuckets(summary: ReviewSurfaceSummary | null, decks: Deck[]): CountBucket[] {
+  if (summary?.deck_buckets.length) {
+    return summary.deck_buckets;
+  }
+  return decks
+    .filter((deck) => deck.card_count > 0)
+    .map((deck) => ({ key: deck.name, label: deck.name, count: deck.due_count }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) {
+    return "No reviews recorded";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown time";
+  }
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatLatency(milliseconds?: number | null): string {
+  if (milliseconds == null) {
+    return "No latency sample";
+  }
+  if (milliseconds < 1000) {
+    return `${milliseconds} ms`;
+  }
+  return `${(milliseconds / 1000).toFixed(1)} s`;
+}
+
+function decrementBucket(buckets: CountBucket[], keyCandidates: string[]): CountBucket[] {
+  const keys = new Set(keyCandidates.filter(Boolean));
+  return buckets.map((bucket) => (
+    keys.has(bucket.key) || keys.has(bucket.label)
+      ? { ...bucket, count: Math.max(0, bucket.count - 1) }
+      : bucket
+  ));
+}
+
+function reconcileSummaryAfterReview(
+  currentSummary: ReviewSurfaceSummary | null,
+  card: Card,
+): ReviewSurfaceSummary | null {
+  if (!currentSummary) {
+    return null;
+  }
+
+  const mode = reviewModeForCard(card);
+  const wasOverdue = new Date(card.due_at).getTime() < Date.now();
+
+  return {
+    ...currentSummary,
+    ladder_counts: decrementBucket(currentSummary.ladder_counts, [mode]),
+    queue_health: {
+      ...currentSummary.queue_health,
+      due_count: Math.max(0, currentSummary.queue_health.due_count - 1),
+      overdue_count: wasOverdue ? Math.max(0, currentSummary.queue_health.overdue_count - 1) : currentSummary.queue_health.overdue_count,
+      reviewed_today_count: currentSummary.queue_health.reviewed_today_count + 1,
+      last_reviewed_at: new Date().toISOString(),
+    },
+  };
+}
+
 export default function ReviewPage() {
   const { apiBase, token } = useSessionConfig();
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [summary, setSummary] = useState<ReviewSurfaceSummary | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [revealedCardId, setRevealedCardId] = useState<string | null>(null);
   const [status, setStatus] = useState("SRS queue idle.");
@@ -126,17 +254,22 @@ export default function ReviewPage() {
   const missingConfig = missingToken || missingApiBase;
   const currentCard = cards[0] ?? null;
   const currentDeck = currentCard ? decks.find((deck) => deck.id === currentCard.deck_id) ?? null : null;
-  const activeDecks = useMemo(
-    () => decks.filter((deck) => deck.card_count > 0).sort((left, right) => right.due_count - left.due_count),
-    [decks],
-  );
   const reviewedTotal = stats.reviewed + cards.length;
   const sessionProgress = reviewedTotal > 0 ? (stats.reviewed / reviewedTotal) * 100 : 0;
   const focusTier = currentDeck ? Math.min(4, Math.max(1, Math.ceil(currentDeck.due_count / 6))) : 1;
   const modeCounts = useMemo(() => reviewModeCounts(cards), [cards]);
-  const primaryMode = primaryReviewMode(modeCounts);
+  const ladderCounts = useMemo(() => bucketCountsByMode(summary?.ladder_counts, modeCounts), [modeCounts, summary]);
+  const totalLadderCounts = useMemo(() => bucketCountsByMode(summary?.total_ladder_counts, ladderCounts), [ladderCounts, summary]);
+  const primaryMode = primaryReviewMode(ladderCounts);
   const currentMode = currentCard ? reviewModeForCard(currentCard) : primaryMode;
-  const queueSplit = queueSplitSummary(modeCounts);
+  const queueSplit = queueSplitSummary(ladderCounts);
+  const deckBuckets = useMemo(() => summaryDeckBuckets(summary, decks), [decks, summary]);
+  const health = summary?.queue_health;
+  const dueCount = health?.due_count ?? cards.length;
+  const overdueCount = health?.overdue_count ?? cards.filter((card) => new Date(card.due_at).getTime() < Date.now()).length;
+  const dueSoonCount = health?.due_soon_count ?? 0;
+  const suspendedCount = health?.suspended_count ?? 0;
+  const reviewedTodayCount = health?.reviewed_today_count ?? stats.reviewed;
 
   const loadReviewData = useCallback(async () => {
     if (missingConfig) {
@@ -146,16 +279,18 @@ export default function ReviewPage() {
 
     setLoading(true);
     try {
-      const [nextCards, nextDecks] = await Promise.all([
+      const [summaryPayload, nextCards, nextDecks] = await Promise.all([
+        apiRequest<ReviewSurfaceSummary>(apiBase, token, "/v1/surfaces/review/summary"),
         apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42"),
         apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks"),
       ]);
+      setSummary(summaryPayload);
       setCards(nextCards);
       setDecks(nextDecks);
       setStats(emptyStats());
       setShowAnswer(false);
       setRevealedCardId(null);
-      setStatus(`Loaded ${nextCards.length} due card(s) across ${nextDecks.length} deck(s).`);
+      setStatus(`Loaded ${summaryPayload.queue_health.due_count} due card(s) across ${nextDecks.length} deck(s).`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load the review queue");
     } finally {
@@ -217,7 +352,9 @@ export default function ReviewPage() {
         method: "POST",
         body: JSON.stringify({ card_id: currentCard.id, rating }),
       });
+      const reviewedCard = currentCard;
       setCards((previous) => previous.filter((card) => card.id !== currentCard.id));
+      setSummary((previous) => reconcileSummaryAfterReview(previous, reviewedCard));
       setStats((previous) => ({
         reviewed: previous.reviewed + 1,
         again: previous.again + (rating === 1 ? 1 : 0),
@@ -241,27 +378,35 @@ export default function ReviewPage() {
   return (
     <AprilWorkspaceShell
       activeSurface="srs-review"
-      statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${REVIEW_MODE_LABELS[currentMode]} · ${cards.length} due` : "Focused review ready"}
-      queueLabel={`${cards.length} due`}
+      statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${REVIEW_MODE_LABELS[currentMode]} · ${dueCount} due` : "Focused review ready"}
+      queueLabel={`${dueCount} due`}
       searchPlaceholder="Search decks..."
       railSlot={(
         <>
           <div className="april-rail-section">
-            <span className="april-rail-section-label">Active Decks</span>
+            <span className="april-rail-section-label">Queue Health</span>
+            <div className="april-review-rail-health">
+              <div><strong>{dueCount}</strong><span>Due</span></div>
+              <div><strong>{overdueCount}</strong><span>Overdue</span></div>
+              <div><strong>{reviewedTodayCount}</strong><span>Reviewed today</span></div>
+            </div>
+          </div>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Deck Buckets</span>
             <div className="april-review-rail-decks">
-              {activeDecks.length === 0 ? (
-                <p className="console-copy">No active decks loaded yet.</p>
+              {deckBuckets.length === 0 ? (
+                <p className="console-copy">No deck buckets loaded yet.</p>
               ) : (
-                activeDecks.slice(0, 6).map((deck) => (
+                deckBuckets.slice(0, 6).map((deck) => (
                   <div
-                    key={deck.id}
-                    className={deck.id === currentCard?.deck_id ? "april-review-rail-deck active" : "april-review-rail-deck"}
+                    key={deck.key}
+                    className={deck.key === currentDeck?.name || deck.key === currentDeck?.id ? "april-review-rail-deck active" : "april-review-rail-deck"}
                   >
                     <div>
-                      <strong>{deck.name}</strong>
-                      <span>{deck.description || "Focused study set"}</span>
+                      <strong>{deck.label}</strong>
+                      <span>Deck bucket</span>
                     </div>
-                    <small>{deck.due_count > 0 ? `${deck.due_count} due` : "stable"}</small>
+                    <small>{deck.count > 0 ? `${deck.count} items` : "stable"}</small>
                   </div>
                 ))
               )}
@@ -279,6 +424,20 @@ export default function ReviewPage() {
       )}
     >
       <section className="april-review-surface">
+        <div className="april-review-heading">
+          <div>
+            <p className="eyebrow">Starlog Review</p>
+            <h1>Learning ladder</h1>
+          </div>
+          <div className="april-review-tabs" aria-label="Review view status">
+            {["Today", "All due", "Upcoming", "Mastered", "Insights"].map((label, index) => (
+              <span key={label} className={index === 0 ? "active" : ""} aria-current={index === 0 ? "page" : undefined}>
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
         <div className="april-review-progress">
           <div className="april-review-progress-head">
             <div>
@@ -295,6 +454,33 @@ export default function ReviewPage() {
         </div>
 
         <div className="april-review-grid">
+          <AprilPanel className="april-review-ladder-panel">
+            <div className="april-panel-head">
+              <div>
+                <span className="review-sidebar-kicker">Learning Ladder</span>
+                <h2>Depth of review</h2>
+                <p className="review-copy">Current queue context by card mode. Generated drills and deeper scenario flows are not active here yet.</p>
+              </div>
+            </div>
+            <div className="april-review-ladder-list">
+              {REVIEW_MODE_ORDER.map((mode) => {
+                const due = ladderCounts[mode];
+                const total = totalLadderCounts[mode];
+                const isActive = mode === currentMode;
+                return (
+                  <div key={mode} className={isActive ? "april-review-ladder-step active" : "april-review-ladder-step"}>
+                    <div className="april-review-ladder-step-head">
+                      <strong>{REVIEW_MODE_LABELS[mode]}</strong>
+                      <span>{due} due</span>
+                    </div>
+                    <p>{REVIEW_MODE_DETAILS[mode].purpose}</p>
+                    <small>{total} total · {REVIEW_MODE_DETAILS[mode].schedule}</small>
+                  </div>
+                );
+              })}
+            </div>
+          </AprilPanel>
+
           <AprilPanel className="april-review-focus-panel">
             {currentCard ? (
               <>
@@ -332,6 +518,24 @@ export default function ReviewPage() {
                 <div className="april-review-card-footer">
                   <span>Card ID: {currentCard.id}</span>
                   <span>Last review window: due {new Date(currentCard.due_at).toLocaleDateString()}</span>
+                </div>
+                <div className="april-review-context-grid" aria-label="Review context">
+                  <div>
+                    <span className="review-sidebar-kicker">Why this now</span>
+                    <p>
+                      {overdueCount > 0
+                        ? `${overdueCount} item(s) are overdue, so due review gets priority before adding new material.`
+                        : `${dueCount} item(s) are due in the current ladder queue.`}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="review-sidebar-kicker">Source trace</span>
+                    <p>{currentDeck?.name ? `${currentDeck.name} deck` : `Card ${currentCard.id}`} · {currentCard.card_type}</p>
+                  </div>
+                  <div>
+                    <span className="review-sidebar-kicker">Project context</span>
+                    <p>{currentDeck?.description || "No linked project context is available on this card yet."}</p>
+                  </div>
                 </div>
                 <div className="april-review-ratings">
                   {REVIEW_OPTIONS.map((option) => (
@@ -378,7 +582,7 @@ export default function ReviewPage() {
               <span className="review-sidebar-kicker">Knowledge Health</span>
               <div className="april-review-side-metrics">
                 <div>
-                  <strong>{cards.length}</strong>
+                  <strong>{dueCount}</strong>
                   <span>Cards Due</span>
                 </div>
                 <div>
@@ -396,11 +600,18 @@ export default function ReviewPage() {
             <AprilPanel className="april-review-side-card">
               <span className="review-sidebar-kicker">Queue Ladder</span>
               <p className="review-copy">{queueSplit}</p>
+              <div className="april-review-health-list">
+                <div><span>Overdue</span><strong>{overdueCount}</strong></div>
+                <div><span>Due soon</span><strong>{dueSoonCount}</strong></div>
+                <div><span>Suspended</span><strong>{suspendedCount}</strong></div>
+                <div><span>Latency</span><strong>{formatLatency(health?.average_latency_ms)}</strong></div>
+              </div>
+              <p className="review-copy">Last reviewed: {formatDateTime(health?.last_reviewed_at)}</p>
               <span className="review-sidebar-kicker">Session Grades</span>
               <p className="review-copy">
                 Again {stats.again} | Hard {stats.hard} | Good {stats.good} | Easy {stats.easy}
               </p>
-              <p className="review-copy">{status}</p>
+              <p className="review-copy" aria-live="polite">{status}</p>
               <div className="april-review-side-actions">
                 <button className="april-chip-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
                   Refresh Queue
