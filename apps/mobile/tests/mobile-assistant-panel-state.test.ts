@@ -1,8 +1,12 @@
 import type { AssistantInterrupt } from "@starlog/contracts";
 import {
   defaultPanelValues,
+  mobileAssistantPanelLayout,
+  MOBILE_PANEL_ACTION_LAYOUT,
+  MOBILE_PANEL_OPTION_LAYOUT,
   mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   panelDismissPayload,
   panelSubmitPayload,
@@ -65,6 +69,13 @@ const second = interrupt({
     },
   ],
   recommended_defaults: { resolution: "move_deep_work" },
+  metadata: {
+    conflict_payload: {
+      local_title: "Very long deep work block for onboarding activation polish",
+      remote_title: "Extremely long product review meeting with platform and growth",
+      overlap_minutes: 30,
+    },
+  },
 });
 
 const states = mobileDynamicPanelStates([first, second], {
@@ -128,6 +139,49 @@ assert.equal(
 
 const conflictOptions = mobilePanelOptionViewModels(second, second.fields[0], defaultPanelValues(second));
 assert.equal(conflictOptions[0].description, "Recommended - preserves your longer focus block.");
+assert.deepEqual(mobilePlannerConflictPreview(second), {
+  localTitle: "Very long deep work block for onboarding activation polish",
+  overlapLabel: "Overlaps by 30m",
+  remoteTitle: "Extremely long product review meeting with platform and growth",
+});
+
+assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {
+  minHeight: 58,
+  titleMaxLines: 2,
+  descriptionMaxLines: 3,
+  iconSize: 28,
+  fullWidth: true,
+});
+assert.deepEqual(MOBILE_PANEL_ACTION_LAYOUT, {
+  minHeight: 46,
+  primaryBasis: 180,
+  secondaryBasis: 138,
+  wraps: true,
+});
+assert.deepEqual(mobileAssistantPanelLayout(320), {
+  viewportWidth: 320,
+  optionColumns: 1,
+  optionTitleMaxLines: 2,
+  optionDescriptionMaxLines: 4,
+  actionDirection: "column",
+  actionPrimaryBasis: "100%",
+  actionSecondaryBasis: "100%",
+  actionWraps: true,
+  conflictTitleMaxLines: 3,
+  promptChipMaxWidth: "100%",
+});
+assert.deepEqual(mobileAssistantPanelLayout(412), {
+  viewportWidth: 412,
+  optionColumns: 1,
+  optionTitleMaxLines: 2,
+  optionDescriptionMaxLines: 3,
+  actionDirection: "row",
+  actionPrimaryBasis: 180,
+  actionSecondaryBasis: 138,
+  actionWraps: true,
+  conflictTitleMaxLines: 2,
+  promptChipMaxWidth: "92%",
+});
 
 assert.deepEqual(
   mobileAssistantPromptChips(

@@ -14,7 +14,7 @@ import type {
 } from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ScrollView, Switch, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 import {
@@ -29,8 +29,12 @@ import {
   defaultPanelValues,
   fieldSummary,
   fieldValue,
+  MOBILE_PANEL_ACTION_LAYOUT,
+  MOBILE_PANEL_OPTION_LAYOUT,
+  mobileAssistantPanelLayout,
   mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   panelDismissPayload,
   panelKicker,
@@ -565,6 +569,8 @@ function InterruptFieldInput({
   accent?: { text: string; bg: string; border: string };
   setValue: (value: unknown) => void;
 }) {
+  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+
   if (field.kind === "toggle") {
     return (
       <View
@@ -604,7 +610,7 @@ function InterruptFieldInput({
               <TouchableOpacity
                 key={`${field.id}-${option.value}`}
                 style={{
-                  minHeight: 58,
+                  minHeight: MOBILE_PANEL_OPTION_LAYOUT.minHeight,
                   borderRadius: 14,
                   paddingHorizontal: 12,
                   paddingVertical: 11,
@@ -619,9 +625,9 @@ function InterruptFieldInput({
               >
                 <View
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
+                    width: MOBILE_PANEL_OPTION_LAYOUT.iconSize,
+                    height: MOBILE_PANEL_OPTION_LAYOUT.iconSize,
+                    borderRadius: MOBILE_PANEL_OPTION_LAYOUT.iconSize / 2,
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
@@ -644,11 +650,15 @@ function InterruptFieldInput({
                       lineHeight: 20,
                       fontWeight: "800",
                     }}
+                    numberOfLines={panelLayout.optionTitleMaxLines}
                   >
                     {option.label}
                   </Text>
                   {option.description ? (
-                    <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                    <Text
+                      style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}
+                      numberOfLines={panelLayout.optionDescriptionMaxLines}
+                    >
                       {option.description}
                     </Text>
                   ) : null}
@@ -725,6 +735,73 @@ function ConsequencePreview({
   );
 }
 
+function PlannerConflictMiniPreview({
+  interrupt,
+  palette,
+  accent,
+}: {
+  interrupt: AssistantInterrupt;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+}) {
+  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const preview = mobilePlannerConflictPreview(interrupt);
+  if (!preview) {
+    return null;
+  }
+
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 10,
+        paddingVertical: 10,
+        gap: 8,
+      }}
+    >
+      {[
+        { icon: "brain", title: preview.localTitle, tone: "#9fd3ff" },
+        { icon: "alert-outline", title: preview.overlapLabel, tone: "#ff6f59" },
+        { icon: "account-group-outline", title: preview.remoteTitle, tone: "#c8a5ff" },
+      ].map((item, index) => (
+        <View
+          key={`${item.title}-${index}`}
+          style={{
+            minHeight: 38,
+            borderRadius: 12,
+            paddingHorizontal: 9,
+            paddingVertical: 8,
+            backgroundColor: index === 1 ? "rgba(255, 111, 89, 0.1)" : "rgba(255,255,255,0.018)",
+            borderWidth: 1,
+            borderColor: index === 1 ? "rgba(255, 111, 89, 0.18)" : "rgba(255,255,255,0.045)",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 9,
+          }}
+        >
+          <MaterialCommunityIcons name={item.icon as never} size={17} color={index === 1 ? "#ff6f59" : item.tone || accent.text} />
+          <Text
+            style={{
+              flex: 1,
+              minWidth: 0,
+              color: index === 1 ? "#ff8a72" : palette.text,
+              fontSize: 13.5,
+              lineHeight: 18,
+              fontWeight: "700",
+            }}
+            numberOfLines={panelLayout.conflictTitleMaxLines}
+          >
+            {item.title}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function DynamicPanelRenderer({
   interrupt,
   values,
@@ -751,6 +828,7 @@ function DynamicPanelRenderer({
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
   const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
+  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
 
   return (
     <View
@@ -789,6 +867,8 @@ function DynamicPanelRenderer({
         {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
         <EntityActionChip entityRef={interrupt.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
       </View>
+
+      <PlannerConflictMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
 
       {pending ? (
         <>
@@ -840,12 +920,12 @@ function DynamicPanelRenderer({
 
           <ConsequencePreview interrupt={interrupt} palette={palette} accent={accent} />
 
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <View style={{ flexDirection: panelLayout.actionDirection, gap: 8, flexWrap: panelLayout.actionWraps ? "wrap" : "nowrap" }}>
             <TouchableOpacity
               style={{
                 flexGrow: 1,
-                flexBasis: 180,
-                minHeight: 46,
+                flexBasis: panelLayout.actionPrimaryBasis,
+                minHeight: MOBILE_PANEL_ACTION_LAYOUT.minHeight,
                 borderRadius: 14,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
@@ -862,8 +942,8 @@ function DynamicPanelRenderer({
             <TouchableOpacity
               style={{
                 flexGrow: 1,
-                flexBasis: 138,
-                minHeight: 46,
+                flexBasis: panelLayout.actionSecondaryBasis,
+                minHeight: MOBILE_PANEL_ACTION_LAYOUT.minHeight,
                 borderRadius: 14,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
@@ -934,6 +1014,7 @@ export function MobileAssistantRebuild({
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
+  const assistantPanelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
 
   const liveInterrupts = threadSnapshot?.interrupts ?? [];
   const liveInterruptById = useMemo(
@@ -1812,6 +1893,7 @@ export function MobileAssistantRebuild({
                   borderWidth: 1,
                   borderColor: "rgba(255,255,255,0.05)",
                   justifyContent: "center",
+                  maxWidth: assistantPanelLayout.promptChipMaxWidth,
                 }}
                 onPress={() => setHomeDraft(label)}
               >

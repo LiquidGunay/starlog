@@ -27,6 +27,40 @@ export type MobilePanelOptionViewModel = {
   selected: boolean;
 };
 
+export type MobilePlannerConflictPreview = {
+  localTitle: string;
+  overlapLabel: string;
+  remoteTitle: string;
+};
+
+export type MobileAssistantPanelLayout = {
+  viewportWidth: number;
+  optionColumns: 1;
+  optionTitleMaxLines: number;
+  optionDescriptionMaxLines: number;
+  actionDirection: "row" | "column";
+  actionPrimaryBasis: number | "100%";
+  actionSecondaryBasis: number | "100%";
+  actionWraps: boolean;
+  conflictTitleMaxLines: number;
+  promptChipMaxWidth: "92%" | "100%";
+};
+
+export const MOBILE_PANEL_OPTION_LAYOUT = {
+  minHeight: 58,
+  titleMaxLines: 2,
+  descriptionMaxLines: 3,
+  iconSize: 28,
+  fullWidth: true,
+} as const;
+
+export const MOBILE_PANEL_ACTION_LAYOUT = {
+  minHeight: 46,
+  primaryBasis: 180,
+  secondaryBasis: 138,
+  wraps: true,
+} as const;
+
 export const MOBILE_ASSISTANT_MAX_PROMPT_CHIPS = 3;
 
 export function defaultPanelValues(interrupt: AssistantInterrupt): Record<string, unknown> {
@@ -239,4 +273,47 @@ export function mobileAssistantPromptChips(suggestions: string[], draft: string)
       return true;
     });
   return cleaned.slice(0, draft.trim().length > 0 ? 1 : MOBILE_ASSISTANT_MAX_PROMPT_CHIPS);
+}
+
+export function mobileAssistantPanelLayout(viewportWidth: number): MobileAssistantPanelLayout {
+  const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 390;
+  const narrow = width < 360;
+  return {
+    viewportWidth: width,
+    optionColumns: 1,
+    optionTitleMaxLines: MOBILE_PANEL_OPTION_LAYOUT.titleMaxLines,
+    optionDescriptionMaxLines: narrow ? 4 : MOBILE_PANEL_OPTION_LAYOUT.descriptionMaxLines,
+    actionDirection: narrow ? "column" : "row",
+    actionPrimaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.primaryBasis,
+    actionSecondaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.secondaryBasis,
+    actionWraps: MOBILE_PANEL_ACTION_LAYOUT.wraps,
+    conflictTitleMaxLines: narrow ? 3 : 2,
+    promptChipMaxWidth: narrow ? "100%" : "92%",
+  };
+}
+
+export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): MobilePlannerConflictPreview | null {
+  if (interrupt.tool_name !== "resolve_planner_conflict") {
+    return null;
+  }
+  const payload = metadataRecord(interrupt.metadata?.conflict_payload);
+  const localTitle =
+    typeof payload.local_title === "string" && payload.local_title.trim()
+      ? payload.local_title.trim()
+      : typeof payload.block_title === "string" && payload.block_title.trim()
+        ? payload.block_title.trim()
+        : "Starlog focus block";
+  const remoteTitle =
+    typeof payload.remote_title === "string" && payload.remote_title.trim()
+      ? payload.remote_title.trim()
+      : typeof payload.title === "string" && payload.title.trim()
+        ? payload.title.trim()
+        : "Calendar event";
+  const overlapLabel =
+    typeof payload.overlap_label === "string" && payload.overlap_label.trim()
+      ? payload.overlap_label.trim()
+      : typeof payload.overlap_minutes === "number"
+        ? `Overlaps by ${payload.overlap_minutes}m`
+        : "Overlap";
+  return { localTitle, overlapLabel, remoteTitle };
 }
