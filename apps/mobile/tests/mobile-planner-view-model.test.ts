@@ -44,16 +44,25 @@ assert.deepEqual(model.dateControls, {
   isToday: true,
 });
 assert.deepEqual(model.metrics, [
-  { label: "Focus", value: "2h 30m", tone: "focus" },
-  { label: "Meetings", value: "2", tone: "meeting" },
-  { label: "Tasks", value: "7", tone: "task" },
-  { label: "Buffer", value: "45m", tone: "buffer" },
+  { label: "Focus", value: "2h 30m", caption: "1 block", tone: "focus" },
+  { label: "Meetings", value: "2", caption: "3 fixed", tone: "meeting" },
+  { label: "Tasks", value: "7", caption: "2 due today", tone: "task" },
+  { label: "Buffer", value: "45m", caption: "1 block", tone: "buffer" },
 ]);
 assert.equal(model.dayStrip.length, 7);
 assert.equal(model.dayStrip.filter((day) => day.active).length, 1);
 assert.equal(model.timelineBlocks.some((block) => block.type === "conflict"), true);
+assert.equal(model.timelineBlocks.find((block) => block.id === "focus")?.timeLabel, "Focus");
+assert.equal(model.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "2h 30m");
 assert.equal(model.conflict?.severityLabel, "Repair in Assistant");
-assert.deepEqual(model.planGroups[1].items.slice(0, 2), ["2 due today", "5 open tasks can move"]);
+assert.equal(model.decisionLabel, "Resolve the overlap before adding new work.");
+assert.deepEqual(model.planGroups[0].items.map((item) => item.id), [
+  "focus-capacity",
+  "fixed-commitments",
+  "buffer-capacity",
+  "morning-briefing",
+]);
+assert.deepEqual(model.planGroups[1].items.slice(0, 2).map((item) => item.metaLabel), ["2 tasks", "5 open"]);
 assert.deepEqual(model.promptChips, ["Protect focus", "Repair conflict", "What can move?"]);
 
 const fallback = deriveMobilePlannerViewModel({
@@ -62,12 +71,13 @@ const fallback = deriveMobilePlannerViewModel({
   alarmScheduled: false,
 });
 
-assert.equal(fallback.statusLabel, "Local preview");
+assert.equal(fallback.statusLabel, "No Planner summary loaded");
 assert.equal(fallback.metrics[0].value, "1h 30m");
-assert.equal(fallback.timelineBlocks[0].detail, "Schedule the morning briefing before relying on playback.");
+assert.equal(fallback.timelineBlocks[0].detail, "No briefing alarm is scheduled for this date.");
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
 assert.deepEqual(fallback.promptChips, ["Protect focus", "What can move?", "Plan buffer"]);
+assert.equal(fallback.planGroups[2].items.length, 0);
 
 const futureFallback = deriveMobilePlannerViewModel({
   selectedDate: "2026-04-30",
@@ -84,5 +94,42 @@ assert.deepEqual(futureFallback.dateControls, {
 });
 assert.equal(futureFallback.dayStrip.find((day) => day.active)?.key, "2026-04-30");
 assert.equal(shiftPlannerDate("2026-04-30", -1), "2026-04-29");
+
+const emptySummary = deriveMobilePlannerViewModel({
+  now: new Date("2026-04-28T12:00:00Z"),
+  summary: {
+    date: "2026-04-28",
+    task_buckets: [],
+    block_buckets: [],
+    calendar_event_count: 0,
+    conflict_count: 0,
+    focus_minutes: 0,
+    buffer_minutes: 0,
+    generated_at: "2026-04-28T11:55:00Z",
+  },
+});
+
+assert.equal(emptySummary.decisionLabel, "Keep the day open until Planner has more state.");
+assert.deepEqual(emptySummary.planGroups[0].items, []);
+assert.deepEqual(emptySummary.planGroups[1].items, []);
+assert.equal(emptySummary.nextFocus.timeLabel, "Unscheduled");
+assert.equal(emptySummary.upcoming.timeLabel, "None");
+
+const countOnlySummary = deriveMobilePlannerViewModel({
+  now: new Date("2026-04-28T12:00:00Z"),
+  summary: {
+    date: "2026-04-28",
+    task_buckets: [{ key: "open_tasks", label: "Open tasks", count: 1 }],
+    block_buckets: [],
+    calendar_event_count: 0,
+    conflict_count: 0,
+    focus_minutes: 60,
+    buffer_minutes: 15,
+    generated_at: "2026-04-28T11:55:00Z",
+  },
+});
+
+assert.equal(countOnlySummary.metrics[0].caption, "No block");
+assert.equal(countOnlySummary.nextFocus.timeLabel, "Unscheduled");
 
 console.log("mobile planner view model tests passed");
