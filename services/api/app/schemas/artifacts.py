@@ -85,6 +85,15 @@ class ArtifactNoteLinkResponse(BaseModel):
     version: int
 
 
+class ArtifactDetailRelationResponse(BaseModel):
+    id: str
+    artifact_id: str
+    relation_type: str
+    target_type: str
+    target_id: str
+    created_at: datetime
+
+
 class ArtifactDetailConnectionsResponse(BaseModel):
     summary_version_count: int
     latest_summary: ArtifactLatestSummaryResponse | None = None
@@ -93,6 +102,8 @@ class ArtifactDetailConnectionsResponse(BaseModel):
     task_count: int
     note_count: int
     notes: list[ArtifactNoteLinkResponse] = Field(default_factory=list)
+    relation_count: int
+    relations: list[ArtifactDetailRelationResponse] = Field(default_factory=list)
     action_run_count: int
 
 

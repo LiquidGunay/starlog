@@ -102,6 +102,14 @@ def _seed_connections(artifact_id: str) -> None:
             """,
             (artifact_id, artifact_id),
         )
+        conn.execute(
+            """
+            INSERT INTO artifact_relations (id, artifact_id, relation_type, target_type, target_id, created_at)
+            VALUES ('rel_detail_1', ?, 'artifact.summary_version', 'summary_version', 'sum_detail_2',
+              '2026-04-28T06:11:00+00:00')
+            """,
+            (artifact_id,),
+        )
         conn.commit()
 
 
@@ -149,6 +157,13 @@ def test_artifact_detail_returns_provenance_connections_layers_and_actions(
     assert connections["task_count"] == 1
     assert connections["note_count"] == 1
     assert connections["notes"] == [{"id": "nte_detail_1", "title": "Detail note", "version": 3}]
+    assert connections["relation_count"] == 1
+    relation = connections["relations"][0]
+    assert relation["id"] == "rel_detail_1"
+    assert relation["artifact_id"] == artifact_id
+    assert relation["relation_type"] == "artifact.summary_version"
+    assert relation["target_type"] == "summary_version"
+    assert relation["target_id"] == "sum_detail_2"
     assert connections["action_run_count"] == 2
 
     timeline_kinds = {event["kind"] for event in payload["timeline"]}
@@ -160,6 +175,42 @@ def test_artifact_detail_returns_provenance_connections_layers_and_actions(
     assert actions["append_note"]["enabled"] is True
     assert actions["archive"]["enabled"] is False
     assert actions["link"]["enabled"] is False
+
+
+def test_artifact_detail_does_not_report_fallback_normalized_layer_for_raw_only_capture(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    response = client.post(
+        "/v1/capture",
+        json={
+            "source_type": "clip_manual",
+            "capture_source": "manual_entry",
+            "title": "Raw only",
+            "raw": {"text": "Only raw text exists.", "mime_type": "text/plain"},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    artifact_id = response.json()["artifact"]["id"]
+    assert response.json()["artifact"]["normalized_content"] == "Only raw text exists."
+
+    detail = client.get(f"/v1/artifacts/{artifact_id}/detail", headers=auth_headers)
+
+    assert detail.status_code == 200
+    layers = {layer["layer"]: layer for layer in detail.json()["source_layers"]}
+    assert layers["raw"]["present"] is True
+    assert layers["raw"]["preview"] == "Only raw text exists."
+    assert layers["normalized"] == {
+        "layer": "normalized",
+        "present": False,
+        "preview": None,
+        "character_count": None,
+        "mime_type": None,
+        "checksum_sha256": None,
+        "source_filename": None,
+    }
+    assert layers["extracted"]["present"] is False
 
 
 def test_artifact_detail_404s_for_missing_artifact(

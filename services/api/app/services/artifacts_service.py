@@ -663,22 +663,6 @@ def _first_timestamp(*values: Any) -> str:
     raise ValueError("At least one valid timestamp is required")
 
 
-def _layer_preview(layer: str, content: str | None, layer_metadata: dict) -> dict:
-    return {
-        "layer": layer,
-        "present": content is not None or bool(layer_metadata),
-        "preview": _preview(content),
-        "character_count": len(content) if content is not None else None,
-        "mime_type": _first_string(layer_metadata.get("mime_type"), layer_metadata.get("content_type")),
-        "checksum_sha256": _first_string(layer_metadata.get("checksum_sha256")),
-        "source_filename": _first_string(
-            layer_metadata.get("source_filename"),
-            layer_metadata.get("filename"),
-            layer_metadata.get("file_name"),
-        ),
-    }
-
-
 def _capture_source_file(capture: dict, layers: dict) -> str | None:
     raw_layer = _as_dict(layers.get("raw"))
     return _first_string(
@@ -689,6 +673,40 @@ def _capture_source_file(capture: dict, layers: dict) -> str | None:
         raw_layer.get("filename"),
         raw_layer.get("file_name"),
     )
+
+
+def _layer_has_evidence(
+    layer: str,
+    content: str | None,
+    layer_metadata: dict,
+    artifact: dict,
+) -> bool:
+    if layer_metadata:
+        return True
+    if content is None:
+        return False
+    if layer == "normalized" and content == artifact.get("raw_content"):
+        return False
+    return True
+
+
+def _artifact_layer_preview(layer: str, artifact: dict, layers: dict) -> dict:
+    content = artifact.get(f"{layer}_content")
+    layer_metadata = _as_dict(layers.get(layer))
+    present = _layer_has_evidence(layer, content, layer_metadata, artifact)
+    return {
+        "layer": layer,
+        "present": present,
+        "preview": _preview(content) if present else None,
+        "character_count": len(content) if present and content is not None else None,
+        "mime_type": _first_string(layer_metadata.get("mime_type"), layer_metadata.get("content_type")),
+        "checksum_sha256": _first_string(layer_metadata.get("checksum_sha256")),
+        "source_filename": _first_string(
+            layer_metadata.get("source_filename"),
+            layer_metadata.get("filename"),
+            layer_metadata.get("file_name"),
+        ),
+    }
 
 
 def _detail_connections(conn: Connection, artifact_id: str) -> dict:
@@ -739,6 +757,16 @@ def _detail_connections(conn: Connection, artifact_id: str) -> dict:
         """,
         (artifact_id,),
     )
+    relations = execute_fetchall(
+        conn,
+        """
+        SELECT id, artifact_id, relation_type, target_type, target_id, created_at
+        FROM artifact_relations
+        WHERE artifact_id = ?
+        ORDER BY created_at DESC
+        """,
+        (artifact_id,),
+    )
 
     latest_summary_payload = None
     if latest_summary is not None:
@@ -760,6 +788,8 @@ def _detail_connections(conn: Connection, artifact_id: str) -> dict:
         "task_count": int(task_count["count"]) if task_count else 0,
         "note_count": len(notes),
         "notes": notes,
+        "relation_count": len(relations),
+        "relations": relations,
         "action_run_count": int(action_count["count"]) if action_count else 0,
     }
 
@@ -1022,17 +1052,9 @@ def get_artifact_detail(conn: Connection, artifact_id: str) -> dict | None:
             "tags": _as_string_list(capture.get("tags")),
         },
         "source_layers": [
-            _layer_preview("raw", artifact.get("raw_content"), _as_dict(layers.get("raw"))),
-            _layer_preview(
-                "normalized",
-                artifact.get("normalized_content"),
-                _as_dict(layers.get("normalized")),
-            ),
-            _layer_preview(
-                "extracted",
-                artifact.get("extracted_content"),
-                _as_dict(layers.get("extracted")),
-            ),
+            _artifact_layer_preview("raw", artifact, layers),
+            _artifact_layer_preview("normalized", artifact, layers),
+            _artifact_layer_preview("extracted", artifact, layers),
         ],
         "connections": _detail_connections(conn, artifact_id),
         "timeline": _detail_timeline(conn, artifact),
