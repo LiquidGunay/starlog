@@ -52,6 +52,53 @@ type TodayOpenLoopSummary = {
   href?: string | null;
 };
 
+type StrategicContextItem = {
+  id?: string;
+  key?: string;
+  kind?: string;
+  title?: string;
+  label?: string;
+  body?: string | null;
+  summary?: string | null;
+  detail?: string | null;
+  href?: string | null;
+  prompt?: string | null;
+  action_label?: string | null;
+  status?: string | null;
+  horizon?: string | null;
+  review_cadence?: string | null;
+  goal_id?: string | null;
+  next_action_id?: string | null;
+  source_type?: string | null;
+  source_id?: string | null;
+  promised_to?: string | null;
+  due_at?: string | null;
+  reason?: string | null;
+  severity?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  surface?: string | null;
+  priority?: number | null;
+  updated_at?: string | null;
+  last_reviewed_at?: string | null;
+};
+
+type AssistantStrategicContext = {
+  active_goal_count?: number;
+  active_project_count?: number;
+  open_commitment_count?: number;
+  overdue_commitment_count?: number;
+  project_missing_next_action_count?: number;
+  attention_count?: number;
+  active_goal?: StrategicContextItem | null;
+  active_goals?: StrategicContextItem[];
+  active_project?: StrategicContextItem | null;
+  active_projects?: StrategicContextItem[];
+  open_commitment?: StrategicContextItem | null;
+  open_commitments?: StrategicContextItem[];
+  attention_items?: StrategicContextItem[];
+};
+
 export type AssistantTodaySummary = {
   date: string;
   thread_id?: string | null;
@@ -84,6 +131,7 @@ export type AssistantTodaySummary = {
     reason?: string | null;
     priority?: number;
   }>;
+  strategic_context?: AssistantStrategicContext | null;
   generated_at?: string;
 };
 
@@ -92,6 +140,16 @@ type RecommendedMove = {
   reasons: string[];
   primaryAction: TodayAction;
   secondaryActions: TodayAction[];
+};
+
+type StrategicContextRow = {
+  key: string;
+  eyebrow: string;
+  title: string;
+  detail?: string;
+  href?: string;
+  prompt?: string;
+  actionLabel?: string;
 };
 
 const REVIEW_MODE_ORDER = ["recall", "understanding", "application", "synthesis", "judgment"] as const;
@@ -334,6 +392,100 @@ function buildQuickActions(todaySummary: AssistantTodaySummary | null | undefine
     { label: "Start review", href: "/review" },
     { label: "Process captures", prompt: "Process my latest Library captures and route anything actionable." },
   ];
+}
+
+function firstStrategicItem(...items: Array<StrategicContextItem | StrategicContextItem[] | null | undefined>): StrategicContextItem | null {
+  for (const item of items) {
+    if (Array.isArray(item)) {
+      const first = item.find(Boolean);
+      if (first) {
+        return first;
+      }
+    } else if (item) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function cleanStrategicText(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function strategicItemTitle(item: StrategicContextItem): string | undefined {
+  return cleanStrategicText(item.title) || cleanStrategicText(item.label);
+}
+
+function strategicItemDetail(item: StrategicContextItem): string | undefined {
+  const explicitDetail =
+    cleanStrategicText(item.body) || cleanStrategicText(item.summary) || cleanStrategicText(item.detail) || cleanStrategicText(item.reason);
+  if (explicitDetail) {
+    return explicitDetail;
+  }
+  if (item.horizon) {
+    return `${item.horizon.replace(/_/g, " ")} goal`;
+  }
+  if (Object.prototype.hasOwnProperty.call(item, "next_action_id") && !item.next_action_id) {
+    return "No next action yet.";
+  }
+  if (item.promised_to) {
+    return `Promised to ${item.promised_to}.`;
+  }
+  if (item.due_at) {
+    return "Due commitment.";
+  }
+  return undefined;
+}
+
+function strategicFallbackPrompt(kind: string, title: string): string {
+  if (kind === "Goal") {
+    return `Help me turn the active goal "${title}" into the next useful move.`;
+  }
+  if (kind === "Project") {
+    return `Help me choose the next action for "${title}".`;
+  }
+  if (kind === "Commitment") {
+    return `Help me follow through on the open commitment "${title}".`;
+  }
+  return `Help me resolve this active context item: ${title}.`;
+}
+
+function strategicContextRow(kind: string, item: StrategicContextItem | null, index = 0): StrategicContextRow | null {
+  if (!item) {
+    return null;
+  }
+  const title = strategicItemTitle(item);
+  if (!title) {
+    return null;
+  }
+  return {
+    key: `${kind}-${item.id || item.key || title}-${index}`,
+    eyebrow: kind,
+    title,
+    detail: strategicItemDetail(item),
+    href: item.href || undefined,
+    prompt: item.prompt || strategicFallbackPrompt(kind, title),
+    actionLabel: item.action_label || (item.href ? "Open" : "Discuss"),
+  };
+}
+
+function buildStrategicContextRows(todaySummary: AssistantTodaySummary | null | undefined): StrategicContextRow[] {
+  const strategicContext = todaySummary?.strategic_context;
+  if (!strategicContext) {
+    return [];
+  }
+
+  const rows = [
+    strategicContextRow("Goal", firstStrategicItem(strategicContext.active_goal, strategicContext.active_goals)),
+    strategicContextRow("Project", firstStrategicItem(strategicContext.active_project, strategicContext.active_projects)),
+    strategicContextRow("Commitment", firstStrategicItem(strategicContext.open_commitment, strategicContext.open_commitments)),
+    ...(strategicContext.attention_items || [])
+      .slice(0, 2)
+      .map((item, index) => strategicContextRow("Attention", item, index)),
+  ].filter((row): row is StrategicContextRow => Boolean(row));
+
+  return rows;
 }
 
 function collectTodayOpenLoops(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
@@ -758,6 +910,7 @@ function TodayPanel({
   const reasons = recommendedMove.reasons.length > 0 ? recommendedMove.reasons : ["Starlog has enough current context to recommend one next move."];
   const atAGlanceItems = buildAtAGlanceItems(todaySummary, openLoops, contextItems);
   const quickActions = buildQuickActions(todaySummary);
+  const strategicRows = buildStrategicContextRows(todaySummary);
 
   const renderAction = (action: TodayAction, className?: string) => {
     if (action.href) {
@@ -819,6 +972,33 @@ function TodayPanel({
           </div>
         ))}
       </div>
+
+      {strategicRows.length > 0 ? (
+        <section className={styles.strategicContext} aria-labelledby="assistant-strategic-context-title">
+          <div className={styles.todayBlockHeader}>
+            <span id="assistant-strategic-context-title">Strategic context</span>
+            <strong>{strategicRows.length}</strong>
+          </div>
+          <div className={styles.strategicContextList}>
+            {strategicRows.map((item) => (
+              <article key={item.key} className={styles.strategicContextItem}>
+                <div className={styles.strategicContextCopy}>
+                  <span>{item.eyebrow}</span>
+                  <strong>{item.title}</strong>
+                  {item.detail ? <p>{item.detail}</p> : null}
+                </div>
+                {item.href ? (
+                  <a href={item.href}>{item.actionLabel || "Open"}</a>
+                ) : item.prompt ? (
+                  <button type="button" onClick={() => onQuickStart(item.prompt || "")} disabled={busy}>
+                    {item.actionLabel || "Discuss"}
+                  </button>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className={styles.quickActions} aria-label="Quick actions">
         {quickActions.map((action) => (
