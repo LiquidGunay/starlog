@@ -127,7 +127,10 @@ type MobileLoginSurfaceProps = SharedProps & {
 
 type MobileCalendarSurfaceProps = SharedProps & {
   plannerSummary?: MobilePlannerSummary | null;
+  selectedPlannerDate: string;
+  setSelectedPlannerDate: (value: string) => void;
   loadPlannerSummary: () => void;
+  repairPlannerConflict: () => void;
   stationTimeLabel: string;
   stationPeriod: string;
   briefingHeroCopy: string;
@@ -2001,7 +2004,10 @@ export function MobileCalendarSurface({
   styles,
   palette,
   plannerSummary,
+  selectedPlannerDate,
+  setSelectedPlannerDate,
   loadPlannerSummary,
+  repairPlannerConflict,
   stationTimeLabel,
   stationPeriod,
   briefingHeroCopy,
@@ -2022,6 +2028,7 @@ export function MobileCalendarSurface({
 }: MobileCalendarSurfaceProps) {
   const planner = deriveMobilePlannerViewModel({
     summary: plannerSummary,
+    selectedDate: selectedPlannerDate,
     nextActionPreview,
     alarmScheduled,
     nextBriefingCountdown,
@@ -2061,6 +2068,38 @@ export function MobileCalendarSurface({
         </View>
 
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <TouchableOpacity
+            accessibilityLabel="Previous planner day"
+            style={pillStyle(palette)}
+            onPress={() => setSelectedPlannerDate(planner.dateControls.previousDate)}
+          >
+            <MaterialCommunityIcons name="chevron-left" size={16} color={palette.text} />
+          </TouchableOpacity>
+          <View
+            style={{
+              ...pillStyle(palette, planner.dateControls.isToday),
+              opacity: planner.dateControls.isToday ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ color: planner.dateControls.isToday ? palette.accent : palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
+              {planner.dateControls.isToday ? "Today" : "Selected"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            accessibilityLabel="Next planner day"
+            style={pillStyle(palette)}
+            onPress={() => setSelectedPlannerDate(planner.dateControls.nextDate)}
+          >
+            <MaterialCommunityIcons name="chevron-right" size={16} color={palette.text} />
+          </TouchableOpacity>
+          {!planner.dateControls.isToday ? (
+            <TouchableOpacity style={pillStyle(palette)} onPress={() => setSelectedPlannerDate(planner.dateControls.todayDate)}>
+              <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Today</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
             <MaterialCommunityIcons name="clock-outline" size={14} color={palette.accent} />
             <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>
@@ -2077,8 +2116,9 @@ export function MobileCalendarSurface({
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {planner.dayStrip.map((day) => (
-            <View
+            <TouchableOpacity
               key={day.key}
+              onPress={() => setSelectedPlannerDate(day.key)}
               style={{
                 width: 48,
                 borderRadius: 16,
@@ -2094,7 +2134,7 @@ export function MobileCalendarSurface({
                 {day.weekday}
               </Text>
               <Text style={{ color: day.active ? palette.onAccent : palette.text, fontSize: 15, fontWeight: "800" }}>{day.day}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
@@ -2133,11 +2173,11 @@ export function MobileCalendarSurface({
             <View style={{ flex: 1, gap: 6 }}>
               <Text style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>{planner.conflict.title}</Text>
               <Text style={bodyStyle(palette)}>{planner.conflict.body}</Text>
-              <View style={{ ...pillStyle(palette), alignSelf: "flex-start" }}>
+              <TouchableOpacity style={{ ...pillStyle(palette), alignSelf: "flex-start" }} onPress={repairPlannerConflict}>
                 <Text style={{ color: "#f3cf7a", fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
                   {planner.conflict.severityLabel}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

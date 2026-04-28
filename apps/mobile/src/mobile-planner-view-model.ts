@@ -42,8 +42,17 @@ export type MobilePlannerDay = {
   active: boolean;
 };
 
+export type MobilePlannerDateControls = {
+  selectedDate: string;
+  todayDate: string;
+  previousDate: string;
+  nextDate: string;
+  isToday: boolean;
+};
+
 export type MobilePlannerViewModel = {
   dateLabel: string;
+  dateControls: MobilePlannerDateControls;
   statusLabel: string;
   decisionLabel: string;
   dayStrip: MobilePlannerDay[];
@@ -70,19 +79,21 @@ export type MobilePlannerViewModel = {
 
 export function deriveMobilePlannerViewModel(input: {
   summary?: MobilePlannerSummary | null;
+  selectedDate?: string;
   now?: Date;
   nextActionPreview?: string;
   alarmScheduled?: boolean;
   nextBriefingCountdown?: string;
 }): MobilePlannerViewModel {
   const now = input.now ?? new Date();
-  const selectedDate = parsePlannerDate(input.summary?.date, now);
+  const selectedDate = parsePlannerDate(input.selectedDate ?? input.summary?.date, now);
+  const selectedDateKey = formatPlannerDateKey(selectedDate);
   const focusMinutes = Math.max(0, input.summary?.focus_minutes ?? 90);
   const bufferMinutes = Math.max(0, input.summary?.buffer_minutes ?? 30);
   const meetingCount = Math.max(0, input.summary?.calendar_event_count ?? 2);
   const openTasks = bucketCount(input.summary?.task_buckets, "open_tasks", 6);
   const dueToday = bucketCount(input.summary?.task_buckets, "due_today_tasks", 3);
-  const conflictCount = Math.max(0, input.summary?.conflict_count ?? 1);
+  const conflictCount = Math.max(0, input.summary?.conflict_count ?? 0);
   const fixedBlocks = bucketCount(input.summary?.block_buckets, "fixed_blocks", meetingCount);
   const focusBlocks = bucketCount(input.summary?.block_buckets, "focus_blocks", focusMinutes > 0 ? 1 : 0);
   const bufferBlocks = bucketCount(input.summary?.block_buckets, "buffer_blocks", bufferMinutes > 0 ? 1 : 0);
@@ -93,6 +104,13 @@ export function deriveMobilePlannerViewModel(input: {
 
   return {
     dateLabel: selectedDate.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
+    dateControls: {
+      selectedDate: selectedDateKey,
+      todayDate: formatPlannerDateKey(now),
+      previousDate: shiftPlannerDate(selectedDateKey, -1),
+      nextDate: shiftPlannerDate(selectedDateKey, 1),
+      isToday: isSameDay(selectedDate, now),
+    },
     statusLabel,
     decisionLabel: conflictCount > 0 ? "Resolve the overlap before adding new work." : nextAction,
     dayStrip: buildDayStrip(selectedDate),
@@ -151,8 +169,23 @@ export function deriveMobilePlannerViewModel(input: {
       body: meetingCount > 0 ? `${meetingCount} fixed commitment${meetingCount === 1 ? "" : "s"} on the day.` : "Use buffer before adding meetings.",
       timeLabel: meetingCount > 0 ? "11:00" : "13:30",
     },
-    promptChips: ["Protect focus", "Repair conflict", "What can move?"],
+    promptChips: conflictCount > 0
+      ? ["Protect focus", "Repair conflict", "What can move?"]
+      : ["Protect focus", "What can move?", "Plan buffer"],
   };
+}
+
+export function formatPlannerDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function shiftPlannerDate(dateKey: string, days: number): string {
+  const parsed = parsePlannerDate(dateKey, new Date());
+  parsed.setDate(parsed.getDate() + days);
+  return formatPlannerDateKey(parsed);
 }
 
 function buildDayStrip(selectedDate: Date): MobilePlannerDay[] {
@@ -162,7 +195,7 @@ function buildDayStrip(selectedDate: Date): MobilePlannerDay[] {
     const day = new Date(start);
     day.setDate(start.getDate() + index);
     return {
-      key: day.toISOString().slice(0, 10),
+      key: formatPlannerDateKey(day),
       weekday: day.toLocaleDateString([], { weekday: "short" }),
       day: String(day.getDate()),
       active: isSameDay(day, selectedDate),

@@ -1,4 +1,7 @@
-import { deriveMobilePlannerViewModel } from "../src/mobile-planner-view-model";
+import {
+  deriveMobilePlannerViewModel,
+  shiftPlannerDate,
+} from "../src/mobile-planner-view-model";
 
 declare const require: (moduleName: string) => {
   equal: (...args: unknown[]) => void;
@@ -33,6 +36,13 @@ const model = deriveMobilePlannerViewModel({
 
 assert.equal(model.statusLabel, "Synced 11:55 AM");
 assert.equal(model.dateLabel, "Tuesday, Apr 28");
+assert.deepEqual(model.dateControls, {
+  selectedDate: "2026-04-28",
+  todayDate: "2026-04-28",
+  previousDate: "2026-04-27",
+  nextDate: "2026-04-29",
+  isToday: true,
+});
 assert.deepEqual(model.metrics, [
   { label: "Focus", value: "2h 30m", tone: "focus" },
   { label: "Meetings", value: "2", tone: "meeting" },
@@ -55,6 +65,24 @@ const fallback = deriveMobilePlannerViewModel({
 assert.equal(fallback.statusLabel, "Local preview");
 assert.equal(fallback.metrics[0].value, "1h 30m");
 assert.equal(fallback.timelineBlocks[0].detail, "Schedule the morning briefing before relying on playback.");
-assert.equal(fallback.conflict?.title, "Conflict detected");
+assert.equal(fallback.conflict, null);
+assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
+assert.deepEqual(fallback.promptChips, ["Protect focus", "What can move?", "Plan buffer"]);
+
+const futureFallback = deriveMobilePlannerViewModel({
+  selectedDate: "2026-04-30",
+  now: new Date("2026-04-28T12:00:00Z"),
+});
+
+assert.equal(futureFallback.dateLabel, "Thursday, Apr 30");
+assert.deepEqual(futureFallback.dateControls, {
+  selectedDate: "2026-04-30",
+  todayDate: "2026-04-28",
+  previousDate: "2026-04-29",
+  nextDate: "2026-05-01",
+  isToday: false,
+});
+assert.equal(futureFallback.dayStrip.find((day) => day.active)?.key, "2026-04-30");
+assert.equal(shiftPlannerDate("2026-04-30", -1), "2026-04-29");
 
 console.log("mobile planner view model tests passed");

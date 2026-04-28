@@ -1295,6 +1295,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
+  const [selectedPlannerDate, setSelectedPlannerDate] = useState(todayDateString());
   const [plannerSummary, setPlannerSummary] = useState<MobilePlannerSummary | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
   const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
@@ -2194,7 +2195,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setPlannerSummary(null);
         return;
       }
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/surfaces/planner/summary?date=${todayDateString()}`, {
+      setPlannerSummary(null);
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/surfaces/planner/summary?date=${selectedPlannerDate}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -2656,6 +2658,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   function activateMobileSurface(tab: MobileTab) {
     setActiveTab(tab);
     setStatus(`${mobileTabLabel(tab)} ready`);
+  }
+
+  function repairPlannerConflictFromMobile() {
+    setActiveTab("assistant");
+    setHomeDraft(`Resolve planner conflicts for ${selectedPlannerDate}. Show repair options and ask before writing changes.`);
+    setStatus("Planner conflict repair loaded into Assistant");
   }
 
   async function openAssistantEntity(entityRef: { entity_type: string; entity_id: string; href?: string | null }) {
@@ -3662,7 +3670,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       return;
     }
     loadPlannerSummary("auto").catch(() => undefined);
-  }, [hydrated, token, apiBase]);
+  }, [hydrated, token, apiBase, selectedPlannerDate]);
 
   useEffect(() => {
     if (!hydrated || !token) {
@@ -3900,8 +3908,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <MobileCalendarSurface
             styles={styles}
             palette={palette}
-            plannerSummary={plannerSummary}
+            plannerSummary={plannerSummary?.date === selectedPlannerDate ? plannerSummary : null}
+            selectedPlannerDate={selectedPlannerDate}
+            setSelectedPlannerDate={setSelectedPlannerDate}
             loadPlannerSummary={() => loadPlannerSummary("manual").catch(() => undefined)}
+            repairPlannerConflict={repairPlannerConflictFromMobile}
             stationTimeLabel={toHourMinuteLabel(stationHour12, alarmMinute)}
             stationPeriod={stationPeriod}
             briefingHeroCopy={briefingHeroCopy}
