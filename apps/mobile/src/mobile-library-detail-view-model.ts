@@ -124,6 +124,8 @@ export type MobileArtifactDetailViewModel = {
   subtitle: string;
   fallbackNotice: string | null;
   artifactTypeLabel: string;
+  sourceStatusLabel: string;
+  sourceStatusIcon: "link" | "file" | "unavailable";
   fileLabel: string | null;
   tagChips: MobileArtifactTagChip[];
   summary: string | null;
@@ -183,6 +185,8 @@ export function deriveMobileArtifactDetailViewModel(
     subtitle: `${sourceType} · captured ${capturedLabel}`,
     fallbackNotice: detail.local_fallback_reason?.trim() || null,
     artifactTypeLabel: sourceType,
+    sourceStatusLabel: sourceStatusLabel(detail),
+    sourceStatusIcon: sourceStatusIcon(detail),
     fileLabel: detail.capture.source_file?.trim() || detail.capture.source_url?.trim() || null,
     tagChips: detail.capture.tags.map((tag) => ({ id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag, label: tag })),
     summary,
@@ -198,6 +202,26 @@ export function deriveMobileArtifactDetailViewModel(
     timelineRows,
     accordions: accordionSections(detail, timelineRows.length),
   };
+}
+
+function sourceStatusLabel(detail: MobileArtifactDetail): string {
+  if (detail.capture.source_url?.trim()) {
+    return "Source URL";
+  }
+  if (detail.capture.source_file?.trim()) {
+    return "Source file";
+  }
+  return "Source unavailable";
+}
+
+function sourceStatusIcon(detail: MobileArtifactDetail): MobileArtifactDetailViewModel["sourceStatusIcon"] {
+  if (detail.capture.source_url?.trim()) {
+    return "link";
+  }
+  if (detail.capture.source_file?.trim()) {
+    return "file";
+  }
+  return "unavailable";
 }
 
 export function deriveMobileArtifactFallbackDetail(input: {

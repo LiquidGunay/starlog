@@ -139,6 +139,8 @@ assert.equal(model.title, "Library detail source");
 assert.equal(model.subtitle, "Clip Browser · captured Apr 28");
 assert.equal(model.fallbackNotice, null);
 assert.equal(model.artifactTypeLabel, "Clip Browser");
+assert.equal(model.sourceStatusLabel, "Source URL");
+assert.equal(model.sourceStatusIcon, "link");
 assert.equal(model.fileLabel, "library-detail.html");
 assert.deepEqual(model.tagChips.map((tag) => tag.label), ["research", "library"]);
 assert.equal(model.summary, "Latest summary version for the detail panel");
@@ -329,6 +331,8 @@ const untitledFallbackModel = deriveMobileArtifactDetailViewModel(deriveMobileAr
   },
 }));
 assert.equal(untitledFallbackModel.title, "Untitled artifact");
+assert.equal(untitledFallbackModel.sourceStatusLabel, "Source unavailable");
+assert.equal(untitledFallbackModel.sourceStatusIcon, "unavailable");
 assert.equal(untitledFallbackModel.sourcePreview, null);
 assert.deepEqual(
   untitledFallbackModel.sourceLayers.map((layer) => ({ label: layer.label, present: layer.present, preview: layer.preview })),

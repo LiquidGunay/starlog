@@ -1008,6 +1008,36 @@ function mobileDetailActionIcon(action: MobileArtifactActionRow["action"]): keyo
   return "star-outline";
 }
 
+function mobileSourceStatusIcon(icon: ReturnType<typeof deriveMobileArtifactDetailViewModel>["sourceStatusIcon"]): keyof typeof MaterialCommunityIcons.glyphMap {
+  if (icon === "link") {
+    return "link-variant";
+  }
+  if (icon === "file") {
+    return "file-document-outline";
+  }
+  return "link-off";
+}
+
+function shouldUseArtifactFallback(status: string): boolean {
+  const normalizedStatus = status.trim().toLowerCase();
+  if (!normalizedStatus) {
+    return false;
+  }
+  if (
+    normalizedStatus.startsWith("loading artifact detail")
+    || normalizedStatus === "artifact detail idle"
+    || normalizedStatus === "ready"
+    || normalizedStatus.startsWith("loaded artifact detail")
+  ) {
+    return false;
+  }
+  return (
+    normalizedStatus.includes("failed")
+    || normalizedStatus.includes("unavailable")
+    || normalizedStatus.includes("add api token")
+  );
+}
+
 function mobileArtifactDetailView(
   palette: Record<string, string>,
   detail: MobileArtifactDetail,
@@ -1027,9 +1057,9 @@ function mobileArtifactDetailView(
             {model.title}
           </Text>
         </View>
-        <View style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, opacity: 0.62 }}>
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Source unavailable</Text>
-          <MaterialCommunityIcons name="link-off" size={15} color={palette.muted} />
+        <View style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, opacity: 0.72 }}>
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>{model.sourceStatusLabel}</Text>
+          <MaterialCommunityIcons name={mobileSourceStatusIcon(model.sourceStatusIcon)} size={15} color={palette.muted} />
         </View>
       </View>
       {model.fallbackNotice ? (
@@ -1117,26 +1147,35 @@ function mobileArtifactDetailView(
             <Text style={[kickerStyle(palette), { fontSize: 9 }]}>Quick note</Text>
             <Text numberOfLines={3} style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>{model.quickCapture.notePlaceholder}</Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {model.quickCapture.classificationOptions.map((option) => (
-              <View
-                key={option.id}
-                style={{
-                  flex: 1,
-                  minHeight: 42,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: option.selected ? "rgba(245, 169, 73, 0.58)" : palette.border,
-                  backgroundColor: option.selected ? "rgba(245, 169, 73, 0.12)" : palette.surfaceHigh,
-                }}
-              >
-                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: option.selected ? palette.secondary : palette.text, fontSize: 12, fontWeight: "800" }}>
-                  {option.label}
-                </Text>
-              </View>
-            ))}
+          <View style={{ gap: 7 }}>
+            <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>Classification</Text>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              {model.quickCapture.classificationOptions.map((option) => (
+                <View
+                  key={option.id}
+                  style={{
+                    minHeight: 34,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    borderWidth: 1,
+                    borderColor: option.selected ? "rgba(245, 169, 73, 0.34)" : palette.border,
+                    backgroundColor: option.selected ? "rgba(245, 169, 73, 0.08)" : "transparent",
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={option.selected ? "check-circle-outline" : "circle-small"}
+                    size={14}
+                    color={option.selected ? palette.secondary : palette.muted}
+                  />
+                  <Text numberOfLines={1} style={{ color: option.selected ? palette.secondary : palette.muted, fontSize: 12, fontWeight: "800" }}>
+                    {option.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <View style={{ ...stylesButtonLike(palette, false), flex: 1, opacity: 0.62 }}>
@@ -2033,7 +2072,7 @@ export function MobileNotesSurface({
   const visibleRows = activeSegment === "Artifacts" ? libraryModel.artifactRows : libraryModel.inboxRows;
   const detailRequested = activeSegment === "Artifacts" && showArtifactDetail;
   const selectedLocalArtifact = surfaceSelectedArtifactId ? artifacts.find((artifact) => artifact.id === surfaceSelectedArtifactId) ?? null : null;
-  const fallbackArtifactDetail = detailRequested && !selectedArtifactDetail && selectedLocalArtifact
+  const fallbackArtifactDetail = detailRequested && !selectedArtifactDetail && selectedLocalArtifact && shouldUseArtifactFallback(artifactDetailStatus)
     ? deriveMobileArtifactFallbackDetail({
       artifact: selectedLocalArtifact,
       reason: artifactDetailStatus && artifactDetailStatus !== "Ready"
