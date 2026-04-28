@@ -103,6 +103,60 @@ class AssistantQuickAction(BaseModel):
     priority: int
 
 
+class AssistantStrategicGoalSummary(BaseModel):
+    id: str
+    title: str
+    horizon: str
+    review_cadence: str
+    updated_at: datetime
+    last_reviewed_at: datetime | None = None
+
+
+class AssistantStrategicProjectSummary(BaseModel):
+    id: str
+    goal_id: str | None = None
+    title: str
+    next_action_id: str | None = None
+    updated_at: datetime
+    last_reviewed_at: datetime | None = None
+
+
+class AssistantStrategicCommitmentSummary(BaseModel):
+    id: str
+    source_type: str
+    source_id: str | None = None
+    title: str
+    promised_to: str | None = None
+    due_at: datetime | None = None
+    updated_at: datetime
+
+
+class AssistantStrategicAttentionItem(BaseModel):
+    key: str
+    kind: str
+    title: str
+    body: str
+    entity_type: str
+    entity_id: str
+    surface: str
+    href: str | None = None
+    priority: int
+    due_at: datetime | None = None
+
+
+class AssistantStrategicContextSummary(BaseModel):
+    active_goal_count: int
+    active_project_count: int
+    open_commitment_count: int
+    overdue_commitment_count: int
+    project_missing_next_action_count: int
+    attention_count: int
+    active_goals: list[AssistantStrategicGoalSummary]
+    active_projects: list[AssistantStrategicProjectSummary]
+    open_commitments: list[AssistantStrategicCommitmentSummary]
+    attention_items: list[AssistantStrategicAttentionItem]
+
+
 class AssistantTodaySummary(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     thread_id: str | None = None
@@ -114,4 +168,5 @@ class AssistantTodaySummary(BaseModel):
     reason_stack: list[str]
     at_a_glance: list[AssistantOpenLoopSummary]
     quick_actions: list[AssistantQuickAction]
+    strategic_context: AssistantStrategicContextSummary | None = None
     generated_at: datetime

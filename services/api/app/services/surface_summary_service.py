@@ -5,10 +5,22 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import review_mode_service
+from app.services import review_mode_service, strategic_context_service
 from app.services.common import execute_fetchall, execute_fetchone
 
 OPEN_TASK_STATUSES_SQL = "status NOT IN ('done', 'completed', 'cancelled', 'canceled')"
+STRATEGIC_CONTEXT_ITEM_LIMIT = 6
+PROJECT_STALE_AFTER_DAYS = 14
+# Goal cadence is intentionally simple and deterministic for the Today read model.
+# Unknown cadence strings default to weekly so stale checks remain predictable.
+GOAL_REVIEW_CADENCE_DAYS = {
+    "daily": 1,
+    "weekly": 7,
+    "biweekly": 14,
+    "monthly": 30,
+    "quarterly": 90,
+}
+DEFAULT_GOAL_REVIEW_CADENCE_DAYS = 7
 
 
 def _count(conn: Connection, sql: str, params: tuple[Any, ...] = ()) -> int:
@@ -45,6 +57,21 @@ def _parse_date(value: str | None) -> date:
     if not value:
         return _today()
     return date.fromisoformat(value)
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _source_breakdown(conn: Connection) -> list[dict[str, Any]]:
@@ -344,6 +371,165 @@ def review_summary(conn: Connection) -> dict[str, Any]:
     }
 
 
+def _goal_review_threshold_days(review_cadence: str | None) -> int:
+    return GOAL_REVIEW_CADENCE_DAYS.get((review_cadence or "").strip().lower(), DEFAULT_GOAL_REVIEW_CADENCE_DAYS)
+
+
+def _strategic_goal_summary(goal: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": goal["id"],
+        "title": goal["title"],
+        "horizon": goal["horizon"],
+        "review_cadence": goal["review_cadence"],
+        "updated_at": goal["updated_at"],
+        "last_reviewed_at": goal.get("last_reviewed_at"),
+    }
+
+
+def _strategic_project_summary(project: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": project["id"],
+        "goal_id": project.get("goal_id"),
+        "title": project["title"],
+        "next_action_id": project.get("next_action_id"),
+        "updated_at": project["updated_at"],
+        "last_reviewed_at": project.get("last_reviewed_at"),
+    }
+
+
+def _strategic_commitment_summary(commitment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": commitment["id"],
+        "source_type": commitment["source_type"],
+        "source_id": commitment.get("source_id"),
+        "title": commitment["title"],
+        "promised_to": commitment.get("promised_to"),
+        "due_at": commitment.get("due_at"),
+        "updated_at": commitment["updated_at"],
+    }
+
+
+def _strategic_attention_items(
+    *,
+    active_goals: list[dict[str, Any]],
+    active_projects: list[dict[str, Any]],
+    open_commitments: list[dict[str, Any]],
+    generated_at: datetime,
+    overdue_before: datetime,
+) -> list[dict[str, Any]]:
+    attention_items: list[dict[str, Any]] = []
+
+    for commitment in open_commitments:
+        due_at = _parse_datetime(commitment.get("due_at"))
+        if due_at is None or due_at >= overdue_before:
+            continue
+        attention_items.append(
+            {
+                "key": f"commitment_overdue:{commitment['id']}",
+                "kind": "commitment_overdue",
+                "title": commitment["title"],
+                "body": "Open commitment is overdue.",
+                "entity_type": "commitment",
+                "entity_id": commitment["id"],
+                "surface": "planner",
+                "href": "/planner",
+                "priority": 90,
+                "due_at": commitment.get("due_at"),
+            }
+        )
+
+    for project in active_projects:
+        if project.get("next_action_id") is None:
+            attention_items.append(
+                {
+                    "key": f"project_missing_next_action:{project['id']}",
+                    "kind": "project_missing_next_action",
+                    "title": project["title"],
+                    "body": "Active project has no next action.",
+                    "entity_type": "project",
+                    "entity_id": project["id"],
+                    "surface": "planner",
+                    "href": "/planner",
+                    "priority": 85,
+                    "due_at": None,
+                }
+            )
+
+        project_reviewed_at = _parse_datetime(project.get("last_reviewed_at")) or _parse_datetime(project.get("updated_at"))
+        if project_reviewed_at is not None and project_reviewed_at <= generated_at - timedelta(days=PROJECT_STALE_AFTER_DAYS):
+            attention_items.append(
+                {
+                    "key": f"project_stale:{project['id']}",
+                    "kind": "project_stale",
+                    "title": project["title"],
+                    "body": f"Active project has not been reviewed in {PROJECT_STALE_AFTER_DAYS} days.",
+                    "entity_type": "project",
+                    "entity_id": project["id"],
+                    "surface": "planner",
+                    "href": "/planner",
+                    "priority": 55,
+                    "due_at": None,
+                }
+            )
+
+    for goal in active_goals:
+        cadence_days = _goal_review_threshold_days(goal.get("review_cadence"))
+        reviewed_at = (
+            _parse_datetime(goal.get("last_reviewed_at"))
+            or _parse_datetime(goal.get("updated_at"))
+            or _parse_datetime(goal.get("created_at"))
+        )
+        if reviewed_at is not None and reviewed_at <= generated_at - timedelta(days=cadence_days):
+            attention_items.append(
+                {
+                    "key": f"goal_review_due:{goal['id']}",
+                    "kind": "goal_review_due",
+                    "title": goal["title"],
+                    "body": f"Active goal has not been reviewed within its {goal['review_cadence']} cadence.",
+                    "entity_type": "goal",
+                    "entity_id": goal["id"],
+                    "surface": "planner",
+                    "href": "/planner",
+                    "priority": 50,
+                    "due_at": None,
+                }
+            )
+
+    return sorted(attention_items, key=lambda item: (-int(item["priority"]), item["title"], item["key"]))
+
+
+def _assistant_strategic_context(conn: Connection, *, generated_at: datetime, overdue_before: datetime) -> dict[str, Any]:
+    active_goals = strategic_context_service.list_goals(conn, status="active")
+    active_projects = strategic_context_service.list_projects(conn, status="active")
+    open_commitments = strategic_context_service.list_commitments(conn, status="open")
+    attention_items = _strategic_attention_items(
+        active_goals=active_goals,
+        active_projects=active_projects,
+        open_commitments=open_commitments,
+        generated_at=generated_at,
+        overdue_before=overdue_before,
+    )
+
+    return {
+        "active_goal_count": len(active_goals),
+        "active_project_count": len(active_projects),
+        "open_commitment_count": len(open_commitments),
+        "overdue_commitment_count": sum(1 for item in attention_items if item["kind"] == "commitment_overdue"),
+        "project_missing_next_action_count": sum(
+            1 for item in attention_items if item["kind"] == "project_missing_next_action"
+        ),
+        "attention_count": len(attention_items),
+        "active_goals": [_strategic_goal_summary(goal) for goal in active_goals[:STRATEGIC_CONTEXT_ITEM_LIMIT]],
+        "active_projects": [
+            _strategic_project_summary(project) for project in active_projects[:STRATEGIC_CONTEXT_ITEM_LIMIT]
+        ],
+        "open_commitments": [
+            _strategic_commitment_summary(commitment) for commitment in open_commitments[:STRATEGIC_CONTEXT_ITEM_LIMIT]
+        ],
+        "attention_items": attention_items[:STRATEGIC_CONTEXT_ITEM_LIMIT],
+    }
+
+
 def _assistant_recommended_next_move(counts: dict[str, int]) -> dict[str, Any]:
     if counts["open_interrupt_count"] > 0:
         return {
@@ -368,6 +554,30 @@ def _assistant_recommended_next_move(counts: dict[str, int]) -> dict[str, Any]:
             "prompt": "Help me triage my overdue tasks.",
             "priority": 90,
             "urgency": "high",
+        }
+    if counts["overdue_commitments"] > 0:
+        return {
+            "key": "clear_overdue_commitments",
+            "title": "Clear overdue commitments",
+            "body": f"{_count_phrase(counts['overdue_commitments'], 'open commitment')} overdue and needs a decision today.",
+            "surface": "planner",
+            "href": "/planner",
+            "action_label": "Open planner",
+            "prompt": "Help me triage overdue commitments.",
+            "priority": 90,
+            "urgency": "high",
+        }
+    if counts["projects_missing_next_action"] > 0:
+        return {
+            "key": "define_project_next_action",
+            "title": "Define next project action",
+            "body": f"{_count_phrase(counts['projects_missing_next_action'], 'active project')} missing a next action.",
+            "surface": "planner",
+            "href": "/planner",
+            "action_label": "Open planner",
+            "prompt": "Help me define next actions for active projects.",
+            "priority": 85,
+            "urgency": "medium",
         }
     if counts["unprocessed_library"] > 0:
         return {
@@ -429,6 +639,10 @@ def _assistant_reason_stack(counts: dict[str, int]) -> list[str]:
         reasons.append(f"{_count_phrase(counts['open_interrupt_count'], 'assistant decision')} pending")
     if counts["overdue_tasks"] > 0:
         reasons.append(f"{_count_phrase(counts['overdue_tasks'], 'task')} overdue")
+    if counts["overdue_commitments"] > 0:
+        reasons.append(f"{_count_phrase(counts['overdue_commitments'], 'commitment')} overdue")
+    if counts["projects_missing_next_action"] > 0:
+        reasons.append(f"{_count_phrase(counts['projects_missing_next_action'], 'active project')} missing a next action")
     if counts["unprocessed_library"] > 0:
         reasons.append(f"{_count_phrase(counts['unprocessed_library'], 'library capture')} unprocessed")
     if counts["due_reviews"] > 0:
@@ -573,12 +787,19 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         """,
     )
     open_commitments = _count(conn, "SELECT COUNT(*) FROM commitments WHERE status = 'open'")
+    strategic_context = _assistant_strategic_context(
+        conn,
+        generated_at=generated_at,
+        overdue_before=datetime(day.year, day.month, day.day, tzinfo=timezone.utc),
+    )
     counts = {
         "active_run_count": active_run_count,
         "open_interrupt_count": open_interrupt_count,
         "recent_surface_event_count": recent_surface_event_count,
         "open_tasks": open_tasks,
         "overdue_tasks": overdue_tasks,
+        "overdue_commitments": int(strategic_context["overdue_commitment_count"]),
+        "projects_missing_next_action": int(strategic_context["project_missing_next_action_count"]),
         "due_reviews": due_reviews,
         "unprocessed_library": unprocessed_library,
         "open_commitments": open_commitments,
@@ -601,5 +822,6 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         "reason_stack": _assistant_reason_stack(counts),
         "at_a_glance": _assistant_at_a_glance(counts),
         "quick_actions": _assistant_quick_actions(counts),
+        "strategic_context": strategic_context,
         "generated_at": generated_at,
     }
