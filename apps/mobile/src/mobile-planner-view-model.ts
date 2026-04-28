@@ -104,16 +104,16 @@ export function deriveMobilePlannerViewModel(input: {
   const selectedDate = parsePlannerDate(input.selectedDate ?? input.summary?.date, now);
   const selectedDateKey = formatPlannerDateKey(selectedDate);
   const hasSummary = Boolean(input.summary);
-  const focusMinutes = Math.max(0, input.summary?.focus_minutes ?? 90);
-  const bufferMinutes = Math.max(0, input.summary?.buffer_minutes ?? 30);
-  const meetingCount = Math.max(0, input.summary?.calendar_event_count ?? (hasSummary ? 0 : 2));
-  const openTasks = bucketCount(input.summary?.task_buckets, "open_tasks", hasSummary ? 0 : 6);
-  const dueToday = bucketCount(input.summary?.task_buckets, "due_today_tasks", hasSummary ? 0 : 3);
+  const focusMinutes = Math.max(0, input.summary?.focus_minutes ?? 0);
+  const bufferMinutes = Math.max(0, input.summary?.buffer_minutes ?? 0);
+  const meetingCount = Math.max(0, input.summary?.calendar_event_count ?? 0);
+  const openTasks = bucketCount(input.summary?.task_buckets, "open_tasks", 0);
+  const dueToday = bucketCount(input.summary?.task_buckets, "due_today_tasks", 0);
   const conflictCount = Math.max(0, input.summary?.conflict_count ?? 0);
-  const fixedBlocks = bucketCount(input.summary?.block_buckets, "fixed_blocks", hasSummary ? 0 : meetingCount);
-  const focusBlocks = bucketCount(input.summary?.block_buckets, "focus_blocks", hasSummary ? 0 : focusMinutes > 0 ? 1 : 0);
-  const bufferBlocks = bucketCount(input.summary?.block_buckets, "buffer_blocks", hasSummary ? 0 : bufferMinutes > 0 ? 1 : 0);
-  const nextAction = compactSentence(input.nextActionPreview) || "Move the highest-value open loop before new intake.";
+  const fixedBlocks = bucketCount(input.summary?.block_buckets, "fixed_blocks", 0);
+  const focusBlocks = bucketCount(input.summary?.block_buckets, "focus_blocks", 0);
+  const bufferBlocks = bucketCount(input.summary?.block_buckets, "buffer_blocks", 0);
+  const nextAction = compactSentence(input.nextActionPreview) || "No Planner next action loaded yet.";
   const statusLabel = input.summary
     ? `Synced ${formatPlannerTime(input.summary.generated_at, now)}`
     : "No Planner summary loaded";
@@ -152,12 +152,19 @@ export function deriveMobilePlannerViewModel(input: {
     decisionLabel,
     decisionDetail,
     dayStrip: buildDayStrip(selectedDate),
-    metrics: [
-      { label: "Focus", value: formatMinutes(focusMinutes), caption: focusBlocks > 0 ? `${focusBlocks} block${focusBlocks === 1 ? "" : "s"}` : "No block", tone: "focus" },
-      { label: "Meetings", value: String(meetingCount), caption: `${fixedBlocks} fixed`, tone: "meeting" },
-      { label: "Tasks", value: String(openTasks), caption: dueToday > 0 ? `${dueToday} due today` : "Open loops", tone: "task" },
-      { label: "Buffer", value: formatMinutes(bufferMinutes), caption: bufferBlocks > 0 ? `${bufferBlocks} block${bufferBlocks === 1 ? "" : "s"}` : "Flexible", tone: "buffer" },
-    ],
+    metrics: hasSummary
+      ? [
+          { label: "Focus", value: formatMinutes(focusMinutes), caption: focusBlocks > 0 ? `${focusBlocks} block${focusBlocks === 1 ? "" : "s"}` : "No block", tone: "focus" },
+          { label: "Meetings", value: String(meetingCount), caption: `${fixedBlocks} fixed`, tone: "meeting" },
+          { label: "Tasks", value: String(openTasks), caption: dueToday > 0 ? `${dueToday} due today` : "Open loops", tone: "task" },
+          { label: "Buffer", value: formatMinutes(bufferMinutes), caption: bufferBlocks > 0 ? `${bufferBlocks} block${bufferBlocks === 1 ? "" : "s"}` : "Flexible", tone: "buffer" },
+        ]
+      : [
+          { label: "Focus", value: "Unknown", caption: "Refresh Planner", tone: "focus" },
+          { label: "Meetings", value: "Unknown", caption: "Refresh Planner", tone: "meeting" },
+          { label: "Tasks", value: "Unknown", caption: "Refresh Planner", tone: "task" },
+          { label: "Buffer", value: "Unknown", caption: "Refresh Planner", tone: "buffer" },
+        ],
     timelineBlocks: buildTimelineBlocks({
       nextAction,
       focusMinutes,

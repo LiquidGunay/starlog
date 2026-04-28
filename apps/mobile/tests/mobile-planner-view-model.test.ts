@@ -72,11 +72,20 @@ const fallback = deriveMobilePlannerViewModel({
 });
 
 assert.equal(fallback.statusLabel, "No Planner summary loaded");
-assert.equal(fallback.metrics[0].value, "1h 30m");
+assert.deepEqual(fallback.metrics, [
+  { label: "Focus", value: "Unknown", caption: "Refresh Planner", tone: "focus" },
+  { label: "Meetings", value: "Unknown", caption: "Refresh Planner", tone: "meeting" },
+  { label: "Tasks", value: "Unknown", caption: "Refresh Planner", tone: "task" },
+  { label: "Buffer", value: "Unknown", caption: "Refresh Planner", tone: "buffer" },
+]);
 assert.equal(fallback.timelineBlocks[0].detail, "No briefing alarm is scheduled for this date.");
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "0m");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.durationLabel, "None");
 assert.deepEqual(fallback.promptChips, ["Protect focus", "What can move?", "Plan buffer"]);
+assert.deepEqual(fallback.planGroups[0].items, []);
+assert.deepEqual(fallback.planGroups[1].items, []);
 assert.equal(fallback.planGroups[2].items.length, 0);
 
 const futureFallback = deriveMobilePlannerViewModel({

@@ -3093,7 +3093,7 @@ export function MobileCalendarSurface({
       <View style={{ ...cardBase(palette), gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <Text style={{ flex: 1, color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "800" }}>Today's plan</Text>
-          <MaterialCommunityIcons name="dots-horizontal" size={20} color={palette.muted} />
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>Derived</Text>
         </View>
         {planner.planGroups.map((group) => (
           <View key={group.title} style={{ gap: 9, borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 12 }}>
