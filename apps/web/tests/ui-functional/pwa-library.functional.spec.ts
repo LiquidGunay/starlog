@@ -125,130 +125,157 @@ const notes = [
 const focusDetail = {
   artifact: {
     id: "art_capture_focus",
+    source_type: "web_clip",
     title: "The Focus Fallacy",
-    artifact_type: "Web clip",
-    status: "needs_decision",
-    source: "Browser Clipper",
-    source_url: "https://example.test/focus",
-    captured_at: "2026-04-27T10:15:00.000Z",
+    created_at: "2026-04-27T10:15:00.000Z",
     updated_at: "2026-04-27T10:20:00.000Z",
+  },
+  capture: {
+    source_app: "browser_clipper",
+    source_type: "web_clip",
+    source_url: "https://example.test/focus",
+    source_file: "focus-fallacy.html",
+    capture_method: "manual clip",
+    captured_at: "2026-04-27T10:15:00.000Z",
     tags: ["focus", "attention"],
-    summary: "Generated summary stays attached to the source capture and explains that multitasking fragments attention.",
-    key_ideas: [
+  },
+  source_layers: [
+    {
+      layer: "raw",
+      present: true,
+      preview: "Raw article body with source formatting and captured quote: focus is a narrow aperture.",
+      character_count: 86,
+      mime_type: "text/html",
+      checksum_sha256: "raw-focus-checksum",
+      source_filename: "focus-fallacy.html",
+    },
+    {
+      layer: "normalized",
+      present: true,
+      preview: "Normalized clean text preserves paragraphs and removes page chrome.",
+      character_count: 62,
+      mime_type: "text/plain",
+      checksum_sha256: null,
+      source_filename: null,
+    },
+    {
+      layer: "extracted",
+      present: true,
+      preview: "Key ideas: attention residue, single active objective, capture-to-task loop.",
+      character_count: 74,
+      mime_type: "text/plain",
+      checksum_sha256: null,
+      source_filename: null,
+    },
+  ],
+  connections: {
+    summary_version_count: 2,
+    latest_summary: {
+      id: "sum_focus_2",
+      version: 2,
+      provider: "test",
+      created_at: "2026-04-27T10:18:00.000Z",
+      preview: "Generated summary stays attached to the source capture and explains that multitasking fragments attention.",
+      character_count: 101,
+    },
+    card_count: 3,
+    card_set_version_count: 1,
+    task_count: 1,
+    note_count: 1,
+    notes: [
       {
-        title: "Attention residue drives context switching cost",
-        detail: "Use smaller capture-to-task loops before planning deep work.",
-        provenance: "Extracted from normalized paragraph 3",
-      },
-      {
-        title: "Protect a single active objective",
-        detail: "The source argues against parallel priority lists.",
-        provenance: "Extracted from raw article section 2",
+        id: "note_attention",
+        title: "Attention operating notes",
+        version: 3,
       },
     ],
-    quick_note: "Compare this with the onboarding focus block.",
+    relation_count: 1,
+    relations: [
+      {
+        id: "rel_focus_summary",
+        artifact_id: "art_capture_focus",
+        relation_type: "artifact.summary_version",
+        target_type: "summary_version",
+        target_id: "sum_focus_2",
+        created_at: "2026-04-27T10:18:00.000Z",
+      },
+    ],
+    action_run_count: 2,
   },
-  provenance: {
-    source_app: "Browser Clipper",
-    url: "https://example.test/focus",
-    capture_method: "manual clip",
-    capture_time: "2026-04-27T10:15:00.000Z",
-    captured_by: "Taylor",
-    device: "ThinkPad PWA",
-    location: "Desk",
-    linked_project: "Onboarding flow polish",
-    used_in_tasks: "1 task",
-    used_in_review: "3 review cards",
-  },
-  layers: {
-    raw: {
-      title: "Raw HTML text",
-      content: "Raw article body with source formatting and captured quote: focus is a narrow aperture.",
-      format: "html",
+  timeline: [
+    {
+      kind: "artifact.created",
+      label: "Artifact created",
+      occurred_at: "2026-04-27T10:15:00.000Z",
+      entity_type: "artifact",
+      entity_id: "art_capture_focus",
+      status: null,
     },
-    normalized: {
-      title: "Normalized article text",
-      content: "Normalized clean text preserves paragraphs and removes page chrome.",
-      format: "text",
+    {
+      kind: "summary.version_created",
+      label: "Summary v2 created",
+      occurred_at: "2026-04-27T10:18:00.000Z",
+      entity_type: "summary_version",
+      entity_id: "sum_focus_2",
+      status: null,
     },
-    extracted: {
-      title: "Extracted ideas",
-      content: "Key ideas: attention residue, single active objective, capture-to-task loop.",
-      format: "json",
+    {
+      kind: "action.summarize",
+      label: "Summarize action",
+      occurred_at: "2026-04-27T10:19:00.000Z",
+      entity_type: "action_run",
+      entity_id: "act_focus_summary",
+      status: "completed",
     },
-  },
-  actions: [
+  ],
+  suggested_actions: [
     {
       action: "summarize",
       label: "Summarize",
-      description: "Generate concise summary with key points.",
-      supported: true,
-      status: "ready",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
     },
     {
       action: "cards",
       label: "Make cards",
-      description: "Create atomic review items.",
-      supported: true,
-      status: "ready",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
     },
     {
       action: "tasks",
-      label: "Create task",
-      description: "Turn insight into an actionable task.",
-      supported: true,
-      status: "ready",
+      label: "Make tasks",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
     },
     {
       action: "append_note",
-      label: "Append to note",
-      description: "Add this artifact to an existing note.",
-      supported: true,
-      status: "ready",
+      label: "Append note",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
     },
     {
-      action: "extract_highlights",
-      label: "Extract highlights",
-      description: "Find and save key quotes or passages.",
-      supported: false,
-      disabled_reason: "Highlight extraction is not enabled.",
-    },
-  ],
-  connections: [
-    {
-      id: "project_onboarding",
-      kind: "project",
-      title: "Onboarding flow polish",
-      href: "/planner?project=project_onboarding",
-      detail: "Used as research context.",
+      action: "archive",
+      label: "Archive",
+      enabled: false,
+      method: null,
+      endpoint: null,
+      disabled_reason: "Archive is not supported by the artifact action backend yet.",
     },
     {
-      id: "note_attention",
-      kind: "note",
-      title: "Attention operating notes",
-      detail: "Summary appended as version 3.",
-    },
-    {
-      id: "review_focus_cards",
-      kind: "review",
-      title: "Focus review cards",
-      detail: "3 cards generated.",
-    },
-  ],
-  activity: [
-    {
-      id: "capture",
-      label: "Captured from browser",
-      detail: "Browser clipper saved raw and normalized layers.",
-      actor: "Taylor",
-      created_at: "2026-04-27T10:15:00.000Z",
-    },
-    {
-      id: "summary",
-      label: "Summary generated",
-      detail: "OpenAI-primary summarization created the current summary.",
-      actor: "Starlog",
-      created_at: "2026-04-27T10:18:00.000Z",
+      action: "link",
+      label: "Link",
+      enabled: false,
+      method: null,
+      endpoint: null,
+      disabled_reason: "Manual artifact linking is not supported by the artifact action backend yet.",
     },
   ],
 };
@@ -389,15 +416,18 @@ test("PWA library detail renders provenance, layers, connections, and conversion
 
   await page.goto("/library/captures/art_capture_focus", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/library\/captures\/art_capture_focus$/);
-  await expect(page.getByRole("heading", { name: "The Focus Fallacy" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Artifact detail" })).toBeVisible();
-  await expect(page.getByText("Generated summary stays attached to the source capture")).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Loaded artifact detail")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "The Focus Fallacy" })).toBeVisible({ timeout: 10_000 });
+  const detailSection = page.getByRole("region", { name: "Artifact detail" });
+  await expect(detailSection).toBeVisible();
+  await expect(detailSection.getByText("Generated summary stays attached to the source capture")).toBeVisible();
+  await expect(detailSection.getByText("Summary v2 · test")).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Source and provenance" })).toBeVisible();
   await expect(page.getByText("Browser Clipper").first()).toBeVisible();
   await expect(page.getByText("manual clip")).toBeVisible();
-  await expect(page.getByText("ThinkPad PWA")).toBeVisible();
-  await expect(page.getByText("Onboarding flow polish").first()).toBeVisible();
+  await expect(page.getByText("focus-fallacy.html").first()).toBeVisible();
+  await expect(page.getByText("1 tasks / 3 review cards")).toBeVisible();
 
   const layerSection = page.getByRole("region", { name: "Raw, normalized, and extracted layers" });
   await expect(layerSection).toBeVisible();
@@ -405,18 +435,22 @@ test("PWA library detail renders provenance, layers, connections, and conversion
   await expect(layerSection.getByText("Normalized clean text preserves paragraphs")).toBeVisible();
   await expect(layerSection.getByText("Key ideas: attention residue")).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Highlights and key ideas" })).toBeVisible();
-  await expect(page.getByText("Extracted from normalized paragraph 3")).toBeVisible();
-  await expect(page.getByText("Protect a single active objective")).toBeVisible();
+  const extractedSection = page.getByRole("region", { name: "Highlights and key ideas" });
+  await expect(extractedSection).toBeVisible();
+  await expect(extractedSection.getByText("Extracted source layer")).toBeVisible();
+  await expect(extractedSection.getByText("single active objective")).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
-  await expect(page.getByText("Attention operating notes")).toBeVisible();
-  await expect(page.getByText("Focus review cards")).toBeVisible();
+  const connectionsSection = page.getByRole("region", { name: "Connections" });
+  await expect(connectionsSection).toBeVisible();
+  await expect(connectionsSection.getByText("Attention operating notes")).toBeVisible();
+  await expect(connectionsSection.getByText("3 review cards", { exact: true })).toBeVisible();
+  await expect(connectionsSection.getByText("Summary v2", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Activity timeline" })).toBeVisible();
-  await expect(page.getByText("Captured from browser")).toBeVisible();
-  await expect(page.getByText("Summary generated")).toBeVisible();
+  await expect(page.getByText("Artifact created")).toBeVisible();
+  await expect(page.getByText("Summary v2 created")).toBeVisible();
 
-  await expect(page.getByRole("button", { name: /Extract highlights/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Archive/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Link/ })).toBeDisabled();
   await page.getByRole("button", { name: /Summarize/ }).click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
   await expect(page.locator("[aria-live='polite']")).toHaveText("Loaded artifact detail");

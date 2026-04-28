@@ -9,7 +9,7 @@ import { useSessionConfig } from "../session-provider";
 import styles from "./detail.module.css";
 
 type ArtifactActionKind = "summarize" | "cards" | "tasks" | "append_note";
-type DetailActionKind = ArtifactActionKind | "extract_highlights" | string;
+type DetailActionKind = ArtifactActionKind | "archive" | "link" | string;
 
 type LegacyArtifact = {
   id: string;
@@ -27,6 +27,10 @@ type DetailLayer = {
   title?: string | null;
   content?: string | null;
   format?: string | null;
+  present?: boolean;
+  character_count?: number | null;
+  checksum_sha256?: string | null;
+  source_filename?: string | null;
   updated_at?: string | null;
 };
 
@@ -34,6 +38,9 @@ type DetailAction = {
   action: DetailActionKind;
   label: string;
   description?: string | null;
+  endpoint?: string | null;
+  method?: string | null;
+  enabled?: boolean;
   supported?: boolean;
   status?: string | null;
   disabled_reason?: string | null;
@@ -50,10 +57,13 @@ type DetailConnection = {
 
 type DetailActivity = {
   id?: string | null;
+  kind?: string | null;
   label: string;
   detail?: string | null;
   actor?: string | null;
   created_at: string;
+  entity_type?: string | null;
+  status?: string | null;
 };
 
 type ArtifactDetail = {
@@ -67,6 +77,7 @@ type ArtifactDetail = {
   updated_at?: string | null;
   tags?: string[];
   summary?: string | null;
+  summary_provenance?: string | null;
   key_ideas?: Array<string | { title?: string | null; detail?: string | null; provenance?: string | null }>;
   quick_note?: string | null;
   provenance?: Record<string, unknown>;
@@ -78,6 +89,90 @@ type ArtifactDetail = {
   actions?: DetailAction[];
   connections?: DetailConnection[];
   activity?: DetailActivity[];
+};
+
+type ContractArtifact = {
+  id: string;
+  source_type: string;
+  title?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ContractCapture = {
+  source_app?: string | null;
+  source_type: string;
+  source_url?: string | null;
+  source_file?: string | null;
+  capture_method?: string | null;
+  captured_at: string;
+  tags: string[];
+};
+
+type ContractSourceLayer = {
+  layer: "raw" | "normalized" | "extracted";
+  present: boolean;
+  preview?: string | null;
+  character_count?: number | null;
+  mime_type?: string | null;
+  checksum_sha256?: string | null;
+  source_filename?: string | null;
+};
+
+type ContractLatestSummary = {
+  id: string;
+  version: number;
+  provider: string;
+  created_at: string;
+  preview: string;
+  character_count: number;
+};
+
+type ContractConnections = {
+  summary_version_count: number;
+  latest_summary?: ContractLatestSummary | null;
+  card_count: number;
+  card_set_version_count: number;
+  task_count: number;
+  note_count: number;
+  notes: Array<{ id: string; title: string; version: number }>;
+  relation_count: number;
+  relations: Array<{
+    id: string;
+    artifact_id: string;
+    relation_type: string;
+    target_type: string;
+    target_id: string;
+    created_at: string;
+  }>;
+  action_run_count: number;
+};
+
+type ContractTimelineEvent = {
+  kind: string;
+  label: string;
+  occurred_at: string;
+  entity_type: string;
+  entity_id: string;
+  status?: string | null;
+};
+
+type ContractSuggestedAction = {
+  action: DetailActionKind;
+  label: string;
+  enabled: boolean;
+  method?: string | null;
+  endpoint?: string | null;
+  disabled_reason?: string | null;
+};
+
+type ArtifactDetailContract = {
+  artifact: ContractArtifact;
+  capture: ContractCapture;
+  source_layers: ContractSourceLayer[];
+  connections: ContractConnections;
+  timeline: ContractTimelineEvent[];
+  suggested_actions: ContractSuggestedAction[];
 };
 
 type ArtifactActionResponse = {
@@ -97,32 +192,33 @@ const DEFAULT_ACTIONS: DetailAction[] = [
     action: "summarize",
     label: "Summarize",
     description: "Generate a concise summary with key points.",
-    supported: true,
+    supported: false,
+    enabled: false,
+    disabled_reason: "Detail action availability is not recorded.",
   },
   {
     action: "cards",
     label: "Make cards",
     description: "Create atomic review items from stable ideas.",
-    supported: true,
+    supported: false,
+    enabled: false,
+    disabled_reason: "Detail action availability is not recorded.",
   },
   {
     action: "tasks",
     label: "Create task",
     description: "Turn an insight into an actionable task.",
-    supported: true,
+    supported: false,
+    enabled: false,
+    disabled_reason: "Detail action availability is not recorded.",
   },
   {
     action: "append_note",
     label: "Append to note",
     description: "Add this artifact to an existing note.",
-    supported: true,
-  },
-  {
-    action: "extract_highlights",
-    label: "Extract highlights",
-    description: "Find and save key quotes or passages.",
     supported: false,
-    disabled_reason: "Highlight extraction is not wired in this build.",
+    enabled: false,
+    disabled_reason: "Detail action availability is not recorded.",
   },
 ];
 
@@ -177,7 +273,7 @@ function captureMetadata(artifact: LegacyArtifact): Record<string, unknown> {
 function fallbackDetailFromArtifact(artifact: LegacyArtifact): ArtifactDetail {
   const capture = captureMetadata(artifact);
   const sourceUrl = asString(capture.source_url);
-  const captureSource = asString(capture.capture_source) || titleCase(artifact.source_type || "capture");
+  const captureSource = asString(capture.capture_source);
   const tags = Array.isArray(capture.tags) ? capture.tags.filter((tag): tag is string => typeof tag === "string") : [];
 
   return {
@@ -185,69 +281,168 @@ function fallbackDetailFromArtifact(artifact: LegacyArtifact): ArtifactDetail {
     title: artifact.title?.trim() || titleCase(artifact.source_type || "capture"),
     artifact_type: titleCase(artifact.source_type || "capture"),
     status: "fallback",
-    source: titleCase(captureSource),
+    source: captureSource ? titleCase(captureSource) : null,
     source_url: sourceUrl,
     captured_at: artifact.created_at,
     updated_at: artifact.updated_at,
     tags,
-    summary: compactText(artifact.extracted_content || artifact.normalized_content || artifact.raw_content, "Detail read model is not available yet; showing the captured source layers."),
+    summary: null,
+    summary_provenance: null,
     key_ideas: [],
     quick_note: asString(capture.quick_note),
     provenance: {
       source_app: captureSource,
       url: sourceUrl,
-      capture_method: provenanceValue(capture, "capture_method", "Library capture"),
+      source_file: asString(capture.source_file) || asString(capture.source_filename),
+      capture_method: asString(capture.capture_method),
       capture_time: artifact.created_at,
-      captured_by: provenanceValue(capture, "captured_by", "Starlog user"),
-      device: asString(capture.device),
-      location: asString(capture.location),
-      linked_project: asString(capture.linked_project),
-      linked_notes: asString(capture.linked_notes),
-      used_in_tasks: asString(capture.used_in_tasks),
-      used_in_review: asString(capture.used_in_review),
     },
     layers: {
-      raw: { title: "Raw capture", content: artifact.raw_content, format: "source" },
-      normalized: { title: "Normalized text", content: artifact.normalized_content, format: "text" },
-      extracted: { title: "Extracted output", content: artifact.extracted_content, format: "generated" },
+      raw: { title: "Raw layer", content: artifact.raw_content, present: Boolean(artifact.raw_content), format: "source" },
+      normalized: { title: "Normalized layer", content: artifact.normalized_content, present: Boolean(artifact.normalized_content), format: "text" },
+      extracted: { title: "Extracted layer", content: artifact.extracted_content, present: Boolean(artifact.extracted_content), format: "extracted" },
     },
     actions: DEFAULT_ACTIONS,
     connections: [],
-    activity: [
-      {
-        id: `${artifact.id}-captured`,
-        label: "Captured into Library",
-        detail: `Source type: ${titleCase(artifact.source_type || "capture")}`,
-        actor: "Starlog",
-        created_at: artifact.created_at,
-      },
-    ],
+    activity: [],
   };
 }
 
-function normalizeDetail(payload: Partial<ArtifactDetail> & { artifact?: Partial<ArtifactDetail> }): ArtifactDetail {
-  const nested = payload.artifact || {};
-  const title = nested.title || payload.title || "Untitled artifact";
-  const id = nested.id || payload.id || "unknown";
+function layerTitle(layer: ContractSourceLayer): string {
+  const format = layer.mime_type || layer.source_filename;
+  return format ? `${titleCase(layer.layer)} layer (${format})` : `${titleCase(layer.layer)} layer`;
+}
+
+function detailActionDescription(action: DetailActionKind): string {
+  if (action === "summarize") {
+    return "Generate a concise summary with key points.";
+  }
+  if (action === "cards") {
+    return "Create atomic review items from stable ideas.";
+  }
+  if (action === "tasks") {
+    return "Turn an insight into an actionable task.";
+  }
+  if (action === "append_note") {
+    return "Add this artifact to an existing note.";
+  }
+  return "This action is not available from the artifact action endpoint.";
+}
+
+function contractConnectionsToCards(connections: ContractConnections): DetailConnection[] {
+  const cards: DetailConnection[] = [];
+  if (connections.latest_summary) {
+    cards.push({
+      id: connections.latest_summary.id,
+      kind: "summary",
+      title: `Summary v${connections.latest_summary.version}`,
+      detail: `${connections.latest_summary.provider} · ${formatDate(connections.latest_summary.created_at)} · ${connections.latest_summary.preview}`,
+    });
+  }
+  if (connections.card_count > 0) {
+    cards.push({
+      kind: "review",
+      title: `${connections.card_count} review card${connections.card_count === 1 ? "" : "s"}`,
+      detail: `${connections.card_set_version_count} card set version${connections.card_set_version_count === 1 ? "" : "s"}`,
+    });
+  }
+  if (connections.task_count > 0) {
+    cards.push({
+      kind: "task",
+      title: `${connections.task_count} linked task${connections.task_count === 1 ? "" : "s"}`,
+      detail: "Created from this artifact.",
+    });
+  }
+  for (const note of connections.notes) {
+    cards.push({
+      id: note.id,
+      kind: "note",
+      title: note.title,
+      detail: `Note v${note.version}`,
+    });
+  }
+  for (const relation of connections.relations) {
+    cards.push({
+      id: relation.id,
+      kind: relation.target_type,
+      title: titleCase(relation.relation_type),
+      detail: `${relation.target_type}: ${relation.target_id}`,
+    });
+  }
+  if (connections.action_run_count > 0) {
+    cards.push({
+      kind: "action",
+      title: `${connections.action_run_count} action run${connections.action_run_count === 1 ? "" : "s"}`,
+      detail: "See timeline for status history.",
+    });
+  }
+  return cards;
+}
+
+function normalizeContractDetail(payload: ArtifactDetailContract): ArtifactDetail {
+  const layers = Object.fromEntries(
+    payload.source_layers.map((layer) => [
+      layer.layer,
+      {
+        title: layerTitle(layer),
+        content: layer.preview,
+        present: layer.present,
+        format: layer.mime_type,
+        character_count: layer.character_count,
+        checksum_sha256: layer.checksum_sha256,
+        source_filename: layer.source_filename,
+      },
+    ]),
+  ) as ArtifactDetail["layers"];
 
   return {
-    id,
-    title,
-    artifact_type: nested.artifact_type || payload.artifact_type || "Artifact",
-    status: nested.status || payload.status || null,
-    source: nested.source || payload.source || null,
-    source_url: nested.source_url || payload.source_url || null,
-    captured_at: nested.captured_at || payload.captured_at || null,
-    updated_at: nested.updated_at || payload.updated_at || null,
-    tags: nested.tags || payload.tags || [],
-    summary: nested.summary || payload.summary || null,
-    key_ideas: nested.key_ideas || payload.key_ideas || [],
-    quick_note: nested.quick_note || payload.quick_note || null,
-    provenance: payload.provenance || nested.provenance || {},
-    layers: payload.layers || nested.layers || {},
-    actions: payload.actions || nested.actions || DEFAULT_ACTIONS,
-    connections: payload.connections || nested.connections || [],
-    activity: payload.activity || nested.activity || [],
+    id: payload.artifact.id,
+    title: payload.artifact.title?.trim() || titleCase(payload.artifact.source_type),
+    artifact_type: titleCase(payload.artifact.source_type),
+    source: payload.capture.source_app ? titleCase(payload.capture.source_app) : null,
+    source_url: payload.capture.source_url || null,
+    captured_at: payload.capture.captured_at,
+    updated_at: payload.artifact.updated_at,
+    tags: payload.capture.tags,
+    summary: payload.connections.latest_summary?.preview || null,
+    summary_provenance: payload.connections.latest_summary
+      ? `Summary v${payload.connections.latest_summary.version} · ${payload.connections.latest_summary.provider} · ${formatDate(payload.connections.latest_summary.created_at)}`
+      : null,
+    key_ideas: [],
+    quick_note: null,
+    provenance: {
+      source_app: payload.capture.source_app,
+      source_type: payload.capture.source_type,
+      url: payload.capture.source_url,
+      source_file: payload.capture.source_file,
+      capture_method: payload.capture.capture_method,
+      capture_time: payload.capture.captured_at,
+      summary_version_count: String(payload.connections.summary_version_count),
+      card_count: String(payload.connections.card_count),
+      task_count: String(payload.connections.task_count),
+      note_count: String(payload.connections.note_count),
+      relation_count: String(payload.connections.relation_count),
+    },
+    layers,
+    actions: payload.suggested_actions.map((action) => ({
+      action: action.action,
+      label: action.label,
+      description: detailActionDescription(action.action),
+      endpoint: action.endpoint,
+      method: action.method,
+      enabled: action.enabled,
+      supported: action.enabled && action.method === "POST" && Boolean(action.endpoint) && isSupportedPostAction(action.action),
+      disabled_reason: action.disabled_reason || null,
+    })),
+    connections: contractConnectionsToCards(payload.connections),
+    activity: payload.timeline.map((event) => ({
+      id: event.entity_id,
+      kind: event.kind,
+      label: event.label,
+      created_at: event.occurred_at,
+      entity_type: event.entity_type,
+      status: event.status,
+    })),
   };
 }
 
@@ -261,13 +456,13 @@ function mergeActions(actions?: DetailAction[]): DetailAction[] {
     byAction.set(action.action, {
       ...byAction.get(action.action),
       ...action,
-      supported: Boolean(action.supported) && isSupportedPostAction(action.action),
+      supported: Boolean(action.supported || action.enabled) && isSupportedPostAction(action.action) && Boolean(action.endpoint),
     });
   }
   return [...byAction.values()].map((action) => ({
     ...action,
-    supported: Boolean(action.supported) && isSupportedPostAction(action.action),
-    disabled_reason: action.supported && !isSupportedPostAction(action.action)
+    supported: Boolean(action.supported || action.enabled) && isSupportedPostAction(action.action) && Boolean(action.endpoint),
+    disabled_reason: (action.supported || action.enabled) && !isSupportedPostAction(action.action)
       ? "This action is not wired to the artifact action endpoint yet."
       : action.disabled_reason,
   }));
@@ -285,12 +480,12 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
     }
 
     try {
-      const payload = await apiRequest<Partial<ArtifactDetail> & { artifact?: Partial<ArtifactDetail> }>(
+      const payload = await apiRequest<ArtifactDetailContract>(
         apiBase,
         token,
         `/v1/artifacts/${id}/detail`,
       );
-      setDetail(normalizeDetail(payload));
+      setDetail(normalizeContractDetail(payload));
       setStatus("Loaded artifact detail");
     } catch (error) {
       if (error instanceof ApiError && (error.status === 404 || error.status === 501)) {
@@ -319,21 +514,22 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
 
   const actions = useMemo(() => mergeActions(detail?.actions), [detail?.actions]);
   const provenance = useMemo(() => asRecord(detail?.provenance), [detail?.provenance]);
-  const sourceUrl = detail?.source_url || asString(provenance.url) || asString(provenance.file);
+  const sourceUrl = detail?.source_url || asString(provenance.url);
+  const sourceFile = asString(provenance.source_file);
   const layers = detail?.layers || {};
   const connections = detail?.connections || [];
   const activity = detail?.activity || [];
   const tags = detail?.tags || [];
 
   async function handleAction(action: DetailAction) {
-    if (!detail || !isSupportedPostAction(action.action) || !action.supported) {
+    if (!detail || !isSupportedPostAction(action.action) || !action.supported || !action.endpoint) {
       return;
     }
 
     setActionStatus((current) => ({ ...current, [action.action]: "Requesting..." }));
     try {
       const result = await mutateWithQueue<ArtifactActionResponse>(
-        `/v1/artifacts/${detail.id}/actions`,
+        action.endpoint,
         {
           method: "POST",
           body: JSON.stringify({ action: action.action }),
@@ -440,11 +636,14 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
                 </div>
                 <div className={styles.fact}>
                   <span>File or URL</span>
-                  <strong>{sourceUrl || "Not recorded"}</strong>
+                  <strong>{sourceUrl || sourceFile || "Not recorded"}</strong>
                 </div>
               </div>
               <div className={styles.panelStack}>
                 <p className={styles.summary}>{detail?.summary || "No generated summary has been saved for this artifact yet."}</p>
+                {detail?.summary ? (
+                  <p className={styles.muted}>{detail.summary_provenance || "Summary provenance not recorded."}</p>
+                ) : null}
                 {tags.length ? (
                   <div className={styles.pillRow} aria-label="Tags">
                     {tags.map((tag) => <span className={styles.pill} key={tag}>{tag}</span>)}
@@ -491,13 +690,13 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
               </div>
               <div className={styles.provenanceGrid}>
                 <div className={styles.fact}><span>Source app</span><strong>{provenanceValue(provenance, "source_app", detail?.source || "Not recorded")}</strong></div>
-                <div className={styles.fact}><span>URL or file</span><strong>{sourceUrl || "Not recorded"}</strong></div>
+                <div className={styles.fact}><span>URL or file</span><strong>{sourceUrl || sourceFile || "Not recorded"}</strong></div>
                 <div className={styles.fact}><span>Capture method</span><strong>{provenanceValue(provenance, "capture_method")}</strong></div>
-                <div className={styles.fact}><span>Captured by</span><strong>{provenanceValue(provenance, "captured_by")}</strong></div>
-                <div className={styles.fact}><span>Device</span><strong>{provenanceValue(provenance, "device")}</strong></div>
-                <div className={styles.fact}><span>Location</span><strong>{provenanceValue(provenance, "location")}</strong></div>
-                <div className={styles.fact}><span>Linked project</span><strong>{provenanceValue(provenance, "linked_project")}</strong></div>
-                <div className={styles.fact}><span>Used in tasks/review</span><strong>{`${provenanceValue(provenance, "used_in_tasks", "No tasks")} / ${provenanceValue(provenance, "used_in_review", "No review items")}`}</strong></div>
+                <div className={styles.fact}><span>Source type</span><strong>{provenanceValue(provenance, "source_type")}</strong></div>
+                <div className={styles.fact}><span>Source file</span><strong>{sourceFile || "Not recorded"}</strong></div>
+                <div className={styles.fact}><span>Summaries</span><strong>{provenanceValue(provenance, "summary_version_count", "0")}</strong></div>
+                <div className={styles.fact}><span>Relations</span><strong>{provenanceValue(provenance, "relation_count", "0")}</strong></div>
+                <div className={styles.fact}><span>Used in tasks/review</span><strong>{`${provenanceValue(provenance, "task_count", "0")} tasks / ${provenanceValue(provenance, "card_count", "0")} review cards`}</strong></div>
               </div>
             </section>
 
@@ -566,6 +765,13 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
                       </li>
                     );
                   })}
+                </ul>
+              ) : layers.extracted?.present && layers.extracted.content ? (
+                <ul className={styles.ideaList}>
+                  <li className={styles.ideaItem}>
+                    <span>Extracted source layer</span>
+                    <strong>{layers.extracted.content}</strong>
+                  </li>
                 </ul>
               ) : (
                 <p className={styles.emptyText}>No extracted highlights or generated ideas have been saved yet.</p>
