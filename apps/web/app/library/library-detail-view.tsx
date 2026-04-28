@@ -6,9 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
+import { emitLibraryArtifactAssistantEvent, type ArtifactActionKind, type ArtifactActionResponse } from "./assistant-events";
 import styles from "./detail.module.css";
 
-type ArtifactActionKind = "summarize" | "cards" | "tasks" | "append_note";
 type DetailActionKind = ArtifactActionKind | "archive" | "link" | string;
 
 type LegacyArtifact = {
@@ -173,13 +173,6 @@ type ArtifactDetailContract = {
   connections: ContractConnections;
   timeline: ContractTimelineEvent[];
   suggested_actions: ContractSuggestedAction[];
-};
-
-type ArtifactActionResponse = {
-  artifact_id: string;
-  action: ArtifactActionKind;
-  status: string;
-  output_ref?: string | null;
 };
 
 type LibraryDetailViewProps = {
@@ -550,7 +543,22 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
 
       const nextStatus = result.data?.status || "requested";
       setActionStatus((current) => ({ ...current, [action.action]: titleCase(nextStatus) }));
-      setStatus(`${action.label} ${nextStatus}.`);
+      try {
+        await emitLibraryArtifactAssistantEvent(
+          apiBase,
+          token,
+          {
+            id: detail.id,
+            title: detail.title,
+            href: `/library/${kind === "capture" ? "captures" : "artifacts"}/${detail.id}`,
+          },
+          action.action,
+          result.data,
+        );
+        setStatus(`${action.label} ${nextStatus}.`);
+      } catch {
+        setStatus(`${action.label} ${nextStatus}. Assistant sync failed.`);
+      }
       await loadDetail();
     } catch (error) {
       const message = error instanceof Error ? error.message : `${action.label} failed.`;

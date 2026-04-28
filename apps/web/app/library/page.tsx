@@ -8,6 +8,7 @@ import { AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
+import { emitLibraryArtifactAssistantEvent, type ArtifactActionKind, type ArtifactActionResponse } from "./assistant-events";
 import styles from "./library.module.css";
 
 type CaptureStatus =
@@ -81,13 +82,6 @@ type LibrarySurfaceSummary = {
   generated_at: string;
 };
 
-type ArtifactActionResponse = {
-  artifact_id: string;
-  action: ArtifactActionKind;
-  status: string;
-  output_ref?: string | null;
-};
-
 type LibraryEntry = {
   id: string;
   title: string;
@@ -103,6 +97,8 @@ type LibraryEntry = {
   kind: "capture" | "artifact";
 };
 
+type LibraryActionEntry = Pick<LibraryEntry, "id" | "title" | "kind">;
+
 type LibraryAction =
   | "Summarize"
   | "Make cards"
@@ -110,8 +106,6 @@ type LibraryAction =
   | "Append to note"
   | "Link to project"
   | "Archive";
-
-type ArtifactActionKind = "summarize" | "cards" | "tasks" | "append_note";
 
 const ACTIONS: LibraryAction[] = ["Summarize", "Make cards", "Create task", "Append to note", "Link to project", "Archive"];
 const ACTION_TO_ARTIFACT_ACTION: Partial<Record<LibraryAction, ArtifactActionKind>> = {
@@ -264,8 +258,8 @@ function EntryActions({
   onAction,
   disabled = false,
 }: {
-  entry: Pick<LibraryEntry, "id" | "title">;
-  onAction: (entry: Pick<LibraryEntry, "id" | "title">, action: ArtifactActionKind, label: LibraryAction) => void;
+  entry: LibraryActionEntry;
+  onAction: (entry: LibraryActionEntry, action: ArtifactActionKind, label: LibraryAction) => void;
   disabled?: boolean;
 }) {
   return (
@@ -379,7 +373,7 @@ function LibraryPageContent() {
   const sources = recentSources(entries);
   const nextInbox = inboxEntries[0];
 
-  async function handleArtifactAction(entry: Pick<LibraryEntry, "id" | "title">, action: ArtifactActionKind, label: LibraryAction) {
+  async function handleArtifactAction(entry: LibraryActionEntry, action: ArtifactActionKind, label: LibraryAction) {
     try {
       const result = await mutateWithQueue<ArtifactActionResponse>(
         `/v1/artifacts/${entry.id}/actions`,
@@ -399,7 +393,22 @@ function LibraryPageContent() {
       }
 
       await loadLibrary();
-      setStatus(`${label} ${result.data?.status || "requested"} for ${entry.title}`);
+      try {
+        await emitLibraryArtifactAssistantEvent(
+          apiBase,
+          token,
+          {
+            id: entry.id,
+            title: entry.title,
+            href: libraryDetailHref(entry),
+          },
+          action,
+          result.data,
+        );
+        setStatus(`${label} ${result.data?.status || "requested"} for ${entry.title}`);
+      } catch {
+        setStatus(`${label} ${result.data?.status || "requested"} for ${entry.title}. Assistant sync failed.`);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : `${label} failed for ${entry.title}`);
     }
@@ -541,6 +550,7 @@ function LibraryPageContent() {
                   const entry = {
                     id: note.id,
                     title: note.title,
+                    kind: "artifact" as const,
                   };
                   return (
                     <article key={note.id} className={styles.noteCard}>

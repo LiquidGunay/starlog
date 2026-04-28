@@ -283,6 +283,7 @@ const focusDetail = {
 test("PWA library renders the capture pipeline with mocked API data", async ({ page }) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];
+  const assistantEvents: Array<Record<string, unknown>> = [];
 
   await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
     await route.fulfill({
@@ -322,6 +323,15 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
     });
   });
 
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/events`, async (route) => {
+    assistantEvents.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "event_library_cards" }),
+    });
+  });
+
   await page.goto("/library", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "Capture pipeline" })).toBeVisible();
@@ -351,6 +361,33 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
 
   await page.getByRole("button", { name: "Make cards" }).first().click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "cards" })]);
+  await expect.poll(() => assistantEvents).toEqual([
+    expect.objectContaining({
+      source_surface: "library",
+      kind: "artifact.summarized",
+      entity_ref: {
+        entity_type: "artifact",
+        entity_id: "art_capture_focus",
+        href: "/library/captures/art_capture_focus",
+        title: "The Focus Fallacy",
+      },
+      payload: expect.objectContaining({
+        artifact_id: "art_capture_focus",
+        artifact_title: "The Focus Fallacy",
+        action: "cards",
+        result_status: "completed",
+        status: "completed",
+        output_ref: "cards-1",
+        body: "The Focus Fallacy produced review-card output from Library.",
+        metadata: expect.objectContaining({
+          ambient_only: true,
+          output_ref: "cards-1",
+          event_kind_policy: "No supported review-card-created event kind exists; Library uses artifact.summarized for card generation.",
+        }),
+      }),
+      visibility: "ambient",
+    }),
+  ]);
   await expect(page.locator("[aria-live='polite']")).toHaveText("Make cards completed for The Focus Fallacy");
   await expect(focusCapture.getByRole("button", { name: "Link to project" })).toBeDisabled();
   await expect(notesSection.getByRole("button", { name: "Summarize" })).toBeDisabled();
@@ -360,9 +397,148 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(inboxSection.getByRole("heading", { name: "The Focus Fallacy" })).toHaveCount(0);
 });
 
+test("PWA library queues offline artifact actions without emitting assistant events immediately", async ({ context, page }) => {
+  await seedAssistantSession(page);
+  const actionRequests: Array<Record<string, unknown>> = [];
+  const assistantEvents: Array<Record<string, unknown>> = [];
+
+  await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(librarySummary),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(artifacts),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/notes`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(notes),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts/art_capture_focus/actions`, async (route) => {
+    actionRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        artifact_id: "art_capture_focus",
+        action: "cards",
+        status: "completed",
+        output_ref: "cards-1",
+      }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/events`, async (route) => {
+    assistantEvents.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "event_library_cards" }),
+    });
+  });
+
+  await page.goto("/library", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Capture pipeline" })).toBeVisible();
+  await context.setOffline(true);
+  await expect.poll(() => page.evaluate(() => window.navigator.onLine)).toBe(false);
+
+  await page.getByRole("button", { name: "Make cards" }).first().click();
+
+  await expect(page.locator("[aria-live='polite']")).toHaveText("Make cards queued for replay on The Focus Fallacy");
+  expect(actionRequests).toEqual([]);
+  expect(assistantEvents).toEqual([]);
+
+  await context.setOffline(false);
+});
+
+test("PWA library keeps artifact action success visible when assistant event sync fails", async ({ page }) => {
+  await seedAssistantSession(page);
+  const actionRequests: Array<Record<string, unknown>> = [];
+  const assistantEvents: Array<Record<string, unknown>> = [];
+
+  await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(librarySummary),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(artifacts),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/notes`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(notes),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts/art_capture_focus/actions`, async (route) => {
+    actionRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        artifact_id: "art_capture_focus",
+        action: "summarize",
+        status: "completed",
+        output_ref: "summary-2",
+      }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/events`, async (route) => {
+    assistantEvents.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Assistant event sync unavailable" }),
+    });
+  });
+
+  await page.goto("/library", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Capture pipeline" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Summarize" }).first().click();
+
+  expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
+  await expect.poll(() => assistantEvents).toEqual([
+    expect.objectContaining({
+      source_surface: "library",
+      kind: "artifact.summarized",
+      payload: expect.objectContaining({
+        action: "summarize",
+        output_ref: "summary-2",
+      }),
+      visibility: "ambient",
+    }),
+  ]);
+  await expect(page.locator("[aria-live='polite']")).toHaveText("Summarize completed for The Focus Fallacy. Assistant sync failed.");
+});
+
 test("PWA library detail renders provenance, layers, connections, and conversion actions", async ({ page }) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];
+  const assistantEvents: Array<Record<string, unknown>> = [];
 
   await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
     await route.fulfill({
@@ -410,6 +586,15 @@ test("PWA library detail renders provenance, layers, connections, and conversion
     });
   });
 
+  await page.route(`${API_BASE}/v1/assistant/threads/primary/events`, async (route) => {
+    assistantEvents.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "event_library_detail_summary" }),
+    });
+  });
+
   await page.goto("/library", { waitUntil: "domcontentloaded" });
   const focusDetailLink = page.getByRole("link", { name: "Open Library detail for The Focus Fallacy" }).first();
   await expect(focusDetailLink).toHaveAttribute("href", "/library/captures/art_capture_focus");
@@ -453,6 +638,32 @@ test("PWA library detail renders provenance, layers, connections, and conversion
   await expect(page.getByRole("button", { name: /^Link/ })).toBeDisabled();
   await page.getByRole("button", { name: /Summarize/ }).click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
+  await expect.poll(() => assistantEvents).toEqual([
+    expect.objectContaining({
+      source_surface: "library",
+      kind: "artifact.summarized",
+      entity_ref: {
+        entity_type: "artifact",
+        entity_id: "art_capture_focus",
+        href: "/library/captures/art_capture_focus",
+        title: "The Focus Fallacy",
+      },
+      payload: expect.objectContaining({
+        artifact_id: "art_capture_focus",
+        artifact_title: "The Focus Fallacy",
+        action: "summarize",
+        result_status: "completed",
+        status: "completed",
+        output_ref: "summary-2",
+        body: "The Focus Fallacy was summarized from Library.",
+        metadata: expect.objectContaining({
+          ambient_only: true,
+          output_ref: "summary-2",
+        }),
+      }),
+      visibility: "ambient",
+    }),
+  ]);
   await expect(page.locator("[aria-live='polite']")).toHaveText("Loaded artifact detail");
   await expect(page.getByRole("button", { name: /Summarize/ })).toContainText("Completed");
 });
