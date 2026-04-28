@@ -81,10 +81,19 @@ assert.deepEqual(fallback.metrics, [
 assert.equal(fallback.timelineBlocks[0].detail, "No briefing alarm is scheduled for this date.");
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
-assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "0m");
+assert.equal(fallback.nextFocus.title, "Focus unknown");
+assert.equal(fallback.nextFocus.body, "Refresh Planner to load focus capacity and named blocks for this date.");
+assert.equal(fallback.nextFocus.timeLabel, "Unknown");
+assert.equal(fallback.nextFocus.metaLabel, "Refresh Planner");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "Unknown");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.title, "Focus unknown");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.detail, "Refresh Planner to load focus capacity for this date.");
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.durationLabel, "Unknown");
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.title, "Calendar not loaded");
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.detail, "Refresh Planner to load fixed commitments for this date.");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "buffer")?.durationLabel, "Unknown");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "buffer")?.title, "Buffer unknown");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "buffer")?.detail, "Refresh Planner to load buffer capacity for this date.");
 assert.equal(fallback.upcoming.title, "Refresh calendar");
 assert.equal(fallback.upcoming.body, "Refresh Planner to load calendar events and fixed blocks for this date.");
 assert.equal(fallback.upcoming.timeLabel, "Unknown");
@@ -96,7 +105,8 @@ assert.equal(fallback.planGroups[0].emptyLabel, "Refresh Planner to load schedul
 assert.deepEqual(fallback.planGroups[1].items, []);
 assert.equal(fallback.planGroups[1].summaryLabel, "Unknown");
 assert.equal(fallback.planGroups[1].emptyLabel, "Refresh Planner to load task pressure for this date.");
-assert.equal(fallback.planGroups[2].items.length, 0);
+assert.deepEqual(fallback.planGroups[2].items, []);
+assert.equal(fallback.planGroups[2].summaryLabel, "Waiting");
 
 const futureFallback = deriveMobilePlannerViewModel({
   selectedDate: "2026-04-30",

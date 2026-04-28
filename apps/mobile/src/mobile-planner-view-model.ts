@@ -216,12 +216,19 @@ export function deriveMobilePlannerViewModel(input: {
           severityLabel: "Repair in Assistant",
         }
       : null,
-    nextFocus: {
-      title: focusBlocks > 0 ? "Focus capacity" : "Set next focus",
-      body: focusBlocks > 0 ? nextAction : "No named focus block is available yet. Ask Assistant to shape one before committing new work.",
-      timeLabel: focusBlocks > 0 ? formatMinutes(focusMinutes) : "Unscheduled",
-      metaLabel: focusBlocks > 0 ? `${focusBlocks} focus block${focusBlocks === 1 ? "" : "s"}` : "Needs planning",
-    },
+    nextFocus: hasSummary
+      ? {
+          title: focusBlocks > 0 ? "Focus capacity" : "Set next focus",
+          body: focusBlocks > 0 ? nextAction : "No named focus block is available yet. Ask Assistant to shape one before committing new work.",
+          timeLabel: focusBlocks > 0 ? formatMinutes(focusMinutes) : "Unscheduled",
+          metaLabel: focusBlocks > 0 ? `${focusBlocks} focus block${focusBlocks === 1 ? "" : "s"}` : "Needs planning",
+        }
+      : {
+          title: "Focus unknown",
+          body: "Refresh Planner to load focus capacity and named blocks for this date.",
+          timeLabel: "Unknown",
+          metaLabel: "Refresh Planner",
+        },
     upcoming: {
       title: meetingCount > 0 ? "Fixed commitments" : hasSummary ? "Open calendar" : "Refresh calendar",
       body: meetingCount > 0
@@ -376,9 +383,13 @@ function buildTimelineBlocks(input: {
     {
       id: "focus",
       timeLabel: "Focus",
-      durationLabel: formatMinutes(input.focusMinutes),
-      title: input.focusBlocks > 0 ? "Protected focus capacity" : "Candidate focus",
-      detail: input.focusBlocks > 0 ? input.nextAction : "Planner has not returned a named focus block yet.",
+      durationLabel: input.hasSummary ? formatMinutes(input.focusMinutes) : "Unknown",
+      title: input.hasSummary
+        ? input.focusBlocks > 0 ? "Protected focus capacity" : "Candidate focus"
+        : "Focus unknown",
+      detail: input.hasSummary
+        ? input.focusBlocks > 0 ? input.nextAction : "Planner has not returned a named focus block yet."
+        : "Refresh Planner to load focus capacity for this date.",
       type: "focus",
     },
     {
@@ -409,9 +420,13 @@ function buildTimelineBlocks(input: {
   blocks.push({
     id: "buffer",
     timeLabel: "Buffer",
-    durationLabel: input.bufferBlocks > 0 ? formatMinutes(input.bufferMinutes) : "Flexible",
-    title: "Buffer and handoff",
-    detail: "Close loops, move flexible tasks, and leave tomorrow cleaner.",
+    durationLabel: input.hasSummary
+      ? input.bufferBlocks > 0 ? formatMinutes(input.bufferMinutes) : "Flexible"
+      : "Unknown",
+    title: input.hasSummary ? "Buffer and handoff" : "Buffer unknown",
+    detail: input.hasSummary
+      ? "Close loops, move flexible tasks, and leave tomorrow cleaner."
+      : "Refresh Planner to load buffer capacity for this date.",
     type: "buffer",
   });
 
