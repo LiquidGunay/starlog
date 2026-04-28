@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { AssistantCard as ConversationCard, AssistantCardAction } from "@starlog/contracts";
 import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -12,6 +12,12 @@ import {
   type MobileLibraryPendingCapture,
   type MobileLibrarySegment,
 } from "./mobile-library-view-model";
+import {
+  deriveMobileArtifactDetailViewModel,
+  type MobileArtifactActionExecution,
+  type MobileArtifactActionRow,
+  type MobileArtifactDetail,
+} from "./mobile-library-detail-view-model";
 import {
   deriveMobilePlannerViewModel,
   type MobilePlannerSummary,
@@ -62,6 +68,10 @@ type MobileHomeSurfaceProps = SharedProps & {
 type MobileNotesSurfaceProps = SharedProps & {
   pendingCaptures: MobileLibraryPendingCapture[];
   artifacts: MobileLibraryArtifact[];
+  selectedArtifactDetail: MobileArtifactDetail | null;
+  artifactDetailStatus: string;
+  openArtifactDetail: (artifactId: string) => void;
+  runArtifactAction: (request: MobileArtifactActionExecution) => void;
   notesCount: number;
   linkedProjectCount: number;
   quickCaptureTitle: string;
@@ -653,19 +663,13 @@ function librarySegmentButton(
   );
 }
 
-function mobileCaptureRow(palette: Record<string, string>, row: MobileLibraryInboxRow) {
-  return (
-    <View
-      key={row.id}
-      style={{
-        borderRadius: 20,
-        backgroundColor: palette.surfaceLow,
-        borderWidth: 1,
-        borderColor: palette.border,
-        padding: 14,
-        gap: 12,
-      }}
-    >
+function mobileCaptureRow(
+  palette: Record<string, string>,
+  row: MobileLibraryInboxRow,
+  onPress?: (row: MobileLibraryInboxRow) => void,
+) {
+  const content = (
+    <>
       <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
         <View
           style={{
@@ -719,6 +723,220 @@ function mobileCaptureRow(palette: Record<string, string>, row: MobileLibraryInb
           </View>
         ))}
       </View>
+    </>
+  );
+  const style = {
+    borderRadius: 20,
+    backgroundColor: palette.surfaceLow,
+    borderWidth: 1,
+    borderColor: palette.border,
+    padding: 14,
+    gap: 12,
+  } as const;
+  if (onPress) {
+    return (
+      <TouchableOpacity key={row.id} onPress={() => onPress(row)} activeOpacity={0.82} style={style}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+  return (
+    <View key={row.id} style={style}>
+      {content}
+    </View>
+  );
+}
+
+function artifactSectionCard(
+  palette: Record<string, string>,
+  title: string,
+  subtitle: string | null,
+  expanded: boolean,
+  onToggle: () => void,
+  children: ReactNode,
+) {
+  return (
+    <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 0, overflow: "hidden" }}>
+      <TouchableOpacity
+        onPress={onToggle}
+        style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: "row", alignItems: "center", gap: 12 }}
+      >
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>{title}</Text>
+          {subtitle ? <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text> : null}
+        </View>
+        <MaterialCommunityIcons name={expanded ? "chevron-up" : "chevron-down"} size={20} color={palette.muted} />
+      </TouchableOpacity>
+      {expanded ? <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>{children}</View> : null}
+    </View>
+  );
+}
+
+function artifactKeyValueRows(palette: Record<string, string>, rows: Array<{ label: string; value: string }>) {
+  return rows.map((row) => (
+    <View
+      key={`${row.label}:${row.value}`}
+      style={{
+        borderRadius: 14,
+        backgroundColor: palette.surfaceHigh,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        gap: 3,
+      }}
+    >
+      <Text style={[kickerStyle(palette), { fontSize: 9, letterSpacing: 0.7 }]}>{row.label}</Text>
+      <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{row.value}</Text>
+    </View>
+  ));
+}
+
+function artifactActionButton(
+  palette: Record<string, string>,
+  action: MobileArtifactActionRow,
+  onRunAction: (request: MobileArtifactActionExecution) => void,
+) {
+  const executableRequest = action.executableRequest;
+  const enabled = executableRequest !== null;
+  return (
+    <TouchableOpacity
+      key={action.action}
+      disabled={!enabled}
+      onPress={() => {
+        if (executableRequest) {
+          onRunAction(executableRequest);
+        }
+      }}
+      style={{
+        borderRadius: 999,
+        paddingHorizontal: 12,
+        paddingVertical: 9,
+        backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
+        opacity: enabled ? 1 : 0.62,
+      }}
+    >
+      <Text style={{ color: enabled ? palette.onAccent : palette.muted, fontSize: 12, fontWeight: "800" }}>
+        {action.label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function mobileArtifactDetailView(
+  palette: Record<string, string>,
+  detail: MobileArtifactDetail,
+  expandedSections: Record<string, boolean>,
+  toggleSection: (section: string) => void,
+  onRunAction: (request: MobileArtifactActionExecution) => void,
+) {
+  const model = deriveMobileArtifactDetailViewModel(detail);
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+        <Text style={kickerStyle(palette)}>Artifact detail</Text>
+        <Text style={{ color: palette.text, fontSize: 22, lineHeight: 28, fontWeight: "800" }}>{model.title}</Text>
+        <Text style={bodyStyle(palette)}>{model.subtitle}</Text>
+      </View>
+
+      {artifactSectionCard(
+        palette,
+        "Artifact detail",
+        detail.artifact.id,
+        expandedSections.detail,
+        () => toggleSection("detail"),
+        <View style={{ gap: 8 }}>{artifactKeyValueRows(palette, model.captureLabels)}</View>,
+      )}
+
+      {artifactSectionCard(
+        palette,
+        "Quick capture / source preview",
+        model.sourcePreview ? "First available source layer preview" : "No source preview in contract",
+        expandedSections.preview,
+        () => toggleSection("preview"),
+        model.sourcePreview ? (
+          <Text style={{ color: palette.text, fontSize: 14, lineHeight: 21 }}>{model.sourcePreview}</Text>
+        ) : (
+          <Text style={bodyStyle(palette)}>No raw, normalized, or extracted layer preview was returned.</Text>
+        ),
+      )}
+
+      {artifactSectionCard(
+        palette,
+        "Source & provenance",
+        `${model.sourceLayers.filter((layer) => layer.present).length}/${model.sourceLayers.length} layer(s) present`,
+        expandedSections.provenance,
+        () => toggleSection("provenance"),
+        <View style={{ gap: 10 }}>
+          {model.sourceLayers.map((layer) => (
+            <View
+              key={layer.key}
+              style={{
+                borderRadius: 15,
+                backgroundColor: palette.surfaceHigh,
+                padding: 12,
+                gap: 6,
+                borderWidth: 1,
+                borderColor: layer.present ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.04)",
+              }}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: "800" }}>{layer.label}</Text>
+                <Text style={[kickerStyle(palette), { color: layer.present ? palette.accent : palette.muted, letterSpacing: 0.7 }]}>
+                  {layer.stateLabel}
+                </Text>
+              </View>
+              {layer.preview ? <Text style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>{layer.preview}</Text> : null}
+              {layer.meta.length > 0 ? <Text style={{ color: palette.muted, fontSize: 11 }}>{layer.meta.join(" · ")}</Text> : null}
+            </View>
+          ))}
+          {artifactKeyValueRows(palette, model.provenanceRows)}
+        </View>,
+      )}
+
+      {artifactSectionCard(
+        palette,
+        "Conversion & enrichment",
+        `${detail.connections.action_run_count} action run(s) recorded`,
+        expandedSections.conversion,
+        () => toggleSection("conversion"),
+        <View style={{ gap: 10 }}>
+          {artifactKeyValueRows(palette, model.conversionRows)}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {model.actions.map((action) => artifactActionButton(palette, action, onRunAction))}
+          </View>
+          {model.actions
+            .filter((action) => !action.enabled)
+            .map((action) => (
+              <Text key={`${action.action}:reason`} style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+                {action.label}: {action.disabledReason}
+              </Text>
+            ))}
+        </View>,
+      )}
+
+      {artifactSectionCard(
+        palette,
+        "Activity & timeline",
+        model.timelineRows.length > 0 ? `${model.timelineRows.length} event(s)` : "No activity returned",
+        expandedSections.timeline,
+        () => toggleSection("timeline"),
+        model.timelineRows.length > 0 ? (
+          <View style={{ gap: 9 }}>
+            {model.timelineRows.map((event) => (
+              <View key={event.key} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: palette.accent, marginTop: 5 }} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: palette.text, fontSize: 13.5, lineHeight: 19, fontWeight: "800" }}>{event.label}</Text>
+                  <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+                    {event.occurredLabel} · {event.metaLabel}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={bodyStyle(palette)}>No timeline events were returned by the artifact detail endpoint.</Text>
+        ),
+      )}
     </View>
   );
 }
@@ -1421,6 +1639,10 @@ export function MobileNotesSurface({
   palette,
   pendingCaptures,
   artifacts,
+  selectedArtifactDetail,
+  artifactDetailStatus,
+  openArtifactDetail,
+  runArtifactAction,
   notesCount,
   linkedProjectCount,
   quickCaptureTitle,
@@ -1451,6 +1673,14 @@ export function MobileNotesSurface({
   toggleMissionTools,
 }: MobileNotesSurfaceProps) {
   const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
+  const [showArtifactDetail, setShowArtifactDetail] = useState(false);
+  const [expandedArtifactSections, setExpandedArtifactSections] = useState<Record<string, boolean>>({
+    detail: true,
+    preview: true,
+    provenance: true,
+    conversion: true,
+    timeline: false,
+  });
   const libraryModel = deriveMobileLibraryViewModel({
     pendingCaptures,
     artifacts,
@@ -1459,6 +1689,18 @@ export function MobileNotesSurface({
   });
   const pendingCaptureCount = pendingCaptures.length;
   const visibleRows = activeSegment === "Artifacts" ? libraryModel.artifactRows : libraryModel.inboxRows;
+  const detailRequested = activeSegment === "Artifacts" && showArtifactDetail;
+  const showDetailPane = detailRequested && selectedArtifactDetail;
+
+  function openLibraryArtifact(row: MobileLibraryInboxRow) {
+    openArtifactDetail(row.id);
+    setActiveSegment("Artifacts");
+    setShowArtifactDetail(true);
+  }
+
+  function toggleArtifactSection(section: string) {
+    setExpandedArtifactSections((current) => ({ ...current, [section]: !current[section] }));
+  }
 
   return (
     <View style={{ gap: 18 }}>
@@ -1484,7 +1726,12 @@ export function MobileNotesSurface({
           gap: 4,
         }}
       >
-        {libraryModel.segments.map((segment) => librarySegmentButton(palette, segment, activeSegment, setActiveSegment))}
+        {libraryModel.segments.map((segment) => librarySegmentButton(palette, segment, activeSegment, (nextSegment) => {
+          setActiveSegment(nextSegment);
+          if (nextSegment !== "Artifacts") {
+            setShowArtifactDetail(false);
+          }
+        }))}
       </View>
 
       {activeSegment === "Inbox" ? (
@@ -1609,7 +1856,9 @@ export function MobileNotesSurface({
               {activeSegment === "Inbox" ? "Inbox / Unprocessed captures" : activeSegment}
             </Text>
             <Text style={bodyStyle(palette)}>
-              {activeSegment === "Inbox"
+              {showDetailPane
+                ? artifactDetailStatus
+                : activeSegment === "Inbox"
                 ? captureQueuePreview
                 : activeSegment === "Artifacts"
                   ? selectedArtifactTitle
@@ -1635,8 +1884,44 @@ export function MobileNotesSurface({
             <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>{captureSourcePreview}</Text>
             <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
           </View>
+        ) : showDetailPane ? (
+          <View style={{ gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => setShowArtifactDetail(false)}
+              style={{ alignSelf: "flex-start", ...pillStyle(palette), flexDirection: "row", gap: 6, alignItems: "center" }}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={15} color={palette.muted} />
+              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Artifacts</Text>
+            </TouchableOpacity>
+            {mobileArtifactDetailView(
+              palette,
+              selectedArtifactDetail,
+              expandedArtifactSections,
+              toggleArtifactSection,
+              runArtifactAction,
+            )}
+          </View>
+        ) : detailRequested ? (
+          <View style={{ gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => setShowArtifactDetail(false)}
+              style={{ alignSelf: "flex-start", ...pillStyle(palette), flexDirection: "row", gap: 6, alignItems: "center" }}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={15} color={palette.muted} />
+              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Artifacts</Text>
+            </TouchableOpacity>
+            <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+              <Text style={kickerStyle(palette)}>Artifact detail</Text>
+              <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>{artifactDetailStatus}</Text>
+              <Text style={bodyStyle(palette)}>Loading the artifact detail contract from the API.</Text>
+            </View>
+          </View>
         ) : visibleRows.length > 0 ? (
-          visibleRows.map((row) => mobileCaptureRow(palette, row))
+          visibleRows.map((row) => mobileCaptureRow(
+            palette,
+            row,
+            row.icon === "artifact" ? openLibraryArtifact : undefined,
+          ))
         ) : (
           <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
             <Text style={kickerStyle(palette)}>Queue clear</Text>

@@ -44,6 +44,13 @@ import {
   MobileNotesSurface,
   MobileReviewSurface,
 } from "./src/mobile-surfaces";
+import {
+  findMobileArtifactActionExecution,
+  shouldCommitArtifactDetailResponse,
+  type MobileArtifactActionExecution,
+  type MobileArtifactDetail,
+  type MobileArtifactDetailRequestToken,
+} from "./src/mobile-library-detail-view-model";
 import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
 import {
@@ -197,6 +204,7 @@ type PersistedState = {
   selectedArtifactId: string;
   artifactGraph: ArtifactGraph | null;
   artifactVersions: ArtifactVersions | null;
+  selectedArtifactDetail?: MobileArtifactDetail | null;
   dueCards: DueCard[];
   executionPolicy: ExecutionPolicy;
   voiceRoutePreference: VoiceRoutePreference;
@@ -672,6 +680,14 @@ function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, "");
 }
 
+function actionEndpointUrl(apiBase: string, endpoint: string): string {
+  const trimmed = endpoint.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${normalizeBaseUrl(apiBase)}${trimmed.startsWith("/") ? trimmed : `/${trimmed}`}`;
+}
+
 function captureLabel(kind: PendingCapture["kind"]): string {
   if (kind === "voice") {
     return "Voice note";
@@ -1005,6 +1021,7 @@ async function readPersistedState(): Promise<PersistedState | null> {
       selectedArtifactId: "",
       artifactGraph: null,
       artifactVersions: null,
+      selectedArtifactDetail: null,
       dueCards: [],
       executionPolicy: defaultExecutionPolicy(),
       voiceRoutePreference: DEFAULT_VOICE_ROUTE_PREFERENCE,
@@ -1292,7 +1309,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [selectedArtifactId, setSelectedArtifactId] = useState("");
   const [artifactGraph, setArtifactGraph] = useState<ArtifactGraph | null>(null);
   const [artifactVersions, setArtifactVersions] = useState<ArtifactVersions | null>(null);
+  const [selectedArtifactDetail, setSelectedArtifactDetail] = useState<MobileArtifactDetail | null>(null);
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
+  const artifactDetailRequestRef = useRef<MobileArtifactDetailRequestToken>({ artifactId: "", requestId: 0 });
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
   const [selectedPlannerDate, setSelectedPlannerDate] = useState(todayDateString());
@@ -1731,6 +1750,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setSelectedArtifactId("");
         setArtifactGraph(null);
         setArtifactVersions(null);
+        setSelectedArtifactDetail(null);
         setArtifactDetailStatus("No artifact selected");
       } else if (!selectedArtifactId || !payload.some((artifact) => artifact.id === selectedArtifactId)) {
         setSelectedArtifactId(payload[0].id);
@@ -1742,15 +1762,26 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function loadArtifactDetail(artifactId: string) {
+    const requested = {
+      artifactId,
+      requestId: artifactDetailRequestRef.current.requestId + 1,
+    };
+    artifactDetailRequestRef.current = requested;
     try {
       if (!token) {
         setArtifactGraph(null);
         setArtifactVersions(null);
+        setSelectedArtifactDetail(null);
         setArtifactDetailStatus("Add API token first");
         return;
       }
+      setSelectedArtifactDetail(null);
+      setArtifactDetailStatus(`Loading artifact detail for ${artifactId}`);
 
-      const [graphResponse, versionsResponse] = await Promise.all([
+      const [detailResponse, graphResponse, versionsResponse] = await Promise.all([
+        fetch(`${normalizeBaseUrl(apiBase)}/v1/artifacts/${artifactId}/detail`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
         fetch(`${normalizeBaseUrl(apiBase)}/v1/artifacts/${artifactId}/graph`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -1759,6 +1790,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         }),
       ]);
 
+      if (!detailResponse.ok) {
+        const errorBody = await detailResponse.text();
+        throw new Error(`Artifact detail fetch failed: ${detailResponse.status} ${errorBody}`);
+      }
       if (!graphResponse.ok) {
         const errorBody = await graphResponse.text();
         throw new Error(`Artifact graph fetch failed: ${graphResponse.status} ${errorBody}`);
@@ -1768,22 +1803,35 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         throw new Error(`Artifact versions fetch failed: ${versionsResponse.status} ${errorBody}`);
       }
 
+      const detailPayload = (await detailResponse.json()) as MobileArtifactDetail;
       const graphPayload = (await graphResponse.json()) as ArtifactGraph;
       const versionsPayload = (await versionsResponse.json()) as ArtifactVersions;
+      if (!shouldCommitArtifactDetailResponse({
+        requested,
+        current: artifactDetailRequestRef.current,
+        responseArtifactId: detailPayload.artifact.id,
+      })) {
+        return;
+      }
+      setSelectedArtifactDetail(detailPayload);
       setArtifactGraph(graphPayload);
       setArtifactVersions(versionsPayload);
       setArtifactDetailStatus(
-        `Loaded artifact detail: ${graphPayload.summaries.length} summaries, ${graphPayload.cards.length} cards`,
+        `Loaded artifact detail: ${detailPayload.source_layers.filter((layer) => layer.present).length} source layer(s), ${detailPayload.timeline.length} event(s)`,
       );
     } catch (error) {
+      if (requested.requestId !== artifactDetailRequestRef.current.requestId || requested.artifactId !== artifactDetailRequestRef.current.artifactId) {
+        return;
+      }
       setArtifactGraph(null);
       setArtifactVersions(null);
+      setSelectedArtifactDetail(null);
       setArtifactDetailStatus(error instanceof Error ? error.message : "Failed to load artifact detail");
     }
   }
 
-  async function runArtifactAction(action: ArtifactAction) {
-    if (!selectedArtifactId) {
+  async function runArtifactAction(request: MobileArtifactActionExecution) {
+    if (!request.artifactId) {
       setStatus("Load artifacts and select one first");
       return;
     }
@@ -1793,12 +1841,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     try {
+      const action = request.action;
       const shouldDefer = action !== "append_note" && llmResolution.active === "batch_local_bridge";
       const providerHint = shouldDefer ? BATCH_PROVIDER_HINT.llm : undefined;
       const response = await fetch(
-        `${normalizeBaseUrl(apiBase)}/v1/artifacts/${selectedArtifactId}/actions`,
+        actionEndpointUrl(apiBase, request.endpoint),
         {
-          method: "POST",
+          method: request.method,
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -1814,26 +1863,49 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         const errorBody = await response.text();
         throw new Error(`Artifact action failed: ${response.status} ${errorBody}`);
       }
-      await loadArtifactDetail(selectedArtifactId);
+      if (artifactDetailRequestRef.current.artifactId === request.artifactId) {
+        await loadArtifactDetail(request.artifactId);
+      }
       if (shouldDefer) {
-        setStatus(`Queued ${action} for ${selectedArtifactId} via ${formatExecutionTarget(llmResolution.active)}`);
+        setStatus(`Queued ${action} for ${request.artifactId} via ${formatExecutionTarget(llmResolution.active)}`);
       } else if (action === "append_note") {
-        setStatus(`Requested ${action} for ${selectedArtifactId}`);
+        setStatus(`Requested ${action} for ${request.artifactId}`);
       } else {
         const routeNote =
           llmResolution.requested !== llmResolution.active
             ? ` (requested ${formatExecutionTarget(llmResolution.requested)})`
             : "";
-        setStatus(`Requested ${action} for ${selectedArtifactId} via ${formatExecutionTarget(llmResolution.active)}${routeNote}`);
+        setStatus(`Requested ${action} for ${request.artifactId} via ${formatExecutionTarget(llmResolution.active)}${routeNote}`);
       }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Artifact action failed");
     }
   }
 
+  function actionRequestForSelectedArtifact(action: ArtifactAction): MobileArtifactActionExecution | null {
+    if (selectedArtifactDetail?.artifact.id === selectedArtifactId) {
+      const contractRequest = findMobileArtifactActionExecution(selectedArtifactDetail, action);
+      if (contractRequest) {
+        return contractRequest;
+      }
+    }
+    if (!selectedArtifactId) {
+      return null;
+    }
+    return {
+      artifactId: selectedArtifactId,
+      action,
+      method: "POST",
+      endpoint: `/v1/artifacts/${encodeURIComponent(selectedArtifactId)}/actions`,
+    };
+  }
+
   function speakSelectedArtifact() {
     const latestSummary = artifactGraph?.summaries[0]?.content?.trim();
-    const fallback = artifactGraph?.artifact.normalized_content?.trim() || artifactGraph?.artifact.extracted_content?.trim();
+    const detailPreview = selectedArtifactDetail?.source_layers.find((layer) => layer.present && layer.preview?.trim())?.preview?.trim();
+    const fallback = artifactGraph?.artifact.normalized_content?.trim()
+      || artifactGraph?.artifact.extracted_content?.trim()
+      || detailPreview;
     const text = latestSummary || fallback;
     if (!text) {
       setStatus("No selected artifact text is available for local speech");
@@ -3287,6 +3359,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setSelectedArtifactId(persisted.selectedArtifactId || "");
         setArtifactGraph(persisted.artifactGraph);
         setArtifactVersions(persisted.artifactVersions);
+        setSelectedArtifactDetail(persisted.selectedArtifactDetail ?? null);
         setDueCards(persisted.dueCards || []);
         setExecutionPolicy(persisted.executionPolicy || defaultExecutionPolicy());
         setHomeDraft(persisted.homeDraft || persisted.assistantCommand || DEFAULT_HOME_DRAFT);
@@ -3571,6 +3644,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       selectedArtifactId,
       artifactGraph,
       artifactVersions,
+      selectedArtifactDetail,
       dueCards,
       executionPolicy,
       voiceRoutePreference,
@@ -3607,6 +3681,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     lastConversationReset,
     artifactGraph,
     artifactVersions,
+    selectedArtifactDetail,
     artifacts,
     briefingDate,
     cachedPath,
@@ -3684,6 +3759,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated || !token || !selectedArtifactId) {
       setArtifactGraph(null);
       setArtifactVersions(null);
+      setSelectedArtifactDetail(null);
       return;
     }
     loadArtifactDetail(selectedArtifactId).catch(() => undefined);
@@ -3827,6 +3903,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             palette={palette}
             pendingCaptures={pendingCaptures}
             artifacts={artifacts}
+            selectedArtifactDetail={selectedArtifactDetail}
+            artifactDetailStatus={artifactDetailStatus}
+            openArtifactDetail={(artifactId) => {
+              setSelectedArtifactId(artifactId);
+              loadArtifactDetail(artifactId).catch(() => undefined);
+            }}
+            runArtifactAction={(action) => {
+              runArtifactAction(action).catch(() => undefined);
+            }}
             notesCount={artifactGraph?.notes.length ?? 0}
             linkedProjectCount={artifactGraph?.relations.filter((relation) => relation.target_type === "project").length ?? 0}
             quickCaptureTitle={quickCaptureTitle}
@@ -4122,7 +4207,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   artifactDetailStatus={artifactDetailStatus}
                   artifactQuickActions={artifactQuickActions}
                   runArtifactAction={(action) => {
-                    runArtifactAction(action).catch(() => undefined);
+                    const request = actionRequestForSelectedArtifact(action);
+                    if (!request) {
+                      setStatus("Load artifacts and select one first");
+                      return;
+                    }
+                    runArtifactAction(request).catch(() => undefined);
                   }}
                   artifacts={artifacts}
                   selectedArtifactId={selectedArtifactId}
@@ -4194,7 +4284,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   artifactDetailStatus={artifactDetailStatus}
                   artifactQuickActions={artifactQuickActions}
                   runArtifactAction={(action) => {
-                    runArtifactAction(action).catch(() => undefined);
+                    const request = actionRequestForSelectedArtifact(action);
+                    if (!request) {
+                      setStatus("Load artifacts and select one first");
+                      return;
+                    }
+                    runArtifactAction(request).catch(() => undefined);
                   }}
                   artifacts={artifacts}
                   selectedArtifactId={selectedArtifactId}
