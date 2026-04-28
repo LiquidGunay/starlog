@@ -16,7 +16,7 @@ export function TopNavigation() {
   const { isOnline, outbox } = useSessionConfig();
   const activeSurface = resolveObservatorySurface(pathname);
   const utilityLinks = OBSERVATORY_CONTEXT_LINKS[activeSurface.id];
-  const hideForPrimaryObservatoryRoute = ["/", "/login", "/assistant", "/notes", "/review", "/planner"].some(
+  const hideForPrimaryObservatoryRoute = ["/", "/login", "/assistant", "/library", "/notes", "/review", "/planner"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 

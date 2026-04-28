@@ -29,8 +29,8 @@ export const OBSERVATORY_SURFACES: ObservatorySurface[] = [
     id: "knowledge-base",
     label: PRODUCT_SURFACES.library.label,
     shortLabel: PRODUCT_SURFACES.library.shortLabel,
-    href: "/notes",
-    prefixes: ["/notes", "/artifacts", "/search", "/portability"],
+    href: "/library",
+    prefixes: ["/library", "/notes", "/artifacts", "/search", "/portability"],
     glyph: "◫",
   },
   {
@@ -54,12 +54,13 @@ export const OBSERVATORY_SURFACES: ObservatorySurface[] = [
 export const OBSERVATORY_CONTEXT_LINKS: Record<ObservatorySurfaceId, ObservatoryUtilityLink[]> = {
   "main-room": [
     { href: "/assistant", label: PRODUCT_SURFACES.assistant.label },
-    { href: "/notes", label: PRODUCT_SURFACES.library.label },
+    { href: "/library", label: PRODUCT_SURFACES.library.label },
     { href: "/planner", label: PRODUCT_SURFACES.planner.label },
     { href: "/runtime", label: "Settings" },
   ],
   "knowledge-base": [
-    { href: "/notes", label: PRODUCT_SURFACES.library.label },
+    { href: "/library", label: PRODUCT_SURFACES.library.label },
+    { href: "/notes", label: "Notes" },
     { href: "/artifacts", label: "Artifacts" },
     { href: "/search", label: "Search" },
   ],
