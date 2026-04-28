@@ -40,5 +40,5 @@ itself become a recommendation.
 When adding an event kind, add it to the policy table if it should be user-visible by
 default or if an `assistant_message` request should be upgraded to a dynamic panel. Keep
 low-noise lifecycle updates as `ambient`, reserve `dynamic_panel` for high-confidence
-action cases such as capture creation, planner conflicts, review reveal, and briefing
-focus, and add resolver tests for the new behavior.
+action cases such as capture creation, unresolved planner conflict detection, review
+reveal, and briefing focus, and add resolver tests for the new behavior.
