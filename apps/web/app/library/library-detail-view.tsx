@@ -453,16 +453,17 @@ function isSupportedPostAction(action: DetailActionKind): action is ArtifactActi
 function mergeActions(actions?: DetailAction[]): DetailAction[] {
   const byAction = new Map(DEFAULT_ACTIONS.map((action) => [action.action, action]));
   for (const action of actions || []) {
+    const isSupportedMethod = action.method === "POST";
     byAction.set(action.action, {
       ...byAction.get(action.action),
       ...action,
-      supported: Boolean(action.supported || action.enabled) && isSupportedPostAction(action.action) && Boolean(action.endpoint),
+      supported: Boolean(action.supported || action.enabled) && isSupportedMethod && isSupportedPostAction(action.action) && Boolean(action.endpoint),
     });
   }
   return [...byAction.values()].map((action) => ({
     ...action,
-    supported: Boolean(action.supported || action.enabled) && isSupportedPostAction(action.action) && Boolean(action.endpoint),
-    disabled_reason: (action.supported || action.enabled) && !isSupportedPostAction(action.action)
+    supported: Boolean(action.supported || action.enabled) && action.method === "POST" && isSupportedPostAction(action.action) && Boolean(action.endpoint),
+    disabled_reason: (action.supported || action.enabled) && (action.method !== "POST" || !isSupportedPostAction(action.action))
       ? "This action is not wired to the artifact action endpoint yet."
       : action.disabled_reason,
   }));
