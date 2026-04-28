@@ -1,4 +1,4 @@
-import { StatusBar } from "expo-status-bar";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import * as Notifications from "expo-notifications";
@@ -16,6 +16,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  StatusBar as NativeStatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -3968,7 +3969,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   if (!token) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+        <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="always">
           <MobileLoginSurface
             styles={styles}
@@ -3995,7 +3996,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+      <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
       {!isAssistantMode ? (
         <MobileTopBar
           styles={styles}
@@ -4745,7 +4746,7 @@ function themedStyles(palette: Palette) {
     },
     assistantScrollContent: {
       paddingHorizontal: 12,
-      paddingTop: 8,
+      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 14 : 14,
       paddingBottom: 126,
       gap: 12,
     },
