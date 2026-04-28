@@ -84,10 +84,109 @@ export function assistantTodaySummary(overrides: SnapshotOverrides = {}): Record
   };
 }
 
+export function assistantWeeklySummary(overrides: SnapshotOverrides = {}): Record<string, unknown> {
+  return {
+    week_start: "2026-04-27",
+    week_end: "2026-05-03",
+    progress: {
+      tasks_completed: 3,
+      review_session_count: 4,
+      review_item_count: 12,
+      captures_created: 2,
+      captures_processed: 1,
+      captures_summarized: 1,
+      cards_created: 5,
+      artifact_tasks_created: 1,
+      goals_updated: 1,
+      goals_reviewed: 0,
+      projects_updated: 2,
+      projects_reviewed: 1,
+    },
+    slippage: {
+      overdue_tasks: 2,
+      overdue_commitments: 1,
+      unprocessed_captures: 1,
+      due_review_cards: 4,
+      stale_active_projects: 1,
+      stale_active_goals: 0,
+      projects_missing_next_action: 1,
+    },
+    adaptation_options: [
+      {
+        key: "rebalance_week",
+        title: "Rebalance the week",
+        body: "2 overdue tasks and 1 overdue commitment need recovery.",
+        surface: "planner",
+        prompt: "Help me rebalance this week around the slipped planning blocks.",
+        enabled: true,
+        priority: 100,
+      },
+      {
+        key: "open_review",
+        title: "Open Review",
+        body: "4 review cards are due.",
+        surface: "review",
+        href: "/review",
+        enabled: true,
+        priority: 80,
+      },
+      {
+        key: "waiting_for_calendar",
+        title: "Calendar sync pending",
+        body: "Waiting for calendar sync.",
+        surface: "planner",
+        enabled: false,
+        priority: 60,
+      },
+      {
+        key: "hidden_fourth",
+        title: "Fourth option stays hidden",
+        body: "This should not render.",
+        surface: "planner",
+        prompt: "This should not render.",
+        enabled: true,
+        priority: 50,
+      },
+    ],
+    attention_items: [
+      {
+        key: "overdue_tasks",
+        kind: "task_slippage",
+        title: "Overdue tasks",
+        body: "Open tasks are overdue.",
+        surface: "planner",
+        href: "/planner",
+        priority: 100,
+        count: 2,
+      },
+    ],
+    system_health: {
+      progress_signal_count: 11,
+      slippage_signal_count: 6,
+    },
+    generated_at: "2026-04-28T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
 export async function routeAssistantToday(page: Page, getSummary: () => Record<string, unknown>): Promise<void> {
   await page.route(`${API_BASE}/v1/surfaces/assistant/today*`, async (route) => {
     await route.fulfill({
       status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(getSummary()),
+    });
+  });
+}
+
+export async function routeAssistantWeekly(
+  page: Page,
+  getSummary: () => Record<string, unknown>,
+  options: { status?: number } = {},
+): Promise<void> {
+  await page.route(`${API_BASE}/v1/surfaces/assistant/weekly*`, async (route) => {
+    await route.fulfill({
+      status: options.status || 200,
       contentType: "application/json",
       body: JSON.stringify(getSummary()),
     });

@@ -12,7 +12,7 @@ import type {
   AssistantThreadSnapshot,
 } from "@starlog/contracts";
 
-import { MainRoomThread, type AssistantTodaySummary } from "../components/main-room-thread";
+import { MainRoomThread, type AssistantTodaySummary, type AssistantWeeklySummary } from "../components/main-room-thread";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
@@ -226,6 +226,14 @@ function localDateKey(date = new Date()): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function localWeekStartKey(date = new Date()): string {
+  const start = new Date(date);
+  const day = start.getDay();
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  start.setDate(start.getDate() - daysSinceMonday);
+  return localDateKey(start);
 }
 
 function readGenericDraft(searchParams: ReturnType<typeof useSearchParams>): string {
@@ -546,6 +554,7 @@ function AssistantPageContent() {
   const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [todaySummary, setTodaySummary] = useState<AssistantTodaySummary | null>(null);
+  const [weeklySummary, setWeeklySummary] = useState<AssistantWeeklySummary | null>(null);
   const [composer, setComposer] = useState("");
   const [handoff, setHandoff] = useState<AssistantHandoff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -705,6 +714,28 @@ function AssistantPageContent() {
     }
   }, [apiBase, applyAuthFailure, token]);
 
+  const loadWeeklySummary = useCallback(async () => {
+    if (!token) {
+      return null;
+    }
+    const weekStart = localWeekStartKey();
+    try {
+      const payload = await apiRequest<AssistantWeeklySummary>(
+        apiBase,
+        token,
+        `/v1/surfaces/assistant/weekly?week_start=${encodeURIComponent(weekStart)}`,
+      );
+      setWeeklySummary(payload);
+      return payload;
+    } catch (err) {
+      if (hasApiStatus(err, 401)) {
+        applyAuthFailure();
+      }
+      setWeeklySummary(null);
+      return null;
+    }
+  }, [apiBase, applyAuthFailure, token]);
+
   const loadUpdates = useCallback(async (threadId: string, nextCursor: string | null) => {
     if (!token) {
       return null;
@@ -731,6 +762,10 @@ function AssistantPageContent() {
   useEffect(() => {
     void loadTodaySummary();
   }, [loadTodaySummary]);
+
+  useEffect(() => {
+    void loadWeeklySummary();
+  }, [loadWeeklySummary]);
 
   useEffect(() => {
     const threadId = snapshot?.id;
@@ -1076,6 +1111,7 @@ function AssistantPageContent() {
               loading={loading}
               busy={sending}
               todaySummary={todaySummary}
+              weeklySummary={weeklySummary}
               todayOpenLoops={cockpitOpenLoops}
               todayContextItems={contextItems}
               onQuickStart={handleQuickStart}
