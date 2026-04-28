@@ -52,7 +52,10 @@ import {
   type MobileArtifactDetailRequestToken,
 } from "./src/mobile-library-detail-view-model";
 import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
-import { emitReviewAnswerRevealedEvent } from "./src/mobile-review-assistant-events";
+import {
+  emitReviewAnswerRevealedEvent,
+  resolveReviewAnswerRevealTransition,
+} from "./src/mobile-review-assistant-events";
 import {
   buildAssistantWeeklyQueryWeekStart,
   buildAssistantTodayQueryDate,
@@ -1354,6 +1357,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [reviewSummary, setReviewSummary] = useState<MobileReviewSurfaceSummary | null>(null);
   const reviewSummaryRequestRef = useRef<MobileReviewSummaryRequestToken>({ requestId: 0, token: "", apiBase: "" });
   const reviewSummarySessionRef = useRef({ token: "", apiBase: normalizeBaseUrl(DEFAULT_API_BASE) });
+  const reviewRevealEventCardIdRef = useRef<string | null>(null);
   const [selectedPlannerDate, setSelectedPlannerDate] = useState(todayDateString());
   const [plannerSummary, setPlannerSummary] = useState<MobilePlannerSummary | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
@@ -2453,6 +2457,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       void loadReviewSummary("auto");
       setReviewStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
       setShowAnswer(false);
+      reviewRevealEventCardIdRef.current = null;
       cardPromptStartedAt.current = payload.length > 0 ? Date.now() : null;
       setStatus(`Loaded ${payload.length} due card(s)`);
     } catch (error) {
@@ -2501,6 +2506,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         easy: previous.easy + (rating === 5 ? 1 : 0),
       }));
       setShowAnswer(false);
+      reviewRevealEventCardIdRef.current = null;
       cardPromptStartedAt.current = remaining.length > 0 ? Date.now() : null;
       void loadReviewDecks();
       void loadReviewSummary("auto");
@@ -2512,16 +2518,22 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   function revealPrimaryReviewAnswer() {
     const current = dueCards[0];
-    if (!current) {
+    const transition = resolveReviewAnswerRevealTransition({
+      card: current,
+      showAnswer,
+      emittedCardId: reviewRevealEventCardIdRef.current,
+    });
+
+    if (transition.shouldLoadCard) {
       loadDueCards().catch(() => undefined);
       return;
     }
-    if (showAnswer) {
-      setShowAnswer(false);
-      return;
+
+    setShowAnswer(transition.nextShowAnswer);
+    reviewRevealEventCardIdRef.current = transition.emittedCardId;
+    if (transition.shouldEmit) {
+      emitReviewAnswerRevealedEvent({ apiBase, token, card: current }).catch(() => undefined);
     }
-    setShowAnswer(true);
-    emitReviewAnswerRevealedEvent({ apiBase, token, card: current }).catch(() => undefined);
   }
 
   async function requestNotificationPermission(): Promise<boolean> {

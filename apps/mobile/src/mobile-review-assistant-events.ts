@@ -17,6 +17,13 @@ export type MobileReviewAssistantEventFetch = (
   },
 ) => Promise<{ ok: boolean }>;
 
+export type MobileReviewRevealTransition = {
+  nextShowAnswer: boolean;
+  shouldLoadCard: boolean;
+  shouldEmit: boolean;
+  emittedCardId: string | null;
+};
+
 const REVIEW_MODE_BY_CARD_TYPE: Record<string, string> = {
   qa: "recall",
   cloze: "recall",
@@ -101,6 +108,46 @@ export async function emitReviewAnswerRevealedEvent(input: {
   } catch {
     return false;
   }
+}
+
+export function resolveReviewAnswerRevealTransition(input: {
+  card: MobileReviewAssistantEventCard | null | undefined;
+  showAnswer: boolean;
+  emittedCardId: string | null | undefined;
+}): MobileReviewRevealTransition {
+  if (!input.card) {
+    return {
+      nextShowAnswer: false,
+      shouldLoadCard: true,
+      shouldEmit: false,
+      emittedCardId: input.emittedCardId || null,
+    };
+  }
+
+  if (input.showAnswer) {
+    return {
+      nextShowAnswer: false,
+      shouldLoadCard: false,
+      shouldEmit: false,
+      emittedCardId: input.emittedCardId || null,
+    };
+  }
+
+  if (input.emittedCardId === input.card.id) {
+    return {
+      nextShowAnswer: true,
+      shouldLoadCard: false,
+      shouldEmit: false,
+      emittedCardId: input.emittedCardId,
+    };
+  }
+
+  return {
+    nextShowAnswer: true,
+    shouldLoadCard: false,
+    shouldEmit: true,
+    emittedCardId: input.card.id,
+  };
 }
 
 function normalizeBaseUrl(value: string): string {

@@ -1,6 +1,7 @@
 import {
   buildReviewAnswerRevealedEventRequest,
   emitReviewAnswerRevealedEvent,
+  resolveReviewAnswerRevealTransition,
   type MobileReviewAssistantEventFetch,
 } from "../src/mobile-review-assistant-events";
 
@@ -50,6 +51,66 @@ assert.deepEqual(body.payload, {
   body: "Review answer revealed for: Apply retrieval practice to a planning workflow.",
 });
 assert.equal(body.visibility, "assistant_message");
+
+const noCardTransition = resolveReviewAnswerRevealTransition({
+  card: null,
+  showAnswer: false,
+  emittedCardId: null,
+});
+assert.deepEqual(noCardTransition, {
+  nextShowAnswer: false,
+  shouldLoadCard: true,
+  shouldEmit: false,
+  emittedCardId: null,
+});
+
+const firstReveal = resolveReviewAnswerRevealTransition({
+  card,
+  showAnswer: false,
+  emittedCardId: null,
+});
+assert.deepEqual(firstReveal, {
+  nextShowAnswer: true,
+  shouldLoadCard: false,
+  shouldEmit: true,
+  emittedCardId: "card-123",
+});
+
+const hideAfterReveal = resolveReviewAnswerRevealTransition({
+  card,
+  showAnswer: true,
+  emittedCardId: firstReveal.emittedCardId,
+});
+assert.deepEqual(hideAfterReveal, {
+  nextShowAnswer: false,
+  shouldLoadCard: false,
+  shouldEmit: false,
+  emittedCardId: "card-123",
+});
+
+const secondRevealSameCard = resolveReviewAnswerRevealTransition({
+  card,
+  showAnswer: false,
+  emittedCardId: hideAfterReveal.emittedCardId,
+});
+assert.deepEqual(secondRevealSameCard, {
+  nextShowAnswer: true,
+  shouldLoadCard: false,
+  shouldEmit: false,
+  emittedCardId: "card-123",
+});
+
+const nextCardReveal = resolveReviewAnswerRevealTransition({
+  card: { ...card, id: "card-456" },
+  showAnswer: false,
+  emittedCardId: null,
+});
+assert.deepEqual(nextCardReveal, {
+  nextShowAnswer: true,
+  shouldLoadCard: false,
+  shouldEmit: true,
+  emittedCardId: "card-456",
+});
 
 runFunctionalPaths().catch((error: unknown) => {
   throw error;
