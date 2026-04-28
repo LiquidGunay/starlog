@@ -7,6 +7,7 @@ from app.schemas.artifacts import (
     ArtifactActionRequest,
     ArtifactActionResponse,
     ArtifactCreateRequest,
+    ArtifactDetailResponse,
     ArtifactGraphResponse,
     ArtifactResponse,
     ArtifactVersionsResponse,
@@ -81,6 +82,18 @@ def run_artifact_action(
         status=status_text,
         output_ref=output_ref,
     )
+
+
+@router.get("/{artifact_id}/detail", response_model=ArtifactDetailResponse)
+def artifact_detail(
+    artifact_id: str,
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> ArtifactDetailResponse:
+    detail = artifacts_service.get_artifact_detail(db, artifact_id)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+    return ArtifactDetailResponse.model_validate(detail)
 
 
 @router.get("/{artifact_id}/graph", response_model=ArtifactGraphResponse)

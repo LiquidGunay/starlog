@@ -1,6 +1,7 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from sqlite3 import Connection
+from typing import Any
 
 from app.core.time import utc_now
 from app.services import ai_service, events_service, integrations_service, memory_vault_service, srs_service
@@ -11,6 +12,7 @@ DEFERRED_CAPABILITIES = {
     "cards": "llm_cards",
     "tasks": "llm_tasks",
 }
+DETAIL_PREVIEW_LIMIT = 240
 
 
 def _format_artifact(row: dict) -> dict:
@@ -619,4 +621,420 @@ def get_artifact_versions(conn: Connection, artifact_id: str) -> dict | None:
         "summaries": summaries,
         "card_sets": card_sets,
         "actions": actions,
+    }
+
+
+def _as_dict(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and item.strip()]
+
+
+def _preview(text: str | None) -> str | None:
+    if text is None:
+        return None
+    cleaned = text.strip()
+    if len(cleaned) <= DETAIL_PREVIEW_LIMIT:
+        return cleaned
+    return f"{cleaned[:DETAIL_PREVIEW_LIMIT].rstrip()}..."
+
+
+def _first_string(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _first_timestamp(*values: Any) -> str:
+    for value in values:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        candidate = value.strip()
+        try:
+            datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        return candidate
+    raise ValueError("At least one valid timestamp is required")
+
+
+def _layer_preview(layer: str, content: str | None, layer_metadata: dict) -> dict:
+    return {
+        "layer": layer,
+        "present": content is not None or bool(layer_metadata),
+        "preview": _preview(content),
+        "character_count": len(content) if content is not None else None,
+        "mime_type": _first_string(layer_metadata.get("mime_type"), layer_metadata.get("content_type")),
+        "checksum_sha256": _first_string(layer_metadata.get("checksum_sha256")),
+        "source_filename": _first_string(
+            layer_metadata.get("source_filename"),
+            layer_metadata.get("filename"),
+            layer_metadata.get("file_name"),
+        ),
+    }
+
+
+def _capture_source_file(capture: dict, layers: dict) -> str | None:
+    raw_layer = _as_dict(layers.get("raw"))
+    return _first_string(
+        capture.get("source_file"),
+        capture.get("source_filename"),
+        capture.get("filename"),
+        raw_layer.get("source_filename"),
+        raw_layer.get("filename"),
+        raw_layer.get("file_name"),
+    )
+
+
+def _detail_connections(conn: Connection, artifact_id: str) -> dict:
+    latest_summary = execute_fetchone(
+        conn,
+        """
+        SELECT id, version, content, provider, created_at
+        FROM summary_versions
+        WHERE artifact_id = ?
+        ORDER BY version DESC
+        LIMIT 1
+        """,
+        (artifact_id,),
+    )
+    summary_count = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM summary_versions WHERE artifact_id = ?",
+        (artifact_id,),
+    )
+    card_count = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM cards WHERE artifact_id = ?",
+        (artifact_id,),
+    )
+    card_set_count = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM card_set_versions WHERE artifact_id = ?",
+        (artifact_id,),
+    )
+    task_count = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM tasks WHERE source_artifact_id = ?",
+        (artifact_id,),
+    )
+    action_count = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM action_runs WHERE artifact_id = ?",
+        (artifact_id,),
+    )
+    notes = execute_fetchall(
+        conn,
+        """
+        SELECT DISTINCT n.id, n.title, n.version
+        FROM notes n
+        INNER JOIN note_blocks nb ON nb.note_id = n.id
+        WHERE nb.artifact_id = ?
+        ORDER BY n.updated_at DESC
+        """,
+        (artifact_id,),
+    )
+
+    latest_summary_payload = None
+    if latest_summary is not None:
+        content = str(latest_summary["content"])
+        latest_summary_payload = {
+            "id": latest_summary["id"],
+            "version": latest_summary["version"],
+            "provider": latest_summary["provider"],
+            "created_at": latest_summary["created_at"],
+            "preview": _preview(content) or "",
+            "character_count": len(content),
+        }
+
+    return {
+        "summary_version_count": int(summary_count["count"]) if summary_count else 0,
+        "latest_summary": latest_summary_payload,
+        "card_count": int(card_count["count"]) if card_count else 0,
+        "card_set_version_count": int(card_set_count["count"]) if card_set_count else 0,
+        "task_count": int(task_count["count"]) if task_count else 0,
+        "note_count": len(notes),
+        "notes": notes,
+        "action_run_count": int(action_count["count"]) if action_count else 0,
+    }
+
+
+def _append_timeline_event(
+    timeline: list[dict],
+    *,
+    kind: str,
+    label: str,
+    occurred_at: str,
+    entity_type: str,
+    entity_id: str,
+    status: str | None = None,
+) -> None:
+    timeline.append(
+        {
+            "kind": kind,
+            "label": label,
+            "occurred_at": occurred_at,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "status": status,
+        }
+    )
+
+
+def _detail_timeline(conn: Connection, artifact: dict) -> list[dict]:
+    artifact_id = str(artifact["id"])
+    timeline: list[dict] = []
+    _append_timeline_event(
+        timeline,
+        kind="artifact.created",
+        label="Artifact created",
+        occurred_at=str(artifact["created_at"]),
+        entity_type="artifact",
+        entity_id=artifact_id,
+    )
+    if artifact.get("updated_at") != artifact.get("created_at"):
+        _append_timeline_event(
+            timeline,
+            kind="artifact.updated",
+            label="Artifact updated",
+            occurred_at=str(artifact["updated_at"]),
+            entity_type="artifact",
+            entity_id=artifact_id,
+        )
+
+    rows = execute_fetchall(
+        conn,
+        """
+        SELECT id, event_type, payload_json, created_at
+        FROM domain_events
+        WHERE payload_json LIKE ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 20
+        """,
+        (f'%"{artifact_id}"%',),
+    )
+    for row in rows:
+        payload = _as_dict(row.get("payload_json"))
+        if payload.get("artifact_id") != artifact_id:
+            continue
+        _append_timeline_event(
+            timeline,
+            kind=str(row["event_type"]),
+            label=str(row["event_type"]).replace(".", " ").title(),
+            occurred_at=str(row["created_at"]),
+            entity_type="domain_event",
+            entity_id=str(row["id"]),
+        )
+
+    for row in execute_fetchall(
+        conn,
+        """
+        SELECT id, action, status, created_at
+        FROM action_runs
+        WHERE artifact_id = ?
+        ORDER BY created_at DESC
+        LIMIT 20
+        """,
+        (artifact_id,),
+    ):
+        _append_timeline_event(
+            timeline,
+            kind=f"action.{row['action']}",
+            label=f"{str(row['action']).replace('_', ' ').title()} action",
+            occurred_at=str(row["created_at"]),
+            entity_type="action_run",
+            entity_id=str(row["id"]),
+            status=str(row["status"]),
+        )
+
+    for row in execute_fetchall(
+        conn,
+        """
+        SELECT id, version, created_at
+        FROM card_set_versions
+        WHERE artifact_id = ?
+        ORDER BY created_at DESC
+        LIMIT 10
+        """,
+        (artifact_id,),
+    ):
+        _append_timeline_event(
+            timeline,
+            kind="card_set.version_created",
+            label=f"Card set v{row['version']} created",
+            occurred_at=str(row["created_at"]),
+            entity_type="card_set_version",
+            entity_id=str(row["id"]),
+        )
+
+    for row in execute_fetchall(
+        conn,
+        """
+        SELECT DISTINCT n.id, n.updated_at
+        FROM notes n
+        INNER JOIN note_blocks nb ON nb.note_id = n.id
+        WHERE nb.artifact_id = ?
+        ORDER BY n.updated_at DESC
+        LIMIT 10
+        """,
+        (artifact_id,),
+    ):
+        _append_timeline_event(
+            timeline,
+            kind="note.linked",
+            label="Note linked",
+            occurred_at=str(row["updated_at"]),
+            entity_type="note",
+            entity_id=str(row["id"]),
+        )
+
+    for row in execute_fetchall(
+        conn,
+        """
+        SELECT id, version, created_at
+        FROM summary_versions
+        WHERE artifact_id = ?
+        ORDER BY created_at DESC
+        LIMIT 10
+        """,
+        (artifact_id,),
+    ):
+        _append_timeline_event(
+            timeline,
+            kind="summary.version_created",
+            label=f"Summary v{row['version']} created",
+            occurred_at=str(row["created_at"]),
+            entity_type="summary_version",
+            entity_id=str(row["id"]),
+        )
+
+    for row in execute_fetchall(
+        conn,
+        """
+        SELECT id, created_at
+        FROM tasks
+        WHERE source_artifact_id = ?
+        ORDER BY created_at DESC
+        LIMIT 10
+        """,
+        (artifact_id,),
+    ):
+        _append_timeline_event(
+            timeline,
+            kind="task.linked",
+            label="Task linked",
+            occurred_at=str(row["created_at"]),
+            entity_type="task",
+            entity_id=str(row["id"]),
+        )
+
+    timeline.sort(key=lambda item: str(item["occurred_at"]), reverse=True)
+    return timeline[:30]
+
+
+def _detail_actions(artifact_id: str) -> list[dict]:
+    endpoint = f"/v1/artifacts/{artifact_id}/actions"
+    return [
+        {
+            "action": "summarize",
+            "label": "Summarize",
+            "enabled": True,
+            "method": "POST",
+            "endpoint": endpoint,
+            "disabled_reason": None,
+        },
+        {
+            "action": "cards",
+            "label": "Make cards",
+            "enabled": True,
+            "method": "POST",
+            "endpoint": endpoint,
+            "disabled_reason": None,
+        },
+        {
+            "action": "tasks",
+            "label": "Make tasks",
+            "enabled": True,
+            "method": "POST",
+            "endpoint": endpoint,
+            "disabled_reason": None,
+        },
+        {
+            "action": "append_note",
+            "label": "Append note",
+            "enabled": True,
+            "method": "POST",
+            "endpoint": endpoint,
+            "disabled_reason": None,
+        },
+        {
+            "action": "archive",
+            "label": "Archive",
+            "enabled": False,
+            "method": None,
+            "endpoint": None,
+            "disabled_reason": "Archive is not supported by the artifact action backend yet.",
+        },
+        {
+            "action": "link",
+            "label": "Link",
+            "enabled": False,
+            "method": None,
+            "endpoint": None,
+            "disabled_reason": "Manual artifact linking is not supported by the artifact action backend yet.",
+        },
+    ]
+
+
+def get_artifact_detail(conn: Connection, artifact_id: str) -> dict | None:
+    artifact = get_artifact(conn, artifact_id)
+    if artifact is None:
+        return None
+
+    metadata = _as_dict(artifact.get("metadata"))
+    capture = _as_dict(metadata.get("capture"))
+    layers = _as_dict(capture.get("layers"))
+
+    return {
+        "artifact": {
+            "id": artifact["id"],
+            "source_type": artifact["source_type"],
+            "title": artifact.get("title"),
+            "created_at": artifact["created_at"],
+            "updated_at": artifact["updated_at"],
+        },
+        "capture": {
+            "source_app": _first_string(capture.get("capture_source")),
+            "source_type": artifact["source_type"],
+            "source_url": _first_string(capture.get("source_url"), metadata.get("source_url"), metadata.get("url")),
+            "source_file": _capture_source_file(capture, layers),
+            "capture_method": _first_string(capture.get("capture_method"), capture.get("method"), artifact["source_type"]),
+            "captured_at": _first_timestamp(
+                capture.get("captured_at"),
+                capture.get("created_at"),
+                artifact["created_at"],
+            ),
+            "tags": _as_string_list(capture.get("tags")),
+        },
+        "source_layers": [
+            _layer_preview("raw", artifact.get("raw_content"), _as_dict(layers.get("raw"))),
+            _layer_preview(
+                "normalized",
+                artifact.get("normalized_content"),
+                _as_dict(layers.get("normalized")),
+            ),
+            _layer_preview(
+                "extracted",
+                artifact.get("extracted_content"),
+                _as_dict(layers.get("extracted")),
+            ),
+        ],
+        "connections": _detail_connections(conn, artifact_id),
+        "timeline": _detail_timeline(conn, artifact),
+        "suggested_actions": _detail_actions(artifact_id),
     }
