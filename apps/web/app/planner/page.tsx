@@ -261,6 +261,14 @@ function detailValue(detail: Record<string, unknown>, key: string): string | nul
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function assistantDraftHref(draft: string): string {
+  return `/assistant?draft=${encodeURIComponent(draft)}`;
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export default function PlannerPage() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -652,6 +660,43 @@ export default function PlannerPage() {
   const bufferBlocks = bucketCount(summary, "block_buckets", "buffer_blocks");
   const totalKnownBlocks = fixedBlocks + flexibleBlocks;
   const focusHours = Math.round((activeSummary.focus_minutes / 60) * 10) / 10;
+  const generalPlannerDraft = useMemo(
+    () => assistantDraftHref(
+      `Review my plan for ${date}: ${countLabel(openTasks, "open task")}, ${dueTodayTasks} due today, ${overdueTasks} overdue, ${unscheduledTasks} unscheduled, ${countLabel(activeSummary.calendar_event_count, "calendar commitment")}, ${countLabel(conflictCount, "conflict")}, ${activeSummary.focus_minutes} focus minutes, and ${activeSummary.buffer_minutes} buffer minutes. Check today's blocks, open tasks, conflicts, and unscheduled tasks, then propose the next bounded move.`,
+    ),
+    [
+      activeSummary.buffer_minutes,
+      activeSummary.calendar_event_count,
+      activeSummary.focus_minutes,
+      conflictCount,
+      date,
+      dueTodayTasks,
+      openTasks,
+      overdueTasks,
+      unscheduledTasks,
+    ],
+  );
+  const summaryConflictDraft = useMemo(
+    () => assistantDraftHref(
+      `Inspect the planner conflicts for ${date}. There ${summaryOnlyConflictCount === 1 ? "is" : "are"} ${countLabel(summaryOnlyConflictCount, "planner conflict")} not shown as calendar sync repairs. Propose clear repair options and the safest next step.`,
+    ),
+    [date, summaryOnlyConflictCount],
+  );
+  const conflictAssistantDrafts = useMemo(
+    () => Object.fromEntries(
+      unresolvedConflicts.map((conflict) => {
+        const title = detailValue(conflict.detail, "title") || `Remote ${conflict.remote_id}`;
+        const suggestedRepair = detailValue(conflict.detail, "suggested_repair") || "No suggested repair provided.";
+        return [
+          conflict.id,
+          assistantDraftHref(
+            `Help repair this calendar conflict for ${date}: ${title}. Remote id: ${conflict.remote_id}. Suggested repair: ${suggestedRepair} Compare the plan impact and propose repair options before I choose Keep Starlog, Use Google, or Dismiss.`,
+          ),
+        ];
+      }),
+    ),
+    [date, unresolvedConflicts],
+  );
 
   return (
     <AprilWorkspaceShell
@@ -820,10 +865,10 @@ export default function PlannerPage() {
               <div>
                 <span className="april-panel-kicker">Planning assistant</span>
                 <h2 id="planner-composer-heading">Ask in Assistant with this plan in mind</h2>
-                <p className="console-copy">Use the persistent Assistant thread for plan changes that need reasoning or confirmation. This Planner surface keeps the current execution state visible.</p>
+                <p className="console-copy">Ask Assistant to review the day, weigh tradeoffs, and suggest one bounded next move before you change the plan.</p>
               </div>
               <div className={styles.composerRow}>
-                <Link className="button primary" href="/assistant">Open Assistant</Link>
+                <Link className="button primary" href={generalPlannerDraft}>Review plan in Assistant</Link>
                 <button className="button" type="button" onClick={() => load()}>Refresh plan context</button>
               </div>
             </AprilPanel>
@@ -872,6 +917,7 @@ export default function PlannerPage() {
                             <small>{detailValue(conflict.detail, "reason") || `Strategy: ${conflict.strategy}`}</small>
                             <p>{conflictRepair}</p>
                             <div className={styles.repairActions}>
+                              <Link className="button" href={conflictAssistantDrafts[conflict.id] || summaryConflictDraft}>Ask Assistant</Link>
                               <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>Replay sync</button>
                               <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "local_wins")}>Keep Starlog</button>
                               <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "remote_wins")}>Use Google</button>
@@ -883,7 +929,8 @@ export default function PlannerPage() {
                       {summaryOnlyConflictCount > 0 ? (
                         <article className={styles.summaryConflictNotice}>
                           <strong>{summaryOnlyConflictCount} planner conflict{summaryOnlyConflictCount === 1 ? " needs" : "s need"} review outside calendar sync</strong>
-                          <small>Refresh the plan or open Assistant to inspect task and block conflicts.</small>
+                          <small>Refresh the plan or ask Assistant to compare task and block repair options.</small>
+                          <Link className="button" href={summaryConflictDraft}>Review conflicts in Assistant</Link>
                         </article>
                       ) : null}
                     </div>
@@ -893,7 +940,7 @@ export default function PlannerPage() {
                       <small>These conflicts are not Google sync conflicts, so calendar repair actions are not available here.</small>
                       <div className={styles.repairActions}>
                         <button className="button" type="button" onClick={() => load()}>Refresh plan</button>
-                        <Link className="button" href="/assistant">Open Assistant</Link>
+                        <Link className="button" href={summaryConflictDraft}>Review conflicts in Assistant</Link>
                       </div>
                     </>
                   ) : (
