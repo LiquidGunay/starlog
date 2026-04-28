@@ -65,6 +65,136 @@ assert.equal(hidden.health.label, "Needs attention");
 assert.equal(hidden.session.label, "2 reviewed");
 assert.equal(hidden.session.progressRatio, 0.25);
 assert.equal(hidden.correctExplanation, "Reveal the answer when you have committed to a retrieval attempt.");
+assert.equal(hidden.learningSignal, null);
+
+const productionSummaryShape = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  learningInsights: [
+    {
+      key: "recent_low_rating_application",
+      title: "Application cards are slipping",
+      body: "Recent low ratings are clustered in application cards.",
+      mode: "application",
+      ladder_stage: "application",
+      count: 2,
+      severity: "medium",
+      href: null,
+      prompt: "Help me practice application cards I recently missed.",
+    },
+  ],
+  recommendedDrill: {
+    mode: "application",
+    title: "Application drill",
+    body: "Practice cards with 2 recent low ratings before returning to the full queue.",
+    prompt: "Start an application drill from cards I recently rated low.",
+    reason: "2 recent low ratings on application cards.",
+    enabled: true,
+  },
+});
+
+assert.equal(productionSummaryShape.learningSignal?.eyebrow, "Application drill");
+assert.equal(productionSummaryShape.learningSignal?.title, "Application drill");
+assert.equal(productionSummaryShape.learningSignal?.prompt, "Start an application drill from cards I recently rated low.");
+assert.equal(productionSummaryShape.learningSignal?.tone, "drill");
+assert.deepEqual(productionSummaryShape.learningSignal?.action, {
+  kind: "assistant_prompt",
+  label: "Ask Assistant",
+  prompt: "Start an application drill from cards I recently rated low.",
+});
+
+const recommendedDrillPriority = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  learningInsights: [
+    {
+      key: "recent_low_rating_judgment",
+      title: "Judgment needs calibration",
+      body: "Judgment cards have the larger count.",
+      mode: "judgment",
+      ladder_stage: "judgment",
+      count: 9,
+      severity: "high",
+      prompt: "Help me calibrate judgment cards.",
+    },
+  ],
+  recommendedDrill: {
+    mode: "synthesis",
+    title: "Synthesis drill",
+    body: "Practice cards with 2 recent low ratings before returning to the full queue.",
+    prompt: "Start a synthesis drill from cards I recently rated low.",
+    reason: "2 recent low ratings on synthesis cards.",
+    enabled: true,
+  },
+});
+
+assert.equal(recommendedDrillPriority.learningSignal?.eyebrow, "Synthesis drill");
+assert.equal(recommendedDrillPriority.learningSignal?.prompt, "Start a synthesis drill from cards I recently rated low.");
+assert.equal(recommendedDrillPriority.learningSignal?.action?.kind, "assistant_prompt");
+assert.equal(recommendedDrillPriority.learningSignal?.action?.prompt, "Start a synthesis drill from cards I recently rated low.");
+
+const synthesisInsightFallback = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  learningInsights: [
+    {
+      key: "recent_low_rating_application",
+      title: "Application wobble",
+      body: "Application cards need a short pass.",
+      mode: "application",
+      ladder_stage: "application",
+      count: 4,
+      severity: "medium",
+    },
+    {
+      key: "recent_low_rating_synthesis",
+      title: "Synthesis needs attention",
+      body: "Synthesis cards are generating the strongest misses.",
+      mode: "synthesis",
+      ladder_stage: "synthesis",
+      count: 3,
+      severity: "high",
+      prompt: "Help me connect the synthesis cards I recently missed.",
+    },
+  ],
+  recommendedDrill: {
+    mode: "recall",
+    title: "No drill recommended",
+    body: "No due cards or repeated low-rating patterns are visible right now.",
+    prompt: null,
+    reason: "No due cards or recent low ratings found.",
+    enabled: false,
+  },
+});
+
+assert.equal(synthesisInsightFallback.learningSignal?.eyebrow, "Synthesis signal");
+assert.equal(synthesisInsightFallback.learningSignal?.title, "Synthesis needs attention");
+assert.equal(synthesisInsightFallback.learningSignal?.detail, "High severity - 3 signals");
+assert.equal(synthesisInsightFallback.learningSignal?.prompt, "Help me connect the synthesis cards I recently missed.");
+
+const applicationInsightCountTiebreaker = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  learningInsights: [
+    {
+      key: "recent_low_rating_judgment",
+      title: "Judgment misses",
+      body: "Judgment cards need a pass.",
+      mode: "judgment",
+      ladder_stage: "judgment",
+      count: 2,
+      severity: "medium",
+    },
+    {
+      key: "recent_low_rating_application",
+      title: "Application misses",
+      body: "Application cards have the larger medium-severity cluster.",
+      mode: "application",
+      ladder_stage: "application",
+      count: 5,
+      severity: "medium",
+    },
+  ],
+});
+
+assert.equal(applicationInsightCountTiebreaker.learningSignal?.eyebrow, "Application signal");
+assert.equal(applicationInsightCountTiebreaker.learningSignal?.title, "Application misses");
 
 const priorityWording = deriveMobileReviewViewModel({
   ...hiddenInputBase(),
@@ -115,6 +245,7 @@ const idle = deriveMobileReviewViewModel({
 assert.equal(idle.statusChips[0].value, "Clear");
 assert.equal(idle.health.detail, "Load the due queue to measure current knowledge health.");
 assert.equal(idle.gradeOptions.every((option) => !option.enabled), true);
+assert.equal(idle.learningSignal, null);
 
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");
@@ -148,5 +279,7 @@ function hiddenInputBase() {
       },
     ],
     status: "Loaded 6 due card(s)",
+    showAnswer: false,
+    hasReviewCard: true,
   };
 }
