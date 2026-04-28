@@ -74,6 +74,7 @@ import {
 import { MobileAssistantDrawer, MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
+import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 import {
   assistantVoiceActionHint,
@@ -283,6 +284,17 @@ type ReviewSessionStats = {
   hard: number;
   good: number;
   easy: number;
+};
+
+type MobileReviewSurfaceSummary = {
+  learning_insights?: MobileReviewLearningInsight[];
+  recommended_drill?: MobileReviewRecommendedDrill | null;
+};
+
+type MobileReviewSummaryRequestToken = {
+  requestId: number;
+  token: string;
+  apiBase: string;
 };
 
 type ArtifactListItem = {
@@ -687,6 +699,20 @@ function todayDateString(): string {
 
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, "");
+}
+
+function shouldCommitReviewSummaryResponse(
+  requested: MobileReviewSummaryRequestToken,
+  currentRequest: MobileReviewSummaryRequestToken,
+  currentSession: { token: string; apiBase: string },
+): boolean {
+  return (
+    requested.requestId === currentRequest.requestId &&
+    requested.token === currentRequest.token &&
+    requested.apiBase === currentRequest.apiBase &&
+    requested.token === currentSession.token &&
+    requested.apiBase === currentSession.apiBase
+  );
 }
 
 function actionEndpointUrl(apiBase: string, endpoint: string): string {
@@ -1323,6 +1349,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const artifactDetailRequestRef = useRef<MobileArtifactDetailRequestToken>({ artifactId: "", requestId: 0 });
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
+  const [reviewSummary, setReviewSummary] = useState<MobileReviewSurfaceSummary | null>(null);
+  const reviewSummaryRequestRef = useRef<MobileReviewSummaryRequestToken>({ requestId: 0, token: "", apiBase: "" });
+  const reviewSummarySessionRef = useRef({ token: "", apiBase: normalizeBaseUrl(DEFAULT_API_BASE) });
   const [selectedPlannerDate, setSelectedPlannerDate] = useState(todayDateString());
   const [plannerSummary, setPlannerSummary] = useState<MobilePlannerSummary | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
@@ -1467,6 +1496,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const reviewRetentionLabel = reviewStats.reviewed > 0
     ? `${Math.round(((reviewStats.good + reviewStats.easy) / reviewStats.reviewed) * 100)}%`
     : "0%";
+  reviewSummarySessionRef.current = { token, apiBase: normalizeBaseUrl(apiBase) };
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -2272,6 +2302,45 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function loadReviewSummary(origin: "auto" | "manual") {
+    const requested = {
+      requestId: reviewSummaryRequestRef.current.requestId + 1,
+      token,
+      apiBase: normalizeBaseUrl(apiBase),
+    };
+    reviewSummaryRequestRef.current = requested;
+    try {
+      if (!token) {
+        setReviewSummary(null);
+        return;
+      }
+      const response = await fetch(`${requested.apiBase}/v1/surfaces/review/summary`, {
+        headers: {
+          Authorization: `Bearer ${requested.token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Review summary fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as MobileReviewSurfaceSummary;
+      if (!shouldCommitReviewSummaryResponse(requested, reviewSummaryRequestRef.current, reviewSummarySessionRef.current)) {
+        return;
+      }
+      setReviewSummary(payload);
+      if (origin === "manual") {
+        setStatus("Loaded Review insight");
+      }
+    } catch (error) {
+      if (!shouldCommitReviewSummaryResponse(requested, reviewSummaryRequestRef.current, reviewSummarySessionRef.current)) {
+        return;
+      }
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load Review insight");
+      }
+    }
+  }
+
   async function loadPlannerSummary(origin: "auto" | "manual") {
     try {
       if (!token) {
@@ -2379,6 +2448,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const payload = (await response.json()) as DueCard[];
       setDueCards(payload);
       void loadReviewDecks();
+      void loadReviewSummary("auto");
       setReviewStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
       setShowAnswer(false);
       cardPromptStartedAt.current = payload.length > 0 ? Date.now() : null;
@@ -2431,6 +2501,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setShowAnswer(false);
       cardPromptStartedAt.current = remaining.length > 0 ? Date.now() : null;
       void loadReviewDecks();
+      void loadReviewSummary("auto");
       setStatus(`Recorded rating ${rating}. ${remaining.length} due card(s) left`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to submit review");
@@ -3825,10 +3896,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   useEffect(() => {
     if (!hydrated || !token) {
       setReviewDecks([]);
+      setReviewSummary(null);
       return;
     }
+    setReviewSummary(null);
     loadReviewDecks().catch(() => undefined);
+    loadReviewSummary("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
+
+  useEffect(() => {
+    if (!hydrated || !token || activeTab !== "review") {
+      return;
+    }
+    loadReviewSummary("auto").catch(() => undefined);
+  }, [hydrated, token, apiBase, activeTab]);
 
   useEffect(() => {
     if (!hydrated || !token) {
@@ -3898,6 +3979,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           loadArtifacts().catch(() => undefined);
           loadAssistantTodaySummary("manual").catch(() => undefined);
           loadAssistantWeeklySummary("manual").catch(() => undefined);
+          if (activeTab === "review") {
+            loadReviewSummary("manual").catch(() => undefined);
+            loadReviewDecks().catch(() => undefined);
+          }
         }}
         onToggleDiagnostics={() => {
           const next = !showDiagnostics;
@@ -4061,6 +4146,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewReviewedCount={reviewStats.reviewed}
             reviewStats={reviewStats}
             reviewStatus={status}
+            reviewLearningInsights={reviewSummary?.learning_insights ?? []}
+            reviewRecommendedDrill={reviewSummary?.recommended_drill ?? null}
             reviewDecks={reviewDecks}
             showAnswer={showAnswer}
             revealAnswer={() => {
@@ -4083,6 +4170,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             hasReviewCard={Boolean(reviewCard)}
             openReviewWorkspace={() => {
               openReviewWorkspaceInPwa().catch(() => undefined);
+            }}
+            suggestAssistantAsk={(prompt) => {
+              const trimmedPrompt = prompt.trim();
+              if (!trimmedPrompt) {
+                return;
+              }
+              setHomeDraft(trimmedPrompt);
+              setActiveTab("assistant");
+              setStatus("Review drill prompt loaded into Assistant");
             }}
             showAdvancedReview={showAdvancedReview}
             toggleMissionTools={() => {

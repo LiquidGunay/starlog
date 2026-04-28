@@ -26,6 +26,8 @@ import {
 import {
   deriveMobileReviewViewModel,
   type MobileReviewGradeOption,
+  type MobileReviewLearningInsight,
+  type MobileReviewRecommendedDrill,
   type MobileReviewStageChip,
   type MobileReviewStats,
 } from "./mobile-review-view-model";
@@ -112,6 +114,8 @@ type MobileReviewSurfaceProps = SharedProps & {
   reviewReviewedCount: number;
   reviewStats: MobileReviewStats;
   reviewStatus: string;
+  reviewLearningInsights: MobileReviewLearningInsight[];
+  reviewRecommendedDrill: MobileReviewRecommendedDrill | null;
   reviewDecks: Array<{
     id: string;
     name: string;
@@ -125,6 +129,7 @@ type MobileReviewSurfaceProps = SharedProps & {
   submitReview: (rating: number) => void;
   hasReviewCard: boolean;
   openReviewWorkspace: () => void;
+  suggestAssistantAsk: (prompt: string) => void;
   showAdvancedReview: boolean;
   toggleMissionTools: () => void;
 };
@@ -1990,6 +1995,8 @@ export function MobileReviewSurface({
   reviewReviewedCount,
   reviewStats,
   reviewStatus,
+  reviewLearningInsights,
+  reviewRecommendedDrill,
   reviewDecks,
   showAnswer,
   revealAnswer,
@@ -1997,6 +2004,7 @@ export function MobileReviewSurface({
   submitReview,
   hasReviewCard,
   openReviewWorkspace,
+  suggestAssistantAsk,
   showAdvancedReview,
   toggleMissionTools,
 }: MobileReviewSurfaceProps) {
@@ -2012,6 +2020,8 @@ export function MobileReviewSurface({
     showAnswer,
     hasReviewCard,
     status: reviewStatus,
+    learningInsights: reviewLearningInsights,
+    recommendedDrill: reviewRecommendedDrill,
   });
   const primaryDeck = reviewDecks
     .filter((deck) => deck.card_count > 0)
@@ -2228,6 +2238,36 @@ export function MobileReviewSurface({
             </Text>
           ) : null}
         </View>
+
+        {model.learningSignal ? (
+          <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={kickerStyle(palette)}>{model.learningSignal.eyebrow}</Text>
+                <Text style={{ color: palette.text, fontSize: 16, lineHeight: 22, fontWeight: "800" }}>
+                  {model.learningSignal.title}
+                </Text>
+              </View>
+              <View style={pillStyle(palette, model.learningSignal.tone === "drill")}>
+                <Text style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                  {model.learningSignal.tone === "drill" ? "Recommended" : "Signal"}
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: palette.text, fontSize: 13, lineHeight: 20 }}>{model.learningSignal.body}</Text>
+            <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>{model.learningSignal.detail}</Text>
+            {model.learningSignal.action?.kind === "assistant_prompt" ? (
+              <TouchableOpacity
+                style={{ ...pillStyle(palette), minHeight: 40, justifyContent: "center", alignSelf: "flex-start" }}
+                onPress={() => suggestAssistantAsk(model.learningSignal?.action?.prompt ?? "")}
+              >
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
+                  {model.learningSignal.action.label}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       <View style={{ ...cardBase(palette), gap: 14 }}>

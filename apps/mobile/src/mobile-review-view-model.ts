@@ -15,6 +15,43 @@ export type MobileReviewStats = {
 };
 
 export type MobileReviewStage = "Recall" | "Understanding" | "Application" | "Synthesis" | "Judgment";
+export type MobileReviewMode = "recall" | "understanding" | "application" | "synthesis" | "judgment";
+
+export type MobileReviewLearningInsight = {
+  key: string;
+  title: string;
+  body: string;
+  mode?: MobileReviewMode | null;
+  ladder_stage?: MobileReviewMode | null;
+  count: number;
+  severity: "low" | "medium" | "high" | "critical" | string;
+  href?: string | null;
+  prompt?: string | null;
+};
+
+export type MobileReviewRecommendedDrill = {
+  mode: MobileReviewMode | string;
+  title: string;
+  body: string;
+  prompt?: string | null;
+  reason: string;
+  enabled: boolean;
+};
+
+export type MobileReviewLearningSignal = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  detail: string;
+  prompt?: string | null;
+  actionLabel?: string;
+  action?: {
+    kind: "assistant_prompt";
+    label: string;
+    prompt: string;
+  };
+  tone: "drill" | "insight";
+};
 
 export type MobileReviewStageChip = {
   label: MobileReviewStage;
@@ -70,6 +107,7 @@ export type MobileReviewViewModel = {
     detail: string;
     progressRatio: number;
   };
+  learningSignal: MobileReviewLearningSignal | null;
 };
 
 const REVIEW_STAGES: MobileReviewStage[] = ["Recall", "Understanding", "Application", "Synthesis", "Judgment"];
@@ -86,6 +124,8 @@ export function deriveMobileReviewViewModel(input: {
   showAnswer: boolean;
   hasReviewCard: boolean;
   status?: string;
+  learningInsights?: MobileReviewLearningInsight[];
+  recommendedDrill?: MobileReviewRecommendedDrill | null;
 }): MobileReviewViewModel {
   const activeStage = deriveReviewStage(input.cardType, input.prompt);
   const dueCount = Math.max(0, input.dueCount);
@@ -159,6 +199,7 @@ export function deriveMobileReviewViewModel(input: {
         : "Reveal one item, grade it, then the next due card moves into focus.",
       progressRatio: Math.max(0, Math.min(1, reviewed / Math.max(1, reviewed + dueCount))),
     },
+    learningSignal: deriveLearningSignal(input.recommendedDrill, input.learningInsights ?? []),
   };
 }
 
@@ -247,4 +288,91 @@ function compactAnswer(answer: string): string {
     return "No answer text is available for this card.";
   }
   return trimmed.length > 220 ? `${trimmed.slice(0, 217)}...` : trimmed;
+}
+
+function deriveLearningSignal(
+  recommendedDrill: MobileReviewRecommendedDrill | null | undefined,
+  learningInsights: MobileReviewLearningInsight[],
+): MobileReviewLearningSignal | null {
+  if (recommendedDrill?.enabled) {
+    const mode = reviewModeLabel(recommendedDrill.mode);
+    const prompt = recommendedDrill.prompt?.trim() || undefined;
+    return {
+      eyebrow: `${mode} drill`,
+      title: recommendedDrill.title.trim() || `${mode} drill`,
+      body: recommendedDrill.body.trim() || recommendedDrill.reason.trim(),
+      detail: recommendedDrill.reason.trim() || "Recommended from current review patterns.",
+      prompt,
+      actionLabel: prompt ? "Ask Assistant" : undefined,
+      action: prompt ? { kind: "assistant_prompt", label: "Ask Assistant", prompt } : undefined,
+      tone: "drill",
+    };
+  }
+
+  const insight = selectLearningInsight(learningInsights);
+  if (!insight) {
+    return null;
+  }
+
+  const mode = reviewModeLabel(insight.mode ?? insight.ladder_stage ?? "");
+  const prompt = insight.prompt?.trim() || undefined;
+  return {
+    eyebrow: `${mode} signal`,
+    title: insight.title.trim() || `${mode} queue issue`,
+    body: insight.body.trim() || `${insight.count} review pattern${insight.count === 1 ? "" : "s"} need attention.`,
+    detail: `${severityLabel(insight.severity)} severity - ${Math.max(0, insight.count)} signal${insight.count === 1 ? "" : "s"}`,
+    prompt,
+    actionLabel: prompt ? "Ask Assistant" : undefined,
+    action: prompt ? { kind: "assistant_prompt", label: "Ask Assistant", prompt } : undefined,
+    tone: "insight",
+  };
+}
+
+function selectLearningInsight(insights: MobileReviewLearningInsight[]): MobileReviewLearningInsight | null {
+  return [...insights]
+    .filter((insight) => insight.count > 0)
+    .sort((left, right) => {
+      const severityDelta = severityRank(right.severity) - severityRank(left.severity);
+      if (severityDelta !== 0) {
+        return severityDelta;
+      }
+      return Math.max(0, right.count) - Math.max(0, left.count);
+    })[0] ?? null;
+}
+
+function reviewModeLabel(mode: string): string {
+  const normalized = mode.toLowerCase();
+  if (normalized === "application") {
+    return "Application";
+  }
+  if (normalized === "synthesis") {
+    return "Synthesis";
+  }
+  if (normalized === "judgment") {
+    return "Judgment";
+  }
+  if (normalized === "understanding") {
+    return "Understanding";
+  }
+  return "Recall";
+}
+
+function severityRank(severity: string): number {
+  switch (severity.toLowerCase()) {
+    case "critical":
+      return 4;
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function severityLabel(severity: string): string {
+  const normalized = severity.toLowerCase();
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "Low";
 }
