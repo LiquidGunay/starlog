@@ -7,6 +7,8 @@ import type {
   AssistantCardAction,
   AssistantEntityRef,
   AssistantInterrupt,
+  AssistantMessagePart,
+  AssistantStatusPart,
   AssistantToolCall,
   AssistantToolResult,
   AssistantThreadMessage,
@@ -221,6 +223,15 @@ type WeeklyDisplayAction = {
   disabled: boolean;
   reason?: string;
 };
+
+type ActivityPart =
+  | Extract<AssistantMessagePart, { type: "tool_call" }>
+  | Extract<AssistantMessagePart, { type: "tool_result" }>
+  | Extract<AssistantMessagePart, { type: "status" }>;
+
+type MessagePartGroup =
+  | { kind: "activity"; id: string; parts: ActivityPart[] }
+  | { kind: "part"; part: AssistantMessagePart };
 
 const REVIEW_MODE_ORDER = ["recall", "understanding", "application", "synthesis", "judgment"] as const;
 
@@ -911,6 +922,137 @@ function toolActionLabel(toolName: string): string {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function toolSurfaceLabel(toolName: string): string | null {
+  const normalized = toolName.toLowerCase();
+  if (normalized.includes("planner") || normalized.includes("task") || normalized.includes("calendar") || normalized.includes("schedule")) {
+    return "Planner";
+  }
+  if (normalized.includes("review") || normalized.includes("card") || normalized.includes("recall")) {
+    return "Review";
+  }
+  if (normalized.includes("library") || normalized.includes("artifact") || normalized.includes("capture") || normalized.includes("note")) {
+    return "Library";
+  }
+  if (normalized.includes("brief")) {
+    return "briefing";
+  }
+  return null;
+}
+
+function toolCallActivityLabel(toolCall: AssistantToolCall): string {
+  if (toolCall.title) {
+    return toolCall.title;
+  }
+  if (toolCall.tool_name === "create_task" || toolCall.tool_name === "update_task") {
+    return toolActionLabel(toolCall.tool_name);
+  }
+  const surface = toolSurfaceLabel(toolCall.tool_name);
+  if (toolCall.status === "running" || toolCall.status === "queued") {
+    return surface ? `Checking ${surface}` : toolActionLabel(toolCall.tool_name);
+  }
+  if (toolCall.status === "requires_action") {
+    return "Needs your decision";
+  }
+  if (toolCall.status === "error") {
+    return "Check failed";
+  }
+  if (toolCall.status === "cancelled") {
+    return "Check cancelled";
+  }
+  return surface ? `Checked ${surface}` : toolActionLabel(toolCall.tool_name);
+}
+
+function toolResultActivityLabel(result: AssistantToolResult): string {
+  const toolName = typeof result.metadata?.tool_name === "string" ? result.metadata.tool_name : "tool";
+  if (result.status === "error") {
+    const surface = toolSurfaceLabel(toolName);
+    return surface ? `${surface} check failed` : "Check failed";
+  }
+  return toolActionLabel(toolName);
+}
+
+function statusActivityLabel(part: AssistantStatusPart): string {
+  if (part.label?.trim()) {
+    return part.label.trim();
+  }
+  if (part.status === "running") {
+    return "Working";
+  }
+  if (part.status === "requires_action") {
+    return "Needs your decision";
+  }
+  if (part.status === "error") {
+    return "Needs attention";
+  }
+  if (part.status === "pending") {
+    return "Waiting";
+  }
+  return "Done";
+}
+
+function activityPartLabel(part: ActivityPart): string {
+  if (part.type === "tool_call") {
+    return toolCallActivityLabel(part.tool_call);
+  }
+  if (part.type === "tool_result") {
+    return toolResultActivityLabel(part.tool_result);
+  }
+  return statusActivityLabel(part);
+}
+
+function activityStripTitle(parts: ActivityPart[]): string {
+  if (parts.length === 1) {
+    return "What I checked";
+  }
+  const hasResult = parts.some((part) => part.type === "tool_result");
+  const hasRunning = parts.some(
+    (part) =>
+      (part.type === "tool_call" && (part.tool_call.status === "running" || part.tool_call.status === "queued")) ||
+      (part.type === "status" && (part.status === "running" || part.status === "pending")),
+  );
+  if (hasRunning && !hasResult) {
+    return "What I'm checking";
+  }
+  return "What I checked";
+}
+
+function formattedJson(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? "null";
+}
+
+function groupMessageParts(parts: AssistantMessagePart[]): MessagePartGroup[] {
+  const groups: MessagePartGroup[] = [];
+  let activityParts: ActivityPart[] = [];
+  let activityStartIndex = 0;
+
+  const flushActivity = () => {
+    if (activityParts.length === 0) {
+      return;
+    }
+    groups.push({
+      kind: "activity",
+      id: `activity-group:${activityStartIndex}:${activityParts.map((part) => part.id).join(":")}`,
+      parts: activityParts,
+    });
+    activityParts = [];
+  };
+
+  for (const [index, part] of parts.entries()) {
+    if (part.type === "tool_call" || part.type === "tool_result" || part.type === "status") {
+      if (activityParts.length === 0) {
+        activityStartIndex = index;
+      }
+      activityParts.push(part);
+      continue;
+    }
+    flushActivity();
+    groups.push({ kind: "part", part });
+  }
+
+  flushActivity();
+  return groups;
+}
+
 function CardSection({
   card,
   busy,
@@ -1070,6 +1212,103 @@ function ToolCallSection({ toolCall }: { toolCall: AssistantToolCall }) {
         </dl>
       ) : null}
     </details>
+  );
+}
+
+function ActivityTechnicalDetails({ part }: { part: ActivityPart }) {
+  if (part.type === "tool_call") {
+    const badges = [part.tool_call.tool_kind.replace(/_/g, " "), part.tool_call.status.replace(/_/g, " ")];
+    return (
+      <section className={styles.activityTechnicalSection}>
+        <div className={styles.cardHeader}>
+          <strong>{toolActionLabel(part.tool_call.tool_name)}</strong>
+          <small>{toolStatusSummary(part.tool_call)}</small>
+        </div>
+        <div className={styles.badges}>
+          {badges.map((badge) => (
+            <span key={`${part.id}-${badge}`} className={styles.badge}>
+              {badge}
+            </span>
+          ))}
+        </div>
+        <div className={styles.rawJsonBlock}>
+          <span>Raw arguments</span>
+          <pre>{formattedJson(part.tool_call.arguments || {})}</pre>
+        </div>
+      </section>
+    );
+  }
+
+  if (part.type === "tool_result") {
+    const outputCount = Object.keys(part.tool_result.output || {}).length;
+    const badges = [part.tool_result.status.replace(/_/g, " "), `${outputCount} field${outputCount === 1 ? "" : "s"}`];
+    return (
+      <section className={styles.activityTechnicalSection}>
+        <div className={styles.cardHeader}>
+          <strong>{toolResultActivityLabel(part.tool_result)}</strong>
+          <EntityLink entityRef={part.tool_result.entity_ref} />
+        </div>
+        <div className={styles.badges}>
+          {badges.map((badge) => (
+            <span key={`${part.id}-${badge}`} className={styles.badge}>
+              {badge}
+            </span>
+          ))}
+        </div>
+        <div className={styles.rawJsonBlock}>
+          <span>Raw result</span>
+          <pre>{formattedJson(part.tool_result.output || {})}</pre>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className={styles.activityTechnicalSection}>
+      <div className={styles.cardHeader}>
+        <strong>{statusActivityLabel(part)}</strong>
+        <small>{part.status.replace(/_/g, " ")}</small>
+      </div>
+      <div className={styles.rawJsonBlock}>
+        <span>Raw status</span>
+        <pre>{formattedJson({ status: part.status, label: part.label || null })}</pre>
+      </div>
+    </section>
+  );
+}
+
+function ActivityStrip({
+  parts,
+  busy,
+  onCardAction,
+}: {
+  parts: ActivityPart[];
+  busy: boolean;
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  return (
+    <section className={styles.activityStrip} aria-label="Assistant activity">
+      <details className={styles.activityStripDetails}>
+        <summary>
+          <span>{activityStripTitle(parts)}</span>
+          <span className={styles.activityChips}>
+            {parts.slice(0, 5).map((part) => (
+              <span key={`activity-chip:${part.id}`}>{activityPartLabel(part)}</span>
+            ))}
+          </span>
+        </summary>
+        <div className={styles.activityTechnicalList}>
+          {parts.map((part) => (
+            <ActivityTechnicalDetails key={`activity-detail:${part.id}`} part={part} />
+          ))}
+        </div>
+      </details>
+      {parts.map((part) =>
+        part.type === "tool_result" && part.tool_result.card ? (
+          <CardSection key={`${part.id}-card`} card={part.tool_result.card} busy={busy} onCardAction={onCardAction} />
+        ) : null,
+      )}
+    </section>
   );
 }
 
@@ -1357,6 +1596,88 @@ function MessagePart({
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 }) {
+  const partGroups = groupMessageParts(message.parts);
+
+  const renderPart = (part: AssistantMessagePart) => {
+    if (part.type === "text") {
+      return (
+        <p key={part.id} className={styles.textPart}>
+          {part.text}
+        </p>
+      );
+    }
+    if (part.type === "ambient_update") {
+      return (
+        <AmbientUpdateSection
+          key={part.id}
+          update={part.update}
+          busy={busy}
+          onCardAction={onCardAction}
+        />
+      );
+    }
+    if (part.type === "card") {
+      return <CardSection key={part.id} card={part.card} busy={busy} onCardAction={onCardAction} />;
+    }
+    if (part.type === "tool_call") {
+      return <ToolCallSection key={part.id} toolCall={part.tool_call} />;
+    }
+    if (part.type === "tool_result") {
+      return <ToolResultSection key={part.id} result={part.tool_result} busy={busy} onCardAction={onCardAction} />;
+    }
+    if (part.type === "interrupt_resolution") {
+      return (
+        <div key={part.id} className={styles.resolution}>
+          <strong>Saved</strong>
+          <span>{part.resolution.action}</span>
+        </div>
+      );
+    }
+    if (part.type === "status") {
+      return (
+        <div key={part.id} className={styles.statusPanel}>
+          <strong>Status</strong>
+          <span>{part.label || part.status}</span>
+        </div>
+      );
+    }
+    if (part.type === "attachment") {
+      return <AttachmentSection key={part.id} attachment={part.attachment} />;
+    }
+    if (part.type === "interrupt_request") {
+      const liveInterrupt = interruptById[part.interrupt.id] || part.interrupt;
+      if (liveInterrupt.status !== "pending") {
+        const resolutionRecord =
+          liveInterrupt.resolution && typeof liveInterrupt.resolution === "object"
+            ? (liveInterrupt.resolution as { values?: Record<string, unknown> })
+            : null;
+        const resolutionValue = resolutionRecord?.values?.resolution;
+        const detail =
+          typeof resolutionValue === "string" && resolutionValue
+            ? resolutionValue.replace(/_/g, " ")
+            : liveInterrupt.status === "submitted"
+              ? "resolved from another surface"
+              : "no longer pending";
+        return (
+          <div key={part.id} className={styles.resolution}>
+            <strong>{liveInterrupt.status === "submitted" ? "Resolved" : "Dismissed"}</strong>
+            <span>{detail}</span>
+          </div>
+        );
+      }
+      return (
+        <DynamicPanelRenderer
+          key={part.id}
+          interrupt={liveInterrupt}
+          busy={busy}
+          onSubmit={onInterruptSubmit}
+          onDismiss={onInterruptDismiss}
+        />
+      );
+    }
+    return null;
+  };
+
   return (
     <article className={`${styles.message} ${styles[`role_${message.role}`]}`}>
       <div className={styles.meta}>
@@ -1365,85 +1686,13 @@ function MessagePart({
         {message.status !== "complete" ? <span>{message.status.replace(/_/g, " ")}</span> : null}
       </div>
       <div className={styles.bubble}>
-        {message.parts.map((part) => {
-          if (part.type === "text") {
-            return (
-              <p key={part.id} className={styles.textPart}>
-                {part.text}
-              </p>
-            );
-          }
-          if (part.type === "ambient_update") {
-            return (
-              <AmbientUpdateSection
-                key={part.id}
-                update={part.update}
-                busy={busy}
-                onCardAction={onCardAction}
-              />
-            );
-          }
-          if (part.type === "card") {
-            return <CardSection key={part.id} card={part.card} busy={busy} onCardAction={onCardAction} />;
-          }
-          if (part.type === "tool_call") {
-            return <ToolCallSection key={part.id} toolCall={part.tool_call} />;
-          }
-          if (part.type === "tool_result") {
-            return <ToolResultSection key={part.id} result={part.tool_result} busy={busy} onCardAction={onCardAction} />;
-          }
-          if (part.type === "interrupt_resolution") {
-            return (
-              <div key={part.id} className={styles.resolution}>
-                <strong>Saved</strong>
-                <span>{part.resolution.action}</span>
-              </div>
-            );
-          }
-          if (part.type === "status") {
-            return (
-              <div key={part.id} className={styles.statusPanel}>
-                <strong>Status</strong>
-                <span>{part.label || part.status}</span>
-              </div>
-            );
-          }
-          if (part.type === "attachment") {
-            return <AttachmentSection key={part.id} attachment={part.attachment} />;
-          }
-          if (part.type === "interrupt_request") {
-            const liveInterrupt = interruptById[part.interrupt.id] || part.interrupt;
-            if (liveInterrupt.status !== "pending") {
-              const resolutionRecord =
-                liveInterrupt.resolution && typeof liveInterrupt.resolution === "object"
-                  ? (liveInterrupt.resolution as { values?: Record<string, unknown> })
-                  : null;
-              const resolutionValue = resolutionRecord?.values?.resolution;
-              const detail =
-                typeof resolutionValue === "string" && resolutionValue
-                  ? resolutionValue.replace(/_/g, " ")
-                  : liveInterrupt.status === "submitted"
-                    ? "resolved from another surface"
-                    : "no longer pending";
-              return (
-                <div key={part.id} className={styles.resolution}>
-                  <strong>{liveInterrupt.status === "submitted" ? "Resolved" : "Dismissed"}</strong>
-                  <span>{detail}</span>
-                </div>
-              );
-            }
-            return (
-              <DynamicPanelRenderer
-                key={part.id}
-                interrupt={liveInterrupt}
-                busy={busy}
-                onSubmit={onInterruptSubmit}
-                onDismiss={onInterruptDismiss}
-              />
-            );
-          }
-          return null;
-        })}
+        {partGroups.map((group) =>
+          group.kind === "activity" ? (
+            <ActivityStrip key={group.id} parts={group.parts} busy={busy} onCardAction={onCardAction} />
+          ) : (
+            renderPart(group.part)
+          ),
+        )}
       </div>
     </article>
   );

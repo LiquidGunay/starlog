@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   API_BASE,
+  assistantThreadActivitySnapshot,
   assistantThreadSnapshot,
   morningFocusInterrupt,
   plannerConflictInterrupt,
@@ -190,10 +191,10 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
   expect(viewport?.width).toBeLessThanOrEqual(430);
   await expect(page.getByText("Planner flagged a 30m overlap")).toBeVisible();
   await expect(page.getByText("My product review overlaps with deep work. What should I do?")).toBeVisible();
-  await expect(page.getByText("Decision", { exact: true })).toHaveCount(1);
+  await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Resolve schedule conflict" })).toBeVisible();
   await expect(page.getByText("Deep work overlaps with Team Sync from 9:45-10:15 AM.")).toBeVisible();
-  await expect(page.locator("select").filter({ hasText: "Move deep work" })).toHaveValue("move_deep_work");
+  await expect(page.getByRole("radio", { name: "Move deep work" })).toBeChecked();
   await expect(page.getByLabel("Notify participants")).toBeChecked();
   await expect(page.getByText("Starlog can move deep work to 10:30 AM")).toBeVisible();
 
@@ -240,9 +241,36 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
     next_cursor: "2026-04-27T09:24:00.000Z",
   });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Decision", { exact: true })).toHaveCount(1);
+  await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Later" }).click();
 
   expect(dismissals).toEqual(["interrupt_planner_conflict"]);
   await expect(page.getByText("Dismissed", { exact: true })).toBeVisible();
+});
+
+test("mobile viewport assistant keeps tool activity compact and readable", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  await routeAssistantThread(page, () => assistantThreadActivitySnapshot());
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  const viewport = page.viewportSize();
+  expect(viewport?.width).toBeLessThanOrEqual(430);
+  const activity = page.getByLabel("Assistant activity");
+  await expect(activity).toBeVisible();
+  const activitySummary = activity.locator("summary");
+  await expect(activitySummary.getByText("What I checked").first()).toBeVisible();
+  await expect(activitySummary.getByText("Checked Planner").first()).toBeVisible();
+  await expect(activitySummary.getByText("Checked Review").first()).toBeVisible();
+  await expect(activitySummary.getByText("Created task").first()).toBeVisible();
+  await expect(activity.getByText("tool_call")).toHaveCount(0);
+  await expect(activity.getByText("tool_result")).toHaveCount(0);
+  await expect(activity.getByText("domain tool").first()).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Launch polish next task" })).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(horizontalOverflow).toBe(false);
+
+  await page.screenshot({ path: "artifacts/ui-functional/mobile-assistant-tool-activity-strip.png", fullPage: true });
 });
