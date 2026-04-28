@@ -36,6 +36,8 @@ def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
         "task_todo": new_id("tsk"),
         "task_overdue": new_id("tsk"),
         "task_done": new_id("tsk"),
+        "task_cancelled_due": new_id("tsk"),
+        "task_canceled_overdue": new_id("tsk"),
         "block_locked": new_id("blk"),
         "block_focus": new_id("blk"),
         "block_buffer": new_id("blk"),
@@ -53,6 +55,8 @@ def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
         "interrupt": new_id("int"),
         "surface_event": new_id("sevt"),
         "commitment": new_id("com"),
+        "commitment_dropped": new_id("com"),
+        "commitment_archived": new_id("com"),
     }
 
     with get_connection() as conn:
@@ -116,6 +120,8 @@ def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
             (ids["task_todo"], "Due today", "todo", start + timedelta(hours=12), ids["artifact_processed"]),
             (ids["task_overdue"], "Overdue", "in_progress", yesterday, None),
             (ids["task_done"], "Done", "done", start + timedelta(hours=8), None),
+            (ids["task_cancelled_due"], "Cancelled due today", "cancelled", start + timedelta(hours=12), None),
+            (ids["task_canceled_overdue"], "Canceled overdue", "canceled", yesterday, None),
         ]:
             conn.execute(
                 """
@@ -324,24 +330,29 @@ def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
                 _iso(now),
             ),
         )
-        conn.execute(
-            """
-            INSERT INTO commitments (id, source_type, source_id, title, promised_to, due_at, status, recovery_plan, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                ids["commitment"],
-                "assistant",
-                None,
-                "Open commitment",
-                None,
-                None,
-                "open",
-                None,
-                _iso(now),
-                _iso(now),
-            ),
-        )
+        for commitment_id, title, status in [
+            (ids["commitment"], "Open commitment", "open"),
+            (ids["commitment_dropped"], "Dropped commitment", "dropped"),
+            (ids["commitment_archived"], "Archived commitment", "archived"),
+        ]:
+            conn.execute(
+                """
+                INSERT INTO commitments (id, source_type, source_id, title, promised_to, due_at, status, recovery_plan, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    commitment_id,
+                    "assistant",
+                    None,
+                    title,
+                    None,
+                    None,
+                    status,
+                    None,
+                    _iso(now),
+                    _iso(now),
+                ),
+            )
         conn.commit()
 
     ids["date"] = today.isoformat()
@@ -432,3 +443,26 @@ def test_assistant_today_summary_is_read_only_and_composes_open_loops(
 
     assert after_threads == before_threads
     assert after_state == before_state
+
+
+def test_closed_tasks_and_commitments_do_not_count_as_open_loops(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+
+    planner = client.get(f"/v1/surfaces/planner/summary?date={seeded['date']}", headers=auth_headers)
+    assert planner.status_code == 200
+    planner_payload = planner.json()
+
+    assert _bucket(planner_payload, "task_buckets", "due_today_tasks") == 1
+    assert _bucket(planner_payload, "task_buckets", "overdue_tasks") == 1
+
+    assistant = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+    assert assistant.status_code == 200
+    assistant_payload = assistant.json()
+
+    assert _open_loop(assistant_payload, "overdue_tasks") == 1
+    assert _open_loop(assistant_payload, "open_commitments") == 1

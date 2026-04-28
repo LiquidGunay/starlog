@@ -8,6 +8,8 @@ from app.core.time import utc_now
 from app.services import review_mode_service
 from app.services.common import execute_fetchall, execute_fetchone
 
+OPEN_TASK_STATUSES_SQL = "status NOT IN ('done', 'completed', 'cancelled', 'canceled')"
+
 
 def _count(conn: Connection, sql: str, params: tuple[Any, ...] = ()) -> int:
     row = execute_fetchone(conn, sql, params)
@@ -168,12 +170,12 @@ def planner_summary(conn: Connection, *, day_value: str | None = None) -> dict[s
     in_progress_tasks = _count(conn, "SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'")
     due_today_tasks = _count(
         conn,
-        "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('done', 'completed') AND due_at >= ? AND due_at < ?",
+        f"SELECT COUNT(*) FROM tasks WHERE {OPEN_TASK_STATUSES_SQL} AND due_at >= ? AND due_at < ?",
         (start, end),
     )
     overdue_tasks = _count(
         conn,
-        "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('done', 'completed') AND due_at IS NOT NULL AND due_at < ?",
+        f"SELECT COUNT(*) FROM tasks WHERE {OPEN_TASK_STATUSES_SQL} AND due_at IS NOT NULL AND due_at < ?",
         (start,),
     )
     unscheduled_tasks = _count(
@@ -378,7 +380,7 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
     open_tasks = _count(conn, "SELECT COUNT(*) FROM tasks WHERE status IN ('todo', 'in_progress')")
     overdue_tasks = _count(
         conn,
-        "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('done', 'completed') AND due_at IS NOT NULL AND due_at < ?",
+        f"SELECT COUNT(*) FROM tasks WHERE {OPEN_TASK_STATUSES_SQL} AND due_at IS NOT NULL AND due_at < ?",
         (start,),
     )
     due_reviews = _count(conn, "SELECT COUNT(*) FROM cards WHERE suspended = 0 AND due_at <= ?", (generated_at.isoformat(),))
@@ -393,7 +395,7 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
           AND NOT EXISTS (SELECT 1 FROM note_blocks nb WHERE nb.artifact_id = a.id)
         """,
     )
-    open_commitments = _count(conn, "SELECT COUNT(*) FROM commitments WHERE status NOT IN ('done', 'completed', 'cancelled')")
+    open_commitments = _count(conn, "SELECT COUNT(*) FROM commitments WHERE status = 'open'")
 
     return {
         "date": day.isoformat(),
