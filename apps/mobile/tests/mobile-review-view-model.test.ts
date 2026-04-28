@@ -66,6 +66,31 @@ assert.equal(hidden.session.label, "2 reviewed");
 assert.equal(hidden.session.progressRatio, 0.25);
 assert.equal(hidden.correctExplanation, "Reveal the answer when you have committed to a retrieval attempt.");
 
+const priorityWording = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  decks: [
+    {
+      id: "deck-low",
+      name: "Recall warmup",
+      description: "Recall",
+      due_count: 1,
+      card_count: 10,
+    },
+    {
+      id: "deck-high",
+      name: "Judgment transfer",
+      description: "Judgment",
+      due_count: 7,
+      card_count: 12,
+    },
+  ],
+  showAnswer: false,
+  hasReviewCard: true,
+});
+
+assert.equal(priorityWording.whyThisNow.includes("Judgment transfer is the highest-pressure review source"), true);
+assert.equal(priorityWording.whyThisNow.includes("Recall warmup is the highest-pressure review source"), false);
+
 const revealed = deriveMobileReviewViewModel({
   ...hiddenInputBase(),
   showAnswer: true,

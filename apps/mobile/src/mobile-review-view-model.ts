@@ -226,7 +226,9 @@ function buildWhyThisNow(
   decks: MobileReviewDeckSummary[],
   dueCount: number,
 ): string {
-  const deck = decks.find((candidate) => candidate.due_count > 0) ?? decks[0];
+  const deck = [...decks]
+    .filter((candidate) => candidate.due_count > 0)
+    .sort((left, right) => right.due_count - left.due_count)[0] ?? decks[0];
   if (deck) {
     return `${deck.name} is the highest-pressure review source right now. This card connects the queue to live judgment instead of passive recall.`;
   }

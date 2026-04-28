@@ -1873,9 +1873,6 @@ export function MobileReviewSurface({
             >
               <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Refresh queue</Text>
             </TouchableOpacity>
-            <View style={{ ...pillStyle(palette), minHeight: 44, justifyContent: "center", opacity: 0.7 }}>
-              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Flag in workspace</Text>
-            </View>
           </View>
 
           <View style={{ flexDirection: "row", gap: 8 }}>
