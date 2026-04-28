@@ -1048,6 +1048,7 @@ function mobileArtifactDetailView(
   const model = deriveMobileArtifactDetailViewModel(detail);
   const sectionById = Object.fromEntries(model.accordions.map((section) => [section.id, section]));
   const isExpanded = (sectionId: string) => expandedSections[sectionId] ?? sectionById[sectionId]?.expandedByDefault ?? false;
+  const classificationLabel = model.quickCapture.classificationOptions.find((option) => option.selected)?.label ?? "Reference";
   return (
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -1095,9 +1096,12 @@ function mobileArtifactDetailView(
               </Text>
               <Text numberOfLines={2} ellipsizeMode="tail" style={bodyStyle(palette)}>{model.subtitle}</Text>
               {model.fileLabel ? (
-                <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: "#9fbfff", fontSize: 13, lineHeight: 18 }}>
-                  {model.fileLabel}
-                </Text>
+                <View style={{ gap: 2 }}>
+                  <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9, letterSpacing: 0.7 }]}>{model.sourceStatusLabel}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 13, lineHeight: 18 }}>
+                    {model.fileLabel}
+                  </Text>
+                </View>
               ) : null}
             </View>
           </View>
@@ -1149,32 +1153,11 @@ function mobileArtifactDetailView(
           </View>
           <View style={{ gap: 7 }}>
             <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>Classification</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              {model.quickCapture.classificationOptions.map((option) => (
-                <View
-                  key={option.id}
-                  style={{
-                    minHeight: 34,
-                    borderRadius: 999,
-                    paddingHorizontal: 10,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    borderWidth: 1,
-                    borderColor: option.selected ? "rgba(245, 169, 73, 0.34)" : palette.border,
-                    backgroundColor: option.selected ? "rgba(245, 169, 73, 0.08)" : "transparent",
-                  }}
-                >
-                  <MaterialCommunityIcons
-                    name={option.selected ? "check-circle-outline" : "circle-small"}
-                    size={14}
-                    color={option.selected ? palette.secondary : palette.muted}
-                  />
-                  <Text numberOfLines={1} style={{ color: option.selected ? palette.secondary : palette.muted, fontSize: 12, fontWeight: "800" }}>
-                    {option.label}
-                  </Text>
-                </View>
-              ))}
+            <View style={{ borderRadius: 12, backgroundColor: palette.surfaceHigh, paddingHorizontal: 12, paddingVertical: 10, gap: 3 }}>
+              <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9, letterSpacing: 0.7 }]}>Current</Text>
+              <Text numberOfLines={1} style={{ color: palette.text, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
+                {classificationLabel}
+              </Text>
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
