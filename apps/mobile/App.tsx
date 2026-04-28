@@ -3776,7 +3776,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <MobileNotesSurface
             styles={styles}
             palette={palette}
-            pendingCaptures={pendingCaptures.length}
+            pendingCaptures={pendingCaptures}
+            artifacts={artifacts}
+            notesCount={artifactGraph?.notes.length ?? 0}
+            linkedProjectCount={artifactGraph?.relations.filter((relation) => relation.target_type === "project").length ?? 0}
             quickCaptureTitle={quickCaptureTitle}
             setQuickCaptureTitle={setQuickCaptureTitle}
             quickCaptureSourceUrl={quickCaptureSourceUrl}
