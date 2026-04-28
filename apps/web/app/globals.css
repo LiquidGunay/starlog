@@ -1198,6 +1198,84 @@ a {
   gap: 0.9rem;
 }
 
+.april-review-learning-card {
+  gap: 1rem;
+}
+
+.april-review-insight-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.april-review-insight,
+.april-review-drill {
+  display: grid;
+  gap: 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.14);
+  background: rgba(39, 23, 30, 0.68);
+  padding: 0.85rem;
+}
+
+.april-review-insight.severity-high,
+.april-review-insight.severity-critical {
+  border-color: rgba(225, 113, 79, 0.36);
+  background: rgba(79, 44, 43, 0.58);
+}
+
+.april-review-insight-head,
+.april-review-drill-head,
+.april-review-insight-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.april-review-insight-head strong,
+.april-review-drill-head strong {
+  color: var(--primary-soft);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.april-review-insight-head span,
+.april-review-drill-head span,
+.april-review-insight-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  border-radius: 999px;
+  background: rgba(225, 113, 79, 0.12);
+  color: var(--primary);
+  padding: 0.2rem 0.5rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.april-review-insight p,
+.april-review-drill p {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted), white 7%);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.april-review-insight-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.april-review-drill-prompt {
+  border-left: 2px solid rgba(225, 113, 79, 0.42);
+  padding-left: 0.7rem;
+}
+
 .april-review-context-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

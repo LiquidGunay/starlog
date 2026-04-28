@@ -46,7 +46,30 @@ type ReviewSurfaceSummary = {
   total_ladder_counts: CountBucket[];
   deck_buckets: CountBucket[];
   queue_health: ReviewQueueHealth;
+  learning_insights: LearningInsight[];
+  recommended_drill: RecommendedDrill | null;
   generated_at: string;
+};
+
+type LearningInsight = {
+  key: string;
+  title: string;
+  body: string;
+  mode?: ReviewMode | null;
+  ladder_stage?: string | null;
+  count: number;
+  severity: string;
+  href?: string | null;
+  prompt?: string | null;
+};
+
+type RecommendedDrill = {
+  mode: ReviewMode | string;
+  title: string;
+  body: string;
+  prompt?: string | null;
+  reason: string;
+  enabled: boolean;
 };
 
 type SessionStats = {
@@ -90,23 +113,23 @@ const REVIEW_MODE_LABELS: Record<ReviewMode, string> = {
 const REVIEW_MODE_DETAILS: Record<ReviewMode, { purpose: string; schedule: string }> = {
   recall: {
     purpose: "Remember facts.",
-    schedule: "Grouped by due recall cards now; richer drill tuning later.",
+    schedule: "Grouped by due recall cards with insight patterns when misses repeat.",
   },
   understanding: {
     purpose: "Explain and connect.",
-    schedule: "Grouped by explanation-mode cards now; quality scoring later.",
+    schedule: "Grouped by explanation-mode cards with quality signals from review history.",
   },
   application: {
     purpose: "Apply to new situations.",
-    schedule: "Grouped by scenario-style cards now; generated drills later.",
+    schedule: "Grouped by scenario-style cards; recommended drills appear from repeated misses.",
   },
   synthesis: {
     purpose: "Combine and create.",
-    schedule: "Grouped by connection cards now; project-aware synthesis later.",
+    schedule: "Grouped by connection cards with synthesis gaps highlighted when detected.",
   },
   judgment: {
     purpose: "Evaluate and decide.",
-    schedule: "Grouped by decision cards now; uncertainty signals later.",
+    schedule: "Grouped by decision cards with judgment gaps highlighted when detected.",
   },
 };
 
@@ -166,6 +189,17 @@ function bucketCountsByMode(buckets: CountBucket[] | undefined, fallback: Record
     counts[mode] = bucketCount(buckets, mode) || fallback[mode] || 0;
     return counts;
   }, { recall: 0, understanding: 0, application: 0, synthesis: 0, judgment: 0 });
+}
+
+function reviewModeLabel(mode?: string | null): string | null {
+  if (!mode) {
+    return null;
+  }
+  return REVIEW_MODE_LABELS[mode as ReviewMode] ?? mode.replace(/_/g, " ");
+}
+
+function assistantDraftHref(prompt: string): string {
+  return `/assistant?draft=${encodeURIComponent(prompt)}`;
 }
 
 function summaryDeckBuckets(summary: ReviewSurfaceSummary | null, decks: Deck[]): CountBucket[] {
@@ -270,6 +304,9 @@ export default function ReviewPage() {
   const dueSoonCount = health?.due_soon_count ?? 0;
   const suspendedCount = health?.suspended_count ?? 0;
   const reviewedTodayCount = health?.reviewed_today_count ?? stats.reviewed;
+  const learningInsights = (summary?.learning_insights ?? []).slice(0, 3);
+  const recommendedDrill = summary?.recommended_drill ?? null;
+  const recommendedDrillMode = reviewModeLabel(recommendedDrill?.mode);
 
   const loadReviewData = useCallback(async () => {
     if (missingConfig) {
@@ -459,7 +496,7 @@ export default function ReviewPage() {
               <div>
                 <span className="review-sidebar-kicker">Learning Ladder</span>
                 <h2>Depth of review</h2>
-                <p className="review-copy">Current queue context by card mode. Generated drills and deeper scenario flows are not active here yet.</p>
+                <p className="review-copy">Current queue context by card mode, with learning-engine signals when Starlog detects repeated misses.</p>
               </div>
             </div>
             <div className="april-review-ladder-list">
@@ -619,6 +656,55 @@ export default function ReviewPage() {
                 <Link className="april-chip-button muted" href="/review/decks">Deck Workspace</Link>
               </div>
             </AprilPanel>
+
+            {(learningInsights.length > 0 || recommendedDrill) ? (
+              <AprilPanel className="april-review-side-card april-review-learning-card">
+                {learningInsights.length > 0 ? (
+                  <>
+                    <span className="review-sidebar-kicker">Learning insights</span>
+                    <div className="april-review-insight-list">
+                      {learningInsights.map((insight) => {
+                        const modeLabel = reviewModeLabel(insight.mode);
+                        return (
+                          <div key={insight.key} className={`april-review-insight severity-${insight.severity.toLowerCase()}`}>
+                            <div className="april-review-insight-head">
+                              <strong>{insight.title}</strong>
+                              <span>{insight.count}x</span>
+                            </div>
+                            <p>{insight.body}</p>
+                            <div className="april-review-insight-meta">
+                              <span>{insight.severity}</span>
+                              {modeLabel ? <span>{modeLabel}</span> : null}
+                              {insight.ladder_stage ? <span>{insight.ladder_stage}</span> : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+
+                {recommendedDrill ? (
+                  <div className="april-review-drill">
+                    <span className="review-sidebar-kicker">Recommended drill</span>
+                    <div className="april-review-drill-head">
+                      <strong>{recommendedDrill.title}</strong>
+                      {recommendedDrillMode ? <span>{recommendedDrillMode}</span> : null}
+                    </div>
+                    <p>{recommendedDrill.body}</p>
+                    <p className="review-copy">Reason: {recommendedDrill.reason}</p>
+                    {recommendedDrill.prompt ? (
+                      <p className="april-review-drill-prompt">{recommendedDrill.prompt}</p>
+                    ) : null}
+                    {recommendedDrill.enabled && recommendedDrill.prompt ? (
+                      <Link className="april-chip-button" href={assistantDraftHref(recommendedDrill.prompt)}>
+                        Open in Assistant
+                      </Link>
+                    ) : null}
+                  </div>
+                ) : null}
+              </AprilPanel>
+            ) : null}
           </div>
         </div>
 
