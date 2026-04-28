@@ -22,6 +22,8 @@ def test_unknown_assistant_message_remains_assistant_message() -> None:
 def test_known_low_noise_events_default_to_ambient_or_internal() -> None:
     assert resolve_event_visibility("task.created", None) == "ambient"
     assert resolve_event_visibility("artifact.opened", None) == "ambient"
+    assert resolve_event_visibility("planner.conflict.resolved", None) == "ambient"
+    assert resolve_event_visibility("planner.conflict.cleared", None) == "ambient"
     assert resolve_event_visibility("assistant.panel.submitted", None) == "ambient"
     assert resolve_event_visibility("assistant.card.action_used", None) == "internal"
 

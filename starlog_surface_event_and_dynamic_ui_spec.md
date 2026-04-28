@@ -67,6 +67,8 @@ Examples:
 - `task.completed`
 - `review.answer.graded`
 - `planner.conflict.detected`
+- `planner.conflict.resolved`
+- `planner.conflict.cleared`
 - `briefing.played`
 - `time_block.started`
 - `voice.capture.transcribed`
@@ -171,22 +173,33 @@ The user must be able to dismiss it and continue in normal chat.
 ## 4.1 Surface event contract
 
 ```ts
+import type { AssistantCardAction, AssistantEntityRef } from "./assistant-card";
+
 export const STARLOG_SURFACE_EVENT_KINDS = [
   "capture.created",
   "capture.enriched",
+  "capture.untriaged",
   "artifact.opened",
   "artifact.summarized",
   "task.created",
   "task.completed",
+  "task.missed",
   "task.snoozed",
+  "commitment.overdue",
   "time_block.started",
   "time_block.completed",
   "planner.conflict.detected",
+  "planner.conflict.resolved",
+  "planner.conflict.cleared",
+  "project.stale",
+  "goal.stale",
   "review.session.started",
   "review.answer.revealed",
   "review.answer.graded",
+  "review.repeated_failure",
   "briefing.generated",
   "briefing.played",
+  "assistant.recommendation.deferred",
   "assistant.card.action_used",
   "assistant.panel.submitted",
   "voice.capture.transcribed",
@@ -202,7 +215,19 @@ export type AssistantSurfaceEvent = {
   kind: StarlogSurfaceEventKind | string;
   entity_ref?: AssistantEntityRef | null;
   payload: Record<string, unknown>;
-  visibility?: "internal" | "ambient" | "assistant_message";
+  visibility?: "internal" | "ambient" | "assistant_message" | "dynamic_panel";
+  projected_message?: boolean;
+  created_at: string;
+};
+
+export type AssistantAmbientUpdate = {
+  id: string;
+  event_id: string;
+  label: string;
+  body?: string | null;
+  entity_ref?: AssistantEntityRef | null;
+  actions?: AssistantCardAction[];
+  metadata: Record<string, unknown>;
   created_at: string;
 };
 ```
@@ -524,6 +549,8 @@ Do not ask the user to restate the task inside the popup.
 The user or assistant tries to place a block that overlaps an existing block.
 Surface emits:
 - `planner.conflict.detected`
+- `planner.conflict.resolved` after a direct Planner resolution
+- `planner.conflict.cleared` when replay shows the conflict no longer needs action
 
 ### Response shape
 1. ambient update or assistant warning

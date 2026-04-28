@@ -26,6 +26,34 @@ def _focus_options(interrupt: dict) -> list[dict[str, str]]:
     return field["options"]
 
 
+def _planner_surface_events_for_entity(entity_id: str) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT kind, visibility, projected_message, entity_ref_json, payload_json
+            FROM conversation_surface_events
+            WHERE source_surface = 'planner'
+            ORDER BY created_at ASC
+            """
+        ).fetchall()
+
+    events: list[dict] = []
+    for row in rows:
+        entity_ref = json.loads(row["entity_ref_json"] or "{}")
+        if entity_ref.get("entity_id") != entity_id:
+            continue
+        events.append(
+            {
+                "kind": row["kind"],
+                "visibility": row["visibility"],
+                "projected_message": bool(row["projected_message"]),
+                "entity_ref": entity_ref,
+                "payload": json.loads(row["payload_json"] or "{}"),
+            }
+        )
+    return events
+
+
 def _parse_sse_events(raw_stream: str, *, stop_event: str = "cursor", limit: int = 32) -> list[dict]:
     events: list[dict] = []
     current_event = "message"
@@ -1177,9 +1205,19 @@ def test_direct_planner_conflict_resolution_closes_pending_interrupt_and_emits_a
     assert interrupt["resolution"]["values"]["resolution"] == "local_wins"
     run = next(item for item in payload["runs"] if item["id"] == interrupt["run_id"])
     assert run["current_interrupt"] is None
+    resolved_events = [
+        event
+        for event in _planner_surface_events_for_entity(conflict["id"])
+        if event["kind"] == "planner.conflict.resolved"
+    ]
+    assert len(resolved_events) == 1
+    assert resolved_events[0]["visibility"] == "ambient"
+    assert resolved_events[0]["projected_message"] is True
+    assert resolved_events[0]["payload"]["resolution_strategy"] == "local_wins"
     assert any(
         part["type"] == "ambient_update"
         and part["update"]["label"] == "Planner conflict resolved"
+        and part["update"]["metadata"].get("kind") == "planner.conflict.resolved"
         and "local wins" in (part["update"].get("body") or "")
         for message in payload["messages"]
         for part in message["parts"]
@@ -1371,9 +1409,19 @@ def test_planner_conflict_replay_clear_dismisses_pending_interrupt_and_emits_amb
     assert interrupt["resolution"]["values"]["reason"] == "replayed_cleanly"
     run = next(item for item in payload["runs"] if item["id"] == interrupt["run_id"])
     assert run["current_interrupt"] is None
+    cleared_events = [
+        event
+        for event in _planner_surface_events_for_entity(conflict["id"])
+        if event["kind"] == "planner.conflict.cleared"
+    ]
+    assert len(cleared_events) == 1
+    assert cleared_events[0]["visibility"] == "ambient"
+    assert cleared_events[0]["projected_message"] is True
+    assert cleared_events[0]["payload"]["reason"] == "replayed_cleanly"
     assert any(
         part["type"] == "ambient_update"
         and part["update"]["label"] == "Planner conflict cleared"
+        and part["update"]["metadata"].get("kind") == "planner.conflict.cleared"
         for message in payload["messages"]
         for part in message["parts"]
     )

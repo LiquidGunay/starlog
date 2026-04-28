@@ -14,6 +14,8 @@ export const STARLOG_SURFACE_EVENT_KINDS = [
   "time_block.started",
   "time_block.completed",
   "planner.conflict.detected",
+  "planner.conflict.resolved",
+  "planner.conflict.cleared",
   "project.stale",
   "goal.stale",
   "review.session.started",

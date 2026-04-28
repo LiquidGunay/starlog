@@ -40,6 +40,8 @@ EVENT_VISIBILITY_POLICY: Final[dict[str, AssistantEventVisibility]] = {
     "time_block.started": VISIBILITY_AMBIENT,
     "time_block.completed": VISIBILITY_AMBIENT,
     "planner.conflict.detected": VISIBILITY_DYNAMIC_PANEL,
+    "planner.conflict.resolved": VISIBILITY_AMBIENT,
+    "planner.conflict.cleared": VISIBILITY_AMBIENT,
     "project.stale": VISIBILITY_ASSISTANT_MESSAGE,
     "goal.stale": VISIBILITY_ASSISTANT_MESSAGE,
     "review.session.started": VISIBILITY_AMBIENT,
