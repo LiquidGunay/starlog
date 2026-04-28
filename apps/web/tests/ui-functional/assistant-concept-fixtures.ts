@@ -33,6 +33,67 @@ export function assistantThreadSnapshot(overrides: SnapshotOverrides = {}): Reco
   };
 }
 
+export function assistantTodaySummary(overrides: SnapshotOverrides = {}): Record<string, unknown> {
+  return {
+    date: "2026-04-28",
+    thread_id: "thr_primary",
+    active_run_count: 0,
+    open_interrupt_count: 0,
+    recent_surface_event_count: 0,
+    open_loops: [
+      { key: "open_tasks", label: "Open tasks", count: 0, href: "/planner" },
+      { key: "overdue_tasks", label: "Overdue tasks", count: 0, href: "/planner" },
+      { key: "due_reviews", label: "Reviews due", count: 0, href: "/review" },
+      { key: "unprocessed_library", label: "Library inbox", count: 0, href: "/library" },
+      { key: "open_commitments", label: "Open commitments", count: 0, href: "/planner" },
+    ],
+    recommended_next_move: {
+      key: "plan_today",
+      title: "Plan today",
+      body: "No urgent open loops are visible; choose the next focus for today.",
+      surface: "planner",
+      href: "/planner",
+      action_label: "Plan today",
+      prompt: "Help me plan today.",
+      priority: 10,
+      urgency: "low",
+    },
+    reason_stack: ["No pending interrupts, overdue tasks, unprocessed captures, or due reviews are visible."],
+    at_a_glance: [
+      { key: "planner", label: "Planner", count: 0, href: "/planner" },
+      { key: "library", label: "Library inbox", count: 0, href: "/library" },
+      { key: "review", label: "Review due", count: 0, href: "/review" },
+      { key: "commitments", label: "Open commitments", count: 0, href: "/planner" },
+    ],
+    quick_actions: [
+      {
+        key: "plan_today",
+        title: "Plan today",
+        surface: "planner",
+        href: "/planner",
+        action_label: "Plan today",
+        prompt: "Help me plan today.",
+        enabled: true,
+        count: 0,
+        reason: null,
+        priority: 10,
+      },
+    ],
+    generated_at: "2026-04-28T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export async function routeAssistantToday(page: Page, getSummary: () => Record<string, unknown>): Promise<void> {
+  await page.route(`${API_BASE}/v1/surfaces/assistant/today*`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(getSummary()),
+    });
+  });
+}
+
 export async function routeAssistantThread(page: Page, getSnapshot: () => Record<string, unknown>): Promise<void> {
   await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
     await route.fulfill({

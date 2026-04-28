@@ -12,7 +12,7 @@ import type {
   AssistantThreadSnapshot,
 } from "@starlog/contracts";
 
-import { MainRoomThread } from "../components/main-room-thread";
+import { MainRoomThread, type AssistantTodaySummary } from "../components/main-room-thread";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
@@ -221,6 +221,13 @@ function liveStatusLabel(status: LiveStatus): string {
   return "Connecting";
 }
 
+function localDateKey(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function readGenericDraft(searchParams: ReturnType<typeof useSearchParams>): string {
   return searchParams.get("draft")?.trim() || "";
 }
@@ -368,6 +375,16 @@ function buildOpenLoops(snapshot: AssistantThreadSnapshot | null, handoff: Assis
     loops.push({ label: "Helper capture ready", href: `/artifacts?artifact=${encodeURIComponent(handoff.artifactId)}` });
   }
   return loops.length > 0 ? loops : [{ label: "No open loops in this thread" }];
+}
+
+function buildTodaySummaryOpenLoops(todaySummary: AssistantTodaySummary | null): RailItem[] {
+  return (todaySummary?.open_loops || [])
+    .filter((loop) => Number(loop.count) > 0)
+    .slice(0, 4)
+    .map((loop) => ({
+      label: `${loop.label}: ${loop.count}`,
+      href: loop.href || undefined,
+    }));
 }
 
 function buildSuggestions(snapshot: AssistantThreadSnapshot | null): RailItem[] {
@@ -528,6 +545,7 @@ function AssistantPageContent() {
   const appliedDraftRef = useRef<string | null>(null);
   const [snapshot, setSnapshot] = useState<AssistantThreadSnapshot | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [todaySummary, setTodaySummary] = useState<AssistantTodaySummary | null>(null);
   const [composer, setComposer] = useState("");
   const [handoff, setHandoff] = useState<AssistantHandoff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -665,6 +683,28 @@ function AssistantPageContent() {
     }
   }, [apiBase, applyAuthFailure, token]);
 
+  const loadTodaySummary = useCallback(async () => {
+    if (!token) {
+      return null;
+    }
+    const todayDate = localDateKey();
+    try {
+      const payload = await apiRequest<AssistantTodaySummary>(
+        apiBase,
+        token,
+        `/v1/surfaces/assistant/today?date=${encodeURIComponent(todayDate)}`,
+      );
+      setTodaySummary(payload);
+      return payload;
+    } catch (err) {
+      if (hasApiStatus(err, 401)) {
+        applyAuthFailure();
+      }
+      setTodaySummary(null);
+      return null;
+    }
+  }, [apiBase, applyAuthFailure, token]);
+
   const loadUpdates = useCallback(async (threadId: string, nextCursor: string | null) => {
     if (!token) {
       return null;
@@ -687,6 +727,10 @@ function AssistantPageContent() {
   useEffect(() => {
     void loadSnapshot();
   }, [loadSnapshot]);
+
+  useEffect(() => {
+    void loadTodaySummary();
+  }, [loadTodaySummary]);
 
   useEffect(() => {
     const threadId = snapshot?.id;
@@ -977,14 +1021,30 @@ function AssistantPageContent() {
   const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
   const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(new Date());
   const openLoops = buildOpenLoops(normalizedSnapshot, handoff);
-  const openLoopCount = (normalizedSnapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").length + (handoff ? 1 : 0);
+  const summaryOpenLoops = buildTodaySummaryOpenLoops(todaySummary);
+  const cockpitOpenLoops =
+    openLoops.filter((item) => item.label !== "No open loops in this thread").length > 0
+      ? openLoops.filter((item) => item.label !== "No open loops in this thread")
+      : summaryOpenLoops;
+  const threadOpenLoopCount = (normalizedSnapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").length + (handoff ? 1 : 0);
+  const summaryOpenLoopCount = (todaySummary?.open_loops || []).reduce((total, loop) => total + (Number(loop.count) || 0), 0);
+  const openLoopCount = threadOpenLoopCount || summaryOpenLoopCount;
   const contextItems = [
     ...collectRailCards(normalizedSnapshot),
     ...supportSurfaces.filter((surface) => surface.active).map((surface) => ({ label: surface.title, href: surface.href })),
   ].slice(0, 4);
+  const recommendedMove = todaySummary?.recommended_next_move;
   const nowItems: RailItem[] = [
-    activeInterrupt ? { label: activeInterrupt.title, href: activeInterrupt.entity_ref?.href || undefined } : { label: "Ready for the next move" },
-    activeRun ? { label: `Assistant is ${activeRun.status}` } : { label: `${liveStatusLabel(liveStatus)} · ${isOnline ? "Online" : "Offline"}` },
+    activeInterrupt
+      ? { label: activeInterrupt.title, href: activeInterrupt.entity_ref?.href || undefined }
+      : recommendedMove?.title
+        ? { label: recommendedMove.title, href: recommendedMove.href || undefined }
+        : { label: "Ready for the next move" },
+    recommendedMove?.body
+      ? { label: recommendedMove.body, href: recommendedMove.href || undefined }
+      : openLoopCount > 0
+        ? { label: `${openLoopCount} open loop${openLoopCount === 1 ? "" : "s"} to consider` }
+        : { label: "No urgent open loop is visible" },
   ];
   const suggestions = buildSuggestions(normalizedSnapshot);
 
@@ -1004,10 +1064,8 @@ function AssistantPageContent() {
             </p>
           </div>
           <div className={styles.heroMeta}>
-            <span>{isOnline ? "Online" : "Offline"}</span>
-            <span>{liveStatusLabel(liveStatus)}</span>
             <span>{openLoopCount} open loop{openLoopCount === 1 ? "" : "s"}</span>
-            <span>{activeInterrupt ? activeInterrupt.title : "No pending action"}</span>
+            <span>{todaySummary?.recommended_next_move?.urgency ? `${todaySummary.recommended_next_move.urgency} priority` : "Ready for the next move"}</span>
           </div>
         </section>
 
@@ -1017,7 +1075,8 @@ function AssistantPageContent() {
               snapshot={normalizedSnapshot}
               loading={loading}
               busy={sending}
-              todayOpenLoops={openLoops.filter((item) => item.label !== "No open loops in this thread")}
+              todaySummary={todaySummary}
+              todayOpenLoops={cockpitOpenLoops}
               todayContextItems={contextItems}
               onQuickStart={handleQuickStart}
               onCardAction={handleCardAction}
@@ -1121,6 +1180,7 @@ function AssistantPageContent() {
                 <ul>
                   <li>{activeRun ? `${activeRun.orchestrator} run is ${activeRun.status}` : "No active run"}</li>
                   <li>{activeInterrupt ? activeInterrupt.title : "No pending action"}</li>
+                  <li>{liveStatusLabel(liveStatus)} · {isOnline ? "Online" : "Offline"}</li>
                   <li>{snapshot ? `${snapshot.messages.length} messages loaded` : "No thread snapshot yet"}</li>
                 </ul>
               </details>
