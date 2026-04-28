@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AssistantCard as ConversationCard, AssistantCardAction } from "@starlog/contracts";
 import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -71,6 +71,7 @@ type MobileHomeSurfaceProps = SharedProps & {
 type MobileNotesSurfaceProps = SharedProps & {
   pendingCaptures: MobileLibraryPendingCapture[];
   artifacts: MobileLibraryArtifact[];
+  selectedArtifactId: string;
   selectedArtifactDetail: MobileArtifactDetail | null;
   artifactDetailStatus: string;
   openArtifactDetail: (artifactId: string) => void;
@@ -702,8 +703,18 @@ function mobileCaptureRow(
   row: MobileLibraryInboxRow,
   onPress?: (row: MobileLibraryInboxRow) => void,
 ) {
-  const content = (
-    <>
+  const style = {
+    borderRadius: 16,
+    backgroundColor: palette.surfaceLow,
+    borderWidth: 1,
+    borderColor: palette.border,
+    padding: 12,
+    gap: 12,
+  } as const;
+  const canOpen = row.icon === "artifact" && Boolean(onPress);
+  const visibleActions = [row.primaryActionLabel, row.secondaryActionLabel].filter((action): action is string => Boolean(action));
+  return (
+    <View key={row.id} style={style}>
       <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <View
           style={{
@@ -740,60 +751,57 @@ function mobileCaptureRow(
           </Text>
         </View>
         <View
-          accessibilityLabel={`${row.overflowLabel} options for ${row.title}`}
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
+            minWidth: 72,
+            minHeight: 30,
+            borderRadius: 15,
             backgroundColor: palette.surfaceHigh,
             alignItems: "center",
             justifyContent: "center",
+            paddingHorizontal: 9,
+            opacity: 0.72,
           }}
         >
-          <MaterialCommunityIcons name="dots-horizontal" size={18} color={palette.muted} />
+          <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>
+            {canOpen ? "Detail" : "Queued"}
+          </Text>
         </View>
       </View>
       <View style={{ flexDirection: row.layout.stackActions ? "column" : "row", gap: 8 }}>
-        {[row.primaryActionLabel, row.secondaryActionLabel].filter((action): action is string => Boolean(action)).map((action, actionIndex) => (
-          <View
-            key={action}
-            style={{
-              flex: row.layout.stackActions ? undefined : 1,
-              minHeight: 40,
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: actionIndex === 0 ? palette.accent : palette.surfaceHigh,
-            }}
-          >
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: actionIndex === 0 ? palette.onAccent : palette.text, fontSize: 12, fontWeight: "800" }}>
-              {action}
-            </Text>
-          </View>
-        ))}
+        {visibleActions.map((action, actionIndex) => {
+          const enabled = canOpen && actionIndex === 0 && action === "Open";
+          const buttonStyle = {
+            flex: row.layout.stackActions ? undefined : 1,
+            minHeight: 40,
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignItems: "center" as const,
+            justifyContent: "center" as const,
+            backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
+            opacity: enabled ? 1 : 0.64,
+          };
+          const label = enabled ? action : `${action} unavailable`;
+          return enabled ? (
+            <Pressable
+              key={action}
+              accessibilityRole="button"
+              onPress={() => onPress?.(row)}
+              style={buttonStyle}
+            >
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>
+                {label}
+              </Text>
+            </Pressable>
+          ) : (
+            <View key={action} style={buttonStyle}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>
+                {label}
+              </Text>
+            </View>
+          );
+        })}
       </View>
-    </>
-  );
-  const style = {
-    borderRadius: 16,
-    backgroundColor: palette.surfaceLow,
-    borderWidth: 1,
-    borderColor: palette.border,
-    padding: 12,
-    gap: 12,
-  } as const;
-  if (onPress) {
-    return (
-      <TouchableOpacity key={row.id} onPress={() => onPress(row)} activeOpacity={0.82} style={style}>
-        {content}
-      </TouchableOpacity>
-    );
-  }
-  return (
-    <View key={row.id} style={style}>
-      {content}
     </View>
   );
 }
@@ -864,30 +872,41 @@ function artifactActionButton(
 ) {
   const executableRequest = action.executableRequest;
   const enabled = executableRequest !== null;
+  const style = {
+    minWidth: 120,
+    minHeight: 48,
+    flex: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
+    opacity: enabled ? 1 : 0.62,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: 2,
+  };
+  const label = enabled ? action.label : `${action.label} unavailable`;
+  if (!enabled) {
+    return (
+      <View key={action.action} style={style}>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>
+          {label}
+        </Text>
+      </View>
+    );
+  }
   return (
     <TouchableOpacity
       key={action.action}
-      disabled={!enabled}
       onPress={() => {
         if (executableRequest) {
           onRunAction(executableRequest);
         }
       }}
-      style={{
-        minWidth: 120,
-        minHeight: 48,
-        flex: 1,
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
-        opacity: enabled ? 1 : 0.62,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={style}
     >
-      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: enabled ? palette.onAccent : palette.muted, fontSize: 12, fontWeight: "800" }}>
-        {action.label}
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>
+        {label}
       </Text>
     </TouchableOpacity>
   );
@@ -1009,8 +1028,8 @@ function mobileArtifactDetailView(
           </Text>
         </View>
         <View style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, opacity: 0.62 }}>
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Open in source</Text>
-          <MaterialCommunityIcons name="open-in-new" size={15} color={palette.muted} />
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Source unavailable</Text>
+          <MaterialCommunityIcons name="link-off" size={15} color={palette.muted} />
         </View>
       </View>
       {model.fallbackNotice ? (
@@ -1962,6 +1981,7 @@ export function MobileNotesSurface({
   palette,
   pendingCaptures,
   artifacts,
+  selectedArtifactId: appSelectedArtifactId,
   selectedArtifactDetail,
   artifactDetailStatus,
   openArtifactDetail,
@@ -1997,7 +2017,7 @@ export function MobileNotesSurface({
 }: MobileNotesSurfaceProps) {
   const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
   const [showArtifactDetail, setShowArtifactDetail] = useState(false);
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [surfaceSelectedArtifactId, setSurfaceSelectedArtifactId] = useState<string | null>(appSelectedArtifactId || null);
   const [expandedArtifactSections, setExpandedArtifactSections] = useState<Record<string, boolean>>({
     detail: true,
     preview: true,
@@ -2013,7 +2033,7 @@ export function MobileNotesSurface({
   const pendingCaptureCount = pendingCaptures.length;
   const visibleRows = activeSegment === "Artifacts" ? libraryModel.artifactRows : libraryModel.inboxRows;
   const detailRequested = activeSegment === "Artifacts" && showArtifactDetail;
-  const selectedLocalArtifact = selectedArtifactId ? artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null : null;
+  const selectedLocalArtifact = surfaceSelectedArtifactId ? artifacts.find((artifact) => artifact.id === surfaceSelectedArtifactId) ?? null : null;
   const fallbackArtifactDetail = detailRequested && !selectedArtifactDetail && selectedLocalArtifact
     ? deriveMobileArtifactFallbackDetail({
       artifact: selectedLocalArtifact,
@@ -2024,13 +2044,25 @@ export function MobileNotesSurface({
     : null;
   const displayArtifactDetail = selectedArtifactDetail ?? fallbackArtifactDetail;
   const showDetailPane = detailRequested && displayArtifactDetail;
+  const libraryStatusIcon = pendingCaptureCount > 0 ? "tray-arrow-up" : artifacts.length > 0 ? "database-check-outline" : "database-outline";
 
   function openLibraryArtifact(row: MobileLibraryInboxRow) {
-    setSelectedArtifactId(row.id);
+    setSurfaceSelectedArtifactId(row.id);
     openArtifactDetail(row.id);
     setActiveSegment("Artifacts");
     setShowArtifactDetail(true);
   }
+
+  useEffect(() => {
+    if (!appSelectedArtifactId) {
+      return;
+    }
+    setSurfaceSelectedArtifactId(appSelectedArtifactId);
+    if (artifacts.some((artifact) => artifact.id === appSelectedArtifactId)) {
+      setActiveSegment("Artifacts");
+      setShowArtifactDetail(true);
+    }
+  }, [appSelectedArtifactId, artifacts]);
 
   function toggleArtifactSection(section: string) {
     setExpandedArtifactSections((current) => ({ ...current, [section]: !current[section] }));
@@ -2044,8 +2076,8 @@ export function MobileNotesSurface({
           <Text style={headingStyle(palette)}>Library</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-          <MaterialCommunityIcons name="check-circle-outline" size={18} color="#60d17f" />
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Synced just now</Text>
+          <MaterialCommunityIcons name={libraryStatusIcon} size={18} color={pendingCaptureCount > 0 ? palette.secondary : palette.muted} />
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>{libraryModel.statusLabel}</Text>
         </View>
         <View
           style={{

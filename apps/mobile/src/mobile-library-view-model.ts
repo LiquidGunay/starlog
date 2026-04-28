@@ -323,14 +323,14 @@ function buildSuggestions(
     suggestions.push({
       id: "process-captures",
       label: `Process ${pendingCount} unprocessed capture${pendingCount === 1 ? "" : "s"}`,
-      actionLabel: "Process",
+      actionLabel: "Queued",
     });
   }
   if (artifactCount > 0) {
     suggestions.push({
       id: "review-artifacts",
       label: `Review ${artifactCount} artifact${artifactCount === 1 ? "" : "s"} already in Library`,
-      actionLabel: "Review",
+      actionLabel: "Available",
     });
   }
   return suggestions;

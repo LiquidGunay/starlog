@@ -44,6 +44,7 @@ const model = deriveMobileLibraryViewModel({
 });
 
 assert.equal(model.statusLabel, "2 awaiting processing");
+assert.equal(model.statusLabel.includes("Synced"), false);
 assert.deepEqual(model.segments, ["Inbox", "Artifacts", "Notes", "Sources"]);
 assert.deepEqual(model.stats, [
   { label: "Unprocessed captures", value: "2", supportingLabel: "2 need attention", icon: "inbox" },
@@ -74,7 +75,7 @@ assert.equal(model.noteRows.length, 0);
 assert.equal(model.notesAggregate.emptyLabel, "3 notes reported. Note row details are not loaded on mobile yet.");
 assert.equal(model.projectsAggregate.emptyLabel, "1 linked project reported. Project row details are not loaded on mobile yet.");
 assert.equal(model.sourceRows.some((row) => row.label === "Recorder" && row.count === 1), true);
-assert.deepEqual(model.suggestions.map((row) => row.actionLabel), ["Process", "Review"]);
+assert.deepEqual(model.suggestions.map((row) => row.actionLabel), ["Queued", "Available"]);
 assert.equal(model.suggestions.some((row) => /Archive older|Link 2/.test(row.label)), false);
 
 const longLayout = deriveMobileLibraryViewModel({

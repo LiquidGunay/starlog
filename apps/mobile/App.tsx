@@ -4103,6 +4103,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             palette={palette}
             pendingCaptures={pendingCaptures}
             artifacts={artifacts}
+            selectedArtifactId={selectedArtifactId}
             selectedArtifactDetail={selectedArtifactDetail}
             artifactDetailStatus={artifactDetailStatus}
             openArtifactDetail={(artifactId) => {
