@@ -395,7 +395,12 @@ function LibraryPageContent() {
   const inboxEntries = filteredEntries.filter((entry) => isInboxState(entry.processingState));
   const recentArtifactIds = new Set((summary?.recent_artifacts || []).map((artifact) => artifact.id));
   const recentArtifacts = filteredEntries
-    .filter((entry) => !isInboxState(entry.processingState) || recentArtifactIds.has(entry.id))
+    .filter((entry) => !isInboxState(entry.processingState))
+    .sort((left, right) => {
+      const leftListed = recentArtifactIds.has(left.id) ? 0 : 1;
+      const rightListed = recentArtifactIds.has(right.id) ? 0 : 1;
+      return leftListed - rightListed || right.timestamp.localeCompare(left.timestamp);
+    })
     .slice(0, 6);
   const notesAndSavedItems = filteredNotes.slice(0, 6);
   const unprocessedCount = summary ? countByKey(summary, "unprocessed_artifacts") : inboxEntries.length;
@@ -476,7 +481,7 @@ function LibraryPageContent() {
         </>
       )}
     >
-      <div className={styles.surface}>
+      <div className={styles.surface} data-testid="library-surface">
         <header className={styles.header}>
           <div>
             <h1>Starlog Library</h1>
@@ -499,9 +504,9 @@ function LibraryPageContent() {
 
         <section className={styles.stats} aria-label="Library stats">
           <StatChip label="Unprocessed captures" value={unprocessedCount} detail={`${needAttentionCount} need attention`} />
-          <StatChip label="Recent artifacts" value={summary?.recent_artifacts.length ?? recentArtifacts.length} detail={`${linkedOutputs} generated or linked`} />
+          <StatChip label="Recent artifacts" value={recentArtifacts.length} detail={`${linkedOutputs} generated or linked`} />
           <StatChip label="Notes & saved items" value={summary?.notes.total ?? notesAndSavedItems.length} detail={`${summary?.notes.recent_count ?? notesAndSavedItems.length} updated recently`} />
-          <StatChip label="Linked to projects" value={linkedOutputs} detail="Across projects, notes, tasks, and review" />
+          <StatChip label="Linked/generated outputs" value={linkedOutputs} detail="Summaries, cards, tasks, and notes" />
         </section>
 
         <div className={styles.layout}>

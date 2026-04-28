@@ -350,6 +350,7 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(page.getByRole("heading", { name: "Inbox / Unprocessed captures" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent artifacts" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Notes & saved items" })).toBeVisible();
+  await expect(page.getByText("Linked/generated outputs")).toBeVisible();
   await expect(page.getByText(/observatory|runtime/i)).toHaveCount(0);
 
   const inboxSection = page.getByRole("region", { name: "Inbox / Unprocessed captures" });
@@ -365,6 +366,8 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(focusCapture.getByText("0 linked")).toBeVisible();
 
   await expect(artifactsSection.getByRole("heading", { name: "Focus Fallacy summary" })).toBeVisible();
+  await expect(artifactsSection.getByRole("heading", { name: "The Focus Fallacy", exact: true })).toHaveCount(0);
+  await expect(artifactsSection.getByRole("heading", { name: "Walk reflection", exact: true })).toHaveCount(0);
   await expect(artifactsSection.getByText("Generated").first()).toBeVisible();
   await expect(notesSection.getByRole("heading", { name: "Attention operating notes" })).toBeVisible();
 
@@ -376,6 +379,15 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(page.getByRole("heading", { name: "Suggestions" })).toBeVisible();
 
   await page.screenshot({ path: `${screenshotDir}/pwa-library-main.png`, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Library sections" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Make cards" }).first()).toBeVisible();
+  await page.screenshot({ path: `${screenshotDir}/pwa-library-main-mobile.png`, fullPage: true });
+  await expect(await page.getByTestId("library-surface").evaluate((surface) => {
+    const rect = surface.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= document.documentElement.clientWidth + 1;
+  })).toBe(true);
 
   await page.getByRole("button", { name: "Make cards" }).first().click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "cards" })]);
@@ -659,6 +671,7 @@ test("PWA library detail renders provenance, layers, connections, and conversion
 
   await expect(page.getByRole("button", { name: /Create task/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Append to note/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Extract highlights/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: /Link to project/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: /Archive/ })).toBeDisabled();
   await page.screenshot({ path: `${screenshotDir}/pwa-library-artifact-detail.png`, fullPage: true });

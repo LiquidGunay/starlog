@@ -1,6 +1,8 @@
 .surface {
   display: grid;
   gap: 0.9rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .header {
@@ -8,6 +10,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: end;
+  min-width: 0;
 }
 
 .kicker,
@@ -139,15 +142,18 @@
   grid-template-columns: minmax(0, 1fr) 21rem;
   gap: 1rem;
   align-items: start;
+  min-width: 0;
 }
 
 .main {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .section,
 .railCard {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 0.5rem;
   background: color-mix(in srgb, var(--panel), transparent 7%);
@@ -217,6 +223,7 @@
   color: var(--text);
   font-size: 1rem;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .itemTitle a {
@@ -240,6 +247,7 @@
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .statusPill {
@@ -300,6 +308,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .artifactCard,
@@ -327,6 +336,7 @@
   top: 1rem;
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .railCard {

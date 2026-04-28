@@ -214,6 +214,14 @@ const DEFAULT_ACTIONS: DetailAction[] = [
     disabled_reason: "Detail action availability is not recorded.",
   },
   {
+    action: "extract_highlights",
+    label: "Extract highlights",
+    description: "Find and save key quotes and passages.",
+    supported: false,
+    enabled: false,
+    disabled_reason: "Extract highlights is not supported by the artifact action backend yet.",
+  },
+  {
     action: "link",
     label: "Link to project",
     description: "Connect this artifact to a project or workstream.",
