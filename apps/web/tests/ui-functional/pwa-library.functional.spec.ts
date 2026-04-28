@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 
 import { API_BASE, seedAssistantSession } from "./assistant-concept-fixtures";
+
+const screenshotDir = "artifacts/ui-functional";
+
+test.beforeAll(() => {
+  mkdirSync(screenshotDir, { recursive: true });
+});
 
 const artifacts = [
   {
@@ -334,14 +341,20 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
 
   await page.goto("/library", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Capture pipeline" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Unprocessed captures" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Library sections" })).toContainText("Inbox");
+  await expect(page.getByRole("navigation", { name: "Library sections" })).toContainText("Artifacts");
+  await expect(page.getByRole("navigation", { name: "Library sections" })).toContainText("Notes");
+  await expect(page.getByRole("navigation", { name: "Library sections" })).toContainText("Sources");
+  await expect(page.getByText("capture to classify to process to link to review/use pipeline")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inbox / Unprocessed captures" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent artifacts" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Notes and saved items" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Notes & saved items" })).toBeVisible();
+  await expect(page.getByText(/observatory|runtime/i)).toHaveCount(0);
 
-  const inboxSection = page.getByRole("region", { name: "Unprocessed captures" });
+  const inboxSection = page.getByRole("region", { name: "Inbox / Unprocessed captures" });
   const artifactsSection = page.getByRole("region", { name: "Recent artifacts" });
-  const notesSection = page.getByRole("region", { name: "Notes and saved items" });
+  const notesSection = page.getByRole("region", { name: "Notes & saved items" });
   const focusCapture = inboxSection.locator("article", { hasText: "The Focus Fallacy" });
 
   await expect(page.getByLabel("Library stats").getByText("2", { exact: true }).first()).toBeVisible();
@@ -355,9 +368,14 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(artifactsSection.getByText("Generated").first()).toBeVisible();
   await expect(notesSection.getByRole("heading", { name: "Attention operating notes" })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Capture types" })).toBeVisible();
-  await expect(page.getByText("Where captures came from")).toBeVisible();
-  await expect(page.getByText("Next conversions")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inbox", exact: true })).toBeVisible();
+  await expect(page.getByText("Need attention", { exact: true })).toBeVisible();
+  await expect(page.getByText("Quick decisions")).toBeVisible();
+  await expect(page.getByText("Ready to process")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recent sources" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Suggestions" })).toBeVisible();
+
+  await page.screenshot({ path: `${screenshotDir}/pwa-library-main.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Make cards" }).first().click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "cards" })]);
@@ -450,7 +468,7 @@ test("PWA library queues offline artifact actions without emitting assistant eve
   });
 
   await page.goto("/library", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Capture pipeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible();
   await context.setOffline(true);
   await expect.poll(() => page.evaluate(() => window.navigator.onLine)).toBe(false);
 
@@ -516,7 +534,7 @@ test("PWA library keeps artifact action success visible when assistant event syn
   });
 
   await page.goto("/library", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Capture pipeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible();
 
   await page.getByRole("button", { name: "Summarize" }).first().click();
 
@@ -602,7 +620,11 @@ test("PWA library detail renders provenance, layers, connections, and conversion
   await page.goto("/library/captures/art_capture_focus", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/library\/captures\/art_capture_focus$/);
   await expect(page.getByRole("banner").getByText("Loaded artifact detail")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "The Focus Fallacy" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("All captures")).toBeVisible();
+  await expect(page.getByText("Capture: The Focus Fallacy")).toBeVisible();
+  await expect(page.getByText(/observatory|runtime/i)).toHaveCount(0);
   const detailSection = page.getByRole("region", { name: "Artifact detail" });
   await expect(detailSection).toBeVisible();
   await expect(detailSection.getByText("Generated summary stays attached to the source capture")).toBeVisible();
@@ -613,6 +635,7 @@ test("PWA library detail renders provenance, layers, connections, and conversion
   await expect(page.getByText("manual clip")).toBeVisible();
   await expect(page.getByText("focus-fallacy.html").first()).toBeVisible();
   await expect(page.getByText("1 tasks / 3 review cards")).toBeVisible();
+  await expect(page.getByText("Raw / normalized / extracted")).toBeVisible();
 
   const layerSection = page.getByRole("region", { name: "Raw, normalized, and extracted layers" });
   await expect(layerSection).toBeVisible();
@@ -634,8 +657,12 @@ test("PWA library detail renders provenance, layers, connections, and conversion
   await expect(page.getByText("Artifact created")).toBeVisible();
   await expect(page.getByText("Summary v2 created")).toBeVisible();
 
+  await expect(page.getByRole("button", { name: /Create task/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Append to note/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Link to project/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: /Archive/ })).toBeDisabled();
-  await expect(page.getByRole("button", { name: /^Link/ })).toBeDisabled();
+  await page.screenshot({ path: `${screenshotDir}/pwa-library-artifact-detail.png`, fullPage: true });
+
   await page.getByRole("button", { name: /Summarize/ }).click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
   await expect.poll(() => assistantEvents).toEqual([

@@ -253,6 +253,22 @@ function recentSources(entries: LibraryEntry[]): Array<{ label: string; detail: 
   return sources.slice(0, 4);
 }
 
+function actionSuggestionLabel(action: string): string {
+  if (action === "summarize") {
+    return "Summarize";
+  }
+  if (action === "cards") {
+    return "Make cards";
+  }
+  if (action === "tasks") {
+    return "Create task";
+  }
+  if (action === "append_note") {
+    return "Append to note";
+  }
+  return titleCase(action);
+}
+
 function EntryActions({
   entry,
   onAction,
@@ -294,6 +310,24 @@ function EntryMetadata({ entry }: { entry: LibraryEntry }) {
       <span className={styles.metaText}>{entry.source}</span>
       <span className={styles.metaText}>{formatDate(entry.timestamp)}</span>
       <span className={styles.metaText}>{totalLinks} linked</span>
+    </div>
+  );
+}
+
+function StatChip({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+}) {
+  return (
+    <div className={styles.stat}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <em>{detail}</em>
     </div>
   );
 }
@@ -372,6 +406,9 @@ function LibraryPageContent() {
   const breakdown = summary?.source_breakdown.length ? summary.source_breakdown.map((bucket) => ({ label: bucket.label, count: bucket.count })) : sourceBreakdown(inboxEntries);
   const sources = recentSources(entries);
   const nextInbox = inboxEntries[0];
+  const needAttentionCount = inboxEntries.filter((entry) => entry.processingState === "unprocessed" || entry.processingState === "needs_decision" || entry.processingState === "failed").length;
+  const quickDecisionCount = inboxEntries.filter((entry) => entry.processingState === "needs_decision").length;
+  const readyToProcessCount = inboxEntries.filter((entry) => entry.processingState === "ready_to_process" || entry.processingState === "processing").length;
 
   async function handleArtifactAction(entry: LibraryActionEntry, action: ArtifactActionKind, label: LibraryAction) {
     try {
@@ -442,10 +479,9 @@ function LibraryPageContent() {
       <div className={styles.surface}>
         <header className={styles.header}>
           <div>
-            <p className={styles.kicker}>Starlog Library</p>
-            <h1>Capture pipeline</h1>
+            <h1>Starlog Library</h1>
             <p>
-              Process incoming captures into summaries, cards, tasks, notes, and project links while keeping source context visible.
+              Your captures, artifacts, and knowledge, organized as a capture to classify to process to link to review/use pipeline.
             </p>
           </div>
           <div className={styles.syncState}>
@@ -454,23 +490,18 @@ function LibraryPageContent() {
           </div>
         </header>
 
+        <nav className={styles.segmentedNav} aria-label="Library sections">
+          <a href="#library-inbox">Inbox</a>
+          <a href="#library-artifacts">Artifacts</a>
+          <a href="#library-notes">Notes</a>
+          <a href="#library-sources">Sources</a>
+        </nav>
+
         <section className={styles.stats} aria-label="Library stats">
-          <div className={styles.stat}>
-            <strong>{unprocessedCount}</strong>
-            <span>Unprocessed captures</span>
-          </div>
-          <div className={styles.stat}>
-            <strong>{summary?.recent_artifacts.length ?? recentArtifacts.length}</strong>
-            <span>Recent artifacts</span>
-          </div>
-          <div className={styles.stat}>
-            <strong>{summary?.notes.total ?? notesAndSavedItems.length}</strong>
-            <span>Notes and saved items</span>
-          </div>
-          <div className={styles.stat}>
-            <strong>{linkedOutputs}</strong>
-            <span>Linked outputs</span>
-          </div>
+          <StatChip label="Unprocessed captures" value={unprocessedCount} detail={`${needAttentionCount} need attention`} />
+          <StatChip label="Recent artifacts" value={summary?.recent_artifacts.length ?? recentArtifacts.length} detail={`${linkedOutputs} generated or linked`} />
+          <StatChip label="Notes & saved items" value={summary?.notes.total ?? notesAndSavedItems.length} detail={`${summary?.notes.recent_count ?? notesAndSavedItems.length} updated recently`} />
+          <StatChip label="Linked to projects" value={linkedOutputs} detail="Across projects, notes, tasks, and review" />
         </section>
 
         <div className={styles.layout}>
@@ -478,11 +509,10 @@ function LibraryPageContent() {
             <section className={styles.section} id="library-inbox" aria-labelledby="library-inbox-title">
               <div className={styles.sectionHeader}>
                 <div>
-                  <p className={styles.label}>Inbox</p>
-                  <h2 id="library-inbox-title">Unprocessed captures</h2>
-                  <p>Captures waiting to be classified, processed, linked, or archived.</p>
+                  <h2 id="library-inbox-title">Inbox / Unprocessed captures</h2>
+                  <p>New captures that need a decision, processing pass, project link, or archive action.</p>
                 </div>
-                <span className={styles.countPill}>{inboxEntries.length} open</span>
+                <span className={styles.countPill}>{inboxEntries.length}</span>
               </div>
               <div className={styles.itemList}>
                 {inboxEntries.length === 0 ? (
@@ -506,11 +536,10 @@ function LibraryPageContent() {
             <section className={styles.section} id="library-artifacts" aria-labelledby="library-artifacts-title">
               <div className={styles.sectionHeader}>
                 <div>
-                  <p className={styles.label}>Artifacts</p>
                   <h2 id="library-artifacts-title">Recent artifacts</h2>
-                  <p>Generated and linked outputs from captured source material.</p>
+                  <p>Processed outputs generated from captured source material and kept close to provenance.</p>
                 </div>
-                <span className={styles.countPill}>{recentArtifacts.length} recent</span>
+                <span className={styles.countPill}>{recentArtifacts.length}</span>
               </div>
               <div className={styles.cardGrid}>
                 {recentArtifacts.length === 0 ? (
@@ -537,11 +566,10 @@ function LibraryPageContent() {
             <section className={styles.section} id="library-notes" aria-labelledby="library-notes-title">
               <div className={styles.sectionHeader}>
                 <div>
-                  <p className={styles.label}>Notes</p>
-                  <h2 id="library-notes-title">Notes and saved items</h2>
+                  <h2 id="library-notes-title">Notes & saved items</h2>
                   <p>Durable knowledge objects that captures and artifacts can append to or link from.</p>
                 </div>
-                <span className={styles.countPill}>{notesAndSavedItems.length} visible</span>
+                <span className={styles.countPill}>{notesAndSavedItems.length}</span>
               </div>
               <div className={styles.cardGrid}>
                 {notesAndSavedItems.length === 0 ? (
@@ -578,23 +606,31 @@ function LibraryPageContent() {
 
           <aside className={styles.rail} aria-label="Library context">
             <section className={styles.railCard}>
-              <p className={styles.label}>Inbox breakdown</p>
-              <h2>Capture types</h2>
+              <div className={styles.railTitleRow}>
+                <h2>Inbox</h2>
+                <span className={styles.countPill}>{inboxEntries.length}</span>
+              </div>
               <div className={styles.breakdown}>
+                <div className={styles.breakdownRow} data-tone="attention">
+                  <span>Need attention</span>
+                  <strong>{needAttentionCount}</strong>
+                </div>
+                <div className={styles.breakdownRow} data-tone="decision">
+                  <span>Quick decisions</span>
+                  <strong>{quickDecisionCount}</strong>
+                </div>
+                <div className={styles.breakdownRow} data-tone="ready">
+                  <span>Ready to process</span>
+                  <strong>{readyToProcessCount}</strong>
+                </div>
                 {breakdown.length === 0 ? (
                   <p className={styles.emptyText}>No open captures.</p>
-                ) : breakdown.map((item) => (
-                  <div key={item.label} className={styles.breakdownRow}>
-                    <span>{item.label}</span>
-                    <strong>{item.count}</strong>
-                  </div>
-                ))}
+                ) : null}
               </div>
             </section>
 
-            <section className={styles.railCard}>
-              <p className={styles.label}>Recent sources</p>
-              <h3>Where captures came from</h3>
+            <section className={styles.railCard} id="library-sources">
+              <h2>Recent sources</h2>
               <ul className={styles.sourceList}>
                 {sources.length === 0 ? (
                   <li>No sources loaded yet.</li>
@@ -608,18 +644,17 @@ function LibraryPageContent() {
             </section>
 
             <section className={styles.railCard}>
-              <p className={styles.label}>Current context</p>
+              <h2>Current context</h2>
               <h3>{nextInbox ? nextInbox.title : "Pipeline clear"}</h3>
               <p className={styles.contextText}>
                 {nextInbox
-                  ? `${nextInbox.captureType} from ${nextInbox.source} is ready for ${titleCase(nextInbox.processingState)} handling.`
+                  ? `${nextInbox.captureType} from ${nextInbox.source} is ready to classify, process, link, or archive.`
                   : "New captures will appear here with provenance before conversion."}
               </p>
             </section>
 
             <section className={styles.railCard}>
-              <p className={styles.label}>Suggestions</p>
-              <h3>Next conversions</h3>
+              <h2>Suggestions</h2>
               <ul className={styles.suggestionList}>
                 {(summary?.suggested_actions.length ? summary.suggested_actions : [
                   { action: "summarize", label: "Summarize open sources", count: 0 },
@@ -627,7 +662,7 @@ function LibraryPageContent() {
                   { action: "tasks", label: "Extract tasks", count: 0 },
                 ]).map((suggestion) => (
                   <li key={suggestion.action}>
-                    <strong>{suggestion.label}</strong>
+                    <strong>{suggestion.label || actionSuggestionLabel(suggestion.action)}</strong>
                     {suggestion.count} matching item{suggestion.count === 1 ? "" : "s"}.
                   </li>
                 ))}

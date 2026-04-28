@@ -213,6 +213,22 @@ const DEFAULT_ACTIONS: DetailAction[] = [
     enabled: false,
     disabled_reason: "Detail action availability is not recorded.",
   },
+  {
+    action: "link",
+    label: "Link to project",
+    description: "Connect this artifact to a project or workstream.",
+    supported: false,
+    enabled: false,
+    disabled_reason: "Manual project linking is not supported by the artifact action backend yet.",
+  },
+  {
+    action: "archive",
+    label: "Archive",
+    description: "Move this capture out of the active processing queue.",
+    supported: false,
+    enabled: false,
+    disabled_reason: "Archive is not supported by the artifact action backend yet.",
+  },
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -319,7 +335,41 @@ function detailActionDescription(action: DetailActionKind): string {
   if (action === "append_note") {
     return "Add this artifact to an existing note.";
   }
+  if (action === "link") {
+    return "Connect this artifact to a project or workstream.";
+  }
+  if (action === "archive") {
+    return "Move this capture out of the active processing queue.";
+  }
+  if (action === "extract_highlights") {
+    return "Find and save key quotes and passages.";
+  }
   return "This action is not available from the artifact action endpoint.";
+}
+
+function canonicalActionLabel(action: DetailActionKind, fallback?: string | null): string {
+  if (action === "summarize") {
+    return "Summarize";
+  }
+  if (action === "cards") {
+    return "Make cards";
+  }
+  if (action === "tasks") {
+    return "Create task";
+  }
+  if (action === "append_note") {
+    return "Append to note";
+  }
+  if (action === "link") {
+    return "Link to project";
+  }
+  if (action === "archive") {
+    return "Archive";
+  }
+  if (action === "extract_highlights") {
+    return "Extract highlights";
+  }
+  return fallback?.trim() || titleCase(action);
 }
 
 function contractConnectionsToCards(connections: ContractConnections): DetailConnection[] {
@@ -419,7 +469,7 @@ function normalizeContractDetail(payload: ArtifactDetailContract): ArtifactDetai
     layers,
     actions: payload.suggested_actions.map((action) => ({
       action: action.action,
-      label: action.label,
+      label: canonicalActionLabel(action.action, action.label),
       description: detailActionDescription(action.action),
       endpoint: action.endpoint,
       method: action.method,
@@ -450,11 +500,13 @@ function mergeActions(actions?: DetailAction[]): DetailAction[] {
     byAction.set(action.action, {
       ...byAction.get(action.action),
       ...action,
+      label: canonicalActionLabel(action.action, action.label),
       supported: Boolean(action.supported || action.enabled) && isSupportedMethod && isSupportedPostAction(action.action) && Boolean(action.endpoint),
     });
   }
   return [...byAction.values()].map((action) => ({
     ...action,
+    label: canonicalActionLabel(action.action, action.label),
     supported: Boolean(action.supported || action.enabled) && action.method === "POST" && isSupportedPostAction(action.action) && Boolean(action.endpoint),
     disabled_reason: (action.supported || action.enabled) && (action.method !== "POST" || !isSupportedPostAction(action.action))
       ? "This action is not wired to the artifact action endpoint yet."
@@ -595,15 +647,14 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
         <nav className={styles.breadcrumb} aria-label="Breadcrumb">
           <Link href="/library">Library</Link>
           <span aria-hidden="true">/</span>
-          <span>{kind === "capture" ? "Capture" : "Artifact"}</span>
+          <span>All captures</span>
           <span aria-hidden="true">/</span>
-          <strong>{detail?.title || id}</strong>
+          <strong>{kind === "capture" ? "Capture" : "Artifact"}: {detail?.title || id}</strong>
         </nav>
 
         <header className={styles.header}>
           <div>
-            <p className={styles.kicker}>Library detail</p>
-            <h1>{detail?.title || "Artifact detail"}</h1>
+            <h1>Starlog Library</h1>
             <p>
               Inspect source fidelity, generated layers, conversions, connections, and timeline before turning this capture into durable knowledge.
             </p>
@@ -625,10 +676,16 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
             <section className={styles.panel} id="artifact-detail" aria-labelledby="artifact-detail-title">
               <div className={styles.panelHeader}>
                 <div>
-                  <p className={styles.label}>What this is</p>
                   <h2 id="artifact-detail-title">Artifact detail</h2>
                 </div>
                 {detail?.status ? <span className={styles.statusPill}>{titleCase(detail.status)}</span> : null}
+              </div>
+              <div className={styles.artifactTitleRow}>
+                <span className={styles.fileBadge}>{detail?.artifact_type?.slice(0, 3).toUpperCase() || "ART"}</span>
+                <div>
+                  <h3>{detail?.title || "Loading artifact"}</h3>
+                  <p className={styles.muted}>{sourceUrl || sourceFile || detail?.source || "Source not recorded"}</p>
+                </div>
               </div>
               <div className={styles.identityGrid}>
                 <div className={styles.fact}>
@@ -651,7 +708,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
               <div className={styles.panelStack}>
                 <p className={styles.summary}>{detail?.summary || "No generated summary has been saved for this artifact yet."}</p>
                 {detail?.summary ? (
-                  <p className={styles.muted}>{detail.summary_provenance || "Summary provenance not recorded."}</p>
+                  <p className={styles.provenanceNote}>{detail.summary_provenance || "Summary provenance not recorded."}</p>
                 ) : null}
                 {tags.length ? (
                   <div className={styles.pillRow} aria-label="Tags">
@@ -686,6 +743,12 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
                     <span>Save state</span>
                     <strong>{detail ? "Saved to Library" : "Loading"}</strong>
                   </div>
+                  <div className={styles.pillRow} aria-label="Classify this capture">
+                    <span className={styles.pill}>Reference</span>
+                    <span className={styles.pill}>Idea</span>
+                    <span className={styles.pill}>Task</span>
+                    <span className={styles.pill}>Review material</span>
+                  </div>
                 </div>
               </div>
             </section>
@@ -706,6 +769,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
                 <div className={styles.fact}><span>Summaries</span><strong>{provenanceValue(provenance, "summary_version_count", "0")}</strong></div>
                 <div className={styles.fact}><span>Relations</span><strong>{provenanceValue(provenance, "relation_count", "0")}</strong></div>
                 <div className={styles.fact}><span>Used in tasks/review</span><strong>{`${provenanceValue(provenance, "task_count", "0")} tasks / ${provenanceValue(provenance, "card_count", "0")} review cards`}</strong></div>
+                <div className={styles.fact}><span>Layer fidelity</span><strong>Raw / normalized / extracted</strong></div>
               </div>
             </section>
 
