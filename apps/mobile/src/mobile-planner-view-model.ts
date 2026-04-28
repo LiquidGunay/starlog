@@ -68,6 +68,15 @@ export type MobilePlannerViewModel = {
   statusLabel: string;
   decisionLabel: string;
   decisionDetail: string;
+  alarmBriefing: {
+    chipLabel: string;
+    chipIcon: "bell-ring-outline" | "bell-outline" | "help-circle-outline";
+    cardBody: string;
+    statusLabel: string;
+    toggleEnabled: boolean;
+    toggleScheduled: boolean;
+    offlinePlaybackAvailable: boolean;
+  };
   dayStrip: MobilePlannerDay[];
   metrics: MobilePlannerMetric[];
   timelineBlocks: MobilePlannerTimelineBlock[];
@@ -127,6 +136,11 @@ export function deriveMobilePlannerViewModel(input: {
   const decisionDetail = hasSummary
     ? "Built from the Planner summary counts available on device. Named blocks appear once the API returns them."
     : "Refresh Planner to load task, calendar, conflict, and block counts for this date.";
+  const alarmBriefing = buildAlarmBriefingDisplay({
+    hasSummary,
+    alarmScheduled: Boolean(input.alarmScheduled),
+    nextBriefingCountdown: input.nextBriefingCountdown,
+  });
   const scheduledCommitments = buildScheduledCommitments({
     hasSummary,
     focusMinutes,
@@ -152,6 +166,7 @@ export function deriveMobilePlannerViewModel(input: {
     statusLabel,
     decisionLabel,
     decisionDetail,
+    alarmBriefing,
     dayStrip: buildDayStrip(selectedDate),
     metrics: hasSummary
       ? [
@@ -332,6 +347,46 @@ function buildFlexibleTasks(input: {
     });
   }
   return items;
+}
+
+function buildAlarmBriefingDisplay(input: {
+  hasSummary: boolean;
+  alarmScheduled: boolean;
+  nextBriefingCountdown?: string;
+}): MobilePlannerViewModel["alarmBriefing"] {
+  if (!input.hasSummary) {
+    return {
+      chipLabel: "Unknown",
+      chipIcon: "help-circle-outline",
+      cardBody: "Planner summary unavailable",
+      statusLabel: "Refresh Planner",
+      toggleEnabled: false,
+      toggleScheduled: false,
+      offlinePlaybackAvailable: false,
+    };
+  }
+
+  if (input.alarmScheduled) {
+    return {
+      chipLabel: input.nextBriefingCountdown || "Scheduled",
+      chipIcon: "bell-ring-outline",
+      cardBody: input.nextBriefingCountdown ? `${input.nextBriefingCountdown} until play` : "Briefing alarm is scheduled",
+      statusLabel: "Scheduled",
+      toggleEnabled: true,
+      toggleScheduled: true,
+      offlinePlaybackAvailable: true,
+    };
+  }
+
+  return {
+    chipLabel: "No alarm",
+    chipIcon: "bell-outline",
+    cardBody: "Alarm is not scheduled yet",
+    statusLabel: "Optional",
+    toggleEnabled: true,
+    toggleScheduled: false,
+    offlinePlaybackAvailable: true,
+  };
 }
 
 export function formatPlannerDateKey(date: Date): string {

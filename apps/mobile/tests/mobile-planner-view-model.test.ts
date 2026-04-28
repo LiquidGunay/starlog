@@ -56,6 +56,15 @@ assert.equal(model.timelineBlocks.find((block) => block.id === "focus")?.timeLab
 assert.equal(model.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "2h 30m");
 assert.equal(model.conflict?.severityLabel, "Repair in Assistant");
 assert.equal(model.decisionLabel, "Resolve the overlap before adding new work.");
+assert.deepEqual(model.alarmBriefing, {
+  chipLabel: "18h",
+  chipIcon: "bell-ring-outline",
+  cardBody: "18h until play",
+  statusLabel: "Scheduled",
+  toggleEnabled: true,
+  toggleScheduled: true,
+  offlinePlaybackAvailable: true,
+});
 assert.deepEqual(model.planGroups[0].items.map((item) => item.id), [
   "focus-capacity",
   "fixed-commitments",
@@ -81,6 +90,15 @@ assert.deepEqual(fallback.metrics, [
 assert.equal(fallback.timelineBlocks[0].durationLabel, "Unknown");
 assert.equal(fallback.timelineBlocks[0].title, "Briefing unknown");
 assert.equal(fallback.timelineBlocks[0].detail, "Refresh Planner to load briefing readiness for this date.");
+assert.deepEqual(fallback.alarmBriefing, {
+  chipLabel: "Unknown",
+  chipIcon: "help-circle-outline",
+  cardBody: "Planner summary unavailable",
+  statusLabel: "Refresh Planner",
+  toggleEnabled: false,
+  toggleScheduled: false,
+  offlinePlaybackAvailable: false,
+});
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
 assert.equal(fallback.nextFocus.title, "Focus unknown");
@@ -118,6 +136,15 @@ const fallbackWithAlarm = deriveMobilePlannerViewModel({
 });
 
 assert.equal(fallbackWithAlarm.statusLabel, "No Planner summary loaded");
+assert.deepEqual(fallbackWithAlarm.alarmBriefing, {
+  chipLabel: "Unknown",
+  chipIcon: "help-circle-outline",
+  cardBody: "Planner summary unavailable",
+  statusLabel: "Refresh Planner",
+  toggleEnabled: false,
+  toggleScheduled: false,
+  offlinePlaybackAvailable: false,
+});
 assert.equal(fallbackWithAlarm.timelineBlocks.find((block) => block.id === "briefing")?.durationLabel, "Unknown");
 assert.equal(fallbackWithAlarm.timelineBlocks.find((block) => block.id === "briefing")?.title, "Briefing unknown");
 assert.equal(
@@ -173,6 +200,15 @@ const emptySummary = deriveMobilePlannerViewModel({
 });
 
 assert.equal(emptySummary.decisionLabel, "Keep the day open until Planner has more state.");
+assert.deepEqual(emptySummary.alarmBriefing, {
+  chipLabel: "No alarm",
+  chipIcon: "bell-outline",
+  cardBody: "Alarm is not scheduled yet",
+  statusLabel: "Optional",
+  toggleEnabled: true,
+  toggleScheduled: false,
+  offlinePlaybackAvailable: true,
+});
 assert.deepEqual(emptySummary.planGroups[0].items, []);
 assert.deepEqual(emptySummary.planGroups[1].items, []);
 assert.equal(emptySummary.planGroups[0].summaryLabel, "Empty");

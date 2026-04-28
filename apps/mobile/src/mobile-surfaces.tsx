@@ -2977,9 +2977,9 @@ export function MobileCalendarSurface({
             </Text>
           </View>
           <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <MaterialCommunityIcons name={alarmScheduled ? "bell-ring-outline" : "bell-outline"} size={14} color={palette.accent} />
+            <MaterialCommunityIcons name={planner.alarmBriefing.chipIcon} size={14} color={palette.accent} />
             <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>
-              {alarmScheduled ? nextBriefingCountdown : "No alarm"}
+              {planner.alarmBriefing.chipLabel}
             </Text>
           </View>
         </View>
@@ -3177,7 +3177,7 @@ export function MobileCalendarSurface({
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View>
             <Text style={{ color: palette.text, fontSize: 34, lineHeight: 40, fontWeight: "700" }}>{stationTimeLabel}</Text>
-            <Text style={bodyStyle(palette)}>{alarmScheduled ? `${nextBriefingCountdown} until play` : "Alarm is not scheduled yet"}</Text>
+            <Text style={bodyStyle(palette)}>{planner.alarmBriefing.cardBody}</Text>
           </View>
           <TouchableOpacity
             style={{
@@ -3187,16 +3187,18 @@ export function MobileCalendarSurface({
               backgroundColor: palette.surfaceHighest,
               paddingHorizontal: 3,
               justifyContent: "center",
+              opacity: planner.alarmBriefing.toggleEnabled ? 1 : 0.62,
             }}
             onPress={toggleAlarm}
+            disabled={!planner.alarmBriefing.toggleEnabled}
           >
             <View
               style={{
                 width: 24,
                 height: 24,
                 borderRadius: 12,
-                backgroundColor: alarmScheduled ? palette.accent : palette.muted,
-                alignSelf: alarmScheduled ? "flex-end" : "flex-start",
+                backgroundColor: planner.alarmBriefing.toggleScheduled ? palette.accent : palette.muted,
+                alignSelf: planner.alarmBriefing.toggleScheduled ? "flex-end" : "flex-start",
               }}
             />
           </TouchableOpacity>
@@ -3205,11 +3207,11 @@ export function MobileCalendarSurface({
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
           <TouchableOpacity
             accessibilityLabel="Play cached briefing"
-            style={{ ...pillStyle(palette), opacity: canPlayOffline ? 1 : 0.5 }}
+            style={{ ...pillStyle(palette), opacity: planner.alarmBriefing.offlinePlaybackAvailable && canPlayOffline ? 1 : 0.5 }}
             onPress={playBriefing}
-            disabled={!canPlayOffline}
+            disabled={!planner.alarmBriefing.offlinePlaybackAvailable || !canPlayOffline}
           >
-            <MaterialCommunityIcons name="play" size={18} color={canPlayOffline ? palette.accent : palette.muted} />
+            <MaterialCommunityIcons name="play" size={18} color={planner.alarmBriefing.offlinePlaybackAvailable && canPlayOffline ? palette.accent : palette.muted} />
           </TouchableOpacity>
           <TouchableOpacity accessibilityLabel="Queue briefing audio" style={pillStyle(palette)} onPress={queueBriefingAudio}>
             <MaterialCommunityIcons name="text-to-speech" size={18} color={palette.accent} />
@@ -3218,7 +3220,9 @@ export function MobileCalendarSurface({
             <MaterialCommunityIcons name="download-outline" size={18} color={palette.accent} />
           </TouchableOpacity>
         </View>
-        <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>{offlineBriefingStatus} · {briefingPlaybackStatus}</Text>
+        <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+          {planner.alarmBriefing.toggleEnabled ? `${offlineBriefingStatus} · ${briefingPlaybackStatus}` : `${planner.alarmBriefing.statusLabel} · ${planner.alarmBriefing.cardBody}`}
+        </Text>
       </View>
 
       <View style={{ flexDirection: "row", gap: 8 }}>
