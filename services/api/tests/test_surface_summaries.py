@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.time import utc_now
@@ -18,6 +19,14 @@ def _bucket(payload: dict, group: str, key: str) -> int:
 
 def _open_loop(payload: dict, key: str) -> int:
     return next(item["count"] for item in payload["open_loops"] if item["key"] == key)
+
+
+def _at_a_glance(payload: dict, key: str) -> int:
+    return next(item["count"] for item in payload["at_a_glance"] if item["key"] == key)
+
+
+def _quick_action(payload: dict, key: str) -> dict:
+    return next(item for item in payload["quick_actions"] if item["key"] == key)
 
 
 def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
@@ -359,6 +368,30 @@ def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
     return ids
 
 
+def _demote_pending_interrupts(conn) -> None:
+    conn.execute("UPDATE conversation_interrupts SET status = 'resolved', resolved_at = ? WHERE status IN ('open', 'pending')", (_iso(utc_now()),))
+
+
+def _demote_overdue_task(conn, seeded: dict[str, str]) -> None:
+    tomorrow = utc_now() + timedelta(days=1)
+    conn.execute("UPDATE tasks SET due_at = ?, updated_at = ? WHERE id = ?", (_iso(tomorrow), _iso(utc_now()), seeded["task_overdue"]))
+
+
+def _mark_library_inbox_processed(conn, seeded: dict[str, str]) -> None:
+    conn.execute(
+        """
+        INSERT INTO summary_versions (id, artifact_id, version, content, provider, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (new_id("sum"), seeded["artifact_inbox"], 1, "Summary", "test", _iso(utc_now())),
+    )
+
+
+def _defer_due_reviews(conn) -> None:
+    later = utc_now() + timedelta(days=2)
+    conn.execute("UPDATE cards SET due_at = ?, updated_at = ? WHERE suspended = 0", (_iso(later), _iso(utc_now())))
+
+
 def test_surface_summary_endpoints_expose_representative_counts(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -422,6 +455,7 @@ def test_assistant_today_summary_is_read_only_and_composes_open_loops(
     with get_connection() as conn:
         before_threads = conn.execute("SELECT COUNT(*) FROM conversation_threads").fetchone()[0]
         before_state = conn.execute("SELECT COUNT(*) FROM conversation_session_state").fetchone()[0]
+        before_interrupts = conn.execute("SELECT COUNT(*) FROM conversation_interrupts").fetchone()[0]
 
     response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
 
@@ -436,13 +470,146 @@ def test_assistant_today_summary_is_read_only_and_composes_open_loops(
     assert _open_loop(payload, "due_reviews") == 2
     assert _open_loop(payload, "unprocessed_library") == 1
     assert _open_loop(payload, "open_commitments") == 1
+    assert [item["key"] for item in payload["open_loops"]] == [
+        "open_tasks",
+        "overdue_tasks",
+        "due_reviews",
+        "unprocessed_library",
+        "open_commitments",
+    ]
+    assert payload["recommended_next_move"] == {
+        "key": "resolve_interrupt",
+        "title": "Resolve pending assistant decision",
+        "body": "1 assistant decision waiting before the current run can continue.",
+        "surface": "assistant",
+        "href": "/assistant",
+        "action_label": "Review decision",
+        "prompt": "Show my pending assistant decisions.",
+        "priority": 100,
+        "urgency": "high",
+    }
+    assert payload["reason_stack"] == [
+        "1 assistant decision pending",
+        "1 task overdue",
+        "1 library capture unprocessed",
+        "2 review cards due",
+    ]
+    assert _at_a_glance(payload, "planner") == 2
+    assert _at_a_glance(payload, "library") == 1
+    assert _at_a_glance(payload, "review") == 2
+    assert _at_a_glance(payload, "commitments") == 1
+    assert [item["key"] for item in payload["quick_actions"]] == [
+        "plan_today",
+        "process_captures",
+        "start_review",
+        "create_task",
+    ]
+    assert all(item["href"] or item["prompt"] for item in payload["quick_actions"])
+    process_captures = _quick_action(payload, "process_captures")
+    assert process_captures["enabled"] is True
+    assert process_captures["count"] == 1
+    assert process_captures["reason"] is None
+    assert process_captures["prompt"] == "Help me process 1 unprocessed capture."
+    start_review = _quick_action(payload, "start_review")
+    assert start_review["enabled"] is True
+    assert start_review["count"] == 2
+    assert start_review["reason"] is None
+    assert start_review["prompt"] == "Start my 2 due review cards."
 
     with get_connection() as conn:
         after_threads = conn.execute("SELECT COUNT(*) FROM conversation_threads").fetchone()[0]
         after_state = conn.execute("SELECT COUNT(*) FROM conversation_session_state").fetchone()[0]
+        after_interrupts = conn.execute("SELECT COUNT(*) FROM conversation_interrupts").fetchone()[0]
 
     assert after_threads == before_threads
     assert after_state == before_state
+    assert after_interrupts == before_interrupts
+
+
+def test_assistant_today_summary_defaults_to_plan_today_without_open_loops(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    response = client.get("/v1/surfaces/assistant/today", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["thread_id"] is None
+    assert payload["active_run_count"] == 0
+    assert payload["open_interrupt_count"] == 0
+    assert payload["recent_surface_event_count"] == 0
+    assert {item["key"]: item["count"] for item in payload["open_loops"]} == {
+        "open_tasks": 0,
+        "overdue_tasks": 0,
+        "due_reviews": 0,
+        "unprocessed_library": 0,
+        "open_commitments": 0,
+    }
+    assert payload["recommended_next_move"]["key"] == "plan_today"
+    assert payload["recommended_next_move"]["priority"] == 10
+    assert payload["recommended_next_move"]["urgency"] == "low"
+    assert payload["recommended_next_move"]["prompt"] == "Help me plan today."
+    assert payload["reason_stack"] == [
+        "No pending interrupts, overdue tasks, unprocessed captures, or due reviews are visible."
+    ]
+    assert {item["key"]: item["count"] for item in payload["at_a_glance"]} == {
+        "planner": 0,
+        "library": 0,
+        "review": 0,
+        "commitments": 0,
+    }
+    process_captures = _quick_action(payload, "process_captures")
+    assert process_captures["enabled"] is False
+    assert process_captures["count"] == 0
+    assert process_captures["prompt"] is None
+    assert process_captures["reason"] == "No unprocessed captures."
+    start_review = _quick_action(payload, "start_review")
+    assert start_review["enabled"] is False
+    assert start_review["count"] == 0
+    assert start_review["prompt"] is None
+    assert start_review["reason"] == "No review cards due."
+    assert _quick_action(payload, "plan_today")["enabled"] is True
+    assert _quick_action(payload, "create_task")["enabled"] is True
+
+
+@pytest.mark.parametrize(
+    ("scenario", "expected_key"),
+    [
+        ("pending_interrupt", "resolve_interrupt"),
+        ("overdue_task", "clear_overdue_tasks"),
+        ("unprocessed_library", "process_library_inbox"),
+        ("due_review", "start_due_review"),
+        ("open_loops", "plan_open_loops"),
+    ],
+)
+def test_assistant_today_recommended_next_move_priority_order(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    scenario: str,
+    expected_key: str,
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+
+    with get_connection() as conn:
+        if scenario != "pending_interrupt":
+            _demote_pending_interrupts(conn)
+        if scenario in {"unprocessed_library", "due_review"}:
+            _demote_overdue_task(conn, seeded)
+        if scenario in {"due_review", "open_loops"}:
+            _mark_library_inbox_processed(conn, seeded)
+        if scenario == "open_loops":
+            _demote_overdue_task(conn, seeded)
+            _defer_due_reviews(conn)
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommended_next_move"]["key"] == expected_key
 
 
 def test_closed_tasks_and_commitments_do_not_count_as_open_loops(
