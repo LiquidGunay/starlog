@@ -126,6 +126,10 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 3 · Synthesis 1")).toBeVisible();
   await expect(page.locator(".april-review-side-metrics").getByText("7", { exact: true })).toBeVisible();
   await expect(page.locator(".april-review-health-list").getByText("2", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Review view status").getByText("Today")).toBeVisible();
+  await expect(page.getByRole("button", { name: "All due" })).toHaveCount(0);
+  await expect(page.getByText("Current queue context by card mode")).toBeVisible();
+  await expect(page.getByText("Generated drills and deeper scenario flows are not active here yet.")).toBeVisible();
   await expect(page.getByText("Projects deck")).toBeVisible();
   await expect(page.getByText("Onboarding flow polish")).toBeVisible();
 
@@ -145,5 +149,9 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await goodButton.click();
   expect(reviewRequests).toEqual([expect.objectContaining({ card_id: "card_application", rating: 4 })]);
   await expect(page.locator("[aria-live='polite']")).toHaveText("Recorded Good for card_application.");
+  await expect(page.locator(".april-review-ladder-step", { hasText: "Application" }).getByText("2 due")).toBeVisible();
+  await expect(page.getByText("Recall 2 · Understanding 1 · Application 2 · Synthesis 1")).toBeVisible();
+  await expect(page.locator(".april-review-side-metrics").getByText("6", { exact: true })).toBeVisible();
+  await expect(page.locator(".april-review-health-list").getByText("1", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("What does source fidelity preserve?")).toBeVisible();
 });

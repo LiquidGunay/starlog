@@ -90,23 +90,23 @@ const REVIEW_MODE_LABELS: Record<ReviewMode, string> = {
 const REVIEW_MODE_DETAILS: Record<ReviewMode, { purpose: string; schedule: string }> = {
   recall: {
     purpose: "Remember facts.",
-    schedule: "Normal spaced repetition keeps core facts fresh.",
+    schedule: "Grouped by due recall cards now; richer drill tuning later.",
   },
   understanding: {
     purpose: "Explain and connect.",
-    schedule: "Confusion markers and explanation quality should shape repeats.",
+    schedule: "Grouped by explanation-mode cards now; quality scoring later.",
   },
   application: {
     purpose: "Apply to new situations.",
-    schedule: "Transfer failures and scenario performance raise priority.",
+    schedule: "Grouped by scenario-style cards now; generated drills later.",
   },
   synthesis: {
     purpose: "Combine and create.",
-    schedule: "Project relevance and recency should pull items forward.",
+    schedule: "Grouped by connection cards now; project-aware synthesis later.",
   },
   judgment: {
     purpose: "Evaluate and decide.",
-    schedule: "Uncertainty and importance should keep decisions visible.",
+    schedule: "Grouped by decision cards now; uncertainty signals later.",
   },
 };
 
@@ -202,6 +202,42 @@ function formatLatency(milliseconds?: number | null): string {
     return `${milliseconds} ms`;
   }
   return `${(milliseconds / 1000).toFixed(1)} s`;
+}
+
+function decrementBucket(buckets: CountBucket[], keyCandidates: string[]): CountBucket[] {
+  const keys = new Set(keyCandidates.filter(Boolean));
+  return buckets.map((bucket) => (
+    keys.has(bucket.key) || keys.has(bucket.label)
+      ? { ...bucket, count: Math.max(0, bucket.count - 1) }
+      : bucket
+  ));
+}
+
+function reconcileSummaryAfterReview(
+  currentSummary: ReviewSurfaceSummary | null,
+  card: Card,
+  deck: Deck | null,
+): ReviewSurfaceSummary | null {
+  if (!currentSummary) {
+    return null;
+  }
+
+  const mode = reviewModeForCard(card);
+  const wasOverdue = new Date(card.due_at).getTime() < Date.now();
+  const deckKeys = [card.deck_id || "", deck?.id || "", deck?.name || ""];
+
+  return {
+    ...currentSummary,
+    ladder_counts: decrementBucket(currentSummary.ladder_counts, [mode]),
+    deck_buckets: decrementBucket(currentSummary.deck_buckets, deckKeys),
+    queue_health: {
+      ...currentSummary.queue_health,
+      due_count: Math.max(0, currentSummary.queue_health.due_count - 1),
+      overdue_count: wasOverdue ? Math.max(0, currentSummary.queue_health.overdue_count - 1) : currentSummary.queue_health.overdue_count,
+      reviewed_today_count: currentSummary.queue_health.reviewed_today_count + 1,
+      last_reviewed_at: new Date().toISOString(),
+    },
+  };
 }
 
 export default function ReviewPage() {
@@ -319,7 +355,10 @@ export default function ReviewPage() {
         method: "POST",
         body: JSON.stringify({ card_id: currentCard.id, rating }),
       });
+      const reviewedCard = currentCard;
+      const reviewedDeck = currentDeck;
       setCards((previous) => previous.filter((card) => card.id !== currentCard.id));
+      setSummary((previous) => reconcileSummaryAfterReview(previous, reviewedCard, reviewedDeck));
       setStats((previous) => ({
         reviewed: previous.reviewed + 1,
         again: previous.again + (rating === 1 ? 1 : 0),
@@ -394,13 +433,13 @@ export default function ReviewPage() {
             <p className="eyebrow">Starlog Review</p>
             <h1>Learning ladder</h1>
           </div>
-          <nav className="april-review-tabs" aria-label="Review views">
+          <div className="april-review-tabs" aria-label="Review view status">
             {["Today", "All due", "Upcoming", "Mastered", "Insights"].map((label, index) => (
-              <button key={label} className={index === 0 ? "active" : ""} type="button">
+              <span key={label} className={index === 0 ? "active" : ""} aria-current={index === 0 ? "page" : undefined}>
                 {label}
-              </button>
+              </span>
             ))}
-          </nav>
+          </div>
         </div>
 
         <div className="april-review-progress">
@@ -424,6 +463,7 @@ export default function ReviewPage() {
               <div>
                 <span className="review-sidebar-kicker">Learning Ladder</span>
                 <h2>Depth of review</h2>
+                <p className="review-copy">Current queue context by card mode. Generated drills and deeper scenario flows are not active here yet.</p>
               </div>
             </div>
             <div className="april-review-ladder-list">

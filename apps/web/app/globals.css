@@ -1022,7 +1022,9 @@ a {
   justify-content: flex-end;
 }
 
-.april-review-tabs button {
+.april-review-tabs span {
+  display: inline-flex;
+  align-items: center;
   border: 1px solid rgba(73, 71, 63, 0.18);
   border-radius: 999px;
   background: rgba(43, 27, 35, 0.74);
@@ -1035,7 +1037,7 @@ a {
   text-transform: uppercase;
 }
 
-.april-review-tabs button.active {
+.april-review-tabs span.active {
   border-color: rgba(225, 113, 79, 0.36);
   background: rgba(225, 113, 79, 0.14);
   color: var(--primary-soft);
