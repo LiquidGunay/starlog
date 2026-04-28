@@ -2269,6 +2269,36 @@ a {
   padding-top: 1.2rem;
 }
 
+@media (max-width: 900px) {
+  .april-shell,
+  .april-shell-column,
+  .april-topbar,
+  .april-shell-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .april-topbar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+  }
+
+  .april-topbar-status,
+  .april-topbar-search,
+  .april-topbar-actions {
+    min-width: 0;
+  }
+
+  .april-topbar-actions {
+    justify-content: flex-start;
+  }
+
+  .april-shell-content {
+    padding: 1rem;
+  }
+}
+
 .april-main-room-desktop {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

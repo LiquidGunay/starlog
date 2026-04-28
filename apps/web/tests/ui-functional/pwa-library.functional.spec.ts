@@ -384,6 +384,7 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(page.getByRole("navigation", { name: "Library sections" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Make cards" }).first()).toBeVisible();
   await page.screenshot({ path: `${screenshotDir}/pwa-library-main-mobile.png`, fullPage: true });
+  await expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await expect(await page.getByTestId("library-surface").evaluate((surface) => {
     const rect = surface.getBoundingClientRect();
     return rect.left >= 0 && rect.right <= document.documentElement.clientWidth + 1;
