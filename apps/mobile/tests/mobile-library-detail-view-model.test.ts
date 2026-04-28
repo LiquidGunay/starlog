@@ -1,4 +1,5 @@
 import {
+  deriveMobileArtifactFallbackDetail,
   deriveMobileArtifactDetailViewModel,
   findMobileArtifactActionExecution,
   shouldCommitArtifactDetailResponse,
@@ -136,6 +137,18 @@ const model = deriveMobileArtifactDetailViewModel(detail);
 
 assert.equal(model.title, "Library detail source");
 assert.equal(model.subtitle, "Clip Browser · captured Apr 28");
+assert.equal(model.fallbackNotice, null);
+assert.equal(model.artifactTypeLabel, "Clip Browser");
+assert.equal(model.sourceStatusLabel, "Source URL");
+assert.equal(model.sourceStatusIcon, "link");
+assert.equal(model.fileLabel, "library-detail.html");
+assert.deepEqual(model.tagChips.map((tag) => tag.label), ["research", "library"]);
+assert.equal(model.summary, "Latest summary version for the detail panel");
+assert.deepEqual(model.keyIdeas, [
+  "2 summary versions preserved.",
+  "2 review cards created from this artifact.",
+  "1 task connected to this source.",
+]);
 assert.deepEqual(model.captureLabels, [
   { label: "Source type", value: "Clip Browser" },
   { label: "Captured", value: "Apr 28" },
@@ -147,6 +160,12 @@ assert.deepEqual(model.captureLabels, [
 ]);
 
 assert.equal(model.sourcePreview, "<article>Raw clipped html</article>");
+assert.equal(model.quickCapture.preview, "<article>Raw clipped html</article>");
+assert.deepEqual(model.quickCapture.classificationOptions, [
+  { id: "reference", label: "Reference", selected: true },
+  { id: "idea", label: "Idea", selected: false },
+  { id: "task", label: "Task", selected: false },
+]);
 assert.deepEqual(
   model.sourceLayers.map((layer) => ({ label: layer.label, present: layer.present, state: layer.stateLabel })),
   [
@@ -157,8 +176,19 @@ assert.deepEqual(
 );
 assert.equal(model.sourceLayers[2].preview, null);
 
+assert.deepEqual(model.provenanceRows.slice(0, 4), [
+  { label: "Source", value: "browser_ext" },
+  { label: "URL", value: "https://example.com/library-detail" },
+  { label: "Method", value: "browser_selection" },
+  { label: "Captured", value: "Apr 28" },
+]);
 assert.equal(model.provenanceRows.some((row) => row.value.includes("Latest summary version for the detail panel")), true);
 assert.equal(model.provenanceRows.some((row) => row.value.includes("Detail note")), true);
+assert.deepEqual(model.connectionRows, [
+  { label: "Linked to summary version", value: "sum_detail_2", actionLabel: "View" },
+  { label: "Linked to notes (1)", value: "Detail note", actionLabel: "View all" },
+  { label: "Used in", value: "1 task", actionLabel: "View all" },
+]);
 assert.deepEqual(
   model.actions.map((action) => ({
     action: action.action,
@@ -183,6 +213,17 @@ assert.deepEqual(
   ],
 );
 assert.equal(model.actions[2].disabledReason, "No executable endpoint is available.");
+assert.deepEqual(model.accordions.map((section) => ({
+  id: section.id,
+  step: section.stepLabel,
+  expanded: section.expandedByDefault,
+})), [
+  { id: "detail", step: "1", expanded: true },
+  { id: "preview", step: "2", expanded: true },
+  { id: "provenance", step: "3", expanded: true },
+  { id: "conversion", step: "4", expanded: true },
+  { id: "timeline", step: "5", expanded: true },
+]);
 assert.deepEqual(findMobileArtifactActionExecution(detail, "summarize"), {
   artifactId: "art_detail_1",
   action: "summarize",
@@ -236,9 +277,72 @@ const sparse = deriveMobileArtifactDetailViewModel({
 
 assert.equal(sparse.title, "art_detail_1");
 assert.equal(sparse.sourcePreview, null);
+assert.equal(sparse.quickCapture.preview, null);
 assert.equal(sparse.provenanceRows.some((row) => row.label === "Latest summary"), false);
+assert.equal(sparse.connectionRows.length, 0);
 assert.equal(sparse.timelineRows.length, 0);
 assert.equal(sparse.actions.length, 0);
+
+const oldActivity = deriveMobileArtifactDetailViewModel({
+  ...detail,
+  artifact: { ...detail.artifact, updated_at: "2026-04-20T06:10:00+00:00" },
+});
+assert.equal(oldActivity.accordions.find((section) => section.id === "timeline")?.expandedByDefault, false);
+
+const fallbackDetail = deriveMobileArtifactFallbackDetail({
+  artifact: {
+    id: "art_local_1",
+    source_type: "web_clip",
+    title: "Local fallback artifact",
+    created_at: "2026-04-28T09:00:00+00:00",
+  },
+  reason: "Showing a local artifact snapshot because API detail failed.",
+});
+const fallbackModel = deriveMobileArtifactDetailViewModel(fallbackDetail);
+assert.equal(fallbackModel.title, "Local fallback artifact");
+assert.equal(fallbackModel.fallbackNotice, "Showing a local artifact snapshot because API detail failed.");
+assert.equal(fallbackModel.sourcePreview, "Local fallback artifact");
+assert.deepEqual(
+  fallbackModel.sourceLayers.map((layer) => ({ label: layer.label, present: layer.present })),
+  [
+    { label: "Raw", present: true },
+    { label: "Normalized", present: false },
+    { label: "Extracted", present: false },
+  ],
+);
+assert.deepEqual(fallbackModel.actions.map((action) => ({
+  action: action.action,
+  enabled: action.enabled,
+  request: action.executableRequest,
+})), [
+  { action: "summarize", enabled: false, request: null },
+  { action: "cards", enabled: false, request: null },
+  { action: "tasks", enabled: false, request: null },
+  { action: "append_note", enabled: false, request: null },
+]);
+assert.equal(fallbackModel.timelineRows[0].label, "Local artifact snapshot shown");
+
+const untitledFallbackModel = deriveMobileArtifactDetailViewModel(deriveMobileArtifactFallbackDetail({
+  artifact: {
+    id: "art_local_untitled",
+    source_type: "clip_mobile",
+    title: "",
+    created_at: "2026-04-28T10:00:00+00:00",
+  },
+}));
+assert.equal(untitledFallbackModel.title, "Untitled artifact");
+assert.equal(untitledFallbackModel.sourceStatusLabel, "Source unavailable");
+assert.equal(untitledFallbackModel.sourceStatusIcon, "unavailable");
+assert.equal(untitledFallbackModel.sourcePreview, null);
+assert.deepEqual(
+  untitledFallbackModel.sourceLayers.map((layer) => ({ label: layer.label, present: layer.present, preview: layer.preview })),
+  [
+    { label: "Raw", present: false, preview: null },
+    { label: "Normalized", present: false, preview: null },
+    { label: "Extracted", present: false, preview: null },
+  ],
+);
+assert.equal(untitledFallbackModel.keyIdeas.length, 0);
 
 assert.equal(shouldCommitArtifactDetailResponse({
   requested: { artifactId: "art_a", requestId: 1 },

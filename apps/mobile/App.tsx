@@ -3957,6 +3957,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
+    if (activeTab !== "assistant") {
+      requestAnimationFrame(() => {
+        mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
     if (!hydrated || !token || !selectedArtifactId) {
       setArtifactGraph(null);
       setArtifactVersions(null);
@@ -4023,6 +4031,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       ) : null}
       <ScrollView
         ref={mainScrollViewRef}
+        style={keyboardVisible ? null : styles.mainScrollViewport}
         contentContainerStyle={[
           styles.scrollContent,
           isAssistantMode && !keyboardVisible ? styles.assistantScrollContent : null,
@@ -4094,6 +4103,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             palette={palette}
             pendingCaptures={pendingCaptures}
             artifacts={artifacts}
+            selectedArtifactId={selectedArtifactId}
             selectedArtifactDetail={selectedArtifactDetail}
             artifactDetailStatus={artifactDetailStatus}
             openArtifactDetail={(artifactId) => {
@@ -4615,7 +4625,7 @@ function themedStyles(palette: Palette) {
     },
     topBar: {
       paddingHorizontal: 18,
-      paddingTop: Platform.OS === "android" ? 10 : 10,
+      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 10 : 10,
       paddingBottom: 8,
       flexDirection: "row",
       alignItems: "flex-start",
@@ -4743,6 +4753,9 @@ function themedStyles(palette: Palette) {
       paddingTop: 20,
       paddingBottom: 120,
       gap: 18,
+    },
+    mainScrollViewport: {
+      marginBottom: 78,
     },
     assistantScrollContent: {
       paddingHorizontal: 12,
