@@ -11,6 +11,10 @@ from app.services.common import execute_fetchall, execute_fetchone
 OPEN_TASK_STATUSES_SQL = "status NOT IN ('done', 'completed', 'cancelled', 'canceled')"
 STRATEGIC_CONTEXT_ITEM_LIMIT = 6
 PROJECT_STALE_AFTER_DAYS = 14
+RECENT_REVIEW_LOOKBACK_DAYS = 14
+LOW_RATING_THRESHOLD = 2
+LOW_RATING_MIN_COUNT = 2
+DEEP_REVIEW_MODES = ("application", "synthesis", "judgment")
 # Goal cadence is intentionally simple and deterministic for the Today read model.
 # Unknown cadence strings default to weekly so stale checks remain predictable.
 GOAL_REVIEW_CADENCE_DAYS = {
@@ -295,20 +299,167 @@ def planner_summary(conn: Connection, *, day_value: str | None = None) -> dict[s
 
 
 def _mode_bucket_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    counts = {mode: 0 for mode in review_mode_service.REVIEW_MODE_ORDER}
-    for row in rows:
-        mode = review_mode_service.review_mode_for_card_type(str(row.get("card_type") or ""))
-        counts[mode] += int(row.get("count") or 0)
+    counts = _mode_counts_from_rows(rows)
     return [
         _bucket(mode, review_mode_service.MODE_BODY_LABELS[mode], counts[mode])
         for mode in review_mode_service.REVIEW_MODE_ORDER
     ]
 
 
+def _mode_counts_from_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {mode: 0 for mode in review_mode_service.REVIEW_MODE_ORDER}
+    for row in rows:
+        mode = review_mode_service.review_mode_for_card_type(str(row.get("card_type") or ""))
+        counts[mode] += int(row.get("count") or 0)
+    return counts
+
+
+def _mode_title(mode: str) -> str:
+    return mode.replace("_", " ").title()
+
+
+def _drill_prompt(mode: str) -> str:
+    article = "an" if mode[:1].lower() in {"a", "e", "i", "o", "u"} else "a"
+    return f"Start {article} {mode} drill from cards I recently rated low."
+
+
+def _review_learning_insights(
+    *,
+    due_mode_counts: dict[str, int],
+    low_rating_counts: dict[str, int],
+    due_count: int,
+    recent_review_event_count: int,
+) -> list[dict[str, Any]]:
+    insights: list[dict[str, Any]] = []
+
+    for mode in DEEP_REVIEW_MODES:
+        count = low_rating_counts.get(mode, 0)
+        if count < LOW_RATING_MIN_COUNT:
+            continue
+        mode_label = _mode_title(mode)
+        insights.append(
+            {
+                "key": f"recent_low_rating_{mode}",
+                "title": f"{mode_label} needs a focused pass",
+                "body": f"{_count_phrase(count, 'recent low rating')} on {mode} cards point to a drill opportunity.",
+                "mode": mode,
+                "ladder_stage": mode,
+                "count": count,
+                "severity": "high" if count >= 3 else "medium",
+                "href": "/review",
+                "prompt": _drill_prompt(mode),
+            }
+        )
+
+    deep_due_counts = {mode: due_mode_counts.get(mode, 0) for mode in DEEP_REVIEW_MODES}
+    deep_due_count = sum(deep_due_counts.values())
+    if deep_due_count > 0:
+        primary_mode = max(DEEP_REVIEW_MODES, key=lambda mode: (deep_due_counts[mode], -DEEP_REVIEW_MODES.index(mode)))
+        visible_modes = ", ".join(mode for mode in DEEP_REVIEW_MODES if deep_due_counts[mode] > 0)
+        insights.append(
+            {
+                "key": "deeper_review_due",
+                "title": "Deeper review is due",
+                "body": f"{_count_phrase(deep_due_count, 'due card')} in {visible_modes} can move beyond recall.",
+                "mode": primary_mode,
+                "ladder_stage": primary_mode,
+                "count": deep_due_count,
+                "severity": "medium" if deep_due_count >= 3 else "low",
+                "href": "/review",
+                "prompt": "Start a deeper review pass for my due application, synthesis, and judgment cards.",
+            }
+        )
+
+    if due_count > 0 and recent_review_event_count == 0:
+        primary_mode = review_mode_service.primary_mode_for_counts(
+            {mode: count for mode, count in due_mode_counts.items() if count > 0}
+        )
+        insights.append(
+            {
+                "key": "due_without_recent_reviews",
+                "title": "Review queue is ready",
+                "body": f"{_count_phrase(due_count, 'card')} due with no recent review events recorded.",
+                "mode": primary_mode,
+                "ladder_stage": primary_mode,
+                "count": due_count,
+                "severity": "low",
+                "href": "/review",
+                "prompt": f"Start a short {primary_mode} pass for my due cards.",
+            }
+        )
+
+    return insights[:3]
+
+
+def _review_recommended_drill(
+    *,
+    due_mode_counts: dict[str, int],
+    low_rating_counts: dict[str, int],
+    due_count: int,
+    recent_review_event_count: int,
+) -> dict[str, Any]:
+    low_rating_mode = max(
+        DEEP_REVIEW_MODES,
+        key=lambda mode: (low_rating_counts.get(mode, 0), -review_mode_service.REVIEW_MODE_ORDER.index(mode)),
+    )
+    low_rating_count = low_rating_counts.get(low_rating_mode, 0)
+    if low_rating_count >= LOW_RATING_MIN_COUNT:
+        mode_label = _mode_title(low_rating_mode)
+        return {
+            "mode": low_rating_mode,
+            "title": f"{mode_label} drill",
+            "body": f"Practice cards with {_count_phrase(low_rating_count, 'recent low rating')} before returning to the full queue.",
+            "prompt": _drill_prompt(low_rating_mode),
+            "reason": f"{_count_phrase(low_rating_count, 'recent low rating')} on {low_rating_mode} cards.",
+            "enabled": True,
+        }
+
+    if due_count > 0 and recent_review_event_count == 0:
+        primary_mode = review_mode_service.primary_mode_for_counts(
+            {mode: count for mode, count in due_mode_counts.items() if count > 0}
+        )
+        mode_label = _mode_title(primary_mode)
+        return {
+            "mode": primary_mode,
+            "title": f"Short {primary_mode} pass",
+            "body": f"Start with {_count_phrase(min(due_count, 10), 'due card')} and calibrate from fresh ratings.",
+            "prompt": f"Start a short {primary_mode} pass for my due cards.",
+            "reason": (
+                f"{_count_phrase(due_count, 'card')} due, led by {mode_label.lower()} cards, "
+                f"and no review events in the last {RECENT_REVIEW_LOOKBACK_DAYS} days."
+            ),
+            "enabled": True,
+        }
+
+    if due_count > 0:
+        primary_mode = review_mode_service.primary_mode_for_counts(
+            {mode: count for mode, count in due_mode_counts.items() if count > 0}
+        )
+        mode_label = _mode_title(primary_mode)
+        return {
+            "mode": primary_mode,
+            "title": f"{mode_label} review pass",
+            "body": f"Continue with the due queue: {_count_phrase(due_count, 'card')} ready now.",
+            "prompt": f"Start my {primary_mode} review pass.",
+            "reason": f"{_count_phrase(due_count, 'card')} currently due.",
+            "enabled": True,
+        }
+
+    return {
+        "mode": "recall",
+        "title": "No drill recommended",
+        "body": "No due cards or repeated low-rating patterns are visible right now.",
+        "prompt": None,
+        "reason": "No due cards or recent low ratings found.",
+        "enabled": False,
+    }
+
+
 def review_summary(conn: Connection) -> dict[str, Any]:
     now = utc_now()
     start, end = _date_bounds(now.date())
     due_soon = (now + timedelta(hours=24)).isoformat()
+    recent_review_cutoff = (now - timedelta(days=RECENT_REVIEW_LOOKBACK_DAYS)).isoformat()
 
     due_mode_rows = execute_fetchall(
         conn,
@@ -365,13 +516,35 @@ def review_summary(conn: Connection) -> dict[str, Any]:
         """,
         (start, end),
     ) or {}
+    low_rating_rows = execute_fetchall(
+        conn,
+        """
+        SELECT c.card_type, COUNT(*) AS count
+        FROM review_events re
+        JOIN cards c ON c.id = re.card_id
+        WHERE re.reviewed_at >= ? AND re.rating <= ?
+        GROUP BY c.card_type
+        """,
+        (recent_review_cutoff, LOW_RATING_THRESHOLD),
+    )
+    recent_review_event_count = _count(
+        conn,
+        "SELECT COUNT(*) FROM review_events WHERE reviewed_at >= ?",
+        (recent_review_cutoff,),
+    )
+    due_mode_counts = _mode_counts_from_rows(due_mode_rows)
+    low_rating_counts = _mode_counts_from_rows(low_rating_rows)
+    due_count = int(health_row.get("due_count") or 0)
 
     return {
-        "ladder_counts": _mode_bucket_rows(due_mode_rows),
+        "ladder_counts": [
+            _bucket(mode, review_mode_service.MODE_BODY_LABELS[mode], due_mode_counts[mode])
+            for mode in review_mode_service.REVIEW_MODE_ORDER
+        ],
         "total_ladder_counts": _mode_bucket_rows(total_mode_rows),
         "deck_buckets": [_bucket(str(row["key"]), str(row["label"]), int(row["count"] or 0)) for row in deck_rows],
         "queue_health": {
-            "due_count": int(health_row.get("due_count") or 0),
+            "due_count": due_count,
             "overdue_count": int(health_row.get("overdue_count") or 0),
             "due_soon_count": int(health_row.get("due_soon_count") or 0),
             "suspended_count": int(health_row.get("suspended_count") or 0),
@@ -379,6 +552,18 @@ def review_summary(conn: Connection) -> dict[str, Any]:
             "last_reviewed_at": review_row.get("last_reviewed_at"),
             "average_latency_ms": review_row.get("average_latency_ms"),
         },
+        "learning_insights": _review_learning_insights(
+            due_mode_counts=due_mode_counts,
+            low_rating_counts=low_rating_counts,
+            due_count=due_count,
+            recent_review_event_count=recent_review_event_count,
+        ),
+        "recommended_drill": _review_recommended_drill(
+            due_mode_counts=due_mode_counts,
+            low_rating_counts=low_rating_counts,
+            due_count=due_count,
+            recent_review_event_count=recent_review_event_count,
+        ),
         "generated_at": now,
     }
 

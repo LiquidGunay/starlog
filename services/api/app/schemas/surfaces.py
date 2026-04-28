@@ -63,11 +63,34 @@ class ReviewQueueHealth(BaseModel):
     average_latency_ms: int | None = None
 
 
+class ReviewLearningInsight(BaseModel):
+    key: str
+    title: str
+    body: str
+    mode: str | None = None
+    ladder_stage: str | None = None
+    count: int
+    severity: str
+    href: str | None = None
+    prompt: str | None = None
+
+
+class ReviewRecommendedDrill(BaseModel):
+    mode: str
+    title: str
+    body: str
+    prompt: str | None = None
+    reason: str
+    enabled: bool
+
+
 class ReviewSurfaceSummary(BaseModel):
     ladder_counts: list[CountBucket]
     total_ladder_counts: list[CountBucket]
     deck_buckets: list[CountBucket]
     queue_health: ReviewQueueHealth
+    learning_insights: list[ReviewLearningInsight] = Field(default_factory=list)
+    recommended_drill: ReviewRecommendedDrill | None = None
     generated_at: datetime
 
 
