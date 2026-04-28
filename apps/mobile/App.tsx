@@ -57,6 +57,7 @@ import {
 } from "./src/mobile-support-panel-sections";
 import { MobileAssistantDrawer, MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
+import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 import {
   assistantVoiceActionHint,
@@ -661,6 +662,10 @@ function tomorrowDateString(): string {
   const next = new Date();
   next.setDate(next.getDate() + 1);
   return next.toISOString().slice(0, 10);
+}
+
+function todayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -1290,6 +1295,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [artifactDetailStatus, setArtifactDetailStatus] = useState("Artifact detail idle");
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
+  const [plannerSummary, setPlannerSummary] = useState<MobilePlannerSummary | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
   const [executionPolicy, setExecutionPolicy] = useState<ExecutionPolicy>(() => defaultExecutionPolicy());
   const [authPassphrase, setAuthPassphrase] = useState("");
@@ -2179,6 +2185,33 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setReviewDecks(payload);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load review decks");
+    }
+  }
+
+  async function loadPlannerSummary(origin: "auto" | "manual") {
+    try {
+      if (!token) {
+        setPlannerSummary(null);
+        return;
+      }
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/surfaces/planner/summary?date=${todayDateString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Planner summary fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as MobilePlannerSummary;
+      setPlannerSummary(payload);
+      if (origin === "manual") {
+        setStatus("Loaded Planner summary");
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load Planner summary");
+      }
     }
   }
 
@@ -3625,6 +3658,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   useEffect(() => {
     if (!hydrated || !token) {
+      setPlannerSummary(null);
+      return;
+    }
+    loadPlannerSummary("auto").catch(() => undefined);
+  }, [hydrated, token, apiBase]);
+
+  useEffect(() => {
+    if (!hydrated || !token) {
       return;
     }
     loadAssistantVoiceJobs("auto").catch(() => undefined);
@@ -3859,6 +3900,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           <MobileCalendarSurface
             styles={styles}
             palette={palette}
+            plannerSummary={plannerSummary}
+            loadPlannerSummary={() => loadPlannerSummary("manual").catch(() => undefined)}
             stationTimeLabel={toHourMinuteLabel(stationHour12, alarmMinute)}
             stationPeriod={stationPeriod}
             briefingHeroCopy={briefingHeroCopy}

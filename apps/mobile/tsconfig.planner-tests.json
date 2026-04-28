@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/mobile-planner-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-planner-view-model.ts",
+    "tests/mobile-planner-view-model.test.ts"
+  ]
+}
