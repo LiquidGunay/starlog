@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import get_db, require_user_id
 from app.schemas.surfaces import (
     AssistantTodaySummary,
+    AssistantWeeklySummary,
     LibrarySurfaceSummary,
     PlannerSurfaceSummary,
     ReviewSurfaceSummary,
@@ -48,3 +49,12 @@ def assistant_today(
     return AssistantTodaySummary.model_validate(
         surface_summary_service.assistant_today_summary(db, user_id=user_id, day_value=date)
     )
+
+
+@router.get("/assistant/weekly", response_model=AssistantWeeklySummary)
+def assistant_weekly(
+    week_start: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AssistantWeeklySummary:
+    return AssistantWeeklySummary.model_validate(surface_summary_service.assistant_weekly_summary(db, week_start_value=week_start))

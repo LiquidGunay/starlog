@@ -103,6 +103,69 @@ class AssistantQuickAction(BaseModel):
     priority: int
 
 
+class AssistantWeeklyProgressSummary(BaseModel):
+    tasks_completed: int
+    review_session_count: int
+    review_item_count: int
+    captures_created: int
+    captures_processed: int
+    captures_summarized: int
+    cards_created: int
+    artifact_tasks_created: int
+    goals_updated: int
+    goals_reviewed: int
+    projects_updated: int
+    projects_reviewed: int
+
+
+class AssistantWeeklySlippageSummary(BaseModel):
+    overdue_tasks: int
+    overdue_commitments: int
+    unprocessed_captures: int
+    due_review_cards: int
+    stale_active_projects: int
+    stale_active_goals: int
+    projects_missing_next_action: int
+
+
+class AssistantWeeklyAdaptationOption(BaseModel):
+    key: str
+    title: str
+    body: str
+    surface: str
+    href: str | None = None
+    prompt: str | None = None
+    enabled: bool
+    priority: int
+
+
+class AssistantWeeklyAttentionItem(BaseModel):
+    key: str
+    kind: str
+    title: str
+    body: str
+    surface: str
+    href: str | None = None
+    priority: int
+    count: int
+
+
+class AssistantWeeklySystemHealth(BaseModel):
+    progress_signal_count: int
+    slippage_signal_count: int
+
+
+class AssistantWeeklySummary(BaseModel):
+    week_start: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    week_end: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    generated_at: datetime
+    progress: AssistantWeeklyProgressSummary
+    slippage: AssistantWeeklySlippageSummary
+    adaptation_options: list[AssistantWeeklyAdaptationOption]
+    attention_items: list[AssistantWeeklyAttentionItem]
+    system_health: AssistantWeeklySystemHealth
+
+
 class AssistantStrategicGoalSummary(BaseModel):
     id: str
     title: str

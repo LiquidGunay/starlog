@@ -53,10 +53,22 @@ def _date_bounds(day: date) -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
+def _week_bounds(week_start: date) -> tuple[datetime, datetime]:
+    start = datetime(week_start.year, week_start.month, week_start.day, tzinfo=timezone.utc)
+    return start, start + timedelta(days=7)
+
+
 def _parse_date(value: str | None) -> date:
     if not value:
         return _today()
     return date.fromisoformat(value)
+
+
+def _parse_week_start(value: str | None) -> date:
+    if value:
+        return date.fromisoformat(value)
+    today = _today()
+    return today - timedelta(days=today.weekday())
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -724,6 +736,287 @@ def _assistant_quick_actions(counts: dict[str, int]) -> list[dict[str, Any]]:
             "priority": 40,
         },
     ]
+
+
+def _weekly_progress(conn: Connection, *, start: str, end: str) -> dict[str, int]:
+    return {
+        "tasks_completed": _count(
+            conn,
+            "SELECT COUNT(*) FROM tasks WHERE status IN ('done', 'completed') AND updated_at >= ? AND updated_at < ?",
+            (start, end),
+        ),
+        "review_session_count": _count(
+            conn,
+            "SELECT COUNT(DISTINCT substr(reviewed_at, 1, 10)) FROM review_events WHERE reviewed_at >= ? AND reviewed_at < ?",
+            (start, end),
+        ),
+        "review_item_count": _count(conn, "SELECT COUNT(*) FROM review_events WHERE reviewed_at >= ? AND reviewed_at < ?", (start, end)),
+        "captures_created": _count(conn, "SELECT COUNT(*) FROM artifacts WHERE created_at >= ? AND created_at < ?", (start, end)),
+        "captures_processed": _count(
+            conn,
+            """
+            SELECT COUNT(DISTINCT artifact_id)
+            FROM (
+              SELECT artifact_id FROM summary_versions WHERE created_at >= ? AND created_at < ?
+              UNION
+              SELECT artifact_id FROM cards WHERE artifact_id IS NOT NULL AND created_at >= ? AND created_at < ?
+              UNION
+              SELECT source_artifact_id AS artifact_id
+              FROM tasks
+              WHERE source_artifact_id IS NOT NULL AND created_at >= ? AND created_at < ?
+              UNION
+              SELECT artifact_id FROM note_blocks WHERE artifact_id IS NOT NULL AND created_at >= ? AND created_at < ?
+            )
+            """,
+            (start, end, start, end, start, end, start, end),
+        ),
+        "captures_summarized": _count(
+            conn,
+            "SELECT COUNT(DISTINCT artifact_id) FROM summary_versions WHERE created_at >= ? AND created_at < ?",
+            (start, end),
+        ),
+        "cards_created": _count(conn, "SELECT COUNT(*) FROM cards WHERE created_at >= ? AND created_at < ?", (start, end)),
+        "artifact_tasks_created": _count(
+            conn,
+            "SELECT COUNT(*) FROM tasks WHERE source_artifact_id IS NOT NULL AND created_at >= ? AND created_at < ?",
+            (start, end),
+        ),
+        "goals_updated": _count(conn, "SELECT COUNT(*) FROM goals WHERE updated_at >= ? AND updated_at < ?", (start, end)),
+        "goals_reviewed": _count(
+            conn,
+            "SELECT COUNT(*) FROM goals WHERE last_reviewed_at IS NOT NULL AND last_reviewed_at >= ? AND last_reviewed_at < ?",
+            (start, end),
+        ),
+        "projects_updated": _count(conn, "SELECT COUNT(*) FROM projects WHERE updated_at >= ? AND updated_at < ?", (start, end)),
+        "projects_reviewed": _count(
+            conn,
+            "SELECT COUNT(*) FROM projects WHERE last_reviewed_at IS NOT NULL AND last_reviewed_at >= ? AND last_reviewed_at < ?",
+            (start, end),
+        ),
+    }
+
+
+def _weekly_stale_project_count(active_projects: list[dict[str, Any]], *, week_end_exclusive: datetime) -> int:
+    stale_before = week_end_exclusive - timedelta(days=PROJECT_STALE_AFTER_DAYS)
+    count = 0
+    for project in active_projects:
+        reviewed_at = _parse_datetime(project.get("last_reviewed_at")) or _parse_datetime(project.get("updated_at"))
+        if reviewed_at is not None and reviewed_at <= stale_before:
+            count += 1
+    return count
+
+
+def _weekly_stale_goal_count(active_goals: list[dict[str, Any]], *, week_end_exclusive: datetime) -> int:
+    count = 0
+    for goal in active_goals:
+        cadence_days = _goal_review_threshold_days(goal.get("review_cadence"))
+        reviewed_at = (
+            _parse_datetime(goal.get("last_reviewed_at"))
+            or _parse_datetime(goal.get("updated_at"))
+            or _parse_datetime(goal.get("created_at"))
+        )
+        if reviewed_at is not None and reviewed_at <= week_end_exclusive - timedelta(days=cadence_days):
+            count += 1
+    return count
+
+
+def _weekly_slippage(conn: Connection, *, week_end_exclusive: datetime) -> dict[str, int]:
+    end = week_end_exclusive.isoformat()
+    active_goals = strategic_context_service.list_goals(conn, status="active")
+    active_projects = strategic_context_service.list_projects(conn, status="active")
+    return {
+        "overdue_tasks": _count(
+            conn,
+            f"SELECT COUNT(*) FROM tasks WHERE {OPEN_TASK_STATUSES_SQL} AND due_at IS NOT NULL AND due_at < ?",
+            (end,),
+        ),
+        "overdue_commitments": _count(
+            conn,
+            "SELECT COUNT(*) FROM commitments WHERE status = 'open' AND due_at IS NOT NULL AND due_at < ?",
+            (end,),
+        ),
+        "unprocessed_captures": _count(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM artifacts a
+            WHERE a.created_at < ?
+              AND NOT EXISTS (SELECT 1 FROM summary_versions sv WHERE sv.artifact_id = a.id)
+              AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.artifact_id = a.id)
+              AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.source_artifact_id = a.id)
+              AND NOT EXISTS (SELECT 1 FROM note_blocks nb WHERE nb.artifact_id = a.id)
+            """,
+            (end,),
+        ),
+        "due_review_cards": _count(conn, "SELECT COUNT(*) FROM cards WHERE suspended = 0 AND due_at < ?", (end,)),
+        "stale_active_projects": _weekly_stale_project_count(active_projects, week_end_exclusive=week_end_exclusive),
+        "stale_active_goals": _weekly_stale_goal_count(active_goals, week_end_exclusive=week_end_exclusive),
+        "projects_missing_next_action": sum(1 for project in active_projects if project.get("next_action_id") is None),
+    }
+
+
+def _weekly_adaptation_options(slippage: dict[str, int]) -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = []
+    if slippage["overdue_tasks"] > 0:
+        options.append(
+            {
+                "key": "triage_overdue_tasks",
+                "title": "Triage overdue tasks",
+                "body": f"{_count_phrase(slippage['overdue_tasks'], 'open task')} overdue by the end of the week.",
+                "surface": "planner",
+                "href": "/planner",
+                "prompt": "Help me triage overdue tasks from this weekly review.",
+                "enabled": True,
+                "priority": 100,
+            }
+        )
+    if slippage["overdue_commitments"] > 0:
+        options.append(
+            {
+                "key": "triage_overdue_commitments",
+                "title": "Triage overdue commitments",
+                "body": f"{_count_phrase(slippage['overdue_commitments'], 'open commitment')} overdue by the end of the week.",
+                "surface": "planner",
+                "href": "/planner",
+                "prompt": "Help me triage overdue commitments from this weekly review.",
+                "enabled": True,
+                "priority": 95,
+            }
+        )
+    if slippage["due_review_cards"] > 0:
+        options.append(
+            {
+                "key": "start_review",
+                "title": "Start due review",
+                "body": f"{_count_phrase(slippage['due_review_cards'], 'review card')} due.",
+                "surface": "review",
+                "href": "/review",
+                "prompt": "Start my due review queue.",
+                "enabled": True,
+                "priority": 80,
+            }
+        )
+    if slippage["unprocessed_captures"] > 0:
+        options.append(
+            {
+                "key": "process_captures",
+                "title": "Process captures",
+                "body": f"{_count_phrase(slippage['unprocessed_captures'], 'capture')} still unprocessed.",
+                "surface": "library",
+                "href": "/library",
+                "prompt": "Help me process my unprocessed captures.",
+                "enabled": True,
+                "priority": 70,
+            }
+        )
+
+    strategy_count = (
+        slippage["stale_active_projects"] + slippage["stale_active_goals"] + slippage["projects_missing_next_action"]
+    )
+    if strategy_count > 0:
+        options.append(
+            {
+                "key": "review_strategy",
+                "title": "Review strategy",
+                "body": f"{_count_phrase(strategy_count, 'strategic item')} needs review or a next action.",
+                "surface": "planner",
+                "href": "/planner",
+                "prompt": "Help me review stale active goals and projects.",
+                "enabled": True,
+                "priority": 60,
+            }
+        )
+
+    return sorted(options, key=lambda option: (-int(option["priority"]), option["key"]))
+
+
+def _weekly_attention_items(slippage: dict[str, int]) -> list[dict[str, Any]]:
+    attention_specs = [
+        ("overdue_tasks", "task_slippage", "Overdue tasks", "Open tasks are overdue.", "planner", "/planner", 100),
+        (
+            "overdue_commitments",
+            "commitment_slippage",
+            "Overdue commitments",
+            "Open commitments are overdue.",
+            "planner",
+            "/planner",
+            95,
+        ),
+        ("due_review_cards", "review_slippage", "Due review cards", "Review cards are due.", "review", "/review", 80),
+        (
+            "unprocessed_captures",
+            "capture_slippage",
+            "Unprocessed captures",
+            "Captures are waiting for processing.",
+            "library",
+            "/library",
+            70,
+        ),
+        (
+            "projects_missing_next_action",
+            "project_next_action_slippage",
+            "Projects missing next actions",
+            "Active projects are missing next actions.",
+            "planner",
+            "/planner",
+            65,
+        ),
+        (
+            "stale_active_projects",
+            "project_stale",
+            "Stale active projects",
+            f"Active projects have not been reviewed in {PROJECT_STALE_AFTER_DAYS} days.",
+            "planner",
+            "/planner",
+            60,
+        ),
+        (
+            "stale_active_goals",
+            "goal_review_due",
+            "Goals due for review",
+            "Active goals are past their review cadence.",
+            "planner",
+            "/planner",
+            55,
+        ),
+    ]
+    return [
+        {
+            "key": key,
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "surface": surface,
+            "href": href,
+            "priority": priority,
+            "count": slippage[key],
+        }
+        for key, kind, title, body, surface, href, priority in attention_specs
+        if slippage[key] > 0
+    ]
+
+
+def assistant_weekly_summary(conn: Connection, *, week_start_value: str | None = None) -> dict[str, Any]:
+    week_start = _parse_week_start(week_start_value)
+    week_start_dt, week_end_exclusive_dt = _week_bounds(week_start)
+    start = week_start_dt.isoformat()
+    end = week_end_exclusive_dt.isoformat()
+    progress = _weekly_progress(conn, start=start, end=end)
+    slippage = _weekly_slippage(conn, week_end_exclusive=week_end_exclusive_dt)
+
+    return {
+        "week_start": week_start.isoformat(),
+        "week_end": (week_end_exclusive_dt.date() - timedelta(days=1)).isoformat(),
+        "generated_at": utc_now(),
+        "progress": progress,
+        "slippage": slippage,
+        "adaptation_options": _weekly_adaptation_options(slippage),
+        "attention_items": _weekly_attention_items(slippage),
+        "system_health": {
+            "progress_signal_count": sum(1 for value in progress.values() if value > 0),
+            "slippage_signal_count": sum(1 for value in slippage.values() if value > 0),
+        },
+    }
 
 
 def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | None = None) -> dict[str, Any]:

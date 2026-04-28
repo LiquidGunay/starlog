@@ -29,6 +29,10 @@ def _quick_action(payload: dict, key: str) -> dict:
     return next(item for item in payload["quick_actions"] if item["key"] == key)
 
 
+def _today_week_start() -> str:
+    return utc_now().date().isoformat()
+
+
 def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
     now = utc_now()
     today = now.date()
@@ -809,6 +813,171 @@ def test_assistant_today_strategic_context_flags_stale_goals_and_projects(
     assert attention_by_kind["project_stale"]["body"] == "Active project has not been reviewed in 14 days."
     assert attention_by_kind["goal_review_due"]["entity_id"] == goal_id
     assert attention_by_kind["goal_review_due"]["body"] == "Active goal has not been reviewed within its weekly cadence."
+
+
+def test_assistant_weekly_summary_reports_progress_and_slippage(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+    week_start = _today_week_start()
+
+    with get_connection() as conn:
+        yesterday = utc_now() - timedelta(days=1)
+        conn.execute(
+            "UPDATE commitments SET due_at = ?, updated_at = ? WHERE id = ?",
+            (_iso(yesterday), _iso(utc_now()), seeded["commitment"]),
+        )
+        goal_id = _insert_active_goal(conn, title="Review learning direction", reviewed_days_ago=8)
+        _insert_active_project(conn, goal_id=goal_id, title="Refresh project plan", reviewed_days_ago=15)
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/weekly?week_start={week_start}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    today = utc_now().date()
+    assert payload["week_start"] == week_start
+    assert payload["week_end"] == (today + timedelta(days=6)).isoformat()
+    assert payload["progress"]["tasks_completed"] == 1
+    assert payload["progress"]["review_session_count"] == 1
+    assert payload["progress"]["review_item_count"] == 1
+    assert payload["progress"]["captures_created"] == 1
+    assert payload["progress"]["captures_processed"] == 1
+    assert payload["progress"]["captures_summarized"] == 1
+    assert payload["progress"]["cards_created"] == 4
+    assert payload["progress"]["artifact_tasks_created"] == 1
+    assert payload["slippage"]["overdue_tasks"] == 2
+    assert payload["slippage"]["overdue_commitments"] == 1
+    assert payload["slippage"]["unprocessed_captures"] == 1
+    assert payload["slippage"]["due_review_cards"] == 3
+    assert payload["slippage"]["stale_active_projects"] == 1
+    assert payload["slippage"]["stale_active_goals"] == 1
+    assert payload["slippage"]["projects_missing_next_action"] == 1
+
+    option_keys = [option["key"] for option in payload["adaptation_options"]]
+    assert option_keys == [
+        "triage_overdue_tasks",
+        "triage_overdue_commitments",
+        "start_review",
+        "process_captures",
+        "review_strategy",
+    ]
+    assert all(option["enabled"] is True for option in payload["adaptation_options"])
+    assert all(option["href"] or option["prompt"] for option in payload["adaptation_options"])
+    assert {item["key"]: item["count"] for item in payload["attention_items"]} == {
+        "overdue_tasks": 2,
+        "overdue_commitments": 1,
+        "due_review_cards": 3,
+        "unprocessed_captures": 1,
+        "projects_missing_next_action": 1,
+        "stale_active_projects": 1,
+        "stale_active_goals": 1,
+    }
+    assert payload["system_health"]["progress_signal_count"] > 0
+    assert payload["system_health"]["slippage_signal_count"] == 7
+
+
+def test_assistant_weekly_summary_quiet_week_defaults_to_empty_signals(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    week_start = _today_week_start()
+
+    response = client.get(f"/v1/surfaces/assistant/weekly?week_start={week_start}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["week_start"] == week_start
+    assert all(value == 0 for value in payload["progress"].values())
+    assert all(value == 0 for value in payload["slippage"].values())
+    assert payload["adaptation_options"] == []
+    assert payload["attention_items"] == []
+    assert payload["system_health"] == {"progress_signal_count": 0, "slippage_signal_count": 0}
+
+
+def test_assistant_weekly_summary_uses_inclusive_start_and_exclusive_end_bounds(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    week_start = utc_now().date()
+    start = datetime(week_start.year, week_start.month, week_start.day, tzinfo=timezone.utc)
+    end = start + timedelta(days=7)
+
+    with get_connection() as conn:
+        for task_id, updated_at in [
+            (new_id("tsk"), start - timedelta(seconds=1)),
+            (new_id("tsk"), start),
+            (new_id("tsk"), end),
+        ]:
+            conn.execute(
+                """
+                INSERT INTO tasks (id, title, status, estimate_min, priority, due_at, linked_note_id, source_artifact_id, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (task_id, "Completed task", "done", None, 1, None, None, None, 1, _iso(updated_at), _iso(updated_at)),
+            )
+        for artifact_id, created_at in [
+            (new_id("art"), start - timedelta(seconds=1)),
+            (new_id("art"), start),
+            (new_id("art"), end),
+        ]:
+            conn.execute(
+                """
+                INSERT INTO artifacts (id, source_type, title, raw_content, normalized_content, extracted_content, metadata_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (artifact_id, "clip_browser", "Bounded clip", "raw", "normalized", None, "{}", _iso(created_at), _iso(created_at)),
+            )
+            conn.execute(
+                """
+                INSERT INTO summary_versions (id, artifact_id, version, content, provider, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (new_id("sum"), artifact_id, 1, "Summary", "test", _iso(created_at)),
+            )
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/weekly?week_start={week_start.isoformat()}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress"]["tasks_completed"] == 1
+    assert payload["progress"]["captures_created"] == 1
+    assert payload["progress"]["captures_processed"] == 1
+    assert payload["progress"]["captures_summarized"] == 1
+
+
+def test_assistant_weekly_summary_only_enables_grounded_adaptation_options(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    week_start = utc_now().date()
+    now = utc_now()
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO tasks (id, title, status, estimate_min, priority, due_at, linked_note_id, source_artifact_id, revision, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (new_id("tsk"), "Completed task", "done", None, 1, None, None, None, 1, _iso(now), _iso(now)),
+        )
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/weekly?week_start={week_start.isoformat()}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["progress"]["tasks_completed"] == 1
+    assert all(value == 0 for value in payload["slippage"].values())
+    assert payload["adaptation_options"] == []
+    assert not any(
+        option["enabled"] and option["key"] in {"process_captures", "start_review", "triage_overdue_tasks"}
+        for option in payload["adaptation_options"]
+    )
 
 
 def test_closed_tasks_and_commitments_do_not_count_as_open_loops(
