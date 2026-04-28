@@ -71,6 +71,7 @@ export type MobileArtifactDetail = {
     endpoint?: string | null;
     disabled_reason?: string | null;
   }>;
+  local_fallback_reason?: string | null;
 };
 
 export type MobileArtifactLayerRow = {
@@ -121,6 +122,7 @@ export type MobileArtifactAccordionSection = {
 export type MobileArtifactDetailViewModel = {
   title: string;
   subtitle: string;
+  fallbackNotice: string | null;
   artifactTypeLabel: string;
   fileLabel: string | null;
   tagChips: MobileArtifactTagChip[];
@@ -136,6 +138,13 @@ export type MobileArtifactDetailViewModel = {
   actions: MobileArtifactActionRow[];
   timelineRows: MobileArtifactTimelineRow[];
   accordions: MobileArtifactAccordionSection[];
+};
+
+export type MobileArtifactFallbackSource = {
+  id: string;
+  source_type: string;
+  title?: string | null;
+  created_at: string;
 };
 
 export type MobileArtifactExecutableActionKind = "summarize" | "cards" | "tasks" | "append_note";
@@ -172,6 +181,7 @@ export function deriveMobileArtifactDetailViewModel(
   return {
     title,
     subtitle: `${sourceType} · captured ${capturedLabel}`,
+    fallbackNotice: detail.local_fallback_reason?.trim() || null,
     artifactTypeLabel: sourceType,
     fileLabel: detail.capture.source_file?.trim() || detail.capture.source_url?.trim() || null,
     tagChips: detail.capture.tags.map((tag) => ({ id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag, label: tag })),
@@ -187,6 +197,115 @@ export function deriveMobileArtifactDetailViewModel(
     actions,
     timelineRows,
     accordions: accordionSections(detail, timelineRows.length),
+  };
+}
+
+export function deriveMobileArtifactFallbackDetail(input: {
+  artifact: MobileArtifactFallbackSource;
+  reason?: string | null;
+}): MobileArtifactDetail {
+  const title = input.artifact.title?.trim() || "Untitled artifact";
+  const sourceType = input.artifact.source_type.trim() || "artifact";
+  const createdAt = input.artifact.created_at;
+  return {
+    artifact: {
+      id: input.artifact.id,
+      source_type: sourceType,
+      title,
+      created_at: createdAt,
+      updated_at: createdAt,
+    },
+    capture: {
+      source_type: sourceType,
+      captured_at: createdAt,
+      tags: [],
+    },
+    source_layers: [
+      {
+        layer: "raw",
+        present: true,
+        preview: title,
+        character_count: title.length,
+        mime_type: null,
+        checksum_sha256: null,
+        source_filename: null,
+      },
+      {
+        layer: "normalized",
+        present: false,
+        preview: null,
+        character_count: null,
+        mime_type: null,
+        checksum_sha256: null,
+        source_filename: null,
+      },
+      {
+        layer: "extracted",
+        present: false,
+        preview: null,
+        character_count: null,
+        mime_type: null,
+        checksum_sha256: null,
+        source_filename: null,
+      },
+    ],
+    connections: {
+      summary_version_count: 0,
+      latest_summary: null,
+      card_count: 0,
+      card_set_version_count: 0,
+      task_count: 0,
+      note_count: 0,
+      notes: [],
+      relation_count: 0,
+      relations: [],
+      action_run_count: 0,
+    },
+    timeline: [
+      {
+        kind: "artifact.local_fallback",
+        label: "Local artifact snapshot shown",
+        occurred_at: createdAt,
+        entity_type: "artifact",
+        entity_id: input.artifact.id,
+        status: "offline",
+      },
+    ],
+    suggested_actions: [
+      {
+        action: "summarize",
+        label: "Summarize",
+        enabled: false,
+        method: null,
+        endpoint: null,
+        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+      },
+      {
+        action: "cards",
+        label: "Make cards",
+        enabled: false,
+        method: null,
+        endpoint: null,
+        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+      },
+      {
+        action: "tasks",
+        label: "Create task",
+        enabled: false,
+        method: null,
+        endpoint: null,
+        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+      },
+      {
+        action: "append_note",
+        label: "Append to note",
+        enabled: false,
+        method: null,
+        endpoint: null,
+        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+      },
+    ],
+    local_fallback_reason: input.reason?.trim() || "Showing a local artifact snapshot because API artifact detail is unavailable.",
   };
 }
 

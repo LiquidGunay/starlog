@@ -54,6 +54,12 @@ export type MobileLibraryCompactRow = {
   timestampLabel: string;
 };
 
+export type MobileLibraryAggregateState = {
+  label: string;
+  value: string;
+  emptyLabel: string;
+};
+
 export type MobileLibrarySourceRow = {
   id: string;
   label: string;
@@ -74,6 +80,8 @@ export type MobileLibraryViewModel = {
   artifactRows: MobileLibraryInboxRow[];
   recentArtifacts: MobileLibraryCompactRow[];
   noteRows: MobileLibraryCompactRow[];
+  notesAggregate: MobileLibraryAggregateState;
+  projectsAggregate: MobileLibraryAggregateState;
   sourceRows: MobileLibrarySourceRow[];
   suggestions: MobileLibrarySuggestionRow[];
 };
@@ -131,19 +139,19 @@ export function deriveMobileLibraryViewModel(input: {
       {
         label: "Recent artifacts",
         value: String(input.artifacts.length),
-        supportingLabel: `${Math.min(input.artifacts.length, 18)} created this week`,
+        supportingLabel: input.artifacts.length === 1 ? "1 artifact available" : `${input.artifacts.length} artifacts available`,
         icon: "artifact",
       },
       {
         label: "Notes & saved items",
         value: String(notesCount),
-        supportingLabel: `${Math.min(notesCount, 9)} updated this week`,
+        supportingLabel: notesCount > 0 ? "Count only; no note rows loaded" : "No note rows loaded",
         icon: "note",
       },
       {
         label: "Linked to projects",
         value: String(linkedProjectCount),
-        supportingLabel: `Across ${linkedProjectCount} project${linkedProjectCount === 1 ? "" : "s"}`,
+        supportingLabel: linkedProjectCount > 0 ? "Count only; no project rows loaded" : "No project rows loaded",
         icon: "project",
       },
     ],
@@ -153,12 +161,26 @@ export function deriveMobileLibraryViewModel(input: {
       id: artifact.id,
       title: artifact.title?.trim() || "Untitled artifact",
       metaLabel: normalizeSourceType(artifact.source_type),
-      tagLabel: projectTagForArtifact(artifact),
+      tagLabel: "Artifact",
       timestampLabel: formatMobileLibraryTimestamp(artifact.created_at, input.now),
     })),
-    noteRows: buildNoteRows(notesCount, input.now),
+    noteRows: [],
+    notesAggregate: {
+      label: "Notes & saved items",
+      value: String(notesCount),
+      emptyLabel: notesCount > 0
+        ? `${notesCount} note${notesCount === 1 ? "" : "s"} reported. Note row details are not loaded on mobile yet.`
+        : "No note rows are loaded.",
+    },
+    projectsAggregate: {
+      label: "Linked projects",
+      value: String(linkedProjectCount),
+      emptyLabel: linkedProjectCount > 0
+        ? `${linkedProjectCount} linked project${linkedProjectCount === 1 ? "" : "s"} reported. Project row details are not loaded on mobile yet.`
+        : "No project rows are loaded.",
+    },
     sourceRows: buildSourceRows(input.pendingCaptures, input.artifacts),
-    suggestions: buildSuggestions(input.pendingCaptures.length, input.artifacts.length, notesCount, linkedProjectCount),
+    suggestions: buildSuggestions(input.pendingCaptures.length, input.artifacts.length),
   };
 }
 
@@ -273,38 +295,6 @@ function truncateMiddle(value: string, maxLength: number): string {
   return `${value.slice(0, headLength)}...${value.slice(-tailLength)}`;
 }
 
-function projectTagForArtifact(artifact: MobileLibraryArtifact): string {
-  const source = normalizeSourceType(artifact.source_type);
-  if (/voice/i.test(source)) {
-    return "Project · Interview";
-  }
-  if (/clip|web|article|browser/i.test(source)) {
-    return "Project · Research";
-  }
-  if (/file|pdf|drive/i.test(source)) {
-    return "Project · Reference";
-  }
-  return "Project · Library";
-}
-
-function buildNoteRows(count: number, now?: Date): MobileLibraryCompactRow[] {
-  if (count <= 0) {
-    return [];
-  }
-  const baseTime = now?.getTime() ?? Date.now();
-  return Array.from({ length: Math.min(count, 3) }, (_, index) => ({
-    id: `note-${index + 1}`,
-    title: [
-      "Onboarding research synthesis",
-      "Product strategy principles",
-      "Customer segments — working definitions",
-    ][index] ?? `Saved note ${index + 1}`,
-    metaLabel: index === 0 ? "Note · 2 linked projects" : index === 1 ? "Note · 1 linked project" : "Note · 0 linked projects",
-    tagLabel: index === 0 ? "Onboarding, Research" : index === 1 ? "Strategy" : "General",
-    timestampLabel: formatMobileLibraryTimestamp(new Date(baseTime - (index + 1) * 86400000).toISOString(), now),
-  }));
-}
-
 function buildSourceRows(
   captures: MobileLibraryPendingCapture[],
   artifacts: MobileLibraryArtifact[],
@@ -327,35 +317,21 @@ function buildSourceRows(
 function buildSuggestions(
   pendingCount: number,
   artifactCount: number,
-  notesCount: number,
-  linkedProjectCount: number,
 ): MobileLibrarySuggestionRow[] {
   const suggestions: MobileLibrarySuggestionRow[] = [];
   if (pendingCount > 0) {
     suggestions.push({
-      id: "summarize-captures",
-      label: `Summarize ${pendingCount} new capture${pendingCount === 1 ? "" : "s"}`,
-      actionLabel: "Summarize",
+      id: "process-captures",
+      label: `Process ${pendingCount} unprocessed capture${pendingCount === 1 ? "" : "s"}`,
+      actionLabel: "Process",
     });
   }
   if (artifactCount > 0) {
     suggestions.push({
-      id: "make-cards",
-      label: `Create cards from ${Math.min(artifactCount, 3)} artifact${artifactCount === 1 ? "" : "s"}`,
-      actionLabel: "Make cards",
+      id: "review-artifacts",
+      label: `Review ${artifactCount} artifact${artifactCount === 1 ? "" : "s"} already in Library`,
+      actionLabel: "Review",
     });
   }
-  if (linkedProjectCount > 0 || notesCount > 0) {
-    suggestions.push({
-      id: "link-projects",
-      label: `Link ${Math.max(1, Math.min(pendingCount + artifactCount, 2))} item${pendingCount + artifactCount === 1 ? "" : "s"} to projects`,
-      actionLabel: "Link",
-    });
-  }
-  suggestions.push({
-    id: "archive-older",
-    label: `Archive older items (${Math.max(0, pendingCount + artifactCount - 3)})`,
-    actionLabel: "Review",
-  });
-  return suggestions.slice(0, 4);
+  return suggestions;
 }

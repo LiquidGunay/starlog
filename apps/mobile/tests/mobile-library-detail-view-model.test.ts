@@ -1,4 +1,5 @@
 import {
+  deriveMobileArtifactFallbackDetail,
   deriveMobileArtifactDetailViewModel,
   findMobileArtifactActionExecution,
   shouldCommitArtifactDetailResponse,
@@ -136,6 +137,7 @@ const model = deriveMobileArtifactDetailViewModel(detail);
 
 assert.equal(model.title, "Library detail source");
 assert.equal(model.subtitle, "Clip Browser · captured Apr 28");
+assert.equal(model.fallbackNotice, null);
 assert.equal(model.artifactTypeLabel, "Clip Browser");
 assert.equal(model.fileLabel, "library-detail.html");
 assert.deepEqual(model.tagChips.map((tag) => tag.label), ["research", "library"]);
@@ -284,6 +286,39 @@ const oldActivity = deriveMobileArtifactDetailViewModel({
   artifact: { ...detail.artifact, updated_at: "2026-04-20T06:10:00+00:00" },
 });
 assert.equal(oldActivity.accordions.find((section) => section.id === "timeline")?.expandedByDefault, false);
+
+const fallbackDetail = deriveMobileArtifactFallbackDetail({
+  artifact: {
+    id: "art_local_1",
+    source_type: "web_clip",
+    title: "Local fallback artifact",
+    created_at: "2026-04-28T09:00:00+00:00",
+  },
+  reason: "Showing a local artifact snapshot because API detail failed.",
+});
+const fallbackModel = deriveMobileArtifactDetailViewModel(fallbackDetail);
+assert.equal(fallbackModel.title, "Local fallback artifact");
+assert.equal(fallbackModel.fallbackNotice, "Showing a local artifact snapshot because API detail failed.");
+assert.equal(fallbackModel.sourcePreview, "Local fallback artifact");
+assert.deepEqual(
+  fallbackModel.sourceLayers.map((layer) => ({ label: layer.label, present: layer.present })),
+  [
+    { label: "Raw", present: true },
+    { label: "Normalized", present: false },
+    { label: "Extracted", present: false },
+  ],
+);
+assert.deepEqual(fallbackModel.actions.map((action) => ({
+  action: action.action,
+  enabled: action.enabled,
+  request: action.executableRequest,
+})), [
+  { action: "summarize", enabled: false, request: null },
+  { action: "cards", enabled: false, request: null },
+  { action: "tasks", enabled: false, request: null },
+  { action: "append_note", enabled: false, request: null },
+]);
+assert.equal(fallbackModel.timelineRows[0].label, "Local artifact snapshot shown");
 
 assert.equal(shouldCommitArtifactDetailResponse({
   requested: { artifactId: "art_a", requestId: 1 },

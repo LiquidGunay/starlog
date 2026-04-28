@@ -47,9 +47,9 @@ assert.equal(model.statusLabel, "2 awaiting processing");
 assert.deepEqual(model.segments, ["Inbox", "Artifacts", "Notes", "Sources"]);
 assert.deepEqual(model.stats, [
   { label: "Unprocessed captures", value: "2", supportingLabel: "2 need attention", icon: "inbox" },
-  { label: "Recent artifacts", value: "1", supportingLabel: "1 created this week", icon: "artifact" },
-  { label: "Notes & saved items", value: "3", supportingLabel: "3 updated this week", icon: "note" },
-  { label: "Linked to projects", value: "1", supportingLabel: "Across 1 project", icon: "project" },
+  { label: "Recent artifacts", value: "1", supportingLabel: "1 artifact available", icon: "artifact" },
+  { label: "Notes & saved items", value: "3", supportingLabel: "Count only; no note rows loaded", icon: "note" },
+  { label: "Linked to projects", value: "1", supportingLabel: "Count only; no project rows loaded", icon: "project" },
 ]);
 
 assert.equal(model.inboxRows.length, 2);
@@ -69,9 +69,13 @@ assert.equal(model.inboxRows[1].layout.titleNumberOfLines, 1);
 assert.equal(model.inboxRows[1].layout.stackActions, false);
 
 assert.deepEqual(model.recentArtifacts.map((row) => row.title), ["Processed reference"]);
-assert.equal(model.noteRows.length, 3);
+assert.deepEqual(model.recentArtifacts.map((row) => row.tagLabel), ["Artifact"]);
+assert.equal(model.noteRows.length, 0);
+assert.equal(model.notesAggregate.emptyLabel, "3 notes reported. Note row details are not loaded on mobile yet.");
+assert.equal(model.projectsAggregate.emptyLabel, "1 linked project reported. Project row details are not loaded on mobile yet.");
 assert.equal(model.sourceRows.some((row) => row.label === "Recorder" && row.count === 1), true);
-assert.deepEqual(model.suggestions.map((row) => row.actionLabel), ["Summarize", "Make cards", "Link", "Review"]);
+assert.deepEqual(model.suggestions.map((row) => row.actionLabel), ["Process", "Review"]);
+assert.equal(model.suggestions.some((row) => /Archive older|Link 2/.test(row.label)), false);
 
 const longLayout = deriveMobileLibraryViewModel({
   now,
@@ -109,6 +113,9 @@ assert.equal(emptyQueue.statusLabel, "Queue clear");
 assert.equal(emptyQueue.inboxRows[0].statusLabel, "Processed");
 assert.equal(emptyQueue.inboxRows[0].sourceLabel, "Voice Memo");
 assert.deepEqual(emptyQueue.inboxRows[0].actionLabels, ["Open", "Review"]);
+assert.equal(emptyQueue.noteRows.length, 0);
+assert.equal(emptyQueue.notesAggregate.emptyLabel, "No note rows are loaded.");
+assert.deepEqual(emptyQueue.suggestions.map((row) => row.label), ["Review 1 artifact already in Library"]);
 
 assert.equal(formatMobileLibraryTimestamp("not-a-date", now), "Unknown time");
 

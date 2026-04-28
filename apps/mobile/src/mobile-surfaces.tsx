@@ -13,6 +13,7 @@ import {
   type MobileLibrarySegment,
 } from "./mobile-library-view-model";
 import {
+  deriveMobileArtifactFallbackDetail,
   deriveMobileArtifactDetailViewModel,
   type MobileArtifactActionExecution,
   type MobileArtifactActionRow,
@@ -910,6 +911,7 @@ function mobileLibraryCompactRows(
   subtitle: string,
   ctaLabel: string,
   rows: Array<{ id: string; title: string; metaLabel: string; tagLabel: string; timestampLabel: string }>,
+  emptyLabel: string,
 ) {
   return (
     <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 14, gap: 11 }}>
@@ -931,7 +933,7 @@ function mobileLibraryCompactRows(
           </View>
         </View>
       )) : (
-        <Text style={bodyStyle(palette)}>No saved items yet.</Text>
+        <Text style={bodyStyle(palette)}>{emptyLabel}</Text>
       )}
     </View>
   );
@@ -956,13 +958,13 @@ function mobileLibrarySourceSuggestionGrid(
       </View>
       <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 14, gap: 10 }}>
         <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Suggestions</Text>
-        {suggestions.map((suggestion) => (
+        {suggestions.length > 0 ? suggestions.map((suggestion) => (
           <View key={suggestion.id} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
             <MaterialCommunityIcons name="check-circle-outline" size={17} color={palette.muted} />
             <Text numberOfLines={2} style={{ flex: 1, color: palette.text, fontSize: 14, lineHeight: 19 }}>{suggestion.label}</Text>
             <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 12, fontWeight: "800" }}>{suggestion.actionLabel}</Text>
           </View>
-        ))}
+        )) : <Text style={bodyStyle(palette)}>No queue suggestions are available from the loaded counts.</Text>}
       </View>
     </View>
   );
@@ -1006,11 +1008,16 @@ function mobileArtifactDetailView(
             {model.title}
           </Text>
         </View>
-        <TouchableOpacity style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text numberOfLines={1} style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Open in source</Text>
+        <View style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, opacity: 0.62 }}>
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Open in source</Text>
           <MaterialCommunityIcons name="open-in-new" size={15} color={palette.muted} />
-        </TouchableOpacity>
+        </View>
       </View>
+      {model.fallbackNotice ? (
+        <View style={{ borderRadius: 14, backgroundColor: "rgba(245, 169, 73, 0.1)", borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.22)", padding: 12 }}>
+          <Text style={{ color: palette.secondary, fontSize: 12, lineHeight: 17, fontWeight: "800" }}>{model.fallbackNotice}</Text>
+        </View>
+      ) : null}
 
       {artifactSectionCard(
         palette,
@@ -1113,9 +1120,9 @@ function mobileArtifactDetailView(
             ))}
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity style={{ ...stylesButtonLike(palette, true), flex: 1 }}>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>Save to Library</Text>
-            </TouchableOpacity>
+            <View style={{ ...stylesButtonLike(palette, false), flex: 1, opacity: 0.62 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Already in Library</Text>
+            </View>
             {model.actions.find((action) => action.action === "tasks")
               ? artifactActionButton(palette, model.actions.find((action) => action.action === "tasks")!, onRunAction)
               : null}
@@ -1181,31 +1188,39 @@ function mobileArtifactDetailView(
           <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             {model.actions.map((action) => {
               const executableRequest = action.executableRequest;
-              return (
-                <TouchableOpacity
-                  key={`tile:${action.action}`}
-                  disabled={!executableRequest}
-                  onPress={() => {
-                    if (executableRequest) {
-                      onRunAction(executableRequest);
-                    }
-                  }}
-                  style={{
-                    width: "47%",
-                    minHeight: 96,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: executableRequest ? "rgba(245, 169, 73, 0.24)" : palette.border,
-                    backgroundColor: palette.surfaceHigh,
-                    padding: 12,
-                    gap: 6,
-                    justifyContent: "center",
-                  }}
-                >
+              const tileStyle = {
+                width: "47%" as const,
+                minHeight: 96,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: executableRequest ? "rgba(245, 169, 73, 0.24)" : palette.border,
+                backgroundColor: palette.surfaceHigh,
+                padding: 12,
+                gap: 6,
+                justifyContent: "center" as const,
+                opacity: executableRequest ? 1 : 0.66,
+              };
+              const tileContent = (
+                <>
                   <MaterialCommunityIcons name={mobileDetailActionIcon(action.action)} size={19} color={executableRequest ? palette.secondary : palette.muted} />
                   <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{action.label}</Text>
                   <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 11, lineHeight: 15 }}>{action.statusLabel}</Text>
+                </>
+              );
+              return executableRequest ? (
+                <TouchableOpacity
+                  key={`tile:${action.action}`}
+                  onPress={() => {
+                    onRunAction(executableRequest);
+                  }}
+                  style={tileStyle}
+                >
+                  {tileContent}
                 </TouchableOpacity>
+              ) : (
+                <View key={`tile:${action.action}`} style={tileStyle}>
+                  {tileContent}
+                </View>
               );
             })}
           </View>
@@ -1982,6 +1997,7 @@ export function MobileNotesSurface({
 }: MobileNotesSurfaceProps) {
   const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
   const [showArtifactDetail, setShowArtifactDetail] = useState(false);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [expandedArtifactSections, setExpandedArtifactSections] = useState<Record<string, boolean>>({
     detail: true,
     preview: true,
@@ -1997,9 +2013,20 @@ export function MobileNotesSurface({
   const pendingCaptureCount = pendingCaptures.length;
   const visibleRows = activeSegment === "Artifacts" ? libraryModel.artifactRows : libraryModel.inboxRows;
   const detailRequested = activeSegment === "Artifacts" && showArtifactDetail;
-  const showDetailPane = detailRequested && selectedArtifactDetail;
+  const selectedLocalArtifact = selectedArtifactId ? artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null : null;
+  const fallbackArtifactDetail = detailRequested && !selectedArtifactDetail && selectedLocalArtifact
+    ? deriveMobileArtifactFallbackDetail({
+      artifact: selectedLocalArtifact,
+      reason: artifactDetailStatus && artifactDetailStatus !== "Ready"
+        ? `Showing a local artifact snapshot because API detail is unavailable: ${artifactDetailStatus}`
+        : "Showing a local artifact snapshot while API artifact detail is unavailable.",
+    })
+    : null;
+  const displayArtifactDetail = selectedArtifactDetail ?? fallbackArtifactDetail;
+  const showDetailPane = detailRequested && displayArtifactDetail;
 
   function openLibraryArtifact(row: MobileLibraryInboxRow) {
+    setSelectedArtifactId(row.id);
     openArtifactDetail(row.id);
     setActiveSegment("Artifacts");
     setShowArtifactDetail(true);
@@ -2010,7 +2037,7 @@ export function MobileNotesSurface({
   }
 
   return (
-    <View style={{ gap: 18 }}>
+    <View style={{ gap: 18, paddingBottom: 128 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={kickerStyle(palette)}>Starlog Library</Text>
@@ -2106,7 +2133,7 @@ export function MobileNotesSurface({
             </TouchableOpacity>
             {mobileArtifactDetailView(
               palette,
-              selectedArtifactDetail,
+              displayArtifactDetail,
               expandedArtifactSections,
               toggleArtifactSection,
               runArtifactAction,
@@ -2260,6 +2287,7 @@ export function MobileNotesSurface({
             "Artifacts created from your captures. Ready to use.",
             "View all",
             libraryModel.recentArtifacts,
+            "No artifacts are loaded yet.",
           )
           : null}
 
@@ -2270,6 +2298,7 @@ export function MobileNotesSurface({
             "Long-form notes, references, and saved knowledge.",
             "View all",
             libraryModel.noteRows,
+            libraryModel.notesAggregate.emptyLabel,
           )
           : null}
 
