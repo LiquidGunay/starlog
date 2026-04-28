@@ -320,6 +320,26 @@ assert.deepEqual(fallbackModel.actions.map((action) => ({
 ]);
 assert.equal(fallbackModel.timelineRows[0].label, "Local artifact snapshot shown");
 
+const untitledFallbackModel = deriveMobileArtifactDetailViewModel(deriveMobileArtifactFallbackDetail({
+  artifact: {
+    id: "art_local_untitled",
+    source_type: "clip_mobile",
+    title: "",
+    created_at: "2026-04-28T10:00:00+00:00",
+  },
+}));
+assert.equal(untitledFallbackModel.title, "Untitled artifact");
+assert.equal(untitledFallbackModel.sourcePreview, null);
+assert.deepEqual(
+  untitledFallbackModel.sourceLayers.map((layer) => ({ label: layer.label, present: layer.present, preview: layer.preview })),
+  [
+    { label: "Raw", present: false, preview: null },
+    { label: "Normalized", present: false, preview: null },
+    { label: "Extracted", present: false, preview: null },
+  ],
+);
+assert.equal(untitledFallbackModel.keyIdeas.length, 0);
+
 assert.equal(shouldCommitArtifactDetailResponse({
   requested: { artifactId: "art_a", requestId: 1 },
   current: { artifactId: "art_a", requestId: 1 },

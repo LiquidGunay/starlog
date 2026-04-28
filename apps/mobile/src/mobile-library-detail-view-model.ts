@@ -204,7 +204,8 @@ export function deriveMobileArtifactFallbackDetail(input: {
   artifact: MobileArtifactFallbackSource;
   reason?: string | null;
 }): MobileArtifactDetail {
-  const title = input.artifact.title?.trim() || "Untitled artifact";
+  const artifactTitle = input.artifact.title?.trim() || "";
+  const title = artifactTitle || "Untitled artifact";
   const sourceType = input.artifact.source_type.trim() || "artifact";
   const createdAt = input.artifact.created_at;
   return {
@@ -223,9 +224,9 @@ export function deriveMobileArtifactFallbackDetail(input: {
     source_layers: [
       {
         layer: "raw",
-        present: true,
-        preview: title,
-        character_count: title.length,
+        present: Boolean(artifactTitle),
+        preview: artifactTitle || null,
+        character_count: artifactTitle ? artifactTitle.length : null,
         mime_type: null,
         checksum_sha256: null,
         source_filename: null,
