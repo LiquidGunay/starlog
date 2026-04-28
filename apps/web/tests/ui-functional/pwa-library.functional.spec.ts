@@ -122,6 +122,137 @@ const notes = [
   },
 ];
 
+const focusDetail = {
+  artifact: {
+    id: "art_capture_focus",
+    title: "The Focus Fallacy",
+    artifact_type: "Web clip",
+    status: "needs_decision",
+    source: "Browser Clipper",
+    source_url: "https://example.test/focus",
+    captured_at: "2026-04-27T10:15:00.000Z",
+    updated_at: "2026-04-27T10:20:00.000Z",
+    tags: ["focus", "attention"],
+    summary: "Generated summary stays attached to the source capture and explains that multitasking fragments attention.",
+    key_ideas: [
+      {
+        title: "Attention residue drives context switching cost",
+        detail: "Use smaller capture-to-task loops before planning deep work.",
+        provenance: "Extracted from normalized paragraph 3",
+      },
+      {
+        title: "Protect a single active objective",
+        detail: "The source argues against parallel priority lists.",
+        provenance: "Extracted from raw article section 2",
+      },
+    ],
+    quick_note: "Compare this with the onboarding focus block.",
+  },
+  provenance: {
+    source_app: "Browser Clipper",
+    url: "https://example.test/focus",
+    capture_method: "manual clip",
+    capture_time: "2026-04-27T10:15:00.000Z",
+    captured_by: "Taylor",
+    device: "ThinkPad PWA",
+    location: "Desk",
+    linked_project: "Onboarding flow polish",
+    used_in_tasks: "1 task",
+    used_in_review: "3 review cards",
+  },
+  layers: {
+    raw: {
+      title: "Raw HTML text",
+      content: "Raw article body with source formatting and captured quote: focus is a narrow aperture.",
+      format: "html",
+    },
+    normalized: {
+      title: "Normalized article text",
+      content: "Normalized clean text preserves paragraphs and removes page chrome.",
+      format: "text",
+    },
+    extracted: {
+      title: "Extracted ideas",
+      content: "Key ideas: attention residue, single active objective, capture-to-task loop.",
+      format: "json",
+    },
+  },
+  actions: [
+    {
+      action: "summarize",
+      label: "Summarize",
+      description: "Generate concise summary with key points.",
+      supported: true,
+      status: "ready",
+    },
+    {
+      action: "cards",
+      label: "Make cards",
+      description: "Create atomic review items.",
+      supported: true,
+      status: "ready",
+    },
+    {
+      action: "tasks",
+      label: "Create task",
+      description: "Turn insight into an actionable task.",
+      supported: true,
+      status: "ready",
+    },
+    {
+      action: "append_note",
+      label: "Append to note",
+      description: "Add this artifact to an existing note.",
+      supported: true,
+      status: "ready",
+    },
+    {
+      action: "extract_highlights",
+      label: "Extract highlights",
+      description: "Find and save key quotes or passages.",
+      supported: false,
+      disabled_reason: "Highlight extraction is not enabled.",
+    },
+  ],
+  connections: [
+    {
+      id: "project_onboarding",
+      kind: "project",
+      title: "Onboarding flow polish",
+      href: "/planner?project=project_onboarding",
+      detail: "Used as research context.",
+    },
+    {
+      id: "note_attention",
+      kind: "note",
+      title: "Attention operating notes",
+      detail: "Summary appended as version 3.",
+    },
+    {
+      id: "review_focus_cards",
+      kind: "review",
+      title: "Focus review cards",
+      detail: "3 cards generated.",
+    },
+  ],
+  activity: [
+    {
+      id: "capture",
+      label: "Captured from browser",
+      detail: "Browser clipper saved raw and normalized layers.",
+      actor: "Taylor",
+      created_at: "2026-04-27T10:15:00.000Z",
+    },
+    {
+      id: "summary",
+      label: "Summary generated",
+      detail: "OpenAI-primary summarization created the current summary.",
+      actor: "Starlog",
+      created_at: "2026-04-27T10:18:00.000Z",
+    },
+  ],
+};
+
 test("PWA library renders the capture pipeline with mocked API data", async ({ page }) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];
@@ -200,4 +331,94 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await page.getByLabel("Search Library").fill("walk");
   await expect(inboxSection.getByRole("heading", { name: "Walk reflection" })).toBeVisible();
   await expect(inboxSection.getByRole("heading", { name: "The Focus Fallacy" })).toHaveCount(0);
+});
+
+test("PWA library detail renders provenance, layers, connections, and conversion actions", async ({ page }) => {
+  await seedAssistantSession(page);
+  const actionRequests: Array<Record<string, unknown>> = [];
+
+  await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(librarySummary),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(artifacts),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/notes`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(notes),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts/art_capture_focus/detail`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(focusDetail),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts/art_capture_focus/actions`, async (route) => {
+    actionRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        artifact_id: "art_capture_focus",
+        action: "summarize",
+        status: "completed",
+        output_ref: "summary-2",
+      }),
+    });
+  });
+
+  await page.goto("/library", { waitUntil: "domcontentloaded" });
+  const focusDetailLink = page.getByRole("link", { name: "Open Library detail for The Focus Fallacy" }).first();
+  await expect(focusDetailLink).toHaveAttribute("href", "/library/captures/art_capture_focus");
+
+  await page.goto("/library/captures/art_capture_focus", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/library\/captures\/art_capture_focus$/);
+  await expect(page.getByRole("heading", { name: "The Focus Fallacy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Artifact detail" })).toBeVisible();
+  await expect(page.getByText("Generated summary stays attached to the source capture")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Source and provenance" })).toBeVisible();
+  await expect(page.getByText("Browser Clipper").first()).toBeVisible();
+  await expect(page.getByText("manual clip")).toBeVisible();
+  await expect(page.getByText("ThinkPad PWA")).toBeVisible();
+  await expect(page.getByText("Onboarding flow polish").first()).toBeVisible();
+
+  const layerSection = page.getByRole("region", { name: "Raw, normalized, and extracted layers" });
+  await expect(layerSection).toBeVisible();
+  await expect(layerSection.getByText("Raw article body with source formatting")).toBeVisible();
+  await expect(layerSection.getByText("Normalized clean text preserves paragraphs")).toBeVisible();
+  await expect(layerSection.getByText("Key ideas: attention residue")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Highlights and key ideas" })).toBeVisible();
+  await expect(page.getByText("Extracted from normalized paragraph 3")).toBeVisible();
+  await expect(page.getByText("Protect a single active objective")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(page.getByText("Attention operating notes")).toBeVisible();
+  await expect(page.getByText("Focus review cards")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity timeline" })).toBeVisible();
+  await expect(page.getByText("Captured from browser")).toBeVisible();
+  await expect(page.getByText("Summary generated")).toBeVisible();
+
+  await expect(page.getByRole("button", { name: /Extract highlights/ })).toBeDisabled();
+  await page.getByRole("button", { name: /Summarize/ }).click();
+  expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
+  await expect(page.locator("[aria-live='polite']")).toHaveText("Loaded artifact detail");
+  await expect(page.getByRole("button", { name: /Summarize/ })).toContainText("Completed");
 });

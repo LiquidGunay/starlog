@@ -172,6 +172,16 @@
   line-height: 1.3;
 }
 
+.itemTitle a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.itemTitle a:hover {
+  color: var(--primary-soft);
+  text-decoration: underline;
+}
+
 .metadata {
   display: flex;
   flex-wrap: wrap;
