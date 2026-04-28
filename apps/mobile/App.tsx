@@ -52,6 +52,13 @@ import {
   type MobileArtifactDetailRequestToken,
 } from "./src/mobile-library-detail-view-model";
 import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
+import {
+  buildAssistantTodayQueryDate,
+  localDateStringForAssistantToday,
+  resolveMobileAssistantTodayActionRoute,
+  type MobileAssistantTodayAction,
+  type MobileAssistantTodaySummary,
+} from "./src/mobile-assistant-today-view-model";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
 import {
   AssistantToolsSection,
@@ -669,11 +676,11 @@ async function writeSecureToken(rawToken: string): Promise<void> {
 function tomorrowDateString(): string {
   const next = new Date();
   next.setDate(next.getDate() + 1);
-  return next.toISOString().slice(0, 10);
+  return localDateStringForAssistantToday(next);
 }
 
 function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStringForAssistantToday();
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -1328,6 +1335,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [assistantVoiceJobs, setAssistantVoiceJobs] = useState<AssistantVoiceJob[]>([]);
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
   const [assistantThreadSnapshot, setAssistantThreadSnapshot] = useState<MobileAssistantThreadSnapshot | null>(null);
+  const [assistantTodaySummary, setAssistantTodaySummary] = useState<MobileAssistantTodaySummary | null>(null);
   const [conversationTitle, setConversationTitle] = useState("Assistant Thread");
   const [conversationSessionState, setConversationSessionState] = useState<Record<string, unknown>>({});
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
@@ -2709,6 +2717,28 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  function handleAssistantTodayAction(action: MobileAssistantTodayAction) {
+    const route = resolveMobileAssistantTodayActionRoute(action);
+    if (route.kind === "disabled" || route.kind === "unavailable") {
+      setStatus(route.reason);
+      return;
+    }
+    if (route.kind === "navigate") {
+      const tab = mobileTabFromParam(route.surface || route.href.replace(/^\//, ""));
+      if (tab) {
+        activateMobileSurface(tab);
+        return;
+      }
+      openWebPath(route.href, `Failed to open ${action.label}`).catch(() => undefined);
+      return;
+    }
+    if (route.kind === "prompt") {
+      setActiveTab("assistant");
+      setHomeDraft(route.prompt);
+      setStatus(`${action.label} loaded into Assistant`);
+    }
+  }
+
   function reuseConversationCardText(value: string) {
     const prompt = value.trim();
     if (!prompt) {
@@ -2977,6 +3007,32 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     } catch (error) {
       if (origin === "manual") {
         setStatus(error instanceof Error ? error.message : "Failed to load conversation");
+      }
+    }
+  }
+
+  async function loadAssistantTodaySummary(origin: "auto" | "manual") {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const date = buildAssistantTodayQueryDate();
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/surfaces/assistant/today?date=${encodeURIComponent(date)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Assistant Today fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as MobileAssistantTodaySummary;
+      setAssistantTodaySummary(payload);
+    } catch (error) {
+      setAssistantTodaySummary(null);
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load Assistant Today");
       }
     }
   }
@@ -3586,6 +3642,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           flushPendingCaptures("auto").catch(() => undefined);
         }
         loadConversation("auto").catch(() => undefined);
+        loadAssistantTodaySummary("auto").catch(() => undefined);
         loadAssistantVoiceJobs("auto").catch(() => undefined);
         loadAssistantAiJobs("auto").catch(() => undefined);
       }
@@ -3726,9 +3783,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   useEffect(() => {
     if (!hydrated || !token) {
+      setAssistantTodaySummary(null);
       return;
     }
     loadConversation("auto").catch(() => undefined);
+    loadAssistantTodaySummary("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -3805,6 +3864,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         onRefresh={() => {
           loadExecutionPolicy("manual").catch(() => undefined);
           loadArtifacts().catch(() => undefined);
+          loadAssistantTodaySummary("manual").catch(() => undefined);
         }}
         onToggleDiagnostics={() => {
           const next = !showDiagnostics;
@@ -3829,6 +3889,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           }}
           onRefreshThread={() => {
             loadConversation("manual").catch(() => undefined);
+            loadAssistantTodaySummary("manual").catch(() => undefined);
             setAssistantPanelOpen(false);
           }}
           onResetSession={() => {
@@ -3863,7 +3924,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               onCancelVoiceAction={clearAssistantVoiceAction}
               voiceActionState={assistantVoiceActionState}
               voiceActionHint={assistantVoiceActionHintText}
-              refreshThread={() => loadConversation("manual").catch(() => undefined)}
+              refreshThread={() => {
+                loadConversation("manual").catch(() => undefined);
+                loadAssistantTodaySummary("manual").catch(() => undefined);
+              }}
               resetConversationSession={resetConversationSession}
               threadSnapshot={assistantThreadSnapshot}
               visibleThreadMessages={visibleThreadMessages}
@@ -3893,6 +3957,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   setStatus(error instanceof Error ? error.message : `Failed to open ${label.toLowerCase()}`);
                 });
               }}
+              assistantTodaySummary={assistantTodaySummary}
+              onAssistantTodayAction={handleAssistantTodayAction}
             />
           </View>
         ) : null}
