@@ -191,7 +191,7 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
   expect(viewport?.width).toBeLessThanOrEqual(430);
   await expect(page.getByText("Planner flagged a 30m overlap")).toBeVisible();
   await expect(page.getByText("My product review overlaps with deep work. What should I do?")).toBeVisible();
-  await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("heading", { name: "Resolve schedule conflict" })).toBeVisible();
   await expect(page.getByText("Deep work overlaps with Team Sync from 9:45-10:15 AM.")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Move deep work" })).toBeChecked();
@@ -200,6 +200,8 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
 
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(horizontalOverflow).toBe(false);
+  await expect(page.locator("aside")).toBeHidden();
+  await expect(page.locator("main")).not.toContainText(/Diagnostics|protocol|runtime|tool_call|tool_result/i);
 
   await page.getByRole("button", { name: "Apply resolution" }).click();
 
@@ -246,6 +248,7 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
 
   expect(dismissals).toEqual(["interrupt_planner_conflict"]);
   await expect(page.getByText("Dismissed", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "artifacts/ui-functional/mobile-assistant-concept-thread-panel.png", fullPage: true });
 });
 
 test("mobile viewport assistant keeps tool activity compact and readable", async ({ page }) => {

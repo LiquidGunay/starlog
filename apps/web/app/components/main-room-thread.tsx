@@ -891,7 +891,7 @@ function toolStatusSummary(toolCall: AssistantToolCall): string {
 
 function roleLabel(role: AssistantThreadMessage["role"]): string {
   if (role === "assistant") {
-    return "Starlog";
+    return "Starlog Assistant";
   }
   if (role === "user") {
     return "You";
@@ -1415,7 +1415,8 @@ function TodayPanel({
   return (
     <section className={styles.todayPanel} aria-labelledby="assistant-today-title">
       <div className={styles.todayHeader}>
-        <p className={styles.todayKicker}>Today in Starlog</p>
+        <div className={styles.cockpitMark} aria-hidden="true">✦</div>
+        <p className={styles.todayKicker}>Good morning</p>
         <h2 id="assistant-today-title">Recommended next move</h2>
       </div>
 
@@ -1496,10 +1497,11 @@ function TodayPanel({
       ) : null}
 
       <div className={styles.atAGlance} aria-label="At a glance">
+        <h3>At a glance</h3>
         {atAGlanceItems.map((item) => (
           <div key={item.label}>
-            <strong>{item.value}</strong>
             <span>{item.label}</span>
+            <strong>{item.value}</strong>
           </div>
         ))}
       </div>
@@ -1683,7 +1685,6 @@ function MessagePart({
       <div className={styles.meta}>
         <span>{roleLabel(message.role)}</span>
         <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-        {message.status !== "complete" ? <span>{message.status.replace(/_/g, " ")}</span> : null}
       </div>
       <div className={styles.bubble}>
         {partGroups.map((group) =>

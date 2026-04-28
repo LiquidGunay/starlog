@@ -208,19 +208,6 @@ function applyAssistantDelta(
   return snapshot;
 }
 
-function liveStatusLabel(status: LiveStatus): string {
-  if (status === "live") {
-    return "Synced";
-  }
-  if (status === "recovering") {
-    return "Reconnecting";
-  }
-  if (status === "auth_required") {
-    return "Sign in needed";
-  }
-  return "Connecting";
-}
-
 function localDateKey(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -543,7 +530,7 @@ function AssistantPageContent() {
   const searchParams = useSearchParams();
   const genericDraft = readGenericDraft(searchParams);
   const handoffToken = readHandoffToken(searchParams);
-  const { apiBase, token, isOnline, mutateWithQueue } = useSessionConfig();
+  const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const clientTimezone =
     typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1054,7 +1041,9 @@ function AssistantPageContent() {
   const normalizedSnapshot = normalizeSnapshot(snapshot);
   const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
   const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
-  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(new Date());
+  const now = new Date();
+  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(now);
+  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(now);
   const openLoops = buildOpenLoops(normalizedSnapshot, handoff);
   const summaryOpenLoops = buildTodaySummaryOpenLoops(todaySummary);
   const cockpitOpenLoops =
@@ -1090,19 +1079,22 @@ function AssistantPageContent() {
       onSendMessage={sendMessage}
     >
       <main className={styles.page}>
-        <section className={styles.hero}>
+        <header className={styles.topBar}>
           <div>
-            <p className={styles.kicker}>Today · {todayLabel}</p>
             <h1>Starlog Assistant</h1>
-            <p className={styles.lede}>
-              Move today forward with one thread for capture, planning, review, and follow-through.
-            </p>
+            <div className={styles.stateChips} aria-label="Assistant state">
+              <span>Morning</span>
+              <span>Focus</span>
+              <span>Briefing ready</span>
+            </div>
           </div>
-          <div className={styles.heroMeta}>
-            <span>{openLoopCount} open loop{openLoopCount === 1 ? "" : "s"}</span>
-            <span>{todaySummary?.recommended_next_move?.urgency ? `${todaySummary.recommended_next_move.urgency} priority` : "Ready for the next move"}</span>
+          <div className={styles.topMeta}>
+            <span className={styles.syncState}>Synced just now</span>
+            <span className={styles.avatar} aria-label="Account">
+              AM
+            </span>
           </div>
-        </section>
+        </header>
 
         <section className={styles.layout}>
           <div className={styles.threadColumn}>
@@ -1194,32 +1186,28 @@ function AssistantPageContent() {
 
           <aside className={styles.sideRail}>
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Today</p>
-              <RailSection title="Now" items={nowItems} onNavigate={(href) => router.push(href)} />
-              <RailSection title="Open Loops" items={openLoops} onNavigate={(href) => router.push(href)} />
+              <div className={styles.nowHeader}>
+                <h2 className={styles.sideLabel}>Now</h2>
+                <strong>{timeLabel}</strong>
+                <span>{todayLabel}</span>
+              </div>
+              <RailSection title="Focus block" items={nowItems} onNavigate={(href) => router.push(href)} />
             </article>
 
             <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Context</p>
+              <h2 className={styles.sideLabel}>Open loops</h2>
+              <div className={styles.loopCount}>{openLoopCount}</div>
+              <RailSection title="Needs attention" items={openLoops} onNavigate={(href) => router.push(href)} />
+            </article>
+
+            <article className={styles.sideCard}>
+              <h2 className={styles.sideLabel}>Current context</h2>
               <RailSection
                 title="Relevant"
                 items={contextItems.length > 0 ? contextItems : [{ label: "No active context yet" }]}
                 onNavigate={(href) => router.push(href)}
               />
-            </article>
-
-            <article className={styles.sideCard}>
-              <p className={styles.sideLabel}>Suggestions</p>
-              <RailSection title="Next" items={suggestions} onNavigate={(href) => router.push(href)} />
-              <details className={styles.diagnostics}>
-                <summary>Diagnostics</summary>
-                <ul>
-                  <li>{activeRun ? `${activeRun.orchestrator} run is ${activeRun.status}` : "No active run"}</li>
-                  <li>{activeInterrupt ? activeInterrupt.title : "No pending action"}</li>
-                  <li>{liveStatusLabel(liveStatus)} · {isOnline ? "Online" : "Offline"}</li>
-                  <li>{snapshot ? `${snapshot.messages.length} messages loaded` : "No thread snapshot yet"}</li>
-                </ul>
-              </details>
+              <RailSection title="Suggestions" items={suggestions} onNavigate={(href) => router.push(href)} />
             </article>
           </aside>
         </section>

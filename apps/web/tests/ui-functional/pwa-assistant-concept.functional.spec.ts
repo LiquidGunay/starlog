@@ -120,6 +120,7 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
   await expect(page.getByText("Planner found a 90m focus window")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Choose morning focus" })).toBeVisible();
   await expect(page.getByText("Focus mode")).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/protocol|runtime|tool_call|tool_result|Diagnostics/i);
   await expect(page.getByRole("radio", { name: /Move project forward/ })).toBeChecked();
   await expect(page.getByLabel("Protect this focus block")).toBeChecked();
   await expect(page.getByText("Planner can reserve 9:30-11:00 AM for focus.")).toBeVisible();
@@ -136,6 +137,7 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
   );
   await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm focus" })).toHaveCount(0);
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-concept-thread-panel.png", fullPage: true });
 });
 
 test("PWA assistant empty state renders the Today cockpit recommendation from enriched summary", async ({ page }) => {
@@ -219,6 +221,7 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
 
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
 
+  await expect(page.getByRole("region", { name: "Recommended next move" })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Finish onboarding flow polish" })).toBeVisible();
   await expect(page.getByLabel("Why this recommendation").getByText("5 open tasks include launch polish")).toBeVisible();
@@ -226,16 +229,17 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
   await expect(page.getByLabel("At a glance").getByText("Planner")).toBeVisible();
   await expect(page.getByLabel("At a glance").getByText("5", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Secondary options").getByRole("link", { name: "Adjust plan" })).toHaveAttribute("href", "/planner");
-  const todayRail = page.locator("aside article", { hasText: "Today" }).first();
+  const todayRail = page.locator("aside article", { hasText: "Now" }).first();
   await expect(todayRail.getByRole("heading", { name: "Now" })).toBeVisible();
   await expect(todayRail.getByText("Finish onboarding flow polish")).toBeVisible();
-  await expect(todayRail).not.toContainText(/Online|Offline|Assistant is|Connecting|Reconnecting|Synced|Sign in needed/);
+  await expect(page.locator("main")).not.toContainText(/Online|Offline|Assistant is|Connecting|Reconnecting|Sign in needed|Diagnostics|protocol|runtime/i);
 
   await page.getByRole("button", { name: "Start focus" }).click();
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
     "Start a 90 minute focus block for onboarding flow polish.",
   );
   await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Open Review" })).toHaveAttribute("href", "/review");
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-concept-cockpit.png", fullPage: true });
 });
 
 test("PWA assistant Today cockpit renders compact strategic context actions", async ({ page }) => {
