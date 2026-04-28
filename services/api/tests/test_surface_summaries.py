@@ -392,6 +392,69 @@ def _defer_due_reviews(conn) -> None:
     conn.execute("UPDATE cards SET due_at = ?, updated_at = ? WHERE suspended = 0", (_iso(later), _iso(utc_now())))
 
 
+def _insert_active_goal(conn, *, title: str = "Keep strategy visible", reviewed_days_ago: int = 0) -> str:
+    now = utc_now()
+    reviewed_at = now - timedelta(days=reviewed_days_ago)
+    goal_id = new_id("goal")
+    conn.execute(
+        """
+        INSERT INTO goals (
+          id, title, horizon, why, success_criteria, status, review_cadence,
+          created_at, updated_at, last_reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            goal_id,
+            title,
+            "quarter",
+            None,
+            "Visible progress",
+            "active",
+            "weekly",
+            _iso(reviewed_at),
+            _iso(reviewed_at),
+            _iso(reviewed_at),
+        ),
+    )
+    return goal_id
+
+
+def _insert_active_project(
+    conn,
+    *,
+    goal_id: str | None = None,
+    title: str = "Assistant strategic context",
+    next_action_id: str | None = None,
+    reviewed_days_ago: int = 0,
+) -> str:
+    now = utc_now()
+    reviewed_at = now - timedelta(days=reviewed_days_ago)
+    project_id = new_id("proj")
+    conn.execute(
+        """
+        INSERT INTO projects (
+          id, goal_id, title, desired_outcome, current_state, next_action_id,
+          open_questions_json, risks_json, status, created_at, updated_at, last_reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            project_id,
+            goal_id,
+            title,
+            "Assistant Today can see grounded strategic context.",
+            "Wiring read model",
+            next_action_id,
+            "[]",
+            "[]",
+            "active",
+            _iso(reviewed_at),
+            _iso(reviewed_at),
+            _iso(reviewed_at),
+        ),
+    )
+    return project_id
+
+
 def test_surface_summary_endpoints_expose_representative_counts(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -477,6 +540,7 @@ def test_assistant_today_summary_is_read_only_and_composes_open_loops(
         "unprocessed_library",
         "open_commitments",
     ]
+    assert payload["strategic_context"]["open_commitment_count"] == 1
     assert payload["recommended_next_move"] == {
         "key": "resolve_interrupt",
         "title": "Resolve pending assistant decision",
@@ -550,6 +614,18 @@ def test_assistant_today_summary_defaults_to_plan_today_without_open_loops(
     assert payload["recommended_next_move"]["priority"] == 10
     assert payload["recommended_next_move"]["urgency"] == "low"
     assert payload["recommended_next_move"]["prompt"] == "Help me plan today."
+    assert payload["strategic_context"] == {
+        "active_goal_count": 0,
+        "active_project_count": 0,
+        "open_commitment_count": 0,
+        "overdue_commitment_count": 0,
+        "project_missing_next_action_count": 0,
+        "attention_count": 0,
+        "active_goals": [],
+        "active_projects": [],
+        "open_commitments": [],
+        "attention_items": [],
+    }
     assert payload["reason_stack"] == [
         "No pending interrupts, overdue tasks, unprocessed captures, or due reviews are visible."
     ]
@@ -610,6 +686,129 @@ def test_assistant_today_recommended_next_move_priority_order(
     assert response.status_code == 200
     payload = response.json()
     assert payload["recommended_next_move"]["key"] == expected_key
+
+
+def test_assistant_today_summary_includes_strategic_context_shape(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+
+    with get_connection() as conn:
+        goal_id = _insert_active_goal(conn)
+        project_id = _insert_active_project(conn, goal_id=goal_id)
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+
+    assert response.status_code == 200
+    strategic_context = response.json()["strategic_context"]
+    assert strategic_context["active_goal_count"] == 1
+    assert strategic_context["active_project_count"] == 1
+    assert strategic_context["open_commitment_count"] == 1
+    assert strategic_context["overdue_commitment_count"] == 0
+    assert strategic_context["project_missing_next_action_count"] == 1
+    assert strategic_context["attention_count"] == 1
+    assert strategic_context["active_goals"][0]["id"] == goal_id
+    assert strategic_context["active_projects"][0]["id"] == project_id
+    assert strategic_context["active_projects"][0]["next_action_id"] is None
+    assert strategic_context["open_commitments"][0]["id"] == seeded["commitment"]
+    assert strategic_context["attention_items"][0]["kind"] == "project_missing_next_action"
+    assert strategic_context["attention_items"][0]["entity_id"] == project_id
+
+
+def test_assistant_today_recommends_project_without_next_action_before_open_loops(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+
+    with get_connection() as conn:
+        _demote_pending_interrupts(conn)
+        _demote_overdue_task(conn, seeded)
+        _mark_library_inbox_processed(conn, seeded)
+        _defer_due_reviews(conn)
+        _insert_active_project(conn)
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommended_next_move"]["key"] == "define_project_next_action"
+    assert payload["recommended_next_move"]["body"] == "1 active project missing a next action."
+    assert "1 active project missing a next action" in payload["reason_stack"]
+
+
+def test_assistant_today_recommends_overdue_commitment_after_overdue_tasks(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+
+    with get_connection() as conn:
+        _demote_pending_interrupts(conn)
+        yesterday = utc_now() - timedelta(days=1)
+        conn.execute(
+            "UPDATE commitments SET due_at = ?, updated_at = ? WHERE id = ?",
+            (_iso(yesterday), _iso(utc_now()), seeded["commitment"]),
+        )
+        conn.commit()
+
+    task_response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+    assert task_response.status_code == 200
+    assert task_response.json()["recommended_next_move"]["key"] == "clear_overdue_tasks"
+
+    with get_connection() as conn:
+        _demote_overdue_task(conn, seeded)
+        _mark_library_inbox_processed(conn, seeded)
+        _defer_due_reviews(conn)
+        conn.commit()
+
+    commitment_response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+
+    assert commitment_response.status_code == 200
+    payload = commitment_response.json()
+    assert payload["recommended_next_move"]["key"] == "clear_overdue_commitments"
+    assert payload["recommended_next_move"]["body"] == "1 open commitment overdue and needs a decision today."
+    assert payload["strategic_context"]["overdue_commitment_count"] == 1
+    assert payload["strategic_context"]["attention_items"][0]["kind"] == "commitment_overdue"
+
+
+def test_assistant_today_strategic_context_flags_stale_goals_and_projects(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"])
+    seeded = _seed_surface_summary_fixture(user_id)
+
+    with get_connection() as conn:
+        goal_id = _insert_active_goal(conn, title="Review learning direction", reviewed_days_ago=8)
+        project_id = _insert_active_project(
+            conn,
+            goal_id=goal_id,
+            title="Refresh project plan",
+            next_action_id=seeded["task_todo"],
+            reviewed_days_ago=15,
+        )
+        conn.commit()
+
+    response = client.get(f"/v1/surfaces/assistant/today?date={seeded['date']}", headers=auth_headers)
+
+    assert response.status_code == 200
+    attention_items = response.json()["strategic_context"]["attention_items"]
+    attention_by_kind = {item["kind"]: item for item in attention_items}
+    assert attention_by_kind["project_stale"]["entity_id"] == project_id
+    assert attention_by_kind["project_stale"]["body"] == "Active project has not been reviewed in 14 days."
+    assert attention_by_kind["goal_review_due"]["entity_id"] == goal_id
+    assert attention_by_kind["goal_review_due"]["body"] == "Active goal has not been reviewed within its weekly cadence."
 
 
 def test_closed_tasks_and_commitments_do_not_count_as_open_loops(
