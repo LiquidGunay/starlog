@@ -166,6 +166,7 @@ export function deriveMobilePlannerViewModel(input: {
           { label: "Buffer", value: "Unknown", caption: "Refresh Planner", tone: "buffer" },
         ],
     timelineBlocks: buildTimelineBlocks({
+      hasSummary,
       nextAction,
       focusMinutes,
       focusBlocks,
@@ -178,15 +179,19 @@ export function deriveMobilePlannerViewModel(input: {
     planGroups: [
       {
         title: "Scheduled commitments",
-        summaryLabel: scheduledCommitments.length > 0 ? `${scheduledCommitments.length} visible` : "Empty",
+        summaryLabel: scheduledCommitments.length > 0 ? `${scheduledCommitments.length} visible` : hasSummary ? "Empty" : "Unknown",
         items: scheduledCommitments,
-        emptyLabel: "Planner has no scheduled commitments for this date yet.",
+        emptyLabel: hasSummary
+          ? "Planner has no scheduled commitments for this date yet."
+          : "Refresh Planner to load scheduled commitments for this date.",
       },
       {
         title: "Flexible tasks",
-        summaryLabel: openTasks > 0 ? `${openTasks} open` : "None",
+        summaryLabel: openTasks > 0 ? `${openTasks} open` : hasSummary ? "None" : "Unknown",
         items: flexibleTasks,
-        emptyLabel: "No open task pressure is visible in the Planner summary.",
+        emptyLabel: hasSummary
+          ? "No open task pressure is visible in the Planner summary."
+          : "Refresh Planner to load task pressure for this date.",
       },
       {
         title: "Done",
@@ -218,10 +223,14 @@ export function deriveMobilePlannerViewModel(input: {
       metaLabel: focusBlocks > 0 ? `${focusBlocks} focus block${focusBlocks === 1 ? "" : "s"}` : "Needs planning",
     },
     upcoming: {
-      title: meetingCount > 0 ? "Fixed commitments" : "Open calendar",
-      body: meetingCount > 0 ? `${meetingCount} calendar event${meetingCount === 1 ? "" : "s"} visible for this date.` : "No calendar events are visible in the Planner summary.",
-      timeLabel: meetingCount > 0 ? `${meetingCount} event${meetingCount === 1 ? "" : "s"}` : "None",
-      metaLabel: fixedBlocks > 0 ? `${fixedBlocks} fixed block${fixedBlocks === 1 ? "" : "s"}` : "No fixed blocks",
+      title: meetingCount > 0 ? "Fixed commitments" : hasSummary ? "Open calendar" : "Refresh calendar",
+      body: meetingCount > 0
+        ? `${meetingCount} calendar event${meetingCount === 1 ? "" : "s"} visible for this date.`
+        : hasSummary
+          ? "No calendar events are visible in the Planner summary."
+          : "Refresh Planner to load calendar events and fixed blocks for this date.",
+      timeLabel: meetingCount > 0 ? `${meetingCount} event${meetingCount === 1 ? "" : "s"}` : hasSummary ? "None" : "Unknown",
+      metaLabel: fixedBlocks > 0 ? `${fixedBlocks} fixed block${fixedBlocks === 1 ? "" : "s"}` : hasSummary ? "No fixed blocks" : "Refresh Planner",
     },
     promptChips: conflictCount > 0
       ? ["Protect focus", "Repair conflict", "What can move?"]
@@ -345,6 +354,7 @@ function buildDayStrip(selectedDate: Date): MobilePlannerDay[] {
 }
 
 function buildTimelineBlocks(input: {
+  hasSummary: boolean;
   nextAction: string;
   focusMinutes: number;
   focusBlocks: number;
@@ -374,9 +384,13 @@ function buildTimelineBlocks(input: {
     {
       id: "fixed",
       timeLabel: "Fixed",
-      durationLabel: input.meetingCount > 0 ? `${input.meetingCount} event${input.meetingCount === 1 ? "" : "s"}` : "None",
-      title: input.meetingCount > 0 ? "Fixed commitments" : "Open work window",
-      detail: input.meetingCount > 0 ? "Keep prep and transitions compact." : "No meetings are blocking this part of the day.",
+      durationLabel: input.meetingCount > 0 ? `${input.meetingCount} event${input.meetingCount === 1 ? "" : "s"}` : input.hasSummary ? "None" : "Unknown",
+      title: input.meetingCount > 0 ? "Fixed commitments" : input.hasSummary ? "Open work window" : "Calendar not loaded",
+      detail: input.meetingCount > 0
+        ? "Keep prep and transitions compact."
+        : input.hasSummary
+          ? "No meetings are blocking this part of the day."
+          : "Refresh Planner to load fixed commitments for this date.",
       type: input.meetingCount > 0 ? "meeting" : "task",
     },
   ];

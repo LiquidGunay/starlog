@@ -82,10 +82,20 @@ assert.equal(fallback.timelineBlocks[0].detail, "No briefing alarm is scheduled 
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "0m");
-assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.durationLabel, "None");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.durationLabel, "Unknown");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.title, "Calendar not loaded");
+assert.equal(fallback.timelineBlocks.find((block) => block.id === "fixed")?.detail, "Refresh Planner to load fixed commitments for this date.");
+assert.equal(fallback.upcoming.title, "Refresh calendar");
+assert.equal(fallback.upcoming.body, "Refresh Planner to load calendar events and fixed blocks for this date.");
+assert.equal(fallback.upcoming.timeLabel, "Unknown");
+assert.equal(fallback.upcoming.metaLabel, "Refresh Planner");
 assert.deepEqual(fallback.promptChips, ["Protect focus", "What can move?", "Plan buffer"]);
 assert.deepEqual(fallback.planGroups[0].items, []);
+assert.equal(fallback.planGroups[0].summaryLabel, "Unknown");
+assert.equal(fallback.planGroups[0].emptyLabel, "Refresh Planner to load scheduled commitments for this date.");
 assert.deepEqual(fallback.planGroups[1].items, []);
+assert.equal(fallback.planGroups[1].summaryLabel, "Unknown");
+assert.equal(fallback.planGroups[1].emptyLabel, "Refresh Planner to load task pressure for this date.");
 assert.equal(fallback.planGroups[2].items.length, 0);
 
 const futureFallback = deriveMobilePlannerViewModel({
@@ -121,6 +131,8 @@ const emptySummary = deriveMobilePlannerViewModel({
 assert.equal(emptySummary.decisionLabel, "Keep the day open until Planner has more state.");
 assert.deepEqual(emptySummary.planGroups[0].items, []);
 assert.deepEqual(emptySummary.planGroups[1].items, []);
+assert.equal(emptySummary.planGroups[0].summaryLabel, "Empty");
+assert.equal(emptySummary.planGroups[1].summaryLabel, "None");
 assert.equal(emptySummary.nextFocus.timeLabel, "Unscheduled");
 assert.equal(emptySummary.upcoming.timeLabel, "None");
 
