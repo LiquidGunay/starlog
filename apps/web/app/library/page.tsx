@@ -2,6 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
+import Link from "next/link";
+
 import { AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
@@ -208,6 +210,10 @@ function isInboxState(state: CaptureStatus | ArtifactStatus): boolean {
 
 function linkedCount(...counts: Array<number | null | undefined>): number {
   return counts.reduce<number>((total, count) => total + Math.max(0, Number(count || 0)), 0);
+}
+
+function libraryDetailHref(entry: Pick<LibraryEntry, "id" | "kind">): string {
+  return entry.kind === "capture" ? `/library/captures/${entry.id}` : `/library/artifacts/${entry.id}`;
 }
 
 function artifactToEntry(artifact: Artifact, summary: SurfaceArtifactSummary | undefined): LibraryEntry {
@@ -475,7 +481,11 @@ function LibraryPageContent() {
                 ) : inboxEntries.map((entry) => (
                   <article key={entry.id} className={styles.row}>
                     <div>
-                      <h3 className={styles.itemTitle}>{entry.title}</h3>
+                      <h3 className={styles.itemTitle}>
+                        <Link href={libraryDetailHref(entry)} aria-label={`Open Library detail for ${entry.title}`}>
+                          {entry.title}
+                        </Link>
+                      </h3>
                       <EntryMetadata entry={entry} />
                     </div>
                     <EntryActions entry={entry} onAction={handleArtifactAction} />
@@ -500,7 +510,11 @@ function LibraryPageContent() {
                   <article key={entry.id} className={styles.artifactCard}>
                     <div>
                       <div className={styles.cardTop}>
-                        <h3 className={styles.itemTitle}>{entry.title}</h3>
+                        <h3 className={styles.itemTitle}>
+                          <Link href={libraryDetailHref(entry)} aria-label={`Open Library detail for ${entry.title}`}>
+                            {entry.title}
+                          </Link>
+                        </h3>
                         <span className={styles.statusPill} data-state={entry.processingState}>{titleCase(entry.processingState)}</span>
                       </div>
                       <EntryMetadata entry={entry} />

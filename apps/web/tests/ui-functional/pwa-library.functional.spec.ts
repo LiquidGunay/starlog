@@ -122,6 +122,164 @@ const notes = [
   },
 ];
 
+const focusDetail = {
+  artifact: {
+    id: "art_capture_focus",
+    source_type: "web_clip",
+    title: "The Focus Fallacy",
+    created_at: "2026-04-27T10:15:00.000Z",
+    updated_at: "2026-04-27T10:20:00.000Z",
+  },
+  capture: {
+    source_app: "browser_clipper",
+    source_type: "web_clip",
+    source_url: "https://example.test/focus",
+    source_file: "focus-fallacy.html",
+    capture_method: "manual clip",
+    captured_at: "2026-04-27T10:15:00.000Z",
+    tags: ["focus", "attention"],
+  },
+  source_layers: [
+    {
+      layer: "raw",
+      present: true,
+      preview: "Raw article body with source formatting and captured quote: focus is a narrow aperture.",
+      character_count: 86,
+      mime_type: "text/html",
+      checksum_sha256: "raw-focus-checksum",
+      source_filename: "focus-fallacy.html",
+    },
+    {
+      layer: "normalized",
+      present: true,
+      preview: "Normalized clean text preserves paragraphs and removes page chrome.",
+      character_count: 62,
+      mime_type: "text/plain",
+      checksum_sha256: null,
+      source_filename: null,
+    },
+    {
+      layer: "extracted",
+      present: true,
+      preview: "Key ideas: attention residue, single active objective, capture-to-task loop.",
+      character_count: 74,
+      mime_type: "text/plain",
+      checksum_sha256: null,
+      source_filename: null,
+    },
+  ],
+  connections: {
+    summary_version_count: 2,
+    latest_summary: {
+      id: "sum_focus_2",
+      version: 2,
+      provider: "test",
+      created_at: "2026-04-27T10:18:00.000Z",
+      preview: "Generated summary stays attached to the source capture and explains that multitasking fragments attention.",
+      character_count: 101,
+    },
+    card_count: 3,
+    card_set_version_count: 1,
+    task_count: 1,
+    note_count: 1,
+    notes: [
+      {
+        id: "note_attention",
+        title: "Attention operating notes",
+        version: 3,
+      },
+    ],
+    relation_count: 1,
+    relations: [
+      {
+        id: "rel_focus_summary",
+        artifact_id: "art_capture_focus",
+        relation_type: "artifact.summary_version",
+        target_type: "summary_version",
+        target_id: "sum_focus_2",
+        created_at: "2026-04-27T10:18:00.000Z",
+      },
+    ],
+    action_run_count: 2,
+  },
+  timeline: [
+    {
+      kind: "artifact.created",
+      label: "Artifact created",
+      occurred_at: "2026-04-27T10:15:00.000Z",
+      entity_type: "artifact",
+      entity_id: "art_capture_focus",
+      status: null,
+    },
+    {
+      kind: "summary.version_created",
+      label: "Summary v2 created",
+      occurred_at: "2026-04-27T10:18:00.000Z",
+      entity_type: "summary_version",
+      entity_id: "sum_focus_2",
+      status: null,
+    },
+    {
+      kind: "action.summarize",
+      label: "Summarize action",
+      occurred_at: "2026-04-27T10:19:00.000Z",
+      entity_type: "action_run",
+      entity_id: "act_focus_summary",
+      status: "completed",
+    },
+  ],
+  suggested_actions: [
+    {
+      action: "summarize",
+      label: "Summarize",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
+    },
+    {
+      action: "cards",
+      label: "Make cards",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
+    },
+    {
+      action: "tasks",
+      label: "Make tasks",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
+    },
+    {
+      action: "append_note",
+      label: "Append note",
+      enabled: true,
+      method: "POST",
+      endpoint: "/v1/artifacts/art_capture_focus/actions",
+      disabled_reason: null,
+    },
+    {
+      action: "archive",
+      label: "Archive",
+      enabled: false,
+      method: null,
+      endpoint: null,
+      disabled_reason: "Archive is not supported by the artifact action backend yet.",
+    },
+    {
+      action: "link",
+      label: "Link",
+      enabled: false,
+      method: null,
+      endpoint: null,
+      disabled_reason: "Manual artifact linking is not supported by the artifact action backend yet.",
+    },
+  ],
+};
+
 test("PWA library renders the capture pipeline with mocked API data", async ({ page }) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];
@@ -200,4 +358,101 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await page.getByLabel("Search Library").fill("walk");
   await expect(inboxSection.getByRole("heading", { name: "Walk reflection" })).toBeVisible();
   await expect(inboxSection.getByRole("heading", { name: "The Focus Fallacy" })).toHaveCount(0);
+});
+
+test("PWA library detail renders provenance, layers, connections, and conversion actions", async ({ page }) => {
+  await seedAssistantSession(page);
+  const actionRequests: Array<Record<string, unknown>> = [];
+
+  await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(librarySummary),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(artifacts),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/notes`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(notes),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts/art_capture_focus/detail`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(focusDetail),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts/art_capture_focus/actions`, async (route) => {
+    actionRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        artifact_id: "art_capture_focus",
+        action: "summarize",
+        status: "completed",
+        output_ref: "summary-2",
+      }),
+    });
+  });
+
+  await page.goto("/library", { waitUntil: "domcontentloaded" });
+  const focusDetailLink = page.getByRole("link", { name: "Open Library detail for The Focus Fallacy" }).first();
+  await expect(focusDetailLink).toHaveAttribute("href", "/library/captures/art_capture_focus");
+
+  await page.goto("/library/captures/art_capture_focus", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/library\/captures\/art_capture_focus$/);
+  await expect(page.getByRole("banner").getByText("Loaded artifact detail")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "The Focus Fallacy" })).toBeVisible({ timeout: 10_000 });
+  const detailSection = page.getByRole("region", { name: "Artifact detail" });
+  await expect(detailSection).toBeVisible();
+  await expect(detailSection.getByText("Generated summary stays attached to the source capture")).toBeVisible();
+  await expect(detailSection.getByText("Summary v2 · test")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Source and provenance" })).toBeVisible();
+  await expect(page.getByText("Browser Clipper").first()).toBeVisible();
+  await expect(page.getByText("manual clip")).toBeVisible();
+  await expect(page.getByText("focus-fallacy.html").first()).toBeVisible();
+  await expect(page.getByText("1 tasks / 3 review cards")).toBeVisible();
+
+  const layerSection = page.getByRole("region", { name: "Raw, normalized, and extracted layers" });
+  await expect(layerSection).toBeVisible();
+  await expect(layerSection.getByText("Raw article body with source formatting")).toBeVisible();
+  await expect(layerSection.getByText("Normalized clean text preserves paragraphs")).toBeVisible();
+  await expect(layerSection.getByText("Key ideas: attention residue")).toBeVisible();
+
+  const extractedSection = page.getByRole("region", { name: "Highlights and key ideas" });
+  await expect(extractedSection).toBeVisible();
+  await expect(extractedSection.getByText("Extracted source layer")).toBeVisible();
+  await expect(extractedSection.getByText("single active objective")).toBeVisible();
+
+  const connectionsSection = page.getByRole("region", { name: "Connections" });
+  await expect(connectionsSection).toBeVisible();
+  await expect(connectionsSection.getByText("Attention operating notes")).toBeVisible();
+  await expect(connectionsSection.getByText("3 review cards", { exact: true })).toBeVisible();
+  await expect(connectionsSection.getByText("Summary v2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity timeline" })).toBeVisible();
+  await expect(page.getByText("Artifact created")).toBeVisible();
+  await expect(page.getByText("Summary v2 created")).toBeVisible();
+
+  await expect(page.getByRole("button", { name: /Archive/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Link/ })).toBeDisabled();
+  await page.getByRole("button", { name: /Summarize/ }).click();
+  expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
+  await expect(page.locator("[aria-live='polite']")).toHaveText("Loaded artifact detail");
+  await expect(page.getByRole("button", { name: /Summarize/ })).toContainText("Completed");
 });
