@@ -349,6 +349,115 @@
   opacity: 0.48;
 }
 
+.weeklyReview {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(166, 194, 151, 0.16);
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.weeklyReviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.weeklyReviewColumn {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.weeklyReviewColumn > span {
+  color: rgba(166, 194, 151, 0.86);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.weeklyReviewColumn ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weeklyReviewColumn li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.weeklyReviewColumn strong {
+  color: rgba(244, 241, 232, 0.9);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.weeklyReviewColumn small,
+.weeklyReviewColumn p {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.62);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.weeklyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.weeklyActions > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.weeklyActions a,
+.weeklyActions button,
+.weeklyDisabledAction {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(244, 241, 232, 0.86);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.weeklyActions a:hover,
+.weeklyActions button:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.weeklyActions button {
+  cursor: pointer;
+}
+
+.weeklyActions button:disabled,
+.weeklyDisabledAction {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.weeklyActions small {
+  color: rgba(244, 241, 232, 0.56);
+  font-size: 12px;
+}
+
 .todayList {
   display: grid;
   gap: 8px;
@@ -772,6 +881,7 @@
 
   .recommendedMove,
   .atAGlance,
+  .weeklyReviewGrid,
   .strategicContextList,
   .todayGrid {
     grid-template-columns: 1fr;

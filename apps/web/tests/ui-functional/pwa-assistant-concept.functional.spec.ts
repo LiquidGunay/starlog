@@ -4,9 +4,11 @@ import {
   API_BASE,
   assistantTodaySummary,
   assistantThreadSnapshot,
+  assistantWeeklySummary,
   morningFocusInterrupt,
   routeAssistantToday,
   routeAssistantThread,
+  routeAssistantWeekly,
   seedAssistantSession,
 } from "./assistant-concept-fixtures";
 
@@ -381,6 +383,115 @@ test("PWA assistant Today cockpit renders compact strategic context actions", as
     'Help me choose the next action for "Android release prep".',
   );
   await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-strategic-context.png", fullPage: true });
+});
+
+test("PWA assistant empty cockpit renders weekly systems review with real actions", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  const weeklyRequests: string[] = [];
+  await routeAssistantThread(page, () => assistantThreadSnapshot());
+  await routeAssistantToday(page, () =>
+    assistantTodaySummary({
+      recommended_next_move: {
+        key: "finish_onboarding",
+        title: "Finish onboarding flow polish",
+        body: "A 90 minute focus block can move launch polish forward.",
+        surface: "planner",
+        href: null,
+        action_label: "Start focus",
+        prompt: "Start a 90 minute focus block for onboarding flow polish.",
+        priority: 95,
+        urgency: "high",
+      },
+      reason_stack: ["5 open tasks include launch polish"],
+    }),
+  );
+  await page.route(`${API_BASE}/v1/surfaces/assistant/weekly*`, async (route) => {
+    weeklyRequests.push(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(assistantWeeklySummary()),
+    });
+  });
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Finish onboarding flow polish" })).toBeVisible();
+  const weeklyReview = page.getByLabel("Weekly systems review");
+  await expect(weeklyReview).toBeVisible();
+  await expect(weeklyReview.getByText("3 tasks completed")).toBeVisible();
+  await expect(weeklyReview.getByText("4 review sessions")).toBeVisible();
+  await expect(weeklyReview.getByText("12 review items")).toBeVisible();
+  await expect(weeklyReview.getByText("2 overdue tasks")).toBeVisible();
+  await expect(weeklyReview.getByText("1 overdue commitment")).toBeVisible();
+  await expect(weeklyReview.getByText("1 unprocessed capture")).toBeVisible();
+  await expect(weeklyReview.getByRole("button", { name: "Rebalance the week" })).toBeVisible();
+  await expect(weeklyReview.getByRole("link", { name: "Open Review" })).toHaveAttribute("href", "/review");
+  await expect(weeklyReview.getByText("Calendar sync pending")).toBeVisible();
+  await expect(weeklyReview.getByText("Waiting for calendar sync.")).toBeVisible();
+  await expect(weeklyReview.getByRole("button", { name: "Calendar sync pending" })).toHaveCount(0);
+  await expect(weeklyReview.getByRole("link", { name: "Calendar sync pending" })).toHaveCount(0);
+  await expect(weeklyReview).not.toContainText("Fourth option stays hidden");
+  expect(weeklyRequests[0]).toContain("week_start=2026-04-27");
+
+  await weeklyReview.getByRole("button", { name: "Rebalance the week" }).click();
+  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
+    "Help me rebalance this week around the slipped planning blocks.",
+  );
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-weekly-systems-review.png", fullPage: true });
+});
+
+test("PWA assistant weekly systems review hides when endpoint fails or has no content", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  await routeAssistantThread(page, () => assistantThreadSnapshot());
+  await routeAssistantToday(page, () => assistantTodaySummary());
+  await routeAssistantWeekly(page, () => ({ detail: "weekly endpoint unavailable" }), { status: 500 });
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
+  await expect(page.getByLabel("Weekly systems review")).toHaveCount(0);
+
+  await page.unroute(`${API_BASE}/v1/surfaces/assistant/weekly*`);
+  await routeAssistantWeekly(page, () =>
+    assistantWeeklySummary({
+      progress: {
+        tasks_completed: 0,
+        review_session_count: 0,
+        review_item_count: 0,
+        captures_created: 0,
+        captures_processed: 0,
+        captures_summarized: 0,
+        cards_created: 0,
+        artifact_tasks_created: 0,
+        goals_updated: 0,
+        goals_reviewed: 0,
+        projects_updated: 0,
+        projects_reviewed: 0,
+      },
+      slippage: {
+        overdue_tasks: 0,
+        overdue_commitments: 0,
+        unprocessed_captures: 0,
+        due_review_cards: 0,
+        stale_active_projects: 0,
+        stale_active_goals: 0,
+        projects_missing_next_action: 0,
+      },
+      adaptation_options: [],
+      attention_items: [],
+      system_health: {
+        progress_signal_count: 0,
+        slippage_signal_count: 0,
+      },
+    }),
+  );
+  await page.reload({ waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
+  await expect(page.getByLabel("Weekly systems review")).toHaveCount(0);
 });
 
 test("PWA assistant Today cockpit falls back to count-derived recommendation without enriched fields", async ({ page }) => {

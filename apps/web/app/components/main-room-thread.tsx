@@ -23,6 +23,7 @@ type MainRoomThreadProps = {
   loading: boolean;
   busy: boolean;
   todaySummary?: AssistantTodaySummary | null;
+  weeklySummary?: AssistantWeeklySummary | null;
   todayOpenLoops?: TodayItem[];
   todayContextItems?: TodayItem[];
   onQuickStart: (prompt: string) => void;
@@ -43,6 +44,60 @@ type TodayAction = {
   enabled?: boolean;
   count?: number;
   reason?: string | null;
+};
+
+type WeeklySummaryItem = {
+  key?: string;
+  title?: string;
+  label?: string;
+  body?: string | null;
+  summary?: string | null;
+  detail?: string | null;
+  count?: number | null;
+};
+
+type WeeklyAdaptationOption = {
+  key?: string;
+  title?: string;
+  label?: string;
+  body?: string | null;
+  surface?: string | null;
+  action_label?: string | null;
+  href?: string | null;
+  prompt?: string | null;
+  enabled?: boolean;
+  status?: string | null;
+  reason?: string | null;
+  priority?: number | null;
+};
+
+type WeeklyAttentionItem = {
+  key?: string;
+  kind?: string;
+  title?: string;
+  body?: string | null;
+  surface?: string | null;
+  href?: string | null;
+  priority?: number | null;
+  count?: number | null;
+};
+
+type WeeklySignalCounts = Record<string, number | null | undefined>;
+
+type WeeklySystemHealth = {
+  progress_signal_count?: number | null;
+  slippage_signal_count?: number | null;
+};
+
+export type AssistantWeeklySummary = {
+  week_start?: string | null;
+  week_end?: string | null;
+  generated_at?: string | null;
+  progress?: Array<string | WeeklySummaryItem> | WeeklySignalCounts;
+  slippage?: Array<string | WeeklySummaryItem> | WeeklySignalCounts;
+  adaptation_options?: WeeklyAdaptationOption[];
+  attention_items?: WeeklyAttentionItem[];
+  system_health?: WeeklySystemHealth | null;
 };
 
 type TodayOpenLoopSummary = {
@@ -150,6 +205,21 @@ type StrategicContextRow = {
   href?: string;
   prompt?: string;
   actionLabel?: string;
+};
+
+type WeeklyDisplayItem = {
+  key: string;
+  title: string;
+  detail?: string;
+};
+
+type WeeklyDisplayAction = {
+  key: string;
+  label: string;
+  href?: string;
+  prompt?: string;
+  disabled: boolean;
+  reason?: string;
 };
 
 const REVIEW_MODE_ORDER = ["recall", "understanding", "application", "synthesis", "judgment"] as const;
@@ -486,6 +556,149 @@ function buildStrategicContextRows(todaySummary: AssistantTodaySummary | null | 
   ].filter((row): row is StrategicContextRow => Boolean(row));
 
   return rows;
+}
+
+function cleanWeeklyText(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function weeklyItemTitle(item: string | WeeklySummaryItem): string | undefined {
+  if (typeof item === "string") {
+    return cleanWeeklyText(item);
+  }
+  const countPrefix = typeof item.count === "number" && item.count > 0 ? `${item.count} ` : "";
+  const title = cleanWeeklyText(item.title) || cleanWeeklyText(item.label);
+  return title ? `${countPrefix}${title}` : undefined;
+}
+
+function weeklyItemDetail(item: string | WeeklySummaryItem): string | undefined {
+  if (typeof item === "string") {
+    return undefined;
+  }
+  return cleanWeeklyText(item.body) || cleanWeeklyText(item.summary) || cleanWeeklyText(item.detail);
+}
+
+function formatWeeklyCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+const WEEKLY_PROGRESS_LABELS: Record<string, { singular: string; plural?: string }> = {
+  tasks_completed: { singular: "task completed", plural: "tasks completed" },
+  review_session_count: { singular: "review session" },
+  review_item_count: { singular: "review item" },
+  captures_created: { singular: "capture created", plural: "captures created" },
+  captures_processed: { singular: "capture processed", plural: "captures processed" },
+  captures_summarized: { singular: "capture summarized", plural: "captures summarized" },
+  cards_created: { singular: "card created", plural: "cards created" },
+  artifact_tasks_created: { singular: "artifact task created", plural: "artifact tasks created" },
+  goals_updated: { singular: "goal updated", plural: "goals updated" },
+  goals_reviewed: { singular: "goal reviewed", plural: "goals reviewed" },
+  projects_updated: { singular: "project updated", plural: "projects updated" },
+  projects_reviewed: { singular: "project reviewed", plural: "projects reviewed" },
+};
+
+const WEEKLY_SLIPPAGE_LABELS: Record<string, { singular: string; plural?: string }> = {
+  overdue_tasks: { singular: "overdue task" },
+  overdue_commitments: { singular: "overdue commitment" },
+  unprocessed_captures: { singular: "unprocessed capture" },
+  due_review_cards: { singular: "due review card" },
+  stale_active_projects: { singular: "stale active project" },
+  stale_active_goals: { singular: "goal due for review", plural: "goals due for review" },
+  projects_missing_next_action: { singular: "project missing a next action", plural: "projects missing next actions" },
+};
+
+function weeklyCountTitle(key: string, count: number, labels: Record<string, { singular: string; plural?: string }>): string {
+  const label = labels[key];
+  if (label) {
+    return formatWeeklyCount(count, label.singular, label.plural);
+  }
+  return formatWeeklyCount(count, key.replace(/_/g, " "));
+}
+
+function buildWeeklyCountItems(
+  counts: WeeklySignalCounts,
+  prefix: string,
+  labels: Record<string, { singular: string; plural?: string }>,
+): WeeklyDisplayItem[] {
+  return Object.entries(counts)
+    .flatMap(([key, value]) => {
+      const count = Number(value);
+      if (!Number.isFinite(count) || count <= 0) {
+        return [];
+      }
+      return [
+        {
+          key: `${prefix}-${key}`,
+          title: weeklyCountTitle(key, count, labels),
+        },
+      ];
+    })
+    .slice(0, 3);
+}
+
+function buildWeeklyItems(
+  items: Array<string | WeeklySummaryItem> | WeeklySignalCounts | undefined,
+  prefix: string,
+  labels: Record<string, { singular: string; plural?: string }>,
+): WeeklyDisplayItem[] {
+  if (!items) {
+    return [];
+  }
+  if (!Array.isArray(items)) {
+    return buildWeeklyCountItems(items, prefix, labels);
+  }
+  return items
+    .flatMap((item, index) => {
+      const title = weeklyItemTitle(item);
+      if (!title) {
+        return [];
+      }
+      const itemKey = typeof item === "string" ? item : item.key || item.title || item.label || title;
+      return [
+        {
+          key: `${prefix}-${itemKey}-${index}`,
+          title,
+          detail: weeklyItemDetail(item),
+        },
+      ];
+    })
+    .slice(0, 3);
+}
+
+function buildWeeklyActions(options: WeeklyAdaptationOption[] | undefined): WeeklyDisplayAction[] {
+  return (options || [])
+    .flatMap((option, index) => {
+      const label = cleanWeeklyText(option.action_label || undefined) || cleanWeeklyText(option.title) || cleanWeeklyText(option.label);
+      if (!label) {
+        return [];
+      }
+      const href = cleanWeeklyText(option.href || undefined);
+      const prompt = cleanWeeklyText(option.prompt || undefined);
+      const disabled = option.enabled === false || (!href && !prompt);
+      return [
+        {
+          key: `${option.key || label}-${index}`,
+          label,
+          href: disabled ? undefined : href,
+          prompt: disabled ? undefined : prompt,
+          disabled,
+          reason: cleanWeeklyText(option.reason) || cleanWeeklyText(option.status) || cleanWeeklyText(option.body),
+        },
+      ];
+    })
+    .slice(0, 3);
+}
+
+function hasWeeklyContent(weeklySummary: AssistantWeeklySummary | null | undefined): boolean {
+  if (!weeklySummary) {
+    return false;
+  }
+  return (
+    buildWeeklyItems(weeklySummary.progress, "progress", WEEKLY_PROGRESS_LABELS).length > 0 ||
+    buildWeeklyItems(weeklySummary.slippage, "slippage", WEEKLY_SLIPPAGE_LABELS).length > 0 ||
+    buildWeeklyActions(weeklySummary.adaptation_options).length > 0
+  );
 }
 
 function collectTodayOpenLoops(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
@@ -894,6 +1107,7 @@ function AttachmentSection({ attachment }: { attachment: AssistantAttachment }) 
 function TodayPanel({
   snapshot,
   todaySummary,
+  weeklySummary,
   openLoops,
   contextItems,
   busy,
@@ -901,6 +1115,7 @@ function TodayPanel({
 }: {
   snapshot: AssistantThreadSnapshot;
   todaySummary?: AssistantTodaySummary | null;
+  weeklySummary?: AssistantWeeklySummary | null;
   openLoops: TodayItem[];
   contextItems: TodayItem[];
   busy: boolean;
@@ -911,6 +1126,10 @@ function TodayPanel({
   const atAGlanceItems = buildAtAGlanceItems(todaySummary, openLoops, contextItems);
   const quickActions = buildQuickActions(todaySummary);
   const strategicRows = buildStrategicContextRows(todaySummary);
+  const weeklyProgress = buildWeeklyItems(weeklySummary?.progress, "progress", WEEKLY_PROGRESS_LABELS);
+  const weeklySlippage = buildWeeklyItems(weeklySummary?.slippage, "slippage", WEEKLY_SLIPPAGE_LABELS);
+  const weeklyActions = buildWeeklyActions(weeklySummary?.adaptation_options);
+  const showWeeklySummary = hasWeeklyContent(weeklySummary);
 
   const renderAction = (action: TodayAction, className?: string) => {
     if (action.href) {
@@ -929,6 +1148,28 @@ function TodayPanel({
       >
         {action.label}
       </button>
+    );
+  };
+
+  const renderWeeklyAction = (action: WeeklyDisplayAction) => {
+    if (action.href) {
+      return (
+        <a href={action.href}>
+          {action.label}
+        </a>
+      );
+    }
+    if (action.prompt) {
+      return (
+        <button type="button" onClick={() => onQuickStart(action.prompt || "")} disabled={busy}>
+          {action.label}
+        </button>
+      );
+    }
+    return (
+      <span className={styles.weeklyDisabledAction} aria-disabled="true" title={action.reason}>
+        {action.label}
+      </span>
     );
   };
 
@@ -963,6 +1204,57 @@ function TodayPanel({
           ) : null}
         </div>
       </article>
+
+      {showWeeklySummary ? (
+        <section className={styles.weeklyReview} aria-labelledby="assistant-weekly-systems-title">
+          <div className={styles.todayBlockHeader}>
+            <span id="assistant-weekly-systems-title">Weekly systems review</span>
+            <strong>{weeklyActions.length}</strong>
+          </div>
+          <div className={styles.weeklyReviewGrid}>
+            <div className={styles.weeklyReviewColumn}>
+              <span>Progress</span>
+              {weeklyProgress.length > 0 ? (
+                <ul>
+                  {weeklyProgress.map((item) => (
+                    <li key={item.key}>
+                      <strong>{item.title}</strong>
+                      {item.detail ? <small>{item.detail}</small> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No clear progress signal yet.</p>
+              )}
+            </div>
+            <div className={styles.weeklyReviewColumn}>
+              <span>Slippage</span>
+              {weeklySlippage.length > 0 ? (
+                <ul>
+                  {weeklySlippage.map((item) => (
+                    <li key={item.key}>
+                      <strong>{item.title}</strong>
+                      {item.detail ? <small>{item.detail}</small> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No material slip detected.</p>
+              )}
+            </div>
+          </div>
+          {weeklyActions.length > 0 ? (
+            <div className={styles.weeklyActions} aria-label="Weekly adaptation actions">
+              {weeklyActions.map((action) => (
+                <span key={action.key}>
+                  {renderWeeklyAction(action)}
+                  {action.disabled && action.reason ? <small>{action.reason}</small> : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className={styles.atAGlance} aria-label="At a glance">
         {atAGlanceItems.map((item) => (
@@ -1162,6 +1454,7 @@ export function MainRoomThread({
   loading,
   busy,
   todaySummary,
+  weeklySummary,
   todayOpenLoops,
   todayContextItems,
   onQuickStart,
@@ -1187,6 +1480,7 @@ export function MainRoomThread({
         <TodayPanel
           snapshot={snapshot}
           todaySummary={todaySummary}
+          weeklySummary={weeklySummary}
           openLoops={openLoops}
           contextItems={contextItems}
           busy={busy}
