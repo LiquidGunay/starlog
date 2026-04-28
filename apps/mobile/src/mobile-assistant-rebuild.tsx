@@ -14,7 +14,7 @@ import type {
 } from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ScrollView, Switch, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 import {
@@ -29,7 +29,13 @@ import {
   defaultPanelValues,
   fieldSummary,
   fieldValue,
+  MOBILE_PANEL_ACTION_LAYOUT,
+  MOBILE_PANEL_OPTION_LAYOUT,
+  mobileAssistantPanelLayout,
+  mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePlannerConflictPreview,
+  mobilePanelOptionViewModels,
   panelDismissPayload,
   panelKicker,
   panelSubmitPayload,
@@ -76,8 +82,6 @@ type MobileAssistantRebuildProps = {
   assistantWeeklySummary?: MobileAssistantWeeklySummary | null;
   onAssistantTodayAction: (action: MobileAssistantTodayAction) => void;
 };
-
-type ThreadLens = "live" | "artifacts" | "actions";
 
 function bodyLines(body?: string | null): string[] {
   return (body || "")
@@ -288,23 +292,6 @@ function attachmentPreview(
     <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>
       {card.body || "No detail available."}
     </Text>
-  );
-}
-
-function messageHasArtifactContent(message: AssistantThreadMessage): boolean {
-  return cardParts(message).length > 0 || attachmentParts(message).length > 0;
-}
-
-function messageHasActionContent(message: AssistantThreadMessage): boolean {
-  return (
-    ambientParts(message).length > 0
-    || toolCallParts(message).length > 0
-    || toolResultParts(message).length > 0
-    || statusParts(message).length > 0
-    || interruptRequestParts(message).length > 0
-    || interruptResolutionParts(message).length > 0
-    || message.role === "system"
-    || message.role === "tool"
   );
 }
 
@@ -568,18 +555,22 @@ function ToolResultRow({
 }
 
 function InterruptFieldInput({
+  interrupt,
   field,
   values,
   palette,
   accent,
   setValue,
 }: {
+  interrupt: AssistantInterrupt;
   field: AssistantInterruptField;
   values: Record<string, unknown>;
   palette: Record<string, string>;
   accent?: { text: string; bg: string; border: string };
   setValue: (value: unknown) => void;
 }) {
+  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+
   if (field.kind === "toggle") {
     return (
       <View
@@ -607,48 +598,75 @@ function InterruptFieldInput({
   }
 
   if (field.kind === "select" || field.kind === "priority") {
-    const options =
-      field.options && field.options.length > 0
-        ? field.options
-        : field.kind === "priority"
-          ? [1, 2, 3, 4, 5].map((option) => ({ label: `Priority ${option}`, value: String(option) }))
-          : [];
+    const options = mobilePanelOptionViewModels(interrupt, field, values);
     return (
       <View style={{ gap: 8 }}>
         <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
           {field.label}
         </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+        <View style={{ gap: 8 }}>
           {options.map((option) => {
-            const active = fieldValue(values, field) === option.value;
             return (
               <TouchableOpacity
                 key={`${field.id}-${option.value}`}
                 style={{
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 7,
+                  minHeight: MOBILE_PANEL_OPTION_LAYOUT.minHeight,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
                   borderWidth: 1,
-                  borderColor: active ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
-                  backgroundColor: active ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  borderColor: option.selected ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                  backgroundColor: option.selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 11,
                 }}
                 onPress={() => setValue(option.value)}
               >
-                <Text
+                <View
                   style={{
-                    color: active ? accent?.text || palette.text : palette.muted,
-                    fontSize: 11,
-                    fontWeight: "800",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.6,
+                    width: MOBILE_PANEL_OPTION_LAYOUT.iconSize,
+                    height: MOBILE_PANEL_OPTION_LAYOUT.iconSize,
+                    borderRadius: MOBILE_PANEL_OPTION_LAYOUT.iconSize / 2,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: option.selected ? accent?.text || palette.accent : "rgba(255,255,255,0.16)",
+                    backgroundColor: option.selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "transparent",
+                    flexShrink: 0,
                   }}
                 >
-                  {option.label}
-                </Text>
+                  <MaterialCommunityIcons
+                    name={option.selected ? "check" : "circle-outline"}
+                    size={15}
+                    color={option.selected ? accent?.text || palette.accent : palette.muted}
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <Text
+                    style={{
+                      color: option.selected ? accent?.text || palette.text : palette.text,
+                      fontSize: 15,
+                      lineHeight: 20,
+                      fontWeight: "800",
+                    }}
+                    numberOfLines={panelLayout.optionTitleMaxLines}
+                  >
+                    {option.label}
+                  </Text>
+                  {option.description ? (
+                    <Text
+                      style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}
+                      numberOfLines={panelLayout.optionDescriptionMaxLines}
+                    >
+                      {option.description}
+                    </Text>
+                  ) : null}
+                </View>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
     );
   }
@@ -717,6 +735,73 @@ function ConsequencePreview({
   );
 }
 
+function PlannerConflictMiniPreview({
+  interrupt,
+  palette,
+  accent,
+}: {
+  interrupt: AssistantInterrupt;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+}) {
+  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const preview = mobilePlannerConflictPreview(interrupt);
+  if (!preview) {
+    return null;
+  }
+
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 10,
+        paddingVertical: 10,
+        gap: 8,
+      }}
+    >
+      {[
+        { icon: "brain", title: preview.localTitle, tone: "#9fd3ff" },
+        { icon: "alert-outline", title: preview.overlapLabel, tone: "#ff6f59" },
+        { icon: "account-group-outline", title: preview.remoteTitle, tone: "#c8a5ff" },
+      ].map((item, index) => (
+        <View
+          key={`${item.title}-${index}`}
+          style={{
+            minHeight: 38,
+            borderRadius: 12,
+            paddingHorizontal: 9,
+            paddingVertical: 8,
+            backgroundColor: index === 1 ? "rgba(255, 111, 89, 0.1)" : "rgba(255,255,255,0.018)",
+            borderWidth: 1,
+            borderColor: index === 1 ? "rgba(255, 111, 89, 0.18)" : "rgba(255,255,255,0.045)",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 9,
+          }}
+        >
+          <MaterialCommunityIcons name={item.icon as never} size={17} color={index === 1 ? "#ff6f59" : item.tone || accent.text} />
+          <Text
+            style={{
+              flex: 1,
+              minWidth: 0,
+              color: index === 1 ? "#ff8a72" : palette.text,
+              fontSize: 13.5,
+              lineHeight: 18,
+              fontWeight: "700",
+            }}
+            numberOfLines={panelLayout.conflictTitleMaxLines}
+          >
+            {item.title}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function DynamicPanelRenderer({
   interrupt,
   values,
@@ -743,6 +828,7 @@ function DynamicPanelRenderer({
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
   const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
+  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
 
   return (
     <View
@@ -782,6 +868,8 @@ function DynamicPanelRenderer({
         <EntityActionChip entityRef={interrupt.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
       </View>
 
+      <PlannerConflictMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
+
       {pending ? (
         <>
           {selectedLabel ? (
@@ -797,6 +885,7 @@ function DynamicPanelRenderer({
             {interrupt.fields.map((field) => (
               <View key={`${interrupt.id}-${field.id}`} style={{ gap: 5 }}>
                 <InterruptFieldInput
+                  interrupt={interrupt}
                   field={field}
                   values={values}
                   palette={palette}
@@ -831,37 +920,43 @@ function DynamicPanelRenderer({
 
           <ConsequencePreview interrupt={interrupt} palette={palette} accent={accent} />
 
-          <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flexDirection: panelLayout.actionDirection, gap: 8, flexWrap: panelLayout.actionWraps ? "wrap" : "nowrap" }}>
             <TouchableOpacity
               style={{
-                flex: 1,
-                borderRadius: 999,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.06)",
-                backgroundColor: "rgba(255,255,255,0.03)",
+                flexGrow: 1,
+                flexBasis: panelLayout.actionPrimaryBasis,
+                minHeight: MOBILE_PANEL_ACTION_LAYOUT.minHeight,
+                borderRadius: 14,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                backgroundColor: accent.text,
                 alignItems: "center",
+                justifyContent: "center",
               }}
-              onPress={onDismiss}
+              onPress={onSubmit}
             >
-              <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                {interrupt.secondary_label || interrupt.defer_label || "Dismiss"}
+              <Text style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
+                {interrupt.primary_label}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={{
-                flex: 1,
-                borderRadius: 999,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                backgroundColor: accent.text,
+                flexGrow: 1,
+                flexBasis: panelLayout.actionSecondaryBasis,
+                minHeight: MOBILE_PANEL_ACTION_LAYOUT.minHeight,
+                borderRadius: 14,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
+                backgroundColor: "rgba(255,255,255,0.03)",
                 alignItems: "center",
+                justifyContent: "center",
               }}
-              onPress={onSubmit}
+              onPress={onDismiss}
             >
-              <Text style={{ color: palette.onAccent, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                {interrupt.primary_label}
+              <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
+                {interrupt.secondary_label || interrupt.defer_label || "Dismiss"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -915,11 +1010,11 @@ export function MobileAssistantRebuild({
   assistantWeeklySummary,
   onAssistantTodayAction,
 }: MobileAssistantRebuildProps) {
-  const [threadLens, setThreadLens] = useState<ThreadLens>("live");
   const [activeAttachmentByMessage, setActiveAttachmentByMessage] = useState<Record<string, number>>({});
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
+  const assistantPanelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
 
   const liveInterrupts = threadSnapshot?.interrupts ?? [];
   const liveInterruptById = useMemo(
@@ -947,10 +1042,6 @@ export function MobileAssistantRebuild({
     () => visibleThreadMessages.reduce((count, message) => count + cardParts(message).length + attachmentParts(message).length, 0),
     [visibleThreadMessages],
   );
-  const assistantReplyCount = useMemo(
-    () => visibleThreadMessages.filter((message) => message.role === "assistant").length,
-    [visibleThreadMessages],
-  );
   const suggestionPills = useMemo(
     () => previewSuggestions(visibleThreadMessages, liveInterrupts),
     [liveInterrupts, visibleThreadMessages],
@@ -964,15 +1055,6 @@ export function MobileAssistantRebuild({
     [interruptValuesById, liveInterrupts],
   );
 
-  const filteredMessages = useMemo(() => {
-    if (threadLens === "live") {
-      return visibleThreadMessages;
-    }
-    return visibleThreadMessages.filter((message) =>
-      threadLens === "artifacts" ? messageHasArtifactContent(message) : messageHasActionContent(message),
-    );
-  }, [threadLens, visibleThreadMessages]);
-
   const voiceLabel =
     voiceActionState === "recording"
       ? "Listening now"
@@ -985,7 +1067,10 @@ export function MobileAssistantRebuild({
   const voiceIcon =
     voiceActionState === "recording" ? "stop" : voiceActionState === "listening" ? "waveform" : "microphone-outline";
   const showVoiceHint = voiceActionState !== "idle" || Boolean(voiceActionHint);
-  const displaySuggestions = homeDraft.trim().length === 0 ? suggestionPills : suggestionPills.slice(0, 1);
+  const displaySuggestions = useMemo(
+    () => mobileAssistantPromptChips(suggestionPills, homeDraft),
+    [homeDraft, suggestionPills],
+  );
   const todayViewModel = useMemo(
     () => buildMobileAssistantTodayViewModel(assistantTodaySummary),
     [assistantTodaySummary],
@@ -999,17 +1084,27 @@ export function MobileAssistantRebuild({
     <View style={{ gap: 16, paddingTop: 4 }}>
       <View style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <View style={{ gap: 2, flex: 1 }}>
-            <Text style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "800" }}>Starlog Assistant</Text>
-            <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 15, fontWeight: "700" }}>
-              {pendingConversationTurn ? "Syncing reply" : "Synced just now"}
+          <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 11 }}>
+            <MaterialCommunityIcons name={"star-four-points" as never} size={31} color={palette.accent} />
+            <Text style={{ flexShrink: 1, color: palette.text, fontSize: 24, lineHeight: 30, fontWeight: "800" }} numberOfLines={1}>
+              Starlog Assistant
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7, flexShrink: 0 }}>
+            <MaterialCommunityIcons
+              name={pendingConversationTurn ? "sync" : "check-circle-outline"}
+              size={18}
+              color={pendingConversationTurn ? palette.accent : "#5ee079"}
+            />
+            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 16, fontWeight: "700" }} numberOfLines={1}>
+              {pendingConversationTurn ? "Syncing" : "Synced just now"}
             </Text>
           </View>
           <View
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: 17,
+              width: 38,
+              height: 38,
+              borderRadius: 19,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.1)" : "rgba(255,255,255,0.025)",
@@ -1027,69 +1122,31 @@ export function MobileAssistantRebuild({
               key={label}
               style={{
                 borderRadius: 999,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                backgroundColor: label === "Inline panel" ? "rgba(166, 222, 191, 0.1)" : "rgba(255,255,255,0.018)",
+                paddingHorizontal: 13,
+                paddingVertical: 9,
+                backgroundColor: label === "Inline panel" || label === "Deep work window" ? "rgba(243, 178, 66, 0.1)" : "rgba(255,255,255,0.025)",
                 borderWidth: 1,
-                borderColor: label === "Inline panel" ? "rgba(166, 222, 191, 0.18)" : "rgba(255,255,255,0.04)",
+                borderColor: label === "Inline panel" || label === "Deep work window" ? "rgba(243, 178, 66, 0.22)" : "rgba(255,255,255,0.07)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 7,
               }}
             >
-              <Text style={{ color: label === "Inline panel" ? "#d8f3e2" : palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              <MaterialCommunityIcons
+                name={(label === "Morning" ? "white-balance-sunny" : label === "Today" ? "calendar-blank-outline" : label === "Work" ? "briefcase-outline" : "target") as never}
+                size={15}
+                color={label === "Inline panel" || label === "Deep work window" || label === "Morning" ? palette.accent : palette.muted}
+              />
+              <Text style={{ color: label === "Inline panel" || label === "Deep work window" || label === "Morning" ? palette.text : palette.muted, fontSize: 14, fontWeight: "700" }}>
                 {label}
               </Text>
             </View>
           ))}
         </ScrollView>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-          {[
-            { id: "live", label: "Thread" },
-            { id: "artifacts", label: `Artifacts ${attachmentCount}` },
-            { id: "actions", label: `System ${hiddenThreadMessageCount > 0 ? hiddenThreadMessageCount : ""}`.trim() },
-            { id: "count", label: `${assistantReplyCount} replies`, passive: true },
-          ].map((item) => {
-            if ("passive" in item) {
-              return (
-                <View
-                  key={item.id}
-                  style={{
-                    borderRadius: 999,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    backgroundColor: "rgba(255,255,255,0.018)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.04)",
-                  }}
-                >
-                  <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "700" }}>{item.label}</Text>
-                </View>
-              );
-            }
-            const active = threadLens === item.id;
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: 11,
-                  paddingVertical: 6,
-                  backgroundColor: active ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.018)",
-                  borderWidth: 1,
-                  borderColor: active ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.04)",
-                }}
-                onPress={() => setThreadLens(item.id as ThreadLens)}
-              >
-                <Text style={{ color: active ? palette.text : palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
       </View>
 
       <View style={{ gap: 16, paddingBottom: 4 }}>
-        {filteredMessages.length === 0 ? (
+        {visibleThreadMessages.length === 0 ? (
           visibleThreadMessages.length === 0 && todayViewModel ? (
             <View
               style={{
@@ -1204,23 +1261,6 @@ export function MobileAssistantRebuild({
                 </TouchableOpacity>
               ) : null}
 
-              {todayViewModel.openLoops.length > 0 ? (
-                <View
-                  style={{
-                    borderTopWidth: 1,
-                    borderTopColor: "rgba(255,255,255,0.05)",
-                    paddingTop: 11,
-                    gap: 7,
-                  }}
-                >
-                  {todayViewModel.openLoops.map((loop) => (
-                    <View key={loop.key} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 17 }}>{loop.label}</Text>
-                      <Text style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{loop.count}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
             </View>
           ) : (
             <View style={{ alignItems: "center", gap: 10, paddingTop: 40, paddingHorizontal: 28 }}>
@@ -1234,8 +1274,8 @@ export function MobileAssistantRebuild({
             </View>
           )
         ) : (
-          filteredMessages.map((message, index) => {
-            const previousRole = filteredMessages[index - 1]?.role;
+          visibleThreadMessages.map((message, index) => {
+            const previousRole = visibleThreadMessages[index - 1]?.role;
             const isUser = message.role === "user";
             const cards = cardParts(message).map((part) => part.card);
             const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
@@ -1255,12 +1295,43 @@ export function MobileAssistantRebuild({
             const content = assistantMessageText(message);
 
             return (
-              <View key={message.id} style={{ gap: 8, alignItems: isUser ? "flex-end" : "stretch" }}>
+              <View
+                key={message.id}
+                style={{
+                  gap: 8,
+                  alignItems: isUser ? "flex-end" : "stretch",
+                  ...(message.role === "assistant"
+                    ? {
+                        borderRadius: 22,
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.08)",
+                        backgroundColor: "rgba(11, 22, 36, 0.74)",
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                      }
+                    : null),
+                }}
+              >
                 {showMarker ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginLeft: 2 }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: palette.accent }} />
-                    <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
-                      {message.role === "assistant" ? "Assistant" : "System"} {timestampLabel(message.created_at) ? `· ${timestampLabel(message.created_at)}` : ""}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 2 }}>
+                    <View
+                      style={{
+                        width: message.role === "assistant" ? 34 : 8,
+                        height: message.role === "assistant" ? 34 : 8,
+                        borderRadius: 999,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: message.role === "assistant" ? "rgba(243, 178, 66, 0.11)" : palette.accent,
+                        borderWidth: message.role === "assistant" ? 1 : 0,
+                        borderColor: "rgba(243, 178, 66, 0.28)",
+                      }}
+                    >
+                      {message.role === "assistant" ? (
+                        <MaterialCommunityIcons name={"star-four-points" as never} size={18} color={palette.accent} />
+                      ) : null}
+                    </View>
+                    <Text style={{ color: message.role === "assistant" ? palette.accent : palette.muted, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
+                      {message.role === "assistant" ? "Starlog Assistant" : "System"} {timestampLabel(message.created_at) ? `  ${timestampLabel(message.created_at)}` : ""}
                     </Text>
                   </View>
                 ) : null}
@@ -1715,29 +1786,6 @@ export function MobileAssistantRebuild({
           </View>
         </View>
 
-        {displaySuggestions.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-            {displaySuggestions.map((label) => (
-              <TouchableOpacity
-                key={label}
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: 9,
-                  paddingVertical: 5,
-                  backgroundColor: "rgba(255,255,255,0.016)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.04)",
-                }}
-                onPress={() => setHomeDraft(label)}
-              >
-                <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
-
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
           <TouchableOpacity
             style={{
@@ -1830,6 +1878,35 @@ export function MobileAssistantRebuild({
             <MaterialCommunityIcons name={pendingConversationTurn ? "dots-horizontal" : "arrow-up"} size={19} color={palette.onAccent} />
           </TouchableOpacity>
         </View>
+
+        {displaySuggestions.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+            {displaySuggestions.map((label) => (
+              <TouchableOpacity
+                key={label}
+                style={{
+                  minHeight: 36,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  backgroundColor: "rgba(255,255,255,0.018)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.05)",
+                  justifyContent: "center",
+                  maxWidth: assistantPanelLayout.promptChipMaxWidth,
+                }}
+                onPress={() => setHomeDraft(label)}
+              >
+                <Text
+                  style={{ maxWidth: 190, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
       </View>
     </View>
   );

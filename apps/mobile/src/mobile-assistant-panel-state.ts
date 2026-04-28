@@ -20,6 +20,49 @@ export type MobileDynamicPanelState = {
   displayModeLabel: string;
 };
 
+export type MobilePanelOptionViewModel = {
+  label: string;
+  value: string;
+  description: string | null;
+  selected: boolean;
+};
+
+export type MobilePlannerConflictPreview = {
+  localTitle: string;
+  overlapLabel: string;
+  remoteTitle: string;
+};
+
+export type MobileAssistantPanelLayout = {
+  viewportWidth: number;
+  optionColumns: 1;
+  optionTitleMaxLines: number;
+  optionDescriptionMaxLines: number;
+  actionDirection: "row" | "column";
+  actionPrimaryBasis: number | "100%";
+  actionSecondaryBasis: number | "100%";
+  actionWraps: boolean;
+  conflictTitleMaxLines: number;
+  promptChipMaxWidth: "92%" | "100%";
+};
+
+export const MOBILE_PANEL_OPTION_LAYOUT = {
+  minHeight: 58,
+  titleMaxLines: 2,
+  descriptionMaxLines: 3,
+  iconSize: 28,
+  fullWidth: true,
+} as const;
+
+export const MOBILE_PANEL_ACTION_LAYOUT = {
+  minHeight: 46,
+  primaryBasis: 180,
+  secondaryBasis: 138,
+  wraps: true,
+} as const;
+
+export const MOBILE_ASSISTANT_MAX_PROMPT_CHIPS = 3;
+
 export function defaultPanelValues(interrupt: AssistantInterrupt): Record<string, unknown> {
   return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
     accumulator[field.id] = interrupt.recommended_defaults?.[field.id] ?? field.value ?? (field.kind === "toggle" ? false : "");
@@ -143,12 +186,15 @@ export function selectedValueLabel(interrupt: AssistantInterrupt, values: Record
 
 export function visibleContextChips(interrupts: AssistantInterrupt[], attachmentCount: number, hiddenThreadMessageCount: number): string[] {
   const pending = interrupts.find((interrupt) => interrupt.status === "pending");
-  const chips = ["Assistant"];
-  if (pending) {
-    chips.push(panelKicker(pending));
-    chips.push(pending.display_mode === "bottom_sheet" ? "Sheet ready" : "Inline panel");
+  const chips: string[] = [];
+  if (pending?.tool_name === "choose_morning_focus") {
+    chips.push("Morning", "Deep work window");
+  } else if (pending?.tool_name === "resolve_planner_conflict") {
+    chips.push("Work", "Today");
+  } else if (pending) {
+    chips.push(panelKicker(pending), pending.display_mode === "bottom_sheet" ? "Sheet ready" : "Inline panel");
   } else {
-    chips.push("Synced thread");
+    chips.push("Assistant", "Synced thread");
   }
   if (attachmentCount > 0) {
     chips.push(`${attachmentCount} artifact${attachmentCount === 1 ? "" : "s"}`);
@@ -157,4 +203,117 @@ export function visibleContextChips(interrupts: AssistantInterrupt[], attachment
     chips.push(`${hiddenThreadMessageCount} system`);
   }
   return chips.slice(0, 4);
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterruptField, value: string, label: string): string | null {
+  const fieldDescriptions = metadataRecord(field.metadata?.option_descriptions);
+  const interruptDescriptions = metadataRecord(interrupt.metadata?.option_descriptions);
+  const direct = fieldDescriptions[value] ?? interruptDescriptions[value] ?? fieldDescriptions[label] ?? interruptDescriptions[label];
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+  if (interrupt.tool_name === "choose_morning_focus") {
+    if (value.includes("project") || /project/i.test(label)) {
+      return "Make visible progress on a priority project.";
+    }
+    if (value.includes("friction") || /friction|system/i.test(label)) {
+      return "Reduce blockers and context switching.";
+    }
+    if (value.includes("learning") || /learning|review|practice/i.test(label)) {
+      return "Review or practice important material.";
+    }
+  }
+  if (interrupt.tool_name === "resolve_planner_conflict") {
+    if (value.includes("move") || /move/i.test(label)) {
+      return "Recommended - preserves your longer focus block.";
+    }
+    if (value.includes("shorten") || /shorten/i.test(label)) {
+      return "Keep both, but reduce protected time.";
+    }
+    if (value.includes("keep") || /keep/i.test(label)) {
+      return "Mark deep work flexible and decide later.";
+    }
+  }
+  return null;
+}
+
+export function mobilePanelOptionViewModels(
+  interrupt: AssistantInterrupt,
+  field: AssistantInterruptField,
+  values: Record<string, unknown>,
+): MobilePanelOptionViewModel[] {
+  const options =
+    field.options && field.options.length > 0
+      ? field.options
+      : field.kind === "priority"
+        ? [1, 2, 3, 4, 5].map((option) => ({ label: `Priority ${option}`, value: String(option) }))
+        : [];
+  const selected = fieldValue(values, field);
+  return options.map((option) => ({
+    label: option.label,
+    value: option.value,
+    description: optionDescription(interrupt, field, option.value, option.label),
+    selected: selected === option.value,
+  }));
+}
+
+export function mobileAssistantPromptChips(suggestions: string[], draft: string): string[] {
+  const seen = new Set<string>();
+  const cleaned = suggestions
+    .map((label) => label.trim())
+    .filter((label) => {
+      if (!label || seen.has(label.toLowerCase())) {
+        return false;
+      }
+      seen.add(label.toLowerCase());
+      return true;
+    });
+  return cleaned.slice(0, draft.trim().length > 0 ? 1 : MOBILE_ASSISTANT_MAX_PROMPT_CHIPS);
+}
+
+export function mobileAssistantPanelLayout(viewportWidth: number): MobileAssistantPanelLayout {
+  const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 390;
+  const narrow = width < 360;
+  return {
+    viewportWidth: width,
+    optionColumns: 1,
+    optionTitleMaxLines: MOBILE_PANEL_OPTION_LAYOUT.titleMaxLines,
+    optionDescriptionMaxLines: narrow ? 4 : MOBILE_PANEL_OPTION_LAYOUT.descriptionMaxLines,
+    actionDirection: narrow ? "column" : "row",
+    actionPrimaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.primaryBasis,
+    actionSecondaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.secondaryBasis,
+    actionWraps: MOBILE_PANEL_ACTION_LAYOUT.wraps,
+    conflictTitleMaxLines: narrow ? 3 : 2,
+    promptChipMaxWidth: narrow ? "100%" : "92%",
+  };
+}
+
+export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): MobilePlannerConflictPreview | null {
+  if (interrupt.tool_name !== "resolve_planner_conflict") {
+    return null;
+  }
+  const payload = metadataRecord(interrupt.metadata?.conflict_payload);
+  const localTitle =
+    typeof payload.local_title === "string" && payload.local_title.trim()
+      ? payload.local_title.trim()
+      : typeof payload.block_title === "string" && payload.block_title.trim()
+        ? payload.block_title.trim()
+        : "Starlog focus block";
+  const remoteTitle =
+    typeof payload.remote_title === "string" && payload.remote_title.trim()
+      ? payload.remote_title.trim()
+      : typeof payload.title === "string" && payload.title.trim()
+        ? payload.title.trim()
+        : "Calendar event";
+  const overlapLabel =
+    typeof payload.overlap_label === "string" && payload.overlap_label.trim()
+      ? payload.overlap_label.trim()
+      : typeof payload.overlap_minutes === "number"
+        ? `Overlaps by ${payload.overlap_minutes}m`
+        : "Overlap";
+  return { localTitle, overlapLabel, remoteTitle };
 }

@@ -1,7 +1,13 @@
 import type { AssistantInterrupt } from "@starlog/contracts";
 import {
   defaultPanelValues,
+  mobileAssistantPanelLayout,
+  MOBILE_PANEL_ACTION_LAYOUT,
+  MOBILE_PANEL_OPTION_LAYOUT,
+  mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePlannerConflictPreview,
+  mobilePanelOptionViewModels,
   panelDismissPayload,
   panelSubmitPayload,
   visibleContextChips,
@@ -63,6 +69,13 @@ const second = interrupt({
     },
   ],
   recommended_defaults: { resolution: "move_deep_work" },
+  metadata: {
+    conflict_payload: {
+      local_title: "Very long deep work block for onboarding activation polish",
+      remote_title: "Extremely long product review meeting with platform and growth",
+      overlap_minutes: 30,
+    },
+  },
 });
 
 const states = mobileDynamicPanelStates([first, second], {
@@ -86,9 +99,103 @@ assert.deepEqual(submit.values, { resolution: "move_deep_work" });
 const dismiss = panelDismissPayload(first);
 assert.deepEqual(dismiss, { interruptId: "interrupt-1" });
 
-assert.deepEqual(visibleContextChips([second], 1, 2), ["Assistant", "Planner conflict", "Inline panel", "1 artifact"]);
+assert.deepEqual(visibleContextChips([first], 0, 0), ["Morning", "Deep work window"]);
+assert.deepEqual(visibleContextChips([second], 1, 2), ["Work", "Today", "1 artifact", "2 system"]);
 
 const resolved = mobileDynamicPanelStates([interrupt({ id: "resolved", status: "submitted" })], {});
 assert.equal(resolved[0].renderState, "resolved");
+
+const longFocus = interrupt({
+  id: "long-focus",
+  tool_name: "choose_morning_focus",
+  fields: [
+    {
+      id: "focus",
+      kind: "select",
+      label: "Focus option",
+      required: true,
+      options: [
+        {
+          label: "Move the very long onboarding and activation project forward without losing the morning window",
+          value: "project",
+        },
+        {
+          label: "Clear system friction across captures, project notes, and pending calendar cleanup",
+          value: "friction",
+        },
+      ],
+    },
+  ],
+  recommended_defaults: { focus: "project" },
+});
+const longOptions = mobilePanelOptionViewModels(longFocus, longFocus.fields[0], defaultPanelValues(longFocus));
+assert.equal(longOptions.length, 2);
+assert.equal(longOptions[0].selected, true);
+assert.equal(longOptions[0].description, "Make visible progress on a priority project.");
+assert.equal(
+  longOptions[1].label,
+  "Clear system friction across captures, project notes, and pending calendar cleanup",
+);
+
+const conflictOptions = mobilePanelOptionViewModels(second, second.fields[0], defaultPanelValues(second));
+assert.equal(conflictOptions[0].description, "Recommended - preserves your longer focus block.");
+assert.deepEqual(mobilePlannerConflictPreview(second), {
+  localTitle: "Very long deep work block for onboarding activation polish",
+  overlapLabel: "Overlaps by 30m",
+  remoteTitle: "Extremely long product review meeting with platform and growth",
+});
+
+assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {
+  minHeight: 58,
+  titleMaxLines: 2,
+  descriptionMaxLines: 3,
+  iconSize: 28,
+  fullWidth: true,
+});
+assert.deepEqual(MOBILE_PANEL_ACTION_LAYOUT, {
+  minHeight: 46,
+  primaryBasis: 180,
+  secondaryBasis: 138,
+  wraps: true,
+});
+assert.deepEqual(mobileAssistantPanelLayout(320), {
+  viewportWidth: 320,
+  optionColumns: 1,
+  optionTitleMaxLines: 2,
+  optionDescriptionMaxLines: 4,
+  actionDirection: "column",
+  actionPrimaryBasis: "100%",
+  actionSecondaryBasis: "100%",
+  actionWraps: true,
+  conflictTitleMaxLines: 3,
+  promptChipMaxWidth: "100%",
+});
+assert.deepEqual(mobileAssistantPanelLayout(412), {
+  viewportWidth: 412,
+  optionColumns: 1,
+  optionTitleMaxLines: 2,
+  optionDescriptionMaxLines: 3,
+  actionDirection: "row",
+  actionPrimaryBasis: 180,
+  actionSecondaryBasis: 138,
+  actionWraps: true,
+  conflictTitleMaxLines: 2,
+  promptChipMaxWidth: "92%",
+});
+
+assert.deepEqual(
+  mobileAssistantPromptChips(
+    [
+      "Plan my morning",
+      "What is most important?",
+      "Review later",
+      "This fourth prompt should not render",
+      "Plan my morning",
+    ],
+    "",
+  ),
+  ["Plan my morning", "What is most important?", "Review later"],
+);
+assert.deepEqual(mobileAssistantPromptChips(["Repair my afternoon", "Move the meeting"], "already typing"), ["Repair my afternoon"]);
 
 console.log("mobile assistant panel state tests passed");

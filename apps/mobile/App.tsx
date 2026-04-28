@@ -1,4 +1,4 @@
-import { StatusBar } from "expo-status-bar";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import * as Notifications from "expo-notifications";
@@ -16,6 +16,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  StatusBar as NativeStatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -75,7 +76,7 @@ import {
   DesktopFallbackSection,
   ReviewSessionSection,
 } from "./src/mobile-support-panel-sections";
-import { MobileAssistantDrawer, MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
+import { MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
@@ -3968,7 +3969,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   if (!token) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+        <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="always">
           <MobileLoginSurface
             styles={styles}
@@ -3995,53 +3996,28 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
-      <MobileTopBar
-        styles={styles}
-        palette={palette}
-        isAssistantMode={isAssistantMode}
-        assistantPanelOpen={assistantPanelOpen}
-        onToggleAssistantPanel={() => setAssistantPanelOpen((value) => !value)}
-        onRefresh={() => {
-          loadExecutionPolicy("manual").catch(() => undefined);
-          loadArtifacts().catch(() => undefined);
-          loadAssistantTodaySummary("manual").catch(() => undefined);
-          loadAssistantWeeklySummary("manual").catch(() => undefined);
-          if (activeTab === "review") {
-            loadReviewSummary("manual").catch(() => undefined);
-            loadReviewDecks().catch(() => undefined);
-          }
-        }}
-        onToggleDiagnostics={() => {
-          const next = !showDiagnostics;
-          setShowDiagnostics(next);
-          setStatus(next ? "Diagnostics available" : "Diagnostics hidden");
-        }}
-      />
-      {isAssistantMode ? (
-        <MobileAssistantDrawer
+      <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+      {!isAssistantMode ? (
+        <MobileTopBar
           styles={styles}
           palette={palette}
-          open={assistantPanelOpen}
-          activeTab={activeTab}
-          messageCount={conversationMessages.length}
-          queuedCaptureCount={pendingCaptures.length}
-          pendingReply={Boolean(pendingConversationTurn)}
-          onClose={() => setAssistantPanelOpen(false)}
-          onSelectTab={(tab, label) => {
-            setActiveTab(tab);
-            setAssistantPanelOpen(false);
-            setStatus(`${label} ready`);
-          }}
-          onRefreshThread={() => {
-            loadConversation("manual").catch(() => undefined);
+          isAssistantMode={false}
+          assistantPanelOpen={assistantPanelOpen}
+          onToggleAssistantPanel={() => setAssistantPanelOpen((value) => !value)}
+          onRefresh={() => {
+            loadExecutionPolicy("manual").catch(() => undefined);
+            loadArtifacts().catch(() => undefined);
             loadAssistantTodaySummary("manual").catch(() => undefined);
             loadAssistantWeeklySummary("manual").catch(() => undefined);
-            setAssistantPanelOpen(false);
+            if (activeTab === "review") {
+              loadReviewSummary("manual").catch(() => undefined);
+              loadReviewDecks().catch(() => undefined);
+            }
           }}
-          onResetSession={() => {
-            resetConversationSession().catch(() => undefined);
-            setAssistantPanelOpen(false);
+          onToggleDiagnostics={() => {
+            const next = !showDiagnostics;
+            setShowDiagnostics(next);
+            setStatus(next ? "Diagnostics available" : "Diagnostics hidden");
           }}
         />
       ) : null}
@@ -4598,7 +4574,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           ]}
         />
       </ScrollView>
-      {keyboardVisible || isAssistantMode ? null : (
+      {keyboardVisible ? null : (
         <MobileBottomNav
           styles={styles}
           palette={palette}
@@ -4770,24 +4746,15 @@ function themedStyles(palette: Palette) {
     },
     assistantScrollContent: {
       paddingHorizontal: 12,
-      paddingTop: 12,
-      paddingBottom: 22,
+      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 14 : 14,
+      paddingBottom: 126,
       gap: 12,
     },
     assistantStage: {
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.05)",
-      borderRadius: 30,
-      backgroundColor: "rgba(27,16,22,0.52)",
-      paddingHorizontal: 12,
-      paddingTop: 10,
-      paddingBottom: 14,
+      paddingHorizontal: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
       gap: 12,
-      overflow: "hidden",
-      shadowColor: "#000",
-      shadowOpacity: 0.1,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 8 },
     },
     hero: {
       borderWidth: 1,
