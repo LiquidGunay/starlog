@@ -292,6 +292,8 @@
 .groupItem strong,
 .pressureCard strong,
 .conflictCard strong,
+.conflictItem strong,
+.summaryConflictNotice strong,
 .suggestionList strong {
   display: block;
 }
@@ -331,6 +333,25 @@
 .conflictCard {
   border-color: color-mix(in srgb, var(--warning), transparent 25%);
   background: color-mix(in srgb, var(--warning), transparent 90%);
+}
+
+.conflictList {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.conflictItem,
+.summaryConflictNotice {
+  display: grid;
+  gap: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--warning), transparent 42%);
+  padding-top: 0.55rem;
+}
+
+.conflictItem:first-child,
+.summaryConflictNotice:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .repairActions,

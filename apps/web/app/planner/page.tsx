@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import Link from "next/link";
+
 import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
@@ -276,12 +278,13 @@ export default function PlannerPage() {
   const [latestBriefing, setLatestBriefing] = useState<BriefingPackage | null>(null);
   const [latestSyncSummary, setLatestSyncSummary] = useState<SyncSummary | null>(null);
   const [status, setStatus] = useState("Ready");
-  const [planningPrompt, setPlanningPrompt] = useState("");
   const sidecarPane = usePaneCollapsed(PLANNER_SIDECAR_PANE_SNAPSHOT);
 
   const activeSummary = summary || EMPTY_SUMMARY;
   const unresolvedConflicts = useMemo(() => conflicts.filter((conflict) => !conflict.resolved), [conflicts]);
-  const conflictCount = Math.max(activeSummary.conflict_count, unresolvedConflicts.length);
+  const repairableConflictCount = unresolvedConflicts.length;
+  const summaryOnlyConflictCount = Math.max(0, activeSummary.conflict_count - repairableConflictCount);
+  const conflictCount = Math.max(activeSummary.conflict_count, repairableConflictCount);
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const blockItems = blocks
@@ -639,16 +642,6 @@ export default function PlannerPage() {
     [],
   );
 
-  const topConflict = unresolvedConflicts[0] || null;
-  const topConflictRange = topConflict
-    ? detailValue(topConflict.detail, "time_range") || detailValue(topConflict.detail, "window") || "Affected time needs review"
-    : null;
-  const topConflictSeverity = topConflict
-    ? detailValue(topConflict.detail, "severity") || (conflictCount > 1 ? "High" : "Medium")
-    : null;
-  const topConflictRepair = topConflict
-    ? detailValue(topConflict.detail, "suggested_repair") || "Choose the source of truth or replay sync after adjusting the block."
-    : null;
   const openTasks = bucketCount(summary, "task_buckets", "open_tasks");
   const dueTodayTasks = bucketCount(summary, "task_buckets", "due_today_tasks");
   const overdueTasks = bucketCount(summary, "task_buckets", "overdue_tasks");
@@ -689,11 +682,13 @@ export default function PlannerPage() {
           <div className="april-rail-section">
             <span className="april-rail-section-label">Suggestion</span>
             <p className="console-copy">
-              {conflictCount > 0
-                ? "Repair conflicts before adding more work."
-                : unscheduledTasks > 0
-                  ? "Place unscheduled tasks into the flexible parts of the day."
-                  : "Protect the focus blocks and keep buffers open."}
+              {repairableConflictCount > 0
+                ? "Repair calendar sync conflicts before adding more work."
+                : summaryOnlyConflictCount > 0
+                  ? "Planner reports conflicts that need a refresh or assistant review."
+                  : unscheduledTasks > 0
+                    ? "Place unscheduled tasks into the flexible parts of the day."
+                    : "Protect the focus blocks and keep buffers open."}
             </p>
           </div>
         </>
@@ -824,26 +819,12 @@ export default function PlannerPage() {
             <AprilPanel className={styles.composerPanel} aria-labelledby="planner-composer-heading">
               <div>
                 <span className="april-panel-kicker">Planning assistant</span>
-                <h2 id="planner-composer-heading">Ask for a safer plan</h2>
-                <p className="console-copy">Describe the change you want. Starlog can prepare a plan, but major writes still need confirmation.</p>
+                <h2 id="planner-composer-heading">Ask in Assistant with this plan in mind</h2>
+                <p className="console-copy">Use the persistent Assistant thread for plan changes that need reasoning or confirmation. This Planner surface keeps the current execution state visible.</p>
               </div>
               <div className={styles.composerRow}>
-                <input
-                  className="input"
-                  aria-label="Planning request"
-                  value={planningPrompt}
-                  onChange={(event) => setPlanningPrompt(event.target.value)}
-                  placeholder="Move deep work after the team sync and preserve 30 minutes of buffer"
-                />
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={() => {
-                    setStatus(planningPrompt.trim() ? "Planning request staged for assistant review" : "Add a planning request first");
-                  }}
-                >
-                  Stage request
-                </button>
+                <Link className="button primary" href="/assistant">Open Assistant</Link>
+                <button className="button" type="button" onClick={() => load()}>Refresh plan context</button>
               </div>
             </AprilPanel>
           </div>
@@ -874,20 +855,45 @@ export default function PlannerPage() {
                   <small>{totalKnownBlocks} fixed or flexible blocks, {activeSummary.calendar_event_count} calendar commitments</small>
                 </section>
 
-                <section className={topConflict ? styles.conflictCard : styles.pressureCard} aria-label="Conflict repair">
-                  <span className={topConflict ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>Conflict repair</span>
-                  {topConflict ? (
+                <section className={conflictCount > 0 ? styles.conflictCard : styles.pressureCard} aria-label="Conflict repair">
+                  <span className={conflictCount > 0 ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>Conflict repair</span>
+                  {repairableConflictCount > 0 ? (
+                    <div className={styles.conflictList}>
+                      {unresolvedConflicts.map((conflict) => {
+                        const conflictRange = detailValue(conflict.detail, "time_range") || detailValue(conflict.detail, "window") || "Affected time needs review";
+                        const conflictSeverity = detailValue(conflict.detail, "severity") || (conflictCount > 1 ? "High" : "Medium");
+                        const conflictRepair = detailValue(conflict.detail, "suggested_repair") || "Choose the source of truth or replay sync after adjusting the block.";
+
+                        return (
+                          <article key={conflict.id} className={styles.conflictItem} aria-label={`Conflict ${conflict.remote_id}`}>
+                            <strong>{detailValue(conflict.detail, "title") || `Remote ${conflict.remote_id}`}</strong>
+                            <small>{conflictRange}</small>
+                            <small>Severity: {conflictSeverity}</small>
+                            <small>{detailValue(conflict.detail, "reason") || `Strategy: ${conflict.strategy}`}</small>
+                            <p>{conflictRepair}</p>
+                            <div className={styles.repairActions}>
+                              <button className="button" type="button" onClick={() => replayConflict(conflict.id)}>Replay sync</button>
+                              <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "local_wins")}>Keep Starlog</button>
+                              <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "remote_wins")}>Use Google</button>
+                              <button className="button" type="button" onClick={() => resolveConflict(conflict.id, "dismiss")}>Dismiss</button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                      {summaryOnlyConflictCount > 0 ? (
+                        <article className={styles.summaryConflictNotice}>
+                          <strong>{summaryOnlyConflictCount} planner conflict{summaryOnlyConflictCount === 1 ? " needs" : "s need"} review outside calendar sync</strong>
+                          <small>Refresh the plan or open Assistant to inspect task and block conflicts.</small>
+                        </article>
+                      ) : null}
+                    </div>
+                  ) : summaryOnlyConflictCount > 0 ? (
                     <>
-                      <strong>{detailValue(topConflict.detail, "title") || `Remote ${topConflict.remote_id}`}</strong>
-                      <small>{topConflictRange}</small>
-                      <small>Severity: {topConflictSeverity}</small>
-                      <small>{detailValue(topConflict.detail, "reason") || `Strategy: ${topConflict.strategy}`}</small>
-                      <p>{topConflictRepair}</p>
+                      <strong>{summaryOnlyConflictCount} planner conflict{summaryOnlyConflictCount === 1 ? " needs" : "s need"} review</strong>
+                      <small>These conflicts are not Google sync conflicts, so calendar repair actions are not available here.</small>
                       <div className={styles.repairActions}>
-                        <button className="button" type="button" onClick={() => replayConflict(topConflict.id)}>Replay sync</button>
-                        <button className="button" type="button" onClick={() => resolveConflict(topConflict.id, "local_wins")}>Keep Starlog</button>
-                        <button className="button" type="button" onClick={() => resolveConflict(topConflict.id, "remote_wins")}>Use Google</button>
-                        <button className="button" type="button" onClick={() => resolveConflict(topConflict.id, "dismiss")}>Dismiss</button>
+                        <button className="button" type="button" onClick={() => load()}>Refresh plan</button>
+                        <Link className="button" href="/assistant">Open Assistant</Link>
                       </div>
                     </>
                   ) : (
@@ -901,8 +907,8 @@ export default function PlannerPage() {
                 <section className={styles.suggestionList} aria-label="Planner suggestions">
                   <h3>Suggestions</h3>
                   <article>
-                    <strong>{conflictCount > 0 ? "Repair first" : "Protect focus"}</strong>
-                    <small>{conflictCount > 0 ? "Resolve calendar drift before generating more blocks." : "Keep task-backed focus blocks stable unless a commitment moves."}</small>
+                    <strong>{repairableConflictCount > 0 ? "Repair calendar conflicts" : summaryOnlyConflictCount > 0 ? "Review planner conflicts" : "Protect focus"}</strong>
+                    <small>{repairableConflictCount > 0 ? "Resolve every listed calendar conflict before generating more blocks." : summaryOnlyConflictCount > 0 ? "Some task or block conflicts need Assistant review or a plan refresh." : "Keep task-backed focus blocks stable unless a commitment moves."}</small>
                   </article>
                   <article>
                     <strong>{activeSummary.buffer_minutes < 30 ? "Add buffer" : "Use buffer carefully"}</strong>
