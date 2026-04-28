@@ -12,6 +12,11 @@ import {
   type MobileLibraryPendingCapture,
   type MobileLibrarySegment,
 } from "./mobile-library-view-model";
+import {
+  deriveMobilePlannerViewModel,
+  type MobilePlannerSummary,
+  type MobilePlannerTimelineBlock,
+} from "./mobile-planner-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
@@ -121,6 +126,11 @@ type MobileLoginSurfaceProps = SharedProps & {
 };
 
 type MobileCalendarSurfaceProps = SharedProps & {
+  plannerSummary?: MobilePlannerSummary | null;
+  selectedPlannerDate: string;
+  setSelectedPlannerDate: (value: string) => void;
+  loadPlannerSummary: () => void;
+  repairPlannerConflict: () => void;
   stationTimeLabel: string;
   stationPeriod: string;
   briefingHeroCopy: string;
@@ -531,6 +541,38 @@ function libraryRowIcon(row: MobileLibraryInboxRow): keyof typeof MaterialCommun
     return "cube-outline";
   }
   return "text-box-outline";
+}
+
+function plannerTimelineTone(block: MobilePlannerTimelineBlock, palette: Record<string, string>) {
+  if (block.type === "focus") {
+    return { accent: "#a6debf", background: "rgba(166, 222, 191, 0.08)", border: "rgba(166, 222, 191, 0.18)" };
+  }
+  if (block.type === "meeting") {
+    return { accent: "#9fbfff", background: "rgba(159, 191, 255, 0.08)", border: "rgba(159, 191, 255, 0.18)" };
+  }
+  if (block.type === "conflict") {
+    return { accent: "#f3cf7a", background: "rgba(243, 207, 122, 0.1)", border: "rgba(243, 207, 122, 0.22)" };
+  }
+  if (block.type === "buffer") {
+    return { accent: "#c8b9c1", background: "rgba(255, 255, 255, 0.04)", border: "rgba(255, 255, 255, 0.09)" };
+  }
+  if (block.type === "away") {
+    return { accent: palette.secondary, background: "rgba(255, 255, 255, 0.03)", border: "rgba(255, 255, 255, 0.07)" };
+  }
+  return { accent: palette.accent, background: palette.surfaceLow, border: palette.border };
+}
+
+function plannerMetricTone(tone: string, palette: Record<string, string>) {
+  if (tone === "focus") {
+    return { color: "#a6debf", background: "rgba(166, 222, 191, 0.08)", border: "rgba(166, 222, 191, 0.16)" };
+  }
+  if (tone === "meeting") {
+    return { color: "#9fbfff", background: "rgba(159, 191, 255, 0.08)", border: "rgba(159, 191, 255, 0.15)" };
+  }
+  if (tone === "task") {
+    return { color: palette.accent, background: "rgba(241, 182, 205, 0.08)", border: "rgba(241, 182, 205, 0.14)" };
+  }
+  return { color: "#c8b9c1", background: "rgba(255, 255, 255, 0.04)", border: "rgba(255, 255, 255, 0.08)" };
 }
 
 function libraryStatChip(palette: Record<string, string>, label: string, value: string) {
@@ -1961,6 +2003,11 @@ export function MobileLoginSurface({
 export function MobileCalendarSurface({
   styles,
   palette,
+  plannerSummary,
+  selectedPlannerDate,
+  setSelectedPlannerDate,
+  loadPlannerSummary,
+  repairPlannerConflict,
   stationTimeLabel,
   stationPeriod,
   briefingHeroCopy,
@@ -1979,106 +2026,265 @@ export function MobileCalendarSurface({
   showAdvancedAlarms,
   toggleMissionTools,
 }: MobileCalendarSurfaceProps) {
+  const planner = deriveMobilePlannerViewModel({
+    summary: plannerSummary,
+    selectedDate: selectedPlannerDate,
+    nextActionPreview,
+    alarmScheduled,
+    nextBriefingCountdown,
+  });
+
   return (
-    <View style={{ gap: 24 }}>
+    <View style={{ gap: 18 }}>
       <View
         style={{
           ...cardBase(palette),
-          alignItems: "center",
-          backgroundColor: palette.surfaceLow,
-          paddingVertical: 30,
+          backgroundColor: "rgba(26, 17, 23, 0.72)",
+          paddingVertical: 18,
+          gap: 14,
         }}
       >
-        <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", letterSpacing: 2.8, textTransform: "uppercase" }}>
-          {PRODUCT_SURFACES.planner.label}
-        </Text>
-        <Text style={{ color: palette.accent, fontSize: 72, lineHeight: 78, fontWeight: "800", letterSpacing: -4 }}>
-          {stationTimeLabel}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Text style={{ color: palette.accent, fontSize: 24, fontWeight: "700" }}>{stationPeriod}</Text>
-          <View style={{ width: 40, height: 1, backgroundColor: palette.border }} />
-          <MaterialCommunityIcons name="bell-ring-outline" size={18} color={palette.accent} />
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <View style={{ flex: 1, gap: 7 }}>
+            <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1.6, textTransform: "uppercase" }}>
+              Starlog {PRODUCT_SURFACES.planner.label}
+            </Text>
+            <Text style={{ color: palette.text, fontSize: 28, lineHeight: 32, fontWeight: "800" }}>
+              {planner.dateLabel}
+            </Text>
+            <Text style={[bodyStyle(palette), { lineHeight: 20 }]}>{planner.decisionLabel}</Text>
+          </View>
+          <View style={{ alignItems: "flex-end", gap: 8 }}>
+            <View style={{ ...pillStyle(palette, true), flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <MaterialCommunityIcons name="cloud-check-outline" size={14} color={palette.accent} />
+              <Text style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                {planner.statusLabel}
+              </Text>
+            </View>
+            <TouchableOpacity style={pillStyle(palette)} onPress={loadPlannerSummary}>
+              <MaterialCommunityIcons name="refresh" size={17} color={palette.text} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <TouchableOpacity
+            accessibilityLabel="Previous planner day"
+            style={pillStyle(palette)}
+            onPress={() => setSelectedPlannerDate(planner.dateControls.previousDate)}
+          >
+            <MaterialCommunityIcons name="chevron-left" size={16} color={palette.text} />
+          </TouchableOpacity>
+          <View
+            style={{
+              ...pillStyle(palette, planner.dateControls.isToday),
+              opacity: planner.dateControls.isToday ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ color: planner.dateControls.isToday ? palette.accent : palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>
+              {planner.dateControls.isToday ? "Today" : "Selected"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            accessibilityLabel="Next planner day"
+            style={pillStyle(palette)}
+            onPress={() => setSelectedPlannerDate(planner.dateControls.nextDate)}
+          >
+            <MaterialCommunityIcons name="chevron-right" size={16} color={palette.text} />
+          </TouchableOpacity>
+          {!planner.dateControls.isToday ? (
+            <TouchableOpacity style={pillStyle(palette)} onPress={() => setSelectedPlannerDate(planner.dateControls.todayDate)}>
+              <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Today</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <MaterialCommunityIcons name="clock-outline" size={14} color={palette.accent} />
+            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>
+              {stationTimeLabel} {stationPeriod}
+            </Text>
+          </View>
+          <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <MaterialCommunityIcons name={alarmScheduled ? "bell-ring-outline" : "bell-outline"} size={14} color={palette.accent} />
+            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>
+              {alarmScheduled ? nextBriefingCountdown : "No alarm"}
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          {planner.dayStrip.map((day) => (
+            <TouchableOpacity
+              key={day.key}
+              onPress={() => setSelectedPlannerDate(day.key)}
+              style={{
+                width: 48,
+                borderRadius: 16,
+                paddingVertical: 10,
+                alignItems: "center",
+                gap: 4,
+                backgroundColor: day.active ? palette.accent : palette.surfaceHigh,
+                borderWidth: 1,
+                borderColor: day.active ? "transparent" : palette.border,
+              }}
+            >
+              <Text style={{ color: day.active ? palette.onAccent : palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                {day.weekday}
+              </Text>
+              <Text style={{ color: day.active ? palette.onAccent : palette.text, fontSize: 15, fontWeight: "800" }}>{day.day}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          {planner.metrics.map((metric) => {
+            const tone = plannerMetricTone(metric.tone, palette);
+            return (
+              <View
+                key={metric.label}
+                style={{
+                  minWidth: 74,
+                  flexGrow: 1,
+                  borderRadius: 16,
+                  paddingHorizontal: 11,
+                  paddingVertical: 10,
+                  backgroundColor: tone.background,
+                  borderWidth: 1,
+                  borderColor: tone.border,
+                  gap: 3,
+                }}
+              >
+                <Text style={{ color: tone.color, fontSize: 18, fontWeight: "800" }}>{metric.value}</Text>
+                <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  {metric.label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {planner.conflict ? (
+        <View style={{ ...cardBase(palette), borderColor: "rgba(243, 207, 122, 0.22)", backgroundColor: "rgba(243, 207, 122, 0.08)" }}>
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#f3cf7a" />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Text style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>{planner.conflict.title}</Text>
+              <Text style={bodyStyle(palette)}>{planner.conflict.body}</Text>
+              <TouchableOpacity style={{ ...pillStyle(palette), alignSelf: "flex-start" }} onPress={repairPlannerConflict}>
+                <Text style={{ color: "#f3cf7a", fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                  {planner.conflict.severityLabel}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      <View style={{ gap: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <View>
+            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Day timeline</Text>
+            <Text style={{ color: palette.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.9 }}>
+              Execution order
+            </Text>
+          </View>
+          <View style={pillStyle(palette)}>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Today</Text>
+          </View>
+        </View>
+        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 390 }}>
+          <View style={{ gap: 10, paddingBottom: 2 }}>
+            {planner.timelineBlocks.map((block, index) => {
+              const tone = plannerTimelineTone(block, palette);
+              return (
+                <View key={block.id} style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ width: 48, alignItems: "flex-end", paddingTop: 13 }}>
+                    <Text style={{ color: tone.accent, fontSize: 11, fontWeight: "800", fontFamily: "monospace" }}>{block.time}</Text>
+                  </View>
+                  <View style={{ alignItems: "center" }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 999, backgroundColor: tone.accent, marginTop: 16 }} />
+                    {index < planner.timelineBlocks.length - 1 ? <View style={{ width: 1, flex: 1, minHeight: 66, backgroundColor: palette.border, marginTop: 5 }} /> : null}
+                  </View>
+                  <View
+                    style={{
+                      flex: 1,
+                      borderRadius: 18,
+                      backgroundColor: tone.background,
+                      borderWidth: 1,
+                      borderColor: tone.border,
+                      padding: 13,
+                      gap: 6,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
+                      <Text style={{ flex: 1, color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>{block.title}</Text>
+                      <Text style={{ color: tone.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>{block.duration}</Text>
+                    </View>
+                    <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{block.detail}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+        <View style={{ ...cardBase(palette), flex: 1, minWidth: 150, padding: 14, gap: 7 }}>
+          <Text style={kickerStyle(palette)}>Next focus</Text>
+          <Text style={{ color: palette.text, fontSize: 17, lineHeight: 22, fontWeight: "800" }}>{planner.nextFocus.title}</Text>
+          <Text style={bodyStyle(palette)}>{planner.nextFocus.body}</Text>
+          <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "800", fontFamily: "monospace" }}>{planner.nextFocus.timeLabel}</Text>
+        </View>
+        <View style={{ ...cardBase(palette), flex: 1, minWidth: 150, padding: 14, gap: 7 }}>
+          <Text style={kickerStyle(palette)}>Upcoming</Text>
+          <Text style={{ color: palette.text, fontSize: 17, lineHeight: 22, fontWeight: "800" }}>{planner.upcoming.title}</Text>
+          <Text style={bodyStyle(palette)}>{planner.upcoming.body}</Text>
+          <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "800", fontFamily: "monospace" }}>{planner.upcoming.timeLabel}</Text>
         </View>
       </View>
 
       <View style={cardBase(palette)}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <View style={{ flex: 1 }}>
-            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Daily briefing</Text>
-            <Text style={bodyStyle(palette)}>{briefingHeroCopy}</Text>
-          </View>
-          <MaterialCommunityIcons name="star-four-points-outline" size={20} color={palette.accent} />
-        </View>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <View style={pillStyle(palette)}>
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "700" }}>Hydration</Text>
-          </View>
-          <View style={pillStyle(palette)}>
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "700" }}>Silence</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={{ gap: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <View>
-            <Text style={[headingStyle(palette), { fontSize: 24, lineHeight: 30 }]}>Today's plan</Text>
-            <Text style={{ color: palette.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2 }}>
-              {alarmScheduled ? `${nextBriefingCountdown} until briefing` : "Alarm unscheduled"}
-            </Text>
-          </View>
-          <TouchableOpacity style={pillStyle(palette)} onPress={openPwa}>
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Open desktop web</Text>
-          </TouchableOpacity>
-        </View>
-        {[
-          { time: "09:30", title: "Assistant follow-up", detail: nextActionPreview, active: true, critical: false },
-          { time: "12:00", title: "Focused work block", detail: "Protect a quiet block for your highest-value work.", active: false, critical: false },
-          { time: "15:45", title: "Priority handoff", detail: "Close the biggest open loop before the evening review.", active: true, critical: true },
-        ].map((item, index, items) => (
-          <View key={item.time} style={{ flexDirection: "row", gap: 14 }}>
-            <View style={{ alignItems: "center" }}>
-              <View
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 999,
-                  backgroundColor: item.active ? palette.accent : "transparent",
-                  borderWidth: item.active ? 0 : 2,
-                  borderColor: item.critical ? palette.accent : palette.border,
-                  marginTop: 5,
-                }}
-              />
-              {index < items.length - 1 ? <View style={{ width: 1, flex: 1, backgroundColor: palette.border, marginTop: 6 }} /> : null}
-            </View>
-            <View
-              style={{
-                flex: 1,
-                borderRadius: 18,
-                backgroundColor: item.critical ? palette.surfaceHighest : palette.surfaceLow,
-                borderWidth: 1,
-                borderColor: palette.border,
-                padding: 14,
-                gap: 6,
-                marginBottom: 10,
-              }}
-            >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <Text style={{ color: item.active ? palette.accent : palette.muted, fontSize: 11, fontWeight: "700", fontFamily: "monospace" }}>
-                  {item.time}
-                </Text>
-                {item.critical ? (
-                  <View style={{ ...pillStyle(palette, true), paddingHorizontal: 8, paddingVertical: 4 }}>
-                    <Text style={{ color: palette.accent, fontSize: 9, fontWeight: "800", textTransform: "uppercase" }}>Critical</Text>
-                  </View>
-                ) : null}
+        <Text style={kickerStyle(palette)}>Today's plan</Text>
+        {planner.planGroups.map((group) => (
+          <View key={group.title} style={{ gap: 7 }}>
+            <Text style={{ color: palette.text, fontSize: 15, fontWeight: "800" }}>{group.title}</Text>
+            {group.items.map((item) => (
+              <View key={`${group.title}-${item}`} style={{ flexDirection: "row", gap: 9, alignItems: "flex-start" }}>
+                <View style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: palette.accent, marginTop: 7 }} />
+                <Text style={{ flex: 1, color: palette.muted, fontSize: 13, lineHeight: 19 }}>{item}</Text>
               </View>
-              <Text style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{item.title}</Text>
-              <Text style={bodyStyle(palette)}>{item.detail}</Text>
-            </View>
+            ))}
           </View>
         ))}
+      </View>
+
+      <View style={cardBase(palette)}>
+        <Text style={kickerStyle(palette)}>Planner composer</Text>
+        <View
+          style={{
+            borderRadius: 18,
+            backgroundColor: palette.surfaceHigh,
+            borderWidth: 1,
+            borderColor: palette.border,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+          }}
+        >
+          <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
+            Ask Assistant to choose the next move, repair conflicts, or reserve focus time.
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          {planner.promptChips.map((chip) => (
+            <View key={chip} style={pillStyle(palette)}>
+              <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>{chip}</Text>
+            </View>
+          ))}
+        </View>
       </View>
 
       <View style={cardBase(palette)}>
@@ -2101,6 +2307,24 @@ export function MobileCalendarSurface({
           <TouchableOpacity style={pillStyle(palette)} onPress={generateAndCache}>
             <MaterialCommunityIcons name="download-outline" size={18} color={palette.accent} />
           </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={cardBase(palette)}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Daily briefing</Text>
+            <Text style={bodyStyle(palette)}>{briefingHeroCopy}</Text>
+          </View>
+          <MaterialCommunityIcons name="star-four-points-outline" size={20} color={palette.accent} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={pillStyle(palette)}>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "700" }}>Hydration</Text>
+          </View>
+          <View style={pillStyle(palette)}>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "700" }}>Silence</Text>
+          </View>
         </View>
       </View>
 
