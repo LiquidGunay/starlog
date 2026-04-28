@@ -1,0 +1,374 @@
+.surface {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.kicker,
+.label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.header h1,
+.section h2,
+.railCard h2,
+.railCard h3 {
+  margin: 0;
+  color: var(--text);
+  letter-spacing: 0;
+}
+
+.header h1 {
+  margin-top: 0.35rem;
+  font-size: clamp(2rem, 4vw, 4.6rem);
+  line-height: 0.98;
+}
+
+.header p {
+  max-width: 58rem;
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.syncState {
+  min-width: 12rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.8rem 0.9rem;
+  background: color-mix(in srgb, var(--panel), transparent 10%);
+  color: var(--muted);
+  text-align: right;
+}
+
+.syncState strong {
+  display: block;
+  color: var(--text);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stat {
+  min-height: 7.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--panel), transparent 4%), color-mix(in srgb, var(--surface), transparent 18%));
+}
+
+.stat strong {
+  display: block;
+  color: var(--text);
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.stat span {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 21rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.main {
+  display: grid;
+  gap: 1rem;
+}
+
+.section,
+.railCard {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--panel), transparent 7%);
+  box-shadow: var(--shadow);
+}
+
+.section {
+  padding: 1rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.sectionHeader h2 {
+  margin-top: 0.2rem;
+  font-size: 1.15rem;
+}
+
+.sectionHeader p {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.countPill,
+.statusPill,
+.typePill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--chip), transparent 18%);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.itemList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.row,
+.artifactCard,
+.noteCard {
+  border: 1px solid color-mix(in srgb, var(--line), transparent 12%);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--surface), transparent 10%);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  padding: 0.9rem;
+}
+
+.itemTitle {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.metaText {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.statusPill {
+  color: #a7f3d0;
+  border-color: color-mix(in srgb, #10b981, transparent 55%);
+  background: color-mix(in srgb, #064e3b, transparent 36%);
+}
+
+.statusPill[data-state="needs_decision"],
+.statusPill[data-state="ready_to_process"],
+.statusPill[data-state="stale"] {
+  color: #fde68a;
+  border-color: color-mix(in srgb, #f59e0b, transparent 55%);
+  background: color-mix(in srgb, #78350f, transparent 34%);
+}
+
+.statusPill[data-state="failed"] {
+  color: #fecaca;
+  border-color: color-mix(in srgb, #ef4444, transparent 52%);
+  background: color-mix(in srgb, #7f1d1d, transparent 36%);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+  align-content: flex-start;
+  max-width: 22rem;
+}
+
+.actionButton {
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.62rem;
+  background: color-mix(in srgb, var(--panel), transparent 6%);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.actionButton:hover {
+  border-color: color-mix(in srgb, var(--primary), transparent 35%);
+  color: var(--primary-soft);
+}
+
+.actionButton:disabled {
+  cursor: not-allowed;
+  color: color-mix(in srgb, var(--muted), transparent 22%);
+  border-color: color-mix(in srgb, var(--line), transparent 34%);
+  background: color-mix(in srgb, var(--surface), transparent 34%);
+  opacity: 0.62;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.artifactCard,
+.noteCard {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem;
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.noteBody {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.rail {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.railCard {
+  padding: 1rem;
+}
+
+.railCard h2,
+.railCard h3 {
+  margin-top: 0.2rem;
+  font-size: 1rem;
+}
+
+.breakdown {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.breakdownRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.breakdownRow strong {
+  color: var(--text);
+}
+
+.sourceList,
+.suggestionList {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourceList li,
+.suggestionList li {
+  border: 1px solid color-mix(in srgb, var(--line), transparent 16%);
+  border-radius: 0.45rem;
+  padding: 0.65rem;
+  color: var(--muted);
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--surface), transparent 16%);
+}
+
+.sourceList strong,
+.suggestionList strong {
+  display: block;
+  margin-bottom: 0.18rem;
+  color: var(--text);
+}
+
+.contextText,
+.emptyText,
+.feedback {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.feedback {
+  border: 1px solid color-mix(in srgb, var(--primary), transparent 58%);
+  border-radius: 0.45rem;
+  padding: 0.75rem 0.9rem;
+  background: color-mix(in srgb, var(--primary), transparent 88%);
+  color: var(--primary-soft);
+}
+
+@media (max-width: 1180px) {
+  .layout,
+  .header {
+    grid-template-columns: 1fr;
+  }
+
+  .syncState {
+    text-align: left;
+  }
+
+  .rail {
+    position: static;
+  }
+}
+
+@media (max-width: 860px) {
+  .stats,
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+}

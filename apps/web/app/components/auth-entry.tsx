@@ -190,7 +190,7 @@ export function AuthEntry() {
           <p>{hasSession ? "Primary routes:" : productCopy.brand.tagline}</p>
           <div className="auth-footer-links">
             <Link href="/assistant">{PRODUCT_SURFACES.assistant.label}</Link>
-            <Link href="/notes">{PRODUCT_SURFACES.library.label}</Link>
+            <Link href="/library">{PRODUCT_SURFACES.library.label}</Link>
             <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
             <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
           </div>

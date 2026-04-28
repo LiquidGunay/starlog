@@ -19,7 +19,7 @@ export default defineConfig({
   projects: [
     {
       name: "pwa-chromium",
-      testMatch: /pwa-assistant-concept\.functional\.spec\.ts/,
+      testMatch: /pwa-(assistant-concept|library)\.functional\.spec\.ts/,
       use: {
         viewport: { width: 1440, height: 960 },
       },
