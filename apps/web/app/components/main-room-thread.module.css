@@ -271,6 +271,84 @@
   letter-spacing: 0;
 }
 
+.strategicContext {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(143, 181, 210, 0.16);
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.strategicContextList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strategicContextItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.strategicContextCopy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.strategicContextCopy span {
+  color: rgba(143, 181, 210, 0.86);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.strategicContextCopy strong {
+  color: rgba(244, 241, 232, 0.9);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.strategicContextCopy p {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.62);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.strategicContextItem a,
+.strategicContextItem button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(244, 241, 232, 0.86);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.strategicContextItem a:hover,
+.strategicContextItem button:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.strategicContextItem button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .todayList {
   display: grid;
   gap: 8px;
@@ -694,8 +772,19 @@
 
   .recommendedMove,
   .atAGlance,
+  .strategicContextList,
   .todayGrid {
     grid-template-columns: 1fr;
+  }
+
+  .strategicContextItem {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .strategicContextItem a,
+  .strategicContextItem button {
+    justify-self: start;
   }
 
   .recommendedActions,

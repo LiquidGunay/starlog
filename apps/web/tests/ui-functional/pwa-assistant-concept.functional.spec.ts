@@ -235,6 +235,154 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
   await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Open Review" })).toHaveAttribute("href", "/review");
 });
 
+test("PWA assistant Today cockpit renders compact strategic context actions", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  await routeAssistantThread(page, () => assistantThreadSnapshot());
+  await routeAssistantToday(page, () =>
+    assistantTodaySummary({
+      open_loops: [
+        { key: "open_tasks", label: "Open tasks", count: 1, href: "/planner" },
+        { key: "overdue_tasks", label: "Overdue tasks", count: 0, href: "/planner" },
+        { key: "due_reviews", label: "Reviews due", count: 0, href: "/review" },
+        { key: "unprocessed_library", label: "Library inbox", count: 0, href: "/library" },
+        { key: "open_commitments", label: "Open commitments", count: 1, href: "/planner" },
+      ],
+      recommended_next_move: {
+        key: "define_project_next_action",
+        title: "Define next project action",
+        body: "1 active project missing a next action.",
+        surface: "planner",
+        href: "/planner",
+        action_label: "Open planner",
+        prompt: "Help me define next actions for active projects.",
+        priority: 85,
+        urgency: "medium",
+      },
+      reason_stack: ["1 active project missing a next action", "1 commitment open", "1 task open"],
+      strategic_context: {
+        active_goal_count: 2,
+        active_project_count: 2,
+        open_commitment_count: 1,
+        overdue_commitment_count: 0,
+        project_missing_next_action_count: 1,
+        attention_count: 3,
+        active_goals: [
+          {
+            id: "goal_launch",
+            title: "Ship a calm Android preview",
+            horizon: "quarter",
+            review_cadence: "weekly",
+            updated_at: "2026-04-27T09:00:00.000Z",
+            last_reviewed_at: null,
+          },
+          {
+            id: "goal_ignored",
+            title: "Second active goal should stay hidden",
+            horizon: "month",
+            review_cadence: "weekly",
+            updated_at: "2026-04-27T09:00:00.000Z",
+            last_reviewed_at: null,
+          },
+        ],
+        active_projects: [
+          {
+            id: "project_android_release",
+            goal_id: "goal_launch",
+            title: "Android release prep",
+            next_action_id: null,
+            updated_at: "2026-04-27T09:00:00.000Z",
+            last_reviewed_at: null,
+          },
+          {
+            id: "project_ignored",
+            goal_id: "goal_launch",
+            title: "Second active project should stay hidden",
+            next_action_id: "task_existing_next_action",
+            updated_at: "2026-04-27T09:00:00.000Z",
+            last_reviewed_at: null,
+          },
+        ],
+        open_commitments: [
+          {
+            id: "commitment_feedback",
+            source_type: "assistant",
+            source_id: null,
+            title: "Send preview feedback bundle",
+            promised_to: "tester group",
+            due_at: null,
+            updated_at: "2026-04-27T09:00:00.000Z",
+          },
+        ],
+        attention_items: [
+          {
+            key: "project_missing_next_action:project_android_release",
+            kind: "project_missing_next_action",
+            title: "Android release prep",
+            body: "Active project has no next action.",
+            entity_type: "project",
+            entity_id: "project_android_release",
+            surface: "planner",
+            href: "/planner",
+            priority: 85,
+            due_at: null,
+          },
+          {
+            key: "goal_review_due:goal_launch",
+            kind: "goal_review_due",
+            title: "Ship a calm Android preview",
+            body: "Active goal has not been reviewed within its weekly cadence.",
+            entity_type: "goal",
+            entity_id: "goal_launch",
+            surface: "planner",
+            href: "/planner",
+            priority: 50,
+            due_at: null,
+          },
+          {
+            key: "project_stale:project_ignored",
+            kind: "project_stale",
+            title: "Third attention item should stay hidden",
+            body: "Active project has not been reviewed in 14 days.",
+            entity_type: "project",
+            entity_id: "project_ignored",
+            surface: "planner",
+            href: "/planner",
+            priority: 55,
+            due_at: null,
+          },
+        ],
+      },
+    }),
+  );
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Define next project action" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open planner" })).toHaveAttribute("href", "/planner");
+
+  const strategicContext = page.getByLabel("Strategic context");
+  const goalRow = strategicContext.locator("article").filter({ hasText: /^Goal/ });
+  const projectRow = strategicContext.locator("article").filter({ hasText: /^Project/ });
+  const commitmentRow = strategicContext.locator("article").filter({ hasText: /^Commitment/ });
+  await expect(goalRow.getByText("Ship a calm Android preview")).toBeVisible();
+  await expect(projectRow.getByText("Android release prep", { exact: true })).toBeVisible();
+  await expect(commitmentRow.getByText("Send preview feedback bundle")).toBeVisible();
+  await expect(projectRow.getByText("No next action yet.")).toBeVisible();
+  await expect(strategicContext.getByText("Active project has no next action.")).toBeVisible();
+  await expect(strategicContext.getByText("Active goal has not been reviewed within its weekly cadence.")).toBeVisible();
+  await expect(strategicContext).not.toContainText("Second active goal should stay hidden");
+  await expect(strategicContext).not.toContainText("Second active project should stay hidden");
+  await expect(strategicContext).not.toContainText("Third attention item should stay hidden");
+  await expect(strategicContext.getByRole("link", { name: "Open" }).first()).toHaveAttribute("href", "/planner");
+
+  await projectRow.getByRole("button", { name: "Discuss" }).click();
+  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
+    'Help me choose the next action for "Android release prep".',
+  );
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-strategic-context.png", fullPage: true });
+});
+
 test("PWA assistant Today cockpit falls back to count-derived recommendation without enriched fields", async ({ page }) => {
   await seedAssistantSession(page);
 
@@ -261,6 +409,7 @@ test("PWA assistant Today cockpit falls back to count-derived recommendation wit
   await expect(page.getByLabel("Why this recommendation").getByText("2 tasks overdue")).toBeVisible();
   await expect(page.getByLabel("Why this recommendation").getByText("6 open tasks total")).toBeVisible();
   await expect(page.getByLabel("At a glance").getByText("Overdue tasks")).toBeVisible();
+  await expect(page.getByLabel("Strategic context")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Plan recovery" }).click();
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
