@@ -33,6 +33,10 @@ def _today_week_start() -> str:
     return utc_now().date().isoformat()
 
 
+def _insight(payload: dict, key: str) -> dict:
+    return next(item for item in payload["learning_insights"] if item["key"] == key)
+
+
 def _seed_surface_summary_fixture(user_id: str) -> dict[str, str]:
     now = utc_now()
     today = now.date()
@@ -396,6 +400,59 @@ def _defer_due_reviews(conn) -> None:
     conn.execute("UPDATE cards SET due_at = ?, updated_at = ? WHERE suspended = 0", (_iso(later), _iso(utc_now())))
 
 
+def _insert_review_card(
+    conn,
+    *,
+    card_type: str = "qa",
+    due_at: datetime | None = None,
+    prompt: str | None = None,
+) -> str:
+    now = utc_now()
+    card_id = new_id("crd")
+    conn.execute(
+        """
+        INSERT INTO cards (
+          id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+          tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            card_id,
+            None,
+            None,
+            None,
+            None,
+            card_type,
+            prompt or f"Prompt {card_type}",
+            "Answer",
+            "[]",
+            0,
+            _iso(due_at or now),
+            1,
+            0,
+            2.5,
+            _iso(now),
+            _iso(now),
+        ),
+    )
+    return card_id
+
+
+def _insert_review_event(
+    conn,
+    *,
+    card_id: str,
+    rating: int,
+    reviewed_at: datetime | None = None,
+) -> str:
+    event_id = new_id("rev")
+    conn.execute(
+        "INSERT INTO review_events (id, card_id, rating, latency_ms, reviewed_at) VALUES (?, ?, ?, ?, ?)",
+        (event_id, card_id, rating, 900, _iso(reviewed_at or utc_now())),
+    )
+    return event_id
+
+
 def _insert_active_goal(conn, *, title: str = "Keep strategy visible", reviewed_days_ago: int = 0) -> str:
     now = utc_now()
     reviewed_at = now - timedelta(days=reviewed_days_ago)
@@ -509,6 +566,122 @@ def test_surface_summary_endpoints_expose_representative_counts(
     assert review_payload["queue_health"]["suspended_count"] == 1
     assert review_payload["queue_health"]["reviewed_today_count"] == 1
     assert review_payload["queue_health"]["average_latency_ms"] == 1200
+
+
+def test_review_summary_recommends_application_drill_for_repeated_low_ratings(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    now = utc_now()
+    with get_connection() as conn:
+        first = _insert_review_card(conn, card_type="scenario", due_at=now + timedelta(days=3))
+        second = _insert_review_card(conn, card_type="scenario", due_at=now + timedelta(days=3))
+        _insert_review_event(conn, card_id=first, rating=1, reviewed_at=now - timedelta(days=1))
+        _insert_review_event(conn, card_id=second, rating=2, reviewed_at=now - timedelta(hours=2))
+        conn.commit()
+
+    response = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommended_drill"] == {
+        "mode": "application",
+        "title": "Application drill",
+        "body": "Practice cards with 2 recent low ratings before returning to the full queue.",
+        "prompt": "Start an application drill from cards I recently rated low.",
+        "reason": "2 recent low ratings on application cards.",
+        "enabled": True,
+    }
+    insight = _insight(payload, "recent_low_rating_application")
+    assert insight["mode"] == "application"
+    assert insight["ladder_stage"] == "application"
+    assert insight["count"] == 2
+    assert insight["severity"] == "medium"
+
+
+def test_review_summary_recommends_synthesis_drill_for_repeated_low_ratings(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    now = utc_now()
+    with get_connection() as conn:
+        first = _insert_review_card(conn, card_type="connect", due_at=now + timedelta(days=3))
+        second = _insert_review_card(conn, card_type="compare", due_at=now + timedelta(days=3))
+        _insert_review_event(conn, card_id=first, rating=2, reviewed_at=now - timedelta(days=1))
+        _insert_review_event(conn, card_id=second, rating=1, reviewed_at=now - timedelta(hours=2))
+        conn.commit()
+
+    response = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommended_drill"] == {
+        "mode": "synthesis",
+        "title": "Synthesis drill",
+        "body": "Practice cards with 2 recent low ratings before returning to the full queue.",
+        "prompt": "Start a synthesis drill from cards I recently rated low.",
+        "reason": "2 recent low ratings on synthesis cards.",
+        "enabled": True,
+    }
+    insight = _insight(payload, "recent_low_rating_synthesis")
+    assert insight["mode"] == "synthesis"
+    assert insight["ladder_stage"] == "synthesis"
+    assert insight["count"] == 2
+    assert insight["severity"] == "medium"
+
+
+def test_review_summary_surfaces_due_higher_ladder_cards_as_deeper_review_insight(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    now = utc_now()
+    with get_connection() as conn:
+        _insert_review_card(conn, card_type="scenario", due_at=now - timedelta(minutes=5))
+        _insert_review_card(conn, card_type="connect", due_at=now - timedelta(minutes=5))
+        _insert_review_card(conn, card_type="tradeoff", due_at=now - timedelta(minutes=5))
+        conn.commit()
+
+    response = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert _bucket(payload, "ladder_counts", "application") == 1
+    assert _bucket(payload, "ladder_counts", "synthesis") == 1
+    assert _bucket(payload, "ladder_counts", "judgment") == 1
+    insight = _insight(payload, "deeper_review_due")
+    assert insight["count"] == 3
+    assert insight["mode"] == "application"
+    assert insight["ladder_stage"] == "application"
+    assert insight["severity"] == "medium"
+    assert "application, synthesis, judgment" in insight["body"]
+    assert payload["recommended_drill"] == {
+        "mode": "application",
+        "title": "Short application pass",
+        "body": "Start with 3 due cards and calibrate from fresh ratings.",
+        "prompt": "Start a short application pass for my due cards.",
+        "reason": "3 cards due, led by application cards, and no review events in the last 14 days.",
+        "enabled": True,
+    }
+
+
+def test_review_summary_is_neutral_when_no_learning_data_exists(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    response = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["queue_health"]["due_count"] == 0
+    assert payload["learning_insights"] == []
+    assert payload["recommended_drill"] == {
+        "mode": "recall",
+        "title": "No drill recommended",
+        "body": "No due cards or repeated low-rating patterns are visible right now.",
+        "prompt": None,
+        "reason": "No due cards or recent low ratings found.",
+        "enabled": False,
+    }
 
 
 def test_assistant_today_summary_is_read_only_and_composes_open_loops(
