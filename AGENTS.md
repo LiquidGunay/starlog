@@ -42,6 +42,7 @@ Use the repo-local assistant reset documents as the active source of truth for A
 
 - Treat [VISION.md](/home/ubuntu/starlog/VISION.md), [starlog_surface_event_and_dynamic_ui_spec.md](/home/ubuntu/starlog/starlog_surface_event_and_dynamic_ui_spec.md), [starlog_assistant_ui_backend_migration_design.md](/home/ubuntu/starlog/starlog_assistant_ui_backend_migration_design.md), [starlog_assistant_ui_contracts_and_api_blueprint.md](/home/ubuntu/starlog/starlog_assistant_ui_contracts_and_api_blueprint.md), and [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md) as the active product and implementation basis for assistant work.
 - Treat [docs/ASSISTANT_UI_REFERENCE.md](/home/ubuntu/starlog/docs/ASSISTANT_UI_REFERENCE.md) and [apps/web/app/design/assistant-runtime-reference/page.tsx](/home/ubuntu/starlog/apps/web/app/design/assistant-runtime-reference/page.tsx) as the active repo-local UI reference artifacts.
+- Treat [artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md](/home/ubuntu/starlog/artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md), [artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md](/home/ubuntu/starlog/artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md), and their sibling PNG mockups as active UI implementation references.
 - Treat [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md) and the April 2026 pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as historical-only input. Use them for lineage checks, not as implementation targets.
 - When older docs or UI references conflict with the assistant reset documents, prefer the new assistant reset documents and update or remove the stale references.
 
@@ -69,6 +70,8 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `starlog_assistant_ui_repo_execution_checklist.md` — canonical execution-ordered migration checklist for the assistant reset.
 - `README.md` — top-level user-facing product README for install, sign-in handoff, release status, and operator entrypoints; keep developer internals and secrets out of it.
 - `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local UI reference for the assistant reset.
+- `artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md` — active PWA UI concept reference; use with sibling PNG mockups.
+- `artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md` — active mobile UI concept reference; use with sibling PNG mockups.
 - `docs/CHAT_UI_MOODBOARD.md` — historical-only prior chat redesign reference; not an active source of truth.
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
 - `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
@@ -132,6 +135,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - For Android validation from WSL on this host, treat Windows `adb.exe`, Windows-visible APK staging paths, and manual device unlock as the reliable baseline.
 - Preserve explicitly stated interaction contracts when redesigning assistant and support surfaces.
 - For major UI overhauls, refresh the repo-local reference artifact before changing shared components.
+- Major UI work must compare against `artifacts/ui-concept` mockups, rebuild the UX rather than reskin old components, and validate responsive mobile behavior so text does not wrap awkwardly or collide.
 - Keep assistant and agent behavior prompts in repo-local `.md` files under `services/ai-runtime/prompts/` so users can inspect and edit them directly; do not bury canonical prompt behavior in code literals.
 - Keep OpenAI/Codex credentials out of PWA and mobile clients; route agent work through the API, AI runtime, desktop helper, or paired worker with server-side/worker-local secret handling.
 - Keep docs-scoped workflow plans under `docs/`; replace them with updated versions rather than deleting them when the plan changes.
