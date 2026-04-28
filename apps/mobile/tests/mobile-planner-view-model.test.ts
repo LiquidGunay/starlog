@@ -108,6 +108,26 @@ assert.equal(fallback.planGroups[1].emptyLabel, "Refresh Planner to load task pr
 assert.deepEqual(fallback.planGroups[2].items, []);
 assert.equal(fallback.planGroups[2].summaryLabel, "Waiting");
 
+const fallbackWithAlarm = deriveMobilePlannerViewModel({
+  now: new Date("2026-04-28T12:00:00Z"),
+  nextActionPreview: "",
+  alarmScheduled: true,
+  nextBriefingCountdown: "18h",
+});
+
+assert.equal(fallbackWithAlarm.statusLabel, "No Planner summary loaded");
+assert.deepEqual(fallbackWithAlarm.planGroups[0].items, []);
+assert.equal(fallbackWithAlarm.planGroups[0].summaryLabel, "Unknown");
+assert.equal(fallbackWithAlarm.planGroups[0].emptyLabel, "Refresh Planner to load scheduled commitments for this date.");
+assert.deepEqual(fallbackWithAlarm.planGroups[1].items, []);
+assert.equal(fallbackWithAlarm.planGroups[1].summaryLabel, "Unknown");
+assert.equal(fallbackWithAlarm.planGroups[1].emptyLabel, "Refresh Planner to load task pressure for this date.");
+assert.deepEqual(fallbackWithAlarm.planGroups[2].items, []);
+assert.equal(fallbackWithAlarm.planGroups[2].summaryLabel, "Waiting");
+assert.equal(fallbackWithAlarm.nextFocus.timeLabel, "Unknown");
+assert.equal(fallbackWithAlarm.upcoming.timeLabel, "Unknown");
+assert.equal(fallbackWithAlarm.upcoming.metaLabel, "Refresh Planner");
+
 const futureFallback = deriveMobilePlannerViewModel({
   selectedDate: "2026-04-30",
   now: new Date("2026-04-28T12:00:00Z"),

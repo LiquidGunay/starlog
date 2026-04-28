@@ -128,6 +128,7 @@ export function deriveMobilePlannerViewModel(input: {
     ? "Built from the Planner summary counts available on device. Named blocks appear once the API returns them."
     : "Refresh Planner to load task, calendar, conflict, and block counts for this date.";
   const scheduledCommitments = buildScheduledCommitments({
+    hasSummary,
     focusMinutes,
     focusBlocks,
     meetingCount,
@@ -246,6 +247,7 @@ export function deriveMobilePlannerViewModel(input: {
 }
 
 function buildScheduledCommitments(input: {
+  hasSummary: boolean;
   focusMinutes: number;
   focusBlocks: number;
   meetingCount: number;
@@ -283,7 +285,7 @@ function buildScheduledCommitments(input: {
       tone: "buffer",
     });
   }
-  if (input.alarmScheduled) {
+  if (input.hasSummary && input.alarmScheduled) {
     items.push({
       id: "morning-briefing",
       title: "Morning briefing",
