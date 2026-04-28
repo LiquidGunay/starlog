@@ -13,6 +13,7 @@ before persisting the event.
 | `capture.untriaged` | `ambient` |
 | `task.created`, `task.completed`, `task.snoozed` | `ambient` |
 | `time_block.started`, `time_block.completed` | `ambient` |
+| `planner.conflict.resolved`, `planner.conflict.cleared` | `ambient` |
 | `review.session.started`, `review.answer.graded` | `ambient` |
 | `briefing.played`, `assistant.panel.submitted`, `voice.capture.transcribed` | `ambient` |
 | Unknown event with requested `assistant_message` | `assistant_message` |

@@ -67,6 +67,8 @@ Examples:
 - `task.completed`
 - `review.answer.graded`
 - `planner.conflict.detected`
+- `planner.conflict.resolved`
+- `planner.conflict.cleared`
 - `briefing.played`
 - `time_block.started`
 - `voice.capture.transcribed`
@@ -182,6 +184,8 @@ export const STARLOG_SURFACE_EVENT_KINDS = [
   "time_block.started",
   "time_block.completed",
   "planner.conflict.detected",
+  "planner.conflict.resolved",
+  "planner.conflict.cleared",
   "review.session.started",
   "review.answer.revealed",
   "review.answer.graded",
@@ -524,6 +528,8 @@ Do not ask the user to restate the task inside the popup.
 The user or assistant tries to place a block that overlaps an existing block.
 Surface emits:
 - `planner.conflict.detected`
+- `planner.conflict.resolved` after a direct Planner resolution
+- `planner.conflict.cleared` when replay shows the conflict no longer needs action
 
 ### Response shape
 1. ambient update or assistant warning
