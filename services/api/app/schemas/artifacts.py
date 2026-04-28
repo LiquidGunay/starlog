@@ -4,6 +4,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 ArtifactAction = Literal["summarize", "cards", "tasks", "append_note"]
+ArtifactDetailAction = Literal["summarize", "cards", "tasks", "append_note", "archive", "link"]
+ArtifactDetailLayerKind = Literal["raw", "normalized", "extracted"]
 
 
 class ArtifactCreateRequest(BaseModel):
@@ -38,6 +40,98 @@ class ArtifactActionResponse(BaseModel):
     action: ArtifactAction
     status: str
     output_ref: str | None = None
+
+
+class ArtifactDetailIdentityResponse(BaseModel):
+    id: str
+    source_type: str
+    title: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArtifactCaptureProvenanceResponse(BaseModel):
+    source_app: str | None = None
+    source_type: str
+    source_url: str | None = None
+    source_file: str | None = None
+    capture_method: str | None = None
+    captured_at: datetime
+    tags: list[str] = Field(default_factory=list)
+
+
+class ArtifactSourceLayerPreviewResponse(BaseModel):
+    layer: ArtifactDetailLayerKind
+    present: bool
+    preview: str | None = None
+    character_count: int | None = None
+    mime_type: str | None = None
+    checksum_sha256: str | None = None
+    source_filename: str | None = None
+
+
+class ArtifactLatestSummaryResponse(BaseModel):
+    id: str
+    version: int
+    provider: str
+    created_at: datetime
+    preview: str
+    character_count: int
+
+
+class ArtifactNoteLinkResponse(BaseModel):
+    id: str
+    title: str
+    version: int
+
+
+class ArtifactDetailRelationResponse(BaseModel):
+    id: str
+    artifact_id: str
+    relation_type: str
+    target_type: str
+    target_id: str
+    created_at: datetime
+
+
+class ArtifactDetailConnectionsResponse(BaseModel):
+    summary_version_count: int
+    latest_summary: ArtifactLatestSummaryResponse | None = None
+    card_count: int
+    card_set_version_count: int
+    task_count: int
+    note_count: int
+    notes: list[ArtifactNoteLinkResponse] = Field(default_factory=list)
+    relation_count: int
+    relations: list[ArtifactDetailRelationResponse] = Field(default_factory=list)
+    action_run_count: int
+
+
+class ArtifactDetailTimelineEventResponse(BaseModel):
+    kind: str
+    label: str
+    occurred_at: datetime
+    entity_type: str
+    entity_id: str
+    status: str | None = None
+
+
+class ArtifactDetailSuggestedActionResponse(BaseModel):
+    action: ArtifactDetailAction
+    label: str
+    enabled: bool
+    method: str | None = None
+    endpoint: str | None = None
+    disabled_reason: str | None = None
+
+
+class ArtifactDetailResponse(BaseModel):
+    artifact: ArtifactDetailIdentityResponse
+    capture: ArtifactCaptureProvenanceResponse
+    source_layers: list[ArtifactSourceLayerPreviewResponse]
+    connections: ArtifactDetailConnectionsResponse
+    timeline: list[ArtifactDetailTimelineEventResponse]
+    suggested_actions: list[ArtifactDetailSuggestedActionResponse]
 
 
 class SummaryVersionResponse(BaseModel):
