@@ -5,6 +5,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
+import {
+  deriveMobileLibraryViewModel,
+  type MobileLibraryArtifact,
+  type MobileLibraryInboxRow,
+  type MobileLibraryPendingCapture,
+  type MobileLibrarySegment,
+} from "./mobile-library-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
@@ -42,7 +49,10 @@ type MobileHomeSurfaceProps = SharedProps & {
 };
 
 type MobileNotesSurfaceProps = SharedProps & {
-  pendingCaptures: number;
+  pendingCaptures: MobileLibraryPendingCapture[];
+  artifacts: MobileLibraryArtifact[];
+  notesCount: number;
+  linkedProjectCount: number;
   quickCaptureTitle: string;
   setQuickCaptureTitle: (value: string) => void;
   quickCaptureSourceUrl: string;
@@ -510,27 +520,132 @@ function conversationActionTone(
   };
 }
 
-function artifactCard(
-  palette: Record<string, string>,
-  title: string,
-  detail: string,
-  metaA: string,
-  metaB: string,
-) {
+function libraryRowIcon(row: MobileLibraryInboxRow): keyof typeof MaterialCommunityIcons.glyphMap {
+  if (row.icon === "voice") {
+    return "microphone-outline";
+  }
+  if (row.icon === "file") {
+    return "file-document-outline";
+  }
+  if (row.icon === "artifact") {
+    return "cube-outline";
+  }
+  return "text-box-outline";
+}
+
+function libraryStatChip(palette: Record<string, string>, label: string, value: string) {
   return (
-    <View key={`${title}-${metaA}`} style={cardBase(palette)}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <Text style={{ flex: 1, color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "800" }}>{title}</Text>
-        <MaterialCommunityIcons name="dots-vertical" size={18} color={palette.muted} />
+    <View
+      key={label}
+      style={{
+        minWidth: 118,
+        borderRadius: 18,
+        backgroundColor: palette.surfaceLow,
+        borderWidth: 1,
+        borderColor: palette.border,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        gap: 4,
+      }}
+    >
+      <Text style={{ color: palette.text, fontSize: 20, fontWeight: "800" }}>{value}</Text>
+      <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function librarySegmentButton(
+  palette: Record<string, string>,
+  segment: MobileLibrarySegment,
+  activeSegment: MobileLibrarySegment,
+  onPress: (segment: MobileLibrarySegment) => void,
+) {
+  const active = segment === activeSegment;
+  return (
+    <TouchableOpacity
+      key={segment}
+      onPress={() => onPress(segment)}
+      style={{
+        flex: 1,
+        minWidth: 82,
+        borderRadius: 999,
+        paddingVertical: 10,
+        alignItems: "center",
+        backgroundColor: active ? palette.accent : "transparent",
+      }}
+    >
+      <Text style={{ color: active ? palette.onAccent : palette.muted, fontSize: 12, fontWeight: "800" }}>{segment}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function mobileCaptureRow(palette: Record<string, string>, row: MobileLibraryInboxRow) {
+  return (
+    <View
+      key={row.id}
+      style={{
+        borderRadius: 20,
+        backgroundColor: palette.surfaceLow,
+        borderWidth: 1,
+        borderColor: palette.border,
+        padding: 14,
+        gap: 12,
+      }}
+    >
+      <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 14,
+            backgroundColor: palette.surfaceHigh,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <MaterialCommunityIcons name={libraryRowIcon(row)} size={18} color={palette.accent} />
+        </View>
+        <View style={{ flex: 1, gap: 5 }}>
+          <Text style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>{row.title}</Text>
+          <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+            {row.sourceLabel} · {row.captureTypeLabel} · {row.timestampLabel}
+          </Text>
+          <Text style={[kickerStyle(palette), { color: row.statusLabel === "Retry needed" ? palette.error : palette.secondary, letterSpacing: 0.8 }]}>
+            {row.statusLabel}
+          </Text>
+        </View>
+        <TouchableOpacity
+          accessibilityLabel={`${row.overflowLabel} actions for ${row.title}`}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: palette.surfaceHigh,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <MaterialCommunityIcons name="dots-horizontal" size={18} color={palette.muted} />
+        </TouchableOpacity>
       </View>
-      <Text style={bodyStyle(palette)}>{detail}</Text>
       <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-        <View style={pillStyle(palette)}>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>{metaA}</Text>
-        </View>
-        <View style={pillStyle(palette)}>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>{metaB}</Text>
-        </View>
+        {row.primaryActions.slice(0, 2).map((action, actionIndex) => (
+          <TouchableOpacity
+            key={action}
+            style={{
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              backgroundColor: actionIndex === 0 ? palette.accent : palette.surfaceHigh,
+            }}
+          >
+            <Text style={{ color: actionIndex === 0 ? palette.onAccent : palette.text, fontSize: 12, fontWeight: "800" }}>
+              {action}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );
@@ -1233,6 +1348,9 @@ export function MobileNotesSurface({
   styles,
   palette,
   pendingCaptures,
+  artifacts,
+  notesCount,
+  linkedProjectCount,
   quickCaptureTitle,
   setQuickCaptureTitle,
   quickCaptureSourceUrl,
@@ -1260,164 +1378,207 @@ export function MobileNotesSurface({
   showAdvancedCapture,
   toggleMissionTools,
 }: MobileNotesSurfaceProps) {
+  const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
+  const libraryModel = deriveMobileLibraryViewModel({
+    pendingCaptures,
+    artifacts,
+    notesCount,
+    linkedProjectCount,
+  });
+  const pendingCaptureCount = pendingCaptures.length;
+  const visibleRows = activeSegment === "Artifacts" ? libraryModel.artifactRows : libraryModel.inboxRows;
+
   return (
-    <View style={{ gap: 24 }}>
-      <View style={{ ...cardBase(palette), overflow: "hidden", backgroundColor: palette.surfaceLow }}>
-        <View
-          style={{
-            position: "absolute",
-            top: -40,
-            right: -20,
-            width: 140,
-            height: 140,
-            borderRadius: 999,
-            backgroundColor: "rgba(241, 182, 205, 0.1)",
-          }}
-        />
-        <Text style={kickerStyle(palette)}>Quick Capture</Text>
-        <TextInput
-          style={{
-            borderRadius: 18,
-            minHeight: 120,
-            backgroundColor: "#180911",
-            color: palette.text,
-            padding: 16,
-            fontSize: 18,
-            lineHeight: 28,
-            textAlignVertical: "top",
-          }}
-          value={quickCaptureText}
-          onChangeText={setQuickCaptureText}
-          placeholder="Record a thought or start typing..."
-          placeholderTextColor={palette.muted}
-          multiline
-        />
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <TextInput
-            style={{
-              flex: 1,
-              borderRadius: 16,
-              backgroundColor: palette.surfaceHigh,
-              color: palette.text,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              fontSize: 14,
-            }}
-            value={quickCaptureTitle}
-            onChangeText={setQuickCaptureTitle}
-            placeholder="Capture title"
-            placeholderTextColor={palette.muted}
-          />
-          <TextInput
-            style={{
-              flex: 1,
-              borderRadius: 16,
-              backgroundColor: palette.surfaceHigh,
-              color: palette.text,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              fontSize: 14,
-            }}
-            value={quickCaptureSourceUrl}
-            onChangeText={setQuickCaptureSourceUrl}
-            placeholder="https://source"
-            placeholderTextColor={palette.muted}
-            autoCapitalize="none"
-          />
-        </View>
-        <TextInput
-          style={{
-            borderRadius: 16,
-            backgroundColor: palette.surfaceHigh,
-            color: palette.text,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            fontSize: 14,
-          }}
-          value={notesInstructionDraft}
-          onChangeText={setNotesInstructionDraft}
-          placeholder="Typed instruction for the artifact..."
-          placeholderTextColor={palette.muted}
-        />
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <TouchableOpacity style={{ ...pillStyle(palette), width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
-              <MaterialCommunityIcons name="text-box-outline" size={18} color={palette.muted} />
-            </TouchableOpacity>
-            <TouchableOpacity style={{ ...pillStyle(palette), width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
-              <MaterialCommunityIcons name="paperclip" size={18} color={palette.muted} />
-            </TouchableOpacity>
-          </View>
-          <Pressable
-            style={{
-              borderRadius: 999,
-              backgroundColor: palette.accent,
-              paddingHorizontal: 22,
-              paddingVertical: 13,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
-            onPressIn={beginHoldToTalkCapture}
-            onPressOut={endHoldToTalkCapture}
-          >
-            <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={18} color={palette.onAccent} />
-            <Text style={{ color: palette.onAccent, fontWeight: "800", fontSize: 13 }}>
-              {voiceRecording ? holdToTalkLabel : "Record"}
-            </Text>
-          </Pressable>
-        </View>
+    <View style={{ gap: 18 }}>
+      <View style={{ gap: 5 }}>
+        <Text style={kickerStyle(palette)}>Starlog Library</Text>
+        <Text style={headingStyle(palette)}>Processing queue</Text>
+        <Text style={bodyStyle(palette)}>{libraryModel.statusLabel} · synced just now</Text>
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 2 }}>
+        {libraryModel.stats.map((stat) => libraryStatChip(palette, stat.label, stat.value))}
+      </ScrollView>
+
+      <View
+        style={{
+          borderRadius: 999,
+          backgroundColor: palette.surfaceLow,
+          borderWidth: 1,
+          borderColor: palette.border,
+          padding: 4,
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: 4,
+        }}
+      >
+        {libraryModel.segments.map((segment) => librarySegmentButton(palette, segment, activeSegment, setActiveSegment))}
+      </View>
+
+      {activeSegment === "Inbox" ? (
+        <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+          <Text style={kickerStyle(palette)}>Quick capture</Text>
+          <TextInput
+            style={{
+              borderRadius: 18,
+              minHeight: 104,
+              backgroundColor: "#180911",
+              color: palette.text,
+              padding: 16,
+              fontSize: 17,
+              lineHeight: 26,
+              textAlignVertical: "top",
+            }}
+            value={quickCaptureText}
+            onChangeText={setQuickCaptureText}
+            placeholder="Record a thought or start typing..."
+            placeholderTextColor={palette.muted}
+            multiline
+          />
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <TextInput
+              style={{
+                flex: 1,
+                borderRadius: 16,
+                backgroundColor: palette.surfaceHigh,
+                color: palette.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+              }}
+              value={quickCaptureTitle}
+              onChangeText={setQuickCaptureTitle}
+              placeholder="Capture title"
+              placeholderTextColor={palette.muted}
+            />
+            <TextInput
+              style={{
+                flex: 1,
+                borderRadius: 16,
+                backgroundColor: palette.surfaceHigh,
+                color: palette.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+              }}
+              value={quickCaptureSourceUrl}
+              onChangeText={setQuickCaptureSourceUrl}
+              placeholder="https://source"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+            />
+          </View>
+          <TextInput
+            style={{
+              borderRadius: 16,
+              backgroundColor: palette.surfaceHigh,
+              color: palette.text,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 14,
+            }}
+            value={notesInstructionDraft}
+            onChangeText={setNotesInstructionDraft}
+            placeholder="Typed instruction for the artifact..."
+            placeholderTextColor={palette.muted}
+          />
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity style={{ ...pillStyle(palette), width: 46, height: 46, alignItems: "center", justifyContent: "center" }}>
+                <MaterialCommunityIcons name="text-box-outline" size={18} color={palette.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity style={{ ...pillStyle(palette), width: 46, height: 46, alignItems: "center", justifyContent: "center" }}>
+                <MaterialCommunityIcons name="paperclip" size={18} color={palette.muted} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+              {voiceClipReady ? (
+                <TouchableOpacity
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 23,
+                    backgroundColor: palette.surfaceHigh,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  onPress={playVoiceClip}
+                >
+                  <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
+                </TouchableOpacity>
+              ) : null}
+              <Pressable
+                style={{
+                  borderRadius: 999,
+                  backgroundColor: palette.accent,
+                  paddingHorizontal: 18,
+                  paddingVertical: 13,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+                onPressIn={beginHoldToTalkCapture}
+                onPressOut={endHoldToTalkCapture}
+              >
+                <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={18} color={palette.onAccent} />
+                <Text style={{ color: palette.onAccent, fontWeight: "800", fontSize: 13 }}>
+                  {voiceRecording ? holdToTalkLabel : "Record"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       <View style={{ gap: 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Library Snapshot</Text>
-          <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.2 }}>
-            {pendingCaptures} pending
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[headingStyle(palette), { fontSize: 21, lineHeight: 27 }]}>
+              {activeSegment === "Inbox" ? "Inbox / Unprocessed captures" : activeSegment}
+            </Text>
+            <Text style={bodyStyle(palette)}>
+              {activeSegment === "Inbox"
+                ? captureQueuePreview
+                : activeSegment === "Artifacts"
+                  ? selectedArtifactTitle
+                  : activeSegment === "Sources"
+                    ? captureSourcePreview
+                    : routeNarrative}
+            </Text>
+          </View>
+          <Text style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
+            {pendingCaptureCount} pending
           </Text>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
-          {[selectedArtifactTitle || "Lunar Surface Crystallization Patterns", captureCommandPreview, routeNarrative].map((item, index) => (
-            <View
-              key={`${item}-${index}`}
-              style={{
-                width: 248,
-                borderRadius: 22,
-                backgroundColor: palette.surfaceLow,
-                borderWidth: 1,
-                borderColor: palette.border,
-                padding: 18,
-                gap: 10,
-              }}
-            >
-              <Text style={[kickerStyle(palette), { color: palette.muted }]}>
-                {index === 0 ? "Selected item" : index === 1 ? "Queue" : "Routing"}
-              </Text>
-              <Text style={{ color: palette.text, fontSize: 20, lineHeight: 26, fontWeight: "800" }}>{item}</Text>
-              <Text style={bodyStyle(palette)}>
-                {index === 0 ? captureSourcePreview : index === 1 ? captureQueuePreview : sharedDraftSummary}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
 
-      <View style={{ gap: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[headingStyle(palette), { fontSize: 22, lineHeight: 28 }]}>Recent Library Items</Text>
-          <Text style={{ color: palette.secondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
-            Sync
-          </Text>
-        </View>
-        {artifactCard(palette, captureCommandPreview, captureQueuePreview, "DATA-STREAM", "4H AGO")}
-        {artifactCard(palette, selectedArtifactTitle, captureSourcePreview, "AUDIO-LOG", "YESTERDAY")}
+        {activeSegment === "Notes" ? (
+          <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+            <Text style={kickerStyle(palette)}>Notes & saved items</Text>
+            <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>{captureCommandPreview}</Text>
+            <Text style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
+          </View>
+        ) : activeSegment === "Sources" ? (
+          <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+            <Text style={kickerStyle(palette)}>Recent sources</Text>
+            <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>{captureSourcePreview}</Text>
+            <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
+          </View>
+        ) : visibleRows.length > 0 ? (
+          visibleRows.map((row) => mobileCaptureRow(palette, row))
+        ) : (
+          <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
+            <Text style={kickerStyle(palette)}>Queue clear</Text>
+            <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>No captures need processing.</Text>
+            <Text style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
+          </View>
+        )}
+
         <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
-          <View style={{ flexDirection: "row", gap: 14 }}>
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
             <View style={{ flex: 1 }}>
-              <Text style={kickerStyle(palette)}>Voice capture</Text>
-              <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Latest capture</Text>
+              <Text style={kickerStyle(palette)}>Capture controls</Text>
+              <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Send the current item</Text>
               <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
-              <Text style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
             </View>
             {voiceClipReady ? (
               <TouchableOpacity
