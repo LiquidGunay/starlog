@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/mobile-library-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-library-view-model.ts",
+    "tests/mobile-library-view-model.test.ts"
+  ]
+}

@@ -1,6 +1,7 @@
 export type MobileArtifactDetailLayerKind = "raw" | "normalized" | "extracted";
 
 export type MobileArtifactDetailActionKind = "summarize" | "cards" | "tasks" | "append_note" | "archive" | "link";
+export type MobileArtifactAccordionSectionId = "detail" | "preview" | "provenance" | "conversion" | "timeline";
 
 export type MobileArtifactDetail = {
   artifact: {
@@ -97,16 +98,44 @@ export type MobileArtifactTimelineRow = {
   metaLabel: string;
 };
 
+export type MobileArtifactTagChip = {
+  id: string;
+  label: string;
+};
+
+export type MobileArtifactQuickCapture = {
+  preview: string | null;
+  notePlaceholder: string;
+  classificationOptions: Array<{ id: "reference" | "idea" | "task"; label: string; selected: boolean }>;
+  tagChips: MobileArtifactTagChip[];
+};
+
+export type MobileArtifactAccordionSection = {
+  id: MobileArtifactAccordionSectionId;
+  stepLabel: string;
+  title: string;
+  subtitle: string;
+  expandedByDefault: boolean;
+};
+
 export type MobileArtifactDetailViewModel = {
   title: string;
   subtitle: string;
+  artifactTypeLabel: string;
+  fileLabel: string | null;
+  tagChips: MobileArtifactTagChip[];
+  summary: string | null;
+  keyIdeas: string[];
   captureLabels: Array<{ label: string; value: string }>;
   sourcePreview: string | null;
+  quickCapture: MobileArtifactQuickCapture;
   sourceLayers: MobileArtifactLayerRow[];
   provenanceRows: Array<{ label: string; value: string }>;
+  connectionRows: Array<{ label: string; value: string; actionLabel: string | null }>;
   conversionRows: Array<{ label: string; value: string }>;
   actions: MobileArtifactActionRow[];
   timelineRows: MobileArtifactTimelineRow[];
+  accordions: MobileArtifactAccordionSection[];
 };
 
 export type MobileArtifactExecutableActionKind = "summarize" | "cards" | "tasks" | "append_note";
@@ -136,17 +165,28 @@ export function deriveMobileArtifactDetailViewModel(
   const sourceType = formatMachineLabel(detail.artifact.source_type);
   const capturedLabel = formatTimestamp(detail.capture.captured_at);
   const sourcePreview = detail.source_layers.find((layer) => layer.present && layer.preview?.trim())?.preview?.trim() ?? null;
+  const actions = detail.suggested_actions.map(actionRow);
+  const timelineRows = detail.timeline.map(timelineRow);
+  const summary = detail.connections.latest_summary?.preview.trim() || sourcePreview;
 
   return {
     title,
     subtitle: `${sourceType} · captured ${capturedLabel}`,
+    artifactTypeLabel: sourceType,
+    fileLabel: detail.capture.source_file?.trim() || detail.capture.source_url?.trim() || null,
+    tagChips: detail.capture.tags.map((tag) => ({ id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag, label: tag })),
+    summary,
+    keyIdeas: keyIdeasForDetail(detail, summary),
     captureLabels: captureLabels(detail),
     sourcePreview,
+    quickCapture: quickCapture(detail, sourcePreview),
     sourceLayers: detail.source_layers.map(layerRow),
     provenanceRows: provenanceRows(detail),
+    connectionRows: connectionRows(detail),
     conversionRows: conversionRows(detail),
-    actions: detail.suggested_actions.map(actionRow),
-    timelineRows: detail.timeline.map(timelineRow),
+    actions,
+    timelineRows,
+    accordions: accordionSections(detail, timelineRows.length),
   };
 }
 
@@ -167,6 +207,10 @@ function captureLabels(detail: MobileArtifactDetail): Array<{ label: string; val
 
 function provenanceRows(detail: MobileArtifactDetail): Array<{ label: string; value: string }> {
   const rows: Array<{ label: string; value: string }> = [
+    { label: "Source", value: detail.capture.source_app?.trim() || formatMachineLabel(detail.capture.source_type) },
+    { label: "URL", value: detail.capture.source_url?.trim() || "No source URL" },
+    { label: "Method", value: detail.capture.capture_method?.trim() || "Unknown method" },
+    { label: "Captured", value: formatTimestamp(detail.capture.captured_at) },
     { label: "Summary versions", value: String(detail.connections.summary_version_count) },
     { label: "Card sets", value: String(detail.connections.card_set_version_count) },
     { label: "Cards", value: String(detail.connections.card_count) },
@@ -188,6 +232,33 @@ function provenanceRows(detail: MobileArtifactDetail): Array<{ label: string; va
     rows.push({
       label: "Relation",
       value: `${formatMachineLabel(relation.relation_type)} -> ${formatMachineLabel(relation.target_type)} ${relation.target_id}`,
+    });
+  }
+  return rows;
+}
+
+function connectionRows(detail: MobileArtifactDetail): Array<{ label: string; value: string; actionLabel: string | null }> {
+  const rows: Array<{ label: string; value: string; actionLabel: string | null }> = [];
+  if (detail.connections.relations.length > 0) {
+    const relation = detail.connections.relations[0];
+    rows.push({
+      label: `Linked to ${formatMachineLabel(relation.target_type).toLowerCase()}`,
+      value: relation.target_id,
+      actionLabel: "View",
+    });
+  }
+  if (detail.connections.notes.length > 0) {
+    rows.push({
+      label: `Linked to notes (${detail.connections.notes.length})`,
+      value: detail.connections.notes.map((note) => note.title).join(", "),
+      actionLabel: "View all",
+    });
+  }
+  if (detail.connections.task_count > 0) {
+    rows.push({
+      label: "Used in",
+      value: `${detail.connections.task_count} task${detail.connections.task_count === 1 ? "" : "s"}`,
+      actionLabel: "View all",
     });
   }
   return rows;
@@ -216,6 +287,81 @@ function conversionRows(detail: MobileArtifactDetail): Array<{ label: string; va
     },
   ];
   return rows;
+}
+
+function quickCapture(detail: MobileArtifactDetail, sourcePreview: string | null): MobileArtifactQuickCapture {
+  const normalizedType = formatMachineLabel(detail.capture.source_type);
+  return {
+    preview: sourcePreview,
+    notePlaceholder: `Quick note for ${detail.artifact.title?.trim() || detail.artifact.id}`,
+    classificationOptions: [
+      { id: "reference", label: "Reference", selected: !/idea|task/i.test(normalizedType) },
+      { id: "idea", label: "Idea", selected: /idea/i.test(normalizedType) },
+      { id: "task", label: "Task", selected: /task/i.test(normalizedType) },
+    ],
+    tagChips: detail.capture.tags.slice(0, 4).map((tag) => ({ id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag, label: tag })),
+  };
+}
+
+function keyIdeasForDetail(detail: MobileArtifactDetail, summary: string | null): string[] {
+  const ideas: string[] = [];
+  if (detail.connections.summary_version_count > 0) {
+    ideas.push(`${detail.connections.summary_version_count} summary version${detail.connections.summary_version_count === 1 ? "" : "s"} preserved.`);
+  }
+  if (detail.connections.card_count > 0) {
+    ideas.push(`${detail.connections.card_count} review card${detail.connections.card_count === 1 ? "" : "s"} created from this artifact.`);
+  }
+  if (detail.connections.task_count > 0) {
+    ideas.push(`${detail.connections.task_count} task${detail.connections.task_count === 1 ? "" : "s"} connected to this source.`);
+  }
+  if (ideas.length === 0 && summary) {
+    ideas.push("Ready for summarizing, card creation, or task extraction.");
+  }
+  return ideas.slice(0, 3);
+}
+
+function accordionSections(
+  detail: MobileArtifactDetail,
+  timelineCount: number,
+): MobileArtifactAccordionSection[] {
+  const recentlyUpdated = isRecentlyUpdated(detail.artifact.updated_at);
+  return [
+    {
+      id: "detail",
+      stepLabel: "1",
+      title: "Artifact detail",
+      subtitle: detail.artifact.id,
+      expandedByDefault: true,
+    },
+    {
+      id: "preview",
+      stepLabel: "2",
+      title: "Quick capture",
+      subtitle: "Source preview and classification",
+      expandedByDefault: true,
+    },
+    {
+      id: "provenance",
+      stepLabel: "3",
+      title: "Source & provenance",
+      subtitle: `${detail.source_layers.filter((layer) => layer.present).length}/${detail.source_layers.length} layer(s) present`,
+      expandedByDefault: true,
+    },
+    {
+      id: "conversion",
+      stepLabel: "4",
+      title: "Conversion & enrichment",
+      subtitle: `${detail.connections.action_run_count} action run(s) recorded`,
+      expandedByDefault: true,
+    },
+    {
+      id: "timeline",
+      stepLabel: "5",
+      title: "Activity & timeline",
+      subtitle: timelineCount > 0 ? `${timelineCount} event(s)` : "No activity returned",
+      expandedByDefault: recentlyUpdated,
+    },
+  ];
 }
 
 function layerRow(layer: MobileArtifactDetail["source_layers"][number]): MobileArtifactLayerRow {
@@ -321,6 +467,14 @@ function formatTimestamp(value: string): string {
     return value || "Unknown time";
   }
   return parsed.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function isRecentlyUpdated(value: string): boolean {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+  return Date.now() - parsed.getTime() < 24 * 60 * 60 * 1000;
 }
 
 function shortChecksum(value: string): string {

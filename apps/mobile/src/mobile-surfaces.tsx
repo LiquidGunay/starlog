@@ -565,6 +565,19 @@ function libraryRowIcon(row: MobileLibraryInboxRow): keyof typeof MaterialCommun
   return "text-box-outline";
 }
 
+function libraryStatIcon(icon: "inbox" | "artifact" | "note" | "project"): keyof typeof MaterialCommunityIcons.glyphMap {
+  if (icon === "artifact") {
+    return "file-document-multiple-outline";
+  }
+  if (icon === "note") {
+    return "note-text-outline";
+  }
+  if (icon === "project") {
+    return "account-group-outline";
+  }
+  return "inbox-outline";
+}
+
 function plannerTimelineTone(block: MobilePlannerTimelineBlock, palette: Record<string, string>) {
   if (block.type === "focus") {
     return { accent: "#a6debf", background: "rgba(166, 222, 191, 0.08)", border: "rgba(166, 222, 191, 0.18)" };
@@ -620,24 +633,34 @@ function reviewGradeTone(option: MobileReviewGradeOption, palette: Record<string
   return { color: palette.text, background: palette.surfaceHigh, border: palette.border };
 }
 
-function libraryStatChip(palette: Record<string, string>, label: string, value: string) {
+function libraryStatChip(
+  palette: Record<string, string>,
+  stat: { label: string; value: string; supportingLabel: string; icon: "inbox" | "artifact" | "note" | "project" },
+) {
   return (
     <View
-      key={label}
+      key={stat.label}
       style={{
-        minWidth: 118,
-        borderRadius: 18,
+        width: 154,
+        minHeight: 104,
+        borderRadius: 16,
         backgroundColor: palette.surfaceLow,
         borderWidth: 1,
         borderColor: palette.border,
         paddingHorizontal: 14,
         paddingVertical: 12,
-        gap: 4,
+        gap: 6,
       }}
     >
-      <Text style={{ color: palette.text, fontSize: 20, fontWeight: "800" }}>{value}</Text>
-      <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>
-        {label}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <MaterialCommunityIcons name={libraryStatIcon(stat.icon)} size={18} color={palette.muted} />
+        <Text numberOfLines={2} style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "800" }}>
+          {stat.label}
+        </Text>
+      </View>
+      <Text style={{ color: palette.text, fontSize: 26, lineHeight: 30, fontWeight: "800" }}>{stat.value}</Text>
+      <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 12, lineHeight: 16, fontWeight: "700" }}>
+        {stat.supportingLabel}
       </Text>
     </View>
   );
@@ -656,14 +679,19 @@ function librarySegmentButton(
       onPress={() => onPress(segment)}
       style={{
         flex: 1,
-        minWidth: 82,
-        borderRadius: 999,
-        paddingVertical: 10,
+        minWidth: 74,
+        borderRadius: 14,
+        paddingVertical: 11,
+        paddingHorizontal: 6,
         alignItems: "center",
-        backgroundColor: active ? palette.accent : "transparent",
+        backgroundColor: active ? "rgba(245, 169, 73, 0.16)" : "transparent",
+        borderWidth: 1,
+        borderColor: active ? "rgba(245, 169, 73, 0.34)" : "transparent",
       }}
     >
-      <Text style={{ color: active ? palette.onAccent : palette.muted, fontSize: 12, fontWeight: "800" }}>{segment}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 12, fontWeight: "800" }}>
+        {segment}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -675,12 +703,12 @@ function mobileCaptureRow(
 ) {
   const content = (
     <>
-      <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <View
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 14,
+            width: 38,
+            height: 38,
+            borderRadius: 12,
             backgroundColor: palette.surfaceHigh,
             alignItems: "center",
             justifyContent: "center",
@@ -689,11 +717,24 @@ function mobileCaptureRow(
           <MaterialCommunityIcons name={libraryRowIcon(row)} size={18} color={palette.accent} />
         </View>
         <View style={{ flex: 1, gap: 5 }}>
-          <Text style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>{row.title}</Text>
-          <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+          <Text
+            numberOfLines={row.layout.titleNumberOfLines}
+            ellipsizeMode="tail"
+            style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}
+          >
+            {row.title}
+          </Text>
+          <Text
+            numberOfLines={row.layout.metadataNumberOfLines}
+            ellipsizeMode="tail"
+            style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}
+          >
             {row.sourceLabel} · {row.captureTypeLabel} · {row.timestampLabel}
           </Text>
-          <Text style={[kickerStyle(palette), { color: row.statusLabel === "Retry needed" ? palette.error : palette.secondary, letterSpacing: 0.8 }]}>
+          <Text
+            numberOfLines={1}
+            style={[kickerStyle(palette), { color: row.statusLabel === "Retry needed" ? palette.error : palette.secondary, letterSpacing: 0.8 }]}
+          >
             {row.statusLabel}
           </Text>
         </View>
@@ -711,18 +752,22 @@ function mobileCaptureRow(
           <MaterialCommunityIcons name="dots-horizontal" size={18} color={palette.muted} />
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-        {row.actionLabels.slice(0, 2).map((action, actionIndex) => (
+      <View style={{ flexDirection: row.layout.stackActions ? "column" : "row", gap: 8 }}>
+        {[row.primaryActionLabel, row.secondaryActionLabel].filter((action): action is string => Boolean(action)).map((action, actionIndex) => (
           <View
             key={action}
             style={{
-              borderRadius: 999,
+              flex: row.layout.stackActions ? undefined : 1,
+              minHeight: 40,
+              borderRadius: 12,
               paddingHorizontal: 12,
-              paddingVertical: 8,
+              paddingVertical: 10,
+              alignItems: "center",
+              justifyContent: "center",
               backgroundColor: actionIndex === 0 ? palette.accent : palette.surfaceHigh,
             }}
           >
-            <Text style={{ color: actionIndex === 0 ? palette.onAccent : palette.text, fontSize: 12, fontWeight: "800" }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: actionIndex === 0 ? palette.onAccent : palette.text, fontSize: 12, fontWeight: "800" }}>
               {action}
             </Text>
           </View>
@@ -731,11 +776,11 @@ function mobileCaptureRow(
     </>
   );
   const style = {
-    borderRadius: 20,
+    borderRadius: 16,
     backgroundColor: palette.surfaceLow,
     borderWidth: 1,
     borderColor: palette.border,
-    padding: 14,
+    padding: 12,
     gap: 12,
   } as const;
   if (onPress) {
@@ -754,6 +799,7 @@ function mobileCaptureRow(
 
 function artifactSectionCard(
   palette: Record<string, string>,
+  stepLabel: string,
   title: string,
   subtitle: string | null,
   expanded: boolean,
@@ -766,9 +812,22 @@ function artifactSectionCard(
         onPress={onToggle}
         style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: "row", alignItems: "center", gap: 12 }}
       >
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "rgba(245, 169, 73, 0.58)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: palette.secondary, fontSize: 13, fontWeight: "800" }}>{stepLabel}</Text>
+        </View>
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>{title}</Text>
-          {subtitle ? <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text> : null}
+          {subtitle ? <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text> : null}
         </View>
         <MaterialCommunityIcons name={expanded ? "chevron-up" : "chevron-down"} size={20} color={palette.muted} />
       </TouchableOpacity>
@@ -790,7 +849,9 @@ function artifactKeyValueRows(palette: Record<string, string>, rows: Array<{ lab
       }}
     >
       <Text style={[kickerStyle(palette), { fontSize: 9, letterSpacing: 0.7 }]}>{row.label}</Text>
-      <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{row.value}</Text>
+      <Text numberOfLines={row.value.length > 64 ? 2 : 1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>
+        {row.value}
+      </Text>
     </View>
   ));
 }
@@ -812,18 +873,118 @@ function artifactActionButton(
         }
       }}
       style={{
-        borderRadius: 999,
+        minWidth: 120,
+        minHeight: 48,
+        flex: 1,
+        borderRadius: 12,
         paddingHorizontal: 12,
-        paddingVertical: 9,
+        paddingVertical: 10,
         backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
         opacity: enabled ? 1 : 0.62,
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      <Text style={{ color: enabled ? palette.onAccent : palette.muted, fontSize: 12, fontWeight: "800" }}>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: enabled ? palette.onAccent : palette.muted, fontSize: 12, fontWeight: "800" }}>
         {action.label}
       </Text>
     </TouchableOpacity>
   );
+}
+
+function stylesButtonLike(palette: Record<string, string>, primary: boolean) {
+  return {
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: primary ? palette.accent : palette.surfaceHigh,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  };
+}
+
+function mobileLibraryCompactRows(
+  palette: Record<string, string>,
+  title: string,
+  subtitle: string,
+  ctaLabel: string,
+  rows: Array<{ id: string; title: string; metaLabel: string; tagLabel: string; timestampLabel: string }>,
+) {
+  return (
+    <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 14, gap: 11 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "800" }}>{title}</Text>
+          <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text>
+        </View>
+        <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 12, fontWeight: "800" }}>{ctaLabel}</Text>
+      </View>
+      {rows.length > 0 ? rows.slice(0, 3).map((row) => (
+        <View key={row.id} style={{ flexDirection: "row", gap: 10, alignItems: "center", borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10 }}>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 14, lineHeight: 19, fontWeight: "800" }}>{row.title}</Text>
+            <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 12 }}>{row.metaLabel}</Text>
+          </View>
+          <View style={{ maxWidth: 118, borderRadius: 10, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, paddingVertical: 6 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 11 }}>{row.tagLabel}</Text>
+          </View>
+        </View>
+      )) : (
+        <Text style={bodyStyle(palette)}>No saved items yet.</Text>
+      )}
+    </View>
+  );
+}
+
+function mobileLibrarySourceSuggestionGrid(
+  palette: Record<string, string>,
+  sources: Array<{ id: string; label: string; count: number }>,
+  suggestions: Array<{ id: string; label: string; actionLabel: string }>,
+) {
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 14, gap: 10 }}>
+        <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Recent sources</Text>
+        {sources.length > 0 ? sources.map((source) => (
+          <View key={source.id} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <MaterialCommunityIcons name="web" size={17} color={palette.secondary} />
+            <Text numberOfLines={1} ellipsizeMode="middle" style={{ flex: 1, color: palette.text, fontSize: 14 }}>{source.label}</Text>
+            <Text style={{ color: palette.muted, fontSize: 13, fontWeight: "800" }}>{source.count}</Text>
+          </View>
+        )) : <Text style={bodyStyle(palette)}>Sources will appear as captures arrive.</Text>}
+      </View>
+      <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 14, gap: 10 }}>
+        <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Suggestions</Text>
+        {suggestions.map((suggestion) => (
+          <View key={suggestion.id} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            <MaterialCommunityIcons name="check-circle-outline" size={17} color={palette.muted} />
+            <Text numberOfLines={2} style={{ flex: 1, color: palette.text, fontSize: 14, lineHeight: 19 }}>{suggestion.label}</Text>
+            <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 12, fontWeight: "800" }}>{suggestion.actionLabel}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function mobileDetailActionIcon(action: MobileArtifactActionRow["action"]): keyof typeof MaterialCommunityIcons.glyphMap {
+  if (action === "cards") {
+    return "cards-outline";
+  }
+  if (action === "tasks") {
+    return "checkbox-marked-outline";
+  }
+  if (action === "append_note") {
+    return "note-plus-outline";
+  }
+  if (action === "archive") {
+    return "archive-outline";
+  }
+  if (action === "link") {
+    return "link-variant";
+  }
+  return "star-outline";
 }
 
 function mobileArtifactDetailView(
@@ -834,43 +995,143 @@ function mobileArtifactDetailView(
   onRunAction: (request: MobileArtifactActionExecution) => void,
 ) {
   const model = deriveMobileArtifactDetailViewModel(detail);
+  const sectionById = Object.fromEntries(model.accordions.map((section) => [section.id, section]));
+  const isExpanded = (sectionId: string) => expandedSections[sectionId] ?? sectionById[sectionId]?.expandedByDefault ?? false;
   return (
     <View style={{ gap: 12 }}>
-      <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
-        <Text style={kickerStyle(palette)}>Artifact detail</Text>
-        <Text style={{ color: palette.text, fontSize: 22, lineHeight: 28, fontWeight: "800" }}>{model.title}</Text>
-        <Text style={bodyStyle(palette)}>{model.subtitle}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.secondary, fontSize: 13, fontWeight: "800" }}>Library</Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 24, lineHeight: 30, fontWeight: "800" }}>
+            {model.title}
+          </Text>
+        </View>
+        <TouchableOpacity style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text numberOfLines={1} style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Open in source</Text>
+          <MaterialCommunityIcons name="open-in-new" size={15} color={palette.muted} />
+        </TouchableOpacity>
       </View>
 
       {artifactSectionCard(
         palette,
-        "Artifact detail",
-        detail.artifact.id,
-        expandedSections.detail,
+        sectionById.detail.stepLabel,
+        sectionById.detail.title,
+        sectionById.detail.subtitle,
+        isExpanded("detail"),
         () => toggleSection("detail"),
-        <View style={{ gap: 8 }}>{artifactKeyValueRows(palette, model.captureLabels)}</View>,
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+            <View
+              style={{
+                width: 48,
+                height: 58,
+                borderRadius: 10,
+                backgroundColor: "rgba(245, 73, 73, 0.88)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>{model.artifactTypeLabel.slice(0, 3).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 19, lineHeight: 25, fontWeight: "800" }}>
+                {model.title}
+              </Text>
+              <Text numberOfLines={2} ellipsizeMode="tail" style={bodyStyle(palette)}>{model.subtitle}</Text>
+              {model.fileLabel ? (
+                <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: "#9fbfff", fontSize: 13, lineHeight: 18 }}>
+                  {model.fileLabel}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          {model.tagChips.length > 0 ? (
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              {model.tagChips.map((tag) => (
+                <View key={tag.id} style={{ borderRadius: 9, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 10, paddingVertical: 7 }}>
+                  <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{tag.label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {model.summary ? (
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: "800" }}>Summary</Text>
+              <Text numberOfLines={5} style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>{model.summary}</Text>
+            </View>
+          ) : null}
+          {model.keyIdeas.length > 0 ? (
+            <View style={{ gap: 5 }}>
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: "800" }}>Key ideas</Text>
+              {model.keyIdeas.map((idea) => (
+                <Text key={idea} numberOfLines={2} style={{ color: palette.muted, fontSize: 13, lineHeight: 18 }}>• {idea}</Text>
+              ))}
+            </View>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {model.actions.slice(0, 4).map((action) => artifactActionButton(palette, action, onRunAction))}
+          </View>
+        </View>,
       )}
 
       {artifactSectionCard(
         palette,
-        "Quick capture / source preview",
-        model.sourcePreview ? "First available source layer preview" : "No source preview in contract",
-        expandedSections.preview,
+        sectionById.preview.stepLabel,
+        sectionById.preview.title,
+        sectionById.preview.subtitle,
+        isExpanded("preview"),
         () => toggleSection("preview"),
-        model.sourcePreview ? (
-          <Text style={{ color: palette.text, fontSize: 14, lineHeight: 21 }}>{model.sourcePreview}</Text>
-        ) : (
-          <Text style={bodyStyle(palette)}>No raw, normalized, or extracted layer preview was returned.</Text>
-        ),
+        <View style={{ gap: 12 }}>
+          <View style={{ borderRadius: 14, backgroundColor: "#050b12", borderWidth: 1, borderColor: palette.border, minHeight: 132, padding: 14, justifyContent: "center" }}>
+            <Text numberOfLines={6} style={{ color: palette.text, fontSize: 15, lineHeight: 22, textAlign: "center" }}>
+              {model.quickCapture.preview || "No source preview was returned."}
+            </Text>
+          </View>
+          <View style={{ borderRadius: 14, backgroundColor: palette.surfaceHigh, borderWidth: 1, borderColor: palette.border, padding: 12, gap: 5 }}>
+            <Text style={[kickerStyle(palette), { fontSize: 9 }]}>Quick note</Text>
+            <Text numberOfLines={3} style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>{model.quickCapture.notePlaceholder}</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {model.quickCapture.classificationOptions.map((option) => (
+              <View
+                key={option.id}
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: option.selected ? "rgba(245, 169, 73, 0.58)" : palette.border,
+                  backgroundColor: option.selected ? "rgba(245, 169, 73, 0.12)" : palette.surfaceHigh,
+                }}
+              >
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: option.selected ? palette.secondary : palette.text, fontSize: 12, fontWeight: "800" }}>
+                  {option.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity style={{ ...stylesButtonLike(palette, true), flex: 1 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>Save to Library</Text>
+            </TouchableOpacity>
+            {model.actions.find((action) => action.action === "tasks")
+              ? artifactActionButton(palette, model.actions.find((action) => action.action === "tasks")!, onRunAction)
+              : null}
+          </View>
+        </View>,
       )}
 
       {artifactSectionCard(
         palette,
-        "Source & provenance",
-        `${model.sourceLayers.filter((layer) => layer.present).length}/${model.sourceLayers.length} layer(s) present`,
-        expandedSections.provenance,
+        sectionById.provenance.stepLabel,
+        sectionById.provenance.title,
+        sectionById.provenance.subtitle,
+        isExpanded("provenance"),
         () => toggleSection("provenance"),
         <View style={{ gap: 10 }}>
+          {artifactKeyValueRows(palette, model.provenanceRows.slice(0, 4))}
           {model.sourceLayers.map((layer) => (
             <View
               key={layer.key}
@@ -893,21 +1154,62 @@ function mobileArtifactDetailView(
               {layer.meta.length > 0 ? <Text style={{ color: palette.muted, fontSize: 11 }}>{layer.meta.join(" · ")}</Text> : null}
             </View>
           ))}
-          {artifactKeyValueRows(palette, model.provenanceRows)}
+          {model.connectionRows.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              {model.connectionRows.map((row) => (
+                <View key={`${row.label}:${row.value}`} style={{ flexDirection: "row", gap: 10, alignItems: "center", borderRadius: 14, backgroundColor: palette.surfaceHigh, padding: 12 }}>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{row.label}</Text>
+                    <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{row.value}</Text>
+                  </View>
+                  {row.actionLabel ? <Text style={{ color: "#9fbfff", fontSize: 12, fontWeight: "800" }}>{row.actionLabel}</Text> : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>,
       )}
 
       {artifactSectionCard(
         palette,
-        "Conversion & enrichment",
-        `${detail.connections.action_run_count} action run(s) recorded`,
-        expandedSections.conversion,
+        sectionById.conversion.stepLabel,
+        sectionById.conversion.title,
+        sectionById.conversion.subtitle,
+        isExpanded("conversion"),
         () => toggleSection("conversion"),
         <View style={{ gap: 10 }}>
-          {artifactKeyValueRows(palette, model.conversionRows)}
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {model.actions.map((action) => artifactActionButton(palette, action, onRunAction))}
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+            {model.actions.map((action) => {
+              const executableRequest = action.executableRequest;
+              return (
+                <TouchableOpacity
+                  key={`tile:${action.action}`}
+                  disabled={!executableRequest}
+                  onPress={() => {
+                    if (executableRequest) {
+                      onRunAction(executableRequest);
+                    }
+                  }}
+                  style={{
+                    width: "47%",
+                    minHeight: 96,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: executableRequest ? "rgba(245, 169, 73, 0.24)" : palette.border,
+                    backgroundColor: palette.surfaceHigh,
+                    padding: 12,
+                    gap: 6,
+                    justifyContent: "center",
+                  }}
+                >
+                  <MaterialCommunityIcons name={mobileDetailActionIcon(action.action)} size={19} color={executableRequest ? palette.secondary : palette.muted} />
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{action.label}</Text>
+                  <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 11, lineHeight: 15 }}>{action.statusLabel}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
+          {artifactKeyValueRows(palette, model.conversionRows)}
           {model.actions
             .filter((action) => !action.enabled)
             .map((action) => (
@@ -920,9 +1222,10 @@ function mobileArtifactDetailView(
 
       {artifactSectionCard(
         palette,
-        "Activity & timeline",
-        model.timelineRows.length > 0 ? `${model.timelineRows.length} event(s)` : "No activity returned",
-        expandedSections.timeline,
+        sectionById.timeline.stepLabel,
+        sectionById.timeline.title,
+        sectionById.timeline.subtitle,
+        isExpanded("timeline"),
         () => toggleSection("timeline"),
         model.timelineRows.length > 0 ? (
           <View style={{ gap: 9 }}>
@@ -1684,7 +1987,6 @@ export function MobileNotesSurface({
     preview: true,
     provenance: true,
     conversion: true,
-    timeline: false,
   });
   const libraryModel = deriveMobileLibraryViewModel({
     pendingCaptures,
@@ -1709,14 +2011,33 @@ export function MobileNotesSurface({
 
   return (
     <View style={{ gap: 18 }}>
-      <View style={{ gap: 5 }}>
-        <Text style={kickerStyle(palette)}>Starlog Library</Text>
-        <Text style={headingStyle(palette)}>Processing queue</Text>
-        <Text style={bodyStyle(palette)}>{libraryModel.statusLabel} · synced just now</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={kickerStyle(palette)}>Starlog Library</Text>
+          <Text style={headingStyle(palette)}>Library</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+          <MaterialCommunityIcons name="check-circle-outline" size={18} color="#60d17f" />
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Synced just now</Text>
+        </View>
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: palette.surfaceHigh,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 1,
+            borderColor: palette.border,
+          }}
+        >
+          <MaterialCommunityIcons name="account-outline" size={20} color={palette.muted} />
+        </View>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 2 }}>
-        {libraryModel.stats.map((stat) => libraryStatChip(palette, stat.label, stat.value))}
+        {libraryModel.stats.map((stat) => libraryStatChip(palette, stat))}
       </ScrollView>
 
       <View
@@ -1739,121 +2060,6 @@ export function MobileNotesSurface({
         }))}
       </View>
 
-      {activeSegment === "Inbox" ? (
-        <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
-          <Text style={kickerStyle(palette)}>Quick capture</Text>
-          <TextInput
-            style={{
-              borderRadius: 18,
-              minHeight: 104,
-              backgroundColor: "#180911",
-              color: palette.text,
-              padding: 16,
-              fontSize: 17,
-              lineHeight: 26,
-              textAlignVertical: "top",
-            }}
-            value={quickCaptureText}
-            onChangeText={setQuickCaptureText}
-            placeholder="Record a thought or start typing..."
-            placeholderTextColor={palette.muted}
-            multiline
-          />
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <TextInput
-              style={{
-                flex: 1,
-                borderRadius: 16,
-                backgroundColor: palette.surfaceHigh,
-                color: palette.text,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 14,
-              }}
-              value={quickCaptureTitle}
-              onChangeText={setQuickCaptureTitle}
-              placeholder="Capture title"
-              placeholderTextColor={palette.muted}
-            />
-            <TextInput
-              style={{
-                flex: 1,
-                borderRadius: 16,
-                backgroundColor: palette.surfaceHigh,
-                color: palette.text,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 14,
-              }}
-              value={quickCaptureSourceUrl}
-              onChangeText={setQuickCaptureSourceUrl}
-              placeholder="https://source"
-              placeholderTextColor={palette.muted}
-              autoCapitalize="none"
-            />
-          </View>
-          <TextInput
-            style={{
-              borderRadius: 16,
-              backgroundColor: palette.surfaceHigh,
-              color: palette.text,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              fontSize: 14,
-            }}
-            value={notesInstructionDraft}
-            onChangeText={setNotesInstructionDraft}
-            placeholder="Typed instruction for the artifact..."
-            placeholderTextColor={palette.muted}
-          />
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity style={{ ...pillStyle(palette), width: 46, height: 46, alignItems: "center", justifyContent: "center" }}>
-                <MaterialCommunityIcons name="text-box-outline" size={18} color={palette.muted} />
-              </TouchableOpacity>
-              <TouchableOpacity style={{ ...pillStyle(palette), width: 46, height: 46, alignItems: "center", justifyContent: "center" }}>
-                <MaterialCommunityIcons name="paperclip" size={18} color={palette.muted} />
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-              {voiceClipReady ? (
-                <TouchableOpacity
-                  style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 23,
-                    backgroundColor: palette.surfaceHigh,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                  onPress={playVoiceClip}
-                >
-                  <MaterialCommunityIcons name="play" size={18} color={palette.accent} />
-                </TouchableOpacity>
-              ) : null}
-              <Pressable
-                style={{
-                  borderRadius: 999,
-                  backgroundColor: palette.accent,
-                  paddingHorizontal: 18,
-                  paddingVertical: 13,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-                onPressIn={beginHoldToTalkCapture}
-                onPressOut={endHoldToTalkCapture}
-              >
-                <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={18} color={palette.onAccent} />
-                <Text style={{ color: palette.onAccent, fontWeight: "800", fontSize: 13 }}>
-                  {voiceRecording ? holdToTalkLabel : "Record"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ) : null}
-
       <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <View style={{ flex: 1 }}>
@@ -1868,11 +2074,11 @@ export function MobileNotesSurface({
                 : activeSegment === "Artifacts"
                   ? selectedArtifactTitle
                   : activeSegment === "Sources"
-                    ? captureSourcePreview
+                  ? captureSourcePreview
                     : routeNarrative}
             </Text>
           </View>
-          <Text style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
+          <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
             {pendingCaptureCount} pending
           </Text>
         </View>
@@ -1938,8 +2144,8 @@ export function MobileNotesSurface({
         <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
             <View style={{ flex: 1 }}>
-              <Text style={kickerStyle(palette)}>Capture controls</Text>
-              <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Send the current item</Text>
+              <Text style={kickerStyle(palette)}>Quick capture</Text>
+              <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Save a new item</Text>
               <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
             </View>
             {voiceClipReady ? (
@@ -1958,10 +2164,84 @@ export function MobileNotesSurface({
               </TouchableOpacity>
             ) : null}
           </View>
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-            <TouchableOpacity style={styles.button} onPress={submitPrimaryCapture}>
-              <Text style={styles.buttonText}>Save capture</Text>
+          <TextInput
+            style={{
+              borderRadius: 16,
+              minHeight: 96,
+              backgroundColor: "#07111c",
+              color: palette.text,
+              padding: 14,
+              fontSize: 16,
+              lineHeight: 24,
+              textAlignVertical: "top",
+            }}
+            value={quickCaptureText}
+            onChangeText={setQuickCaptureText}
+            placeholder="Record a thought or start typing..."
+            placeholderTextColor={palette.muted}
+            multiline
+          />
+          <View style={{ gap: 10 }}>
+            <TextInput
+              style={{
+                borderRadius: 14,
+                backgroundColor: palette.surfaceHigh,
+                color: palette.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+              }}
+              value={quickCaptureTitle}
+              onChangeText={setQuickCaptureTitle}
+              placeholder="Capture title"
+              placeholderTextColor={palette.muted}
+            />
+            <TextInput
+              style={{
+                borderRadius: 14,
+                backgroundColor: palette.surfaceHigh,
+                color: palette.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+              }}
+              value={quickCaptureSourceUrl}
+              onChangeText={setQuickCaptureSourceUrl}
+              placeholder="https://source"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={{
+                borderRadius: 14,
+                backgroundColor: palette.surfaceHigh,
+                color: palette.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
+              }}
+              value={notesInstructionDraft}
+              onChangeText={setNotesInstructionDraft}
+              placeholder="Typed instruction for the artifact..."
+              placeholderTextColor={palette.muted}
+            />
+          </View>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable
+              style={{ ...stylesButtonLike(palette, false), flex: 1, flexDirection: "row", gap: 7 }}
+              onPressIn={beginHoldToTalkCapture}
+              onPressOut={endHoldToTalkCapture}
+            >
+              <MaterialCommunityIcons name={voiceRecording ? "stop" : "microphone"} size={18} color={palette.muted} />
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontWeight: "800", fontSize: 12 }}>
+                {voiceRecording ? holdToTalkLabel : "Hold to talk"}
+              </Text>
+            </Pressable>
+            <TouchableOpacity style={{ ...stylesButtonLike(palette, true), flex: 1 }} onPress={submitPrimaryCapture}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontWeight: "800", fontSize: 12 }}>Save capture</Text>
             </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             <TouchableOpacity style={styles.button} onPress={flushPendingCaptures}>
               <Text style={styles.buttonText}>Flush queue</Text>
             </TouchableOpacity>
@@ -1972,6 +2252,30 @@ export function MobileNotesSurface({
             ) : null}
           </View>
         </View>
+
+        {activeSegment === "Inbox" || activeSegment === "Artifacts"
+          ? mobileLibraryCompactRows(
+            palette,
+            "Recent artifacts",
+            "Artifacts created from your captures. Ready to use.",
+            "View all",
+            libraryModel.recentArtifacts,
+          )
+          : null}
+
+        {activeSegment === "Inbox" || activeSegment === "Notes"
+          ? mobileLibraryCompactRows(
+            palette,
+            "Notes & saved items",
+            "Long-form notes, references, and saved knowledge.",
+            "View all",
+            libraryModel.noteRows,
+          )
+          : null}
+
+        {activeSegment === "Inbox" || activeSegment === "Sources"
+          ? mobileLibrarySourceSuggestionGrid(palette, libraryModel.sourceRows, libraryModel.suggestions)
+          : null}
       </View>
 
       <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
