@@ -53,11 +53,13 @@ import {
 } from "./src/mobile-library-detail-view-model";
 import { MobileAssistantRebuild } from "./src/mobile-assistant-rebuild";
 import {
+  buildAssistantWeeklyQueryWeekStart,
   buildAssistantTodayQueryDate,
   localDateStringForAssistantToday,
   resolveMobileAssistantTodayActionRoute,
   type MobileAssistantTodayAction,
   type MobileAssistantTodaySummary,
+  type MobileAssistantWeeklySummary,
 } from "./src/mobile-assistant-today-view-model";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
 import {
@@ -1336,6 +1338,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [assistantAiJobs, setAssistantAiJobs] = useState<AssistantQueuedJob[]>([]);
   const [assistantThreadSnapshot, setAssistantThreadSnapshot] = useState<MobileAssistantThreadSnapshot | null>(null);
   const [assistantTodaySummary, setAssistantTodaySummary] = useState<MobileAssistantTodaySummary | null>(null);
+  const [assistantWeeklySummary, setAssistantWeeklySummary] = useState<MobileAssistantWeeklySummary | null>(null);
   const [conversationTitle, setConversationTitle] = useState("Assistant Thread");
   const [conversationSessionState, setConversationSessionState] = useState<Record<string, unknown>>({});
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
@@ -3037,6 +3040,32 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function loadAssistantWeeklySummary(origin: "auto" | "manual") {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const weekStart = buildAssistantWeeklyQueryWeekStart();
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/surfaces/assistant/weekly?week_start=${encodeURIComponent(weekStart)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Assistant weekly fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as MobileAssistantWeeklySummary;
+      setAssistantWeeklySummary(payload);
+    } catch (error) {
+      setAssistantWeeklySummary(null);
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load Assistant weekly summary");
+      }
+    }
+  }
+
   async function resetConversationSession() {
     setHomeDraft("");
     setPendingConversationTurn(null);
@@ -3643,6 +3672,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         }
         loadConversation("auto").catch(() => undefined);
         loadAssistantTodaySummary("auto").catch(() => undefined);
+        loadAssistantWeeklySummary("auto").catch(() => undefined);
         loadAssistantVoiceJobs("auto").catch(() => undefined);
         loadAssistantAiJobs("auto").catch(() => undefined);
       }
@@ -3784,10 +3814,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   useEffect(() => {
     if (!hydrated || !token) {
       setAssistantTodaySummary(null);
+      setAssistantWeeklySummary(null);
       return;
     }
     loadConversation("auto").catch(() => undefined);
     loadAssistantTodaySummary("auto").catch(() => undefined);
+    loadAssistantWeeklySummary("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -3865,6 +3897,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           loadExecutionPolicy("manual").catch(() => undefined);
           loadArtifacts().catch(() => undefined);
           loadAssistantTodaySummary("manual").catch(() => undefined);
+          loadAssistantWeeklySummary("manual").catch(() => undefined);
         }}
         onToggleDiagnostics={() => {
           const next = !showDiagnostics;
@@ -3890,6 +3923,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           onRefreshThread={() => {
             loadConversation("manual").catch(() => undefined);
             loadAssistantTodaySummary("manual").catch(() => undefined);
+            loadAssistantWeeklySummary("manual").catch(() => undefined);
             setAssistantPanelOpen(false);
           }}
           onResetSession={() => {
@@ -3927,6 +3961,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               refreshThread={() => {
                 loadConversation("manual").catch(() => undefined);
                 loadAssistantTodaySummary("manual").catch(() => undefined);
+                loadAssistantWeeklySummary("manual").catch(() => undefined);
               }}
               resetConversationSession={resetConversationSession}
               threadSnapshot={assistantThreadSnapshot}
@@ -3958,6 +3993,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                 });
               }}
               assistantTodaySummary={assistantTodaySummary}
+              assistantWeeklySummary={assistantWeeklySummary}
               onAssistantTodayAction={handleAssistantTodayAction}
             />
           </View>

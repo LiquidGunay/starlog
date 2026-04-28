@@ -1,9 +1,12 @@
 import {
+  buildAssistantWeeklyQueryWeekStart,
   buildAssistantTodayQueryDate,
+  buildMobileAssistantWeeklyMicroSignal,
   buildMobileAssistantTodayViewModel,
   localDateStringForAssistantToday,
   resolveMobileAssistantTodayActionRoute,
   type MobileAssistantTodaySummary,
+  type MobileAssistantWeeklySummary,
 } from "../src/mobile-assistant-today-view-model";
 
 declare const require: (moduleName: string) => {
@@ -118,6 +121,73 @@ function summary(overrides: Partial<MobileAssistantTodaySummary> = {}): MobileAs
   };
 }
 
+function weeklySummary(overrides: Partial<MobileAssistantWeeklySummary> = {}): MobileAssistantWeeklySummary {
+  return {
+    week_start: "2026-04-27",
+    week_end: "2026-05-03",
+    progress: {
+      tasks_completed: 3,
+      review_session_count: 4,
+      review_item_count: 12,
+    },
+    slippage: {
+      overdue_tasks: 2,
+      overdue_commitments: 1,
+      unprocessed_captures: 1,
+      due_review_cards: 4,
+      stale_active_projects: 1,
+      stale_active_goals: 0,
+      projects_missing_next_action: 1,
+    },
+    adaptation_options: [
+      {
+        key: "waiting_for_calendar",
+        title: "Calendar sync pending",
+        body: "Waiting for calendar sync.",
+        surface: "planner",
+        enabled: false,
+        priority: 120,
+      },
+      {
+        key: "rebalance_week",
+        title: "Rebalance the week",
+        body: "2 overdue tasks and 1 overdue commitment need recovery.",
+        surface: "planner",
+        prompt: "Help me rebalance this week around the slipped planning blocks.",
+        enabled: true,
+        priority: 100,
+      },
+      {
+        key: "open_review",
+        title: "Open Review",
+        body: "4 review cards are due.",
+        surface: "review",
+        href: "/review",
+        enabled: true,
+        priority: 80,
+      },
+    ],
+    attention_items: [
+      {
+        key: "overdue_tasks",
+        kind: "task_slippage",
+        title: "Overdue tasks",
+        body: "Open tasks are overdue.",
+        surface: "planner",
+        href: "/planner",
+        priority: 100,
+        count: 2,
+      },
+    ],
+    system_health: {
+      progress_signal_count: 3,
+      slippage_signal_count: 6,
+    },
+    generated_at: "2026-04-28T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
 const today = buildMobileAssistantTodayViewModel(summary());
 if (!today) {
   throw new Error("expected enriched Assistant Today summary to produce a mobile view-model");
@@ -155,6 +225,8 @@ assert.deepEqual(
 
 assert.equal(localDateStringForAssistantToday(new Date(2026, 0, 2, 3, 4, 5)), "2026-01-02");
 assert.equal(buildAssistantTodayQueryDate(new Date(2026, 10, 9, 23, 30, 0)), "2026-11-09");
+assert.equal(buildAssistantWeeklyQueryWeekStart(new Date(2026, 3, 28, 9, 0, 0)), "2026-04-27");
+assert.equal(buildAssistantWeeklyQueryWeekStart(new Date(2026, 4, 3, 23, 0, 0)), "2026-04-27");
 
 const unusableSummaryFallback = buildMobileAssistantTodayViewModel(
   summary({
@@ -211,6 +283,75 @@ assert.deepEqual(
     disabledReason: "No unprocessed captures.",
   }),
   { kind: "disabled", reason: "No unprocessed captures." },
+);
+
+const weeklySignal = buildMobileAssistantWeeklyMicroSignal(weeklySummary());
+assert.deepEqual(weeklySignal, {
+  title: "Rebalance the week",
+  reason: "2 overdue tasks and 1 overdue commitment need recovery.",
+  action: {
+    key: "rebalance_week",
+    label: "Rebalance the week",
+    prompt: "Help me rebalance this week around the slipped planning blocks.",
+    surface: "planner",
+  },
+});
+
+const weeklyAttentionFallback = buildMobileAssistantWeeklyMicroSignal(
+  weeklySummary({
+    adaptation_options: [],
+    attention_items: [
+      {
+        key: "process_captures",
+        title: "Process captures",
+        body: "Captures are waiting for processing.",
+        surface: "library",
+        href: "/library",
+        priority: 70,
+        count: 1,
+      },
+      {
+        key: "start_review",
+        title: "Start Review",
+        body: "Review cards are due.",
+        surface: "review",
+        href: "/review",
+        priority: 80,
+        count: 4,
+      },
+    ],
+  }),
+);
+assert.equal(weeklyAttentionFallback?.title, "Start Review");
+assert.deepEqual(weeklyAttentionFallback?.action, {
+  key: "start_review",
+  label: "Start Review",
+  href: "/review",
+  surface: "review",
+});
+
+assert.equal(buildMobileAssistantWeeklyMicroSignal(null), null);
+assert.equal(
+  buildMobileAssistantWeeklyMicroSignal(
+    weeklySummary({
+      progress: {
+        tasks_completed: 0,
+        review_session_count: 0,
+      },
+      slippage: {
+        overdue_tasks: 0,
+        overdue_commitments: 0,
+        unprocessed_captures: 0,
+      },
+      adaptation_options: [],
+      attention_items: [],
+      system_health: {
+        progress_signal_count: 0,
+        slippage_signal_count: 0,
+      },
+    }),
+  ),
+  null,
 );
 
 console.log("mobile assistant today view-model tests passed");

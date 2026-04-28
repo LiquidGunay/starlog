@@ -39,9 +39,11 @@ import {
   type PanelTone,
 } from "./mobile-assistant-panel-state";
 import {
+  buildMobileAssistantWeeklyMicroSignal,
   buildMobileAssistantTodayViewModel,
   type MobileAssistantTodayAction,
   type MobileAssistantTodaySummary,
+  type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
@@ -71,6 +73,7 @@ type MobileAssistantRebuildProps = {
   onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
   onOpenAttachment: (url: string | null | undefined, label: string) => void;
   assistantTodaySummary?: MobileAssistantTodaySummary | null;
+  assistantWeeklySummary?: MobileAssistantWeeklySummary | null;
   onAssistantTodayAction: (action: MobileAssistantTodayAction) => void;
 };
 
@@ -909,6 +912,7 @@ export function MobileAssistantRebuild({
   onOpenEntityRef,
   onOpenAttachment,
   assistantTodaySummary,
+  assistantWeeklySummary,
   onAssistantTodayAction,
 }: MobileAssistantRebuildProps) {
   const [threadLens, setThreadLens] = useState<ThreadLens>("live");
@@ -985,6 +989,10 @@ export function MobileAssistantRebuild({
   const todayViewModel = useMemo(
     () => buildMobileAssistantTodayViewModel(assistantTodaySummary),
     [assistantTodaySummary],
+  );
+  const weeklyMicroSignal = useMemo(
+    () => buildMobileAssistantWeeklyMicroSignal(assistantWeeklySummary),
+    [assistantWeeklySummary],
   );
 
   return (
@@ -1156,6 +1164,44 @@ export function MobileAssistantRebuild({
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
+              ) : null}
+
+              {weeklyMicroSignal ? (
+                <TouchableOpacity
+                  style={{
+                    borderTopWidth: 1,
+                    borderTopColor: "rgba(255,255,255,0.05)",
+                    paddingTop: 11,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                  onPress={() => onAssistantTodayAction(weeklyMicroSignal.action)}
+                >
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(166, 222, 191, 0.1)",
+                      borderWidth: 1,
+                      borderColor: "rgba(166, 222, 191, 0.16)",
+                    }}
+                  >
+                    <MaterialCommunityIcons name={"calendar-sync-outline" as never} size={15} color="#d8f3e2" />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "800" }}>
+                      {weeklyMicroSignal.title}
+                    </Text>
+                    <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+                      {weeklyMicroSignal.reason}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name={"chevron-right" as never} size={18} color={palette.muted} />
+                </TouchableOpacity>
               ) : null}
 
               {todayViewModel.openLoops.length > 0 ? (
