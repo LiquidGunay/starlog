@@ -105,6 +105,22 @@ const oauthStatus = {
   detail: "Google Calendar is connected.",
 };
 
+function assistantDraftHref(draft: string): string {
+  return `/assistant?draft=${encodeURIComponent(draft)}`;
+}
+
+const expectedPlannerDraftHref = assistantDraftHref(
+  "Review my plan for 2026-04-28: 5 open tasks, 3 due today, 1 overdue, 2 unscheduled, 1 calendar commitment, 3 conflicts, 90 focus minutes, and 30 buffer minutes. Check today's blocks, open tasks, conflicts, and unscheduled tasks, then propose the next bounded move.",
+);
+
+const expectedTeamSyncDraftHref = assistantDraftHref(
+  "Help repair this calendar conflict for 2026-04-28: Team Sync overlaps deep work. Remote id: google_evt_team_sync. Suggested repair: Move deep work to 10:30 AM and keep Team Sync fixed. Compare the plan impact and propose repair options before I choose Keep Starlog, Use Google, or Dismiss.",
+);
+
+const expectedSummaryConflictDraftHref = assistantDraftHref(
+  "Inspect the planner conflicts for 2026-04-28. There is 1 planner conflict not shown as calendar sync repairs. Propose clear repair options and the safest next step.",
+);
+
 test("PWA planner renders execution summary and conflict repair with mocked API data", async ({ page }) => {
   await seedAssistantSession(page);
   const resolutions: Array<Record<string, unknown>> = [];
@@ -189,9 +205,14 @@ test("PWA planner renders execution summary and conflict repair with mocked API 
   await expect(teamSyncConflict.getByText("10:00 AM - 10:30 AM")).toBeVisible();
   await expect(teamSyncConflict.getByText("Severity: High")).toBeVisible();
   await expect(teamSyncConflict.getByText("Move deep work to 10:30 AM and keep Team Sync fixed.")).toBeVisible();
+  await expect(teamSyncConflict.getByRole("link", { name: "Ask Assistant" })).toHaveAttribute("href", expectedTeamSyncDraftHref);
   await expect(lunchConflict.getByText("Lunch moved over admin block")).toBeVisible();
   await expect(lunchConflict.getByText("1:00 PM - 2:00 PM")).toBeVisible();
   await expect(conflictRepair.getByText("1 planner conflict needs review outside calendar sync")).toBeVisible();
+  await expect(conflictRepair.getByRole("link", { name: "Review conflicts in Assistant" })).toHaveAttribute(
+    "href",
+    expectedSummaryConflictDraftHref,
+  );
 
   await teamSyncConflict.getByRole("button", { name: "Keep Starlog" }).click();
   await lunchConflict.getByRole("button", { name: "Dismiss" }).click();
@@ -202,7 +223,10 @@ test("PWA planner renders execution summary and conflict repair with mocked API 
 
   await expect(page.getByLabel("Planning request")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stage request" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Open Assistant", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review plan in Assistant", exact: true })).toHaveAttribute(
+    "href",
+    expectedPlannerDraftHref,
+  );
 });
 
 test("PWA planner shows summary-only conflicts without fake calendar repair actions", async ({ page }) => {
@@ -239,5 +263,8 @@ test("PWA planner shows summary-only conflicts without fake calendar repair acti
   await expect(conflictRepair.getByRole("button", { name: "Use Google" })).toHaveCount(0);
   await expect(conflictRepair.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
   await expect(conflictRepair.getByRole("button", { name: "Refresh plan" })).toBeVisible();
-  await expect(conflictRepair.getByRole("link", { name: "Open Assistant" })).toBeVisible();
+  await expect(conflictRepair.getByRole("link", { name: "Review conflicts in Assistant" })).toHaveAttribute(
+    "href",
+    expectedSummaryConflictDraftHref,
+  );
 });
