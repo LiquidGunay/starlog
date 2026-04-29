@@ -35,7 +35,10 @@ Starlog already has three relevant pieces:
 - `services/api/app/services/integrations_service.py` defines an experimental `codex_bridge` provider contract with explicit opt-in via `config.experimental_enabled=true`.
 - `services/api/app/services/ai_service.py` preserves API/runtime fallback for LLM capabilities.
 
-This pass wires the smallest safe synchronous path: when LLM execution policy reaches `desktop_bridge`, the API tries the configured `codex_bridge` server-side. If the bridge is missing, disabled, not opted in, misconfigured, or request execution fails, routing continues to the API/runtime fallback.
+Starlog's default LLM model is `gpt-5-mini`. This pass wires the smallest safe synchronous path:
+when LLM execution policy reaches `desktop_bridge`, the API tries the configured `codex_bridge`
+server-side. If the bridge is missing, disabled, not opted in, misconfigured, or request execution
+fails, routing continues to the API/runtime fallback.
 
 ## Security Constraints
 

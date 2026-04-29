@@ -85,6 +85,8 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/UI_CONCEPT_COMPARISON_2026-04-29.md` — current screenshot evidence and comparison of PWA/mobile surfaces against the April 2026 UI concept pack.
 - `docs/UI_FUNCTIONAL_TEST_HARNESSES.md` — repeatable PWA and mobile-viewport functional smoke commands for assistant dynamic-panel UI validation.
+- `docs/USER_GUIDE.md` — current user-facing guide for first run, daily Assistant use, surfaces, phone, local AI worker, and smoke checks.
+- `docs/MORNING_BRIEFING_AND_VOICE.md` — user-facing morning briefing, spoken audio, worker, phone cache/playback, and alarm workflow.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
 - `docs/PWA_PORTABILITY_DRILL.md` — export/backup portability drill and pass criteria.

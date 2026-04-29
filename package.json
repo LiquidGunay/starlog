@@ -34,7 +34,9 @@
     "test:desktop-helper": "playwright test",
     "test:android:smoke": "./scripts/android_native_smoke.sh",
     "test:android:release-smoke": "bash ./scripts/android_release_phone_smoke.sh",
-    "test:android:smoke:windows": "powershell.exe -ExecutionPolicy Bypass -File .\\scripts\\android_native_smoke_windows.ps1"
+    "test:android:smoke:windows": "powershell.exe -ExecutionPolicy Bypass -File .\\scripts\\android_native_smoke_windows.ps1",
+    "smoke:codex-auth": "python3 scripts/codex_auth_smoke.py",
+    "smoke:user-flow": "python3 scripts/starlog_user_flow_smoke.py"
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.0",

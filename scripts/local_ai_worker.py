@@ -53,6 +53,16 @@ TTS_PROVIDER_HINTS = {
     "espeak_local",
     "espeak_ng_local",
 }
+DEFAULT_CODEX_MODEL = "gpt-5-mini"
+
+
+def _default_codex_model() -> str | None:
+    if os.environ.get("STARLOG_CODEX_USE_CLI_DEFAULT", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return None
+    configured = os.environ.get("STARLOG_CODEX_MODEL")
+    if configured is not None:
+        return configured.strip() or None
+    return DEFAULT_CODEX_MODEL
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -978,7 +988,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--poll-seconds", type=float, default=30.0)
     parser.add_argument("--retryable-attempts", type=int, default=2)
-    parser.add_argument("--codex-model", default=None)
+    parser.add_argument(
+        "--codex-model",
+        default=_default_codex_model(),
+        help="Model passed to `codex exec` for local LLM jobs. Defaults to gpt-5-mini; set STARLOG_CODEX_USE_CLI_DEFAULT=1 or pass --codex-use-cli-default to let the Codex CLI choose.",
+    )
+    parser.add_argument(
+        "--codex-use-cli-default",
+        action="store_true",
+        help="Omit -m when running `codex exec`. Useful for ChatGPT-account Codex auth modes that do not expose gpt-5-mini.",
+    )
     parser.add_argument("--codex-timeout-seconds", type=float, default=600.0)
     parser.add_argument("--whisper-command", default=None)
     parser.add_argument("--whisper-timeout-seconds", type=float, default=600.0)
@@ -1001,7 +1020,7 @@ def main(argv: list[str] | None = None) -> int:
             worker_id=args.worker_id,
             limit=args.limit,
             poll_seconds=args.poll_seconds,
-            codex_model=args.codex_model,
+            codex_model=None if args.codex_use_cli_default else args.codex_model,
             whisper_command=args.whisper_command,
             ffmpeg_command=args.ffmpeg_command,
             tts_command=args.tts_command,

@@ -158,6 +158,20 @@ def test_classify_failure_unsupported_provider_is_not_retryable() -> None:
     assert retryable is False
 
 
+def test_default_codex_model_is_gpt_5_mini(monkeypatch) -> None:
+    worker = _load_worker_module()
+    monkeypatch.delenv("STARLOG_CODEX_MODEL", raising=False)
+    monkeypatch.delenv("STARLOG_CODEX_USE_CLI_DEFAULT", raising=False)
+    assert worker._default_codex_model() == "gpt-5-mini"
+
+
+def test_default_codex_model_can_use_cli_default(monkeypatch) -> None:
+    worker = _load_worker_module()
+    monkeypatch.delenv("STARLOG_CODEX_MODEL", raising=False)
+    monkeypatch.setenv("STARLOG_CODEX_USE_CLI_DEFAULT", "1")
+    assert worker._default_codex_model() is None
+
+
 def test_prompt_for_summary_uses_runtime_prompt_templates() -> None:
     worker = _load_worker_module()
 
