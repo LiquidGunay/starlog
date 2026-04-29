@@ -18,21 +18,33 @@ export type MobilePlannerSummary = {
 export type MobilePlannerMetric = {
   label: string;
   value: string;
+  caption: string;
   tone: "focus" | "meeting" | "task" | "buffer";
 };
 
 export type MobilePlannerTimelineBlock = {
   id: string;
-  time: string;
-  duration: string;
+  timeLabel: string;
+  durationLabel: string;
   title: string;
   detail: string;
   type: "focus" | "meeting" | "away" | "conflict" | "buffer" | "task";
 };
 
+export type MobilePlannerPlanItem = {
+  id: string;
+  title: string;
+  detail: string;
+  metaLabel: string;
+  tone: "focus" | "meeting" | "task" | "buffer" | "done" | "conflict";
+  completed?: boolean;
+};
+
 export type MobilePlannerPlanGroup = {
   title: string;
-  items: string[];
+  summaryLabel: string;
+  items: MobilePlannerPlanItem[];
+  emptyLabel: string;
 };
 
 export type MobilePlannerDay = {
@@ -55,6 +67,16 @@ export type MobilePlannerViewModel = {
   dateControls: MobilePlannerDateControls;
   statusLabel: string;
   decisionLabel: string;
+  decisionDetail: string;
+  alarmBriefing: {
+    chipLabel: string;
+    chipIcon: "bell-ring-outline" | "bell-outline" | "help-circle-outline";
+    cardBody: string;
+    statusLabel: string;
+    toggleEnabled: boolean;
+    toggleScheduled: boolean;
+    offlinePlaybackAvailable: boolean;
+  };
   dayStrip: MobilePlannerDay[];
   metrics: MobilePlannerMetric[];
   timelineBlocks: MobilePlannerTimelineBlock[];
@@ -68,11 +90,13 @@ export type MobilePlannerViewModel = {
     title: string;
     body: string;
     timeLabel: string;
+    metaLabel: string;
   };
   upcoming: {
     title: string;
     body: string;
     timeLabel: string;
+    metaLabel: string;
   };
   promptChips: string[];
 };
@@ -88,19 +112,47 @@ export function deriveMobilePlannerViewModel(input: {
   const now = input.now ?? new Date();
   const selectedDate = parsePlannerDate(input.selectedDate ?? input.summary?.date, now);
   const selectedDateKey = formatPlannerDateKey(selectedDate);
-  const focusMinutes = Math.max(0, input.summary?.focus_minutes ?? 90);
-  const bufferMinutes = Math.max(0, input.summary?.buffer_minutes ?? 30);
-  const meetingCount = Math.max(0, input.summary?.calendar_event_count ?? 2);
-  const openTasks = bucketCount(input.summary?.task_buckets, "open_tasks", 6);
-  const dueToday = bucketCount(input.summary?.task_buckets, "due_today_tasks", 3);
+  const hasSummary = Boolean(input.summary);
+  const focusMinutes = Math.max(0, input.summary?.focus_minutes ?? 0);
+  const bufferMinutes = Math.max(0, input.summary?.buffer_minutes ?? 0);
+  const meetingCount = Math.max(0, input.summary?.calendar_event_count ?? 0);
+  const openTasks = bucketCount(input.summary?.task_buckets, "open_tasks", 0);
+  const dueToday = bucketCount(input.summary?.task_buckets, "due_today_tasks", 0);
   const conflictCount = Math.max(0, input.summary?.conflict_count ?? 0);
-  const fixedBlocks = bucketCount(input.summary?.block_buckets, "fixed_blocks", meetingCount);
-  const focusBlocks = bucketCount(input.summary?.block_buckets, "focus_blocks", focusMinutes > 0 ? 1 : 0);
-  const bufferBlocks = bucketCount(input.summary?.block_buckets, "buffer_blocks", bufferMinutes > 0 ? 1 : 0);
-  const nextAction = compactSentence(input.nextActionPreview) || "Move the highest-value open loop before new intake.";
+  const fixedBlocks = bucketCount(input.summary?.block_buckets, "fixed_blocks", 0);
+  const focusBlocks = bucketCount(input.summary?.block_buckets, "focus_blocks", 0);
+  const bufferBlocks = bucketCount(input.summary?.block_buckets, "buffer_blocks", 0);
+  const nextAction = compactSentence(input.nextActionPreview) || "No Planner next action loaded yet.";
   const statusLabel = input.summary
     ? `Synced ${formatPlannerTime(input.summary.generated_at, now)}`
-    : "Local preview";
+    : "No Planner summary loaded";
+  const decisionLabel = conflictCount > 0
+    ? "Resolve the overlap before adding new work."
+    : focusMinutes > 0
+      ? "Protect the focus capacity already visible for this day."
+      : openTasks > 0
+        ? "Choose one open loop before adding new commitments."
+        : "Keep the day open until Planner has more state.";
+  const decisionDetail = hasSummary
+    ? "Summary counts only. Named blocks appear when the API returns them."
+    : "Refresh to load Planner state for this date.";
+  const alarmBriefing = buildAlarmBriefingDisplay({
+    hasSummary,
+    alarmScheduled: Boolean(input.alarmScheduled),
+    nextBriefingCountdown: input.nextBriefingCountdown,
+  });
+  const scheduledCommitments = buildScheduledCommitments({
+    hasSummary,
+    focusMinutes,
+    focusBlocks,
+    meetingCount,
+    fixedBlocks,
+    bufferMinutes,
+    bufferBlocks,
+    alarmScheduled: Boolean(input.alarmScheduled),
+    nextBriefingCountdown: input.nextBriefingCountdown,
+  });
+  const flexibleTasks = buildFlexibleTasks({ openTasks, dueToday, nextAction });
 
   return {
     dateLabel: selectedDate.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
@@ -112,15 +164,25 @@ export function deriveMobilePlannerViewModel(input: {
       isToday: isSameDay(selectedDate, now),
     },
     statusLabel,
-    decisionLabel: conflictCount > 0 ? "Resolve the overlap before adding new work." : nextAction,
+    decisionLabel,
+    decisionDetail,
+    alarmBriefing,
     dayStrip: buildDayStrip(selectedDate),
-    metrics: [
-      { label: "Focus", value: formatMinutes(focusMinutes), tone: "focus" },
-      { label: "Meetings", value: String(meetingCount), tone: "meeting" },
-      { label: "Tasks", value: String(openTasks), tone: "task" },
-      { label: "Buffer", value: formatMinutes(bufferMinutes), tone: "buffer" },
-    ],
+    metrics: hasSummary
+      ? [
+          { label: "Focus", value: formatMinutes(focusMinutes), caption: focusBlocks > 0 ? `${focusBlocks} block${focusBlocks === 1 ? "" : "s"}` : "No block", tone: "focus" },
+          { label: "Meetings", value: String(meetingCount), caption: `${fixedBlocks} fixed`, tone: "meeting" },
+          { label: "Tasks", value: String(openTasks), caption: dueToday > 0 ? `${dueToday} due today` : "Open loops", tone: "task" },
+          { label: "Buffer", value: formatMinutes(bufferMinutes), caption: bufferBlocks > 0 ? `${bufferBlocks} block${bufferBlocks === 1 ? "" : "s"}` : "Flexible", tone: "buffer" },
+        ]
+      : [
+          { label: "Focus", value: "Unknown", caption: "Refresh Planner", tone: "focus" },
+          { label: "Meetings", value: "Unknown", caption: "Refresh Planner", tone: "meeting" },
+          { label: "Tasks", value: "Unknown", caption: "Refresh Planner", tone: "task" },
+          { label: "Buffer", value: "Unknown", caption: "Refresh Planner", tone: "buffer" },
+        ],
     timelineBlocks: buildTimelineBlocks({
+      hasSummary,
       nextAction,
       focusMinutes,
       focusBlocks,
@@ -133,45 +195,193 @@ export function deriveMobilePlannerViewModel(input: {
     planGroups: [
       {
         title: "Scheduled commitments",
-        items: [
-          focusBlocks > 0 ? `${formatMinutes(focusMinutes)} protected focus` : "Choose a focus block",
-          meetingCount > 0 ? `${meetingCount} fixed commitment${meetingCount === 1 ? "" : "s"}` : "No fixed meetings",
-          input.alarmScheduled ? `Morning briefing ${input.nextBriefingCountdown || "scheduled"}` : "Morning briefing not scheduled",
-        ],
+        summaryLabel: scheduledCommitments.length > 0 ? `${scheduledCommitments.length} visible` : hasSummary ? "Empty" : "Unknown",
+        items: scheduledCommitments,
+        emptyLabel: hasSummary ? "No scheduled commitments visible." : "Refresh to load commitments.",
       },
       {
         title: "Flexible tasks",
-        items: [
-          dueToday > 0 ? `${dueToday} due today` : "No task due pressure",
-          `${Math.max(0, openTasks - dueToday)} open task${openTasks - dueToday === 1 ? "" : "s"} can move`,
-          nextAction,
-        ],
+        summaryLabel: openTasks > 0 ? `${openTasks} open` : hasSummary ? "None" : "Unknown",
+        items: flexibleTasks,
+        emptyLabel: hasSummary ? "No task pressure visible." : "Refresh to load tasks.",
       },
       {
         title: "Done",
-        items: ["Briefing plan checked"],
+        summaryLabel: hasSummary ? "Checked" : "Waiting",
+        items: hasSummary
+          ? [{
+              id: "planner-summary-loaded",
+              title: "Planner summary loaded",
+              detail: "Counts available.",
+              metaLabel: statusLabel,
+              tone: "done",
+              completed: true,
+            }]
+          : [],
+        emptyLabel: "Completed Planner items will appear after the day has tracked activity.",
       },
     ],
     conflict: conflictCount > 0
       ? {
           title: "Conflict detected",
-          body: `${conflictCount} planner conflict${conflictCount === 1 ? "" : "s"} need assistant repair before the day is reliable.`,
+          body: `${conflictCount} conflict${conflictCount === 1 ? "" : "s"} need repair before execution.`,
           severityLabel: "Repair in Assistant",
         }
       : null,
-    nextFocus: {
-      title: focusBlocks > 0 ? "Next focus block" : "Set next focus",
-      body: nextAction,
-      timeLabel: focusBlocks > 0 ? "09:30" : "Unscheduled",
-    },
+    nextFocus: hasSummary
+      ? {
+          title: focusBlocks > 0 ? "Focus capacity" : "Set next focus",
+          body: focusBlocks > 0 ? nextAction : "No named focus block yet.",
+          timeLabel: focusBlocks > 0 ? formatMinutes(focusMinutes) : "Unscheduled",
+          metaLabel: focusBlocks > 0 ? `${focusBlocks} focus block${focusBlocks === 1 ? "" : "s"}` : "Needs planning",
+        }
+      : {
+          title: "Focus unknown",
+          body: "Refresh to load focus capacity.",
+          timeLabel: "Unknown",
+          metaLabel: "Refresh Planner",
+        },
     upcoming: {
-      title: meetingCount > 0 ? "Upcoming fixed time" : "Upcoming buffer",
-      body: meetingCount > 0 ? `${meetingCount} fixed commitment${meetingCount === 1 ? "" : "s"} on the day.` : "Use buffer before adding meetings.",
-      timeLabel: meetingCount > 0 ? "11:00" : "13:30",
+      title: meetingCount > 0 ? "Fixed commitments" : hasSummary ? "Open calendar" : "Refresh calendar",
+      body: meetingCount > 0
+        ? `${meetingCount} calendar event${meetingCount === 1 ? "" : "s"} visible.`
+        : hasSummary
+          ? "No calendar events visible."
+          : "Refresh to load fixed blocks.",
+      timeLabel: meetingCount > 0 ? `${meetingCount} event${meetingCount === 1 ? "" : "s"}` : hasSummary ? "None" : "Unknown",
+      metaLabel: fixedBlocks > 0 ? `${fixedBlocks} fixed block${fixedBlocks === 1 ? "" : "s"}` : hasSummary ? "No fixed blocks" : "Refresh Planner",
     },
     promptChips: conflictCount > 0
       ? ["Protect focus", "Repair conflict", "What can move?"]
       : ["Protect focus", "What can move?", "Plan buffer"],
+  };
+}
+
+function buildScheduledCommitments(input: {
+  hasSummary: boolean;
+  focusMinutes: number;
+  focusBlocks: number;
+  meetingCount: number;
+  fixedBlocks: number;
+  bufferMinutes: number;
+  bufferBlocks: number;
+  alarmScheduled: boolean;
+  nextBriefingCountdown?: string;
+}): MobilePlannerPlanItem[] {
+  const items: MobilePlannerPlanItem[] = [];
+  if (input.focusMinutes > 0 || input.focusBlocks > 0) {
+    items.push({
+      id: "focus-capacity",
+      title: input.focusBlocks > 0 ? "Protected focus capacity" : "Candidate focus capacity",
+      detail: input.focusBlocks > 0 ? "Focus time available." : "Focus minutes visible; no block count.",
+      metaLabel: formatMinutes(input.focusMinutes),
+      tone: "focus",
+    });
+  }
+  if (input.meetingCount > 0 || input.fixedBlocks > 0) {
+    items.push({
+      id: "fixed-commitments",
+      title: input.meetingCount > 0 ? "Calendar commitments" : "Fixed Planner blocks",
+      detail: input.meetingCount > 0 ? "Calendar events present." : "Fixed blocks without event detail.",
+      metaLabel: input.meetingCount > 0 ? `${input.meetingCount} event${input.meetingCount === 1 ? "" : "s"}` : `${input.fixedBlocks} fixed`,
+      tone: "meeting",
+    });
+  }
+  if (input.bufferMinutes > 0 || input.bufferBlocks > 0) {
+    items.push({
+      id: "buffer-capacity",
+      title: "Buffer capacity",
+      detail: "Transitions and cleanup.",
+      metaLabel: formatMinutes(input.bufferMinutes),
+      tone: "buffer",
+    });
+  }
+  if (input.hasSummary && input.alarmScheduled) {
+    items.push({
+      id: "morning-briefing",
+      title: "Morning briefing",
+      detail: "Phone playback scheduled.",
+      metaLabel: input.nextBriefingCountdown || "Scheduled",
+      tone: "meeting",
+    });
+  }
+  return items;
+}
+
+function buildFlexibleTasks(input: {
+  openTasks: number;
+  dueToday: number;
+  nextAction: string;
+}): MobilePlannerPlanItem[] {
+  const items: MobilePlannerPlanItem[] = [];
+  if (input.dueToday > 0) {
+    items.push({
+      id: "due-today",
+      title: "Due today",
+      detail: "Check before lower-pressure work.",
+      metaLabel: `${input.dueToday} task${input.dueToday === 1 ? "" : "s"}`,
+      tone: "task",
+    });
+  }
+  const movableTasks = Math.max(0, input.openTasks - input.dueToday);
+  if (movableTasks > 0) {
+    items.push({
+      id: "movable-open-loops",
+      title: "Movable open loops",
+      detail: "Sequence around fixed work.",
+      metaLabel: `${movableTasks} open`,
+      tone: "task",
+    });
+  }
+  if (input.openTasks > 0) {
+    items.push({
+      id: "next-action",
+      title: "Current next action",
+      detail: input.nextAction,
+      metaLabel: "Assistant context",
+      tone: "focus",
+    });
+  }
+  return items;
+}
+
+function buildAlarmBriefingDisplay(input: {
+  hasSummary: boolean;
+  alarmScheduled: boolean;
+  nextBriefingCountdown?: string;
+}): MobilePlannerViewModel["alarmBriefing"] {
+  if (!input.hasSummary) {
+    return {
+      chipLabel: "Unknown",
+      chipIcon: "help-circle-outline",
+      cardBody: "Planner summary unavailable",
+      statusLabel: "Refresh Planner",
+      toggleEnabled: false,
+      toggleScheduled: false,
+      offlinePlaybackAvailable: false,
+    };
+  }
+
+  if (input.alarmScheduled) {
+    return {
+      chipLabel: input.nextBriefingCountdown || "Scheduled",
+      chipIcon: "bell-ring-outline",
+      cardBody: input.nextBriefingCountdown ? `${input.nextBriefingCountdown} until play` : "Briefing alarm is scheduled",
+      statusLabel: "Scheduled",
+      toggleEnabled: true,
+      toggleScheduled: true,
+      offlinePlaybackAvailable: true,
+    };
+  }
+
+  return {
+    chipLabel: "No alarm",
+    chipIcon: "bell-outline",
+    cardBody: "Alarm is not scheduled yet",
+    statusLabel: "Optional",
+    toggleEnabled: true,
+    toggleScheduled: false,
+    offlinePlaybackAvailable: true,
   };
 }
 
@@ -204,6 +414,7 @@ function buildDayStrip(selectedDate: Date): MobilePlannerDay[] {
 }
 
 function buildTimelineBlocks(input: {
+  hasSummary: boolean;
   nextAction: string;
   focusMinutes: number;
   focusBlocks: number;
@@ -216,26 +427,36 @@ function buildTimelineBlocks(input: {
   const blocks: MobilePlannerTimelineBlock[] = [
     {
       id: "briefing",
-      time: "07:30",
-      duration: input.alarmScheduled ? "Spoken briefing" : "Briefing slot",
-      title: "Morning briefing",
-      detail: input.alarmScheduled ? "Offline playback is ready for the first check-in." : "Schedule the morning briefing before relying on playback.",
+      timeLabel: "Briefing",
+      durationLabel: input.hasSummary ? input.alarmScheduled ? "Scheduled" : "Optional" : "Unknown",
+      title: input.hasSummary ? "Morning briefing" : "Briefing unknown",
+      detail: input.hasSummary
+        ? input.alarmScheduled ? "Offline playback scheduled." : "No briefing alarm scheduled."
+        : "Refresh Planner to load briefing readiness for this date.",
       type: "away",
     },
     {
       id: "focus",
-      time: "09:30",
-      duration: formatMinutes(input.focusMinutes || 90),
-      title: input.focusBlocks > 0 ? "Protected focus" : "Candidate focus",
-      detail: input.nextAction,
+      timeLabel: "Focus",
+      durationLabel: input.hasSummary ? formatMinutes(input.focusMinutes) : "Unknown",
+      title: input.hasSummary
+        ? input.focusBlocks > 0 ? "Protected focus capacity" : "Candidate focus"
+        : "Focus unknown",
+      detail: input.hasSummary
+        ? input.focusBlocks > 0 ? input.nextAction : "No named focus block yet."
+        : "Refresh Planner to load focus capacity for this date.",
       type: "focus",
     },
     {
       id: "fixed",
-      time: "11:00",
-      duration: `${Math.max(1, input.meetingCount)} fixed`,
-      title: input.meetingCount > 0 ? "Fixed commitments" : "Open work window",
-      detail: input.meetingCount > 0 ? "Keep prep and transitions compact." : "No meetings are blocking this part of the day.",
+      timeLabel: "Fixed",
+      durationLabel: input.meetingCount > 0 ? `${input.meetingCount} event${input.meetingCount === 1 ? "" : "s"}` : input.hasSummary ? "None" : "Unknown",
+      title: input.meetingCount > 0 ? "Fixed commitments" : input.hasSummary ? "Open work window" : "Calendar not loaded",
+      detail: input.meetingCount > 0
+        ? "Keep prep and transitions compact."
+        : input.hasSummary
+          ? "No meetings blocking this window."
+          : "Refresh Planner to load fixed commitments for this date.",
       type: input.meetingCount > 0 ? "meeting" : "task",
     },
   ];
@@ -243,20 +464,24 @@ function buildTimelineBlocks(input: {
   if (input.conflictCount > 0) {
     blocks.push({
       id: "conflict",
-      time: "14:00",
-      duration: `${input.conflictCount} conflict${input.conflictCount === 1 ? "" : "s"}`,
+      timeLabel: "Conflict",
+      durationLabel: `${input.conflictCount} issue${input.conflictCount === 1 ? "" : "s"}`,
       title: "Repair before execution",
-      detail: "Conflict repair should happen before new blocks are added.",
+      detail: "Repair before adding blocks.",
       type: "conflict",
     });
   }
 
   blocks.push({
     id: "buffer",
-    time: "16:00",
-    duration: input.bufferBlocks > 0 ? formatMinutes(input.bufferMinutes || 30) : "Flexible",
-    title: "Buffer and handoff",
-    detail: "Close loops, move flexible tasks, and leave tomorrow cleaner.",
+    timeLabel: "Buffer",
+    durationLabel: input.hasSummary
+      ? input.bufferBlocks > 0 ? formatMinutes(input.bufferMinutes) : "Flexible"
+      : "Unknown",
+    title: input.hasSummary ? "Buffer and handoff" : "Buffer unknown",
+    detail: input.hasSummary
+      ? "Close loops and move flexible tasks."
+      : "Refresh Planner to load buffer capacity for this date.",
     type: "buffer",
   });
 
