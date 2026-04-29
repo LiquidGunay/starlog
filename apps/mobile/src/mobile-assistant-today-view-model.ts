@@ -113,6 +113,7 @@ export type MobileAssistantTodayViewModel = {
   title: string;
   body: string;
   urgency: string;
+  isFallbackMorningFocus: boolean;
   primaryAction: MobileAssistantTodayAction;
   promptChips: MobileAssistantTodayAction[];
   reasonStack: string[];
@@ -138,19 +139,19 @@ const FALLBACK_ASSISTANT_TODAY_SUMMARY: MobileAssistantTodaySummary = {
   ],
   recommended_next_move: {
     key: "plan_today_fallback",
-    title: "Plan today",
-    body: "Start with a short plan before adding more to the thread.",
+    title: "Choose morning focus",
+    body: "Pick one focus and I will shape the next block around it.",
     surface: "assistant",
     href: null,
-    action_label: "Plan with Assistant",
-    prompt: "Help me plan today around my schedule, tasks, and open loops.",
+    action_label: "Plan morning",
+    prompt: "Help me choose one morning focus and shape the next work block.",
     priority: 10,
     urgency: "normal",
   },
   reason_stack: [
-    "Current thread is ready for a fresh plan.",
-    "A short plan gives the day a clean starting point.",
-    "Major writes still need confirmation.",
+    "Start with one decision.",
+    "Protect focus before inbox cleanup.",
+    "You confirm anything that changes the plan.",
   ],
   at_a_glance: [
     { key: "planner", label: "Planner", count: 0, href: "/planner" },
@@ -160,10 +161,10 @@ const FALLBACK_ASSISTANT_TODAY_SUMMARY: MobileAssistantTodaySummary = {
   quick_actions: [
     {
       key: "open_planner_fallback",
-      title: "Open Planner",
+      title: "Open planner",
       surface: "planner",
       href: "/planner",
-      action_label: "Open Planner",
+      action_label: "Open planner",
       prompt: null,
       enabled: true,
       count: 0,
@@ -172,10 +173,10 @@ const FALLBACK_ASSISTANT_TODAY_SUMMARY: MobileAssistantTodaySummary = {
     },
     {
       key: "open_library_fallback",
-      title: "Open Library",
+      title: "Open library",
       surface: "library",
       href: "/library",
-      action_label: "Open Library",
+      action_label: "Open library",
       prompt: null,
       enabled: true,
       count: 0,
@@ -184,10 +185,10 @@ const FALLBACK_ASSISTANT_TODAY_SUMMARY: MobileAssistantTodaySummary = {
     },
     {
       key: "start_review_fallback",
-      title: "Open Review",
+      title: "Review later",
       surface: "review",
       href: "/review",
-      action_label: "Open Review",
+      action_label: "Review later",
       prompt: null,
       enabled: true,
       count: 0,
@@ -283,6 +284,20 @@ export function resolveMobileAssistantTodayActionRoute(action: MobileAssistantTo
     return { kind: "navigate", href, surface: surface || undefined };
   }
   return { kind: "unavailable", reason: `${action.label} is not available yet` };
+}
+
+export function resolveMobileAssistantMorningFocusAction(
+  viewModel: MobileAssistantTodayViewModel,
+  fallbackFocusPrompt: string,
+): MobileAssistantTodayAction {
+  const prompt = cleanString(fallbackFocusPrompt);
+  if (!viewModel.isFallbackMorningFocus || !prompt) {
+    return viewModel.primaryAction;
+  }
+  return {
+    ...viewModel.primaryAction,
+    prompt,
+  };
 }
 
 function fallbackAssistantTodaySummary(date = localDateStringForAssistantToday()): MobileAssistantTodaySummary {
@@ -420,10 +435,8 @@ export function buildMobileAssistantWeeklyMicroSignal(
 export function buildMobileAssistantTodayViewModel(
   summary: MobileAssistantTodaySummary | null | undefined,
 ): MobileAssistantTodayViewModel {
-  const usableSummary =
-    summary?.recommended_next_move && hasUsableAction(summary.recommended_next_move)
-      ? summary
-      : fallbackAssistantTodaySummary(summary?.date || undefined);
+  const isFallbackMorningFocus = !(summary?.recommended_next_move && hasUsableAction(summary.recommended_next_move));
+  const usableSummary = isFallbackMorningFocus ? fallbackAssistantTodaySummary(summary?.date || undefined) : summary;
   const move = usableSummary.recommended_next_move!;
 
   const primaryAction = normalizeAction({
@@ -458,6 +471,7 @@ export function buildMobileAssistantTodayViewModel(
     title: cleanString(move.title),
     body: cleanString(move.body),
     urgency: cleanString(move.urgency) || "normal",
+    isFallbackMorningFocus,
     primaryAction,
     promptChips: quickActions,
     reasonStack,

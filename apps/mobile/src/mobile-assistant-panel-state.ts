@@ -29,8 +29,16 @@ export type MobilePanelOptionViewModel = {
 
 export type MobilePlannerConflictPreview = {
   localTitle: string;
+  localTimeLabel: string | null;
   overlapLabel: string;
+  overlapTimeLabel: string | null;
   remoteTitle: string;
+  remoteTimeLabel: string | null;
+};
+
+export type MobilePanelSecondaryAction = {
+  label: string;
+  kind: "dismiss";
 };
 
 export type MobileAssistantPanelLayout = {
@@ -143,6 +151,22 @@ export function panelDismissPayload(interrupt: AssistantInterrupt): { interruptI
   return { interruptId: interrupt.id };
 }
 
+function labelIsDismissive(label: string): boolean {
+  return /\b(later|not now|cancel|dismiss|skip|defer|keep in review|no thanks)\b/i.test(label);
+}
+
+export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): MobilePanelSecondaryAction {
+  const secondaryLabel = typeof interrupt.secondary_label === "string" ? interrupt.secondary_label.trim() : "";
+  const deferLabel = typeof interrupt.defer_label === "string" ? interrupt.defer_label.trim() : "";
+  if (deferLabel && labelIsDismissive(deferLabel)) {
+    return { label: deferLabel, kind: "dismiss" };
+  }
+  if (secondaryLabel && labelIsDismissive(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "dismiss" };
+  }
+  return { label: "Dismiss", kind: "dismiss" };
+}
+
 export function fieldValue(values: Record<string, unknown>, field: AssistantInterruptField): string {
   const value = values[field.id];
   if (typeof value === "string") {
@@ -162,7 +186,7 @@ export function fieldSummary(field: AssistantInterruptField): string | null {
     return "Choose a specific time when needed.";
   }
   if (field.kind === "entity_search") {
-    return "Search opens as a larger picker when wired.";
+    return "Use search when the list is long.";
   }
   return null;
 }
@@ -192,15 +216,15 @@ export function visibleContextChips(interrupts: AssistantInterrupt[], attachment
   } else if (pending?.tool_name === "resolve_planner_conflict") {
     chips.push("Work", "Today");
   } else if (pending) {
-    chips.push(panelKicker(pending), pending.display_mode === "bottom_sheet" ? "Sheet ready" : "Inline panel");
+    chips.push(panelKicker(pending), "Needs decision");
   } else {
-    chips.push("Assistant", "Synced thread");
+    chips.push("Morning", "Today");
   }
   if (attachmentCount > 0) {
     chips.push(`${attachmentCount} artifact${attachmentCount === 1 ? "" : "s"}`);
   }
   if (hiddenThreadMessageCount > 0) {
-    chips.push(`${hiddenThreadMessageCount} system`);
+    chips.push("Earlier context");
   }
   return chips.slice(0, 4);
 }
@@ -275,17 +299,19 @@ export function mobileAssistantPromptChips(suggestions: string[], draft: string)
   return cleaned.slice(0, draft.trim().length > 0 ? 1 : MOBILE_ASSISTANT_MAX_PROMPT_CHIPS);
 }
 
-export function mobileAssistantPanelLayout(viewportWidth: number): MobileAssistantPanelLayout {
+export function mobileAssistantPanelLayout(viewportWidth: number, fontScale = 1): MobileAssistantPanelLayout {
   const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 390;
   const narrow = width < 360;
+  const scaledText = Number.isFinite(fontScale) && fontScale > 1.08;
+  const stackActions = narrow || scaledText;
   return {
     viewportWidth: width,
     optionColumns: 1,
     optionTitleMaxLines: MOBILE_PANEL_OPTION_LAYOUT.titleMaxLines,
     optionDescriptionMaxLines: narrow ? 4 : MOBILE_PANEL_OPTION_LAYOUT.descriptionMaxLines,
-    actionDirection: narrow ? "column" : "row",
-    actionPrimaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.primaryBasis,
-    actionSecondaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.secondaryBasis,
+    actionDirection: stackActions ? "column" : "row",
+    actionPrimaryBasis: stackActions ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.primaryBasis,
+    actionSecondaryBasis: stackActions ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.secondaryBasis,
     actionWraps: MOBILE_PANEL_ACTION_LAYOUT.wraps,
     conflictTitleMaxLines: narrow ? 3 : 2,
     promptChipMaxWidth: narrow ? "100%" : "92%",
@@ -297,23 +323,110 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
     return null;
   }
   const payload = metadataRecord(interrupt.metadata?.conflict_payload);
+  const detail = metadataRecord(payload.detail);
+  const detailLocal = metadataRecord(detail.local);
+  const detailRemote = metadataRecord(detail.remote);
   const localTitle =
     typeof payload.local_title === "string" && payload.local_title.trim()
       ? payload.local_title.trim()
       : typeof payload.block_title === "string" && payload.block_title.trim()
         ? payload.block_title.trim()
-        : "Starlog focus block";
+        : typeof detailLocal.title === "string" && detailLocal.title.trim()
+          ? detailLocal.title.trim()
+        : typeof detail.local_title === "string" && detail.local_title.trim()
+          ? detail.local_title.trim()
+          : typeof detail.block_title === "string" && detail.block_title.trim()
+            ? detail.block_title.trim()
+            : "Starlog focus block";
   const remoteTitle =
     typeof payload.remote_title === "string" && payload.remote_title.trim()
       ? payload.remote_title.trim()
       : typeof payload.title === "string" && payload.title.trim()
         ? payload.title.trim()
-        : "Calendar event";
+        : typeof detailRemote.title === "string" && detailRemote.title.trim()
+          ? detailRemote.title.trim()
+        : typeof detail.remote_title === "string" && detail.remote_title.trim()
+          ? detail.remote_title.trim()
+          : typeof detail.title === "string" && detail.title.trim()
+            ? detail.title.trim()
+            : "Calendar event";
   const overlapLabel =
     typeof payload.overlap_label === "string" && payload.overlap_label.trim()
       ? payload.overlap_label.trim()
       : typeof payload.overlap_minutes === "number"
         ? `Overlaps by ${payload.overlap_minutes}m`
         : "Overlap";
-  return { localTitle, overlapLabel, remoteTitle };
+  const localTimeLabel = conflictTimeLabel(payload, detail, detailLocal, "local");
+  const remoteTimeLabel = conflictTimeLabel(payload, detail, detailRemote, "remote");
+  const overlapTimeLabel =
+    cleanMetadataString(payload.overlap_time_label) ||
+    cleanMetadataString(payload.conflict_time_label) ||
+    cleanMetadataString(detail.overlap_time_label) ||
+    cleanMetadataString(detail.conflict_time_label) ||
+    null;
+  return { localTitle, localTimeLabel, overlapLabel, overlapTimeLabel, remoteTitle, remoteTimeLabel };
+}
+
+function cleanMetadataString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function compactTimeLabel(value: string): string {
+  const trimmed = value.trim();
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(trimmed);
+  if (!match) {
+    return trimmed;
+  }
+  const hour = Number(match[2]);
+  const minute = match[3];
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return trimmed;
+  }
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${period}`;
+}
+
+function conflictTimeLabel(
+  payload: Record<string, unknown>,
+  detail: Record<string, unknown>,
+  nested: Record<string, unknown>,
+  prefix: "local" | "remote",
+): string | null {
+  const direct =
+    cleanMetadataString(payload[`${prefix}_time_label`]) ||
+    cleanMetadataString(payload[`${prefix}_time`]) ||
+    cleanMetadataString(detail[`${prefix}_time_label`]) ||
+    cleanMetadataString(detail[`${prefix}_time`]) ||
+    cleanMetadataString(nested.time_label) ||
+    cleanMetadataString(nested.time);
+  if (direct) {
+    return compactTimeLabel(direct);
+  }
+  const start =
+    cleanMetadataString(payload[`${prefix}_start_label`]) ||
+    cleanMetadataString(payload[`${prefix}_start_time`]) ||
+    cleanMetadataString(payload[`${prefix}_start`]) ||
+    cleanMetadataString(detail[`${prefix}_start_label`]) ||
+    cleanMetadataString(detail[`${prefix}_start_time`]) ||
+    cleanMetadataString(detail[`${prefix}_start`]) ||
+    cleanMetadataString(nested.start_label) ||
+    cleanMetadataString(nested.start_time) ||
+    cleanMetadataString(nested.starts_at) ||
+    cleanMetadataString(nested.start);
+  const end =
+    cleanMetadataString(payload[`${prefix}_end_label`]) ||
+    cleanMetadataString(payload[`${prefix}_end_time`]) ||
+    cleanMetadataString(payload[`${prefix}_end`]) ||
+    cleanMetadataString(detail[`${prefix}_end_label`]) ||
+    cleanMetadataString(detail[`${prefix}_end_time`]) ||
+    cleanMetadataString(detail[`${prefix}_end`]) ||
+    cleanMetadataString(nested.end_label) ||
+    cleanMetadataString(nested.end_time) ||
+    cleanMetadataString(nested.ends_at) ||
+    cleanMetadataString(nested.end);
+  if (start && end) {
+    return `${compactTimeLabel(start)} - ${compactTimeLabel(end)}`;
+  }
+  return start || end ? compactTimeLabel(start || end) : null;
 }

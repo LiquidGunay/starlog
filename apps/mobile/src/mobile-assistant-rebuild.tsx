@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ComponentProps, useEffect, useMemo, useState } from "react";
 import type {
   AssistantAmbientUpdate,
   AssistantAttachment,
@@ -14,7 +14,7 @@ import type {
 } from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { ScrollView, Switch, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import { ScrollView, Switch, Text as RNText, TextInput as RNTextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 import {
@@ -34,6 +34,7 @@ import {
   mobileAssistantPanelLayout,
   mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   panelDismissPayload,
@@ -47,12 +48,50 @@ import {
 import {
   buildMobileAssistantWeeklyMicroSignal,
   buildMobileAssistantTodayViewModel,
+  resolveMobileAssistantMorningFocusAction,
   type MobileAssistantTodayAction,
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
+const ASSISTANT_TEXT_PROPS = { maxFontSizeMultiplier: 1.08 } as const;
+const ASSISTANT_TIGHT_TEXT_PROPS = { maxFontSizeMultiplier: 1 } as const;
+
+function Text({ maxFontSizeMultiplier = ASSISTANT_TEXT_PROPS.maxFontSizeMultiplier, ...props }: ComponentProps<typeof RNText>) {
+  return <RNText maxFontSizeMultiplier={maxFontSizeMultiplier} {...props} />;
+}
+
+function TextInput({
+  maxFontSizeMultiplier = ASSISTANT_TEXT_PROPS.maxFontSizeMultiplier,
+  ...props
+}: ComponentProps<typeof RNTextInput>) {
+  return <RNTextInput maxFontSizeMultiplier={maxFontSizeMultiplier} {...props} />;
+}
+
+const MORNING_FOCUS_OPTIONS = [
+  {
+    key: "project",
+    label: "Move project forward",
+    body: "Make visible progress on a priority project.",
+    icon: "trending-up",
+    prompt: "Help me plan my next block around moving a priority project forward.",
+  },
+  {
+    key: "friction",
+    label: "Clear system friction",
+    body: "Reduce blockers and context switching.",
+    icon: "sync",
+    prompt: "Help me plan my next block around clearing system friction.",
+  },
+  {
+    key: "learning",
+    label: "Maintain learning",
+    body: "Review or practice important material.",
+    icon: "book-open-page-variant-outline",
+    prompt: "Help me plan my next block around review or learning.",
+  },
+] as const;
 
 type MobileAssistantRebuildProps = {
   styles: Record<string, any>;
@@ -569,7 +608,8 @@ function InterruptFieldInput({
   accent?: { text: string; bg: string; border: string };
   setValue: (value: unknown) => void;
 }) {
-  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
 
   if (field.kind === "toggle") {
     return (
@@ -744,7 +784,8 @@ function PlannerConflictMiniPreview({
   palette: Record<string, string>;
   accent: { text: string; bg: string; border: string };
 }) {
-  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
   const preview = mobilePlannerConflictPreview(interrupt);
   if (!preview) {
     return null;
@@ -763,9 +804,9 @@ function PlannerConflictMiniPreview({
       }}
     >
       {[
-        { icon: "brain", title: preview.localTitle, tone: "#9fd3ff" },
-        { icon: "alert-outline", title: preview.overlapLabel, tone: "#ff6f59" },
-        { icon: "account-group-outline", title: preview.remoteTitle, tone: "#c8a5ff" },
+        { icon: "brain", title: preview.localTitle, time: preview.localTimeLabel, tone: "#9fd3ff" },
+        { icon: "alert-outline", title: preview.overlapLabel, time: preview.overlapTimeLabel, tone: "#ff6f59" },
+        { icon: "account-group-outline", title: preview.remoteTitle, time: preview.remoteTimeLabel, tone: "#c8a5ff" },
       ].map((item, index) => (
         <View
           key={`${item.title}-${index}`}
@@ -796,6 +837,21 @@ function PlannerConflictMiniPreview({
           >
             {item.title}
           </Text>
+          {item.time ? (
+            <Text
+              style={{
+                flexShrink: 0,
+                color: index === 1 ? "#ff8a72" : palette.muted,
+                fontSize: 12.5,
+                lineHeight: 17,
+                fontWeight: "700",
+                textAlign: "right",
+              }}
+              numberOfLines={1}
+            >
+              {item.time}
+            </Text>
+          ) : null}
         </View>
       ))}
     </View>
@@ -807,7 +863,6 @@ function DynamicPanelRenderer({
   values,
   palette,
   active,
-  displayModeLabel,
   onValueChange,
   onSubmit,
   onDismiss,
@@ -817,7 +872,6 @@ function DynamicPanelRenderer({
   values: Record<string, unknown>;
   palette: Record<string, string>;
   active: boolean;
-  displayModeLabel: string;
   onValueChange: (fieldId: string, value: unknown) => void;
   onSubmit: () => void;
   onDismiss: () => void;
@@ -828,7 +882,9 @@ function DynamicPanelRenderer({
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
   const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
-  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
+  const secondaryAction = mobilePanelSecondaryAction(interrupt);
 
   return (
     <View
@@ -843,7 +899,7 @@ function DynamicPanelRenderer({
       }}
     >
       <View style={{ gap: 5 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View
             style={{
               alignSelf: "flex-start",
@@ -859,9 +915,6 @@ function DynamicPanelRenderer({
               {panelKicker(interrupt)}
             </Text>
           </View>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-            {displayModeLabel}
-          </Text>
         </View>
         <Text style={{ color: palette.text, fontSize: 17, lineHeight: 23, fontWeight: "800" }}>{interrupt.title}</Text>
         {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
@@ -913,7 +966,7 @@ function DynamicPanelRenderer({
                 More detail
               </Text>
               <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                {complexFields.map((field) => field.label).join(", ")} can use a larger picker when native mobile search is available.
+                {complexFields.map((field) => field.label).join(", ")} can be narrowed with search.
               </Text>
             </View>
           ) : null}
@@ -935,7 +988,7 @@ function DynamicPanelRenderer({
               }}
               onPress={onSubmit}
             >
-              <Text style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
+              <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
                 {interrupt.primary_label}
               </Text>
             </TouchableOpacity>
@@ -955,8 +1008,8 @@ function DynamicPanelRenderer({
               }}
               onPress={onDismiss}
             >
-              <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
-                {interrupt.secondary_label || interrupt.defer_label || "Dismiss"}
+              <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
+                {secondaryAction.label}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1014,7 +1067,9 @@ export function MobileAssistantRebuild({
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
-  const assistantPanelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const [selectedFallbackFocus, setSelectedFallbackFocus] = useState<(typeof MORNING_FOCUS_OPTIONS)[number]["key"]>("project");
+  const dimensions = useWindowDimensions();
+  const assistantPanelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
 
   const liveInterrupts = threadSnapshot?.interrupts ?? [];
   const liveInterruptById = useMemo(
@@ -1079,6 +1134,9 @@ export function MobileAssistantRebuild({
     () => buildMobileAssistantWeeklyMicroSignal(assistantWeeklySummary),
     [assistantWeeklySummary],
   );
+  const showFallbackFocusChooser = todayViewModel.isFallbackMorningFocus;
+  const selectedFallbackFocusOption =
+    MORNING_FOCUS_OPTIONS.find((option) => option.key === selectedFallbackFocus) || MORNING_FOCUS_OPTIONS[0];
 
   return (
     <View style={{ gap: 16, paddingTop: 4 }}>
@@ -1150,55 +1208,222 @@ export function MobileAssistantRebuild({
           visibleThreadMessages.length === 0 && todayViewModel ? (
             <View
               style={{
-                borderRadius: 20,
-                paddingHorizontal: 14,
-                paddingVertical: 14,
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.05)",
-                backgroundColor: "rgba(255,255,255,0.018)",
-                gap: 13,
+                gap: 12,
               }}
             >
-              <View style={{ gap: 6 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                    Today · {todayViewModel.urgency} focus
-                  </Text>
-                  <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "700" }}>{todayViewModel.dateLabel}</Text>
-                </View>
-                <Text style={{ color: palette.text, fontSize: 24, lineHeight: 29, fontWeight: "800" }}>
-                  {todayViewModel.title}
-                </Text>
-                <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>
-                  {todayViewModel.body}
-                </Text>
-              </View>
-
-              <View style={{ gap: 7 }}>
-                {todayViewModel.reasonStack.map((reason) => (
-                  <View key={reason} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                    <MaterialCommunityIcons name={"check-circle-outline" as never} size={15} color={palette.accent} style={{ marginTop: 2 }} />
-                    <Text style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 19 }}>{reason}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <TouchableOpacity
+              <View
                 style={{
-                  minHeight: 46,
-                  borderRadius: 999,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: palette.accent,
+                  alignSelf: "flex-end",
+                  maxWidth: "86%",
+                  borderRadius: 20,
+                  borderBottomRightRadius: 7,
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.055)",
+                  backgroundColor: "rgba(255,255,255,0.048)",
                 }}
-                onPress={() => onAssistantTodayAction(todayViewModel.primaryAction)}
               >
-                <Text style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
-                  {todayViewModel.primaryAction.label}
+                <Text style={{ color: palette.text, fontSize: 15, lineHeight: 22 }} numberOfLines={3}>
+                  What should I focus on this morning?
                 </Text>
-              </TouchableOpacity>
+              </View>
+
+              <View
+                style={{
+                  borderRadius: 20,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.075)",
+                  backgroundColor: "rgba(11, 22, 36, 0.74)",
+                  gap: 11,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(243, 178, 66, 0.11)",
+                      borderWidth: 1,
+                      borderColor: "rgba(243, 178, 66, 0.28)",
+                    }}
+                  >
+                    <MaterialCommunityIcons name={"star-four-points" as never} size={17} color={palette.accent} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.accent, fontSize: 13, lineHeight: 17, fontWeight: "800" }} numberOfLines={1}>
+                      Starlog Assistant
+                    </Text>
+                    <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 15 }} numberOfLines={1}>
+                      {pendingConversationTurn ? "Syncing" : "Synced just now"}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={{ color: palette.text, fontSize: 16, lineHeight: 23 }}>
+                  Here's what makes the most sense right now.
+                </Text>
+
+                {!showFallbackFocusChooser && todayViewModel.reasonStack.length > 0 ? (
+                  <View style={{ gap: 7 }}>
+                    {todayViewModel.reasonStack.slice(0, 2).map((reason) => (
+                      <View key={reason} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                        <MaterialCommunityIcons name={"check-circle-outline" as never} size={15} color={palette.accent} style={{ marginTop: 2 }} />
+                        <Text style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                          {reason}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                <View
+                  style={{
+                    borderRadius: 17,
+                    paddingHorizontal: 10,
+                    paddingVertical: 10,
+                    borderWidth: 1,
+                    borderColor: "rgba(243, 178, 66, 0.18)",
+                    backgroundColor: "rgba(255,255,255,0.02)",
+                    gap: 9,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <MaterialCommunityIcons name={"target" as never} size={18} color={palette.accent} />
+                    <Text style={{ flex: 1, color: palette.text, fontSize: 17, lineHeight: 22, fontWeight: "800" }} numberOfLines={1}>
+                      {todayViewModel.title}
+                    </Text>
+                  </View>
+
+                  {showFallbackFocusChooser ? (
+                    <View style={{ gap: 7 }}>
+                      {MORNING_FOCUS_OPTIONS.map((option) => {
+                        const selected = selectedFallbackFocus === option.key;
+                        return (
+                          <TouchableOpacity
+                            key={option.key}
+                            style={{
+                              minHeight: 58,
+                              borderRadius: 14,
+                              paddingHorizontal: 11,
+                              paddingVertical: 10,
+                              borderWidth: 1,
+                              borderColor: selected ? "rgba(243, 178, 66, 0.78)" : "rgba(255,255,255,0.06)",
+                              backgroundColor: selected ? "rgba(243, 178, 66, 0.1)" : "rgba(255,255,255,0.018)",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 10,
+                            }}
+                            onPress={() => setSelectedFallbackFocus(option.key)}
+                          >
+                            <View
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 10,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderWidth: 1,
+                                borderColor: selected ? "rgba(243, 178, 66, 0.62)" : "rgba(255,255,255,0.09)",
+                                backgroundColor: selected ? "rgba(243, 178, 66, 0.12)" : "rgba(255,255,255,0.02)",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <MaterialCommunityIcons name={option.icon as never} size={17} color={selected ? palette.accent : palette.muted} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                              <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={1}>
+                                {option.label}
+                              </Text>
+                              <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
+                                {option.body}
+                              </Text>
+                            </View>
+                            <MaterialCommunityIcons
+                              name={selected ? "check-circle" : "circle-outline"}
+                              size={20}
+                              color={selected ? palette.accent : palette.muted}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
+                      {todayViewModel.body}
+                    </Text>
+                  )}
+
+                  <View
+                    style={{
+                      borderRadius: 13,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.055)",
+                      backgroundColor: "rgba(255,255,255,0.018)",
+                      flexDirection: "row",
+                      gap: 8,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <MaterialCommunityIcons name={"calendar-blank-outline" as never} size={15} color={palette.muted} style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
+                      I can draft a focus block; you confirm plan changes.
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: assistantPanelLayout.actionDirection, gap: 8 }}>
+                    <TouchableOpacity
+                      style={{
+                        flexGrow: 1,
+                        flexBasis: assistantPanelLayout.actionPrimaryBasis,
+                        minHeight: 44,
+                        borderRadius: 14,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: palette.accent,
+                      }}
+                      onPress={() =>
+                        onAssistantTodayAction(
+                          resolveMobileAssistantMorningFocusAction(todayViewModel, selectedFallbackFocusOption.prompt),
+                        )
+                      }
+                    >
+                      <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
+                        {todayViewModel.primaryAction.label}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flexGrow: 1,
+                        flexBasis: assistantPanelLayout.actionSecondaryBasis,
+                        minHeight: 44,
+                        borderRadius: 14,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.06)",
+                        backgroundColor: "rgba(255,255,255,0.025)",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      onPress={() => setHomeDraft("Help me compare focus options for this morning.")}
+                    >
+                      <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
+                        Adjust options
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
 
               {todayViewModel.promptChips.length > 0 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
@@ -1207,15 +1432,16 @@ export function MobileAssistantRebuild({
                       key={action.key}
                       style={{
                         borderRadius: 999,
-                        paddingHorizontal: 10,
-                        paddingVertical: 7,
+                        paddingHorizontal: 11,
+                        paddingVertical: 8,
                         backgroundColor: "rgba(255,255,255,0.025)",
                         borderWidth: 1,
                         borderColor: "rgba(255,255,255,0.05)",
+                        maxWidth: assistantPanelLayout.promptChipMaxWidth,
                       }}
                       onPress={() => onAssistantTodayAction(action)}
                     >
-                      <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                      <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }} numberOfLines={1}>
                         {action.label}
                       </Text>
                     </TouchableOpacity>
@@ -1635,7 +1861,6 @@ export function MobileAssistantRebuild({
                           values={values}
                           palette={palette}
                           active={interrupt.id === activePanelId}
-                          displayModeLabel={panelState?.displayModeLabel || "inline"}
                           onValueChange={(fieldId, value) =>
                             setInterruptValuesById((previous) => ({
                               ...previous,
@@ -1846,6 +2071,7 @@ export function MobileAssistantRebuild({
             }}
           >
             <TextInput
+              {...ASSISTANT_TIGHT_TEXT_PROPS}
               value={homeDraft}
               onChangeText={setHomeDraft}
               placeholder={productCopy.assistant.inputPlaceholder}
@@ -1898,6 +2124,7 @@ export function MobileAssistantRebuild({
                 onPress={() => setHomeDraft(label)}
               >
                 <Text
+                  {...ASSISTANT_TIGHT_TEXT_PROPS}
                   style={{ maxWidth: 190, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }}
                   numberOfLines={1}
                 >

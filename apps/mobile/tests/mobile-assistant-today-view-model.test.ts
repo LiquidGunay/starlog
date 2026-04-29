@@ -4,6 +4,7 @@ import {
   buildMobileAssistantWeeklyMicroSignal,
   buildMobileAssistantTodayViewModel,
   localDateStringForAssistantToday,
+  resolveMobileAssistantMorningFocusAction,
   resolveMobileAssistantTodayActionRoute,
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
@@ -207,6 +208,8 @@ assert.equal(today.promptChips.some((action) => action.label === "Empty disabled
 
 assert.equal(today.reasonStack.length, 4);
 assert.equal(today.openLoops.length, 3);
+assert.equal(today.isFallbackMorningFocus, false);
+assert.deepEqual(resolveMobileAssistantMorningFocusAction(today, "Hardcoded fallback focus prompt."), today.primaryAction);
 
 const fourthPositiveContext = buildMobileAssistantTodayViewModel(
   summary({
@@ -243,17 +246,23 @@ const unusableSummaryFallback = buildMobileAssistantTodayViewModel(
     },
   }),
 );
-assert.equal(unusableSummaryFallback.title, "Plan today");
-assert.equal(unusableSummaryFallback.primaryAction.prompt, "Help me plan today around my schedule, tasks, and open loops.");
+assert.equal(unusableSummaryFallback.title, "Choose morning focus");
+assert.equal(unusableSummaryFallback.primaryAction.prompt, "Help me choose one morning focus and shape the next work block.");
+assert.equal(unusableSummaryFallback.isFallbackMorningFocus, true);
 assert.equal(unusableSummaryFallback.promptChips.length, 3);
 assert.equal(unusableSummaryFallback.openLoops.length, 3);
+assert.deepEqual(resolveMobileAssistantMorningFocusAction(unusableSummaryFallback, "Help me plan a learning block."), {
+  ...unusableSummaryFallback.primaryAction,
+  prompt: "Help me plan a learning block.",
+});
 
 const endpointFailureFallback = buildMobileAssistantTodayViewModel(null);
-assert.equal(endpointFailureFallback.title, "Plan today");
+assert.equal(endpointFailureFallback.title, "Choose morning focus");
+assert.equal(endpointFailureFallback.isFallbackMorningFocus, true);
 assert.equal(endpointFailureFallback.reasonStack.length, 4);
 assert.deepEqual(
   endpointFailureFallback.promptChips.map((action) => action.label),
-  ["Open Planner", "Open Library", "Open Review"],
+  ["Open planner", "Open library", "Review later"],
 );
 
 assert.deepEqual(

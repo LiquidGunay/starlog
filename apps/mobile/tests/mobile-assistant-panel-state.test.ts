@@ -6,6 +6,7 @@ import {
   MOBILE_PANEL_OPTION_LAYOUT,
   mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   panelDismissPayload,
@@ -72,7 +73,11 @@ const second = interrupt({
   metadata: {
     conflict_payload: {
       local_title: "Very long deep work block for onboarding activation polish",
+      local_start_label: "9:30 AM",
+      local_end_label: "11:00 AM",
       remote_title: "Extremely long product review meeting with platform and growth",
+      remote_time_label: "9:45 - 10:15 AM",
+      overlap_time_label: "9:45 - 10:15 AM",
       overlap_minutes: 30,
     },
   },
@@ -100,7 +105,7 @@ const dismiss = panelDismissPayload(first);
 assert.deepEqual(dismiss, { interruptId: "interrupt-1" });
 
 assert.deepEqual(visibleContextChips([first], 0, 0), ["Morning", "Deep work window"]);
-assert.deepEqual(visibleContextChips([second], 1, 2), ["Work", "Today", "1 artifact", "2 system"]);
+assert.deepEqual(visibleContextChips([second], 1, 2), ["Work", "Today", "1 artifact", "Earlier context"]);
 
 const resolved = mobileDynamicPanelStates([interrupt({ id: "resolved", status: "submitted" })], {});
 assert.equal(resolved[0].renderState, "resolved");
@@ -141,8 +146,98 @@ const conflictOptions = mobilePanelOptionViewModels(second, second.fields[0], de
 assert.equal(conflictOptions[0].description, "Recommended - preserves your longer focus block.");
 assert.deepEqual(mobilePlannerConflictPreview(second), {
   localTitle: "Very long deep work block for onboarding activation polish",
+  localTimeLabel: "9:30 AM - 11:00 AM",
   overlapLabel: "Overlaps by 30m",
+  overlapTimeLabel: "9:45 - 10:15 AM",
   remoteTitle: "Extremely long product review meeting with platform and growth",
+  remoteTimeLabel: "9:45 - 10:15 AM",
+});
+
+assert.deepEqual(
+  mobilePlannerConflictPreview(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      metadata: {
+        conflict_payload: {
+          detail: {
+            title: "Team Sync",
+            local_time: "9:30 - 11:00 AM",
+            remote_start_time: "9:45 AM",
+            remote_end_time: "10:15 AM",
+          },
+        },
+      },
+    }),
+  ),
+  {
+    localTitle: "Starlog focus block",
+    localTimeLabel: "9:30 - 11:00 AM",
+    overlapLabel: "Overlap",
+    overlapTimeLabel: null,
+    remoteTitle: "Team Sync",
+    remoteTimeLabel: "9:45 AM - 10:15 AM",
+  },
+);
+
+assert.deepEqual(
+  mobilePlannerConflictPreview(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      metadata: {
+        conflict_payload: {
+          detail: {
+            local: {
+              title: "Deep work block",
+              starts_at: "2026-04-21T09:00:00+00:00",
+              ends_at: "2026-04-21T10:30:00+00:00",
+            },
+            remote: {
+              title: "Product review",
+              starts_at: "2026-04-21T09:45:00+00:00",
+              ends_at: "2026-04-21T10:15:00+00:00",
+            },
+          },
+        },
+      },
+    }),
+  ),
+  {
+    localTitle: "Deep work block",
+    localTimeLabel: "9:00 AM - 10:30 AM",
+    overlapLabel: "Overlap",
+    overlapTimeLabel: null,
+    remoteTitle: "Product review",
+    remoteTimeLabel: "9:45 AM - 10:15 AM",
+  },
+);
+
+assert.deepEqual(
+  mobilePanelSecondaryAction(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      secondary_label: "Open Planner",
+      defer_label: "Later",
+    }),
+  ),
+  { label: "Later", kind: "dismiss" },
+);
+assert.deepEqual(
+  mobilePanelSecondaryAction(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      secondary_label: "Open Planner",
+      defer_label: "Open Planner",
+    }),
+  ),
+  { label: "Dismiss", kind: "dismiss" },
+);
+assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Adjust options" })), {
+  label: "Dismiss",
+  kind: "dismiss",
+});
+assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Keep in Review" })), {
+  label: "Keep in Review",
+  kind: "dismiss",
 });
 
 assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {
@@ -178,6 +273,18 @@ assert.deepEqual(mobileAssistantPanelLayout(412), {
   actionDirection: "row",
   actionPrimaryBasis: 180,
   actionSecondaryBasis: 138,
+  actionWraps: true,
+  conflictTitleMaxLines: 2,
+  promptChipMaxWidth: "92%",
+});
+assert.deepEqual(mobileAssistantPanelLayout(412, 1.4), {
+  viewportWidth: 412,
+  optionColumns: 1,
+  optionTitleMaxLines: 2,
+  optionDescriptionMaxLines: 3,
+  actionDirection: "column",
+  actionPrimaryBasis: "100%",
+  actionSecondaryBasis: "100%",
   actionWraps: true,
   conflictTitleMaxLines: 2,
   promptChipMaxWidth: "92%",

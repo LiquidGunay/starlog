@@ -4032,10 +4032,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       ) : null}
       <ScrollView
         ref={mainScrollViewRef}
-        style={keyboardVisible ? null : styles.mainScrollViewport}
+        style={[
+          keyboardVisible ? null : styles.mainScrollViewport,
+          isAssistantMode ? styles.assistantScrollViewport : null,
+        ]}
         contentContainerStyle={[
           styles.scrollContent,
-          isAssistantMode && !keyboardVisible ? styles.assistantScrollContent : null,
+          isAssistantMode ? styles.assistantScrollContent : null,
+          isAssistantMode && !keyboardVisible ? styles.assistantScrollContentWithNav : null,
         ]}
         keyboardShouldPersistTaps="always"
         onContentSizeChange={() => {
@@ -4760,11 +4764,16 @@ function themedStyles(palette: Palette) {
     mainScrollViewport: {
       marginBottom: 78,
     },
+    assistantScrollViewport: {
+      marginTop: Platform.OS === "android" ? NativeStatusBar.currentHeight ?? 24 : 0,
+    },
     assistantScrollContent: {
       paddingHorizontal: 12,
-      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 14 : 14,
-      paddingBottom: 126,
+      paddingTop: 10,
       gap: 12,
+    },
+    assistantScrollContentWithNav: {
+      paddingBottom: 126,
     },
     assistantStage: {
       paddingHorizontal: 0,
