@@ -11,7 +11,7 @@ from runtime_app.schemas import (
     WorkflowPreviewResponse,
 )
 
-DEFAULT_MODEL = "gpt-5.4-nano"
+DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_PROVIDER = "runtime_prompt_fallback"
 
 

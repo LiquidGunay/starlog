@@ -372,7 +372,7 @@ def _openai_api_key() -> str | None:
 
 
 def _openai_model() -> str:
-    return os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
+    return os.getenv("OPENAI_MODEL", "gpt-5-mini")
 
 
 def _openai_extract_output_text(payload: dict[str, Any]) -> str:

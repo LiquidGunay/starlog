@@ -265,7 +265,7 @@ def test_primary_conversation_preview_assembles_runtime_context(
     payload = preview.json()
     assert payload["workflow"] == "chat_turn"
     assert payload["provider_used"] == "local_prompt_preview"
-    assert payload["model"] == "gpt-5.4-nano"
+    assert payload["model"] == "gpt-5-mini"
     assert payload["context"]["session_state"]["last_matched_intent"] == "create_task"
     assert payload["context"]["recent_messages"][-1]["role"] == "assistant"
     assert payload["context"]["request_metadata"] == {"surface": "assistant"}

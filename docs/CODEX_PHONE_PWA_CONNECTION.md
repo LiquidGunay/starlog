@@ -64,14 +64,29 @@ There is no committed client-side Codex OAuth2 integration for v1. If OAuth2 is 
 Use this when the phone/PWA talks to a local or hosted Starlog API and your laptop performs Codex work.
 
 1. Install and sign in to the Codex CLI on the laptop.
-2. Start the Starlog API, either locally or on Railway.
-3. Set a Starlog API bearer token for the worker:
+2. Smoke-test Codex auth:
+
+```bash
+python scripts/codex_auth_smoke.py
+```
+
+By default this checks `gpt-5-mini`, which is Starlog's default hosted/API LLM model. If the Codex
+CLI is authenticated with a ChatGPT account that does not expose `gpt-5-mini`, the smoke will reach
+OpenAI but fail with a model-support error. In that case either use API-key/project auth that can use
+`gpt-5-mini`, or verify the local account path with:
+
+```bash
+python scripts/codex_auth_smoke.py --use-cli-default
+```
+
+3. Start the Starlog API, either locally or on Railway.
+4. Set a Starlog API bearer token for the worker:
 
 ```bash
 export STARLOG_TOKEN=YOUR_BEARER_TOKEN
 ```
 
-4. Run the full local AI worker against a local API:
+5. Run the full local AI worker against a local API:
 
 ```bash
 PYTHONPATH=services/api uv run --project services/api \
@@ -80,7 +95,18 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
-5. Or run only the narrow Codex-local queue runner:
+The worker defaults to `gpt-5-mini` for `codex exec`. If your current Codex CLI auth mode rejects
+that model, use the CLI's configured/default model until auth is changed:
+
+```bash
+PYTHONPATH=services/api uv run --project services/api \
+  python scripts/local_ai_worker.py \
+  --api-base http://localhost:8000 \
+  --token "$STARLOG_TOKEN" \
+  --codex-use-cli-default
+```
+
+6. Or run only the narrow Codex-local queue runner:
 
 ```bash
 PYTHONPATH=services/api uv run --project services/api \
@@ -91,8 +117,8 @@ PYTHONPATH=services/api uv run --project services/api \
 
 `scripts/codex_queue_runner.py` is intentionally narrow: it processes `codex_local` jobs. Use the full `local_ai_worker.py` command above when phone/PWA jobs may be queued with bridge-scoped hints such as `desktop_bridge_codex` or `mobile_bridge_codex`.
 
-6. Point the phone/PWA at the same Starlog API.
-7. Use the Assistant, capture, summarization, card, task, or voice-command flows normally.
+7. Point the phone/PWA at the same Starlog API.
+8. Use the Assistant, capture, summarization, card, task, or voice-command flows normally.
 
 The phone/PWA does not know Codex is the executor. It sees Starlog API state and completed assistant/job results.
 

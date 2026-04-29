@@ -13,7 +13,7 @@ class ProviderError(Exception):
 
 
 LLM_CAPABILITIES = {"llm_summary", "llm_cards", "llm_tasks", "llm_agent_plan"}
-AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-nano"
+AI_RUNTIME_DEFAULT_MODEL = "gpt-5-mini"
 
 
 def _text_source(payload: dict) -> str:
@@ -222,7 +222,7 @@ def _codex_bridge_provider(conn: Connection | None, capability: str, payload: di
         raise ProviderError(detail)
 
     config = dict(config)
-    config.setdefault("model", payload.get("model") or "gpt-4.1-mini")
+    config.setdefault("model", payload.get("model") or "gpt-5-mini")
     return _invoke_openai_compatible("codex_bridge", config, capability, payload)
 
 

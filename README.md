@@ -31,6 +31,12 @@ Important:
 - Starlog is single-user today.
 - Do not commit passphrases, bearer tokens, API keys, or bridge tokens into this repo.
 
+User docs:
+
+- [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md)
+- [docs/MORNING_BRIEFING_AND_VOICE.md](/home/ubuntu/starlog/docs/MORNING_BRIEFING_AND_VOICE.md)
+- [docs/CODEX_PHONE_PWA_CONNECTION.md](/home/ubuntu/starlog/docs/CODEX_PHONE_PWA_CONNECTION.md)
+
 ## Everyday Workflow
 
 The intended flow is simple:
@@ -189,3 +195,4 @@ Setup and release docs:
 - product direction: [PLAN.md](/home/ubuntu/starlog/PLAN.md)
 - repo rules: [AGENTS.md](/home/ubuntu/starlog/AGENTS.md)
 - assistant UI/backend reset: [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md)
+- user guide: [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md)

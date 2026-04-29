@@ -97,7 +97,7 @@ def main() -> int:
         print("Missing OPENAI_API_KEY or STARLOG_OPENAI_API_KEY", file=sys.stderr)
         return 2
 
-    model = _env("STARLOG_OPENAI_MODEL") or _env("OPENAI_MODEL") or "gpt-5.4-nano"
+    model = _env("STARLOG_OPENAI_MODEL") or _env("OPENAI_MODEL") or "gpt-5-mini"
     try:
         workflow, request_payload = build_request_payload(model)
     except ValueError as exc:

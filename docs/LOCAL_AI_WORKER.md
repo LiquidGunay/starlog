@@ -137,6 +137,25 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
+Starlog's default LLM model is `gpt-5-mini`, and the worker passes that model to `codex exec` by
+default. Smoke-test this auth/model combination first:
+
+```bash
+python scripts/codex_auth_smoke.py
+```
+
+If your Codex CLI is authenticated with a ChatGPT account that reaches OpenAI but rejects
+`gpt-5-mini`, either switch to an auth mode that supports that model or temporarily let Codex choose
+its configured/default model:
+
+```bash
+PYTHONPATH=services/api uv run --project services/api \
+  python scripts/local_ai_worker.py \
+  --api-base http://localhost:8000 \
+  --token "$STARLOG_TOKEN" \
+  --codex-use-cli-default
+```
+
 If you only want Codex jobs:
 
 ```bash

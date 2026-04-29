@@ -25,6 +25,16 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
+Starlog defaults LLM work to `gpt-5-mini`. Before relying on Codex-backed jobs, run:
+
+```bash
+python scripts/codex_auth_smoke.py
+```
+
+If the Codex CLI reports that `gpt-5-mini` is not supported with the current ChatGPT-account auth
+mode, rerun the worker with `--codex-use-cli-default` until API-key/project auth is configured for
+the requested default model.
+
 ## 2) Find your laptop LAN IP
 
 macOS examples:
