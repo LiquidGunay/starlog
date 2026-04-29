@@ -1269,16 +1269,18 @@ export function MobileAssistantRebuild({
                   Here's what makes the most sense right now.
                 </Text>
 
-                <View style={{ gap: 7 }}>
-                  {todayViewModel.reasonStack.slice(0, 3).map((reason) => (
-                    <View key={reason} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                      <MaterialCommunityIcons name={"check-circle-outline" as never} size={15} color={palette.accent} style={{ marginTop: 2 }} />
-                      <Text style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
-                        {reason}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
+                {!showFallbackFocusChooser && todayViewModel.reasonStack.length > 0 ? (
+                  <View style={{ gap: 7 }}>
+                    {todayViewModel.reasonStack.slice(0, 2).map((reason) => (
+                      <View key={reason} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                        <MaterialCommunityIcons name={"check-circle-outline" as never} size={15} color={palette.accent} style={{ marginTop: 2 }} />
+                        <Text style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                          {reason}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
 
                 <View
                   style={{

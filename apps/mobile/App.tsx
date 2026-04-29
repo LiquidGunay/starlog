@@ -4032,7 +4032,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       ) : null}
       <ScrollView
         ref={mainScrollViewRef}
-        style={keyboardVisible ? null : styles.mainScrollViewport}
+        style={[
+          keyboardVisible ? null : styles.mainScrollViewport,
+          isAssistantMode && !keyboardVisible ? styles.assistantScrollViewport : null,
+        ]}
         contentContainerStyle={[
           styles.scrollContent,
           isAssistantMode && !keyboardVisible ? styles.assistantScrollContent : null,
@@ -4760,9 +4763,12 @@ function themedStyles(palette: Palette) {
     mainScrollViewport: {
       marginBottom: 78,
     },
+    assistantScrollViewport: {
+      marginTop: Platform.OS === "android" ? NativeStatusBar.currentHeight ?? 24 : 0,
+    },
     assistantScrollContent: {
       paddingHorizontal: 12,
-      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 14 : 14,
+      paddingTop: 10,
       paddingBottom: 126,
       gap: 12,
     },
