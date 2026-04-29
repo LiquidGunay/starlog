@@ -69,6 +69,39 @@ function fieldOptions(field: AssistantInterruptField): Array<{ label: string; va
   return [];
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function metadataString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterruptField, option: { label: string; value: string }): string | null {
+  const fieldDescriptions = metadataRecord(field.metadata?.option_descriptions);
+  const interruptDescriptions = metadataRecord(interrupt.metadata?.option_descriptions);
+  const direct =
+    fieldDescriptions[option.value] ||
+    interruptDescriptions[option.value] ||
+    fieldDescriptions[option.label] ||
+    interruptDescriptions[option.label];
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+  if (interrupt.tool_name === "resolve_planner_conflict") {
+    if (option.value.includes("move") || /move/i.test(option.label)) {
+      return "Recommended - preserves your longer focus block.";
+    }
+    if (option.value.includes("shorten") || /shorten/i.test(option.label)) {
+      return "Keep both, but reduce protected time.";
+    }
+    if (option.value.includes("keep") || /keep/i.test(option.label)) {
+      return "Mark deep work flexible and decide later.";
+    }
+  }
+  return null;
+}
+
 function panelTone(interrupt: AssistantInterrupt): PanelTone {
   if (interrupt.tool_name === "request_due_date") {
     return "task";
@@ -150,11 +183,13 @@ function setFieldValue(
 }
 
 function OptionCards({
+  interrupt,
   field,
   values,
   setValues,
   variant,
 }: {
+  interrupt: AssistantInterrupt;
   field: AssistantInterruptField;
   values: Record<string, unknown>;
   setValues: SetValues;
@@ -171,18 +206,21 @@ function OptionCards({
       {options.map((option) => {
         const selected = current === option.value;
         const review = variant === "review" ? REVIEW_VALUES[option.value] : null;
+        const description = optionDescription(interrupt, field, option);
         return (
           <button
             key={`${field.id}-${option.value}`}
             type="button"
             role="radio"
             aria-checked={selected}
+            aria-label={review?.label || option.label}
             className={`${styles.optionCard} ${selected ? styles.optionCardSelected : ""}`}
             onClick={() => setFieldValue(setValues, field.id, option.value)}
           >
             <span>{review?.label || option.label}</span>
             {review?.hint ? <small>{review.hint}</small> : null}
             {variant === "focus" ? <small>Protect the first useful block.</small> : null}
+            {description ? <small>{description}</small> : null}
           </button>
         );
       })}
@@ -225,12 +263,14 @@ function DateField({
 }
 
 function FieldControl({
+  interrupt,
   field,
   values,
   setValues,
   variant,
   controlId,
 }: {
+  interrupt: AssistantInterrupt;
   field: AssistantInterruptField;
   values: Record<string, unknown>;
   setValues: SetValues;
@@ -244,7 +284,7 @@ function FieldControl({
     (variant === "focus" || variant === "planner" || variant === "review" || field.options?.length === 2);
 
   if (useOptionCards) {
-    return <OptionCards field={field} values={values} setValues={setValues} variant={variant} />;
+    return <OptionCards interrupt={interrupt} field={field} values={values} setValues={setValues} variant={variant} />;
   }
 
   if (field.kind === "date") {
@@ -325,12 +365,14 @@ function FieldControl({
 }
 
 function FieldRow({
+  interrupt,
   field,
   values,
   setValues,
   variant,
   interruptId,
 }: {
+  interrupt: AssistantInterrupt;
   field: AssistantInterruptField;
   values: Record<string, unknown>;
   setValues: SetValues;
@@ -339,7 +381,7 @@ function FieldRow({
 }) {
   const controlId = `dynamic-panel-${domIdSegment(interruptId)}-${domIdSegment(field.id)}`;
   if (field.kind === "toggle") {
-    return <FieldControl field={field} values={values} setValues={setValues} variant={variant} controlId={controlId} />;
+    return <FieldControl interrupt={interrupt} field={field} values={values} setValues={setValues} variant={variant} controlId={controlId} />;
   }
 
   return (
@@ -347,7 +389,7 @@ function FieldRow({
       <label className={styles.fieldLabel} htmlFor={controlId}>
         {field.label}
       </label>
-      <FieldControl field={field} values={values} setValues={setValues} variant={variant} controlId={controlId} />
+      <FieldControl interrupt={interrupt} field={field} values={values} setValues={setValues} variant={variant} controlId={controlId} />
     </div>
   );
 }
@@ -373,28 +415,43 @@ function PlannerConflictPreview({ interrupt }: { interrupt: AssistantInterrupt }
   if (interrupt.tool_name !== "resolve_planner_conflict") {
     return null;
   }
-  const payload =
-    interrupt.metadata?.conflict_payload && typeof interrupt.metadata.conflict_payload === "object"
-      ? (interrupt.metadata.conflict_payload as Record<string, unknown>)
-      : null;
-  const remoteTitle =
-    payload && typeof payload.remote_title === "string"
-      ? payload.remote_title
-      : payload && typeof payload.title === "string"
-        ? payload.title
-        : "Calendar event";
-  const localTitle =
-    payload && typeof payload.local_title === "string"
-      ? payload.local_title
-      : payload && typeof payload.block_title === "string"
-        ? payload.block_title
-        : "Starlog focus block";
+  const payload = metadataRecord(interrupt.metadata?.conflict_payload);
+  const detail = metadataRecord(payload.detail);
+  const localTitle = metadataString(payload.local_title) || metadataString(payload.block_title) || metadataString(detail.local_title) || "Starlog focus block";
+  const localTime =
+    metadataString(payload.local_time_label) ||
+    metadataString(payload.local_time) ||
+    [metadataString(payload.local_start_label), metadataString(payload.local_end_label)].filter(Boolean).join(" - ") ||
+    metadataString(detail.local_time_label) ||
+    null;
+  const conflictTitle = metadataString(payload.conflict_label) || metadataString(payload.overlap_label) || "Conflict";
+  const overlapTime =
+    metadataString(payload.overlap_time_label) ||
+    metadataString(payload.conflict_time_label) ||
+    metadataString(detail.overlap_time_label) ||
+    metadataString(detail.conflict_time_label) ||
+    null;
+  const remoteTitle = metadataString(payload.remote_title) || metadataString(payload.title) || metadataString(detail.remote_title) || "Calendar event";
+  const remoteTime =
+    metadataString(payload.remote_time_label) ||
+    metadataString(payload.remote_time) ||
+    [metadataString(payload.remote_start_label), metadataString(payload.remote_end_label)].filter(Boolean).join(" - ") ||
+    metadataString(detail.remote_time_label) ||
+    null;
+  const rows = [
+    { title: localTitle, time: localTime, alert: false },
+    { title: conflictTitle, time: overlapTime, alert: true },
+    { title: remoteTitle, time: remoteTime, alert: false },
+  ];
 
   return (
     <div className={styles.conflictPreview} aria-label="Conflict preview">
-      <span>{localTitle}</span>
-      <strong>Overlap</strong>
-      <span>{remoteTitle}</span>
+      {rows.map((row) => (
+        <div key={`${row.title}-${row.time || "none"}`} className={`${styles.conflictRow} ${row.alert ? styles.conflictRowAlert : ""}`}>
+          <span>{row.title}</span>
+          {row.time ? <strong>{row.time}</strong> : null}
+        </div>
+      ))}
     </div>
   );
 }
@@ -408,6 +465,8 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
   const [values, setValues] = useState<Record<string, unknown>>(defaults);
   const variant = panelTone(interrupt);
   const modeLabel = displayModeLabel(interrupt);
+  const secondaryLabel = interrupt.defer_label || interrupt.secondary_label || "Not now";
+  const secondaryHref = /\b(open|view)\s+planner\b/i.test(secondaryLabel) ? interrupt.entity_ref?.href || "/planner" : null;
 
   useEffect(() => {
     setValues(defaults);
@@ -439,6 +498,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
           {interrupt.fields.map((field) => (
             <FieldRow
               key={`${interrupt.id}-${field.id}`}
+              interrupt={interrupt}
               field={field}
               values={values}
               setValues={setValues}
@@ -458,14 +518,20 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
       ) : null}
 
       <div className={styles.actions}>
-        <button
-          type="button"
-          onClick={() => void onDismiss(interrupt.id)}
-          disabled={busy}
-          className={styles.secondaryButton}
-        >
-          {interrupt.defer_label || interrupt.secondary_label || "Not now"}
-        </button>
+        {secondaryHref ? (
+          <a className={`${styles.secondaryButton} ${styles.secondaryLink}`} href={secondaryHref}>
+            {secondaryLabel}
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void onDismiss(interrupt.id)}
+            disabled={busy}
+            className={styles.secondaryButton}
+          >
+            {secondaryLabel}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void onSubmit(interrupt.id, values)}

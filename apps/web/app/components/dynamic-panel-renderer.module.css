@@ -226,32 +226,42 @@
 
 .conflictPreview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px;
   padding: 12px;
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.18);
 }
 
-.conflictPreview span,
-.conflictPreview strong {
+.conflictRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  overflow-wrap: anywhere;
   border-radius: 12px;
   padding: 9px 10px;
-}
-
-.conflictPreview span {
   background: rgba(255, 255, 255, 0.06);
   color: rgba(244, 241, 232, 0.84);
 }
 
-.conflictPreview strong {
-  color: #f4f1e8;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 11px;
+.conflictRowAlert {
+  background: rgba(194, 87, 67, 0.16);
+  color: #ffd5c7;
+}
+
+.conflictRow span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.conflictRow strong {
+  min-width: 0;
+  color: inherit;
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .defaults {
@@ -288,6 +298,13 @@
   color: #f4f1e8;
 }
 
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .dangerButton {
   background: rgba(194, 87, 67, 0.2);
   color: #ffd5c7;
@@ -312,11 +329,12 @@
     font-size: 19px;
   }
 
-  .conflictPreview {
+  .conflictRow {
     grid-template-columns: 1fr;
   }
 
-  .conflictPreview strong {
-    justify-self: start;
+  .conflictRow strong {
+    text-align: left;
+    white-space: normal;
   }
 }

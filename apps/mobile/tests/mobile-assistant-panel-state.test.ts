@@ -79,6 +79,8 @@ const second = interrupt({
       remote_time_label: "9:45 - 10:15 AM",
       overlap_time_label: "9:45 - 10:15 AM",
       overlap_minutes: 30,
+      recommended_repair: "Move deep work",
+      target_slot: "2:15 - 3:45 PM",
     },
   },
 });
@@ -151,6 +153,8 @@ assert.deepEqual(mobilePlannerConflictPreview(second), {
   overlapTimeLabel: "9:45 - 10:15 AM",
   remoteTitle: "Extremely long product review meeting with platform and growth",
   remoteTimeLabel: "9:45 - 10:15 AM",
+  recommendedRepair: "Move deep work",
+  targetSlot: "2:15 - 3:45 PM",
 });
 
 assert.deepEqual(
@@ -176,6 +180,8 @@ assert.deepEqual(
     overlapTimeLabel: null,
     remoteTitle: "Team Sync",
     remoteTimeLabel: "9:45 AM - 10:15 AM",
+    recommendedRepair: null,
+    targetSlot: null,
   },
 );
 
@@ -208,6 +214,8 @@ assert.deepEqual(
     overlapTimeLabel: null,
     remoteTitle: "Product review",
     remoteTimeLabel: "9:45 AM - 10:15 AM",
+    recommendedRepair: null,
+    targetSlot: null,
   },
 );
 
@@ -219,7 +227,7 @@ assert.deepEqual(
       defer_label: "Later",
     }),
   ),
-  { label: "Later", kind: "dismiss" },
+  { label: "Open Planner", kind: "open_planner" },
 );
 assert.deepEqual(
   mobilePanelSecondaryAction(
@@ -229,7 +237,7 @@ assert.deepEqual(
       defer_label: "Open Planner",
     }),
   ),
-  { label: "Dismiss", kind: "dismiss" },
+  { label: "Open Planner", kind: "open_planner" },
 );
 assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Adjust options" })), {
   label: "Dismiss",

@@ -10,7 +10,7 @@ import {
   seedAssistantSession,
 } from "./assistant-concept-fixtures";
 
-test("mobile viewport assistant keeps one inline pending decision and fires submit/dismiss callbacks", async ({ page }) => {
+test("mobile viewport assistant keeps one inline schedule-conflict decision and planner escape", async ({ page }) => {
   await seedAssistantSession(page);
 
   const olderSubmittedInterrupt = morningFocusInterrupt("submitted");
@@ -57,7 +57,7 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
             update: {
               id: "ambient_conflict",
               event_id: "evt_conflict",
-              label: "Planner flagged a 30m overlap",
+              label: "Planner flagged a 30m overlap.",
               body: "Deep Work overlaps with Team Sync.",
               entity_ref: { entity_type: "planner_conflict", entity_id: "conflict_team_sync", href: "/planner" },
               actions: [],
@@ -98,7 +98,7 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
             type: "text",
             id: "part_conflict_text",
             text:
-              "Here are your best options to resolve this cleanly. Protect the longer focus block and move it to a safe later slot.",
+              "Here are your best options to resolve this cleanly.\n\nProtect the deep work if it is your highest-leverage block.\nMove the review if there is a safe later slot.\nI can resolve this in one step.",
           },
           {
             type: "interrupt_request",
@@ -140,6 +140,23 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
               interrupt: submittedInterrupt,
             },
           ],
+        },
+        {
+          id: "msg_assistant_conflict_followup",
+          thread_id: "thr_primary",
+          run_id: "run_planner_conflict",
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: "part_conflict_followup",
+              text: "If you want, I can also repair the rest of the afternoon.",
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-27T09:22:30.000Z",
+          updated_at: "2026-04-27T09:22:30.000Z",
         },
       ],
       next_cursor: "2026-04-27T09:22:00.000Z",
@@ -189,32 +206,47 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
 
   const viewport = page.viewportSize();
   expect(viewport?.width).toBeLessThanOrEqual(430);
-  await expect(page.getByText("Planner flagged a 30m overlap")).toBeVisible();
+  await expect(page.getByText("Planner flagged a 30m overlap.")).toBeVisible();
   await expect(page.getByText("My product review overlaps with deep work. What should I do?")).toBeVisible();
   await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Resolve schedule conflict" })).toBeVisible();
-  await expect(page.getByText("Deep work overlaps with Team Sync from 9:45-10:15 AM.")).toBeVisible();
+  await expect(page.getByText("Here are your best options to resolve this cleanly.")).toBeVisible();
+  const conflictPanel = page.getByTestId("dynamic-panel-renderer");
+  await expect(conflictPanel.getByText("Deep work block")).toBeVisible();
+  await expect(conflictPanel.getByText("9:30 AM - 11:00 AM")).toBeVisible();
+  await expect(conflictPanel.getByText("Conflict", { exact: true })).toBeVisible();
+  await expect(conflictPanel.getByText("9:45 - 10:15 AM").first()).toBeVisible();
+  await expect(conflictPanel.getByText("Team sync")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Move deep work" })).toBeChecked();
-  await expect(page.getByLabel("Notify participants")).toBeChecked();
-  await expect(page.getByText("Starlog can move deep work to 10:30 AM")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Shorten block" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Keep both" })).toBeVisible();
+  await expect(page.getByText("Moves deep work to 2:15 - 3:45 PM and preserves 90m focus.")).toBeVisible();
 
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(horizontalOverflow).toBe(false);
   await expect(page.locator("aside")).toBeHidden();
   await expect(page.locator("main")).not.toContainText(/Diagnostics|protocol|runtime|tool_call|tool_result/i);
 
-  await page.getByRole("button", { name: "Apply resolution" }).click();
+  await page.getByRole("link", { name: "Open planner" }).click();
+  expect(submissions).toHaveLength(0);
+  expect(dismissals).toEqual([]);
+  await expect(page.getByText("Starlog Planner")).toBeVisible();
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply choice" }).click();
 
   expect(submissions).toHaveLength(1);
   expect(submissions[0].values).toEqual(
     expect.objectContaining({
       resolution: "move_deep_work",
-      notify_participants: true,
       client_timezone: expect.any(String),
     }),
   );
-  await expect(page.getByRole("button", { name: "Apply resolution" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Apply choice" })).toHaveCount(0);
   await expect(page.getByText("move deep work")).toBeVisible();
+  await expect(page.getByText("If you want, I can also repair the rest of the afternoon.")).toBeVisible();
 
   snapshot = assistantThreadSnapshot({
     ...(snapshot as Record<string, unknown>),
@@ -230,7 +262,7 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
             type: "text",
             id: "part_conflict_text",
             text:
-              "Here are your best options to resolve this cleanly. Protect the longer focus block and move it to a safe later slot.",
+              "Here are your best options to resolve this cleanly.\n\nProtect the deep work if it is your highest-leverage block.\nMove the review if there is a safe later slot.\nI can resolve this in one step.",
           },
           {
             type: "interrupt_request",
@@ -244,10 +276,6 @@ test("mobile viewport assistant keeps one inline pending decision and fires subm
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Later" }).click();
-
-  expect(dismissals).toEqual(["interrupt_planner_conflict"]);
-  await expect(page.getByText("Dismissed", { exact: true })).toBeVisible();
   await page.screenshot({ path: "artifacts/ui-functional/mobile-assistant-concept-thread-panel.png", fullPage: true });
 });
 
