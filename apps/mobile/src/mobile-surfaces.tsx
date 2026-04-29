@@ -2151,7 +2151,6 @@ export function MobileNotesSurface({
     preview: false,
     provenance: false,
     conversion: false,
-    timeline: false,
   });
   const libraryModel = deriveMobileLibraryViewModel({
     pendingCaptures,
