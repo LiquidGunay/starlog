@@ -80,9 +80,9 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
-Starlog's default hosted/API LLM model is `gpt-5-mini`. The local Codex worker also defaults to
-passing `gpt-5-mini` to `codex exec`. If your Codex CLI is authenticated with a ChatGPT account that
-does not expose `gpt-5-mini`, run the worker with:
+Starlog's default hosted/API LLM model is `gpt-5.4-mini`. The local Codex worker also defaults to
+passing `gpt-5.4-mini` to `codex exec`. If your Codex CLI is authenticated with a ChatGPT account that
+does not expose `gpt-5.4-mini`, run the worker with:
 
 ```bash
 PYTHONPATH=services/api uv run --project services/api \

@@ -9,7 +9,7 @@ from runtime_app.workflows import (
 
 def test_chat_preview_renders_prompts() -> None:
     payload = chat_preview("Command", "Summarize latest artifact", {"mode": "test"})
-    assert payload.model == "gpt-5-mini"
+    assert payload.model == "gpt-5.4-mini"
     assert "voice-native assistant" in payload.system_prompt
     assert "Summarize latest artifact" in payload.user_prompt
 

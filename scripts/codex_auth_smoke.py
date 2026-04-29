@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 
-DEFAULT_CODEX_MODEL = "gpt-5-mini"
+DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
 SUCCESS_SENTINEL = "starlog-codex-auth-ok"
 
 
@@ -37,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=default_model(),
-        help="Codex model to smoke. Defaults to STARLOG_CODEX_MODEL or gpt-5-mini.",
+        help="Codex model to smoke. Defaults to STARLOG_CODEX_MODEL or gpt-5.4-mini.",
     )
     parser.add_argument(
         "--use-cli-default",
@@ -72,7 +72,7 @@ def run_smoke(argv: list[str] | None = None) -> int:
     print(output or "Codex auth smoke failed without output.", file=sys.stderr)
     if model == DEFAULT_CODEX_MODEL and "not supported when using Codex with a ChatGPT account" in output:
         print(
-            "Codex auth reached OpenAI, but this ChatGPT-account auth mode does not expose gpt-5-mini. "
+            "Codex auth reached OpenAI, but this ChatGPT-account auth mode does not expose gpt-5.4-mini. "
             "Use API-key/project auth for the requested default model, or rerun this smoke with --use-cli-default.",
             file=sys.stderr,
         )
