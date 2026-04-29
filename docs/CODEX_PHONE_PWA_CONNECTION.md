@@ -70,13 +70,19 @@ Use this when the phone/PWA talks to a local or hosted Starlog API and your lapt
 python scripts/codex_auth_smoke.py
 ```
 
-By default this checks `gpt-5-mini`, which is Starlog's default hosted/API LLM model. If the Codex
-CLI is authenticated with a ChatGPT account that does not expose `gpt-5-mini`, the smoke will reach
+By default this checks `gpt-5.4-mini`, which is Starlog's default hosted/API LLM model. If the Codex
+CLI is authenticated with a ChatGPT account that does not expose `gpt-5.4-mini`, the smoke will reach
 OpenAI but fail with a model-support error. In that case either use API-key/project auth that can use
-`gpt-5-mini`, or verify the local account path with:
+`gpt-5.4-mini`, or verify the local account path with:
 
 ```bash
 python scripts/codex_auth_smoke.py --use-cli-default
+```
+
+To prove Starlog can queue from the app layer and launch Codex through the local worker path:
+
+```bash
+uv run --project services/api --extra dev python scripts/codex_app_launch_smoke.py
 ```
 
 3. Start the Starlog API, either locally or on Railway.
@@ -95,7 +101,7 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
-The worker defaults to `gpt-5-mini` for `codex exec`. If your current Codex CLI auth mode rejects
+The worker defaults to `gpt-5.4-mini` for `codex exec`. If your current Codex CLI auth mode rejects
 that model, use the CLI's configured/default model until auth is changed:
 
 ```bash

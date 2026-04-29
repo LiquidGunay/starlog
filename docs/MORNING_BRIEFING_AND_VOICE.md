@@ -44,7 +44,7 @@ PYTHONPATH=services/api uv run --project services/api \
   --codex-use-cli-default
 ```
 
-Use `--codex-use-cli-default` only if your local Codex auth mode does not support `gpt-5-mini`.
+Use `--codex-use-cli-default` only if your local Codex auth mode does not support `gpt-5.4-mini`.
 Briefing audio itself only needs the TTS runtime.
 
 ## Generate And Render From Assistant

@@ -15,12 +15,12 @@ def _load_smoke_module():
     return module
 
 
-def test_codex_auth_smoke_defaults_to_gpt_5_mini(monkeypatch) -> None:
+def test_codex_auth_smoke_defaults_to_gpt_5_4_mini(monkeypatch) -> None:
     smoke = _load_smoke_module()
     monkeypatch.delenv("STARLOG_CODEX_MODEL", raising=False)
 
-    assert smoke.default_model() == "gpt-5-mini"
-    assert smoke.build_command("gpt-5-mini")[:4] == ["codex", "exec", "-m", "gpt-5-mini"]
+    assert smoke.default_model() == "gpt-5.4-mini"
+    assert smoke.build_command("gpt-5.4-mini")[:4] == ["codex", "exec", "-m", "gpt-5.4-mini"]
 
 
 def test_codex_auth_smoke_can_use_cli_default(monkeypatch) -> None:
@@ -46,7 +46,7 @@ def test_codex_auth_smoke_reports_chatgpt_model_support_error(monkeypatch, capsy
             command,
             1,
             stdout="",
-            stderr="The 'gpt-5-mini' model is not supported when using Codex with a ChatGPT account.",
+            stderr="The 'gpt-5.4-mini' model is not supported when using Codex with a ChatGPT account.",
         )
 
     monkeypatch.setattr(smoke.shutil, "which", lambda command: "/usr/local/bin/codex" if command == "codex" else None)
@@ -54,4 +54,4 @@ def test_codex_auth_smoke_reports_chatgpt_model_support_error(monkeypatch, capsy
 
     assert smoke.run_smoke([]) == 1
     captured = capsys.readouterr()
-    assert "does not expose gpt-5-mini" in captured.err
+    assert "does not expose gpt-5.4-mini" in captured.err

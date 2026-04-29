@@ -19,10 +19,10 @@ def test_build_request_payload_defaults_to_ping(monkeypatch: pytest.MonkeyPatch)
     openai_smoke = _load_openai_smoke_module()
     monkeypatch.delenv("STARLOG_OPENAI_SMOKE_WORKFLOW", raising=False)
 
-    workflow, payload = openai_smoke.build_request_payload("gpt-5-mini")
+    workflow, payload = openai_smoke.build_request_payload("gpt-5.4-mini")
 
     assert workflow == "ping"
-    assert payload["model"] == "gpt-5-mini"
+    assert payload["model"] == "gpt-5.4-mini"
     assert "Reply with JSON only" in str(payload["input"])
 
 
@@ -33,7 +33,7 @@ def test_build_request_payload_uses_workflow_prompts(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("STARLOG_OPENAI_SMOKE_TEXT", "Rank these papers.")
     monkeypatch.setenv("STARLOG_OPENAI_SMOKE_CONTEXT", json.dumps({"source": "arxiv"}))
 
-    workflow, payload = openai_smoke.build_request_payload("gpt-5-mini")
+    workflow, payload = openai_smoke.build_request_payload("gpt-5.4-mini")
 
     assert workflow == "research_digest"
     assert "Workflow: research_digest" in str(payload["input"])
@@ -47,4 +47,4 @@ def test_load_context_requires_json_object(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("STARLOG_OPENAI_SMOKE_CONTEXT", json.dumps(["not", "an", "object"]))
 
     with pytest.raises(ValueError):
-        openai_smoke.build_request_payload("gpt-5-mini")
+        openai_smoke.build_request_payload("gpt-5.4-mini")

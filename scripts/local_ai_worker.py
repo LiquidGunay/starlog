@@ -53,7 +53,7 @@ TTS_PROVIDER_HINTS = {
     "espeak_local",
     "espeak_ng_local",
 }
-DEFAULT_CODEX_MODEL = "gpt-5-mini"
+DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
 
 
 def _default_codex_model() -> str | None:
@@ -991,12 +991,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--codex-model",
         default=_default_codex_model(),
-        help="Model passed to `codex exec` for local LLM jobs. Defaults to gpt-5-mini; set STARLOG_CODEX_USE_CLI_DEFAULT=1 or pass --codex-use-cli-default to let the Codex CLI choose.",
+        help="Model passed to `codex exec` for local LLM jobs. Defaults to gpt-5.4-mini; set STARLOG_CODEX_USE_CLI_DEFAULT=1 or pass --codex-use-cli-default to let the Codex CLI choose.",
     )
     parser.add_argument(
         "--codex-use-cli-default",
         action="store_true",
-        help="Omit -m when running `codex exec`. Useful for ChatGPT-account Codex auth modes that do not expose gpt-5-mini.",
+        help="Omit -m when running `codex exec`. Useful for ChatGPT-account Codex auth modes that do not expose gpt-5.4-mini.",
     )
     parser.add_argument("--codex-timeout-seconds", type=float, default=600.0)
     parser.add_argument("--whisper-command", default=None)

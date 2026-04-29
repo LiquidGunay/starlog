@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 AI_RUNTIME_ROOT = Path(__file__).resolve().parents[3] / "ai-runtime"
 
-AI_RUNTIME_DEFAULT_MODEL = "gpt-5-mini"
+AI_RUNTIME_DEFAULT_MODEL = "gpt-5.4-mini"
 AI_RUNTIME_BASE_ENV = "STARLOG_AI_RUNTIME_BASE_URL"
 AI_RUNTIME_EXECUTE_PATH = "/v1/execute"
 AI_RUNTIME_CHAT_EXECUTE_PATH = "/v1/chat/execute"
