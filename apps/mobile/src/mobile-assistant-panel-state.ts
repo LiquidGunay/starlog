@@ -299,17 +299,19 @@ export function mobileAssistantPromptChips(suggestions: string[], draft: string)
   return cleaned.slice(0, draft.trim().length > 0 ? 1 : MOBILE_ASSISTANT_MAX_PROMPT_CHIPS);
 }
 
-export function mobileAssistantPanelLayout(viewportWidth: number): MobileAssistantPanelLayout {
+export function mobileAssistantPanelLayout(viewportWidth: number, fontScale = 1): MobileAssistantPanelLayout {
   const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 390;
   const narrow = width < 360;
+  const scaledText = Number.isFinite(fontScale) && fontScale > 1.08;
+  const stackActions = narrow || scaledText;
   return {
     viewportWidth: width,
     optionColumns: 1,
     optionTitleMaxLines: MOBILE_PANEL_OPTION_LAYOUT.titleMaxLines,
     optionDescriptionMaxLines: narrow ? 4 : MOBILE_PANEL_OPTION_LAYOUT.descriptionMaxLines,
-    actionDirection: narrow ? "column" : "row",
-    actionPrimaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.primaryBasis,
-    actionSecondaryBasis: narrow ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.secondaryBasis,
+    actionDirection: stackActions ? "column" : "row",
+    actionPrimaryBasis: stackActions ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.primaryBasis,
+    actionSecondaryBasis: stackActions ? "100%" : MOBILE_PANEL_ACTION_LAYOUT.secondaryBasis,
     actionWraps: MOBILE_PANEL_ACTION_LAYOUT.wraps,
     conflictTitleMaxLines: narrow ? 3 : 2,
     promptChipMaxWidth: narrow ? "100%" : "92%",

@@ -277,6 +277,18 @@ assert.deepEqual(mobileAssistantPanelLayout(412), {
   conflictTitleMaxLines: 2,
   promptChipMaxWidth: "92%",
 });
+assert.deepEqual(mobileAssistantPanelLayout(412, 1.4), {
+  viewportWidth: 412,
+  optionColumns: 1,
+  optionTitleMaxLines: 2,
+  optionDescriptionMaxLines: 3,
+  actionDirection: "column",
+  actionPrimaryBasis: "100%",
+  actionSecondaryBasis: "100%",
+  actionWraps: true,
+  conflictTitleMaxLines: 2,
+  promptChipMaxWidth: "92%",
+});
 
 assert.deepEqual(
   mobileAssistantPromptChips(

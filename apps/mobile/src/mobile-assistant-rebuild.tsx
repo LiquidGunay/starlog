@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ComponentProps, useEffect, useMemo, useState } from "react";
 import type {
   AssistantAmbientUpdate,
   AssistantAttachment,
@@ -14,7 +14,7 @@ import type {
 } from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { ScrollView, Switch, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import { ScrollView, Switch, Text as RNText, TextInput as RNTextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 import {
@@ -55,6 +55,19 @@ import {
 } from "./mobile-assistant-today-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
+const ASSISTANT_TEXT_PROPS = { maxFontSizeMultiplier: 1.08 } as const;
+const ASSISTANT_TIGHT_TEXT_PROPS = { maxFontSizeMultiplier: 1 } as const;
+
+function Text({ maxFontSizeMultiplier = ASSISTANT_TEXT_PROPS.maxFontSizeMultiplier, ...props }: ComponentProps<typeof RNText>) {
+  return <RNText maxFontSizeMultiplier={maxFontSizeMultiplier} {...props} />;
+}
+
+function TextInput({
+  maxFontSizeMultiplier = ASSISTANT_TEXT_PROPS.maxFontSizeMultiplier,
+  ...props
+}: ComponentProps<typeof RNTextInput>) {
+  return <RNTextInput maxFontSizeMultiplier={maxFontSizeMultiplier} {...props} />;
+}
 
 const MORNING_FOCUS_OPTIONS = [
   {
@@ -595,7 +608,8 @@ function InterruptFieldInput({
   accent?: { text: string; bg: string; border: string };
   setValue: (value: unknown) => void;
 }) {
-  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
 
   if (field.kind === "toggle") {
     return (
@@ -770,7 +784,8 @@ function PlannerConflictMiniPreview({
   palette: Record<string, string>;
   accent: { text: string; bg: string; border: string };
 }) {
-  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
   const preview = mobilePlannerConflictPreview(interrupt);
   if (!preview) {
     return null;
@@ -867,7 +882,8 @@ function DynamicPanelRenderer({
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
   const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
-  const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
   const secondaryAction = mobilePanelSecondaryAction(interrupt);
 
   return (
@@ -972,7 +988,7 @@ function DynamicPanelRenderer({
               }}
               onPress={onSubmit}
             >
-              <Text style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
+              <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
                 {interrupt.primary_label}
               </Text>
             </TouchableOpacity>
@@ -992,7 +1008,7 @@ function DynamicPanelRenderer({
               }}
               onPress={onDismiss}
             >
-              <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
+              <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
                 {secondaryAction.label}
               </Text>
             </TouchableOpacity>
@@ -1052,7 +1068,8 @@ export function MobileAssistantRebuild({
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
   const [selectedFallbackFocus, setSelectedFallbackFocus] = useState<(typeof MORNING_FOCUS_OPTIONS)[number]["key"]>("project");
-  const assistantPanelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const dimensions = useWindowDimensions();
+  const assistantPanelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
 
   const liveInterrupts = threadSnapshot?.interrupts ?? [];
   const liveInterruptById = useMemo(
@@ -1318,7 +1335,7 @@ export function MobileAssistantRebuild({
                               <MaterialCommunityIcons name={option.icon as never} size={17} color={selected ? palette.accent : palette.muted} />
                             </View>
                             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                              <Text style={{ color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={1}>
+                              <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={1}>
                                 {option.label}
                               </Text>
                               <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
@@ -1378,7 +1395,7 @@ export function MobileAssistantRebuild({
                         )
                       }
                     >
-                      <Text style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
+                      <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
                         {todayViewModel.primaryAction.label}
                       </Text>
                     </TouchableOpacity>
@@ -1398,7 +1415,7 @@ export function MobileAssistantRebuild({
                       }}
                       onPress={() => setHomeDraft("Help me compare focus options for this morning.")}
                     >
-                      <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
+                      <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
                         Adjust options
                       </Text>
                     </TouchableOpacity>
@@ -1422,7 +1439,7 @@ export function MobileAssistantRebuild({
                       }}
                       onPress={() => onAssistantTodayAction(action)}
                     >
-                      <Text style={{ color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }} numberOfLines={1}>
+                      <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }} numberOfLines={1}>
                         {action.label}
                       </Text>
                     </TouchableOpacity>
@@ -2052,6 +2069,7 @@ export function MobileAssistantRebuild({
             }}
           >
             <TextInput
+              {...ASSISTANT_TIGHT_TEXT_PROPS}
               value={homeDraft}
               onChangeText={setHomeDraft}
               placeholder={productCopy.assistant.inputPlaceholder}
@@ -2104,6 +2122,7 @@ export function MobileAssistantRebuild({
                 onPress={() => setHomeDraft(label)}
               >
                 <Text
+                  {...ASSISTANT_TIGHT_TEXT_PROPS}
                   style={{ maxWidth: 190, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }}
                   numberOfLines={1}
                 >
