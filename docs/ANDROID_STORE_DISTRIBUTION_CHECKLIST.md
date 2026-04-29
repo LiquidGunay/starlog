@@ -61,12 +61,9 @@ Date: 2026-03-30
   - `apps/mobile/assets/icon.png` (`512x512`)
   - `apps/mobile/assets/adaptive-icon.png` (`512x512`)
   - `apps/mobile/assets/splash.png` (`512x512`)
-- QA evidence screenshots collected:
-  - `docs/evidence/mobile/wi-303-smoke-after-force-stop.png`
-  - `docs/evidence/mobile/wi-303-smoke-localhost-reverse.png`
-  - `docs/evidence/mobile/wi-303-smoke-after-reinstall.png`
-  - `docs/evidence/mobile/wi-303-smoke-final.png`
-  - production QA screenshots should come from the signed production APK, not the preview RC APK
+- QA evidence screenshots:
+  - production QA screenshots should come from the signed production APK, not an old preview RC APK
+  - store-current screenshots should be collected in a dated artifact folder, for example `artifacts/phone-current/<date>/`
 
 ## 4) Permissions + data safety inventory
 
@@ -111,13 +108,11 @@ Data-safety submission draft:
 
 ## 5) Pre-upload QA gate
 
-- Device smoke script passes:
-  - `docs/evidence/mobile/wi-303-smoke-log.txt`
+- Device smoke script passes and stores its fresh log beside the release artifacts.
 - Runtime UI loads after reinstall on the signed production QA APK:
   - collect fresh evidence alongside the release
 - Signed production QA APK smoke targets the packaged release component:
   - `com.starlog.app/com.starlog.app.dev.MainActivity`
-- Known blocker list reviewed:
-  - `docs/ANDROID_RELEASE_QA_MATRIX.md`
+- Known blocker list reviewed against current Android docs and release artifacts.
 - Go/No-Go:
   - `GO` only when the production AAB is signed, the signed QA APK smoke pass is clean, and no dev-client-only manifest/runtime behavior leaks into the release path.

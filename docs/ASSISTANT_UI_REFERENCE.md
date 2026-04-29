@@ -1,8 +1,7 @@
 # Assistant UI Reference
 
 This document is the active repo-local interface reference for the Starlog assistant reset.
-It replaces [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md) as the
-current design reference for active Assistant work.
+Use it with the assistant reset docs and the current concept pack when changing Assistant UI.
 
 Reference implementation:
 - [apps/web/app/design/assistant-runtime-reference/page.tsx](/home/ubuntu/starlog/apps/web/app/design/assistant-runtime-reference/page.tsx)
@@ -13,10 +12,6 @@ Primary architecture sources:
 - [starlog_assistant_ui_backend_migration_design.md](/home/ubuntu/starlog/starlog_assistant_ui_backend_migration_design.md)
 - [starlog_assistant_ui_contracts_and_api_blueprint.md](/home/ubuntu/starlog/starlog_assistant_ui_contracts_and_api_blueprint.md)
 - [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md)
-
-Historical references only:
-- [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md)
-- `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026/**`
 
 ## What This Reference Must Optimize For
 

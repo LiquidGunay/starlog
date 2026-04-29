@@ -9,9 +9,7 @@ surfaces together on current `master`:
 2. installed Android phone app
 3. desktop helper
 
-The default runner is `./scripts/cross_surface_proof_bundle.sh`. The older
-`./scripts/velvet_validation_artifacts.sh` entrypoint still works as a compatibility wrapper, but it
-now writes the same unified bundle format.
+The default runner is `./scripts/cross_surface_proof_bundle.sh`.
 
 ## Bundle layout
 
@@ -90,7 +88,7 @@ HELPER_ROOT=/home/ubuntu/starlog-worktrees/<helper-worktree> \
 ./scripts/cross_surface_proof_bundle.sh
 ```
 
-Legacy compatibility note:
+Compatibility note:
 
 - `VALIDATION_ROOT` is still honored as a fallback bundle root for existing wrapper-driven flows.
 - `STARLOG_CROSS_SURFACE_WORKITEM_ID` can override the manifest workitem id; otherwise the bundle
@@ -126,8 +124,8 @@ Desktop helper:
 ## Manual phone step when the Linux host cannot complete it
 
 If the Linux shell still cannot complete the installed-phone proof, use the native Windows ADB flow
-documented in `AGENTS.md`, `docs/PHONE_SETUP.md`, and `docs/ANDROID_RELEASE_QA_MATRIX.md`, then
-copy the resulting smoke log and screenshots into:
+documented in `AGENTS.md`, `docs/PHONE_SETUP.md`, and `docs/ANDROID_DEV_BUILD.md`, then copy the
+resulting smoke log and screenshots into:
 
 - `artifacts/cross-surface-proof/<timestamp>/phone-app/`
 

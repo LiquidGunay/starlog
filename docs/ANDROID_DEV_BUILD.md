@@ -452,12 +452,10 @@ Important path constraint that still applies:
 - the same run can then use `./scripts/android_native_smoke.sh` with `SKIP_INSTALL=1` for launch,
   deep-link, and text-share verification
 
-Fresh evidence from that pass is now tracked in:
+Fresh device evidence should be written to a dated artifact folder, for example:
 
-- `docs/evidence/mobile/wi-601-phone-proof.md`
-- `docs/evidence/mobile/wi-601-smoke-log.txt`
-- `docs/evidence/mobile/wi-601-assistant-shell.png`
-- `docs/evidence/mobile/wi-601-alarms-briefing.png`
+- `artifacts/phone-current/<date>/`
+- `artifacts/cross-surface-proof/<timestamp>/phone-app/`
 
 ## First-time setup
 

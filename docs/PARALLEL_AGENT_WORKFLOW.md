@@ -38,7 +38,6 @@ same source of truth.
   4. While working, refresh `last_heartbeat_at` at least every 2 minutes under `.registry.lock`, and keep `workitems.json` ownership/status aligned.
   5. On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
   6. Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
-- `docs/CODEX_PARALLEL_WORK_ITEMS.md` is archived planning context only; live lock authority and live backlog state live in the shared `.git` registry.
 
 ## Branch and worktree hygiene
 

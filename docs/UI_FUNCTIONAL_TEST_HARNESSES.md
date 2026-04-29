@@ -104,4 +104,4 @@ These are current-state findings, not expected behavior.
 
 This is not native Android/iOS automation. The current Expo mobile app cannot run as an Expo web harness without adding `react-native-web` and `@expo/metro-runtime`, and this workitem does not add a native automation stack such as Maestro or Detox. Native device coverage remains the next gap for the primary mobile app.
 
-Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. On 2026-04-29, the connected device was asleep and secure-locked during capture, so the phone screenshot was a black frame even though the Starlog process was present.
+Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. A fresh active-device pass on 2026-04-29 captured native Assistant, Library, Planner, and Review screenshots under `artifacts/phone-current/2026-04-29/`. On this device, `adb shell svc power stayon true` exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture.

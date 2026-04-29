@@ -259,10 +259,11 @@ def sync_bundle_docs(
 ) -> list[Path]:
     targets = [
         ("README.md", "README.md"),
-        ("PREVIEW_FEEDBACK_BUNDLE.md", "docs/PREVIEW_FEEDBACK_BUNDLE.md"),
-        ("FINAL_PREVIEW_SIGNOFF.md", "docs/FINAL_PREVIEW_SIGNOFF.md"),
-        ("ANDROID_RELEASE_QA_MATRIX.md", "docs/ANDROID_RELEASE_QA_MATRIX.md"),
-        ("evidence/mobile/wi-601-phone-proof.md", "docs/evidence/mobile/wi-601-phone-proof.md"),
+        ("IMPLEMENTATION_STATUS.md", "docs/IMPLEMENTATION_STATUS.md"),
+        ("ANDROID_DEV_BUILD.md", "docs/ANDROID_DEV_BUILD.md"),
+        ("UI_CONCEPT_COMPARISON_2026-04-29.md", "docs/UI_CONCEPT_COMPARISON_2026-04-29.md"),
+        ("UI_FUNCTIONAL_TEST_HARNESSES.md", "docs/UI_FUNCTIONAL_TEST_HARNESSES.md"),
+        ("CODEX_PHONE_PWA_CONNECTION.md", "docs/CODEX_PHONE_PWA_CONNECTION.md"),
         ("RELEASE_HANDOFF.md", "docs/RELEASE_HANDOFF.md"),
     ]
     copied: list[Path] = []
@@ -286,6 +287,27 @@ def sync_bundle_docs(
         atomic_copy(runbook_doc_source, runbook_destination)
         copied.append(runbook_destination)
 
+    return copied
+
+
+def sync_bundle_artifacts(repo_root: Path, bundle_root: Path, dry_run: bool) -> list[Path]:
+    targets = [
+        ("artifacts/ui-comparison/2026-04-29", "artifacts/ui-comparison/2026-04-29"),
+        ("artifacts/phone-current/2026-04-29", "artifacts/phone-current/2026-04-29"),
+        ("artifacts/ui-concept", "artifacts/ui-concept"),
+    ]
+    copied: list[Path] = []
+    for source_rel, dest_rel in targets:
+        source = repo_root / source_rel
+        destination = bundle_root / dest_rel
+        if not source.exists():
+            continue
+        copied.append(destination)
+        if dry_run:
+            continue
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(source, destination)
     return copied
 
 
@@ -421,6 +443,7 @@ def main() -> int:
         prune_matching_assets(desktop_dir, staged_deb, "*.deb")
 
     copied_docs = sync_bundle_docs(repo_root, bundle_root, docs_root, runbook_doc_path, args.dry_run)
+    copied_artifacts = sync_bundle_artifacts(repo_root, bundle_root, args.dry_run)
 
     assets_for_checksums = [
         ("android/" + staged_apk.name, staged_apk),
@@ -455,6 +478,7 @@ def main() -> int:
             },
         ],
         "copied_docs": [str(path) for path in copied_docs],
+        "copied_artifacts": [str(path) for path in copied_artifacts],
         "bundle_docs_dir": str(bundle_docs_dir),
         "evidence_dir": str(evidence_dir),
     }
