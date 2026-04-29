@@ -431,10 +431,10 @@ export function plannerConflictInterrupt(status: "pending" | "submitted" = "pend
     interrupt_type: "choice",
     status,
     title: "Resolve schedule conflict",
-    body: "Deep work overlaps with Team Sync from 9:45-10:15 AM. Choose the cleanest resolution.",
-    primary_label: "Apply resolution",
-    secondary_label: "Open Planner",
-    defer_label: "Later",
+    body: "Choose the cleanest resolution without opening a full calendar.",
+    primary_label: "Apply choice",
+    secondary_label: "Open planner",
+    defer_label: null,
     fields: [
       {
         id: "resolution",
@@ -448,20 +448,14 @@ export function plannerConflictInterrupt(status: "pending" | "submitted" = "pend
             value: "move_deep_work",
           },
           {
-            label: "Move team sync",
-            value: "move_team_sync",
-          },
-          {
-            label: "Shorten deep work",
+            label: "Shorten block",
             value: "shorten_deep_work",
           },
+          {
+            label: "Keep both",
+            value: "keep_both",
+          },
         ],
-      },
-      {
-        id: "notify_participants",
-        kind: "toggle",
-        label: "Notify participants",
-        value: true,
       },
     ],
     entity_ref: {
@@ -470,7 +464,7 @@ export function plannerConflictInterrupt(status: "pending" | "submitted" = "pend
       href: "/planner?conflict=conflict_team_sync",
       title: "Team Sync conflict",
     },
-    consequence_preview: "Starlog can move deep work to 10:30 AM and keep the Team Sync unchanged.",
+    consequence_preview: "Moves deep work to 2:15 - 3:45 PM and preserves 90m focus.",
     resolution:
       status === "submitted"
         ? {
@@ -487,6 +481,22 @@ export function plannerConflictInterrupt(status: "pending" | "submitted" = "pend
     metadata: {
       concept_surface: "assistant_mobile_schedule_conflict",
       conflict_window: "09:45-10:15",
+      conflict_payload: {
+        local_title: "Deep work block",
+        local_start_label: "9:30 AM",
+        local_end_label: "11:00 AM",
+        conflict_label: "Conflict",
+        overlap_time_label: "9:45 - 10:15 AM",
+        remote_title: "Team sync",
+        remote_time_label: "9:45 - 10:15 AM",
+        recommended_repair: "Move deep work",
+        target_slot: "2:15 - 3:45 PM",
+      },
+      option_descriptions: {
+        move_deep_work: "Recommended - preserves your longer focus block.",
+        shorten_deep_work: "Keep both, but reduce protected time.",
+        keep_both: "Mark deep work flexible and decide later.",
+      },
     },
   };
 }

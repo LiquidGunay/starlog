@@ -34,11 +34,13 @@ export type MobilePlannerConflictPreview = {
   overlapTimeLabel: string | null;
   remoteTitle: string;
   remoteTimeLabel: string | null;
+  recommendedRepair: string | null;
+  targetSlot: string | null;
 };
 
 export type MobilePanelSecondaryAction = {
   label: string;
-  kind: "dismiss";
+  kind: "dismiss" | "open_planner";
 };
 
 export type MobileAssistantPanelLayout = {
@@ -158,6 +160,9 @@ function labelIsDismissive(label: string): boolean {
 export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): MobilePanelSecondaryAction {
   const secondaryLabel = typeof interrupt.secondary_label === "string" ? interrupt.secondary_label.trim() : "";
   const deferLabel = typeof interrupt.defer_label === "string" ? interrupt.defer_label.trim() : "";
+  if (secondaryLabel && /\b(open|view)\s+planner\b/i.test(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "open_planner" };
+  }
   if (deferLabel && labelIsDismissive(deferLabel)) {
     return { label: deferLabel, kind: "dismiss" };
   }
@@ -351,8 +356,10 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
             ? detail.title.trim()
             : "Calendar event";
   const overlapLabel =
-    typeof payload.overlap_label === "string" && payload.overlap_label.trim()
-      ? payload.overlap_label.trim()
+    typeof payload.conflict_label === "string" && payload.conflict_label.trim()
+      ? payload.conflict_label.trim()
+      : typeof payload.overlap_label === "string" && payload.overlap_label.trim()
+        ? payload.overlap_label.trim()
       : typeof payload.overlap_minutes === "number"
         ? `Overlaps by ${payload.overlap_minutes}m`
         : "Overlap";
@@ -364,7 +371,18 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
     cleanMetadataString(detail.overlap_time_label) ||
     cleanMetadataString(detail.conflict_time_label) ||
     null;
-  return { localTitle, localTimeLabel, overlapLabel, overlapTimeLabel, remoteTitle, remoteTimeLabel };
+  const recommendedRepair =
+    cleanMetadataString(payload.recommended_repair) ||
+    cleanMetadataString(payload.recommended_option) ||
+    cleanMetadataString(detail.recommended_repair) ||
+    null;
+  const targetSlot =
+    cleanMetadataString(payload.target_slot) ||
+    cleanMetadataString(payload.target_time_label) ||
+    cleanMetadataString(detail.target_slot) ||
+    cleanMetadataString(detail.target_time_label) ||
+    null;
+  return { localTitle, localTimeLabel, overlapLabel, overlapTimeLabel, remoteTitle, remoteTimeLabel, recommendedRepair, targetSlot };
 }
 
 function cleanMetadataString(value: unknown): string {

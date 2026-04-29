@@ -649,6 +649,9 @@ function InterruptFieldInput({
             return (
               <TouchableOpacity
                 key={`${field.id}-${option.value}`}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: option.selected }}
+                accessibilityLabel={option.label}
                 style={{
                   minHeight: MOBILE_PANEL_OPTION_LAYOUT.minHeight,
                   borderRadius: 14,
@@ -975,6 +978,7 @@ function DynamicPanelRenderer({
 
           <View style={{ flexDirection: panelLayout.actionDirection, gap: 8, flexWrap: panelLayout.actionWraps ? "wrap" : "nowrap" }}>
             <TouchableOpacity
+              accessibilityRole="button"
               style={{
                 flexGrow: 1,
                 flexBasis: panelLayout.actionPrimaryBasis,
@@ -993,6 +997,7 @@ function DynamicPanelRenderer({
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
+              accessibilityRole="button"
               style={{
                 flexGrow: 1,
                 flexBasis: panelLayout.actionSecondaryBasis,
@@ -1006,7 +1011,20 @@ function DynamicPanelRenderer({
                 alignItems: "center",
                 justifyContent: "center",
               }}
-              onPress={onDismiss}
+              onPress={() => {
+                if (secondaryAction.kind === "open_planner") {
+                  onOpenEntityRef(
+                    interrupt.entity_ref || {
+                      entity_type: "planner_conflict",
+                      entity_id: interrupt.id,
+                      href: "/planner",
+                      title: interrupt.title,
+                    },
+                  );
+                  return;
+                }
+                onDismiss();
+              }}
             >
               <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
                 {secondaryAction.label}
