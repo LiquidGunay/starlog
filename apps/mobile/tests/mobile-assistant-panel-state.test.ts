@@ -188,13 +188,13 @@ assert.deepEqual(
           detail: {
             local: {
               title: "Deep work block",
-              starts_at: "9:30 AM",
-              ends_at: "11:00 AM",
+              starts_at: "2026-04-21T09:00:00+00:00",
+              ends_at: "2026-04-21T10:30:00+00:00",
             },
             remote: {
               title: "Product review",
-              starts_at: "9:45 AM",
-              ends_at: "10:15 AM",
+              starts_at: "2026-04-21T09:45:00+00:00",
+              ends_at: "2026-04-21T10:15:00+00:00",
             },
           },
         },
@@ -203,7 +203,7 @@ assert.deepEqual(
   ),
   {
     localTitle: "Deep work block",
-    localTimeLabel: "9:30 AM - 11:00 AM",
+    localTimeLabel: "9:00 AM - 10:30 AM",
     overlapLabel: "Overlap",
     overlapTimeLabel: null,
     remoteTitle: "Product review",

@@ -369,6 +369,18 @@ function cleanMetadataString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function compactTimeLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+    return trimmed;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 function conflictTimeLabel(
   payload: Record<string, unknown>,
   detail: Record<string, unknown>,
@@ -383,7 +395,7 @@ function conflictTimeLabel(
     cleanMetadataString(nested.time_label) ||
     cleanMetadataString(nested.time);
   if (direct) {
-    return direct;
+    return compactTimeLabel(direct);
   }
   const start =
     cleanMetadataString(payload[`${prefix}_start_label`]) ||
@@ -408,7 +420,7 @@ function conflictTimeLabel(
     cleanMetadataString(nested.ends_at) ||
     cleanMetadataString(nested.end);
   if (start && end) {
-    return `${start} - ${end}`;
+    return `${compactTimeLabel(start)} - ${compactTimeLabel(end)}`;
   }
-  return start || end || null;
+  return start || end ? compactTimeLabel(start || end) : null;
 }
