@@ -113,6 +113,7 @@ export type MobileAssistantTodayViewModel = {
   title: string;
   body: string;
   urgency: string;
+  isFallbackMorningFocus: boolean;
   primaryAction: MobileAssistantTodayAction;
   promptChips: MobileAssistantTodayAction[];
   reasonStack: string[];
@@ -285,6 +286,20 @@ export function resolveMobileAssistantTodayActionRoute(action: MobileAssistantTo
   return { kind: "unavailable", reason: `${action.label} is not available yet` };
 }
 
+export function resolveMobileAssistantMorningFocusAction(
+  viewModel: MobileAssistantTodayViewModel,
+  fallbackFocusPrompt: string,
+): MobileAssistantTodayAction {
+  const prompt = cleanString(fallbackFocusPrompt);
+  if (!viewModel.isFallbackMorningFocus || !prompt) {
+    return viewModel.primaryAction;
+  }
+  return {
+    ...viewModel.primaryAction,
+    prompt,
+  };
+}
+
 function fallbackAssistantTodaySummary(date = localDateStringForAssistantToday()): MobileAssistantTodaySummary {
   return {
     ...FALLBACK_ASSISTANT_TODAY_SUMMARY,
@@ -420,10 +435,8 @@ export function buildMobileAssistantWeeklyMicroSignal(
 export function buildMobileAssistantTodayViewModel(
   summary: MobileAssistantTodaySummary | null | undefined,
 ): MobileAssistantTodayViewModel {
-  const usableSummary =
-    summary?.recommended_next_move && hasUsableAction(summary.recommended_next_move)
-      ? summary
-      : fallbackAssistantTodaySummary(summary?.date || undefined);
+  const isFallbackMorningFocus = !(summary?.recommended_next_move && hasUsableAction(summary.recommended_next_move));
+  const usableSummary = isFallbackMorningFocus ? fallbackAssistantTodaySummary(summary?.date || undefined) : summary;
   const move = usableSummary.recommended_next_move!;
 
   const primaryAction = normalizeAction({
@@ -458,6 +471,7 @@ export function buildMobileAssistantTodayViewModel(
     title: cleanString(move.title),
     body: cleanString(move.body),
     urgency: cleanString(move.urgency) || "normal",
+    isFallbackMorningFocus,
     primaryAction,
     promptChips: quickActions,
     reasonStack,

@@ -6,6 +6,7 @@ import {
   MOBILE_PANEL_OPTION_LAYOUT,
   mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   panelDismissPayload,
@@ -72,7 +73,11 @@ const second = interrupt({
   metadata: {
     conflict_payload: {
       local_title: "Very long deep work block for onboarding activation polish",
+      local_start_label: "9:30 AM",
+      local_end_label: "11:00 AM",
       remote_title: "Extremely long product review meeting with platform and growth",
+      remote_time_label: "9:45 - 10:15 AM",
+      overlap_time_label: "9:45 - 10:15 AM",
       overlap_minutes: 30,
     },
   },
@@ -141,8 +146,62 @@ const conflictOptions = mobilePanelOptionViewModels(second, second.fields[0], de
 assert.equal(conflictOptions[0].description, "Recommended - preserves your longer focus block.");
 assert.deepEqual(mobilePlannerConflictPreview(second), {
   localTitle: "Very long deep work block for onboarding activation polish",
+  localTimeLabel: "9:30 AM - 11:00 AM",
   overlapLabel: "Overlaps by 30m",
+  overlapTimeLabel: "9:45 - 10:15 AM",
   remoteTitle: "Extremely long product review meeting with platform and growth",
+  remoteTimeLabel: "9:45 - 10:15 AM",
+});
+
+assert.deepEqual(
+  mobilePlannerConflictPreview(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      metadata: {
+        conflict_payload: {
+          detail: {
+            title: "Team Sync",
+            local_time: "9:30 - 11:00 AM",
+            remote_start_time: "9:45 AM",
+            remote_end_time: "10:15 AM",
+          },
+        },
+      },
+    }),
+  ),
+  {
+    localTitle: "Starlog focus block",
+    localTimeLabel: "9:30 - 11:00 AM",
+    overlapLabel: "Overlap",
+    overlapTimeLabel: null,
+    remoteTitle: "Team Sync",
+    remoteTimeLabel: "9:45 AM - 10:15 AM",
+  },
+);
+
+assert.deepEqual(
+  mobilePanelSecondaryAction(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      secondary_label: "Open Planner",
+      defer_label: "Later",
+    }),
+  ),
+  { label: "Later", kind: "dismiss" },
+);
+assert.deepEqual(
+  mobilePanelSecondaryAction(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      secondary_label: "Open Planner",
+      defer_label: "Open Planner",
+    }),
+  ),
+  { label: "Dismiss", kind: "dismiss" },
+);
+assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Adjust options" })), {
+  label: "Adjust options",
+  kind: "dismiss",
 });
 
 assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {

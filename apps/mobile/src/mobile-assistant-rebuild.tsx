@@ -34,6 +34,7 @@ import {
   mobileAssistantPanelLayout,
   mobileAssistantPromptChips,
   mobileDynamicPanelStates,
+  mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   panelDismissPayload,
@@ -47,6 +48,7 @@ import {
 import {
   buildMobileAssistantWeeklyMicroSignal,
   buildMobileAssistantTodayViewModel,
+  resolveMobileAssistantMorningFocusAction,
   type MobileAssistantTodayAction,
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
@@ -787,9 +789,9 @@ function PlannerConflictMiniPreview({
       }}
     >
       {[
-        { icon: "brain", title: preview.localTitle, tone: "#9fd3ff" },
-        { icon: "alert-outline", title: preview.overlapLabel, tone: "#ff6f59" },
-        { icon: "account-group-outline", title: preview.remoteTitle, tone: "#c8a5ff" },
+        { icon: "brain", title: preview.localTitle, time: preview.localTimeLabel, tone: "#9fd3ff" },
+        { icon: "alert-outline", title: preview.overlapLabel, time: preview.overlapTimeLabel, tone: "#ff6f59" },
+        { icon: "account-group-outline", title: preview.remoteTitle, time: preview.remoteTimeLabel, tone: "#c8a5ff" },
       ].map((item, index) => (
         <View
           key={`${item.title}-${index}`}
@@ -820,6 +822,21 @@ function PlannerConflictMiniPreview({
           >
             {item.title}
           </Text>
+          {item.time ? (
+            <Text
+              style={{
+                flexShrink: 0,
+                color: index === 1 ? "#ff8a72" : palette.muted,
+                fontSize: 12.5,
+                lineHeight: 17,
+                fontWeight: "700",
+                textAlign: "right",
+              }}
+              numberOfLines={1}
+            >
+              {item.time}
+            </Text>
+          ) : null}
         </View>
       ))}
     </View>
@@ -851,6 +868,7 @@ function DynamicPanelRenderer({
   const selectedLabel = selectedValueLabel(interrupt, values);
   const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
   const panelLayout = mobileAssistantPanelLayout(useWindowDimensions().width);
+  const secondaryAction = mobilePanelSecondaryAction(interrupt);
 
   return (
     <View
@@ -975,7 +993,7 @@ function DynamicPanelRenderer({
               onPress={onDismiss}
             >
               <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center" }}>
-                {interrupt.secondary_label || interrupt.defer_label || "Dismiss"}
+                {secondaryAction.label}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1099,6 +1117,7 @@ export function MobileAssistantRebuild({
     () => buildMobileAssistantWeeklyMicroSignal(assistantWeeklySummary),
     [assistantWeeklySummary],
   );
+  const showFallbackFocusChooser = todayViewModel.isFallbackMorningFocus;
   const selectedFallbackFocusOption =
     MORNING_FOCUS_OPTIONS.find((option) => option.key === selectedFallbackFocus) || MORNING_FOCUS_OPTIONS[0];
 
@@ -1262,58 +1281,64 @@ export function MobileAssistantRebuild({
                     </Text>
                   </View>
 
-                  <View style={{ gap: 7 }}>
-                    {MORNING_FOCUS_OPTIONS.map((option) => {
-                      const selected = selectedFallbackFocus === option.key;
-                      return (
-                        <TouchableOpacity
-                          key={option.key}
-                          style={{
-                            minHeight: 58,
-                            borderRadius: 14,
-                            paddingHorizontal: 11,
-                            paddingVertical: 10,
-                            borderWidth: 1,
-                            borderColor: selected ? "rgba(243, 178, 66, 0.78)" : "rgba(255,255,255,0.06)",
-                            backgroundColor: selected ? "rgba(243, 178, 66, 0.1)" : "rgba(255,255,255,0.018)",
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 10,
-                          }}
-                          onPress={() => setSelectedFallbackFocus(option.key)}
-                        >
-                          <View
+                  {showFallbackFocusChooser ? (
+                    <View style={{ gap: 7 }}>
+                      {MORNING_FOCUS_OPTIONS.map((option) => {
+                        const selected = selectedFallbackFocus === option.key;
+                        return (
+                          <TouchableOpacity
+                            key={option.key}
                             style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 10,
-                              alignItems: "center",
-                              justifyContent: "center",
+                              minHeight: 58,
+                              borderRadius: 14,
+                              paddingHorizontal: 11,
+                              paddingVertical: 10,
                               borderWidth: 1,
-                              borderColor: selected ? "rgba(243, 178, 66, 0.62)" : "rgba(255,255,255,0.09)",
-                              backgroundColor: selected ? "rgba(243, 178, 66, 0.12)" : "rgba(255,255,255,0.02)",
-                              flexShrink: 0,
+                              borderColor: selected ? "rgba(243, 178, 66, 0.78)" : "rgba(255,255,255,0.06)",
+                              backgroundColor: selected ? "rgba(243, 178, 66, 0.1)" : "rgba(255,255,255,0.018)",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 10,
                             }}
+                            onPress={() => setSelectedFallbackFocus(option.key)}
                           >
-                            <MaterialCommunityIcons name={option.icon as never} size={17} color={selected ? palette.accent : palette.muted} />
-                          </View>
-                          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                            <Text style={{ color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={1}>
-                              {option.label}
-                            </Text>
-                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
-                              {option.body}
-                            </Text>
-                          </View>
-                          <MaterialCommunityIcons
-                            name={selected ? "check-circle" : "circle-outline"}
-                            size={20}
-                            color={selected ? palette.accent : palette.muted}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                            <View
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 10,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderWidth: 1,
+                                borderColor: selected ? "rgba(243, 178, 66, 0.62)" : "rgba(255,255,255,0.09)",
+                                backgroundColor: selected ? "rgba(243, 178, 66, 0.12)" : "rgba(255,255,255,0.02)",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <MaterialCommunityIcons name={option.icon as never} size={17} color={selected ? palette.accent : palette.muted} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                              <Text style={{ color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={1}>
+                                {option.label}
+                              </Text>
+                              <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
+                                {option.body}
+                              </Text>
+                            </View>
+                            <MaterialCommunityIcons
+                              name={selected ? "check-circle" : "circle-outline"}
+                              size={20}
+                              color={selected ? palette.accent : palette.muted}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
+                      {todayViewModel.body}
+                    </Text>
+                  )}
 
                   <View
                     style={{
@@ -1348,10 +1373,9 @@ export function MobileAssistantRebuild({
                         backgroundColor: palette.accent,
                       }}
                       onPress={() =>
-                        onAssistantTodayAction({
-                          ...todayViewModel.primaryAction,
-                          prompt: selectedFallbackFocusOption.prompt,
-                        })
+                        onAssistantTodayAction(
+                          resolveMobileAssistantMorningFocusAction(todayViewModel, selectedFallbackFocusOption.prompt),
+                        )
                       }
                     >
                       <Text style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>

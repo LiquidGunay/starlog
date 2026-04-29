@@ -29,8 +29,16 @@ export type MobilePanelOptionViewModel = {
 
 export type MobilePlannerConflictPreview = {
   localTitle: string;
+  localTimeLabel: string | null;
   overlapLabel: string;
+  overlapTimeLabel: string | null;
   remoteTitle: string;
+  remoteTimeLabel: string | null;
+};
+
+export type MobilePanelSecondaryAction = {
+  label: string;
+  kind: "dismiss";
 };
 
 export type MobileAssistantPanelLayout = {
@@ -141,6 +149,22 @@ export function panelSubmitPayload(
 
 export function panelDismissPayload(interrupt: AssistantInterrupt): { interruptId: string } {
   return { interruptId: interrupt.id };
+}
+
+function labelImpliesNavigation(label: string): boolean {
+  return /\b(open|go to|view)\b/i.test(label) && /\b(planner|library|review|assistant)\b/i.test(label);
+}
+
+export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): MobilePanelSecondaryAction {
+  const secondaryLabel = typeof interrupt.secondary_label === "string" ? interrupt.secondary_label.trim() : "";
+  const deferLabel = typeof interrupt.defer_label === "string" ? interrupt.defer_label.trim() : "";
+  if (secondaryLabel && !labelImpliesNavigation(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "dismiss" };
+  }
+  if (deferLabel && !labelImpliesNavigation(deferLabel)) {
+    return { label: deferLabel, kind: "dismiss" };
+  }
+  return { label: "Dismiss", kind: "dismiss" };
 }
 
 export function fieldValue(values: Record<string, unknown>, field: AssistantInterruptField): string {
@@ -297,23 +321,73 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
     return null;
   }
   const payload = metadataRecord(interrupt.metadata?.conflict_payload);
+  const detail = metadataRecord(payload.detail);
   const localTitle =
     typeof payload.local_title === "string" && payload.local_title.trim()
       ? payload.local_title.trim()
       : typeof payload.block_title === "string" && payload.block_title.trim()
         ? payload.block_title.trim()
-        : "Starlog focus block";
+        : typeof detail.local_title === "string" && detail.local_title.trim()
+          ? detail.local_title.trim()
+          : typeof detail.block_title === "string" && detail.block_title.trim()
+            ? detail.block_title.trim()
+            : "Starlog focus block";
   const remoteTitle =
     typeof payload.remote_title === "string" && payload.remote_title.trim()
       ? payload.remote_title.trim()
       : typeof payload.title === "string" && payload.title.trim()
         ? payload.title.trim()
-        : "Calendar event";
+        : typeof detail.remote_title === "string" && detail.remote_title.trim()
+          ? detail.remote_title.trim()
+          : typeof detail.title === "string" && detail.title.trim()
+            ? detail.title.trim()
+            : "Calendar event";
   const overlapLabel =
     typeof payload.overlap_label === "string" && payload.overlap_label.trim()
       ? payload.overlap_label.trim()
       : typeof payload.overlap_minutes === "number"
         ? `Overlaps by ${payload.overlap_minutes}m`
         : "Overlap";
-  return { localTitle, overlapLabel, remoteTitle };
+  const localTimeLabel = conflictTimeLabel(payload, detail, "local");
+  const remoteTimeLabel = conflictTimeLabel(payload, detail, "remote");
+  const overlapTimeLabel =
+    cleanMetadataString(payload.overlap_time_label) ||
+    cleanMetadataString(payload.conflict_time_label) ||
+    cleanMetadataString(detail.overlap_time_label) ||
+    cleanMetadataString(detail.conflict_time_label) ||
+    null;
+  return { localTitle, localTimeLabel, overlapLabel, overlapTimeLabel, remoteTitle, remoteTimeLabel };
+}
+
+function cleanMetadataString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function conflictTimeLabel(payload: Record<string, unknown>, detail: Record<string, unknown>, prefix: "local" | "remote"): string | null {
+  const direct =
+    cleanMetadataString(payload[`${prefix}_time_label`]) ||
+    cleanMetadataString(payload[`${prefix}_time`]) ||
+    cleanMetadataString(detail[`${prefix}_time_label`]) ||
+    cleanMetadataString(detail[`${prefix}_time`]);
+  if (direct) {
+    return direct;
+  }
+  const start =
+    cleanMetadataString(payload[`${prefix}_start_label`]) ||
+    cleanMetadataString(payload[`${prefix}_start_time`]) ||
+    cleanMetadataString(payload[`${prefix}_start`]) ||
+    cleanMetadataString(detail[`${prefix}_start_label`]) ||
+    cleanMetadataString(detail[`${prefix}_start_time`]) ||
+    cleanMetadataString(detail[`${prefix}_start`]);
+  const end =
+    cleanMetadataString(payload[`${prefix}_end_label`]) ||
+    cleanMetadataString(payload[`${prefix}_end_time`]) ||
+    cleanMetadataString(payload[`${prefix}_end`]) ||
+    cleanMetadataString(detail[`${prefix}_end_label`]) ||
+    cleanMetadataString(detail[`${prefix}_end_time`]) ||
+    cleanMetadataString(detail[`${prefix}_end`]);
+  if (start && end) {
+    return `${start} - ${end}`;
+  }
+  return start || end || null;
 }
