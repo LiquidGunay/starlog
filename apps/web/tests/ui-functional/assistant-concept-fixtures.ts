@@ -639,3 +639,225 @@ export function captureTriageInterrupt(status: "pending" | "submitted" = "pendin
     },
   };
 }
+
+export function reviewGradeInterrupt(status: "pending" | "submitted" = "pending"): Record<string, unknown> {
+  return {
+    id: "interrupt_review_grade",
+    thread_id: "thr_primary",
+    run_id: "run_review_grade",
+    tool_name: "grade_review_recall",
+    interrupt_type: "form",
+    status,
+    title: "Grade this review",
+    body: "You are missing application, not recall.",
+    primary_label: "Save grade",
+    secondary_label: "Keep in Review",
+    defer_label: "Later",
+    fields: [
+      {
+        id: "grade",
+        kind: "select",
+        label: "Grade",
+        required: true,
+        value: "3",
+        options: [
+          { label: "Again", value: "1" },
+          { label: "Hard", value: "3" },
+          { label: "Good", value: "4" },
+          { label: "Easy", value: "5" },
+        ],
+      },
+      {
+        id: "support_action",
+        kind: "select",
+        label: "Support action",
+        required: false,
+        value: "",
+        options: [
+          { label: "Show worked example", value: "worked_example" },
+          { label: "Switch to explanation", value: "explanation" },
+        ],
+      },
+    ],
+    entity_ref: {
+      entity_type: "review_item",
+      entity_id: "review_feature_flag_perf",
+      href: "/review?item=review_feature_flag_perf",
+      title: "Feature flag degradation",
+    },
+    consequence_preview: "Updates the review interval and keeps the card in the right queue.",
+    resolution:
+      status === "submitted"
+        ? {
+            id: "resolution_review_grade",
+            interrupt_id: "interrupt_review_grade",
+            action: "submit",
+            values: { grade: "3", client_timezone: "UTC" },
+            metadata: {},
+            created_at: "2026-04-28T10:11:00.000Z",
+          }
+        : null,
+    created_at: "2026-04-28T10:10:00.000Z",
+    resolved_at: status === "submitted" ? "2026-04-28T10:11:00.000Z" : null,
+    metadata: {
+      prompt: "What's the most effective action when a feature flag causes performance degradation in production?",
+      insight: "You are missing application, not recall.",
+    },
+  };
+}
+
+export function scheduleClarificationInterrupt(status: "pending" | "submitted" = "pending"): Record<string, unknown> {
+  return {
+    id: "interrupt_schedule_clarify",
+    thread_id: "thr_primary",
+    run_id: "run_schedule_clarify",
+    tool_name: "clarify_schedule_time",
+    interrupt_type: "form",
+    status,
+    title: "What time should I schedule this?",
+    body: "I only need the start time before creating the block.",
+    primary_label: "Confirm time",
+    secondary_label: "Not now",
+    defer_label: "Later",
+    fields: [
+      {
+        id: "scheduled_time",
+        kind: "select",
+        label: "Schedule time",
+        required: true,
+        value: "09:30",
+        options: [
+          { label: "9:30 AM", value: "09:30" },
+          { label: "10:00 AM", value: "10:00" },
+          { label: "10:30 AM", value: "10:30" },
+          { label: "11:00 AM", value: "11:00" },
+          { label: "Pick custom time", value: "custom" },
+        ],
+      },
+      {
+        id: "reuse_for_similar_blocks",
+        kind: "toggle",
+        label: "Use this time for similar blocks",
+        value: true,
+      },
+    ],
+    consequence_preview: "Creates the block at the selected time without opening Planner.",
+    resolution:
+      status === "submitted"
+        ? {
+            id: "resolution_schedule_clarify",
+            interrupt_id: "interrupt_schedule_clarify",
+            action: "submit",
+            values: { scheduled_time: "09:30", reuse_for_similar_blocks: true, client_timezone: "UTC" },
+            metadata: {},
+            created_at: "2026-04-28T10:20:00.000Z",
+          }
+        : null,
+    created_at: "2026-04-28T10:18:00.000Z",
+    resolved_at: status === "submitted" ? "2026-04-28T10:20:00.000Z" : null,
+    metadata: {
+      question: "What time should I schedule this?",
+      detail: "One missing detail.",
+    },
+  };
+}
+
+export function deferRecommendationInterrupt(status: "pending" | "submitted" = "pending"): Record<string, unknown> {
+  return {
+    id: "interrupt_defer_recommendation",
+    thread_id: "thr_primary",
+    run_id: "run_defer_recommendation",
+    tool_name: "defer_recommendation",
+    interrupt_type: "choice",
+    status,
+    title: "Remind me later",
+    body: "Choose when this should come back.",
+    primary_label: "Set reminder",
+    secondary_label: "No thanks, keep it in view",
+    defer_label: "No thanks, keep it in view",
+    fields: [
+      {
+        id: "remind_at",
+        kind: "select",
+        label: "Reminder",
+        required: true,
+        value: "in_1_hour",
+        options: [
+          { label: "In 1 hour", value: "in_1_hour" },
+          { label: "This evening", value: "this_evening" },
+          { label: "Tomorrow morning", value: "tomorrow_morning" },
+          { label: "No thanks, keep it in view", value: "keep_in_view" },
+        ],
+      },
+    ],
+    consequence_preview: "Keeps momentum without nagging.",
+    resolution:
+      status === "submitted"
+        ? {
+            id: "resolution_defer_recommendation",
+            interrupt_id: "interrupt_defer_recommendation",
+            action: "submit",
+            values: { remind_at: "tomorrow_morning", client_timezone: "UTC" },
+            metadata: {},
+            created_at: "2026-04-28T10:30:00.000Z",
+          }
+        : null,
+    created_at: "2026-04-28T10:28:00.000Z",
+    resolved_at: status === "submitted" ? "2026-04-28T10:30:00.000Z" : null,
+    metadata: {},
+  };
+}
+
+export function projectPickerInterrupt(status: "pending" | "submitted" = "pending"): Record<string, unknown> {
+  return {
+    id: "interrupt_project_picker",
+    thread_id: "thr_primary",
+    run_id: "run_project_picker",
+    tool_name: "link_capture_project",
+    interrupt_type: "form",
+    status,
+    title: "Link to project",
+    body: "This capture looks related to active work.",
+    primary_label: "Link item",
+    secondary_label: "Open Library",
+    defer_label: "Later",
+    fields: [
+      {
+        id: "project_id",
+        kind: "entity_search",
+        label: "Suggested projects",
+        required: true,
+        value: "project_assistant_v2",
+        options: [
+          { label: "Assistant v2.0 launch", value: "project_assistant_v2" },
+          { label: "AI suggestions engine", value: "project_ai_suggestions" },
+          { label: "Onboarding experience", value: "project_onboarding" },
+          { label: "Analytics revamp", value: "project_analytics" },
+        ],
+      },
+    ],
+    entity_ref: {
+      entity_type: "artifact",
+      entity_id: "artifact_inline_suggestions",
+      href: "/library?artifact=artifact_inline_suggestions",
+      title: "Design idea: inline AI suggestions in the editor",
+    },
+    consequence_preview: "Links this capture to the selected project and keeps provenance intact.",
+    resolution:
+      status === "submitted"
+        ? {
+            id: "resolution_project_picker",
+            interrupt_id: "interrupt_project_picker",
+            action: "submit",
+            values: { project_id: "project_ai_suggestions", client_timezone: "UTC" },
+            metadata: {},
+            created_at: "2026-04-28T10:42:00.000Z",
+          }
+        : null,
+    created_at: "2026-04-28T10:40:00.000Z",
+    resolved_at: status === "submitted" ? "2026-04-28T10:42:00.000Z" : null,
+    metadata: {
+      item_title: "Design idea: inline AI suggestions in the editor",
+    },
+  };
+}

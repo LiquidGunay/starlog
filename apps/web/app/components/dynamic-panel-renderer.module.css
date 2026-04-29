@@ -34,6 +34,21 @@
   background: linear-gradient(180deg, rgba(45, 71, 86, 0.34), rgba(255, 255, 255, 0.045));
 }
 
+.tone_clarify {
+  border-color: rgba(126, 196, 173, 0.32);
+  background: linear-gradient(180deg, rgba(38, 82, 72, 0.3), rgba(255, 255, 255, 0.045));
+}
+
+.tone_defer {
+  border-color: rgba(177, 177, 154, 0.28);
+  background: linear-gradient(180deg, rgba(72, 72, 57, 0.28), rgba(255, 255, 255, 0.04));
+}
+
+.tone_entity {
+  border-color: rgba(132, 181, 225, 0.32);
+  background: linear-gradient(180deg, rgba(42, 66, 89, 0.32), rgba(255, 255, 255, 0.045));
+}
+
 .mode_composer {
   box-shadow: inset 0 0 0 1px rgba(239, 205, 160, 0.08);
 }
@@ -240,6 +255,10 @@
   overflow-wrap: anywhere;
 }
 
+.itemPreview b {
+  color: #f4f1e8;
+}
+
 .itemPreview small {
   font-size: 12px;
   font-weight: 650;
@@ -249,6 +268,24 @@
 .optionCardSelected {
   border-color: rgba(239, 205, 160, 0.55);
   background: rgba(239, 205, 160, 0.12);
+}
+
+.supportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.supportButton {
+  border: 1px solid rgba(239, 205, 160, 0.22);
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: rgba(239, 205, 160, 0.09);
+  color: #f4f1e8;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .conflictPreview {

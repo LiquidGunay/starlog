@@ -14,7 +14,7 @@ type DynamicPanelRendererProps = {
   onDismiss: (interruptId: string) => Promise<void> | void;
 };
 
-type PanelTone = "task" | "capture" | "planner" | "review" | "focus" | "default";
+type PanelTone = "task" | "capture" | "planner" | "review" | "focus" | "clarify" | "defer" | "entity" | "default";
 type SetValues = Dispatch<SetStateAction<Record<string, unknown>>>;
 
 const REVIEW_VALUES: Record<string, { label: string; hint: string }> = {
@@ -94,6 +94,25 @@ function isCaptureTriagePanel(interrupt: AssistantInterrupt): boolean {
   return interrupt.tool_name === "triage_capture" || /capture.*(triage|enrich|summar)/i.test(interrupt.tool_name);
 }
 
+function isReviewGradePanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name === "grade_review_recall" || /review.*grade|grade.*review|recall.*grade/i.test(interrupt.tool_name);
+}
+
+function isClarificationPanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name.includes("clarif") || /missing.*detail|schedule.*time|time.*choice/i.test(interrupt.tool_name);
+}
+
+function isDeferPanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name.includes("defer") || /remind.*later|later.*remind|postpone/i.test(interrupt.tool_name);
+}
+
+function isEntityPickerPanel(interrupt: AssistantInterrupt): boolean {
+  return (
+    /(?:pick|link|choose).*(?:project|entity)|(?:project|entity).*(?:pick|link|choose)/i.test(interrupt.tool_name) ||
+    interrupt.fields.some((field) => field.kind === "entity_search")
+  );
+}
+
 function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterruptField, option: { label: string; value: string }): string | null {
   const fieldDescriptions = metadataRecord(field.metadata?.option_descriptions);
   const interruptDescriptions = metadataRecord(interrupt.metadata?.option_descriptions);
@@ -145,6 +164,41 @@ function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterr
       return "Attach it to active work.";
     }
   }
+  if (isReviewGradePanel(interrupt)) {
+    if (/again/i.test(option.label) || option.value === "1") {
+      return "Review soon.";
+    }
+    if (/hard/i.test(option.label) || option.value === "3") {
+      return "Keep it close.";
+    }
+    if (/good/i.test(option.label) || option.value === "4") {
+      return "Move forward.";
+    }
+    if (/easy/i.test(option.label) || option.value === "5") {
+      return "Stretch interval.";
+    }
+  }
+  if (isClarificationPanel(interrupt)) {
+    if (/custom/i.test(option.label) || option.value.includes("custom")) {
+      return "Pick another time.";
+    }
+    return "Use this schedule time.";
+  }
+  if (isDeferPanel(interrupt)) {
+    if (/no thanks|keep/i.test(option.label) || option.value.includes("none")) {
+      return "Keep it visible without a reminder.";
+    }
+    return "Remind me without interrupting flow.";
+  }
+  if (isEntityPickerPanel(interrupt)) {
+    if (option.value.includes("assistant") || /assistant/i.test(option.label)) {
+      return "Most likely match.";
+    }
+    if (option.value.includes("onboarding") || /onboarding/i.test(option.label)) {
+      return "Relevant to this item.";
+    }
+    return "Link this item to the project.";
+  }
   return null;
 }
 
@@ -158,11 +212,20 @@ function panelTone(interrupt: AssistantInterrupt): PanelTone {
   if (interrupt.tool_name === "resolve_planner_conflict") {
     return "planner";
   }
-  if (interrupt.tool_name === "grade_review_recall") {
+  if (isReviewGradePanel(interrupt)) {
     return "review";
   }
   if (interrupt.tool_name === "choose_morning_focus") {
     return "focus";
+  }
+  if (isClarificationPanel(interrupt)) {
+    return "clarify";
+  }
+  if (isDeferPanel(interrupt)) {
+    return "defer";
+  }
+  if (isEntityPickerPanel(interrupt)) {
+    return "entity";
   }
   return "default";
 }
@@ -177,11 +240,20 @@ function panelLabel(interrupt: AssistantInterrupt): string {
   if (interrupt.tool_name === "resolve_planner_conflict") {
     return "Planner conflict";
   }
-  if (interrupt.tool_name === "grade_review_recall") {
+  if (isReviewGradePanel(interrupt)) {
     return "Review grade";
   }
   if (interrupt.tool_name === "choose_morning_focus") {
     return "Morning focus";
+  }
+  if (isClarificationPanel(interrupt)) {
+    return "Clarification";
+  }
+  if (isDeferPanel(interrupt)) {
+    return "Remind later";
+  }
+  if (isEntityPickerPanel(interrupt)) {
+    return "Project link";
   }
   if (interrupt.interrupt_type === "confirm") {
     return "Confirm";
@@ -190,16 +262,6 @@ function panelLabel(interrupt: AssistantInterrupt): string {
     return "Choose";
   }
   return "Decision";
-}
-
-function displayModeLabel(interrupt: AssistantInterrupt): string | null {
-  if (!interrupt.display_mode) {
-    return null;
-  }
-  if (interrupt.display_mode === "bottom_sheet") {
-    return "Bottom sheet";
-  }
-  return interrupt.display_mode.charAt(0).toUpperCase() + interrupt.display_mode.slice(1);
 }
 
 function EntityLink({ entityRef }: { entityRef: AssistantEntityRef | null | undefined }) {
@@ -333,10 +395,13 @@ function FieldControl({
   const value = values[field.id] ?? "";
   const stringValue = typeof value === "string" || typeof value === "number" ? String(value) : "";
   const useOptionCards =
-    (field.kind === "select" || field.kind === "priority") &&
+    (field.kind === "select" || field.kind === "priority" || (field.kind === "entity_search" && field.options && field.options.length > 0)) &&
     (variant === "focus" ||
       variant === "planner" ||
       variant === "review" ||
+      variant === "clarify" ||
+      variant === "defer" ||
+      variant === "entity" ||
       isTaskDetailPanel(interrupt) ||
       isCaptureTriagePanel(interrupt) ||
       field.options?.length === 2);
@@ -452,6 +517,16 @@ function FieldRow({
   );
 }
 
+function displayValueForDefault(interrupt: AssistantInterrupt, fieldId: string, value: unknown): string {
+  const field = interrupt.fields.find((candidate) => candidate.id === fieldId);
+  const normalized = typeof value === "string" || typeof value === "number" ? String(value) : "";
+  const optionLabel = field?.options?.find((option) => option.value === normalized)?.label;
+  if (typeof value === "boolean") {
+    return value ? "yes" : "no";
+  }
+  return optionLabel || normalized.replace(/_/g, " ");
+}
+
 function RecommendedDefaults({ interrupt }: { interrupt: AssistantInterrupt }) {
   const defaults = Object.entries(interrupt.recommended_defaults || {}).filter((entry) => entry[1] !== undefined && entry[1] !== null);
   if (defaults.length === 0) {
@@ -462,7 +537,7 @@ function RecommendedDefaults({ interrupt }: { interrupt: AssistantInterrupt }) {
     <div className={styles.defaults} aria-label="Recommended defaults">
       {defaults.map(([key, value]) => (
         <span key={key}>
-          {key.replace(/_/g, " ")}: {typeof value === "boolean" ? (value ? "yes" : "no") : String(value)}
+          Recommended: {displayValueForDefault(interrupt, key, value)}
         </span>
       ))}
     </div>
@@ -593,6 +668,85 @@ function PlannerConflictPreview({ interrupt }: { interrupt: AssistantInterrupt }
   );
 }
 
+function ReviewGradePreview({
+  interrupt,
+  values,
+  onSupportAction,
+}: {
+  interrupt: AssistantInterrupt;
+  values: Record<string, unknown>;
+  onSupportAction: (value: string) => void;
+}) {
+  if (!isReviewGradePanel(interrupt)) {
+    return null;
+  }
+  const supportField = interrupt.fields.find((field) => field.id === "support_action" || /support|help|mode/i.test(field.id));
+  const prompt =
+    firstMetadataString(
+      interrupt.metadata?.prompt,
+      interrupt.metadata?.question,
+      interrupt.metadata?.review_prompt,
+      interrupt.entity_ref?.title,
+      interrupt.title,
+    ) || "Review this item";
+  const insight = firstMetadataString(interrupt.metadata?.insight, interrupt.metadata?.diagnosis, interrupt.metadata?.feedback, interrupt.body);
+
+  return (
+    <div className={styles.itemPreview} aria-label="Review prompt">
+      <strong>{prompt}</strong>
+      {insight ? <span>{insight}</span> : null}
+      {supportField?.options && supportField.options.length > 0 ? (
+        <div className={styles.supportActions}>
+          {supportField.options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={styles.supportButton}
+              onClick={() => onSupportAction(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ClarificationPreview({ interrupt }: { interrupt: AssistantInterrupt }) {
+  if (!isClarificationPanel(interrupt)) {
+    return null;
+  }
+  const question = firstMetadataString(interrupt.metadata?.question, interrupt.metadata?.clarification_question, interrupt.title) || "One more detail";
+  const detail = firstMetadataString(interrupt.metadata?.detail, interrupt.metadata?.reason, interrupt.body);
+  return (
+    <div className={styles.itemPreview} aria-label="Clarification prompt">
+      <strong>{question}</strong>
+      {detail ? <span>{detail}</span> : null}
+    </div>
+  );
+}
+
+function EntityPickerPreview({ interrupt, values }: { interrupt: AssistantInterrupt; values: Record<string, unknown> }) {
+  if (!isEntityPickerPanel(interrupt)) {
+    return null;
+  }
+  const projectField =
+    interrupt.fields.find((field) => field.kind === "entity_search") ||
+    interrupt.fields.find((field) => /project|entity/i.test(field.id) && field.options && field.options.length > 0);
+  const selectedValue = projectField ? String(values[projectField.id] ?? "") : "";
+  const selectedProject = projectField?.options?.find((option) => option.value === selectedValue)?.label || null;
+  const title = firstMetadataString(interrupt.metadata?.item_title, interrupt.metadata?.capture_title, interrupt.entity_ref?.title, interrupt.title) || "Link item";
+  return (
+    <div className={styles.itemPreview} aria-label="Project link preview">
+      <strong>{title}</strong>
+      <span>
+        Selected project: <b>{selectedProject || "Choose one"}</b>
+      </span>
+    </div>
+  );
+}
+
 function EmptyConfirmPanel() {
   return <p className={styles.confirmCopy}>Confirm this change before Starlog applies it.</p>;
 }
@@ -601,8 +755,10 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
   const defaults = useMemo(() => initialValues(interrupt), [interrupt]);
   const [values, setValues] = useState<Record<string, unknown>>(defaults);
   const variant = panelTone(interrupt);
-  const modeLabel = displayModeLabel(interrupt);
   const secondaryLabel = interrupt.secondary_label || interrupt.defer_label || "Not now";
+  const visibleFields = isReviewGradePanel(interrupt)
+    ? interrupt.fields.filter((field) => field.id !== "support_action" && !/support|help|mode/i.test(field.id))
+    : interrupt.fields;
   const secondaryHref = /\b(open|view)\s+planner\b/i.test(secondaryLabel)
     ? interrupt.entity_ref?.href || "/planner"
     : /\b(open|view)\s+library\b/i.test(secondaryLabel)
@@ -622,7 +778,6 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
       <div className={styles.header}>
         <div className={styles.eyebrowRow}>
           <p>{panelLabel(interrupt)}</p>
-          {modeLabel ? <span>{modeLabel}</span> : null}
         </div>
         <EntityLink entityRef={interrupt.entity_ref} />
       </div>
@@ -635,10 +790,17 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
       <TaskDetailPreview interrupt={interrupt} />
       <CaptureTriagePreview interrupt={interrupt} />
       <PlannerConflictPreview interrupt={interrupt} />
+      <ReviewGradePreview
+        interrupt={interrupt}
+        values={values}
+        onSupportAction={(value) => void onSubmit(interrupt.id, { ...values, support_action: value })}
+      />
+      <ClarificationPreview interrupt={interrupt} />
+      <EntityPickerPreview interrupt={interrupt} values={values} />
 
-      {interrupt.fields.length > 0 ? (
+      {visibleFields.length > 0 ? (
         <div className={styles.fields}>
-          {interrupt.fields.map((field) => (
+          {visibleFields.map((field) => (
             <FieldRow
               key={`${interrupt.id}-${field.id}`}
               interrupt={interrupt}

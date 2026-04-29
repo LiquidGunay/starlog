@@ -1,6 +1,6 @@
 import type { AssistantInterrupt, AssistantInterruptField } from "@starlog/contracts";
 
-export type PanelTone = "focus" | "task" | "capture" | "conflict" | "review" | "clarify" | "defer" | "default";
+export type PanelTone = "focus" | "task" | "capture" | "conflict" | "review" | "clarify" | "defer" | "entity" | "default";
 export type MobilePanelRenderState = "active" | "queued" | "resolved";
 
 export const DYNAMIC_PANEL_TOOL_TONES: Record<string, PanelTone> = {
@@ -10,7 +10,11 @@ export const DYNAMIC_PANEL_TOOL_TONES: Record<string, PanelTone> = {
   resolve_planner_conflict: "conflict",
   grade_review_recall: "review",
   clarify_assistant_request: "clarify",
+  clarify_schedule_time: "clarify",
   defer_recommendation: "defer",
+  pick_project: "entity",
+  link_project: "entity",
+  link_capture_project: "entity",
 };
 
 export type MobileDynamicPanelState = {
@@ -68,6 +72,23 @@ export type MobileCaptureTriagePreview = {
   capturedAtLabel: string | null;
 };
 
+export type MobileReviewGradePreview = {
+  prompt: string;
+  insight: string | null;
+  supportActions: MobilePanelOptionViewModel[];
+};
+
+export type MobileClarificationPreview = {
+  question: string;
+  detail: string | null;
+};
+
+export type MobileEntityPickerPreview = {
+  title: string;
+  selectedProjectLabel: string | null;
+  suggestedProjects: MobilePanelOptionViewModel[];
+};
+
 export const MOBILE_PANEL_OPTION_LAYOUT = {
   minHeight: 58,
   titleMaxLines: 2,
@@ -104,12 +125,43 @@ export function isCaptureTriagePanel(interrupt: AssistantInterrupt): boolean {
   return interrupt.tool_name === "triage_capture" || /capture.*(triage|enrich|summar)/i.test(interrupt.tool_name);
 }
 
+export function isReviewGradePanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name === "grade_review_recall" || /review.*grade|grade.*review|recall.*grade/i.test(interrupt.tool_name);
+}
+
+export function isClarificationPanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name.includes("clarif") || /missing.*detail|schedule.*time|time.*choice/i.test(interrupt.tool_name);
+}
+
+export function isDeferPanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name.includes("defer") || /remind.*later|later.*remind|postpone/i.test(interrupt.tool_name);
+}
+
+export function isEntityPickerPanel(interrupt: AssistantInterrupt): boolean {
+  return (
+    /(?:pick|link|choose).*(?:project|entity)|(?:project|entity).*(?:pick|link|choose)/i.test(interrupt.tool_name) ||
+    interrupt.fields.some((field) => field.kind === "entity_search")
+  );
+}
+
 export function panelTone(interrupt: AssistantInterrupt): PanelTone {
   if (isTaskDetailPanel(interrupt)) {
     return "task";
   }
   if (isCaptureTriagePanel(interrupt)) {
     return "capture";
+  }
+  if (isReviewGradePanel(interrupt)) {
+    return "review";
+  }
+  if (isClarificationPanel(interrupt)) {
+    return "clarify";
+  }
+  if (isDeferPanel(interrupt)) {
+    return "defer";
+  }
+  if (isEntityPickerPanel(interrupt)) {
+    return "entity";
   }
   return DYNAMIC_PANEL_TOOL_TONES[interrupt.tool_name] || "default";
 }
@@ -127,14 +179,17 @@ export function panelKicker(interrupt: AssistantInterrupt): string {
   if (interrupt.tool_name === "resolve_planner_conflict") {
     return "Planner conflict";
   }
-  if (interrupt.tool_name === "grade_review_recall") {
+  if (isReviewGradePanel(interrupt)) {
     return "Review grade";
   }
-  if (interrupt.tool_name.includes("clarif")) {
+  if (isClarificationPanel(interrupt)) {
     return "Clarification";
   }
-  if (interrupt.tool_name.includes("defer")) {
-    return "Defer";
+  if (isDeferPanel(interrupt)) {
+    return "Remind later";
+  }
+  if (isEntityPickerPanel(interrupt)) {
+    return "Project link";
   }
   return interrupt.tool_name.replace(/_/g, " ");
 }
@@ -227,7 +282,7 @@ export function fieldSummary(field: AssistantInterruptField): string | null {
     return "Choose a specific time when needed.";
   }
   if (field.kind === "entity_search") {
-    return "Use search when the list is long.";
+    return null;
   }
   return null;
 }
@@ -405,6 +460,47 @@ function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterr
       return "Keep it with an existing note.";
     }
   }
+  if (isReviewGradePanel(interrupt)) {
+    if (/again/i.test(label) || value === "1") {
+      return "Review soon.";
+    }
+    if (/hard/i.test(label) || value === "3") {
+      return "Keep it close.";
+    }
+    if (/good/i.test(label) || value === "4") {
+      return "Move forward.";
+    }
+    if (/easy/i.test(label) || value === "5") {
+      return "Stretch the interval.";
+    }
+    if (/worked/i.test(label) || value.includes("worked")) {
+      return "See the answer applied to a real case.";
+    }
+    if (/explanation/i.test(label) || value.includes("explanation")) {
+      return "Switch into teaching mode.";
+    }
+  }
+  if (isClarificationPanel(interrupt)) {
+    if (/custom/i.test(label) || value.includes("custom")) {
+      return "Pick another time.";
+    }
+    return "Use this schedule time.";
+  }
+  if (isDeferPanel(interrupt)) {
+    if (/no thanks|keep/i.test(label) || value.includes("none")) {
+      return "Keep it visible without a reminder.";
+    }
+    return "Remind me without interrupting flow.";
+  }
+  if (isEntityPickerPanel(interrupt)) {
+    if (value.includes("assistant") || /assistant/i.test(label)) {
+      return "Most likely match.";
+    }
+    if (value.includes("onboarding") || /onboarding/i.test(label)) {
+      return "Relevant to the current capture.";
+    }
+    return "Link this item to the project.";
+  }
   if (interrupt.tool_name === "resolve_planner_conflict") {
     if (value.includes("move") || /move/i.test(label)) {
       return "Recommended - preserves your longer focus block.";
@@ -437,6 +533,54 @@ export function mobilePanelOptionViewModels(
     description: optionDescription(interrupt, field, option.value, option.label),
     selected: selected === option.value,
   }));
+}
+
+export function mobileReviewGradePreview(interrupt: AssistantInterrupt, values: Record<string, unknown>): MobileReviewGradePreview | null {
+  if (!isReviewGradePanel(interrupt)) {
+    return null;
+  }
+  const supportField = interrupt.fields.find((field) => field.id === "support_action" || /support|help|mode/i.test(field.id));
+  return {
+    prompt:
+      firstMetadataString(
+        interrupt.metadata?.prompt,
+        interrupt.metadata?.question,
+        interrupt.metadata?.review_prompt,
+        interrupt.entity_ref?.title,
+        interrupt.title,
+      ) || "Review this item",
+    insight: firstMetadataString(interrupt.metadata?.insight, interrupt.metadata?.diagnosis, interrupt.metadata?.feedback, interrupt.body),
+    supportActions: supportField ? mobilePanelOptionViewModels(interrupt, supportField, values) : [],
+  };
+}
+
+export function mobileClarificationPreview(interrupt: AssistantInterrupt): MobileClarificationPreview | null {
+  if (!isClarificationPanel(interrupt)) {
+    return null;
+  }
+  return {
+    question: firstMetadataString(interrupt.metadata?.question, interrupt.metadata?.clarification_question, interrupt.title) || "One more detail",
+    detail: firstMetadataString(interrupt.metadata?.detail, interrupt.metadata?.reason, interrupt.body),
+  };
+}
+
+export function mobileEntityPickerPreview(
+  interrupt: AssistantInterrupt,
+  values: Record<string, unknown>,
+): MobileEntityPickerPreview | null {
+  if (!isEntityPickerPanel(interrupt)) {
+    return null;
+  }
+  const projectField =
+    interrupt.fields.find((field) => field.kind === "entity_search") ||
+    interrupt.fields.find((field) => /project|entity/i.test(field.id) && field.options && field.options.length > 0);
+  const suggestedProjects = projectField ? mobilePanelOptionViewModels(interrupt, projectField, values) : [];
+  const selected = suggestedProjects.find((option) => option.selected);
+  return {
+    title: firstMetadataString(interrupt.metadata?.item_title, interrupt.metadata?.capture_title, interrupt.entity_ref?.title, interrupt.title) || "Link item",
+    selectedProjectLabel: selected?.label || null,
+    suggestedProjects,
+  };
 }
 
 export function mobileAssistantPromptChips(suggestions: string[], draft: string): string[] {

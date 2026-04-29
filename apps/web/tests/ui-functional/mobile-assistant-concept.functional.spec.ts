@@ -5,9 +5,13 @@ import {
   assistantThreadActivitySnapshot,
   assistantThreadSnapshot,
   captureTriageInterrupt,
+  deferRecommendationInterrupt,
   morningFocusInterrupt,
   plannerConflictInterrupt,
+  projectPickerInterrupt,
   routeAssistantThread,
+  reviewGradeInterrupt,
+  scheduleClarificationInterrupt,
   seedAssistantSession,
   taskDetailInterrupt,
 } from "./assistant-concept-fixtures";
@@ -463,6 +467,150 @@ test("mobile viewport assistant renders task detail and capture triage panels in
   await expect(page.getByRole("link", { name: "Open Library" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save triage" })).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/tool_name|triage_capture|request_due_date|Diagnostics|dashboard/i);
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(horizontalOverflow).toBe(false);
+});
+
+test("mobile viewport assistant renders review, clarification, defer, and project picker panels", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  const submissions: Array<{ interruptId: string; values: Record<string, unknown> }> = [];
+  const dismissals: string[] = [];
+  let activeInterrupt = reviewGradeInterrupt();
+  let snapshot = assistantThreadSnapshot({
+    last_message_at: "2026-04-28T10:10:00.000Z",
+    last_preview_text: "Grade this review item.",
+    interrupts: [activeInterrupt],
+    messages: [
+      {
+        id: "msg_phase2_panel",
+        thread_id: "thr_primary",
+        run_id: "run_phase2_panel",
+        role: "assistant",
+        status: "requires_action",
+        parts: [
+          { type: "text", id: "part_phase2_text", text: "Choose the next small action." },
+          { type: "interrupt_request", id: "part_phase2_interrupt", interrupt: activeInterrupt },
+        ],
+        metadata: {},
+        created_at: "2026-04-28T10:10:00.000Z",
+        updated_at: "2026-04-28T10:10:00.000Z",
+      },
+    ],
+  });
+
+  const setActiveInterrupt = (interrupt: Record<string, unknown>) => {
+    activeInterrupt = interrupt;
+    snapshot = assistantThreadSnapshot({
+      ...snapshot,
+      interrupts: [activeInterrupt],
+      messages: [
+        {
+          ...((snapshot.messages as Array<Record<string, unknown>>) || [])[0],
+          status: activeInterrupt.status === "pending" ? "requires_action" : "complete",
+          parts: [
+            { type: "text", id: "part_phase2_text", text: "Choose the next small action." },
+            { type: "interrupt_request", id: "part_phase2_interrupt", interrupt: activeInterrupt },
+          ],
+        },
+      ],
+    });
+  };
+
+  await routeAssistantThread(page, () => snapshot);
+  for (const interruptId of [
+    "interrupt_review_grade",
+    "interrupt_schedule_clarify",
+    "interrupt_defer_recommendation",
+    "interrupt_project_picker",
+  ]) {
+    await page.route(`${API_BASE}/v1/assistant/interrupts/${interruptId}/submit`, async (route) => {
+      const body = route.request().postDataJSON() as { values: Record<string, unknown> };
+      submissions.push({ interruptId, values: body.values });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+    });
+    await page.route(`${API_BASE}/v1/assistant/interrupts/${interruptId}/dismiss`, async (route) => {
+      dismissals.push(interruptId);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+    });
+  }
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+  const viewport = page.viewportSize();
+  expect(viewport?.width).toBeLessThanOrEqual(430);
+
+  let panel = page.getByTestId("dynamic-panel-renderer");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByText("Review grade")).toBeVisible();
+  await expect(
+    panel.getByText("What's the most effective action when a feature flag causes performance degradation in production?"),
+  ).toBeVisible();
+  await expect(panel.getByText("You are missing application, not recall.").first()).toBeVisible();
+  for (const label of ["Again", "Hard", "Good", "Easy"]) {
+    await expect(panel.getByRole("radio", { name: label, exact: true })).toBeVisible();
+  }
+  await expect(panel.getByRole("radio", { name: "Hard" })).toBeChecked();
+  await panel.getByRole("button", { name: "Show worked example" }).click();
+  expect(submissions.at(-1)).toEqual({
+    interruptId: "interrupt_review_grade",
+    values: expect.objectContaining({ grade: "3", support_action: "worked_example" }),
+  });
+  await panel.getByRole("radio", { name: "Good" }).click();
+  await panel.getByRole("button", { name: "Save grade" }).click();
+  expect(submissions.at(-1)).toEqual({
+    interruptId: "interrupt_review_grade",
+    values: expect.objectContaining({ grade: "4", client_timezone: expect.any(String) }),
+  });
+
+  setActiveInterrupt(scheduleClarificationInterrupt());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  panel = page.getByTestId("dynamic-panel-renderer");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByText("Clarification")).toBeVisible();
+  await expect(panel.getByText("What time should I schedule this?").first()).toBeVisible();
+  await expect(panel.getByRole("radio", { name: "9:30 AM" })).toBeChecked();
+  await panel.getByRole("radio", { name: "10:30 AM" }).click();
+  await panel.getByRole("button", { name: "Confirm time" }).click();
+  expect(submissions.at(-1)).toEqual({
+    interruptId: "interrupt_schedule_clarify",
+    values: expect.objectContaining({ scheduled_time: "10:30", reuse_for_similar_blocks: true }),
+  });
+
+  setActiveInterrupt(deferRecommendationInterrupt());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  panel = page.getByTestId("dynamic-panel-renderer");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByText("Remind later")).toBeVisible();
+  for (const label of ["In 1 hour", "This evening", "Tomorrow morning", "No thanks, keep it in view"]) {
+    await expect(panel.getByRole("radio", { name: label, exact: true })).toBeVisible();
+  }
+  await panel.getByRole("radio", { name: "Tomorrow morning" }).click();
+  await panel.getByRole("button", { name: "Set reminder" }).click();
+  expect(submissions.at(-1)).toEqual({
+    interruptId: "interrupt_defer_recommendation",
+    values: expect.objectContaining({ remind_at: "tomorrow_morning" }),
+  });
+  await panel.getByRole("button", { name: "No thanks, keep it in view" }).click();
+  expect(dismissals).toContain("interrupt_defer_recommendation");
+
+  setActiveInterrupt(projectPickerInterrupt());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  panel = page.getByTestId("dynamic-panel-renderer");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByText("Project link")).toBeVisible();
+  await expect(panel.getByText("Selected project: Assistant v2.0 launch")).toBeVisible();
+  for (const label of ["Assistant v2.0 launch", "AI suggestions engine", "Onboarding experience", "Analytics revamp"]) {
+    await expect(panel.getByRole("radio", { name: label, exact: true })).toBeVisible();
+  }
+  await panel.getByRole("radio", { name: "AI suggestions engine" }).click();
+  await expect(panel.getByText("Selected project: AI suggestions engine")).toBeVisible();
+  await panel.getByRole("button", { name: "Link item" }).click();
+  expect(submissions.at(-1)).toEqual({
+    interruptId: "interrupt_project_picker",
+    values: expect.objectContaining({ project_id: "project_ai_suggestions", client_timezone: expect.any(String) }),
+  });
+
+  await expect(page.locator("main")).not.toContainText(/tool_name|grade_review_recall|clarify_schedule_time|defer_recommendation|link_capture_project|Diagnostics|dashboard/i);
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(horizontalOverflow).toBe(false);
 });
