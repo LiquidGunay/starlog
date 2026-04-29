@@ -919,31 +919,31 @@ function artifactSectionCard(
   children: ReactNode,
 ) {
   return (
-    <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 0, overflow: "hidden" }}>
+    <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 0, borderRadius: 12, overflow: "hidden" }}>
       <TouchableOpacity
         onPress={onToggle}
-        style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: "row", alignItems: "center", gap: 12 }}
+        style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 10 }}
       >
         <View
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
+            width: 26,
+            height: 26,
+            borderRadius: 13,
             borderWidth: 1,
             borderColor: "rgba(245, 169, 73, 0.58)",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: palette.secondary, fontSize: 13, fontWeight: "800" }}>{stepLabel}</Text>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={{ color: palette.secondary, fontSize: 12, fontWeight: "800" }}>{stepLabel}</Text>
         </View>
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>{title}</Text>
-          {subtitle ? <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text> : null}
+          <Text {...LIBRARY_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>{title}</Text>
+          {subtitle ? <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 11, lineHeight: 15 }}>{subtitle}</Text> : null}
         </View>
-        <MaterialCommunityIcons name={expanded ? "chevron-up" : "chevron-down"} size={20} color={palette.muted} />
+        <MaterialCommunityIcons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={palette.muted} />
       </TouchableOpacity>
-      {expanded ? <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>{children}</View> : null}
+      {expanded ? <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 9 }}>{children}</View> : null}
     </View>
   );
 }
@@ -960,8 +960,8 @@ function artifactKeyValueRows(palette: Record<string, string>, rows: Array<{ lab
         gap: 3,
       }}
     >
-      <Text style={[kickerStyle(palette), { fontSize: 9, letterSpacing: 0.7 }]}>{row.label}</Text>
-      <Text numberOfLines={row.value.length > 64 ? 2 : 1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>
+      <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { fontSize: 9, letterSpacing: 0.7 }]}>{row.label}</Text>
+      <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={row.value.length > 64 ? 2 : 1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 12, lineHeight: 17 }}>
         {row.value}
       </Text>
     </View>
@@ -976,12 +976,12 @@ function artifactActionButton(
   const executableRequest = action.executableRequest;
   const enabled = executableRequest !== null;
   const style = {
-    minWidth: 120,
-    minHeight: 48,
+    minWidth: 132,
+    minHeight: 42,
     flex: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
     opacity: enabled ? 1 : 0.62,
     alignItems: "center" as const,
@@ -992,7 +992,7 @@ function artifactActionButton(
   if (!enabled) {
     return (
       <View key={action.action} style={style}>
-        <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>
+        <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>
           {label}
         </Text>
       </View>
@@ -1008,7 +1008,7 @@ function artifactActionButton(
       }}
       style={style}
     >
-      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>
+      <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 11, fontWeight: "800" }}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -1153,22 +1153,22 @@ function mobileArtifactDetailView(
   const isExpanded = (sectionId: string) => expandedSections[sectionId] ?? sectionById[sectionId]?.expandedByDefault ?? false;
   const classificationLabel = model.quickCapture.classificationOptions.find((option) => option.selected)?.label ?? "Reference";
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: 10 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <View style={{ flex: 1, gap: 4 }}>
-          <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.secondary, fontSize: 13, fontWeight: "800" }}>Library</Text>
-          <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 24, lineHeight: 30, fontWeight: "800" }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.secondary, fontSize: 12, fontWeight: "800" }}>Artifact</Text>
+          <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "800" }}>
             {model.title}
           </Text>
         </View>
-        <View style={{ ...pillStyle(palette), minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, opacity: 0.72 }}>
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>{model.sourceStatusLabel}</Text>
+        <View style={{ ...pillStyle(palette), minHeight: 36, maxWidth: 176, flexDirection: "row", alignItems: "center", gap: 7, opacity: 0.72 }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>{model.sourceStatusLabel}</Text>
           <MaterialCommunityIcons name={mobileSourceStatusIcon(model.sourceStatusIcon)} size={15} color={palette.muted} />
         </View>
       </View>
       {model.fallbackNotice ? (
-        <View style={{ borderRadius: 14, backgroundColor: "rgba(245, 169, 73, 0.1)", borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.22)", padding: 12 }}>
-          <Text style={{ color: palette.secondary, fontSize: 12, lineHeight: 17, fontWeight: "800" }}>{model.fallbackNotice}</Text>
+        <View style={{ borderRadius: 12, backgroundColor: "rgba(245, 169, 73, 0.08)", borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.18)", paddingHorizontal: 10, paddingVertical: 8 }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} style={{ color: palette.secondary, fontSize: 11, lineHeight: 15, fontWeight: "800" }}>{model.fallbackNotice}</Text>
         </View>
       ) : null}
 
@@ -1179,29 +1179,29 @@ function mobileArtifactDetailView(
         sectionById.detail.subtitle,
         isExpanded("detail"),
         () => toggleSection("detail"),
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+        <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
             <View
               style={{
-                width: 48,
-                height: 58,
-                borderRadius: 10,
+                width: 42,
+                height: 50,
+                borderRadius: 9,
                 backgroundColor: "rgba(245, 73, 73, 0.88)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}>{model.artifactTypeLabel.slice(0, 3).toUpperCase()}</Text>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} adjustsFontSizeToFit numberOfLines={1} style={{ color: "#fff", fontSize: 11, fontWeight: "900" }}>{model.artifactTypeLabel.slice(0, 3).toUpperCase()}</Text>
             </View>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 19, lineHeight: 25, fontWeight: "800" }}>
+              <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>
                 {model.title}
               </Text>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={bodyStyle(palette)}>{model.subtitle}</Text>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} ellipsizeMode="tail" style={[bodyStyle(palette), { fontSize: 12, lineHeight: 17 }]}>{model.subtitle}</Text>
               {model.fileLabel ? (
                 <View style={{ gap: 2 }}>
-                  <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9, letterSpacing: 0.7 }]}>{model.sourceStatusLabel}</Text>
-                  <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 13, lineHeight: 18 }}>
+                  <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: palette.muted, fontSize: 9, letterSpacing: 0.7 }]}>{model.sourceStatusLabel}</Text>
+                  <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
                     {model.fileLabel}
                   </Text>
                 </View>
@@ -1209,25 +1209,25 @@ function mobileArtifactDetailView(
             </View>
           </View>
           {model.tagChips.length > 0 ? (
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              {model.tagChips.map((tag) => (
-                <View key={tag.id} style={{ borderRadius: 9, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 10, paddingVertical: 7 }}>
-                  <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{tag.label}</Text>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {model.tagChips.slice(0, 4).map((tag) => (
+                <View key={tag.id} style={{ borderRadius: 8, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, paddingVertical: 5 }}>
+                  <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 11 }}>{tag.label}</Text>
                 </View>
               ))}
             </View>
           ) : null}
           {model.summary ? (
             <View style={{ gap: 4 }}>
-              <Text style={{ color: palette.text, fontSize: 14, fontWeight: "800" }}>Summary</Text>
-              <Text numberOfLines={5} style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>{model.summary}</Text>
+              <Text {...LIBRARY_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>Summary</Text>
+              <Text {...LIBRARY_TEXT_PROPS} numberOfLines={4} style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{model.summary}</Text>
             </View>
           ) : null}
           {model.keyIdeas.length > 0 ? (
             <View style={{ gap: 5 }}>
-              <Text style={{ color: palette.text, fontSize: 14, fontWeight: "800" }}>Key ideas</Text>
-              {model.keyIdeas.map((idea) => (
-                <Text key={idea} numberOfLines={2} style={{ color: palette.muted, fontSize: 13, lineHeight: 18 }}>• {idea}</Text>
+              <Text {...LIBRARY_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>Key ideas</Text>
+              {model.keyIdeas.slice(0, 3).map((idea) => (
+                <Text {...LIBRARY_TIGHT_TEXT_PROPS} key={idea} numberOfLines={2} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>• {idea}</Text>
               ))}
             </View>
           ) : null}
@@ -2148,9 +2148,9 @@ export function MobileNotesSurface({
   const [surfaceSelectedArtifactId, setSurfaceSelectedArtifactId] = useState<string | null>(null);
   const [expandedArtifactSections, setExpandedArtifactSections] = useState<Record<string, boolean>>({
     detail: true,
-    preview: true,
-    provenance: true,
-    conversion: true,
+    preview: false,
+    provenance: false,
+    conversion: false,
   });
   const libraryModel = deriveMobileLibraryViewModel({
     pendingCaptures,
@@ -2172,8 +2172,8 @@ export function MobileNotesSurface({
     ? deriveMobileArtifactFallbackDetail({
       artifact: selectedLocalArtifact,
       reason: artifactDetailStatus && artifactDetailStatus !== "Ready"
-        ? `Showing a local artifact snapshot because API detail is unavailable: ${artifactDetailStatus}`
-        : "Showing a local artifact snapshot while API artifact detail is unavailable.",
+        ? `${artifactDetailStatus}. Showing local snapshot.`
+        : "API detail unavailable. Showing local snapshot.",
     })
     : null;
   const displayArtifactDetail = selectedArtifactDetail ?? fallbackArtifactDetail;
@@ -2191,8 +2191,38 @@ export function MobileNotesSurface({
     setExpandedArtifactSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
+  const compactDetailMode = detailRequested;
+
   return (
-    <View style={{ gap: 14, paddingBottom: 148 }}>
+    <View style={{ gap: compactDetailMode ? 10 : 14, paddingBottom: 148 }}>
+      {compactDetailMode ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => setShowArtifactDetail(false)}
+            style={{ minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 }}
+          >
+            <MaterialCommunityIcons name="chevron-left" size={24} color={palette.secondary} />
+            <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 14, lineHeight: 18, fontWeight: "800" }}>Library</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <MaterialCommunityIcons name={libraryStatusIcon} size={16} color={pendingCaptureCount > 0 ? palette.secondary : "#55d977"} />
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ maxWidth: 132, color: palette.muted, fontSize: 11, fontWeight: "800" }}>{libraryModel.statusLabel}</Text>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: palette.surfaceHigh,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: palette.border,
+            }}
+          >
+            <MaterialCommunityIcons name="account-outline" size={17} color={palette.muted} />
+          </View>
+        </View>
+      ) : (
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View style={{ flex: 1, gap: 4 }}>
           <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={kickerStyle(palette)}>Starlog</Text>
@@ -2217,12 +2247,13 @@ export function MobileNotesSurface({
           <MaterialCommunityIcons name="account-outline" size={20} color={palette.muted} />
         </View>
       </View>
+      )}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 2 }}>
+      {!compactDetailMode ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 2 }}>
         {libraryModel.stats.map((stat) => libraryStatChip(palette, stat, statChipWidth))}
-      </ScrollView>
+      </ScrollView> : null}
 
-      <ScrollView
+      {!compactDetailMode ? <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{
@@ -2242,10 +2273,10 @@ export function MobileNotesSurface({
             setShowArtifactDetail(false);
           }
         }, segmentCounts[segment], compactLibraryLayout))}
-      </ScrollView>
+      </ScrollView> : null}
 
       <View style={{ gap: compactLibraryLayout ? 9 : 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        {!compactDetailMode ? <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={[headingStyle(palette), { fontSize: compactLibraryLayout ? 17 : 21, lineHeight: compactLibraryLayout ? 21 : 26 }]}>
               {activeSegment === "Inbox" ? "Inbox / Unprocessed captures" : activeSegment}
@@ -2265,7 +2296,7 @@ export function MobileNotesSurface({
           <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
             {pendingCaptureCount} pending
           </Text>
-        </View>
+        </View> : null}
 
         {activeSegment === "Notes" ? (
           <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
@@ -2280,14 +2311,7 @@ export function MobileNotesSurface({
             <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
           </View>
         ) : showDetailPane ? (
-          <View style={{ gap: 12 }}>
-            <TouchableOpacity
-              onPress={() => setShowArtifactDetail(false)}
-              style={{ alignSelf: "flex-start", ...pillStyle(palette), flexDirection: "row", gap: 6, alignItems: "center" }}
-            >
-              <MaterialCommunityIcons name="arrow-left" size={15} color={palette.muted} />
-              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Artifacts</Text>
-            </TouchableOpacity>
+          <View style={{ gap: 10 }}>
             {mobileArtifactDetailView(
               palette,
               displayArtifactDetail,
@@ -2297,18 +2321,11 @@ export function MobileNotesSurface({
             )}
           </View>
         ) : detailRequested ? (
-          <View style={{ gap: 12 }}>
-            <TouchableOpacity
-              onPress={() => setShowArtifactDetail(false)}
-              style={{ alignSelf: "flex-start", ...pillStyle(palette), flexDirection: "row", gap: 6, alignItems: "center" }}
-            >
-              <MaterialCommunityIcons name="arrow-left" size={15} color={palette.muted} />
-              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>Artifacts</Text>
-            </TouchableOpacity>
-            <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
-              <Text style={kickerStyle(palette)}>Artifact detail</Text>
-              <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>{artifactDetailStatus}</Text>
-              <Text style={bodyStyle(palette)}>Loading the artifact detail contract from the API.</Text>
+          <View style={{ gap: 10 }}>
+            <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: 14, gap: 6 }}>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={kickerStyle(palette)}>Artifact detail</Text>
+              <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>{artifactDetailStatus}</Text>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} style={[bodyStyle(palette), { fontSize: 12, lineHeight: 17 }]}>Fetching source, provenance, and conversion state.</Text>
             </View>
           </View>
         ) : visibleRows.length > 0 ? (

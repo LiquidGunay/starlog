@@ -303,7 +303,7 @@ export function deriveMobileArtifactFallbackDetail(input: {
         enabled: false,
         method: null,
         endpoint: null,
-        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+        disabled_reason: "API detail unavailable.",
       },
       {
         action: "cards",
@@ -311,7 +311,7 @@ export function deriveMobileArtifactFallbackDetail(input: {
         enabled: false,
         method: null,
         endpoint: null,
-        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+        disabled_reason: "API detail unavailable.",
       },
       {
         action: "tasks",
@@ -319,7 +319,7 @@ export function deriveMobileArtifactFallbackDetail(input: {
         enabled: false,
         method: null,
         endpoint: null,
-        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+        disabled_reason: "API detail unavailable.",
       },
       {
         action: "append_note",
@@ -327,10 +327,10 @@ export function deriveMobileArtifactFallbackDetail(input: {
         enabled: false,
         method: null,
         endpoint: null,
-        disabled_reason: "API artifact detail is unavailable, so this local fallback cannot run conversions.",
+        disabled_reason: "API detail unavailable.",
       },
     ],
-    local_fallback_reason: input.reason?.trim() || "Showing a local artifact snapshot because API artifact detail is unavailable.",
+    local_fallback_reason: input.reason?.trim() || "API detail unavailable. Showing local snapshot.",
   };
 }
 
@@ -482,21 +482,21 @@ function accordionSections(
       stepLabel: "2",
       title: "Quick capture",
       subtitle: "Source preview and classification",
-      expandedByDefault: true,
+      expandedByDefault: false,
     },
     {
       id: "provenance",
       stepLabel: "3",
       title: "Source & provenance",
       subtitle: `${detail.source_layers.filter((layer) => layer.present).length}/${detail.source_layers.length} layer(s) present`,
-      expandedByDefault: true,
+      expandedByDefault: false,
     },
     {
       id: "conversion",
       stepLabel: "4",
       title: "Conversion & enrichment",
       subtitle: `${detail.connections.action_run_count} action run(s) recorded`,
-      expandedByDefault: true,
+      expandedByDefault: false,
     },
     {
       id: "timeline",

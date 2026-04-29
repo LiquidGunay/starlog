@@ -219,9 +219,9 @@ assert.deepEqual(model.accordions.map((section) => ({
   expanded: section.expandedByDefault,
 })), [
   { id: "detail", step: "1", expanded: true },
-  { id: "preview", step: "2", expanded: true },
-  { id: "provenance", step: "3", expanded: true },
-  { id: "conversion", step: "4", expanded: true },
+  { id: "preview", step: "2", expanded: false },
+  { id: "provenance", step: "3", expanded: false },
+  { id: "conversion", step: "4", expanded: false },
   { id: "timeline", step: "5", expanded: true },
 ]);
 assert.deepEqual(findMobileArtifactActionExecution(detail, "summarize"), {
@@ -313,12 +313,13 @@ assert.deepEqual(
 assert.deepEqual(fallbackModel.actions.map((action) => ({
   action: action.action,
   enabled: action.enabled,
+  disabledReason: action.disabledReason,
   request: action.executableRequest,
 })), [
-  { action: "summarize", enabled: false, request: null },
-  { action: "cards", enabled: false, request: null },
-  { action: "tasks", enabled: false, request: null },
-  { action: "append_note", enabled: false, request: null },
+  { action: "summarize", enabled: false, disabledReason: "API detail unavailable.", request: null },
+  { action: "cards", enabled: false, disabledReason: "API detail unavailable.", request: null },
+  { action: "tasks", enabled: false, disabledReason: "API detail unavailable.", request: null },
+  { action: "append_note", enabled: false, disabledReason: "API detail unavailable.", request: null },
 ]);
 assert.equal(fallbackModel.timelineRows[0].label, "Local artifact snapshot shown");
 
@@ -331,6 +332,7 @@ const untitledFallbackModel = deriveMobileArtifactDetailViewModel(deriveMobileAr
   },
 }));
 assert.equal(untitledFallbackModel.title, "Untitled artifact");
+assert.equal(untitledFallbackModel.fallbackNotice, "API detail unavailable. Showing local snapshot.");
 assert.equal(untitledFallbackModel.sourceStatusLabel, "Source unavailable");
 assert.equal(untitledFallbackModel.sourceStatusIcon, "unavailable");
 assert.equal(untitledFallbackModel.sourcePreview, null);
