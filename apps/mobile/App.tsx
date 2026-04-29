@@ -4034,11 +4034,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         ref={mainScrollViewRef}
         style={[
           keyboardVisible ? null : styles.mainScrollViewport,
-          isAssistantMode && !keyboardVisible ? styles.assistantScrollViewport : null,
+          isAssistantMode ? styles.assistantScrollViewport : null,
         ]}
         contentContainerStyle={[
           styles.scrollContent,
-          isAssistantMode && !keyboardVisible ? styles.assistantScrollContent : null,
+          isAssistantMode ? styles.assistantScrollContent : null,
+          isAssistantMode && !keyboardVisible ? styles.assistantScrollContentWithNav : null,
         ]}
         keyboardShouldPersistTaps="always"
         onContentSizeChange={() => {
@@ -4769,8 +4770,10 @@ function themedStyles(palette: Palette) {
     assistantScrollContent: {
       paddingHorizontal: 12,
       paddingTop: 10,
-      paddingBottom: 126,
       gap: 12,
+    },
+    assistantScrollContentWithNav: {
+      paddingBottom: 126,
     },
     assistantStage: {
       paddingHorizontal: 0,
