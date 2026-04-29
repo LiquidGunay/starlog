@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { AssistantCard as ConversationCard, AssistantCardAction } from "@starlog/contracts";
-import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
+import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -34,6 +34,8 @@ import {
 } from "./mobile-review-view-model";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
+const PLANNER_TEXT_PROPS = { maxFontSizeMultiplier: 1.05 } as const;
+const PLANNER_TIGHT_TEXT_PROPS = { maxFontSizeMultiplier: 1 } as const;
 
 type SharedProps = {
   styles: Record<string, any>;
@@ -2888,45 +2890,29 @@ export function MobileCalendarSurface({
   const plannerGold = "#f5a949";
   const plannerGoldDim = "rgba(245, 169, 73, 0.28)";
   const compactDecisionDetail = plannerLoaded ? "Counts synced" : "Not loaded";
+  const visibleDecisionLabel = plannerLoaded ? planner.decisionLabel : "Planner not loaded";
+  const visibleBriefingChip = plannerLoaded ? planner.alarmBriefing.chipLabel : "Load Planner state";
 
   return (
-    <View style={{ gap: 10, paddingBottom: 52 }}>
+    <View style={{ gap: 9, paddingBottom: 120 }}>
       <View
         style={{
           ...cardBase(palette),
           backgroundColor: plannerNavy,
           borderColor: plannerGoldDim,
-          padding: 10,
-          gap: 9,
+          padding: 9,
+          gap: 7,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-          <MaterialCommunityIcons name="star-four-points-outline" size={22} color={plannerGold} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 17, lineHeight: 22, fontWeight: "800" }}>
-              Starlog {PRODUCT_SURFACES.planner.label}
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, maxWidth: 116 }}>
-            <MaterialCommunityIcons name={plannerLoaded ? "check-circle-outline" : "progress-question"} size={15} color={plannerLoaded ? "#69d083" : palette.muted} />
-            <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 11, fontWeight: "700", flexShrink: 1 }}>
-              {planner.statusLabel}
-            </Text>
-          </View>
-          <TouchableOpacity accessibilityLabel="Refresh Planner" style={{ ...pillStyle(palette), paddingHorizontal: 10, paddingVertical: 8 }} onPress={loadPlannerSummary}>
-            <MaterialCommunityIcons name="refresh" size={16} color={palette.text} />
-          </TouchableOpacity>
-        </View>
-
         <View style={{ borderRadius: 14, borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.22)", padding: 7, gap: 7 }}>
           <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             {!planner.dateControls.isToday ? (
               <TouchableOpacity style={{ ...pillStyle(palette), minWidth: 62, alignItems: "center", paddingVertical: 8 }} onPress={() => setSelectedPlannerDate(planner.dateControls.todayDate)}>
-                <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Today</Text>
+                <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Today</Text>
               </TouchableOpacity>
             ) : (
               <View style={{ ...pillStyle(palette, true), minWidth: 62, alignItems: "center", paddingVertical: 8 }}>
-                <Text style={{ color: palette.accent, fontSize: 12, fontWeight: "800" }}>Today</Text>
+                <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: palette.accent, fontSize: 12, fontWeight: "800" }}>Today</Text>
               </View>
             )}
             <TouchableOpacity
@@ -2944,10 +2930,13 @@ export function MobileCalendarSurface({
               <MaterialCommunityIcons name="chevron-right" size={18} color={palette.text} />
             </TouchableOpacity>
             <View style={{ flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 4 }}>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>
+              <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "800" }}>
                 {planner.dateLabel}
               </Text>
             </View>
+            <TouchableOpacity accessibilityLabel="Refresh Planner" style={{ ...pillStyle(palette), paddingHorizontal: 8, paddingVertical: 7 }} onPress={loadPlannerSummary}>
+              <MaterialCommunityIcons name="refresh" size={15} color={palette.text} />
+            </TouchableOpacity>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>
@@ -2956,49 +2945,49 @@ export function MobileCalendarSurface({
                 key={day.key}
                 onPress={() => setSelectedPlannerDate(day.key)}
                 style={{
-                  width: 56,
+                  width: 53,
                   borderRadius: 10,
-                  paddingHorizontal: 9,
-                  paddingVertical: 7,
+                  paddingHorizontal: 8,
+                  paddingVertical: 6,
                   gap: 1,
                   backgroundColor: day.active ? "rgba(245, 169, 73, 0.14)" : plannerNavySoft,
                   borderWidth: 1,
                   borderColor: day.active ? plannerGold : "rgba(255,255,255,0.08)",
                 }}
               >
-                <Text style={{ color: day.active ? plannerGold : palette.muted, fontSize: 10, fontWeight: "800" }}>
+                <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: day.active ? plannerGold : palette.muted, fontSize: 9.5, fontWeight: "800" }}>
                   {day.weekday}
                 </Text>
-                <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: "800" }}>{day.day}</Text>
+                <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 16, fontWeight: "800" }}>{day.day}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
       </View>
 
-      <View style={{ ...cardBase(palette), backgroundColor: plannerNavySoft, borderColor: "rgba(245,169,73,0.16)", padding: 12, gap: 7 }}>
+      <View style={{ ...cardBase(palette), backgroundColor: plannerNavySoft, borderColor: "rgba(245,169,73,0.16)", padding: 10, gap: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={[kickerStyle(palette), { color: plannerGold, flex: 1 }]}>Active decision</Text>
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>{compactDecisionDetail}</Text>
+          <Text {...PLANNER_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: plannerGold, flex: 1 }]}>Active decision</Text>
+          <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>{compactDecisionDetail}</Text>
         </View>
-        <Text numberOfLines={2} style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "800" }}>{planner.decisionLabel}</Text>
+        <Text {...PLANNER_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 15, lineHeight: 19, fontWeight: "800" }}>{visibleDecisionLabel}</Text>
         <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
-          <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ ...pillStyle(palette), paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 6 }}>
             <MaterialCommunityIcons name="clock-outline" size={13} color={plannerGold} />
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>
+            <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
               {stationTimeLabel} {stationPeriod}
             </Text>
           </View>
-          <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ ...pillStyle(palette), paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 6 }}>
             <MaterialCommunityIcons name={planner.alarmBriefing.chipIcon} size={13} color={plannerGold} />
-            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>
-              {plannerLoaded ? planner.alarmBriefing.chipLabel : "Briefing not loaded"}
+            <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
+              {visibleBriefingChip}
             </Text>
           </View>
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+      <View style={{ flexDirection: "row", gap: 7, flexWrap: "wrap" }}>
         {planner.metrics.map((metric) => {
           const tone = plannerMetricTone(metric.tone, palette);
           const unloaded = metric.value === "Unknown";
@@ -3006,24 +2995,24 @@ export function MobileCalendarSurface({
             <View
               key={metric.label}
               style={{
-                minWidth: 148,
+                minWidth: 136,
                 flex: 1,
-                borderRadius: 13,
-                paddingHorizontal: 11,
-                paddingVertical: 9,
+                borderRadius: 12,
+                paddingHorizontal: 9,
+                paddingVertical: 7,
                 backgroundColor: unloaded ? plannerNavySoft : tone.background,
                 borderWidth: 1,
                 borderColor: unloaded ? "rgba(255,255,255,0.08)" : tone.border,
-                gap: 2,
+                gap: 1,
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                <Text numberOfLines={1} style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>{metric.label}</Text>
-                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: unloaded ? palette.muted : tone.color, fontSize: unloaded ? 11 : 17, lineHeight: 21, fontWeight: "800" }}>
-                  {unloaded ? "Not loaded" : metric.value}
+                <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: 11, fontWeight: "800" }}>{metric.label}</Text>
+                <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: unloaded ? palette.muted : tone.color, fontSize: unloaded ? 10 : 15, lineHeight: 18, fontWeight: "800" }}>
+                  {unloaded ? "Load" : metric.value}
                 </Text>
               </View>
-              <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 10 }}>{unloaded ? "Refresh" : metric.caption}</Text>
+              <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 9 }}>{unloaded ? "Planner" : metric.caption}</Text>
             </View>
           );
         })}
@@ -3049,48 +3038,48 @@ export function MobileCalendarSurface({
         </View>
       ) : null}
 
-      <View style={{ ...cardBase(palette), padding: 14, gap: 13 }}>
+      <View style={{ ...cardBase(palette), padding: 11, gap: 9 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <View>
-            <Text style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>Day timeline</Text>
-            <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 15, fontWeight: "700" }}>{plannerLoaded ? `${stationTimeLabel} ${stationPeriod}` : "Waiting for sync"}</Text>
+            <Text {...PLANNER_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 19, fontWeight: "800" }}>Day timeline</Text>
+            <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, lineHeight: 13, fontWeight: "700" }}>{plannerLoaded ? `${stationTimeLabel} ${stationPeriod}` : "Load Planner"}</Text>
           </View>
-          <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 5 }}>
-            <MaterialCommunityIcons name="tune-variant" size={14} color={palette.muted} />
-            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>{plannerLoaded ? "Summary" : "Unloaded"}</Text>
+          <View style={{ ...pillStyle(palette), paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <MaterialCommunityIcons name="tune-variant" size={13} color={palette.muted} />
+            <Text {...PLANNER_TIGHT_TEXT_PROPS} style={{ color: palette.muted, fontSize: 9.5, fontWeight: "800" }}>{plannerLoaded ? "Summary" : "Load"}</Text>
           </View>
         </View>
-        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
-          <View style={{ gap: 10, paddingBottom: 2 }}>
+        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 250 }}>
+          <View style={{ gap: 7, paddingBottom: 2 }}>
             {planner.timelineBlocks.map((block, index) => {
               const tone = plannerTimelineTone(block, palette);
               const detail = plannerLoaded ? block.detail : "Not loaded";
               const durationLabel = block.durationLabel === "Unknown" ? "--" : block.durationLabel;
               return (
-                <View key={block.id} style={{ flexDirection: "row", gap: 12 }}>
-                  <View style={{ width: 60, alignItems: "flex-end", paddingTop: 13 }}>
-                    <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: tone.accent, fontSize: 11, fontWeight: "800" }}>{block.timeLabel}</Text>
+                <View key={block.id} style={{ flexDirection: "row", gap: 9 }}>
+                  <View style={{ width: 52, alignItems: "flex-end", paddingTop: 10 }}>
+                    <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: tone.accent, fontSize: 10, fontWeight: "800" }}>{block.timeLabel}</Text>
                   </View>
                   <View style={{ alignItems: "center" }}>
-                    <View style={{ width: 12, height: 12, borderRadius: 999, backgroundColor: tone.accent, marginTop: 16 }} />
-                    {index < planner.timelineBlocks.length - 1 ? <View style={{ width: 1, flex: 1, minHeight: 66, backgroundColor: palette.border, marginTop: 5 }} /> : null}
+                    <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: tone.accent, marginTop: 13 }} />
+                    {index < planner.timelineBlocks.length - 1 ? <View style={{ width: 1, flex: 1, minHeight: 52, backgroundColor: palette.border, marginTop: 4 }} /> : null}
                   </View>
                   <View
                     style={{
                       flex: 1,
-                      borderRadius: 12,
+                      borderRadius: 11,
                       backgroundColor: tone.background,
                       borderWidth: 1,
                       borderColor: tone.border,
-                      padding: 13,
-                      gap: 6,
+                      padding: 10,
+                      gap: 4,
                     }}
                   >
                     <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                      <Text style={{ flex: 1, color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>{block.title}</Text>
-                      <Text numberOfLines={1} style={{ color: tone.accent, fontSize: 10, fontWeight: "800" }}>{durationLabel}</Text>
+                      <Text {...PLANNER_TEXT_PROPS} numberOfLines={1} style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "800" }}>{block.title}</Text>
+                      <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800" }}>{durationLabel}</Text>
                     </View>
-                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{detail}</Text>
+                    <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 10.5, lineHeight: 14 }}>{detail}</Text>
                   </View>
                 </View>
               );

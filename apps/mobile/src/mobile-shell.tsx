@@ -3,6 +3,8 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 import { MOBILE_TABS, type MobileTab } from "./navigation";
 
+const SHELL_TEXT_PROPS = { maxFontSizeMultiplier: 1.08 } as const;
+
 type MobileShellProps = {
   styles: Record<string, any>;
   palette: Record<string, string>;
@@ -61,7 +63,7 @@ export function MobileTopBar({
           </View>
         )}
         <View style={{ gap: 0 }}>
-          <Text style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>
+          <Text {...SHELL_TEXT_PROPS} style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>
             {isAssistantMode ? "Assistant" : `Starlog ${surfaceLabel}`}
           </Text>
         </View>
@@ -70,7 +72,7 @@ export function MobileTopBar({
         <View style={[styles.topBarAssistantStatus, { alignItems: "flex-end" }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <View style={styles.topBarAssistantStatusDot} />
-            <Text style={styles.topBarAssistantStatusText}>Live</Text>
+            <Text {...SHELL_TEXT_PROPS} style={styles.topBarAssistantStatusText}>Live</Text>
           </View>
         </View>
       ) : (
@@ -131,9 +133,9 @@ export function MobileAssistantDrawer({
         }}
       >
         <View style={{ gap: 6 }}>
-          <Text style={[styles.sectionKicker, { color: palette.accent }]}>Workspace</Text>
-          <Text style={[styles.panelTitle, { fontSize: 23, lineHeight: 27 }]}>Stay in the thread</Text>
-          <Text style={styles.subtle}>Open Library, Planner, or Review when you need the deeper surface.</Text>
+          <Text {...SHELL_TEXT_PROPS} style={[styles.sectionKicker, { color: palette.accent }]}>Workspace</Text>
+          <Text {...SHELL_TEXT_PROPS} style={[styles.panelTitle, { fontSize: 23, lineHeight: 27 }]}>Stay in the thread</Text>
+          <Text {...SHELL_TEXT_PROPS} style={styles.subtle}>Open Library, Planner, or Review when you need the deeper surface.</Text>
         </View>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           {["Shared transcript", "Docked composer", "Secondary surfaces"].map((label) => (
@@ -148,7 +150,7 @@ export function MobileAssistantDrawer({
                 borderColor: "rgba(255,255,255,0.05)",
               }}
             >
-              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              <Text {...SHELL_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
                 {label}
               </Text>
             </View>
@@ -164,7 +166,7 @@ export function MobileAssistantDrawer({
             gap: 10,
           }}
         >
-          <Text style={[styles.sectionKicker, { color: palette.accent }]}>Thread state</Text>
+          <Text {...SHELL_TEXT_PROPS} style={[styles.sectionKicker, { color: palette.accent }]}>Thread state</Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
             {[
               { label: pendingReply ? "Live" : "Ready", meta: "Assistant" },
@@ -184,8 +186,8 @@ export function MobileAssistantDrawer({
                   gap: 4,
                 }}
               >
-                <Text style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{item.label}</Text>
-                <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                <Text {...SHELL_TEXT_PROPS} style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{item.label}</Text>
+                <Text {...SHELL_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
                   {item.meta}
                 </Text>
               </View>
@@ -217,7 +219,7 @@ export function MobileAssistantDrawer({
                 size={18}
                 color={activeTab === tab.id ? palette.accent : palette.muted}
               />
-              <Text style={{ color: activeTab === tab.id ? palette.text : palette.muted, fontSize: 14, fontWeight: "700" }}>
+              <Text {...SHELL_TEXT_PROPS} style={{ color: activeTab === tab.id ? palette.text : palette.muted, fontSize: 14, fontWeight: "700" }}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -233,12 +235,12 @@ export function MobileAssistantDrawer({
             gap: 10,
           }}
         >
-          <Text style={[styles.sectionKicker, { color: palette.secondary }]}>Thread tools</Text>
+          <Text {...SHELL_TEXT_PROPS} style={[styles.sectionKicker, { color: palette.secondary }]}>Thread tools</Text>
           <TouchableOpacity style={styles.button} onPress={onRefreshThread}>
-            <Text style={styles.buttonText}>Refresh thread</Text>
+            <Text {...SHELL_TEXT_PROPS} style={styles.buttonText}>Refresh thread</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.button} onPress={onResetSession}>
-            <Text style={styles.buttonText}>Reset session</Text>
+            <Text {...SHELL_TEXT_PROPS} style={styles.buttonText}>Reset session</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -265,7 +267,12 @@ export function MobileBottomNav({ styles, palette, activeTab, onSelectTab }: Mob
             size={20}
             color={activeTab === tab.id ? palette.accent : "#49473f"}
           />
-          <Text style={[styles.bottomNavLabel, activeTab === tab.id ? styles.bottomNavLabelActive : null]}>
+          <Text
+            {...SHELL_TEXT_PROPS}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            style={[styles.bottomNavLabel, activeTab === tab.id ? styles.bottomNavLabelActive : null]}
+          >
             {tab.label}
           </Text>
         </TouchableOpacity>
