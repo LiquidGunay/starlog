@@ -33,6 +33,7 @@ export type MobileLibraryInboxRow = {
   captureTypeLabel: string;
   timestampLabel: string;
   statusLabel: string;
+  statusTone: "queued" | "retry" | "processed";
   actionLabels: string[];
   primaryActionLabel: string;
   secondaryActionLabel: string | null;
@@ -139,19 +140,19 @@ export function deriveMobileLibraryViewModel(input: {
       {
         label: "Recent artifacts",
         value: String(input.artifacts.length),
-        supportingLabel: input.artifacts.length === 1 ? "1 artifact available" : `${input.artifacts.length} artifacts available`,
+        supportingLabel: input.artifacts.length === 1 ? "1 ready to use" : `${input.artifacts.length} ready to use`,
         icon: "artifact",
       },
       {
         label: "Notes & saved items",
         value: String(notesCount),
-        supportingLabel: notesCount > 0 ? "Count only; no note rows loaded" : "No note rows loaded",
+        supportingLabel: notesCount > 0 ? "Details not loaded" : "No note rows loaded",
         icon: "note",
       },
       {
         label: "Linked to projects",
         value: String(linkedProjectCount),
-        supportingLabel: linkedProjectCount > 0 ? "Count only; no project rows loaded" : "No project rows loaded",
+        supportingLabel: linkedProjectCount > 0 ? "Details not loaded" : "No project rows loaded",
         icon: "project",
       },
     ],
@@ -196,6 +197,7 @@ function pendingCaptureRow(capture: MobileLibraryPendingCapture, now?: Date): Mo
     captureTypeLabel: captureType,
     timestampLabel: formatMobileLibraryTimestamp(capture.createdAt, now),
     statusLabel: capture.lastError ? "Retry needed" : capture.attempts > 0 ? "Queued retry" : "Unprocessed",
+    statusTone: capture.lastError ? "retry" : "queued",
     actionLabels: actions,
     primaryActionLabel: actions[0] ?? "Process",
     secondaryActionLabel: actions[1] ?? null,
@@ -217,6 +219,7 @@ function artifactRow(artifact: MobileLibraryArtifact, now?: Date): MobileLibrary
     captureTypeLabel: "Artifact",
     timestampLabel: formatMobileLibraryTimestamp(artifact.created_at, now),
     statusLabel: "Processed",
+    statusTone: "processed",
     actionLabels: actions,
     primaryActionLabel: actions[0],
     secondaryActionLabel: actions[1],
