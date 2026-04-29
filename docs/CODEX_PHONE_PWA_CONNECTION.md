@@ -80,7 +80,7 @@ PYTHONPATH=services/api uv run --project services/api \
   --token "$STARLOG_TOKEN"
 ```
 
-5. Or run only the Codex queue runner:
+5. Or run only the narrow Codex-local queue runner:
 
 ```bash
 PYTHONPATH=services/api uv run --project services/api \
@@ -88,6 +88,8 @@ PYTHONPATH=services/api uv run --project services/api \
   --api-base http://localhost:8000 \
   --token "$STARLOG_TOKEN"
 ```
+
+`scripts/codex_queue_runner.py` is intentionally narrow: it processes `codex_local` jobs. Use the full `local_ai_worker.py` command above when phone/PWA jobs may be queued with bridge-scoped hints such as `desktop_bridge_codex` or `mobile_bridge_codex`.
 
 6. Point the phone/PWA at the same Starlog API.
 7. Use the Assistant, capture, summarization, card, task, or voice-command flows normally.
@@ -116,6 +118,8 @@ codex_local
 desktop_bridge_codex
 mobile_bridge_codex
 ```
+
+The Codex-only runner handles `codex_local`; the full local AI worker handles both local and bridge-scoped Codex hints.
 
 For assistant command planning, the relevant job capability is usually:
 
