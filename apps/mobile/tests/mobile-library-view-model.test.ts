@@ -49,8 +49,6 @@ assert.deepEqual(model.segments, ["Inbox", "Artifacts", "Notes", "Sources"]);
 assert.deepEqual(model.stats, [
   { label: "Unprocessed captures", value: "2", supportingLabel: "2 need attention", icon: "inbox" },
   { label: "Recent artifacts", value: "1", supportingLabel: "1 ready to use", icon: "artifact" },
-  { label: "Notes & saved items", value: "3", supportingLabel: "Details not loaded", icon: "note" },
-  { label: "Linked to projects", value: "1", supportingLabel: "Details not loaded", icon: "project" },
 ]);
 
 assert.equal(model.inboxRows.length, 2);

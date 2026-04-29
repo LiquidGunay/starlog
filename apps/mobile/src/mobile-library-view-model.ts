@@ -143,18 +143,6 @@ export function deriveMobileLibraryViewModel(input: {
         supportingLabel: input.artifacts.length === 1 ? "1 ready to use" : `${input.artifacts.length} ready to use`,
         icon: "artifact",
       },
-      {
-        label: "Notes & saved items",
-        value: String(notesCount),
-        supportingLabel: notesCount > 0 ? "Details not loaded" : "No note rows loaded",
-        icon: "note",
-      },
-      {
-        label: "Linked to projects",
-        value: String(linkedProjectCount),
-        supportingLabel: linkedProjectCount > 0 ? "Details not loaded" : "No project rows loaded",
-        icon: "project",
-      },
     ],
     inboxRows: pendingRows.length > 0 ? pendingRows : artifactRows.slice(0, 3),
     artifactRows,

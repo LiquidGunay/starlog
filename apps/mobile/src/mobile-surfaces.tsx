@@ -709,33 +709,35 @@ function librarySegmentButton(
   activeSegment: MobileLibrarySegment,
   onPress: (segment: MobileLibrarySegment) => void,
   countLabel?: string,
+  compact = false,
 ) {
   const active = segment === activeSegment;
+  const showDecoration = active || !compact;
   const icon = segment === "Inbox" ? "inbox-outline" : segment === "Artifacts" ? "file-document-multiple-outline" : segment === "Notes" ? "note-text-outline" : "web";
   return (
     <TouchableOpacity
       key={segment}
       onPress={() => onPress(segment)}
       style={{
-        flex: 1,
-        minWidth: 68,
-        borderRadius: 14,
-        paddingVertical: 10,
-        paddingHorizontal: 5,
+        minWidth: compact ? (active ? 104 : 78) : 94,
+        maxWidth: compact ? (active ? 126 : 92) : undefined,
+        borderRadius: 13,
+        paddingVertical: compact ? 8 : 10,
+        paddingHorizontal: compact ? 8 : 9,
         alignItems: "center",
         justifyContent: "center",
         flexDirection: "row",
-        gap: 5,
+        gap: compact ? 4 : 5,
         backgroundColor: active ? "rgba(245, 169, 73, 0.16)" : "transparent",
         borderWidth: 1,
         borderColor: active ? "rgba(245, 169, 73, 0.34)" : "transparent",
       }}
     >
-      <MaterialCommunityIcons name={icon} size={15} color={active ? palette.secondary : palette.muted} />
+      {showDecoration ? <MaterialCommunityIcons name={icon} size={compact ? 14 : 15} color={active ? palette.secondary : palette.muted} /> : null}
       <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 12, fontWeight: "800" }}>
         {segment}
       </Text>
-      {countLabel ? (
+      {showDecoration && countLabel ? (
         <View style={{ minWidth: 22, borderRadius: 11, backgroundColor: active ? "rgba(245, 169, 73, 0.18)" : palette.surfaceHigh, paddingHorizontal: 5, paddingVertical: 2 }}>
           <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 10, fontWeight: "800", textAlign: "center" }}>
             {countLabel}
@@ -750,24 +752,29 @@ function mobileCaptureRow(
   palette: Record<string, string>,
   row: MobileLibraryInboxRow,
   onPress?: (row: MobileLibraryInboxRow) => void,
+  compact = false,
 ) {
   const statusColor = row.statusTone === "retry" ? palette.error : row.statusTone === "processed" ? "#a6debf" : palette.secondary;
+  const displayStatus = row.statusTone === "retry" ? "Retry" : row.statusTone === "processed" ? "Done" : row.statusLabel === "Queued retry" ? "Queued" : "New";
   const style = {
     borderTopWidth: 1,
     borderTopColor: palette.border,
-    paddingVertical: 12,
-    gap: 10,
+    paddingVertical: compact ? 9 : 12,
+    gap: compact ? 8 : 10,
   } as const;
   const canOpen = row.icon === "artifact" && Boolean(onPress);
   const visibleActions = [row.primaryActionLabel, row.secondaryActionLabel].filter((action): action is string => Boolean(action));
+  const executableActions = canOpen ? visibleActions.filter((action) => action === "Open") : [];
+  const suggestionLabels = (canOpen ? visibleActions.filter((action) => action !== "Open") : visibleActions)
+    .map((action) => libraryActionDisplayLabel(action, true));
   return (
     <View key={row.id} style={style}>
-      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+      <View style={{ flexDirection: "row", gap: compact ? 8 : 10, alignItems: "center" }}>
         <View
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: 12,
+            width: compact ? 34 : 42,
+            height: compact ? 34 : 42,
+            borderRadius: compact ? 10 : 12,
             backgroundColor: "rgba(255,255,255,0.04)",
             borderWidth: 1,
             borderColor: palette.border,
@@ -775,14 +782,14 @@ function mobileCaptureRow(
             justifyContent: "center",
           }}
         >
-          <MaterialCommunityIcons name={libraryRowIcon(row)} size={18} color={palette.accent} />
+          <MaterialCommunityIcons name={libraryRowIcon(row)} size={compact ? 16 : 18} color={palette.accent} />
         </View>
-        <View style={{ flex: 1, gap: 5 }}>
+        <View style={{ flex: 1, gap: compact ? 3 : 5 }}>
           <Text
             {...LIBRARY_TEXT_PROPS}
             numberOfLines={row.layout.titleNumberOfLines}
             ellipsizeMode="tail"
-            style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}
+            style={{ color: palette.text, fontSize: compact ? 14 : 15, lineHeight: compact ? 18 : 20, fontWeight: "800" }}
           >
             {row.title}
           </Text>
@@ -790,60 +797,61 @@ function mobileCaptureRow(
             {...LIBRARY_TIGHT_TEXT_PROPS}
             numberOfLines={row.layout.metadataNumberOfLines}
             ellipsizeMode="tail"
-            style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}
+            style={{ color: palette.muted, fontSize: compact ? 11 : 12, lineHeight: compact ? 15 : 17 }}
           >
             {row.sourceLabel} · {row.captureTypeLabel} · {row.timestampLabel}
           </Text>
         </View>
         <View
           style={{
-            minWidth: 62,
+            minWidth: compact ? 50 : 62,
             alignItems: "flex-end",
-            gap: 5,
+            gap: compact ? 3 : 5,
           }}
         >
-          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 12, lineHeight: 16 }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: compact ? 10 : 12, lineHeight: compact ? 13 : 16 }}>
             {row.timestampLabel}
           </Text>
           <View
             style={{
-              maxWidth: 86,
-              minHeight: 24,
-              borderRadius: 12,
+              maxWidth: compact ? 62 : 86,
+              minHeight: compact ? 20 : 24,
+              borderRadius: compact ? 10 : 12,
               backgroundColor: row.statusTone === "processed" ? "rgba(166, 222, 191, 0.08)" : "rgba(245, 169, 73, 0.09)",
               borderWidth: 1,
               borderColor: row.statusTone === "processed" ? "rgba(166, 222, 191, 0.16)" : "rgba(245, 169, 73, 0.18)",
-              paddingHorizontal: 8,
+              paddingHorizontal: compact ? 6 : 8,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
             <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: statusColor, fontSize: 9, fontWeight: "900", textTransform: "uppercase" }}>
-              {row.statusLabel}
+              {displayStatus}
             </Text>
           </View>
-          <MaterialCommunityIcons name="dots-vertical" size={18} color={palette.muted} />
+          {canOpen ? <MaterialCommunityIcons name="chevron-right" size={compact ? 16 : 18} color={palette.muted} /> : null}
         </View>
       </View>
-      <View style={{ flexDirection: row.layout.stackActions ? "column" : "row", gap: 8, paddingLeft: 52 }}>
-        {visibleActions.map((action, actionIndex) => {
-          const enabled = canOpen && actionIndex === 0 && action === "Open";
+      {canOpen ? (
+        <View style={{ flexDirection: row.layout.stackActions ? "column" : "row", gap: compact ? 6 : 8, paddingLeft: compact ? 42 : 52 }}>
+        {executableActions.map((action) => {
+          const enabled = true;
           const buttonStyle = {
             flex: row.layout.stackActions ? undefined : 1,
-            minHeight: 36,
+            minHeight: compact ? 32 : 36,
             borderRadius: 10,
-            paddingHorizontal: 10,
-            paddingVertical: 8,
+            paddingHorizontal: compact ? 7 : 10,
+            paddingVertical: compact ? 6 : 8,
             alignItems: "center" as const,
             justifyContent: "center" as const,
             flexDirection: "row" as const,
-            gap: 6,
+            gap: compact ? 4 : 6,
             backgroundColor: enabled ? palette.accent : "rgba(255,255,255,0.035)",
             borderWidth: 1,
             borderColor: enabled ? "rgba(245, 169, 73, 0.28)" : palette.border,
             opacity: enabled ? 1 : 0.76,
           };
-          const label = enabled ? action : action;
+          const label = libraryActionDisplayLabel(action, compact);
           const icon = action === "Make cards" ? "cards-outline" : action === "Create task" ? "checkbox-marked-outline" : action === "Link" ? "link-variant" : action === "Review" ? "check-circle-outline" : "target";
           return enabled ? (
             <Pressable
@@ -852,23 +860,53 @@ function mobileCaptureRow(
               onPress={() => onPress?.(row)}
               style={buttonStyle}
             >
-              <MaterialCommunityIcons name={icon} size={15} color={palette.onAccent} />
-              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>
+              <MaterialCommunityIcons name={icon} size={compact ? 13 : 15} color={palette.onAccent} />
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: compact ? 11 : 12, fontWeight: "800" }}>
                 {label}
               </Text>
             </Pressable>
           ) : (
             <View key={action} style={buttonStyle}>
-              <MaterialCommunityIcons name={icon} size={15} color={palette.muted} />
-              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
+              <MaterialCommunityIcons name={icon} size={compact ? 13 : 15} color={palette.muted} />
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: compact ? 11 : 12, fontWeight: "800" }}>
                 {label}
               </Text>
             </View>
           );
         })}
-      </View>
+        </View>
+      ) : suggestionLabels.length > 0 ? (
+        <View style={{ paddingLeft: compact ? 42 : 52, flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 10, lineHeight: 14, fontWeight: "800", textTransform: "uppercase" }}>
+            Suggested
+          </Text>
+          {suggestionLabels.slice(0, 2).map((label) => (
+            <View key={label} style={{ borderRadius: 9, backgroundColor: "rgba(255,255,255,0.025)", paddingHorizontal: 7, paddingVertical: 4 }}>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 11, lineHeight: 14, fontWeight: "700" }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
+}
+
+function libraryActionDisplayLabel(action: string, compact: boolean): string {
+  if (!compact) {
+    return action;
+  }
+  if (action === "Make cards") {
+    return "Cards";
+  }
+  if (action === "Create task") {
+    return "Task";
+  }
+  if (action === "Append to note") {
+    return "Append";
+  }
+  return action;
 }
 
 function artifactSectionCard(
@@ -2102,6 +2140,7 @@ export function MobileNotesSurface({
   toggleMissionTools,
 }: MobileNotesSurfaceProps) {
   const { width } = useWindowDimensions();
+  const compactLibraryLayout = width < 430;
   const horizontalPadding = 38;
   const statChipWidth = Math.max(142, Math.min(184, (width - horizontalPadding - 10) / 2));
   const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
@@ -2122,7 +2161,7 @@ export function MobileNotesSurface({
   const segmentCounts: Record<MobileLibrarySegment, string> = {
     Inbox: String(pendingCaptures.length),
     Artifacts: String(artifacts.length),
-    Notes: String(notesCount),
+    Notes: "",
     Sources: String(libraryModel.sourceRows.length),
   };
   const pendingCaptureCount = pendingCaptures.length;
@@ -2183,15 +2222,17 @@ export function MobileNotesSurface({
         {libraryModel.stats.map((stat) => libraryStatChip(palette, stat, statChipWidth))}
       </ScrollView>
 
-      <View
-        style={{
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          minWidth: "100%",
           borderRadius: 999,
           backgroundColor: palette.surfaceLow,
           borderWidth: 1,
           borderColor: palette.border,
           padding: 4,
           flexDirection: "row",
-          flexWrap: "wrap",
           gap: 4,
         }}
       >
@@ -2200,16 +2241,16 @@ export function MobileNotesSurface({
           if (nextSegment !== "Artifacts") {
             setShowArtifactDetail(false);
           }
-        }, segmentCounts[segment]))}
-      </View>
+        }, segmentCounts[segment], compactLibraryLayout))}
+      </ScrollView>
 
-      <View style={{ gap: 12 }}>
+      <View style={{ gap: compactLibraryLayout ? 9 : 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={[headingStyle(palette), { fontSize: 21, lineHeight: 26 }]}>
+            <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={[headingStyle(palette), { fontSize: compactLibraryLayout ? 17 : 21, lineHeight: compactLibraryLayout ? 21 : 26 }]}>
               {activeSegment === "Inbox" ? "Inbox / Unprocessed captures" : activeSegment}
             </Text>
-            <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={bodyStyle(palette)}>
+            <Text {...LIBRARY_TEXT_PROPS} numberOfLines={compactLibraryLayout ? 1 : 2} style={[bodyStyle(palette), compactLibraryLayout ? { fontSize: 12, lineHeight: 17 } : null]}>
               {showDetailPane
                 ? artifactDetailStatus
                 : activeSegment === "Inbox"
@@ -2271,17 +2312,17 @@ export function MobileNotesSurface({
             </View>
           </View>
         ) : visibleRows.length > 0 ? (
-          <View style={{ ...cardBase(palette), backgroundColor: "rgba(8, 19, 32, 0.9)", padding: 14, gap: 0 }}>
-            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, paddingBottom: 10 }}>
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text {...LIBRARY_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>
+          <View style={{ ...cardBase(palette), backgroundColor: "rgba(8, 19, 32, 0.9)", padding: compactLibraryLayout ? 10 : 14, gap: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, paddingBottom: compactLibraryLayout ? 6 : 10 }}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text {...LIBRARY_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: compactLibraryLayout ? 15 : 18, lineHeight: compactLibraryLayout ? 19 : 23, fontWeight: "800" }}>
                   {activeSegment === "Artifacts" ? "Processed artifacts" : "Items needing a decision"}
                 </Text>
-                <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+                <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={compactLibraryLayout ? 1 : 2} style={{ color: palette.muted, fontSize: compactLibraryLayout ? 11 : 12, lineHeight: compactLibraryLayout ? 15 : 17 }}>
                   {activeSegment === "Artifacts" ? "Open an artifact to inspect provenance and conversions." : "Summarize, card, link, or retry captures as processing becomes available."}
                 </Text>
               </View>
-              <View style={{ borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, paddingVertical: 6 }}>
+              <View style={{ borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 8, paddingVertical: 5 }}>
                 <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "900" }}>
                   {visibleRows.length}
                 </Text>
@@ -2291,6 +2332,7 @@ export function MobileNotesSurface({
               palette,
               row,
               row.icon === "artifact" ? openLibraryArtifact : undefined,
+              compactLibraryLayout,
             ))}
           </View>
         ) : (
