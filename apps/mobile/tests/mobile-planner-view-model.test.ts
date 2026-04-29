@@ -102,7 +102,7 @@ assert.deepEqual(fallback.alarmBriefing, {
 assert.equal(fallback.conflict, null);
 assert.equal(fallback.timelineBlocks.some((block) => block.type === "conflict"), false);
 assert.equal(fallback.nextFocus.title, "Focus unknown");
-assert.equal(fallback.nextFocus.body, "Refresh Planner to load focus capacity and named blocks for this date.");
+assert.equal(fallback.nextFocus.body, "Refresh to load focus capacity.");
 assert.equal(fallback.nextFocus.timeLabel, "Unknown");
 assert.equal(fallback.nextFocus.metaLabel, "Refresh Planner");
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "focus")?.durationLabel, "Unknown");
@@ -115,16 +115,16 @@ assert.equal(fallback.timelineBlocks.find((block) => block.id === "buffer")?.dur
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "buffer")?.title, "Buffer unknown");
 assert.equal(fallback.timelineBlocks.find((block) => block.id === "buffer")?.detail, "Refresh Planner to load buffer capacity for this date.");
 assert.equal(fallback.upcoming.title, "Refresh calendar");
-assert.equal(fallback.upcoming.body, "Refresh Planner to load calendar events and fixed blocks for this date.");
+assert.equal(fallback.upcoming.body, "Refresh to load fixed blocks.");
 assert.equal(fallback.upcoming.timeLabel, "Unknown");
 assert.equal(fallback.upcoming.metaLabel, "Refresh Planner");
 assert.deepEqual(fallback.promptChips, ["Protect focus", "What can move?", "Plan buffer"]);
 assert.deepEqual(fallback.planGroups[0].items, []);
 assert.equal(fallback.planGroups[0].summaryLabel, "Unknown");
-assert.equal(fallback.planGroups[0].emptyLabel, "Refresh Planner to load scheduled commitments for this date.");
+assert.equal(fallback.planGroups[0].emptyLabel, "Refresh to load commitments.");
 assert.deepEqual(fallback.planGroups[1].items, []);
 assert.equal(fallback.planGroups[1].summaryLabel, "Unknown");
-assert.equal(fallback.planGroups[1].emptyLabel, "Refresh Planner to load task pressure for this date.");
+assert.equal(fallback.planGroups[1].emptyLabel, "Refresh to load tasks.");
 assert.deepEqual(fallback.planGroups[2].items, []);
 assert.equal(fallback.planGroups[2].summaryLabel, "Waiting");
 
@@ -159,10 +159,10 @@ assert.equal(
 );
 assert.deepEqual(fallbackWithAlarm.planGroups[0].items, []);
 assert.equal(fallbackWithAlarm.planGroups[0].summaryLabel, "Unknown");
-assert.equal(fallbackWithAlarm.planGroups[0].emptyLabel, "Refresh Planner to load scheduled commitments for this date.");
+assert.equal(fallbackWithAlarm.planGroups[0].emptyLabel, "Refresh to load commitments.");
 assert.deepEqual(fallbackWithAlarm.planGroups[1].items, []);
 assert.equal(fallbackWithAlarm.planGroups[1].summaryLabel, "Unknown");
-assert.equal(fallbackWithAlarm.planGroups[1].emptyLabel, "Refresh Planner to load task pressure for this date.");
+assert.equal(fallbackWithAlarm.planGroups[1].emptyLabel, "Refresh to load tasks.");
 assert.deepEqual(fallbackWithAlarm.planGroups[2].items, []);
 assert.equal(fallbackWithAlarm.planGroups[2].summaryLabel, "Waiting");
 assert.equal(fallbackWithAlarm.nextFocus.timeLabel, "Unknown");

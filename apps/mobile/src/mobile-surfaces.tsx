@@ -2884,23 +2884,26 @@ export function MobileCalendarSurface({
   });
 
   return (
-    <View style={{ gap: 16, paddingBottom: 14 }}>
+    <View style={{ gap: 14, paddingBottom: 14 }}>
       <View
         style={{
           ...cardBase(palette),
-          backgroundColor: "rgba(7, 18, 31, 0.86)",
-          borderColor: "rgba(245, 169, 73, 0.24)",
-          paddingVertical: 16,
-          gap: 12,
+          backgroundColor: "rgba(5, 16, 29, 0.9)",
+          borderColor: "rgba(245, 169, 73, 0.28)",
+          padding: 14,
+          gap: 14,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <MaterialCommunityIcons name="star-four-points-outline" size={28} color={palette.accent} />
+          <MaterialCommunityIcons name="star-four-points-outline" size={30} color={palette.accent} />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: palette.text, fontSize: 26, lineHeight: 32, fontWeight: "800" }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 25, lineHeight: 31, fontWeight: "800" }}>
               Starlog {PRODUCT_SURFACES.planner.label}
             </Text>
-            <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, maxWidth: 138 }}>
+            <MaterialCommunityIcons name={plannerSummary ? "check-circle-outline" : "progress-question"} size={18} color={plannerSummary ? "#69d083" : palette.muted} />
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 12, fontWeight: "700", flexShrink: 1 }}>
               {planner.statusLabel}
             </Text>
           </View>
@@ -2909,66 +2912,72 @@ export function MobileCalendarSurface({
           </TouchableOpacity>
         </View>
 
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {!planner.dateControls.isToday ? (
-            <TouchableOpacity style={pillStyle(palette)} onPress={() => setSelectedPlannerDate(planner.dateControls.todayDate)}>
-              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Today</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={pillStyle(palette, true)}>
-              <Text style={{ color: palette.accent, fontSize: 12, fontWeight: "800" }}>Today</Text>
-            </View>
-          )}
-          <TouchableOpacity
-            accessibilityLabel="Previous planner day"
-            style={pillStyle(palette)}
-            onPress={() => setSelectedPlannerDate(planner.dateControls.previousDate)}
-          >
-            <MaterialCommunityIcons name="chevron-left" size={18} color={palette.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, minWidth: 170, alignItems: "center" }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "800" }}>
-              {planner.dateLabel}
-            </Text>
-          </View>
-          <TouchableOpacity
-            accessibilityLabel="Next planner day"
-            style={pillStyle(palette)}
-            onPress={() => setSelectedPlannerDate(planner.dateControls.nextDate)}
-          >
-            <MaterialCommunityIcons name="chevron-right" size={18} color={palette.text} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {planner.dayStrip.map((day) => (
+        <View style={{ borderRadius: 18, borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.22)", padding: 8, gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: 7, alignItems: "center" }}>
+            {!planner.dateControls.isToday ? (
+              <TouchableOpacity style={{ ...pillStyle(palette), minWidth: 72, alignItems: "center" }} onPress={() => setSelectedPlannerDate(planner.dateControls.todayDate)}>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Today</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ ...pillStyle(palette, true), minWidth: 72, alignItems: "center" }}>
+                <Text style={{ color: palette.accent, fontSize: 12, fontWeight: "800" }}>Today</Text>
+              </View>
+            )}
             <TouchableOpacity
-              key={day.key}
-              onPress={() => setSelectedPlannerDate(day.key)}
-              style={{
-                width: 48,
-                borderRadius: 16,
-                paddingVertical: 10,
-                alignItems: "center",
-                gap: 4,
-                backgroundColor: day.active ? "rgba(245, 169, 73, 0.16)" : palette.surfaceHigh,
-                borderWidth: 1,
-                borderColor: day.active ? palette.accent : palette.border,
-              }}
+              accessibilityLabel="Previous planner day"
+              style={{ ...pillStyle(palette), width: 40, alignItems: "center" }}
+              onPress={() => setSelectedPlannerDate(planner.dateControls.previousDate)}
             >
-              <Text style={{ color: day.active ? palette.accent : palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-                {day.weekday}
-              </Text>
-              <Text style={{ color: palette.text, fontSize: 15, fontWeight: "800" }}>{day.day}</Text>
+              <MaterialCommunityIcons name="chevron-left" size={18} color={palette.text} />
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+            <TouchableOpacity
+              accessibilityLabel="Next planner day"
+              style={{ ...pillStyle(palette), width: 40, alignItems: "center" }}
+              onPress={() => setSelectedPlannerDate(planner.dateControls.nextDate)}
+            >
+              <MaterialCommunityIcons name="chevron-right" size={18} color={palette.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 4 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>
+                {planner.dateLabel}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <MaterialCommunityIcons name="plus" size={13} color={palette.muted} />
+              <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>via Assistant</Text>
+            </View>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>
+            {planner.dayStrip.map((day) => (
+              <TouchableOpacity
+                key={day.key}
+                onPress={() => setSelectedPlannerDate(day.key)}
+                style={{
+                  width: 70,
+                  borderRadius: 12,
+                  paddingHorizontal: 10,
+                  paddingVertical: 9,
+                  gap: 2,
+                  backgroundColor: day.active ? "rgba(245, 169, 73, 0.14)" : palette.surfaceHigh,
+                  borderWidth: 1,
+                  borderColor: day.active ? palette.accent : palette.border,
+                }}
+              >
+                <Text style={{ color: day.active ? palette.accent : palette.muted, fontSize: 11, fontWeight: "800" }}>
+                  {day.weekday}
+                </Text>
+                <Text style={{ color: palette.text, fontSize: 16, lineHeight: 20, fontWeight: "800" }}>{day.day}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
 
-      <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, gap: 10 }}>
+      <View style={{ ...cardBase(palette), backgroundColor: "rgba(255,255,255,0.035)", padding: 14, gap: 8 }}>
         <Text style={kickerStyle(palette)}>Active decision</Text>
-        <Text style={{ color: palette.text, fontSize: 22, lineHeight: 28, fontWeight: "800" }}>{planner.decisionLabel}</Text>
-        <Text style={bodyStyle(palette)}>{planner.decisionDetail}</Text>
+        <Text numberOfLines={2} style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "800" }}>{planner.decisionLabel}</Text>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{planner.decisionDetail}</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 6 }}>
             <MaterialCommunityIcons name="clock-outline" size={14} color={palette.accent} />
@@ -2992,9 +3001,9 @@ export function MobileCalendarSurface({
             <View
               key={metric.label}
               style={{
-                minWidth: 142,
+                minWidth: 148,
                 flex: 1,
-                borderRadius: 18,
+                borderRadius: 16,
                 paddingHorizontal: 13,
                 paddingVertical: 12,
                 backgroundColor: tone.background,
@@ -3003,8 +3012,8 @@ export function MobileCalendarSurface({
                 gap: 3,
               }}
             >
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: tone.color, fontSize: 22, lineHeight: 27, fontWeight: "800" }}>{metric.value}</Text>
-              <Text style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{metric.label}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: tone.color, fontSize: 21, lineHeight: 26, fontWeight: "800" }}>{metric.value}</Text>
+              <Text numberOfLines={1} style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{metric.label}</Text>
               <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11 }}>{metric.caption}</Text>
             </View>
           );
@@ -3033,9 +3042,13 @@ export function MobileCalendarSurface({
 
       <View style={{ ...cardBase(palette), padding: 14, gap: 13 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <Text style={{ flex: 1, color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "800" }}>Time blocks</Text>
-          <View style={pillStyle(palette)}>
-            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>Derived</Text>
+          <View>
+            <Text style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "800" }}>Day timeline</Text>
+            <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 15, fontWeight: "700" }}>{stationTimeLabel} {stationPeriod}</Text>
+          </View>
+          <View style={{ ...pillStyle(palette), flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <MaterialCommunityIcons name="tune-variant" size={14} color={palette.muted} />
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>Summary</Text>
           </View>
         </View>
         <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 390 }}>
@@ -3044,7 +3057,7 @@ export function MobileCalendarSurface({
               const tone = plannerTimelineTone(block, palette);
               return (
                 <View key={block.id} style={{ flexDirection: "row", gap: 12 }}>
-                  <View style={{ width: 58, alignItems: "flex-end", paddingTop: 13 }}>
+                  <View style={{ width: 60, alignItems: "flex-end", paddingTop: 13 }}>
                     <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: tone.accent, fontSize: 11, fontWeight: "800" }}>{block.timeLabel}</Text>
                   </View>
                   <View style={{ alignItems: "center" }}>
@@ -3054,7 +3067,7 @@ export function MobileCalendarSurface({
                   <View
                     style={{
                       flex: 1,
-                      borderRadius: 18,
+                      borderRadius: 12,
                       backgroundColor: tone.background,
                       borderWidth: 1,
                       borderColor: tone.border,
@@ -3062,11 +3075,11 @@ export function MobileCalendarSurface({
                       gap: 6,
                     }}
                   >
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
                       <Text style={{ flex: 1, color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>{block.title}</Text>
                       <Text numberOfLines={1} style={{ color: tone.accent, fontSize: 10, fontWeight: "800" }}>{block.durationLabel}</Text>
                     </View>
-                    <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{block.detail}</Text>
+                    <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{block.detail}</Text>
                   </View>
                 </View>
               );
@@ -3093,7 +3106,7 @@ export function MobileCalendarSurface({
       <View style={{ ...cardBase(palette), gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <Text style={{ flex: 1, color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "800" }}>Today's plan</Text>
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>Derived</Text>
+          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>Execution</Text>
         </View>
         {planner.planGroups.map((group) => (
           <View key={group.title} style={{ gap: 9, borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 12 }}>
@@ -3138,7 +3151,7 @@ export function MobileCalendarSurface({
                       </Text>
                       <Text numberOfLines={1} style={{ color: tone.color, fontSize: 11, fontWeight: "800" }}>{item.metaLabel}</Text>
                     </View>
-                    <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{item.detail}</Text>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{item.detail}</Text>
                   </View>
                 </View>
               );
@@ -3147,8 +3160,7 @@ export function MobileCalendarSurface({
         ))}
       </View>
 
-      <View style={cardBase(palette)}>
-        <Text style={kickerStyle(palette)}>Ask Starlog</Text>
+      <View style={{ ...cardBase(palette), gap: 10 }}>
         <View
           style={{
             borderRadius: 18,
@@ -3157,10 +3169,14 @@ export function MobileCalendarSurface({
             borderColor: palette.border,
             paddingHorizontal: 14,
             paddingVertical: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
           }}
         >
-          <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 20 }}>
-            Ask Assistant to choose the next move, repair conflicts, or reserve focus time. Suggestions below are passive until sent from Assistant.
+          <MaterialCommunityIcons name="star-four-points-outline" size={20} color={palette.muted} />
+          <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: palette.muted, fontSize: 14, lineHeight: 20, flex: 1 }}>
+            Ask Starlog what to plan next
           </Text>
         </View>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
