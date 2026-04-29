@@ -202,7 +202,7 @@ test("mobile viewport Library main stays compact and keeps artifact detail reach
 
   const focusDetailLink = page.getByRole("link", { name: "Open Library detail for The Focus Fallacy" }).first();
   await expect(focusDetailLink).toHaveAttribute("href", "/library/captures/art_capture_focus");
-  await focusDetailLink.click();
+  await focusDetailLink.tap();
   await expect(page).toHaveURL(/\/library\/captures\/art_capture_focus$/);
   await expect(page.getByRole("heading", { name: "The Focus Fallacy" })).toBeVisible();
 });
