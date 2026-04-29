@@ -371,14 +371,18 @@ function cleanMetadataString(value: unknown): string {
 
 function compactTimeLabel(value: string): string {
   const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(trimmed);
+  if (!match) {
     return trimmed;
   }
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) {
+  const hour = Number(match[2]);
+  const minute = match[3];
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
     return trimmed;
   }
-  return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${period}`;
 }
 
 function conflictTimeLabel(
