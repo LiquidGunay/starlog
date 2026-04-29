@@ -407,6 +407,18 @@ function FieldControl({
       field.options?.length === 2);
 
   if (useOptionCards) {
+    if (field.kind === "entity_search") {
+      return (
+        <EntitySearchOptions
+          interrupt={interrupt}
+          field={field}
+          values={values}
+          setValues={setValues}
+          variant={variant}
+          controlId={controlId}
+        />
+      );
+    }
     return <OptionCards interrupt={interrupt} field={field} values={values} setValues={setValues} variant={variant} />;
   }
 
@@ -701,7 +713,8 @@ function ReviewGradePreview({
             <button
               key={option.value}
               type="button"
-              className={styles.supportButton}
+              className={`${styles.supportButton} ${values[supportField.id] === option.value ? styles.supportButtonSelected : ""}`}
+              aria-pressed={values[supportField.id] === option.value}
               onClick={() => onSupportAction(option.value)}
             >
               {option.label}
@@ -709,6 +722,37 @@ function ReviewGradePreview({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function EntitySearchOptions({
+  interrupt,
+  field,
+  values,
+  setValues,
+  variant,
+  controlId,
+}: {
+  interrupt: AssistantInterrupt;
+  field: AssistantInterruptField;
+  values: Record<string, unknown>;
+  setValues: SetValues;
+  variant: PanelTone;
+  controlId: string;
+}) {
+  const fieldValue = values[field.id];
+  const stringValue = typeof fieldValue === "string" ? fieldValue : "";
+  return (
+    <div className={styles.entitySearchField}>
+      <OptionCards interrupt={interrupt} field={field} values={values} setValues={setValues} variant={variant} />
+      <input
+        id={controlId}
+        type="text"
+        value={stringValue}
+        placeholder={field.placeholder || "Search or paste project id"}
+        onChange={(event) => setFieldValue(setValues, field.id, event.target.value)}
+      />
     </div>
   );
 }
@@ -735,7 +779,7 @@ function EntityPickerPreview({ interrupt, values }: { interrupt: AssistantInterr
     interrupt.fields.find((field) => field.kind === "entity_search") ||
     interrupt.fields.find((field) => /project|entity/i.test(field.id) && field.options && field.options.length > 0);
   const selectedValue = projectField ? String(values[projectField.id] ?? "") : "";
-  const selectedProject = projectField?.options?.find((option) => option.value === selectedValue)?.label || null;
+  const selectedProject = projectField?.options?.find((option) => option.value === selectedValue)?.label || selectedValue.trim() || null;
   const title = firstMetadataString(interrupt.metadata?.item_title, interrupt.metadata?.capture_title, interrupt.entity_ref?.title, interrupt.title) || "Link item";
   return (
     <div className={styles.itemPreview} aria-label="Project link preview">
@@ -793,7 +837,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
       <ReviewGradePreview
         interrupt={interrupt}
         values={values}
-        onSupportAction={(value) => void onSubmit(interrupt.id, { ...values, support_action: value })}
+        onSupportAction={(value) => setFieldValue(setValues, "support_action", value)}
       />
       <ClarificationPreview interrupt={interrupt} />
       <EntityPickerPreview interrupt={interrupt} values={values} />

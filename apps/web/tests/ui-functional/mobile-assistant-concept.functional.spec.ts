@@ -551,15 +551,13 @@ test("mobile viewport assistant renders review, clarification, defer, and projec
   }
   await expect(panel.getByRole("radio", { name: "Hard" })).toBeChecked();
   await panel.getByRole("button", { name: "Show worked example" }).click();
-  expect(submissions.at(-1)).toEqual({
-    interruptId: "interrupt_review_grade",
-    values: expect.objectContaining({ grade: "3", support_action: "worked_example" }),
-  });
+  await expect(panel.getByRole("button", { name: "Show worked example" })).toHaveAttribute("aria-pressed", "true");
+  expect(submissions).toHaveLength(0);
   await panel.getByRole("radio", { name: "Good" }).click();
   await panel.getByRole("button", { name: "Save grade" }).click();
   expect(submissions.at(-1)).toEqual({
     interruptId: "interrupt_review_grade",
-    values: expect.objectContaining({ grade: "4", client_timezone: expect.any(String) }),
+    values: expect.objectContaining({ rating: "4", client_timezone: expect.any(String) }),
   });
 
   setActiveInterrupt(scheduleClarificationInterrupt());
@@ -604,10 +602,12 @@ test("mobile viewport assistant renders review, clarification, defer, and projec
   }
   await panel.getByRole("radio", { name: "AI suggestions engine" }).click();
   await expect(panel.getByText("Selected project: AI suggestions engine")).toBeVisible();
+  await panel.getByPlaceholder("Search or paste project id").fill("project_custom_research");
+  await expect(panel.getByText("Selected project: project_custom_research")).toBeVisible();
   await panel.getByRole("button", { name: "Link item" }).click();
   expect(submissions.at(-1)).toEqual({
     interruptId: "interrupt_project_picker",
-    values: expect.objectContaining({ project_id: "project_ai_suggestions", client_timezone: expect.any(String) }),
+    values: expect.objectContaining({ project_id: "project_custom_research", client_timezone: expect.any(String) }),
   });
 
   await expect(page.locator("main")).not.toContainText(/tool_name|grade_review_recall|clarify_schedule_time|defer_recommendation|link_capture_project|Diagnostics|dashboard/i);

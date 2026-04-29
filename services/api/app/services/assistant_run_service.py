@@ -1346,6 +1346,126 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 resolution=resolution,
             )
             _update_run(conn, run_id=row["run_id"], status="completed", summary="Morning focus selected")
+        elif row["tool_name"] == "clarify_schedule_time":
+            scheduled_time = str(values.get("scheduled_time") or values.get("time") or "").strip()
+            if not scheduled_time:
+                raise ValueError("scheduled_time is required")
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={"interrupt_resolution": resolution},
+                parts=[
+                    assistant_projection_service.text_part(f"Recorded the schedule time: {scheduled_time}."),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Clarify schedule time",
+                tool_name="clarify_schedule_time",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments=values,
+                result={"scheduled_time": scheduled_time},
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Schedule time recorded")
+        elif row["tool_name"] == "defer_recommendation":
+            remind_at = str(values.get("remind_at") or values.get("reminder") or "").strip()
+            if not remind_at:
+                raise ValueError("remind_at is required")
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={"interrupt_resolution": resolution},
+                parts=[
+                    assistant_projection_service.text_part(f"Reminder preference saved: {remind_at.replace('_', ' ')}."),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Defer recommendation",
+                tool_name="defer_recommendation",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments=values,
+                result={"remind_at": remind_at},
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Reminder preference saved")
+        elif row["tool_name"] == "link_capture_project":
+            project_id = str(values.get("project_id") or "").strip()
+            if not project_id:
+                raise ValueError("project_id is required")
+            assistant_message = assistant_thread_service.append_message(
+                conn,
+                thread_id=row["thread_id"],
+                role="assistant",
+                status="complete",
+                run_id=row["run_id"],
+                metadata={
+                    "interrupt_resolution": resolution,
+                    "project_link": {
+                        "project_id": project_id,
+                        "entity_ref": row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else {},
+                    },
+                },
+                parts=[
+                    assistant_projection_service.text_part(f"Recorded the project link: {project_id}."),
+                    assistant_projection_service.interrupt_resolution_part(resolution),
+                ],
+            )
+            _record_step(
+                conn,
+                run_id=row["run_id"],
+                thread_id=row["thread_id"],
+                step_index=1,
+                title="Link capture project",
+                tool_name="link_capture_project",
+                tool_kind="ui_tool",
+                status="completed",
+                arguments=values,
+                result={"project_id": project_id},
+                interrupt_id=interrupt_id,
+                message_id=assistant_message["id"],
+            )
+            _complete_interrupt(
+                conn,
+                interrupt_id=interrupt_id,
+                action="submit",
+                values=values,
+                resolution=resolution,
+            )
+            _update_run(conn, run_id=row["run_id"], status="completed", summary="Project link recorded")
         elif row["tool_name"] == "grade_review_recall":
             rating_raw = values.get("rating")
             try:

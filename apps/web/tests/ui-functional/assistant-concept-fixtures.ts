@@ -655,7 +655,7 @@ export function reviewGradeInterrupt(status: "pending" | "submitted" = "pending"
     defer_label: "Later",
     fields: [
       {
-        id: "grade",
+        id: "rating",
         kind: "select",
         label: "Grade",
         required: true,
@@ -692,7 +692,7 @@ export function reviewGradeInterrupt(status: "pending" | "submitted" = "pending"
             id: "resolution_review_grade",
             interrupt_id: "interrupt_review_grade",
             action: "submit",
-            values: { grade: "3", client_timezone: "UTC" },
+            values: { rating: "3", client_timezone: "UTC" },
             metadata: {},
             created_at: "2026-04-28T10:11:00.000Z",
           }

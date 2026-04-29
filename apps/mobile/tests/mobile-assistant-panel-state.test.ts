@@ -365,7 +365,7 @@ const reviewGrade = interrupt({
   body: "You are missing application, not recall.",
   fields: [
     {
-      id: "grade",
+      id: "rating",
       kind: "select",
       label: "Grade",
       required: true,
@@ -415,9 +415,9 @@ const reviewOptions = mobilePanelOptionViewModels(reviewGrade, reviewGrade.field
 assert.equal(reviewOptions[1].selected, true);
 assert.equal(reviewOptions[0].description, "Review soon.");
 assert.equal(reviewOptions[3].description, "Stretch the interval.");
-assert.deepEqual(panelSubmitPayload(reviewGrade, { "review-grade": { grade: "4", support_action: "worked_example" } }), {
+assert.deepEqual(panelSubmitPayload(reviewGrade, { "review-grade": { rating: "4", support_action: "worked_example" } }), {
   interruptId: "review-grade",
-  values: { grade: "4", support_action: "worked_example" },
+  values: { rating: "4", support_action: "worked_example" },
 });
 
 const clarification = interrupt({
@@ -524,6 +524,14 @@ assert.deepEqual(mobileEntityPickerPreview(projectPicker, defaultPanelValues(pro
       selected: false,
     },
   ],
+});
+assert.equal(
+  mobileEntityPickerPreview(projectPicker, { project_id: "project_custom_research" })?.selectedProjectLabel,
+  "project_custom_research",
+);
+assert.deepEqual(panelSubmitPayload(projectPicker, { "project-picker": { project_id: "project_custom_research" } }), {
+  interruptId: "project-picker",
+  values: { project_id: "project_custom_research" },
 });
 
 assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {

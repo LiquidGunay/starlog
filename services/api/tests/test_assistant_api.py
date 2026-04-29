@@ -133,6 +133,44 @@ def _secondary_auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token.plain}"}
 
 
+def _create_pending_ui_interrupt(
+    *,
+    tool_name: str,
+    title: str,
+    fields: list[dict],
+    primary_label: str = "Confirm",
+    secondary_label: str | None = "Not now",
+    metadata: dict | None = None,
+    entity_ref: dict | None = None,
+) -> dict:
+    with get_connection() as conn:
+        user_id = str(conn.execute("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()["id"])
+        thread = assistant_thread_service.ensure_primary_thread(conn, user_id=user_id)
+        run = assistant_run_service._create_run(
+            conn,
+            thread_id=thread["id"],
+            origin_message_id=None,
+            orchestrator="deterministic",
+            metadata={"test": "ui_interrupt"},
+        )
+        interrupt = assistant_run_service._create_interrupt(
+            conn,
+            run_id=run["id"],
+            thread_id=thread["id"],
+            tool_name=tool_name,
+            interrupt_type="form",
+            title=title,
+            body="Choose one value.",
+            fields=fields,
+            primary_label=primary_label,
+            secondary_label=secondary_label,
+            metadata=metadata or {},
+            entity_ref=entity_ref,
+        )
+        assistant_run_service._update_run(conn, run_id=run["id"], status="interrupted", summary="Waiting for UI interrupt")
+        return interrupt
+
+
 def _create_test_artifact(*, title: str = "Test artifact", source_type: str = "clip_desktop_helper", metadata: dict | None = None) -> str:
     with get_connection() as conn:
         artifact = artifacts_service.create_artifact(
@@ -833,6 +871,84 @@ def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_revie
     updated = next(item for item in cards.json() if item["id"] == card["id"])
     assert updated["repetitions"] == 1
     assert updated["interval_days"] == 1
+
+
+def test_mobile_phase2_ui_interrupt_tools_submit_conservatively(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    cases = [
+        (
+            "clarify_schedule_time",
+            "What time should I schedule this?",
+            [
+                {
+                    "id": "scheduled_time",
+                    "kind": "select",
+                    "label": "Schedule time",
+                    "required": True,
+                    "options": [{"label": "10:30 AM", "value": "10:30"}],
+                }
+            ],
+            {"scheduled_time": "10:30", "reuse_for_similar_blocks": True},
+            "Schedule time recorded",
+        ),
+        (
+            "defer_recommendation",
+            "Remind me later",
+            [
+                {
+                    "id": "remind_at",
+                    "kind": "select",
+                    "label": "Reminder",
+                    "required": True,
+                    "options": [{"label": "Tomorrow morning", "value": "tomorrow_morning"}],
+                }
+            ],
+            {"remind_at": "tomorrow_morning"},
+            "Reminder preference saved",
+        ),
+        (
+            "link_capture_project",
+            "Link to project",
+            [
+                {
+                    "id": "project_id",
+                    "kind": "entity_search",
+                    "label": "Suggested projects",
+                    "required": True,
+                    "options": [{"label": "Assistant v2.0 launch", "value": "project_assistant_v2"}],
+                }
+            ],
+            {"project_id": "project_custom_research"},
+            "Project link recorded",
+        ),
+    ]
+
+    for tool_name, title, fields, values, run_summary in cases:
+        interrupt = _create_pending_ui_interrupt(
+            tool_name=tool_name,
+            title=title,
+            fields=fields,
+            primary_label="Confirm",
+            metadata={"display_mode": "inline"},
+            entity_ref={"entity_type": "artifact", "entity_id": "artifact_test", "href": "/library", "title": "Test artifact"},
+        )
+
+        submit = client.post(
+            f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+            json={"values": values},
+            headers=auth_headers,
+        )
+
+        assert submit.status_code == 200
+        payload = submit.json()
+        completed = next(item for item in payload["interrupts"] if item["id"] == interrupt["id"])
+        assert completed["status"] == "submitted"
+        assert completed["resolution"]["values"] == values
+        run = next(item for item in payload["runs"] if item["id"] == interrupt["run_id"])
+        assert run["status"] == "completed"
+        assert run["summary"] == run_summary
 
 
 def test_direct_review_submission_emits_assistant_ambient_update(

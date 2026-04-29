@@ -576,9 +576,10 @@ export function mobileEntityPickerPreview(
     interrupt.fields.find((field) => /project|entity/i.test(field.id) && field.options && field.options.length > 0);
   const suggestedProjects = projectField ? mobilePanelOptionViewModels(interrupt, projectField, values) : [];
   const selected = suggestedProjects.find((option) => option.selected);
+  const rawSelectedValue = projectField ? fieldValue(values, projectField).trim() : "";
   return {
     title: firstMetadataString(interrupt.metadata?.item_title, interrupt.metadata?.capture_title, interrupt.entity_ref?.title, interrupt.title) || "Link item",
-    selectedProjectLabel: selected?.label || null,
+    selectedProjectLabel: selected?.label || rawSelectedValue || null,
     suggestedProjects,
   };
 }

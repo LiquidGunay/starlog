@@ -771,6 +771,27 @@ function InterruptFieldInput({
               </TouchableOpacity>
             ))}
           </View>
+          {field.kind === "entity_search" ? (
+            <TextInput
+              value={fieldValue(values, field)}
+              onChangeText={setValue}
+              placeholder={field.placeholder || "Search or paste project id"}
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              style={{
+                minHeight: 42,
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+                backgroundColor: "rgba(255,255,255,0.02)",
+                color: palette.text,
+                fontSize: 14,
+                lineHeight: 20,
+              }}
+            />
+          ) : null}
         </View>
       );
     }
@@ -1120,19 +1141,22 @@ function ReviewGradeMiniPreview({
             <TouchableOpacity
               key={action.value}
               accessibilityRole="button"
+              accessibilityState={{ selected: action.selected }}
               style={{
                 minHeight: 36,
                 borderRadius: 13,
                 paddingHorizontal: 10,
                 paddingVertical: 8,
                 borderWidth: 1,
-                borderColor: accent.border,
-                backgroundColor: accent.bg,
+                borderColor: action.selected ? accent.border : "rgba(255,255,255,0.06)",
+                backgroundColor: action.selected ? accent.bg : "rgba(255,255,255,0.025)",
                 justifyContent: "center",
               }}
               onPress={() => onSupportAction(action.value)}
             >
-              <Text style={{ color: accent.text, fontSize: 12.5, lineHeight: 16, fontWeight: "800" }}>{action.label}</Text>
+              <Text style={{ color: action.selected ? accent.text : palette.text, fontSize: 12.5, lineHeight: 16, fontWeight: "800" }}>
+                {action.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -1287,7 +1311,7 @@ function DynamicPanelRenderer({
         values={values}
         palette={palette}
         accent={accent}
-        onSupportAction={(value) => onSubmit({ ...values, support_action: value })}
+        onSupportAction={(value) => onValueChange("support_action", value)}
       />
       <ClarificationMiniPreview interrupt={interrupt} palette={palette} />
       <EntityPickerMiniPreview interrupt={interrupt} values={values} palette={palette} accent={accent} />

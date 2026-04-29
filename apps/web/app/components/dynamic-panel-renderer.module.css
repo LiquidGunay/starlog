@@ -288,6 +288,16 @@
   cursor: pointer;
 }
 
+.supportButtonSelected {
+  border-color: rgba(239, 205, 160, 0.58);
+  background: rgba(239, 205, 160, 0.16);
+}
+
+.entitySearchField {
+  display: grid;
+  gap: 8px;
+}
+
 .conflictPreview {
   display: grid;
   grid-template-columns: 1fr;
