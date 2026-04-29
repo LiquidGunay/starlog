@@ -100,7 +100,7 @@ const dismiss = panelDismissPayload(first);
 assert.deepEqual(dismiss, { interruptId: "interrupt-1" });
 
 assert.deepEqual(visibleContextChips([first], 0, 0), ["Morning", "Deep work window"]);
-assert.deepEqual(visibleContextChips([second], 1, 2), ["Work", "Today", "1 artifact", "2 system"]);
+assert.deepEqual(visibleContextChips([second], 1, 2), ["Work", "Today", "1 artifact", "Earlier context"]);
 
 const resolved = mobileDynamicPanelStates([interrupt({ id: "resolved", status: "submitted" })], {});
 assert.equal(resolved[0].renderState, "resolved");

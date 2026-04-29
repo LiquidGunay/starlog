@@ -162,7 +162,7 @@ export function fieldSummary(field: AssistantInterruptField): string | null {
     return "Choose a specific time when needed.";
   }
   if (field.kind === "entity_search") {
-    return "Search opens as a larger picker when wired.";
+    return "Use search when the list is long.";
   }
   return null;
 }
@@ -192,15 +192,15 @@ export function visibleContextChips(interrupts: AssistantInterrupt[], attachment
   } else if (pending?.tool_name === "resolve_planner_conflict") {
     chips.push("Work", "Today");
   } else if (pending) {
-    chips.push(panelKicker(pending), pending.display_mode === "bottom_sheet" ? "Sheet ready" : "Inline panel");
+    chips.push(panelKicker(pending), "Needs decision");
   } else {
-    chips.push("Assistant", "Synced thread");
+    chips.push("Morning", "Today");
   }
   if (attachmentCount > 0) {
     chips.push(`${attachmentCount} artifact${attachmentCount === 1 ? "" : "s"}`);
   }
   if (hiddenThreadMessageCount > 0) {
-    chips.push(`${hiddenThreadMessageCount} system`);
+    chips.push("Earlier context");
   }
   return chips.slice(0, 4);
 }

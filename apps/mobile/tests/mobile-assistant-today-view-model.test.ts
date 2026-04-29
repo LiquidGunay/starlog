@@ -243,17 +243,17 @@ const unusableSummaryFallback = buildMobileAssistantTodayViewModel(
     },
   }),
 );
-assert.equal(unusableSummaryFallback.title, "Plan today");
-assert.equal(unusableSummaryFallback.primaryAction.prompt, "Help me plan today around my schedule, tasks, and open loops.");
+assert.equal(unusableSummaryFallback.title, "Choose morning focus");
+assert.equal(unusableSummaryFallback.primaryAction.prompt, "Help me choose one morning focus and shape the next work block.");
 assert.equal(unusableSummaryFallback.promptChips.length, 3);
 assert.equal(unusableSummaryFallback.openLoops.length, 3);
 
 const endpointFailureFallback = buildMobileAssistantTodayViewModel(null);
-assert.equal(endpointFailureFallback.title, "Plan today");
+assert.equal(endpointFailureFallback.title, "Choose morning focus");
 assert.equal(endpointFailureFallback.reasonStack.length, 4);
 assert.deepEqual(
   endpointFailureFallback.promptChips.map((action) => action.label),
-  ["Open Planner", "Open Library", "Open Review"],
+  ["Open planner", "Open library", "Review later"],
 );
 
 assert.deepEqual(
