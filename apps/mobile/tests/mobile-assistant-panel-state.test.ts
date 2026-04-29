@@ -6,10 +6,13 @@ import {
   MOBILE_PANEL_OPTION_LAYOUT,
   mobileAssistantPromptChips,
   mobileCaptureTriagePreview,
+  mobileClarificationPreview,
   mobileDynamicPanelStates,
+  mobileEntityPickerPreview,
   mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
+  mobileReviewGradePreview,
   mobileTaskDetailPreview,
   panelDismissPayload,
   panelTone,
@@ -354,6 +357,182 @@ assert.deepEqual(
   ["Reference", "Idea", "Task", "Review material", "Project input"],
 );
 assert.equal(captureKindOptions[0].description, "Keep source context for later lookup.");
+
+const reviewGrade = interrupt({
+  id: "review-grade",
+  tool_name: "grade_review_recall",
+  title: "Grade this review",
+  body: "You are missing application, not recall.",
+  fields: [
+    {
+      id: "rating",
+      kind: "select",
+      label: "Grade",
+      required: true,
+      value: "3",
+      options: [
+        { label: "Again", value: "1" },
+        { label: "Hard", value: "3" },
+        { label: "Good", value: "4" },
+        { label: "Easy", value: "5" },
+      ],
+    },
+    {
+      id: "support_action",
+      kind: "select",
+      label: "Support action",
+      options: [
+        { label: "Show worked example", value: "worked_example" },
+        { label: "Switch to explanation", value: "explanation" },
+      ],
+    },
+  ],
+  metadata: {
+    prompt: "What should you do when a feature flag causes production degradation?",
+    insight: "You are missing application, not recall.",
+  },
+});
+assert.equal(panelTone(reviewGrade), "review");
+assert.deepEqual(mobileReviewGradePreview(reviewGrade, defaultPanelValues(reviewGrade)), {
+  prompt: "What should you do when a feature flag causes production degradation?",
+  insight: "You are missing application, not recall.",
+  supportActions: [
+    {
+      label: "Show worked example",
+      value: "worked_example",
+      description: "See the answer applied to a real case.",
+      selected: false,
+    },
+    {
+      label: "Switch to explanation",
+      value: "explanation",
+      description: "Switch into teaching mode.",
+      selected: false,
+    },
+  ],
+});
+const reviewOptions = mobilePanelOptionViewModels(reviewGrade, reviewGrade.fields[0], defaultPanelValues(reviewGrade));
+assert.equal(reviewOptions[1].selected, true);
+assert.equal(reviewOptions[0].description, "Review soon.");
+assert.equal(reviewOptions[3].description, "Stretch the interval.");
+assert.deepEqual(panelSubmitPayload(reviewGrade, { "review-grade": { rating: "4", support_action: "worked_example" } }), {
+  interruptId: "review-grade",
+  values: { rating: "4", support_action: "worked_example" },
+});
+
+const clarification = interrupt({
+  id: "schedule-clarify",
+  tool_name: "clarify_schedule_time",
+  title: "What time should I schedule this?",
+  fields: [
+    {
+      id: "scheduled_time",
+      kind: "select",
+      label: "Schedule time",
+      required: true,
+      value: "09:30",
+      options: [
+        { label: "9:30 AM", value: "09:30" },
+        { label: "10:00 AM", value: "10:00" },
+        { label: "Pick custom time", value: "custom" },
+      ],
+    },
+    { id: "reuse_for_similar_blocks", kind: "toggle", label: "Use this time for similar blocks", value: true },
+  ],
+  metadata: { question: "What time should I schedule this?", detail: "One missing detail." },
+});
+assert.equal(panelTone(clarification), "clarify");
+assert.deepEqual(mobileClarificationPreview(clarification), {
+  question: "What time should I schedule this?",
+  detail: "One missing detail.",
+});
+const clarifyOptions = mobilePanelOptionViewModels(clarification, clarification.fields[0], defaultPanelValues(clarification));
+assert.equal(clarifyOptions[0].selected, true);
+assert.equal(clarifyOptions[1].description, "Use this schedule time.");
+assert.equal(clarifyOptions[2].description, "Pick another time.");
+
+const deferReminder = interrupt({
+  id: "defer-reminder",
+  tool_name: "defer_recommendation",
+  title: "Remind me later",
+  fields: [
+    {
+      id: "remind_at",
+      kind: "select",
+      label: "Reminder",
+      value: "in_1_hour",
+      options: [
+        { label: "In 1 hour", value: "in_1_hour" },
+        { label: "This evening", value: "this_evening" },
+        { label: "Tomorrow morning", value: "tomorrow_morning" },
+        { label: "No thanks, keep it in view", value: "keep_in_view" },
+      ],
+    },
+  ],
+});
+assert.equal(panelTone(deferReminder), "defer");
+const deferOptions = mobilePanelOptionViewModels(deferReminder, deferReminder.fields[0], defaultPanelValues(deferReminder));
+assert.equal(deferOptions[0].description, "Remind me without interrupting flow.");
+assert.equal(deferOptions[3].description, "Keep it visible without a reminder.");
+
+const projectPicker = interrupt({
+  id: "project-picker",
+  tool_name: "link_capture_project",
+  title: "Link to project",
+  fields: [
+    {
+      id: "project_id",
+      kind: "entity_search",
+      label: "Suggested projects",
+      value: "project_assistant_v2",
+      options: [
+        { label: "Assistant v2.0 launch", value: "project_assistant_v2" },
+        { label: "AI suggestions engine", value: "project_ai_suggestions" },
+        { label: "Onboarding experience", value: "project_onboarding" },
+      ],
+    },
+  ],
+  entity_ref: {
+    entity_type: "artifact",
+    entity_id: "artifact-inline-suggestions",
+    href: "/library?artifact=artifact-inline-suggestions",
+    title: "Design idea: inline AI suggestions in the editor",
+  },
+  metadata: { item_title: "Design idea: inline AI suggestions in the editor" },
+});
+assert.equal(panelTone(projectPicker), "entity");
+assert.deepEqual(mobileEntityPickerPreview(projectPicker, defaultPanelValues(projectPicker)), {
+  title: "Design idea: inline AI suggestions in the editor",
+  selectedProjectLabel: "Assistant v2.0 launch",
+  suggestedProjects: [
+    {
+      label: "Assistant v2.0 launch",
+      value: "project_assistant_v2",
+      description: "Most likely match.",
+      selected: true,
+    },
+    {
+      label: "AI suggestions engine",
+      value: "project_ai_suggestions",
+      description: "Link this item to the project.",
+      selected: false,
+    },
+    {
+      label: "Onboarding experience",
+      value: "project_onboarding",
+      description: "Relevant to the current capture.",
+      selected: false,
+    },
+  ],
+});
+assert.equal(
+  mobileEntityPickerPreview(projectPicker, { project_id: "project_custom_research" })?.selectedProjectLabel,
+  "project_custom_research",
+);
+assert.deepEqual(panelSubmitPayload(projectPicker, { "project-picker": { project_id: "project_custom_research" } }), {
+  interruptId: "project-picker",
+  values: { project_id: "project_custom_research" },
+});
 
 assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {
   minHeight: 58,

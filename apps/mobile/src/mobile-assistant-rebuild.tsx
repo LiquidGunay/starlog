@@ -34,16 +34,23 @@ import {
   mobileAssistantPanelLayout,
   mobileAssistantPromptChips,
   mobileCaptureTriagePreview,
+  mobileClarificationPreview,
   mobileDynamicPanelStates,
+  mobileEntityPickerPreview,
   mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
+  mobileReviewGradePreview,
   mobileTaskDetailPreview,
   panelDismissPayload,
   panelKicker,
   panelSubmitPayload,
   panelTone,
   isCaptureTriagePanel,
+  isClarificationPanel,
+  isDeferPanel,
+  isEntityPickerPanel,
+  isReviewGradePanel,
   isTaskDetailPanel,
   selectedValueLabel,
   visibleContextChips,
@@ -713,9 +720,15 @@ function InterruptFieldInput({
     );
   }
 
-  if (field.kind === "select" || field.kind === "priority") {
+  if (field.kind === "select" || field.kind === "priority" || (field.kind === "entity_search" && field.options && field.options.length > 0)) {
     const options = mobilePanelOptionViewModels(interrupt, field, values);
-    const compactChoices = isCaptureTriagePanel(interrupt) || (isTaskDetailPanel(interrupt) && field.kind === "priority");
+    const compactChoices =
+      isCaptureTriagePanel(interrupt) ||
+      isReviewGradePanel(interrupt) ||
+      isClarificationPanel(interrupt) ||
+      isDeferPanel(interrupt) ||
+      isEntityPickerPanel(interrupt) ||
+      (isTaskDetailPanel(interrupt) && field.kind === "priority");
     if (compactChoices) {
       return (
         <View style={{ gap: 8 }}>
@@ -758,6 +771,27 @@ function InterruptFieldInput({
               </TouchableOpacity>
             ))}
           </View>
+          {field.kind === "entity_search" ? (
+            <TextInput
+              value={fieldValue(values, field)}
+              onChangeText={setValue}
+              placeholder={field.placeholder || "Search or paste project id"}
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              style={{
+                minHeight: 42,
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+                backgroundColor: "rgba(255,255,255,0.02)",
+                color: palette.text,
+                fontSize: 14,
+                lineHeight: 20,
+              }}
+            />
+          ) : null}
         </View>
       );
     }
@@ -1070,6 +1104,139 @@ function PlannerConflictMiniPreview({
   );
 }
 
+function ReviewGradeMiniPreview({
+  interrupt,
+  values,
+  palette,
+  accent,
+  onSupportAction,
+}: {
+  interrupt: AssistantInterrupt;
+  values: Record<string, unknown>;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+  onSupportAction: (value: string) => void;
+}) {
+  const preview = mobileReviewGradePreview(interrupt, values);
+  if (!preview) {
+    return null;
+  }
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        gap: 8,
+      }}
+    >
+      <Text style={{ color: palette.text, fontSize: 14.5, lineHeight: 20, fontWeight: "800" }}>{preview.prompt}</Text>
+      {preview.insight ? <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{preview.insight}</Text> : null}
+      {preview.supportActions.length > 0 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {preview.supportActions.map((action) => (
+            <TouchableOpacity
+              key={action.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: action.selected }}
+              style={{
+                minHeight: 36,
+                borderRadius: 13,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderWidth: 1,
+                borderColor: action.selected ? accent.border : "rgba(255,255,255,0.06)",
+                backgroundColor: action.selected ? accent.bg : "rgba(255,255,255,0.025)",
+                justifyContent: "center",
+              }}
+              onPress={() => onSupportAction(action.value)}
+            >
+              <Text style={{ color: action.selected ? accent.text : palette.text, fontSize: 12.5, lineHeight: 16, fontWeight: "800" }}>
+                {action.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ClarificationMiniPreview({
+  interrupt,
+  palette,
+}: {
+  interrupt: AssistantInterrupt;
+  palette: Record<string, string>;
+}) {
+  const preview = mobileClarificationPreview(interrupt);
+  if (!preview) {
+    return null;
+  }
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        gap: 4,
+      }}
+    >
+      <Text style={{ color: palette.text, fontSize: 14.5, lineHeight: 20, fontWeight: "800" }}>{preview.question}</Text>
+      {preview.detail ? <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{preview.detail}</Text> : null}
+    </View>
+  );
+}
+
+function EntityPickerMiniPreview({
+  interrupt,
+  values,
+  palette,
+  accent,
+}: {
+  interrupt: AssistantInterrupt;
+  values: Record<string, unknown>;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+}) {
+  const preview = mobileEntityPickerPreview(interrupt, values);
+  if (!preview) {
+    return null;
+  }
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        gap: 7,
+      }}
+    >
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+        <MaterialCommunityIcons name={"source-branch" as never} size={17} color={accent.text} />
+        <Text style={{ flex: 1, color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={2}>
+          {preview.title}
+        </Text>
+      </View>
+      <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+        Selected project:{" "}
+        <Text style={{ color: preview.selectedProjectLabel ? accent.text : palette.text, fontWeight: "800" }}>
+          {preview.selectedProjectLabel || "Choose one"}
+        </Text>
+      </Text>
+    </View>
+  );
+}
+
 function DynamicPanelRenderer({
   interrupt,
   values,
@@ -1093,7 +1260,10 @@ function DynamicPanelRenderer({
   const tone = panelTone(interrupt);
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
-  const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search");
+  const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search" && (!field.options || field.options.length === 0));
+  const visibleFields = isReviewGradePanel(interrupt)
+    ? interrupt.fields.filter((field) => field.id !== "support_action" && !/support|help|mode/i.test(field.id))
+    : interrupt.fields;
   const dimensions = useWindowDimensions();
   const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
   const secondaryAction = mobilePanelSecondaryAction(interrupt);
@@ -1136,6 +1306,15 @@ function DynamicPanelRenderer({
       <TaskDetailMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
       <CaptureTriageMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
       <PlannerConflictMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
+      <ReviewGradeMiniPreview
+        interrupt={interrupt}
+        values={values}
+        palette={palette}
+        accent={accent}
+        onSupportAction={(value) => onValueChange("support_action", value)}
+      />
+      <ClarificationMiniPreview interrupt={interrupt} palette={palette} />
+      <EntityPickerMiniPreview interrupt={interrupt} values={values} palette={palette} accent={accent} />
 
       {pending ? (
         <>
@@ -1149,7 +1328,7 @@ function DynamicPanelRenderer({
           ) : null}
 
           <View style={{ gap: 10 }}>
-            {interrupt.fields.map((field) => (
+            {visibleFields.map((field) => (
               <View key={`${interrupt.id}-${field.id}`} style={{ gap: 5 }}>
                 <InterruptFieldInput
                   interrupt={interrupt}

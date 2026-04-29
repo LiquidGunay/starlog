@@ -347,7 +347,7 @@ test("renders assistant-ui-compatible dynamic panel variants without diagnostic 
   await expect(page.locator('[data-panel-tool="request_due_date"]')).toContainText("Task setup");
   await expect(page.locator('[data-panel-tool="triage_capture"]')).toContainText("Capture triage");
   await expect(page.locator('[data-panel-tool="resolve_planner_conflict"]')).toContainText("Deep Work");
-  await expect(page.locator('[data-panel-tool="resolve_planner_conflict"]')).toContainText("Overlap");
+  await expect(page.locator('[data-panel-tool="resolve_planner_conflict"]')).toContainText(/overlap/i);
   await expect(page.locator('[data-panel-tool="grade_review_recall"]')).toContainText("Again");
   await expect(page.locator('[data-panel-tool="grade_review_recall"]')).toContainText("Good");
   await expect(page.locator('[data-panel-tool="choose_morning_focus"]')).toContainText("Protect the first useful block.");
@@ -381,7 +381,7 @@ test("submits and dismisses dynamic panels through existing assistant interrupt 
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowIso = tomorrow.toISOString().slice(0, 10);
   await taskPanel.getByRole("button", { name: "Tomorrow", exact: true }).click();
-  await taskPanel.getByLabel("Priority").selectOption("4");
+  await taskPanel.getByRole("radio", { name: "Priority 4" }).click();
   await taskPanel.getByLabel("Create 45m block").check();
   await taskPanel.getByRole("button", { name: "Create task" }).click();
 
@@ -422,10 +422,10 @@ test("keeps control ids unique when pending panels reuse field ids", async ({ pa
   expect(new Set(controlIds).size).toBe(controlIds.length);
 
   const secondPanel = page.locator('[data-panel-tool="request_due_date"]').nth(1);
-  await secondPanel.locator("label", { hasText: "Priority" }).click();
+  await secondPanel.locator("label", { hasText: "Due date" }).click();
   await expect
     .poll(() => page.evaluate(() => document.activeElement instanceof HTMLElement ? document.activeElement.id : ""))
-    .toBe("dynamic-panel-interrupt_due_date_b-priority");
+    .toBe("dynamic-panel-interrupt_due_date_b-due_date");
 });
 
 test("renders priority choices for option-card panel tones when options are omitted", async ({ page }) => {
