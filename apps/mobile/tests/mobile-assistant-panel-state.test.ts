@@ -180,6 +180,38 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  mobilePlannerConflictPreview(
+    interrupt({
+      tool_name: "resolve_planner_conflict",
+      metadata: {
+        conflict_payload: {
+          detail: {
+            local: {
+              title: "Deep work block",
+              starts_at: "9:30 AM",
+              ends_at: "11:00 AM",
+            },
+            remote: {
+              title: "Product review",
+              starts_at: "9:45 AM",
+              ends_at: "10:15 AM",
+            },
+          },
+        },
+      },
+    }),
+  ),
+  {
+    localTitle: "Deep work block",
+    localTimeLabel: "9:30 AM - 11:00 AM",
+    overlapLabel: "Overlap",
+    overlapTimeLabel: null,
+    remoteTitle: "Product review",
+    remoteTimeLabel: "9:45 AM - 10:15 AM",
+  },
+);
+
+assert.deepEqual(
   mobilePanelSecondaryAction(
     interrupt({
       tool_name: "resolve_planner_conflict",
@@ -200,7 +232,11 @@ assert.deepEqual(
   { label: "Dismiss", kind: "dismiss" },
 );
 assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Adjust options" })), {
-  label: "Adjust options",
+  label: "Dismiss",
+  kind: "dismiss",
+});
+assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Keep in Review" })), {
+  label: "Keep in Review",
   kind: "dismiss",
 });
 

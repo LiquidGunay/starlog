@@ -151,18 +151,18 @@ export function panelDismissPayload(interrupt: AssistantInterrupt): { interruptI
   return { interruptId: interrupt.id };
 }
 
-function labelImpliesNavigation(label: string): boolean {
-  return /\b(open|go to|view)\b/i.test(label) && /\b(planner|library|review|assistant)\b/i.test(label);
+function labelIsDismissive(label: string): boolean {
+  return /\b(later|not now|cancel|dismiss|skip|defer|keep in review|no thanks)\b/i.test(label);
 }
 
 export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): MobilePanelSecondaryAction {
   const secondaryLabel = typeof interrupt.secondary_label === "string" ? interrupt.secondary_label.trim() : "";
   const deferLabel = typeof interrupt.defer_label === "string" ? interrupt.defer_label.trim() : "";
-  if (secondaryLabel && !labelImpliesNavigation(secondaryLabel)) {
-    return { label: secondaryLabel, kind: "dismiss" };
-  }
-  if (deferLabel && !labelImpliesNavigation(deferLabel)) {
+  if (deferLabel && labelIsDismissive(deferLabel)) {
     return { label: deferLabel, kind: "dismiss" };
+  }
+  if (secondaryLabel && labelIsDismissive(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "dismiss" };
   }
   return { label: "Dismiss", kind: "dismiss" };
 }
@@ -322,11 +322,15 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
   }
   const payload = metadataRecord(interrupt.metadata?.conflict_payload);
   const detail = metadataRecord(payload.detail);
+  const detailLocal = metadataRecord(detail.local);
+  const detailRemote = metadataRecord(detail.remote);
   const localTitle =
     typeof payload.local_title === "string" && payload.local_title.trim()
       ? payload.local_title.trim()
       : typeof payload.block_title === "string" && payload.block_title.trim()
         ? payload.block_title.trim()
+        : typeof detailLocal.title === "string" && detailLocal.title.trim()
+          ? detailLocal.title.trim()
         : typeof detail.local_title === "string" && detail.local_title.trim()
           ? detail.local_title.trim()
           : typeof detail.block_title === "string" && detail.block_title.trim()
@@ -337,6 +341,8 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
       ? payload.remote_title.trim()
       : typeof payload.title === "string" && payload.title.trim()
         ? payload.title.trim()
+        : typeof detailRemote.title === "string" && detailRemote.title.trim()
+          ? detailRemote.title.trim()
         : typeof detail.remote_title === "string" && detail.remote_title.trim()
           ? detail.remote_title.trim()
           : typeof detail.title === "string" && detail.title.trim()
@@ -348,8 +354,8 @@ export function mobilePlannerConflictPreview(interrupt: AssistantInterrupt): Mob
       : typeof payload.overlap_minutes === "number"
         ? `Overlaps by ${payload.overlap_minutes}m`
         : "Overlap";
-  const localTimeLabel = conflictTimeLabel(payload, detail, "local");
-  const remoteTimeLabel = conflictTimeLabel(payload, detail, "remote");
+  const localTimeLabel = conflictTimeLabel(payload, detail, detailLocal, "local");
+  const remoteTimeLabel = conflictTimeLabel(payload, detail, detailRemote, "remote");
   const overlapTimeLabel =
     cleanMetadataString(payload.overlap_time_label) ||
     cleanMetadataString(payload.conflict_time_label) ||
@@ -363,12 +369,19 @@ function cleanMetadataString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function conflictTimeLabel(payload: Record<string, unknown>, detail: Record<string, unknown>, prefix: "local" | "remote"): string | null {
+function conflictTimeLabel(
+  payload: Record<string, unknown>,
+  detail: Record<string, unknown>,
+  nested: Record<string, unknown>,
+  prefix: "local" | "remote",
+): string | null {
   const direct =
     cleanMetadataString(payload[`${prefix}_time_label`]) ||
     cleanMetadataString(payload[`${prefix}_time`]) ||
     cleanMetadataString(detail[`${prefix}_time_label`]) ||
-    cleanMetadataString(detail[`${prefix}_time`]);
+    cleanMetadataString(detail[`${prefix}_time`]) ||
+    cleanMetadataString(nested.time_label) ||
+    cleanMetadataString(nested.time);
   if (direct) {
     return direct;
   }
@@ -378,14 +391,22 @@ function conflictTimeLabel(payload: Record<string, unknown>, detail: Record<stri
     cleanMetadataString(payload[`${prefix}_start`]) ||
     cleanMetadataString(detail[`${prefix}_start_label`]) ||
     cleanMetadataString(detail[`${prefix}_start_time`]) ||
-    cleanMetadataString(detail[`${prefix}_start`]);
+    cleanMetadataString(detail[`${prefix}_start`]) ||
+    cleanMetadataString(nested.start_label) ||
+    cleanMetadataString(nested.start_time) ||
+    cleanMetadataString(nested.starts_at) ||
+    cleanMetadataString(nested.start);
   const end =
     cleanMetadataString(payload[`${prefix}_end_label`]) ||
     cleanMetadataString(payload[`${prefix}_end_time`]) ||
     cleanMetadataString(payload[`${prefix}_end`]) ||
     cleanMetadataString(detail[`${prefix}_end_label`]) ||
     cleanMetadataString(detail[`${prefix}_end_time`]) ||
-    cleanMetadataString(detail[`${prefix}_end`]);
+    cleanMetadataString(detail[`${prefix}_end`]) ||
+    cleanMetadataString(nested.end_label) ||
+    cleanMetadataString(nested.end_time) ||
+    cleanMetadataString(nested.ends_at) ||
+    cleanMetadataString(nested.end);
   if (start && end) {
     return `${start} - ${end}`;
   }
