@@ -4,10 +4,12 @@ import {
   API_BASE,
   assistantThreadActivitySnapshot,
   assistantThreadSnapshot,
+  captureTriageInterrupt,
   morningFocusInterrupt,
   plannerConflictInterrupt,
   routeAssistantThread,
   seedAssistantSession,
+  taskDetailInterrupt,
 } from "./assistant-concept-fixtures";
 
 test("mobile viewport assistant keeps one inline schedule-conflict decision and planner escape", async ({ page }) => {
@@ -304,4 +306,126 @@ test("mobile viewport assistant keeps tool activity compact and readable", async
   expect(horizontalOverflow).toBe(false);
 
   await page.screenshot({ path: "artifacts/ui-functional/mobile-assistant-tool-activity-strip.png", fullPage: true });
+});
+
+test("mobile viewport assistant renders task detail and capture triage panels inline", async ({ page }) => {
+  await seedAssistantSession(page);
+
+  const taskInterrupt = taskDetailInterrupt();
+  let snapshot = assistantThreadSnapshot({
+    last_message_at: "2026-04-28T09:18:00.000Z",
+    last_preview_text: "I need one detail before creating the task.",
+    interrupts: [taskInterrupt],
+    messages: [
+      {
+        id: "msg_user_task",
+        thread_id: "thr_primary",
+        run_id: null,
+        role: "user",
+        status: "complete",
+        parts: [{ type: "text", id: "part_user_task", text: "Create a task to finish onboarding flow polish." }],
+        metadata: {},
+        created_at: "2026-04-28T09:11:00.000Z",
+        updated_at: "2026-04-28T09:11:00.000Z",
+      },
+      {
+        id: "msg_assistant_task",
+        thread_id: "thr_primary",
+        run_id: "run_task_detail",
+        role: "assistant",
+        status: "requires_action",
+        parts: [
+          { type: "text", id: "part_task_text", text: "I can add that now. I only need the missing task details." },
+          { type: "interrupt_request", id: "part_task_interrupt", interrupt: taskInterrupt },
+        ],
+        metadata: {},
+        created_at: "2026-04-28T09:12:00.000Z",
+        updated_at: "2026-04-28T09:12:00.000Z",
+      },
+    ],
+  });
+  const submissions: Array<Record<string, unknown>> = [];
+
+  await routeAssistantThread(page, () => snapshot);
+  await page.route(`${API_BASE}/v1/assistant/interrupts/interrupt_task_detail/submit`, async (route) => {
+    submissions.push(route.request().postDataJSON() as Record<string, unknown>);
+    const submitted = taskDetailInterrupt("submitted");
+    snapshot = assistantThreadSnapshot({
+      ...snapshot,
+      interrupts: [submitted],
+      messages: [
+        (snapshot.messages as Array<Record<string, unknown>>)[0],
+        {
+          ...((snapshot.messages as Array<Record<string, unknown>>) || [])[1],
+          status: "complete",
+          parts: [
+            { type: "text", id: "part_task_text", text: "The task is ready with the details you chose." },
+            { type: "interrupt_request", id: "part_task_interrupt", interrupt: submitted },
+          ],
+        },
+      ],
+    });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  });
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(1);
+  const taskPanel = page.getByTestId("dynamic-panel-renderer");
+  await expect(taskPanel.getByText("Task setup")).toBeVisible();
+  await expect(taskPanel.getByText("Finish onboarding flow polish").first()).toBeVisible();
+  await expect(taskPanel.getByRole("button", { name: "Today" })).toBeVisible();
+  await expect(taskPanel.getByRole("button", { name: "Tomorrow" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "High" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Medium" })).toBeVisible();
+  await expect(page.getByText("Create 45m focus block")).toBeVisible();
+  await expect(page.getByText("Blocks 9:30-10:15 AM for deep work and keeps the task visible in Planner.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save without date" })).toBeVisible();
+  await taskPanel.getByRole("button", { name: "Create task" }).click();
+  expect(submissions[0].values).toEqual(
+    expect.objectContaining({
+      due_date: "2026-04-28",
+      priority: 1,
+      create_time_block: true,
+      client_timezone: expect.any(String),
+    }),
+  );
+
+  const captureInterrupt = captureTriageInterrupt();
+  snapshot = assistantThreadSnapshot({
+    last_message_at: "2026-04-28T09:19:00.000Z",
+    last_preview_text: "I saved this capture and need a routing choice.",
+    interrupts: [captureInterrupt],
+    messages: [
+      {
+        id: "msg_assistant_capture",
+        thread_id: "thr_primary",
+        run_id: "run_capture_triage",
+        role: "assistant",
+        status: "requires_action",
+        parts: [
+          { type: "text", id: "part_capture_text", text: "I saved this as a new capture. Choose how to route it." },
+          { type: "interrupt_request", id: "part_capture_interrupt", interrupt: captureInterrupt },
+        ],
+        metadata: {},
+        created_at: "2026-04-28T09:19:00.000Z",
+        updated_at: "2026-04-28T09:19:00.000Z",
+      },
+    ],
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(1);
+  const capturePanel = page.getByTestId("dynamic-panel-renderer");
+  await expect(capturePanel.getByText("Capture triage")).toBeVisible();
+  await expect(capturePanel.getByText("Design idea: inline AI suggestions in the editor").first()).toBeVisible();
+  await expect(capturePanel.getByText("Chrome - starlog idea doc · 9:12 AM")).toBeVisible();
+  for (const label of ["Reference", "Idea", "Task", "Review material", "Project input", "Summarize", "Make cards", "Create task", "Append to note"]) {
+    await expect(capturePanel.getByRole("radio", { name: label, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("link", { name: "Open Library" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save triage" })).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/tool_name|triage_capture|request_due_date|Diagnostics|dashboard/i);
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(horizontalOverflow).toBe(false);
 });

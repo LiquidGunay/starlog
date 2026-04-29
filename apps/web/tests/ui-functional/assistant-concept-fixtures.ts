@@ -500,3 +500,142 @@ export function plannerConflictInterrupt(status: "pending" | "submitted" = "pend
     },
   };
 }
+
+export function taskDetailInterrupt(status: "pending" | "submitted" = "pending"): Record<string, unknown> {
+  return {
+    id: "interrupt_task_detail",
+    thread_id: "thr_primary",
+    run_id: "run_task_detail",
+    tool_name: "request_due_date",
+    interrupt_type: "form",
+    status,
+    title: "Finish task details",
+    body: "Add the missing timing so Starlog can create the task.",
+    primary_label: "Create task",
+    secondary_label: "Save without date",
+    defer_label: "Later",
+    fields: [
+      {
+        id: "due_date",
+        kind: "date",
+        label: "Due date",
+        required: true,
+        value: "2026-04-28",
+      },
+      {
+        id: "priority",
+        kind: "priority",
+        label: "Priority",
+        value: 1,
+        min: 1,
+        max: 3,
+        options: [
+          { label: "High", value: "1" },
+          { label: "Medium", value: "2" },
+          { label: "Low", value: "3" },
+        ],
+      },
+      {
+        id: "create_time_block",
+        kind: "toggle",
+        label: "Create 45m focus block",
+        value: true,
+      },
+    ],
+    entity_ref: {
+      entity_type: "task",
+      entity_id: "task_onboarding_polish",
+      href: "/planner?task=task_onboarding_polish",
+      title: "Finish onboarding flow polish",
+    },
+    consequence_preview: "Blocks 9:30-10:15 AM for deep work and keeps the task visible in Planner.",
+    resolution:
+      status === "submitted"
+        ? {
+            id: "resolution_task_detail",
+            interrupt_id: "interrupt_task_detail",
+            action: "submit",
+            values: { due_date: "2026-04-28", priority: "1", create_time_block: true, client_timezone: "UTC" },
+            metadata: {},
+            created_at: "2026-04-28T09:14:00.000Z",
+          }
+        : null,
+    created_at: "2026-04-28T09:12:00.000Z",
+    resolved_at: status === "submitted" ? "2026-04-28T09:14:00.000Z" : null,
+    metadata: {
+      task_title: "Finish onboarding flow polish",
+      task_detail: "Needs due date and priority before Starlog creates it.",
+    },
+  };
+}
+
+export function captureTriageInterrupt(status: "pending" | "submitted" = "pending"): Record<string, unknown> {
+  return {
+    id: "interrupt_capture_triage",
+    thread_id: "thr_primary",
+    run_id: "run_capture_triage",
+    tool_name: "triage_capture",
+    interrupt_type: "form",
+    status,
+    title: "Triage this capture",
+    body: "Classify the capture and choose the next step.",
+    primary_label: "Save triage",
+    secondary_label: "Open Library",
+    defer_label: "Later",
+    fields: [
+      {
+        id: "capture_kind",
+        kind: "select",
+        label: "Classify this item",
+        required: true,
+        value: "reference",
+        options: [
+          { label: "Reference", value: "reference" },
+          { label: "Idea", value: "idea" },
+          { label: "Task", value: "task" },
+          { label: "Review material", value: "review_material" },
+          { label: "Project input", value: "project_input" },
+        ],
+      },
+      {
+        id: "next_step",
+        kind: "select",
+        label: "Next step",
+        required: true,
+        value: "summarize",
+        options: [
+          { label: "Summarize", value: "summarize" },
+          { label: "Make cards", value: "cards" },
+          { label: "Create task", value: "task" },
+          { label: "Append to note", value: "append_note" },
+        ],
+      },
+    ],
+    entity_ref: {
+      entity_type: "artifact",
+      entity_id: "artifact_inline_suggestions",
+      href: "/library?artifact=artifact_inline_suggestions",
+      title: "Design idea: inline AI suggestions in the editor",
+    },
+    consequence_preview: "Summarizes the idea, extracts key points, and saves a note in Library.",
+    resolution:
+      status === "submitted"
+        ? {
+            id: "resolution_capture_triage",
+            interrupt_id: "interrupt_capture_triage",
+            action: "submit",
+            values: { capture_kind: "reference", next_step: "summarize", client_timezone: "UTC" },
+            metadata: {},
+            created_at: "2026-04-28T09:20:00.000Z",
+          }
+        : null,
+    created_at: "2026-04-28T09:18:00.000Z",
+    resolved_at: status === "submitted" ? "2026-04-28T09:20:00.000Z" : null,
+    metadata: {
+      capture_title: "Design idea: inline AI suggestions in the editor",
+      snippet: "Use inline suggestions to keep drafting flow intact while preserving source fidelity.",
+      source_label: "Chrome - starlog idea doc",
+      captured_at_label: "9:12 AM",
+    },
+  };
+}
