@@ -117,14 +117,15 @@ function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterr
     }
   }
   if (isTaskDetailPanel(interrupt)) {
-    if (option.value === "1" || /high/i.test(option.label)) {
+    const normalizedLabel = option.label.trim().toLowerCase();
+    if (/high/.test(normalizedLabel) || option.value === "1") {
       return "Do this before lower-priority tasks.";
     }
-    if (option.value === "3" || /medium/i.test(option.label)) {
-      return "Keep it visible without taking over today.";
-    }
-    if (option.value === "5" || /low/i.test(option.label)) {
+    if (/low/.test(normalizedLabel) || option.value === "5") {
       return "Track it without protecting time yet.";
+    }
+    if (/medium/.test(normalizedLabel) || option.value === "2" || option.value === "3") {
+      return "Keep it visible without taking over today.";
     }
   }
   if (isCaptureTriagePanel(interrupt)) {
@@ -216,7 +217,14 @@ function EntityLink({ entityRef }: { entityRef: AssistantEntityRef | null | unde
 function todayIso(offsetDays = 0): string {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function secondarySubmits(interrupt: AssistantInterrupt, label: string): boolean {
+  return isTaskDetailPanel(interrupt) && /\bsave without date\b/i.test(label);
 }
 
 function setFieldValue(
@@ -660,7 +668,15 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
         ) : (
           <button
             type="button"
-            onClick={() => void onDismiss(interrupt.id)}
+            onClick={() => {
+              if (secondarySubmits(interrupt, secondaryLabel)) {
+                const valuesWithoutDate = { ...values };
+                delete valuesWithoutDate.due_date;
+                void onSubmit(interrupt.id, valuesWithoutDate);
+                return;
+              }
+              void onDismiss(interrupt.id);
+            }}
             disabled={busy}
             className={styles.secondaryButton}
           >

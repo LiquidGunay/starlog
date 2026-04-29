@@ -40,7 +40,7 @@ export type MobilePlannerConflictPreview = {
 
 export type MobilePanelSecondaryAction = {
   label: string;
-  kind: "dismiss" | "open_planner" | "open_library";
+  kind: "dismiss" | "open_planner" | "open_library" | "submit";
 };
 
 export type MobileAssistantPanelLayout = {
@@ -180,7 +180,11 @@ export function panelDismissPayload(interrupt: AssistantInterrupt): { interruptI
 }
 
 function labelIsDismissive(label: string): boolean {
-  return /\b(later|not now|cancel|dismiss|skip|defer|keep in review|no thanks|save without date)\b/i.test(label);
+  return /\b(later|not now|cancel|dismiss|skip|defer|keep in review|no thanks)\b/i.test(label);
+}
+
+function labelIsSecondarySubmit(label: string): boolean {
+  return /\b(save without date)\b/i.test(label);
 }
 
 export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): MobilePanelSecondaryAction {
@@ -191,6 +195,9 @@ export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): Mobil
   }
   if (secondaryLabel && /\b(open|view)\s+library\b/i.test(secondaryLabel)) {
     return { label: secondaryLabel, kind: "open_library" };
+  }
+  if (secondaryLabel && labelIsSecondarySubmit(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "submit" };
   }
   if (secondaryLabel && labelIsDismissive(secondaryLabel)) {
     return { label: secondaryLabel, kind: "dismiss" };

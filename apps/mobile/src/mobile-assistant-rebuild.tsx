@@ -144,7 +144,10 @@ function timestampLabel(value: string): string {
 function dateInputValue(offsetDays = 0): string {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function compactMeta(meta: string): string {
@@ -1082,7 +1085,7 @@ function DynamicPanelRenderer({
   palette: Record<string, string>;
   active: boolean;
   onValueChange: (fieldId: string, value: unknown) => void;
-  onSubmit: () => void;
+  onSubmit: (valuesOverride?: Record<string, unknown>) => void;
   onDismiss: () => void;
   onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
 }) {
@@ -1198,7 +1201,7 @@ function DynamicPanelRenderer({
                 alignItems: "center",
                 justifyContent: "center",
               }}
-              onPress={onSubmit}
+              onPress={() => onSubmit()}
             >
               <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
                 {interrupt.primary_label}
@@ -1240,6 +1243,12 @@ function DynamicPanelRenderer({
                       title: interrupt.title,
                     },
                   );
+                  return;
+                }
+                if (secondaryAction.kind === "submit") {
+                  const valuesWithoutDate = { ...values };
+                  delete valuesWithoutDate.due_date;
+                  onSubmit(valuesWithoutDate);
                   return;
                 }
                 onDismiss();
@@ -2107,8 +2116,10 @@ export function MobileAssistantRebuild({
                               },
                             }))
                           }
-                          onSubmit={() => {
-                            const payload = panelSubmitPayload(interrupt, interruptValuesById);
+                          onSubmit={(valuesOverride) => {
+                            const payload = valuesOverride
+                              ? { interruptId: interrupt.id, values: valuesOverride }
+                              : panelSubmitPayload(interrupt, interruptValuesById);
                             onInterruptSubmit(payload.interruptId, payload.values);
                           }}
                           onDismiss={() => {

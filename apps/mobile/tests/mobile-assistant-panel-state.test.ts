@@ -254,7 +254,7 @@ assert.deepEqual(
   mobilePanelSecondaryAction(interrupt({ tool_name: "request_due_date", secondary_label: "Save without date", defer_label: "Later" })),
   {
     label: "Save without date",
-    kind: "dismiss",
+    kind: "submit",
   },
 );
 assert.deepEqual(mobilePanelSecondaryAction(interrupt({ tool_name: "triage_capture", secondary_label: "Open Library" })), {

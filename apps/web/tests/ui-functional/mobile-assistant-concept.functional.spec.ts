@@ -12,6 +12,15 @@ import {
   taskDetailInterrupt,
 } from "./assistant-concept-fixtures";
 
+function localDateValue(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 test("mobile viewport assistant keeps one inline schedule-conflict decision and planner escape", async ({ page }) => {
   await seedAssistantSession(page);
 
@@ -378,13 +387,41 @@ test("mobile viewport assistant renders task detail and capture triage panels in
   await expect(taskPanel.getByRole("button", { name: "Tomorrow" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "High" })).toBeChecked();
   await expect(page.getByRole("radio", { name: "Medium" })).toBeVisible();
+  await expect(taskPanel.getByText("Track it without protecting time yet.")).toBeVisible();
   await expect(page.getByText("Create 45m focus block")).toBeVisible();
   await expect(page.getByText("Blocks 9:30-10:15 AM for deep work and keeps the task visible in Planner.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save without date" })).toBeVisible();
-  await taskPanel.getByRole("button", { name: "Create task" }).click();
+  await taskPanel.getByRole("button", { name: "Save without date" }).click();
   expect(submissions[0].values).toEqual(
+    expect.not.objectContaining({
+      due_date: expect.anything(),
+    }),
+  );
+
+  snapshot = assistantThreadSnapshot({
+    ...snapshot,
+    interrupts: [taskInterrupt],
+    messages: [
+      (snapshot.messages as Array<Record<string, unknown>>)[0],
+      {
+        ...((snapshot.messages as Array<Record<string, unknown>>) || [])[1],
+        status: "requires_action",
+        parts: [
+          { type: "text", id: "part_task_text", text: "I can add that now. I only need the missing task details." },
+          { type: "interrupt_request", id: "part_task_interrupt", interrupt: taskInterrupt },
+        ],
+      },
+    ],
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(1);
+  const taskPanelRetry = page.getByTestId("dynamic-panel-renderer");
+  await taskPanelRetry.getByRole("button", { name: "Tomorrow" }).click();
+  await taskPanelRetry.getByRole("button", { name: "Today" }).click();
+  await taskPanelRetry.getByRole("button", { name: "Create task" }).click();
+  expect(submissions[1].values).toEqual(
     expect.objectContaining({
-      due_date: "2026-04-28",
+      due_date: localDateValue(0),
       priority: 1,
       create_time_block: true,
       client_timezone: expect.any(String),
