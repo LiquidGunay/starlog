@@ -77,6 +77,23 @@ function metadataString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function firstMetadataString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function isTaskDetailPanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name === "request_due_date" || /missing.*(task|detail)|task.*missing/i.test(interrupt.tool_name);
+}
+
+function isCaptureTriagePanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name === "triage_capture" || /capture.*(triage|enrich|summar)/i.test(interrupt.tool_name);
+}
+
 function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterruptField, option: { label: string; value: string }): string | null {
   const fieldDescriptions = metadataRecord(field.metadata?.option_descriptions);
   const interruptDescriptions = metadataRecord(interrupt.metadata?.option_descriptions);
@@ -99,14 +116,43 @@ function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterr
       return "Mark deep work flexible and decide later.";
     }
   }
+  if (isTaskDetailPanel(interrupt)) {
+    const normalizedLabel = option.label.trim().toLowerCase();
+    if (/high/.test(normalizedLabel) || option.value === "1") {
+      return "Do this before lower-priority tasks.";
+    }
+    if (/low/.test(normalizedLabel) || option.value === "5") {
+      return "Track it without protecting time yet.";
+    }
+    if (/medium/.test(normalizedLabel) || option.value === "2" || option.value === "3") {
+      return "Keep it visible without taking over today.";
+    }
+  }
+  if (isCaptureTriagePanel(interrupt)) {
+    if (/reference|source/i.test(option.label) || option.value.includes("reference")) {
+      return "Keep source context for later lookup.";
+    }
+    if (/idea|fleeting/i.test(option.label) || option.value.includes("idea")) {
+      return "Save as a thought to develop.";
+    }
+    if (/task|action/i.test(option.label) || option.value.includes("task")) {
+      return "Route it toward Planner.";
+    }
+    if (/review/i.test(option.label) || option.value.includes("review")) {
+      return "Use it for recall or practice.";
+    }
+    if (/project/i.test(option.label) || option.value.includes("project")) {
+      return "Attach it to active work.";
+    }
+  }
   return null;
 }
 
 function panelTone(interrupt: AssistantInterrupt): PanelTone {
-  if (interrupt.tool_name === "request_due_date") {
+  if (isTaskDetailPanel(interrupt)) {
     return "task";
   }
-  if (interrupt.tool_name === "triage_capture") {
+  if (isCaptureTriagePanel(interrupt)) {
     return "capture";
   }
   if (interrupt.tool_name === "resolve_planner_conflict") {
@@ -122,10 +168,10 @@ function panelTone(interrupt: AssistantInterrupt): PanelTone {
 }
 
 function panelLabel(interrupt: AssistantInterrupt): string {
-  if (interrupt.tool_name === "request_due_date") {
+  if (isTaskDetailPanel(interrupt)) {
     return "Task setup";
   }
-  if (interrupt.tool_name === "triage_capture") {
+  if (isCaptureTriagePanel(interrupt)) {
     return "Capture triage";
   }
   if (interrupt.tool_name === "resolve_planner_conflict") {
@@ -171,7 +217,14 @@ function EntityLink({ entityRef }: { entityRef: AssistantEntityRef | null | unde
 function todayIso(offsetDays = 0): string {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function secondarySubmits(interrupt: AssistantInterrupt, label: string): boolean {
+  return isTaskDetailPanel(interrupt) && /\bsave without date\b/i.test(label);
 }
 
 function setFieldValue(
@@ -281,7 +334,12 @@ function FieldControl({
   const stringValue = typeof value === "string" || typeof value === "number" ? String(value) : "";
   const useOptionCards =
     (field.kind === "select" || field.kind === "priority") &&
-    (variant === "focus" || variant === "planner" || variant === "review" || field.options?.length === 2);
+    (variant === "focus" ||
+      variant === "planner" ||
+      variant === "review" ||
+      isTaskDetailPanel(interrupt) ||
+      isCaptureTriagePanel(interrupt) ||
+      field.options?.length === 2);
 
   if (useOptionCards) {
     return <OptionCards interrupt={interrupt} field={field} values={values} setValues={setValues} variant={variant} />;
@@ -411,6 +469,85 @@ function RecommendedDefaults({ interrupt }: { interrupt: AssistantInterrupt }) {
   );
 }
 
+function TaskDetailPreview({ interrupt }: { interrupt: AssistantInterrupt }) {
+  if (!isTaskDetailPanel(interrupt)) {
+    return null;
+  }
+  const task = metadataRecord(interrupt.metadata?.task);
+  const draft = metadataRecord(interrupt.metadata?.task_draft);
+  const argumentsRecord = metadataRecord(interrupt.metadata?.arguments);
+  const title =
+    firstMetadataString(
+      interrupt.entity_ref?.title,
+      interrupt.metadata?.task_title,
+      task.title,
+      draft.title,
+      argumentsRecord.task_title,
+      interrupt.title,
+    ) || "New task";
+  const detail = firstMetadataString(interrupt.metadata?.task_detail, task.detail, draft.detail, draft.body, interrupt.body);
+
+  return (
+    <div className={styles.itemPreview} aria-label="Task preview">
+      <strong>{title}</strong>
+      {detail ? <span>{detail}</span> : null}
+    </div>
+  );
+}
+
+function CaptureTriagePreview({ interrupt }: { interrupt: AssistantInterrupt }) {
+  if (!isCaptureTriagePanel(interrupt)) {
+    return null;
+  }
+  const capture = metadataRecord(interrupt.metadata?.capture);
+  const artifact = metadataRecord(interrupt.metadata?.artifact);
+  const source = metadataRecord(interrupt.metadata?.source);
+  const argumentsRecord = metadataRecord(interrupt.metadata?.arguments);
+  const title =
+    firstMetadataString(
+      interrupt.entity_ref?.title,
+      interrupt.metadata?.capture_title,
+      capture.title,
+      artifact.title,
+      argumentsRecord.title,
+      interrupt.title,
+    ) || "New capture";
+  const snippet = firstMetadataString(
+    interrupt.metadata?.snippet,
+    interrupt.metadata?.capture_snippet,
+    capture.snippet,
+    capture.preview,
+    artifact.snippet,
+    artifact.preview,
+    argumentsRecord.snippet,
+    interrupt.body,
+  );
+  const sourceLabel = firstMetadataString(
+    interrupt.metadata?.source_label,
+    interrupt.metadata?.capture_source,
+    source.label,
+    source.title,
+    capture.source_label,
+    capture.source_type,
+    artifact.source_label,
+  );
+  const capturedAtLabel = firstMetadataString(
+    interrupt.metadata?.captured_at_label,
+    capture.captured_at_label,
+    artifact.captured_at_label,
+    capture.captured_at,
+    artifact.created_at,
+  );
+
+  return (
+    <div className={styles.itemPreview} aria-label="Capture preview">
+      <strong>{title}</strong>
+      {snippet ? <span>{snippet}</span> : null}
+      {sourceLabel || capturedAtLabel ? <small>{[sourceLabel, capturedAtLabel].filter(Boolean).join(" · ")}</small> : null}
+    </div>
+  );
+}
+
 function PlannerConflictPreview({ interrupt }: { interrupt: AssistantInterrupt }) {
   if (interrupt.tool_name !== "resolve_planner_conflict") {
     return null;
@@ -465,8 +602,12 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
   const [values, setValues] = useState<Record<string, unknown>>(defaults);
   const variant = panelTone(interrupt);
   const modeLabel = displayModeLabel(interrupt);
-  const secondaryLabel = interrupt.defer_label || interrupt.secondary_label || "Not now";
-  const secondaryHref = /\b(open|view)\s+planner\b/i.test(secondaryLabel) ? interrupt.entity_ref?.href || "/planner" : null;
+  const secondaryLabel = interrupt.secondary_label || interrupt.defer_label || "Not now";
+  const secondaryHref = /\b(open|view)\s+planner\b/i.test(secondaryLabel)
+    ? interrupt.entity_ref?.href || "/planner"
+    : /\b(open|view)\s+library\b/i.test(secondaryLabel)
+      ? interrupt.entity_ref?.href || "/library"
+      : null;
 
   useEffect(() => {
     setValues(defaults);
@@ -491,6 +632,8 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
         {interrupt.body ? <p>{interrupt.body}</p> : null}
       </div>
 
+      <TaskDetailPreview interrupt={interrupt} />
+      <CaptureTriagePreview interrupt={interrupt} />
       <PlannerConflictPreview interrupt={interrupt} />
 
       {interrupt.fields.length > 0 ? (
@@ -525,7 +668,15 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
         ) : (
           <button
             type="button"
-            onClick={() => void onDismiss(interrupt.id)}
+            onClick={() => {
+              if (secondarySubmits(interrupt, secondaryLabel)) {
+                const valuesWithoutDate = { ...values };
+                delete valuesWithoutDate.due_date;
+                void onSubmit(interrupt.id, valuesWithoutDate);
+                return;
+              }
+              void onDismiss(interrupt.id);
+            }}
             disabled={busy}
             className={styles.secondaryButton}
           >

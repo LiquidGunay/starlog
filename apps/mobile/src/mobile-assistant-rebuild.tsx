@@ -33,14 +33,18 @@ import {
   MOBILE_PANEL_OPTION_LAYOUT,
   mobileAssistantPanelLayout,
   mobileAssistantPromptChips,
+  mobileCaptureTriagePreview,
   mobileDynamicPanelStates,
   mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
+  mobileTaskDetailPreview,
   panelDismissPayload,
   panelKicker,
   panelSubmitPayload,
   panelTone,
+  isCaptureTriagePanel,
+  isTaskDetailPanel,
   selectedValueLabel,
   visibleContextChips,
   type PanelTone,
@@ -135,6 +139,15 @@ function timestampLabel(value: string): string {
     return "";
   }
   return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function dateInputValue(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function compactMeta(meta: string): string {
@@ -611,6 +624,69 @@ function InterruptFieldInput({
   const dimensions = useWindowDimensions();
   const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
 
+  if (isTaskDetailPanel(interrupt) && field.kind === "date") {
+    const current = fieldValue(values, field);
+    const quickDates = [
+      { label: "Today", value: dateInputValue(0) },
+      { label: "Tomorrow", value: dateInputValue(1) },
+    ];
+    return (
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+          {field.label}
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {quickDates.map((option) => {
+            const selected = current === option.value;
+            return (
+              <TouchableOpacity
+                key={option.value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={option.label}
+                style={{
+                  minHeight: 40,
+                  borderRadius: 13,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderWidth: 1,
+                  borderColor: selected ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.06)",
+                  backgroundColor: selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onPress={() => setValue(option.value)}
+              >
+                <Text style={{ color: selected ? accent?.text || palette.text : palette.text, fontSize: 13.5, fontWeight: "800" }}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <TextInput
+          value={current}
+          onChangeText={setValue}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={palette.muted}
+          autoCapitalize="none"
+          style={{
+            minHeight: 42,
+            borderRadius: 14,
+            paddingHorizontal: 12,
+            paddingVertical: 9,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.05)",
+            backgroundColor: "rgba(255,255,255,0.02)",
+            color: palette.text,
+            fontSize: 14,
+            lineHeight: 20,
+          }}
+        />
+      </View>
+    );
+  }
+
   if (field.kind === "toggle") {
     return (
       <View
@@ -639,6 +715,52 @@ function InterruptFieldInput({
 
   if (field.kind === "select" || field.kind === "priority") {
     const options = mobilePanelOptionViewModels(interrupt, field, values);
+    const compactChoices = isCaptureTriagePanel(interrupt) || (isTaskDetailPanel(interrupt) && field.kind === "priority");
+    if (compactChoices) {
+      return (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            {field.label}
+          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {options.map((option) => (
+              <TouchableOpacity
+                key={`${field.id}-${option.value}`}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: option.selected }}
+                accessibilityLabel={option.label}
+                style={{
+                  minHeight: 38,
+                  maxWidth: "100%",
+                  borderRadius: 13,
+                  paddingHorizontal: 11,
+                  paddingVertical: 8,
+                  borderWidth: 1,
+                  borderColor: option.selected ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.06)",
+                  backgroundColor: option.selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onPress={() => setValue(option.value)}
+              >
+                <Text
+                  style={{
+                    color: option.selected ? accent?.text || palette.text : palette.text,
+                    fontSize: 13,
+                    lineHeight: 17,
+                    fontWeight: "800",
+                    textAlign: "center",
+                  }}
+                  numberOfLines={2}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      );
+    }
     return (
       <View style={{ gap: 8 }}>
         <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
@@ -778,6 +900,93 @@ function ConsequencePreview({
   );
 }
 
+function TaskDetailMiniPreview({
+  interrupt,
+  palette,
+  accent,
+}: {
+  interrupt: AssistantInterrupt;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+}) {
+  const preview = mobileTaskDetailPreview(interrupt);
+  if (!preview) {
+    return null;
+  }
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        flexDirection: "row",
+        gap: 10,
+        alignItems: "flex-start",
+      }}
+    >
+      <MaterialCommunityIcons name={"checkbox-marked-circle-outline" as never} size={18} color={accent.text} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text style={{ color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={2}>
+          {preview.title}
+        </Text>
+        {preview.detail ? (
+          <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
+            {preview.detail}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function CaptureTriageMiniPreview({
+  interrupt,
+  palette,
+  accent,
+}: {
+  interrupt: AssistantInterrupt;
+  palette: Record<string, string>;
+  accent: { text: string; bg: string; border: string };
+}) {
+  const preview = mobileCaptureTriagePreview(interrupt);
+  if (!preview) {
+    return null;
+  }
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,255,255,0.018)",
+        paddingHorizontal: 11,
+        paddingVertical: 10,
+        gap: 6,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <MaterialCommunityIcons name={"file-document-outline" as never} size={17} color={accent.text} />
+        <Text style={{ flex: 1, minWidth: 0, color: palette.text, fontSize: 14.5, lineHeight: 19, fontWeight: "800" }} numberOfLines={2}>
+          {preview.title}
+        </Text>
+      </View>
+      {preview.snippet ? (
+        <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={3}>
+          {preview.snippet}
+        </Text>
+      ) : null}
+      {preview.sourceLabel || preview.capturedAtLabel ? (
+        <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16, fontWeight: "700" }} numberOfLines={1}>
+          {[preview.sourceLabel, preview.capturedAtLabel].filter(Boolean).join(" · ")}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function PlannerConflictMiniPreview({
   interrupt,
   palette,
@@ -876,7 +1085,7 @@ function DynamicPanelRenderer({
   palette: Record<string, string>;
   active: boolean;
   onValueChange: (fieldId: string, value: unknown) => void;
-  onSubmit: () => void;
+  onSubmit: (valuesOverride?: Record<string, unknown>) => void;
   onDismiss: () => void;
   onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
 }) {
@@ -924,6 +1133,8 @@ function DynamicPanelRenderer({
         <EntityActionChip entityRef={interrupt.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
       </View>
 
+      <TaskDetailMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
+      <CaptureTriageMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
       <PlannerConflictMiniPreview interrupt={interrupt} palette={palette} accent={accent} />
 
       {pending ? (
@@ -990,7 +1201,7 @@ function DynamicPanelRenderer({
                 alignItems: "center",
                 justifyContent: "center",
               }}
-              onPress={onSubmit}
+              onPress={() => onSubmit()}
             >
               <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.onAccent, fontSize: 14, lineHeight: 18, fontWeight: "800", textAlign: "center" }}>
                 {interrupt.primary_label}
@@ -1021,6 +1232,23 @@ function DynamicPanelRenderer({
                       title: interrupt.title,
                     },
                   );
+                  return;
+                }
+                if (secondaryAction.kind === "open_library") {
+                  onOpenEntityRef(
+                    interrupt.entity_ref || {
+                      entity_type: "artifact",
+                      entity_id: interrupt.id,
+                      href: "/library",
+                      title: interrupt.title,
+                    },
+                  );
+                  return;
+                }
+                if (secondaryAction.kind === "submit") {
+                  const valuesWithoutDate = { ...values };
+                  delete valuesWithoutDate.due_date;
+                  onSubmit(valuesWithoutDate);
                   return;
                 }
                 onDismiss();
@@ -1888,8 +2116,10 @@ export function MobileAssistantRebuild({
                               },
                             }))
                           }
-                          onSubmit={() => {
-                            const payload = panelSubmitPayload(interrupt, interruptValuesById);
+                          onSubmit={(valuesOverride) => {
+                            const payload = valuesOverride
+                              ? { interruptId: interrupt.id, values: valuesOverride }
+                              : panelSubmitPayload(interrupt, interruptValuesById);
                             onInterruptSubmit(payload.interruptId, payload.values);
                           }}
                           onDismiss={() => {

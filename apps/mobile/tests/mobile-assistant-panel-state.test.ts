@@ -5,11 +5,14 @@ import {
   MOBILE_PANEL_ACTION_LAYOUT,
   MOBILE_PANEL_OPTION_LAYOUT,
   mobileAssistantPromptChips,
+  mobileCaptureTriagePreview,
   mobileDynamicPanelStates,
   mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
+  mobileTaskDetailPreview,
   panelDismissPayload,
+  panelTone,
   panelSubmitPayload,
   visibleContextChips,
 } from "../src/mobile-assistant-panel-state";
@@ -247,6 +250,110 @@ assert.deepEqual(mobilePanelSecondaryAction(interrupt({ secondary_label: "Keep i
   label: "Keep in Review",
   kind: "dismiss",
 });
+assert.deepEqual(
+  mobilePanelSecondaryAction(interrupt({ tool_name: "request_due_date", secondary_label: "Save without date", defer_label: "Later" })),
+  {
+    label: "Save without date",
+    kind: "submit",
+  },
+);
+assert.deepEqual(mobilePanelSecondaryAction(interrupt({ tool_name: "triage_capture", secondary_label: "Open Library" })), {
+  label: "Open Library",
+  kind: "open_library",
+});
+
+const taskDetail = interrupt({
+  id: "task-detail",
+  tool_name: "request_due_date",
+  title: "Finish task details",
+  fields: [
+    { id: "due_date", kind: "date", label: "Due date", required: true, value: "2026-04-28" },
+    {
+      id: "priority",
+      kind: "priority",
+      label: "Priority",
+      required: false,
+      value: 1,
+      options: [
+        { label: "High", value: "1" },
+        { label: "Medium", value: "2" },
+        { label: "Low", value: "3" },
+      ],
+    },
+    { id: "create_time_block", kind: "toggle", label: "Create 45m focus block", value: true },
+  ],
+  entity_ref: {
+    entity_type: "task",
+    entity_id: "task-onboarding",
+    href: "/planner?task=task-onboarding",
+    title: "Finish onboarding flow polish",
+  },
+  metadata: { task_detail: "Needs due date and priority before Starlog creates it." },
+});
+assert.equal(panelTone(taskDetail), "task");
+assert.deepEqual(mobileTaskDetailPreview(taskDetail), {
+  title: "Finish onboarding flow polish",
+  detail: "Needs due date and priority before Starlog creates it.",
+});
+const taskPriorityOptions = mobilePanelOptionViewModels(taskDetail, taskDetail.fields[1], defaultPanelValues(taskDetail));
+assert.equal(taskPriorityOptions[0].selected, true);
+assert.equal(taskPriorityOptions[0].description, "Do this before lower-priority tasks.");
+assert.equal(taskPriorityOptions[1].description, "Keep it visible without taking over today.");
+assert.equal(taskPriorityOptions[2].description, "Track it without protecting time yet.");
+
+const captureTriage = interrupt({
+  id: "capture-triage",
+  tool_name: "triage_capture",
+  title: "Triage this capture",
+  fields: [
+    {
+      id: "capture_kind",
+      kind: "select",
+      label: "Classify this item",
+      required: true,
+      value: "reference",
+      options: [
+        { label: "Reference", value: "reference" },
+        { label: "Idea", value: "idea" },
+        { label: "Task", value: "task" },
+        { label: "Review material", value: "review_material" },
+        { label: "Project input", value: "project_input" },
+      ],
+    },
+    {
+      id: "next_step",
+      kind: "select",
+      label: "Next step",
+      required: true,
+      value: "summarize",
+      options: [
+        { label: "Summarize", value: "summarize" },
+        { label: "Make cards", value: "cards" },
+        { label: "Create task", value: "task" },
+        { label: "Append to note", value: "append_note" },
+      ],
+    },
+  ],
+  metadata: {
+    capture_title: "Design idea: inline AI suggestions in the editor",
+    snippet: "Use inline suggestions to keep drafting flow intact.",
+    source_label: "Chrome - starlog idea doc",
+    captured_at_label: "9:12 AM",
+  },
+});
+assert.equal(panelTone(captureTriage), "capture");
+assert.deepEqual(mobileCaptureTriagePreview(captureTriage), {
+  title: "Design idea: inline AI suggestions in the editor",
+  snippet: "Use inline suggestions to keep drafting flow intact.",
+  sourceLabel: "Chrome - starlog idea doc",
+  capturedAtLabel: "9:12 AM",
+});
+const captureKindOptions = mobilePanelOptionViewModels(captureTriage, captureTriage.fields[0], defaultPanelValues(captureTriage));
+assert.deepEqual(
+  captureKindOptions.map((option) => option.label),
+  ["Reference", "Idea", "Task", "Review material", "Project input"],
+);
+assert.equal(captureKindOptions[0].description, "Keep source context for later lookup.");
 
 assert.deepEqual(MOBILE_PANEL_OPTION_LAYOUT, {
   minHeight: 58,

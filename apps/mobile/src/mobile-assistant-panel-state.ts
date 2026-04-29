@@ -40,7 +40,7 @@ export type MobilePlannerConflictPreview = {
 
 export type MobilePanelSecondaryAction = {
   label: string;
-  kind: "dismiss" | "open_planner";
+  kind: "dismiss" | "open_planner" | "open_library" | "submit";
 };
 
 export type MobileAssistantPanelLayout = {
@@ -54,6 +54,18 @@ export type MobileAssistantPanelLayout = {
   actionWraps: boolean;
   conflictTitleMaxLines: number;
   promptChipMaxWidth: "92%" | "100%";
+};
+
+export type MobileTaskDetailPreview = {
+  title: string;
+  detail: string | null;
+};
+
+export type MobileCaptureTriagePreview = {
+  title: string;
+  snippet: string | null;
+  sourceLabel: string | null;
+  capturedAtLabel: string | null;
 };
 
 export const MOBILE_PANEL_OPTION_LAYOUT = {
@@ -84,7 +96,21 @@ export function activePendingInterruptId(interrupts: AssistantInterrupt[]): stri
   return interrupts.find((interrupt) => interrupt.status === "pending")?.id ?? null;
 }
 
+export function isTaskDetailPanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name === "request_due_date" || /missing.*(task|detail)|task.*missing/i.test(interrupt.tool_name);
+}
+
+export function isCaptureTriagePanel(interrupt: AssistantInterrupt): boolean {
+  return interrupt.tool_name === "triage_capture" || /capture.*(triage|enrich|summar)/i.test(interrupt.tool_name);
+}
+
 export function panelTone(interrupt: AssistantInterrupt): PanelTone {
+  if (isTaskDetailPanel(interrupt)) {
+    return "task";
+  }
+  if (isCaptureTriagePanel(interrupt)) {
+    return "capture";
+  }
   return DYNAMIC_PANEL_TOOL_TONES[interrupt.tool_name] || "default";
 }
 
@@ -92,10 +118,10 @@ export function panelKicker(interrupt: AssistantInterrupt): string {
   if (interrupt.tool_name === "choose_morning_focus") {
     return "Morning focus";
   }
-  if (interrupt.tool_name === "request_due_date") {
+  if (isTaskDetailPanel(interrupt)) {
     return "Task details";
   }
-  if (interrupt.tool_name === "triage_capture") {
+  if (isCaptureTriagePanel(interrupt)) {
     return "Capture triage";
   }
   if (interrupt.tool_name === "resolve_planner_conflict") {
@@ -157,17 +183,27 @@ function labelIsDismissive(label: string): boolean {
   return /\b(later|not now|cancel|dismiss|skip|defer|keep in review|no thanks)\b/i.test(label);
 }
 
+function labelIsSecondarySubmit(label: string): boolean {
+  return /\b(save without date)\b/i.test(label);
+}
+
 export function mobilePanelSecondaryAction(interrupt: AssistantInterrupt): MobilePanelSecondaryAction {
   const secondaryLabel = typeof interrupt.secondary_label === "string" ? interrupt.secondary_label.trim() : "";
   const deferLabel = typeof interrupt.defer_label === "string" ? interrupt.defer_label.trim() : "";
   if (secondaryLabel && /\b(open|view)\s+planner\b/i.test(secondaryLabel)) {
     return { label: secondaryLabel, kind: "open_planner" };
   }
-  if (deferLabel && labelIsDismissive(deferLabel)) {
-    return { label: deferLabel, kind: "dismiss" };
+  if (secondaryLabel && /\b(open|view)\s+library\b/i.test(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "open_library" };
+  }
+  if (secondaryLabel && labelIsSecondarySubmit(secondaryLabel)) {
+    return { label: secondaryLabel, kind: "submit" };
   }
   if (secondaryLabel && labelIsDismissive(secondaryLabel)) {
     return { label: secondaryLabel, kind: "dismiss" };
+  }
+  if (deferLabel && labelIsDismissive(deferLabel)) {
+    return { label: deferLabel, kind: "dismiss" };
   }
   return { label: "Dismiss", kind: "dismiss" };
 }
@@ -238,6 +274,81 @@ function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function firstMetadataString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+export function mobileTaskDetailPreview(interrupt: AssistantInterrupt): MobileTaskDetailPreview | null {
+  if (!isTaskDetailPanel(interrupt)) {
+    return null;
+  }
+  const task = metadataRecord(interrupt.metadata?.task);
+  const draft = metadataRecord(interrupt.metadata?.task_draft);
+  const argumentsRecord = metadataRecord(interrupt.metadata?.arguments);
+  const title =
+    firstMetadataString(
+      interrupt.entity_ref?.title,
+      interrupt.metadata?.task_title,
+      task.title,
+      draft.title,
+      argumentsRecord.task_title,
+      interrupt.title,
+    ) || "New task";
+  const detail = firstMetadataString(interrupt.metadata?.task_detail, task.detail, draft.detail, draft.body, interrupt.body);
+  return { title, detail };
+}
+
+export function mobileCaptureTriagePreview(interrupt: AssistantInterrupt): MobileCaptureTriagePreview | null {
+  if (!isCaptureTriagePanel(interrupt)) {
+    return null;
+  }
+  const capture = metadataRecord(interrupt.metadata?.capture);
+  const artifact = metadataRecord(interrupt.metadata?.artifact);
+  const source = metadataRecord(interrupt.metadata?.source);
+  const argumentsRecord = metadataRecord(interrupt.metadata?.arguments);
+  const title =
+    firstMetadataString(
+      interrupt.entity_ref?.title,
+      interrupt.metadata?.capture_title,
+      capture.title,
+      artifact.title,
+      argumentsRecord.title,
+      interrupt.title,
+    ) || "New capture";
+  const snippet = firstMetadataString(
+    interrupt.metadata?.snippet,
+    interrupt.metadata?.capture_snippet,
+    capture.snippet,
+    capture.preview,
+    artifact.snippet,
+    artifact.preview,
+    argumentsRecord.snippet,
+    interrupt.body,
+  );
+  const sourceLabel = firstMetadataString(
+    interrupt.metadata?.source_label,
+    interrupt.metadata?.capture_source,
+    source.label,
+    source.title,
+    capture.source_label,
+    capture.source_type,
+    artifact.source_label,
+  );
+  const capturedAtLabel = firstMetadataString(
+    interrupt.metadata?.captured_at_label,
+    capture.captured_at_label,
+    artifact.captured_at_label,
+    capture.captured_at,
+    artifact.created_at,
+  );
+  return { title, snippet, sourceLabel, capturedAtLabel };
+}
+
 function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterruptField, value: string, label: string): string | null {
   const fieldDescriptions = metadataRecord(field.metadata?.option_descriptions);
   const interruptDescriptions = metadataRecord(interrupt.metadata?.option_descriptions);
@@ -254,6 +365,44 @@ function optionDescription(interrupt: AssistantInterrupt, field: AssistantInterr
     }
     if (value.includes("learning") || /learning|review|practice/i.test(label)) {
       return "Review or practice important material.";
+    }
+  }
+  if (isTaskDetailPanel(interrupt)) {
+    const normalizedLabel = label.trim().toLowerCase();
+    if (/high/.test(normalizedLabel) || value === "1") {
+      return "Do this before lower-priority tasks.";
+    }
+    if (/low/.test(normalizedLabel) || value === "5") {
+      return "Track it without protecting time yet.";
+    }
+    if (/medium/.test(normalizedLabel) || value === "2" || value === "3") {
+      return "Keep it visible without taking over today.";
+    }
+  }
+  if (isCaptureTriagePanel(interrupt)) {
+    if (/reference|source/i.test(label) || value.includes("reference")) {
+      return "Keep source context for later lookup.";
+    }
+    if (/idea|fleeting/i.test(label) || value.includes("idea")) {
+      return "Save as a thought to develop.";
+    }
+    if (/task|action/i.test(label) || value.includes("task")) {
+      return "Route it toward Planner.";
+    }
+    if (/review/i.test(label) || value.includes("review")) {
+      return "Use it for recall or practice.";
+    }
+    if (/project/i.test(label) || value.includes("project")) {
+      return "Attach it to active work.";
+    }
+    if (/summar/i.test(label) || value.includes("summar")) {
+      return "Extract the key points first.";
+    }
+    if (/card/i.test(label) || value.includes("card")) {
+      return "Turn useful facts into Review.";
+    }
+    if (/append|note/i.test(label) || value.includes("append")) {
+      return "Keep it with an existing note.";
     }
   }
   if (interrupt.tool_name === "resolve_planner_conflict") {
