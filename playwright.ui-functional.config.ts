@@ -26,7 +26,7 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
-      testMatch: /mobile-(assistant-concept|planner)\.functional\.spec\.ts/,
+      testMatch: /mobile-(assistant-concept|library|planner)\.functional\.spec\.ts/,
       use: {
         ...devices["Pixel 7"],
       },

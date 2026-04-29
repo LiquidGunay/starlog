@@ -37,6 +37,8 @@ const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 const PLANNER_TEXT_PROPS = { maxFontSizeMultiplier: 1.05 } as const;
 const PLANNER_TIGHT_TEXT_PROPS = { maxFontSizeMultiplier: 1 } as const;
 const REVIEW_TEXT_PROPS = { maxFontSizeMultiplier: 1 } as const;
+const LIBRARY_TEXT_PROPS = { maxFontSizeMultiplier: 1.05 } as const;
+const LIBRARY_TIGHT_TEXT_PROPS = { maxFontSizeMultiplier: 1 } as const;
 
 type SharedProps = {
   styles: Record<string, any>;
@@ -670,30 +672,31 @@ function reviewStageShortLabel(label: string): string {
 function libraryStatChip(
   palette: Record<string, string>,
   stat: { label: string; value: string; supportingLabel: string; icon: "inbox" | "artifact" | "note" | "project" },
+  width?: number,
 ) {
   return (
     <View
       key={stat.label}
       style={{
-        width: 154,
-        minHeight: 104,
+        width: width ?? 154,
+        minHeight: 98,
         borderRadius: 16,
-        backgroundColor: palette.surfaceLow,
+        backgroundColor: "rgba(9, 20, 34, 0.86)",
         borderWidth: 1,
         borderColor: palette.border,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
         gap: 6,
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <MaterialCommunityIcons name={libraryStatIcon(stat.icon)} size={18} color={palette.muted} />
-        <Text numberOfLines={2} style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "800" }}>
+        <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} style={{ flex: 1, color: palette.text, fontSize: 12, lineHeight: 16, fontWeight: "800" }}>
           {stat.label}
         </Text>
       </View>
-      <Text style={{ color: palette.text, fontSize: 26, lineHeight: 30, fontWeight: "800" }}>{stat.value}</Text>
-      <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 12, lineHeight: 16, fontWeight: "700" }}>
+      <Text {...LIBRARY_TEXT_PROPS} style={{ color: palette.text, fontSize: 25, lineHeight: 29, fontWeight: "800" }}>{stat.value}</Text>
+      <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, lineHeight: 15, fontWeight: "700" }}>
         {stat.supportingLabel}
       </Text>
     </View>
@@ -705,27 +708,42 @@ function librarySegmentButton(
   segment: MobileLibrarySegment,
   activeSegment: MobileLibrarySegment,
   onPress: (segment: MobileLibrarySegment) => void,
+  countLabel?: string,
+  compact = false,
 ) {
   const active = segment === activeSegment;
+  const showDecoration = active || !compact;
+  const icon = segment === "Inbox" ? "inbox-outline" : segment === "Artifacts" ? "file-document-multiple-outline" : segment === "Notes" ? "note-text-outline" : "web";
   return (
     <TouchableOpacity
       key={segment}
       onPress={() => onPress(segment)}
       style={{
-        flex: 1,
-        minWidth: 74,
-        borderRadius: 14,
-        paddingVertical: 11,
-        paddingHorizontal: 6,
+        minWidth: compact ? (active ? 104 : 78) : 94,
+        maxWidth: compact ? (active ? 126 : 92) : undefined,
+        borderRadius: 13,
+        paddingVertical: compact ? 8 : 10,
+        paddingHorizontal: compact ? 8 : 9,
         alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: compact ? 4 : 5,
         backgroundColor: active ? "rgba(245, 169, 73, 0.16)" : "transparent",
         borderWidth: 1,
         borderColor: active ? "rgba(245, 169, 73, 0.34)" : "transparent",
       }}
     >
-      <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 12, fontWeight: "800" }}>
+      {showDecoration ? <MaterialCommunityIcons name={icon} size={compact ? 14 : 15} color={active ? palette.secondary : palette.muted} /> : null}
+      <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 12, fontWeight: "800" }}>
         {segment}
       </Text>
+      {showDecoration && countLabel ? (
+        <View style={{ minWidth: 22, borderRadius: 11, backgroundColor: active ? "rgba(245, 169, 73, 0.18)" : palette.surfaceHigh, paddingHorizontal: 5, paddingVertical: 2 }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 10, fontWeight: "800", textAlign: "center" }}>
+            {countLabel}
+          </Text>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -734,86 +752,107 @@ function mobileCaptureRow(
   palette: Record<string, string>,
   row: MobileLibraryInboxRow,
   onPress?: (row: MobileLibraryInboxRow) => void,
+  compact = false,
 ) {
+  const statusColor = row.statusTone === "retry" ? palette.error : row.statusTone === "processed" ? "#a6debf" : palette.secondary;
+  const displayStatus = row.statusTone === "retry" ? "Retry" : row.statusTone === "processed" ? "Done" : row.statusLabel === "Queued retry" ? "Queued" : "New";
   const style = {
-    borderRadius: 16,
-    backgroundColor: palette.surfaceLow,
-    borderWidth: 1,
-    borderColor: palette.border,
-    padding: 12,
-    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    paddingVertical: compact ? 9 : 12,
+    gap: compact ? 8 : 10,
   } as const;
   const canOpen = row.icon === "artifact" && Boolean(onPress);
   const visibleActions = [row.primaryActionLabel, row.secondaryActionLabel].filter((action): action is string => Boolean(action));
+  const executableActions = canOpen ? visibleActions.filter((action) => action === "Open") : [];
+  const suggestionLabels = (canOpen ? visibleActions.filter((action) => action !== "Open") : visibleActions)
+    .map((action) => libraryActionDisplayLabel(action, true));
   return (
     <View key={row.id} style={style}>
-      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+      <View style={{ flexDirection: "row", gap: compact ? 8 : 10, alignItems: "center" }}>
         <View
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            backgroundColor: palette.surfaceHigh,
+            width: compact ? 34 : 42,
+            height: compact ? 34 : 42,
+            borderRadius: compact ? 10 : 12,
+            backgroundColor: "rgba(255,255,255,0.04)",
+            borderWidth: 1,
+            borderColor: palette.border,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <MaterialCommunityIcons name={libraryRowIcon(row)} size={18} color={palette.accent} />
+          <MaterialCommunityIcons name={libraryRowIcon(row)} size={compact ? 16 : 18} color={palette.accent} />
         </View>
-        <View style={{ flex: 1, gap: 5 }}>
+        <View style={{ flex: 1, gap: compact ? 3 : 5 }}>
           <Text
+            {...LIBRARY_TEXT_PROPS}
             numberOfLines={row.layout.titleNumberOfLines}
             ellipsizeMode="tail"
-            style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}
+            style={{ color: palette.text, fontSize: compact ? 14 : 15, lineHeight: compact ? 18 : 20, fontWeight: "800" }}
           >
             {row.title}
           </Text>
           <Text
+            {...LIBRARY_TIGHT_TEXT_PROPS}
             numberOfLines={row.layout.metadataNumberOfLines}
             ellipsizeMode="tail"
-            style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}
+            style={{ color: palette.muted, fontSize: compact ? 11 : 12, lineHeight: compact ? 15 : 17 }}
           >
             {row.sourceLabel} · {row.captureTypeLabel} · {row.timestampLabel}
-          </Text>
-          <Text
-            numberOfLines={1}
-            style={[kickerStyle(palette), { color: row.statusLabel === "Retry needed" ? palette.error : palette.secondary, letterSpacing: 0.8 }]}
-          >
-            {row.statusLabel}
           </Text>
         </View>
         <View
           style={{
-            minWidth: 72,
-            minHeight: 30,
-            borderRadius: 15,
-            backgroundColor: palette.surfaceHigh,
-            alignItems: "center",
-            justifyContent: "center",
-            paddingHorizontal: 9,
-            opacity: 0.72,
+            minWidth: compact ? 50 : 62,
+            alignItems: "flex-end",
+            gap: compact ? 3 : 5,
           }}
         >
-          <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>
-            {canOpen ? "Detail" : "Queued"}
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: compact ? 10 : 12, lineHeight: compact ? 13 : 16 }}>
+            {row.timestampLabel}
           </Text>
+          <View
+            style={{
+              maxWidth: compact ? 62 : 86,
+              minHeight: compact ? 20 : 24,
+              borderRadius: compact ? 10 : 12,
+              backgroundColor: row.statusTone === "processed" ? "rgba(166, 222, 191, 0.08)" : "rgba(245, 169, 73, 0.09)",
+              borderWidth: 1,
+              borderColor: row.statusTone === "processed" ? "rgba(166, 222, 191, 0.16)" : "rgba(245, 169, 73, 0.18)",
+              paddingHorizontal: compact ? 6 : 8,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: statusColor, fontSize: 9, fontWeight: "900", textTransform: "uppercase" }}>
+              {displayStatus}
+            </Text>
+          </View>
+          {canOpen ? <MaterialCommunityIcons name="chevron-right" size={compact ? 16 : 18} color={palette.muted} /> : null}
         </View>
       </View>
-      <View style={{ flexDirection: row.layout.stackActions ? "column" : "row", gap: 8 }}>
-        {visibleActions.map((action, actionIndex) => {
-          const enabled = canOpen && actionIndex === 0 && action === "Open";
+      {canOpen ? (
+        <View style={{ flexDirection: row.layout.stackActions ? "column" : "row", gap: compact ? 6 : 8, paddingLeft: compact ? 42 : 52 }}>
+        {executableActions.map((action) => {
+          const enabled = true;
           const buttonStyle = {
             flex: row.layout.stackActions ? undefined : 1,
-            minHeight: 40,
-            borderRadius: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
+            minHeight: compact ? 32 : 36,
+            borderRadius: 10,
+            paddingHorizontal: compact ? 7 : 10,
+            paddingVertical: compact ? 6 : 8,
             alignItems: "center" as const,
             justifyContent: "center" as const,
-            backgroundColor: enabled ? palette.accent : palette.surfaceHigh,
-            opacity: enabled ? 1 : 0.64,
+            flexDirection: "row" as const,
+            gap: compact ? 4 : 6,
+            backgroundColor: enabled ? palette.accent : "rgba(255,255,255,0.035)",
+            borderWidth: 1,
+            borderColor: enabled ? "rgba(245, 169, 73, 0.28)" : palette.border,
+            opacity: enabled ? 1 : 0.76,
           };
-          const label = enabled ? action : `${action} unavailable`;
+          const label = libraryActionDisplayLabel(action, compact);
+          const icon = action === "Make cards" ? "cards-outline" : action === "Create task" ? "checkbox-marked-outline" : action === "Link" ? "link-variant" : action === "Review" ? "check-circle-outline" : "target";
           return enabled ? (
             <Pressable
               key={action}
@@ -821,21 +860,53 @@ function mobileCaptureRow(
               onPress={() => onPress?.(row)}
               style={buttonStyle}
             >
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>
+              <MaterialCommunityIcons name={icon} size={compact ? 13 : 15} color={palette.onAccent} />
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontSize: compact ? 11 : 12, fontWeight: "800" }}>
                 {label}
               </Text>
             </Pressable>
           ) : (
             <View key={action} style={buttonStyle}>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>
+              <MaterialCommunityIcons name={icon} size={compact ? 13 : 15} color={palette.muted} />
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: compact ? 11 : 12, fontWeight: "800" }}>
                 {label}
               </Text>
             </View>
           );
         })}
-      </View>
+        </View>
+      ) : suggestionLabels.length > 0 ? (
+        <View style={{ paddingLeft: compact ? 42 : 52, flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 10, lineHeight: 14, fontWeight: "800", textTransform: "uppercase" }}>
+            Suggested
+          </Text>
+          {suggestionLabels.slice(0, 2).map((label) => (
+            <View key={label} style={{ borderRadius: 9, backgroundColor: "rgba(255,255,255,0.025)", paddingHorizontal: 7, paddingVertical: 4 }}>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 11, lineHeight: 14, fontWeight: "700" }}>
+                {label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
+}
+
+function libraryActionDisplayLabel(action: string, compact: boolean): string {
+  if (!compact) {
+    return action;
+  }
+  if (action === "Make cards") {
+    return "Cards";
+  }
+  if (action === "Create task") {
+    return "Task";
+  }
+  if (action === "Append to note") {
+    return "Append";
+  }
+  return action;
 }
 
 function artifactSectionCard(
@@ -2068,6 +2139,10 @@ export function MobileNotesSurface({
   showAdvancedCapture,
   toggleMissionTools,
 }: MobileNotesSurfaceProps) {
+  const { width } = useWindowDimensions();
+  const compactLibraryLayout = width < 430;
+  const horizontalPadding = 38;
+  const statChipWidth = Math.max(142, Math.min(184, (width - horizontalPadding - 10) / 2));
   const [activeSegment, setActiveSegment] = useState<MobileLibrarySegment>("Inbox");
   const [showArtifactDetail, setShowArtifactDetail] = useState(false);
   const [surfaceSelectedArtifactId, setSurfaceSelectedArtifactId] = useState<string | null>(null);
@@ -2083,6 +2158,12 @@ export function MobileNotesSurface({
     notesCount,
     linkedProjectCount,
   });
+  const segmentCounts: Record<MobileLibrarySegment, string> = {
+    Inbox: String(pendingCaptures.length),
+    Artifacts: String(artifacts.length),
+    Notes: "",
+    Sources: String(libraryModel.sourceRows.length),
+  };
   const pendingCaptureCount = pendingCaptures.length;
   const visibleRows = activeSegment === "Artifacts" ? libraryModel.artifactRows : libraryModel.inboxRows;
   const detailRequested = activeSegment === "Artifacts" && showArtifactDetail;
@@ -2111,15 +2192,15 @@ export function MobileNotesSurface({
   }
 
   return (
-    <View style={{ gap: 18, paddingBottom: 128 }}>
+    <View style={{ gap: 14, paddingBottom: 148 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View style={{ flex: 1, gap: 4 }}>
-          <Text style={kickerStyle(palette)}>Starlog Library</Text>
-          <Text style={headingStyle(palette)}>Library</Text>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={kickerStyle(palette)}>Starlog</Text>
+          <Text {...LIBRARY_TEXT_PROPS} style={[headingStyle(palette), { fontSize: 25, lineHeight: 30 }]}>Library</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-          <MaterialCommunityIcons name={libraryStatusIcon} size={18} color={pendingCaptureCount > 0 ? palette.secondary : palette.muted} />
-          <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>{libraryModel.statusLabel}</Text>
+          <MaterialCommunityIcons name={libraryStatusIcon} size={18} color={pendingCaptureCount > 0 ? palette.secondary : "#55d977"} />
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>{libraryModel.statusLabel}</Text>
         </View>
         <View
           style={{
@@ -2138,18 +2219,20 @@ export function MobileNotesSurface({
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 2 }}>
-        {libraryModel.stats.map((stat) => libraryStatChip(palette, stat))}
+        {libraryModel.stats.map((stat) => libraryStatChip(palette, stat, statChipWidth))}
       </ScrollView>
 
-      <View
-        style={{
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          minWidth: "100%",
           borderRadius: 999,
           backgroundColor: palette.surfaceLow,
           borderWidth: 1,
           borderColor: palette.border,
           padding: 4,
           flexDirection: "row",
-          flexWrap: "wrap",
           gap: 4,
         }}
       >
@@ -2158,16 +2241,16 @@ export function MobileNotesSurface({
           if (nextSegment !== "Artifacts") {
             setShowArtifactDetail(false);
           }
-        }))}
-      </View>
+        }, segmentCounts[segment], compactLibraryLayout))}
+      </ScrollView>
 
-      <View style={{ gap: 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+      <View style={{ gap: compactLibraryLayout ? 9 : 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={[headingStyle(palette), { fontSize: 21, lineHeight: 27 }]}>
+            <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={[headingStyle(palette), { fontSize: compactLibraryLayout ? 17 : 21, lineHeight: compactLibraryLayout ? 21 : 26 }]}>
               {activeSegment === "Inbox" ? "Inbox / Unprocessed captures" : activeSegment}
             </Text>
-            <Text style={bodyStyle(palette)}>
+            <Text {...LIBRARY_TEXT_PROPS} numberOfLines={compactLibraryLayout ? 1 : 2} style={[bodyStyle(palette), compactLibraryLayout ? { fontSize: 12, lineHeight: 17 } : null]}>
               {showDetailPane
                 ? artifactDetailStatus
                 : activeSegment === "Inbox"
@@ -2179,7 +2262,7 @@ export function MobileNotesSurface({
                     : routeNarrative}
             </Text>
           </View>
-          <Text numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
             {pendingCaptureCount} pending
           </Text>
         </View>
@@ -2229,25 +2312,43 @@ export function MobileNotesSurface({
             </View>
           </View>
         ) : visibleRows.length > 0 ? (
-          visibleRows.map((row) => mobileCaptureRow(
-            palette,
-            row,
-            row.icon === "artifact" ? openLibraryArtifact : undefined,
-          ))
+          <View style={{ ...cardBase(palette), backgroundColor: "rgba(8, 19, 32, 0.9)", padding: compactLibraryLayout ? 10 : 14, gap: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, paddingBottom: compactLibraryLayout ? 6 : 10 }}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text {...LIBRARY_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: compactLibraryLayout ? 15 : 18, lineHeight: compactLibraryLayout ? 19 : 23, fontWeight: "800" }}>
+                  {activeSegment === "Artifacts" ? "Processed artifacts" : "Items needing a decision"}
+                </Text>
+                <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={compactLibraryLayout ? 1 : 2} style={{ color: palette.muted, fontSize: compactLibraryLayout ? 11 : 12, lineHeight: compactLibraryLayout ? 15 : 17 }}>
+                  {activeSegment === "Artifacts" ? "Open an artifact to inspect provenance and conversions." : "Summarize, card, link, or retry captures as processing becomes available."}
+                </Text>
+              </View>
+              <View style={{ borderRadius: 12, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 8, paddingVertical: 5 }}>
+                <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "900" }}>
+                  {visibleRows.length}
+                </Text>
+              </View>
+            </View>
+            {visibleRows.map((row) => mobileCaptureRow(
+              palette,
+              row,
+              row.icon === "artifact" ? openLibraryArtifact : undefined,
+              compactLibraryLayout,
+            ))}
+          </View>
         ) : (
           <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
-            <Text style={kickerStyle(palette)}>Queue clear</Text>
-            <Text style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>No captures need processing.</Text>
-            <Text style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
+            <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={kickerStyle(palette)}>Queue clear</Text>
+            <Text {...LIBRARY_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 24, fontWeight: "800" }}>No captures need processing.</Text>
+            <Text {...LIBRARY_TEXT_PROPS} style={bodyStyle(palette)}>{sharedDraftSummary}</Text>
           </View>
         )}
 
         <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow }}>
           <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
             <View style={{ flex: 1 }}>
-              <Text style={kickerStyle(palette)}>Quick capture</Text>
-              <Text style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Save a new item</Text>
-              <Text style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={kickerStyle(palette)}>Quick capture</Text>
+              <Text {...LIBRARY_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: 18, fontWeight: "800" }}>Save a new item</Text>
+              <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={bodyStyle(palette)}>{voiceMemoPreview}</Text>
             </View>
             {voiceClipReady ? (
               <TouchableOpacity
@@ -2265,68 +2366,79 @@ export function MobileNotesSurface({
               </TouchableOpacity>
             ) : null}
           </View>
-          <TextInput
-            style={{
-              borderRadius: 16,
-              minHeight: 96,
-              backgroundColor: "#07111c",
-              color: palette.text,
-              padding: 14,
-              fontSize: 16,
-              lineHeight: 24,
-              textAlignVertical: "top",
-            }}
-            value={quickCaptureText}
-            onChangeText={setQuickCaptureText}
-            placeholder="Record a thought or start typing..."
-            placeholderTextColor={palette.muted}
-            multiline
-          />
-          <View style={{ gap: 10 }}>
-            <TextInput
-              style={{
-                borderRadius: 14,
-                backgroundColor: palette.surfaceHigh,
-                color: palette.text,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 14,
-              }}
-              value={quickCaptureTitle}
-              onChangeText={setQuickCaptureTitle}
-              placeholder="Capture title"
-              placeholderTextColor={palette.muted}
-            />
-            <TextInput
-              style={{
-                borderRadius: 14,
-                backgroundColor: palette.surfaceHigh,
-                color: palette.text,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 14,
-              }}
-              value={quickCaptureSourceUrl}
-              onChangeText={setQuickCaptureSourceUrl}
-              placeholder="https://source"
-              placeholderTextColor={palette.muted}
-              autoCapitalize="none"
-            />
-            <TextInput
-              style={{
-                borderRadius: 14,
-                backgroundColor: palette.surfaceHigh,
-                color: palette.text,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: 14,
-              }}
-              value={notesInstructionDraft}
-              onChangeText={setNotesInstructionDraft}
-              placeholder="Typed instruction for the artifact..."
-              placeholderTextColor={palette.muted}
-            />
-          </View>
+          {showAdvancedCapture ? (
+            <>
+              <TextInput
+                style={{
+                  borderRadius: 16,
+                  minHeight: 96,
+                  backgroundColor: "#07111c",
+                  color: palette.text,
+                  padding: 14,
+                  fontSize: 16,
+                  lineHeight: 24,
+                  textAlignVertical: "top",
+                }}
+                value={quickCaptureText}
+                onChangeText={setQuickCaptureText}
+                placeholder="Record a thought or start typing..."
+                placeholderTextColor={palette.muted}
+                multiline
+              />
+              <View style={{ gap: 10 }}>
+                <TextInput
+                  style={{
+                    borderRadius: 14,
+                    backgroundColor: palette.surfaceHigh,
+                    color: palette.text,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: 14,
+                  }}
+                  value={quickCaptureTitle}
+                  onChangeText={setQuickCaptureTitle}
+                  placeholder="Capture title"
+                  placeholderTextColor={palette.muted}
+                />
+                <TextInput
+                  style={{
+                    borderRadius: 14,
+                    backgroundColor: palette.surfaceHigh,
+                    color: palette.text,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: 14,
+                  }}
+                  value={quickCaptureSourceUrl}
+                  onChangeText={setQuickCaptureSourceUrl}
+                  placeholder="https://source"
+                  placeholderTextColor={palette.muted}
+                  autoCapitalize="none"
+                />
+                <TextInput
+                  style={{
+                    borderRadius: 14,
+                    backgroundColor: palette.surfaceHigh,
+                    color: palette.text,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: 14,
+                  }}
+                  value={notesInstructionDraft}
+                  onChangeText={setNotesInstructionDraft}
+                  placeholder="Typed instruction for the artifact..."
+                  placeholderTextColor={palette.muted}
+                />
+              </View>
+            </>
+          ) : (
+            <View style={{ borderRadius: 16, backgroundColor: "#07111c", borderWidth: 1, borderColor: palette.border, padding: 14, gap: 5 }}>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>Draft</Text>
+              <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>
+                {quickCaptureText.trim() || captureCommandPreview}
+              </Text>
+            </View>
+          )}
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Pressable
               style={{ ...stylesButtonLike(palette, false), flex: 1, flexDirection: "row", gap: 7 }}
@@ -2339,19 +2451,21 @@ export function MobileNotesSurface({
               </Text>
             </Pressable>
             <TouchableOpacity style={{ ...stylesButtonLike(palette, true), flex: 1 }} onPress={submitPrimaryCapture}>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontWeight: "800", fontSize: 12 }}>Save capture</Text>
+              <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.onAccent, fontWeight: "800", fontSize: 12 }}>Save capture</Text>
             </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-            <TouchableOpacity style={styles.button} onPress={flushPendingCaptures}>
-              <Text style={styles.buttonText}>Flush queue</Text>
-            </TouchableOpacity>
-            {voiceClipReady ? (
-              <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
-                <Text style={styles.buttonText}>Save voice</Text>
+          {showAdvancedCapture ? (
+            <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+              <TouchableOpacity style={styles.button} onPress={flushPendingCaptures}>
+                <Text style={styles.buttonText}>Flush queue</Text>
               </TouchableOpacity>
-            ) : null}
-          </View>
+              {voiceClipReady ? (
+                <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
+                  <Text style={styles.buttonText}>Save voice</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         {activeSegment === "Inbox" || activeSegment === "Artifacts"

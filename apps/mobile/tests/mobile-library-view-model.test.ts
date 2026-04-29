@@ -48,9 +48,7 @@ assert.equal(model.statusLabel.includes("Synced"), false);
 assert.deepEqual(model.segments, ["Inbox", "Artifacts", "Notes", "Sources"]);
 assert.deepEqual(model.stats, [
   { label: "Unprocessed captures", value: "2", supportingLabel: "2 need attention", icon: "inbox" },
-  { label: "Recent artifacts", value: "1", supportingLabel: "1 artifact available", icon: "artifact" },
-  { label: "Notes & saved items", value: "3", supportingLabel: "Count only; no note rows loaded", icon: "note" },
-  { label: "Linked to projects", value: "1", supportingLabel: "Count only; no project rows loaded", icon: "project" },
+  { label: "Recent artifacts", value: "1", supportingLabel: "1 ready to use", icon: "artifact" },
 ]);
 
 assert.equal(model.inboxRows.length, 2);
@@ -62,6 +60,7 @@ assert.equal(model.inboxRows[0].secondaryActionLabel, "Summarize");
 assert.equal(model.inboxRows[0].overflowActionCount, 3);
 assert.equal(model.inboxRows[0].actionLabels.length <= 2, true);
 assert.equal(model.inboxRows[0].statusLabel, "Queued retry");
+assert.equal(model.inboxRows[0].statusTone, "queued");
 
 assert.equal(model.inboxRows[1].sourceLabel, "example.com");
 assert.equal(model.inboxRows[1].timestampLabel, "2h ago");
@@ -97,6 +96,24 @@ assert.equal(longLayout.inboxRows[0].layout.metadataNumberOfLines, 2);
 assert.equal(longLayout.inboxRows[0].layout.stackActions, true);
 assert.equal(longLayout.inboxRows[0].sourceLabel.includes("..."), true);
 
+const retryLayout = deriveMobileLibraryViewModel({
+  now,
+  pendingCaptures: [
+    {
+      id: "retry-1",
+      kind: "file",
+      title: "PDF that failed once",
+      sourceUrl: "",
+      createdAt: "2026-04-28T11:58:00Z",
+      attempts: 2,
+      lastError: "transient failure",
+    },
+  ],
+  artifacts: [],
+});
+assert.equal(retryLayout.inboxRows[0].statusLabel, "Retry needed");
+assert.equal(retryLayout.inboxRows[0].statusTone, "retry");
+
 const emptyQueue = deriveMobileLibraryViewModel({
   now,
   pendingCaptures: [],
@@ -112,6 +129,7 @@ const emptyQueue = deriveMobileLibraryViewModel({
 
 assert.equal(emptyQueue.statusLabel, "Queue clear");
 assert.equal(emptyQueue.inboxRows[0].statusLabel, "Processed");
+assert.equal(emptyQueue.inboxRows[0].statusTone, "processed");
 assert.equal(emptyQueue.inboxRows[0].sourceLabel, "Voice Memo");
 assert.deepEqual(emptyQueue.inboxRows[0].actionLabels, ["Open", "Review"]);
 assert.equal(emptyQueue.noteRows.length, 0);
