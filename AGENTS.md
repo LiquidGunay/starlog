@@ -85,11 +85,13 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/FINAL_PREVIEW_SIGNOFF.md` — latest preview release-decision handoff, baseline, and validation evidence for the current signoff pass.
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
+- `docs/CODEX_PHONE_PWA_CONNECTION.md` — user-facing guide for connecting phone/PWA Starlog clients to Codex through the API, local worker, or experimental server-side bridge without exposing provider credentials in clients.
 - `docs/PREVIEW_FEEDBACK_BUNDLE.md` — exact local bundle paths and hosted endpoints for the current user-feedback install pass.
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
 - `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable preview/semi-stable release checklist spanning docs, validation, artifacts, and signoff.
 - `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped execution companion to `PLAN.md`; keep it aligned with the assistant reset direction.
+- `docs/UI_CONCEPT_COMPARISON_2026-04-29.md` — current screenshot evidence and comparison of PWA/mobile surfaces against the April 2026 UI concept pack.
 - `docs/UI_FUNCTIONAL_TEST_HARNESSES.md` — repeatable PWA and mobile-viewport functional smoke commands for assistant dynamic-panel UI validation.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
 - `docs/PWA_HOSTED_SMOKE_CHECKLIST.md` — hosted PWA smoke checks and expected evidence artifacts.
