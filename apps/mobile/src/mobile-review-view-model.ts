@@ -181,7 +181,7 @@ export function deriveMobileReviewViewModel(input: {
         ? `${reviewed} reviewed this session; ${mastered} landed as Good or Easy.`
         : totalCards > 0
           ? `${Math.max(totalDue, dueCount)} due across ${input.decks.length} active deck${input.decks.length === 1 ? "" : "s"}.`
-          : "Load the due queue to measure current knowledge health.",
+          : "No due cards loaded.",
     },
     queueLadder: REVIEW_STAGES.map((stage) => ({
       label: stage,
@@ -196,7 +196,7 @@ export function deriveMobileReviewViewModel(input: {
       label: reviewed > 0 ? `${reviewed} reviewed` : "Session not started",
       detail: reviewed > 0
         ? `${input.stats.again} again / ${input.stats.hard} hard / ${input.stats.good} good / ${input.stats.easy} easy`
-        : "Reveal one item, grade it, then the next due card moves into focus.",
+        : input.hasReviewCard ? "Reveal one item, then grade it." : "No review session running.",
       progressRatio: Math.max(0, Math.min(1, reviewed / Math.max(1, reviewed + dueCount))),
     },
     learningSignal: deriveLearningSignal(input.recommendedDrill, input.learningInsights ?? []),
@@ -279,7 +279,7 @@ function buildWhyThisNow(
   if (prompt.trim()) {
     return "This item is ready for a focused review pass when the due queue is loaded.";
   }
-  return meta.trim() || "Load due cards to see why the next item is being scheduled now.";
+  return meta.trim() || "No due card loaded.";
 }
 
 function compactAnswer(answer: string): string {

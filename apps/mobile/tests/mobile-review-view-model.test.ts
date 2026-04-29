@@ -243,7 +243,8 @@ const idle = deriveMobileReviewViewModel({
 });
 
 assert.equal(idle.statusChips[0].value, "Clear");
-assert.equal(idle.health.detail, "Load the due queue to measure current knowledge health.");
+assert.equal(idle.health.detail, "No due cards loaded.");
+assert.equal(idle.session.detail, "No review session running.");
 assert.equal(idle.gradeOptions.every((option) => !option.enabled), true);
 assert.equal(idle.learningSignal, null);
 
