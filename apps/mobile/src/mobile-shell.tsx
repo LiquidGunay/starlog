@@ -9,6 +9,7 @@ type MobileShellProps = {
 };
 
 type MobileTopBarProps = MobileShellProps & {
+  activeTab: MobileTab;
   isAssistantMode: boolean;
   assistantPanelOpen: boolean;
   onToggleAssistantPanel: () => void;
@@ -36,12 +37,17 @@ type MobileAssistantDrawerProps = MobileShellProps & {
 export function MobileTopBar({
   styles,
   palette,
+  activeTab,
   isAssistantMode,
   assistantPanelOpen,
   onToggleAssistantPanel,
   onRefresh,
   onToggleDiagnostics,
 }: MobileTopBarProps) {
+  const surface = MOBILE_TABS.find((tab) => tab.id === activeTab);
+  const surfaceLabel = isAssistantMode ? "Assistant" : surface?.label ?? "Starlog";
+  const surfaceIcon = isAssistantMode ? "star-four-points-outline" : surface?.icon ?? "star-four-points-outline";
+
   return (
     <View style={[styles.topBar, isAssistantMode ? styles.topBarAssistant : null]}>
       <View style={[styles.topBarBrand, isAssistantMode ? styles.topBarBrandAssistant : null]}>
@@ -51,12 +57,12 @@ export function MobileTopBar({
           </TouchableOpacity>
         ) : (
           <View style={styles.topBarAvatar}>
-            <Text style={styles.topBarAvatarText}>◉</Text>
+            <MaterialCommunityIcons name={surfaceIcon as never} size={16} color={palette.accent} />
           </View>
         )}
         <View style={{ gap: 0 }}>
           <Text style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>
-            {isAssistantMode ? "Assistant" : "Starlog"}
+            {isAssistantMode ? "Assistant" : `Starlog ${surfaceLabel}`}
           </Text>
         </View>
       </View>

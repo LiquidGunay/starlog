@@ -4009,6 +4009,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         <MobileTopBar
           styles={styles}
           palette={palette}
+          activeTab={activeTab}
           isAssistantMode={false}
           assistantPanelOpen={assistantPanelOpen}
           onToggleAssistantPanel={() => setAssistantPanelOpen((value) => !value)}
@@ -4625,12 +4626,14 @@ function themedStyles(palette: Palette) {
     },
     topBar: {
       paddingHorizontal: 18,
-      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 10 : 10,
-      paddingBottom: 8,
+      paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 6 : 8,
+      paddingBottom: 6,
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
       justifyContent: "space-between",
-      backgroundColor: "rgba(30,15,22,0.52)",
+      backgroundColor: "rgba(5,16,29,0.9)",
+      borderBottomWidth: 1,
+      borderBottomColor: "rgba(245,169,73,0.14)",
     },
     topBarAssistant: {
       paddingTop: Platform.OS === "android" ? 18 : 6,
@@ -4652,12 +4655,12 @@ function themedStyles(palette: Palette) {
       alignItems: "center",
     },
     topBarAvatar: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       borderWidth: 1,
-      borderColor: palette.border,
-      backgroundColor: palette.surfaceHigh,
+      borderColor: "rgba(245,169,73,0.28)",
+      backgroundColor: "rgba(245,169,73,0.08)",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -4682,15 +4685,15 @@ function themedStyles(palette: Palette) {
       fontWeight: "700",
     },
     topBarTitle: {
-      color: palette.accent,
-      fontSize: 18,
+      color: palette.text,
+      fontSize: 16,
       fontWeight: "800",
-      letterSpacing: 0.3,
-      textTransform: "uppercase",
+      letterSpacing: 0,
+      textTransform: "none",
     },
     topBarTitleAssistant: {
       fontSize: 16,
-      letterSpacing: -0.2,
+      letterSpacing: 0,
       textTransform: "none",
       color: palette.text,
     },
@@ -4721,15 +4724,15 @@ function themedStyles(palette: Palette) {
     topBarActions: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
+      gap: 6,
     },
     topBarIconButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.05)",
-      backgroundColor: "rgba(255,255,255,0.03)",
+      borderColor: "rgba(245,169,73,0.16)",
+      backgroundColor: "rgba(255,255,255,0.035)",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -4750,8 +4753,8 @@ function themedStyles(palette: Palette) {
     },
     scrollContent: {
       paddingHorizontal: 20,
-      paddingTop: 20,
-      paddingBottom: 120,
+      paddingTop: 14,
+      paddingBottom: 168,
       gap: 18,
     },
     mainScrollViewport: {
