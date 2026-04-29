@@ -131,8 +131,8 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 6. Set:
    - `API base`: `https://starlog-api-production.up.railway.app`
    - `Bearer token`: token from Railway login
-7. The configured preview UI for this pass is recorded at:
-   - `docs/evidence/mobile/wi-403-preview-configured.png`
+7. Record the configured preview UI in a dated artifact folder, for example:
+   - `artifacts/phone-current/<date>/`
 
 Observed notes from the 2026-03-16 production pass:
 

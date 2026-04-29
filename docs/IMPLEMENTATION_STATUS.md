@@ -1,7 +1,8 @@
 # Starlog Implementation Status
 
-`PLAN.md` is the canonical forward-looking spec. For the shortest current install/test handoff across desktop,
-phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
+`PLAN.md` is the canonical forward-looking spec. For the current Assistant UI evidence and repeatable
+PWA/mobile functional checks, use `docs/UI_CONCEPT_COMPARISON_2026-04-29.md`,
+`docs/UI_FUNCTIONAL_TEST_HARNESSES.md`, and `docs/ANDROID_DEV_BUILD.md`.
 
 ## Completed in this pass
 
@@ -58,7 +59,7 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
 - Desktop helper diagnostics now keep latest-attempt notes with actionable fix hints, recent captures now show the backend that produced them, and the helper docs now include a real Linux/Windows host validation matrix.
 - Desktop helper host-matrix follow-up also validated the Windows PowerShell host path, fixed the Windows active-window probe (`$PID` collision), and maps Windows screenshot/window failures to actionable interactive-session guidance.
 - Desktop helper now also maps common macOS `screencapture`/`osascript` failures to explicit Screen Recording / Automation / Accessibility guidance, and runtime diagnostics now run a best-effort macOS active-window probe to surface permission issues early.
-- Desktop helper RC follow-up on 2026-03-22 rebuilt the Linux `.deb`/binary artifacts, validated authenticated localhost bridge discovery on `127.0.0.1:8091`, exercised the merged local voice server path through `scripts/local_voice_runtime_smoke.py`, and captured one real helper clipboard upload into a local API (`art_b40fadfafc55444897413ec4bdc59593`) with evidence under `artifacts/desktop-helper/rc-evidence/2026-03-22T14-06-24Z/`.
+- Desktop helper RC follow-up on 2026-03-22 rebuilt the Linux `.deb`/binary artifacts, validated authenticated localhost bridge discovery on `127.0.0.1:8091`, exercised the merged local voice server path through `scripts/local_voice_runtime_smoke.py`, and captured one real helper clipboard upload into a local API (`art_b40fadfafc55444897413ec4bdc59593`). Old committed RC evidence bundles have since been removed; regenerate current helper proof with `docs/DESKTOP_HELPER_V1_RELEASE.md` or `docs/CROSS_SURFACE_PROOF.md`.
 - This host still lacks the Linux clipboard/screenshot/OCR binaries (`wl-paste`/`xclip`, screenshot tooling, `tesseract`), so the current desktop RC is distributable for bridge/upload feedback but native Linux screenshot/OCR remains a host-setup blocker, not a helper-code blocker.
 - Mobile companion now supports quick text capture to `/v1/capture`.
 - Mobile companion now persists local runtime state (API base, token, queue, alarm config, briefing cache refs).
@@ -159,7 +160,7 @@ phone, and PWA, use `docs/VNEXT_TEST_BUNDLE.md`.
   - production-style hosted smoke passed via `bash ./scripts/pwa_hosted_smoke.sh` on `2026-03-22T14:16:56Z`
   - release gate build passes when run in isolation; a prior `Unexpected end of JSON input` failure came from overlapping Next builds during concurrent gate/smoke execution rather than a persistent app defect
 - Semi-stable refresh on `2026-03-27` produced a fresh Android preview RC2 artifact (`0.1.0-preview.rc2`, code `103`, SHA-256 `0c9666daee9d4c6b99384de289a84a28b441b9d0a6d4f2271f387f251bdf8741`), a passing PWA release gate at `2026-03-27T18:17:09Z`, and a fresh cross-surface proof bundle under `artifacts/cross-surface-proof/20260327T181800Z`.
-- The unified proof runner is now `./scripts/cross_surface_proof_bundle.sh`, which bundles hosted PWA, installed phone-app, and desktop-helper evidence into one artifact tree while preserving the older Velvet-named entrypoint as a compatibility wrapper and continuing to honor `VALIDATION_ROOT` as a bundle-root fallback.
+- The unified proof runner is now `./scripts/cross_surface_proof_bundle.sh`, which bundles hosted PWA, installed phone-app, and desktop-helper evidence into one artifact tree while continuing to honor `VALIDATION_ROOT` as a bundle-root fallback.
 - That 2026-03-27 proof bundle proved hosted smoke plus Windows helper smoke/probes/screenshots, but its optional PWA-visual-proof and phone-app lanes were skipped because those lanes were disabled on that run.
 - The remaining semi-stable release blockers on this host are: a fresh PWA visual-proof rerun, and recovery of the Windows ADB daemon path, which regressed on `2026-03-27` with `protocol fault (couldn't read status): connection reset` before a fresh installed-phone screenshot pass could even be attempted.
 

@@ -1,11 +1,12 @@
 # UI Concept Comparison - 2026-04-29
 
-This comparison is based on current `master` after PR #177 (`84c4b2886b5d3ebeab7ecc34badbe50381d47ed1`), the concept pack in `artifacts/ui-concept/`, and screenshots captured with the existing Playwright UI functional harness where possible.
+This comparison is based on current `master` after PR #178 (`9f439c5bebf50de808579bfd0a2e3da30b34c68c`), the concept pack in `artifacts/ui-concept/`, and screenshots captured with the existing Playwright UI functional harness where possible.
 
 Current screenshots are stored in:
 
 ```text
 artifacts/ui-comparison/2026-04-29/
+artifacts/phone-current/2026-04-29/
 ```
 
 Concept references are stored in:
@@ -32,15 +33,18 @@ artifacts/ui-concept/mobile/
 | Mobile Library detail tap failure | [mobile-library-detail-tap-failure-current.png](../artifacts/ui-comparison/2026-04-29/mobile-library-detail-tap-failure-current.png) | [Library Artifact Detail.png](../artifacts/ui-concept/mobile/Library%20Artifact%20Detail.png) |
 | Mobile Planner | [mobile-planner-current.png](../artifacts/ui-comparison/2026-04-29/mobile-planner-current.png) | [Planner Main Surface.png](../artifacts/ui-concept/mobile/Planner%20Main%20Surface.png) |
 | Mobile Review | [mobile-review-current.png](../artifacts/ui-comparison/2026-04-29/mobile-review-current.png) | [Review Main Surface.png](../artifacts/ui-concept/mobile/Review%20Main%20Surface.png) |
-| Physical Android phone | [native-phone-current-state.png](../artifacts/ui-comparison/2026-04-29/native-phone-current-state.png) | Native mobile concepts above |
+| Native phone Assistant | [native-phone-current-state.png](../artifacts/ui-comparison/2026-04-29/native-phone-current-state.png) / [starlog-active-current.png](../artifacts/phone-current/2026-04-29/starlog-active-current.png) | [Assistant Morning Focus.png](../artifacts/ui-concept/mobile/Assistant%20Morning%20Focus.png) |
+| Native phone Library | [starlog-library-current.png](../artifacts/phone-current/2026-04-29/starlog-library-current.png) | [Library Main Surface.png](../artifacts/ui-concept/mobile/Library%20Main%20Surface.png) |
+| Native phone Planner | [starlog-planner-current.png](../artifacts/phone-current/2026-04-29/starlog-planner-current.png) | [Planner Main Surface.png](../artifacts/ui-concept/mobile/Planner%20Main%20Surface.png) |
+| Native phone Review | [starlog-review-current.png](../artifacts/phone-current/2026-04-29/starlog-review-current.png) | [Review Main Surface.png](../artifacts/ui-concept/mobile/Review%20Main%20Surface.png) |
 
-The physical Android screenshot is black because the attached phone was asleep and secure-locked during capture. `dumpsys power` reported `mWakefulness=Asleep`, and the Starlog process was still present. Treat Playwright mobile-width screenshots as the repeatable visual evidence until the phone is manually unlocked for a fresh native capture.
+The fresh native phone screenshots were captured from device `9dd62e84` with the app foregrounded. The earlier black screenshot was a locked-device capture and is no longer representative. `adb shell svc power stayon true` exited with code `137`, and `settings put global stay_on_while_plugged_in 3` is blocked by Android's `WRITE_SECURE_SETTINGS` guard on this device, so the repeatable phone-capture path is to wake the device with ADB immediately before each screenshot.
 
 ## Executive Read
 
 The current PWA is much closer to the concept than the mobile surface. Assistant, Library, and Review have meaningful product structure: the Assistant has cockpit/thread modes, ambient updates, compact tool activity, and schema-driven panels; Library has a capture pipeline and provenance detail; Review has a learning ladder, reveal/grade flow, and learning-insight cards.
 
-Mobile is still behind the concept. The Assistant dynamic-panel grammar is the strongest mobile slice, especially schedule conflict, task details, capture triage, review grading, clarification, defer, and project picker panels. The other mobile surfaces still read more like compressed PWA pages than purpose-built phone interactions. Library and Planner need more work on tap reliability, thumb-sized actions, density limits, and one-decision-at-a-time hierarchy. Mobile Review has useful underlying structure, but the current visual capture still includes a dev error badge and lacks a repeatable mobile Review Playwright spec.
+Native mobile is closer to the concept than the Playwright mobile-width screenshots suggested, but it still needs major visual work. The phone shows the right four-surface shell and real Assistant decision panel, yet the Library, Planner, and Review still carry too much explanatory text and dense stacked content compared with the concept's calmer, one-decision-at-a-time phone grammar. The Playwright mobile-width screenshots remain useful for repeatable PWA fallback checks; they should not be treated as proof of the native app's current visual state.
 
 ## PWA Assistant
 
@@ -147,14 +151,14 @@ Implementation direction:
 
 What matches:
 
-- This is the closest mobile surface to the concept.
-- It uses a clean thread with one active dynamic panel, concise assistant reasoning, ambient event rows, tool activity collapse, and bottom navigation.
+- This is the closest native mobile surface to the concept.
+- The fresh phone capture shows the Assistant-first shell, morning/today context chips, one active morning-focus panel, a compact transcript, and bottom navigation.
 - The dynamic-panel library now covers both Board A and Board B concepts: conflict, task detail, capture triage, review grade, clarification, defer, and project picker.
 
 Gaps:
 
-- The concept morning-focus screen is calmer than the current mobile thread variants. Current captures can still feel visually heavy.
-- Some labels are compact but still visually compressed; continue testing the longest text at phone widths.
+- The concept morning-focus screen is calmer and more spatially deliberate than the current native phone surface.
+- Some explanatory labels from the concept notes are still too visible in the product UI; phone screens should bias toward concise state, choices, and actions.
 - Bottom-sheet behavior for long pickers/search is not yet the main mobile overflow pattern.
 
 Implementation direction:
@@ -222,13 +226,14 @@ Implementation direction:
 
 Current state:
 
-- PR #177 was built as an Android release APK and installed on physical phone serial `9dd62e84`.
-- On this comparison pass, the phone remained asleep and secure-locked. The Starlog process was present, but screenshot capture returned a black frame.
+- A fresh active-device pass captured Assistant, Library, Planner, and Review screenshots from physical phone serial `9dd62e84` under `artifacts/phone-current/2026-04-29/`.
+- The captured app package was `com.starlog.app.dev`, so this is native dev-package evidence rather than signed release/preview APK evidence.
+- The real native phone surfaces differ from the Playwright mobile-width PWA fallback screenshots. The native app is closer to the mobile concept in shell and navigation, while still needing major density and hierarchy work.
 
 Implication:
 
-- Physical phone screenshot proof currently requires manual unlock/wake before capture.
-- The repeatable automated visual proxy is Playwright mobile-width coverage.
+- Physical phone screenshot proof currently requires waking the device before capture. ADB can wake the screen, but this device rejected persistent stay-awake settings from shell.
+- Playwright mobile-width coverage is still useful for repeatable PWA fallback checks, but it is not a substitute for native phone visual QA.
 - Native device automation remains a gap for final release confidence.
 
 ## Current Functional Evidence
@@ -259,4 +264,4 @@ The highest-leverage next UI work should be:
 2. Mobile Library rewrite: phone-native rows, reliable detail navigation, overflow/bottom-sheet action model.
 3. Planner date-state and timeline polish.
 4. Mobile Review coverage and one-item review flow.
-5. Native phone screenshot automation once the device can be kept awake/unlocked for capture.
+5. Native phone screenshot automation that wakes the device, captures all four surfaces, and records evidence in dated artifact folders.

@@ -48,21 +48,11 @@ Last updated: 2026-04-08
 - Naming convention:
   - `starlog-desktop-helper-v<version>-<arch-os>-<normalized-source-file>`
 
-### Latest run evidence (2026-03-22, this host)
+### Evidence
 
-- Command:
-  - `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh`
-- Output folder:
-  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/`
-- Produced files:
-  - `starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
-  - `starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
-  - `checksums.sha256`
-  - `manifest.tsv`
-  - `build-info.txt`
-- Checksums from this run:
-  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
-  - raw binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
+Old committed RC packages were removed from the repo. Generate fresh packages with
+`tools/desktop-helper/scripts/build_release_artifacts.sh` and keep release-specific artifacts outside
+the long-lived source tree unless they are needed for an active handoff.
 
 ## Signing/notarization readiness (WI-322)
 
@@ -118,14 +108,11 @@ Last updated: 2026-04-08
 - The helper already surfaces runtime diagnostics in-app; this probe script gives an operator-visible preflight outside the GUI for release/support workflows.
 - Diagnostics are still secondary to the main capture workflow, so probe output should explain blockers without obscuring the primary capture path.
 
-### Latest run evidence (2026-03-22, this host)
+### Host probe note
 
 - Command:
-  - `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh linux ../../artifacts/desktop-helper/v0.1.0/x86_64-linux/runtime-dependency-probe.json`
-  - `cd tools/desktop-helper && ./scripts/bootstrap_linux_runtime_deps.sh --output-json ../../artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
-- Output:
-  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/runtime-dependency-probe.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
+  - `cd tools/desktop-helper && ./scripts/runtime_dependency_probe.sh linux <output-json-path>`
+  - `cd tools/desktop-helper && ./scripts/bootstrap_linux_runtime_deps.sh --output-json <output-json-path>`
 - Probe summary:
   - `clipboard`: missing local Linux helper tooling
   - `screenshot`: missing local Linux screenshot tooling
@@ -161,26 +148,14 @@ Last updated: 2026-04-08
 | Local bridge discovery/auth | Pass against a real authenticated bridge on `127.0.0.1:8091` | Pending real-host rerun | Pending real-host rerun |
 | Local voice server path | Pass for real rootless STT on `127.0.0.1:8171`; TTS remains optional/unconfigured on this host | Pending real-host rerun | Pending real-host rerun |
 
-### Latest run evidence (2026-03-22, this host)
+### Evidence
 
-- Automated command results:
-  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` -> `3 passed`
-  - `cd tools/desktop-helper && ./scripts/build_release_artifacts.sh` -> passed
-  - `cd services/ai-runtime && uv run --extra dev --extra local-voice pytest -s ./bridge/tests/test_server.py ./bridge/tests/test_local_stt_server.py ./tests/test_workflows.py` -> `18 passed`
-  - `PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py` -> passed against the authenticated bridge with real STT and skipped TTS
-- Screenshots and smoke summary:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-config.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-diagnostics.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-quick-popup.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/rc-smoke.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/runtime-dependency-probe.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime-smoke.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-stt-direct.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/sudo-check.txt`
-- Real capture confirmation:
-  - helper upload artifact id `art_3d4598c462bf40d7a056651820bd6a15`
-  - `rc-smoke.json` shows the helper discovered the authenticated bridge at `http://127.0.0.1:8091` and saved the clipboard clip through the local API
+Old committed RC screenshots and smoke summaries were removed from the repo. For a current release
+candidate, regenerate QA evidence with:
+
+- `node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/rc-evidence/<timestamp>`
+- `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
+- `./scripts/cross_surface_proof_bundle.sh`
 
 ## RC package + handoff (WI-325)
 
@@ -195,29 +170,22 @@ Last updated: 2026-04-08
   - `build-info.txt`,
   - this runbook + helper README commands.
 
-### Current RC candidate (2026-03-22)
+### Current RC candidate
 
-- Candidate id:
-  - `v0.1.0-x86_64-linux-rc4`
-- Artifact folder:
-  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/`
-- Checksums:
-  - `.deb`: `b92faffa698b30fc52a41ca02a98f249a3f108817e156d91d9b0413c7296120c`
-  - binary: `a2d5bbe2ed3bd9ded18fdb8638cd53dc64699eef275f3d869b71dbabbde6a2fb`
-- Exact staged artifacts:
-  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
-  - `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
+Generate a fresh RC candidate from the current branch. The build command writes the candidate under
+`artifacts/desktop-helper/v<version>/<arch-os>/` with `checksums.sha256`, `manifest.tsv`, and
+`build-info.txt`.
 
 ### Host install smoke (non-destructive, this host)
 
 - Package metadata inspection:
-  - `dpkg-deb -I artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
+  - `dpkg-deb -I artifacts/desktop-helper/v<version>/<arch-os>/<package>.deb`
 - Dry-run install:
-  - `dpkg --dry-run -i artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
+  - `dpkg --dry-run -i artifacts/desktop-helper/v<version>/<arch-os>/<package>.deb`
 - Payload extraction check:
   - `dpkg-deb -x ... <tmpdir>`
 - Binary linkage check:
-  - `ldd artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
+  - `ldd artifacts/desktop-helper/v<version>/<arch-os>/<binary>`
 
 - Smoke results:
   - Debian package metadata is correct: package `starlog-desktop-helper`, version `0.1.0`, architecture `amd64`.
@@ -238,7 +206,7 @@ Last updated: 2026-04-08
 
 ### Rollback notes
 
-- Keep prior RC artifact folder intact under `artifacts/desktop-helper/`.
+- Keep prior RC artifact folders intact outside source-control cleanup until the new RC is accepted.
 - If a new RC regresses runtime behavior, redistribute previous checksum-verified artifact set and keep API compatibility unchanged (helper uploads via stable `/v1/capture`).
 
 ## Main-laptop setup pack (WI-423)

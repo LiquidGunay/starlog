@@ -127,7 +127,7 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
   await expect(page.getByText("voice-job-1", { exact: false })).toBeVisible();
 });
 
-test("keyboard users can hold the velvet voice control to capture a voice clip", async ({ page }) => {
+test("keyboard users can hold the assistant voice control to capture a voice clip", async ({ page }) => {
   await seedSession(page);
 
   await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {

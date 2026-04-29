@@ -31,7 +31,6 @@
     "verify:pwa:release-gate": "./scripts/pwa_release_gate.sh",
     "verify:hosted:pwa-apk": "./scripts/verify_hosted_pwa_and_apk.sh",
     "test:cross-surface:proof-bundle": "./scripts/cross_surface_proof_bundle.sh",
-    "test:velvet:artifacts": "./scripts/velvet_validation_artifacts.sh",
     "test:desktop-helper": "playwright test",
     "test:android:smoke": "./scripts/android_native_smoke.sh",
     "test:android:release-smoke": "bash ./scripts/android_release_phone_smoke.sh",

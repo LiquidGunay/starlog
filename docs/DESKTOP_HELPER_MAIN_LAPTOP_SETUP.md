@@ -6,13 +6,18 @@ This guide is the daily-use setup handoff for the Linux desktop helper on this h
 The helper is a capture-first Starlog companion: its primary job is to grab clipboard and
 screenshots quickly, show recent captures, and hand those captures into `Assistant` or `Library`.
 
-## Selected artifact
+## Current package generation
 
-- Package: `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb`
-- Binary fallback: `artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog_desktop_helper`
-- Checksums:
-  - `.deb`: `2c022ceb315cb214f5da09a81db4a933c02b4720d75a1aa8764546792171cead`
-  - binary: `bcb87e6989c1ee940b602448bf64fa5dfb5c7b6c46ce5d69ee97ddb8b3318efc`
+The old committed desktop-helper RC artifacts were removed from the repo. Generate a fresh package
+before installing on this laptop:
+
+```bash
+cd tools/desktop-helper
+./scripts/build_release_artifacts.sh
+```
+
+The generated package, binary fallback, checksums, manifest, and build info are written under
+`artifacts/desktop-helper/v<version>/<arch-os>/`.
 
 ## Production API target
 
@@ -57,9 +62,7 @@ Exact blocker on this host:
 
 ## Install
 
-```bash
-sudo dpkg -i artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb
-```
+Install the freshly generated `.deb` from `artifacts/desktop-helper/v<version>/<arch-os>/`.
 
 If Debian reports unresolved dependencies:
 
@@ -121,12 +124,17 @@ export STARLOG_BRIDGE_CONTEXT_JSON='{"app_name":"Codex","window_title":"Desktop 
 PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime uvicorn bridge.server:app --host 127.0.0.1 --port 8091
 ```
 
-4. Smoke it:
+4. Generate a short local smoke WAV, then smoke it:
+
+```bash
+python3 scripts/write_debug_wav.py \
+  --output-path artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/smoke.wav \
+  --seconds 1.2
+```
 
 ```bash
 STARLOG_LOCAL_BRIDGE_AUTH_TOKEN='bridge-secret' \
-STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/jfk.wav \
-STARLOG_LOCAL_VOICE_SMOKE_TEXT_HINT='and so my fellow Americans' \
+STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/smoke.wav \
 STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS=1 \
 PYTHONPATH=services/ai-runtime \
 uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py
@@ -174,9 +182,7 @@ node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/
 
 Upgrade in place:
 
-```bash
-sudo dpkg -i artifacts/desktop-helper/v0.1.0/x86_64-linux/starlog-desktop-helper-v0.1.0-x86_64-linux-starlog-desktop-helper_0.1.0_amd64.deb
-```
+Install the newly generated `.deb` from `artifacts/desktop-helper/v<version>/<arch-os>/`.
 
 Preferred reset path before uninstall or device handoff:
 
@@ -195,30 +201,13 @@ If you need to clear the secure token after the app has already been removed, re
 - service: `starlog.desktop-helper`
 - account: `api-token`
 
-## Evidence from this pass
+## Evidence
 
-- RC screenshots and smoke summary:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-config.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-quick-popup.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/desktop-helper-rc-diagnostics.png`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/rc-smoke.json`
-- Runtime bootstrap + dependency probe:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/linux-bootstrap.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/runtime-dependency-probe.json`
-- Real local voice smoke:
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/jfk.wav`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime-smoke.json`
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T15-00-00Z/voice-runtime/local-stt-direct.json`
-  - bridge auth passed, the rootless local STT server returned `and so my fellow Americans ask not what your country can do for you ask what you can do for your country.`, and the direct STT response recorded `device=cpu` / `compute_type=int8`
-- Real local capture:
-  - local API on `http://127.0.0.1:8010`
-  - helper uploaded artifact `art_3d4598c462bf40d7a056651820bd6a15`
-  - `rc-smoke.json` confirms local bridge discovery at `http://127.0.0.1:8091` and a saved clipboard clip from the helper popup
-- Package smoke:
-  - `dpkg-deb -I` confirmed package `starlog-desktop-helper`, version `0.1.0`, architecture `amd64`
-  - `dpkg-deb -x` confirmed payload includes `/usr/bin/starlog_desktop_helper` and the desktop launcher file
-  - `ldd` confirmed the staged binary links against GTK/WebKit libraries on this host
-  - `./node_modules/.bin/playwright test tools/desktop-helper/tests/helper.spec.ts --grep 'configured local bridge with bridge auth|discover a reachable localhost bridge|window shortcut clips clipboard text'` passed after the RC smoke server was no longer bound on `127.0.0.1:4173`
-- Host blocker that still applies:
-  - native Linux clipboard, screenshot, and OCR binaries are not installed here yet, and installing them from this shell still requires interactive `sudo`, so native screenshot/OCR validation remains blocked on host setup rather than helper code
-  - `artifacts/desktop-helper/rc-evidence/2026-03-22T16-55-00Z/voice-runtime/sudo-check.txt` records the exact failure: `sudo: a password is required`
+Old committed RC evidence was removed from the repo. Regenerate current evidence with the daily-use
+smoke above or the unified proof runner in [docs/CROSS_SURFACE_PROOF.md](/home/ubuntu/starlog/docs/CROSS_SURFACE_PROOF.md).
+
+Host blocker that still applies:
+
+- native Linux clipboard, screenshot, and OCR binaries are not installed here yet
+- installing them from this shell still requires interactive `sudo`
+- native screenshot/OCR validation remains blocked on host setup rather than helper code

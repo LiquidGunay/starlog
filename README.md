@@ -188,4 +188,4 @@ Setup and release docs:
 
 - product direction: [PLAN.md](/home/ubuntu/starlog/PLAN.md)
 - repo rules: [AGENTS.md](/home/ubuntu/starlog/AGENTS.md)
-- architecture/workflow plan: [docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md](/home/ubuntu/starlog/docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md)
+- assistant UI/backend reset: [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md)

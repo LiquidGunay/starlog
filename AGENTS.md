@@ -43,7 +43,6 @@ Use the repo-local assistant reset documents as the active source of truth for A
 - Treat [VISION.md](/home/ubuntu/starlog/VISION.md), [starlog_surface_event_and_dynamic_ui_spec.md](/home/ubuntu/starlog/starlog_surface_event_and_dynamic_ui_spec.md), [starlog_assistant_ui_backend_migration_design.md](/home/ubuntu/starlog/starlog_assistant_ui_backend_migration_design.md), [starlog_assistant_ui_contracts_and_api_blueprint.md](/home/ubuntu/starlog/starlog_assistant_ui_contracts_and_api_blueprint.md), and [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md) as the active product and implementation basis for assistant work.
 - Treat [docs/ASSISTANT_UI_REFERENCE.md](/home/ubuntu/starlog/docs/ASSISTANT_UI_REFERENCE.md) and [apps/web/app/design/assistant-runtime-reference/page.tsx](/home/ubuntu/starlog/apps/web/app/design/assistant-runtime-reference/page.tsx) as the active repo-local UI reference artifacts.
 - Treat [artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md](/home/ubuntu/starlog/artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md), [artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md](/home/ubuntu/starlog/artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md), and their sibling PNG mockups as active UI implementation references.
-- Treat [docs/CHAT_UI_MOODBOARD.md](/home/ubuntu/starlog/docs/CHAT_UI_MOODBOARD.md) and the April 2026 pack in `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` as historical-only input. Use them for lineage checks, not as implementation targets.
 - When older docs or UI references conflict with the assistant reset documents, prefer the new assistant reset documents and update or remove the stale references.
 
 ## Default execution mode
@@ -72,25 +71,18 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local UI reference for the assistant reset.
 - `artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md` — active PWA UI concept reference; use with sibling PNG mockups.
 - `artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md` — active mobile UI concept reference; use with sibling PNG mockups.
-- `docs/CHAT_UI_MOODBOARD.md` — historical-only prior chat redesign reference; not an active source of truth.
 - `docs/ANDROID_DEV_BUILD.md` — Android dev-build/native-module path, release-signing policy, and Android validation flow.
-- `docs/ANDROID_RELEASE_QA_MATRIX.md` — recorded Android device QA outcomes and evidence links for the current release pass.
 - `docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md` — Android store metadata, signing, packaging, and submission checklist.
 - `docs/CODEX_AGENT_PROVIDER_FEASIBILITY.md` — Codex SDK/provider feasibility note, server-side bridge recommendation, and client-secret guardrails for PWA/mobile agent work.
-- `docs/CODEX_PARALLEL_WORK_ITEMS.md` — archived human-readable queue snapshot; not the live coordination surface.
 - `docs/ENGINEERING_ISSUE_HISTORY.md` — archived dated issue chronology and host-specific debugging history that should not live inline in `AGENTS.md`.
 - `docs/PARALLEL_AGENT_WORKFLOW.md` — subagent-only workflow for workitem locking, extra worktrees, branch cleanup, and shared dependency reuse.
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — daily-use install, prerequisite, config, smoke, and reset handoff for the desktop helper on the main laptop.
 - `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
-- `docs/FINAL_PREVIEW_SIGNOFF.md` — latest preview release-decision handoff, baseline, and validation evidence for the current signoff pass.
 - `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
 - `docs/CODEX_PHONE_PWA_CONNECTION.md` — user-facing guide for connecting phone/PWA Starlog clients to Codex through the API, local worker, or experimental server-side bridge without exposing provider credentials in clients.
-- `docs/PREVIEW_FEEDBACK_BUNDLE.md` — exact local bundle paths and hosted endpoints for the current user-feedback install pass.
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
 - `docs/RAILWAY_PROJECT_SETUP_STATUS.md` — current real Railway project/service state, generated domains, pending deploy-time config, and cost estimate for WI-443.
-- `docs/SEMI_STABLE_RELEASE_CHECKLIST.md` — repeatable preview/semi-stable release checklist spanning docs, validation, artifacts, and signoff.
-- `docs/STARLOG_ARCHITECTURE_WORKFLOW_PLAN.md` — docs-scoped execution companion to `PLAN.md`; keep it aligned with the assistant reset direction.
 - `docs/UI_CONCEPT_COMPARISON_2026-04-29.md` — current screenshot evidence and comparison of PWA/mobile surfaces against the April 2026 UI concept pack.
 - `docs/UI_FUNCTIONAL_TEST_HARNESSES.md` — repeatable PWA and mobile-viewport functional smoke commands for assistant dynamic-panel UI validation.
 - `docs/PWA_GO_LIVE_RUNBOOK.md` — PWA production go-live order, rollback triggers, and monitoring checklist.
@@ -125,7 +117,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 ## Validation references
 
 - Android dev-build, physical phone, and fresh local April validation procedures live in [docs/ANDROID_DEV_BUILD.md](/home/ubuntu/starlog/docs/ANDROID_DEV_BUILD.md).
-- Android device QA outcomes and evidence belong in [docs/ANDROID_RELEASE_QA_MATRIX.md](/home/ubuntu/starlog/docs/ANDROID_RELEASE_QA_MATRIX.md).
+- Current phone screenshots and UI evidence belong in dated artifact folders, for example [artifacts/phone-current/2026-04-29](/home/ubuntu/starlog/artifacts/phone-current/2026-04-29) and [artifacts/ui-comparison/2026-04-29](/home/ubuntu/starlog/artifacts/ui-comparison/2026-04-29).
 - Dated incident chronology and host-specific debugging history live in [docs/ENGINEERING_ISSUE_HISTORY.md](/home/ubuntu/starlog/docs/ENGINEERING_ISSUE_HISTORY.md).
 
 ## Learned guardrails
@@ -140,6 +132,6 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - Major UI work must compare against `artifacts/ui-concept` mockups, rebuild the UX rather than reskin old components, and validate responsive mobile behavior so text does not wrap awkwardly or collide.
 - Keep assistant and agent behavior prompts in repo-local `.md` files under `services/ai-runtime/prompts/` so users can inspect and edit them directly; do not bury canonical prompt behavior in code literals.
 - Keep OpenAI/Codex credentials out of PWA and mobile clients; route agent work through the API, AI runtime, desktop helper, or paired worker with server-side/worker-local secret handling.
-- Keep docs-scoped workflow plans under `docs/`; replace them with updated versions rather than deleting them when the plan changes.
+- Avoid duplicate planning docs. Keep `PLAN.md`, `VISION.md`, assistant reset docs, and the active UI concept/comparison docs authoritative, and remove stale plans when they no longer match direction.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.
