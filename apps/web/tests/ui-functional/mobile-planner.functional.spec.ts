@@ -54,19 +54,16 @@ const oauthStatus = {
   detail: "Google Calendar is connected.",
 };
 
-function assistantDraftHref(draft: string): string {
-  return `/assistant?draft=${encodeURIComponent(draft)}`;
-}
-
-const expectedPlannerDraftHref = assistantDraftHref(
-  "Review my plan for 2026-04-28: 5 open tasks, 3 due today, 1 overdue, 2 unscheduled, 1 calendar commitment, 1 conflict, 90 focus minutes, and 30 buffer minutes. Check today's blocks, open tasks, conflicts, and unscheduled tasks, then propose the next bounded move.",
-);
-
-const expectedSummaryConflictDraftHref = assistantDraftHref(
-  "Inspect the planner conflicts for 2026-04-28. There is 1 planner conflict not shown as calendar sync repairs. Propose clear repair options and the safest next step.",
-);
+const plannerDraftDate = plannerSummary.date;
+const expectedPlannerDraftHref = `/assistant?draft=${encodeURIComponent(
+  `Review my plan for ${plannerDraftDate}: 5 open tasks, 3 due today, 1 overdue, 2 unscheduled, 1 calendar commitment, 1 conflict, 90 focus minutes, and 30 buffer minutes. Check today's blocks, open tasks, conflicts, and unscheduled tasks, then propose the next bounded move.`,
+)}`;
+const expectedSummaryConflictDraftHref = `/assistant?draft=${encodeURIComponent(
+  `Inspect the planner conflicts for ${plannerDraftDate}. There is 1 planner conflict not shown as calendar sync repairs. Propose clear repair options and the safest next step.`,
+)}`;
 
 test("mobile planner exposes action-oriented Assistant handoff drafts", async ({ page }) => {
+  await page.clock.setFixedTime(new Date(`${plannerDraftDate}T12:00:00.000Z`));
   await seedAssistantSession(page);
 
   await page.route(`${API_BASE}/v1/surfaces/planner/summary?date=**`, async (route) => {
@@ -86,7 +83,7 @@ test("mobile planner exposes action-oriented Assistant handoff drafts", async ({
   });
 
   await page.goto("/planner", { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Planner date controls").getByLabel("Date").fill("2026-04-28");
+  await page.getByLabel("Planner date controls").getByLabel("Date").fill(plannerDraftDate);
 
   await expect(page.getByRole("link", { name: "Review plan in Assistant" })).toHaveAttribute("href", expectedPlannerDraftHref);
   await expect(page.getByLabel("Conflict repair").getByRole("link", { name: "Review conflicts in Assistant" })).toHaveAttribute(
