@@ -1691,33 +1691,33 @@ export function MobileAssistantRebuild({
                 </View>
 
                 <Text style={{ color: palette.text, fontSize: 16, lineHeight: 23 }}>
-                  Here's what makes the most sense right now.
+                  {showFallbackFocusChooser ? "Choose your first focus block for today." : "What should I shape first?"}
                 </Text>
 
                 {!showFallbackFocusChooser && todayViewModel.reasonStack.length > 0 ? (
                   <View style={{ gap: 7 }}>
+                    <Text {...ASSISTANT_TIGHT_TEXT_PROPS} style={{ color: palette.accent, fontSize: 12, lineHeight: 17, fontWeight: "800" }}>
+                      Why this next
+                    </Text>
                     {todayViewModel.reasonStack.slice(0, 2).map((reason) => (
-                      <View key={reason} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                        <MaterialCommunityIcons name={"check-circle-outline" as never} size={15} color={palette.accent} style={{ marginTop: 2 }} />
-                        <Text style={{ flex: 1, color: palette.text, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
-                          {reason}
-                        </Text>
-                      </View>
+                      <Text key={reason} style={{ color: palette.text, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                        {reason}
+                      </Text>
                     ))}
                   </View>
                 ) : null}
 
-                <View
-                  style={{
-                    borderRadius: 17,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    borderWidth: 1,
-                    borderColor: "rgba(243, 178, 66, 0.18)",
-                    backgroundColor: "rgba(255,255,255,0.02)",
-                    gap: 9,
-                  }}
-                >
+                  <View
+                    style={{
+                      borderRadius: 17,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      borderWidth: 1,
+                      borderColor: "rgba(243, 178, 66, 0.18)",
+                      backgroundColor: "rgba(255,255,255,0.02)",
+                      gap: 9,
+                    }}
+                  >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <MaterialCommunityIcons name={"target" as never} size={18} color={palette.accent} />
                     <Text style={{ flex: 1, color: palette.text, fontSize: 17, lineHeight: 22, fontWeight: "800" }} numberOfLines={1}>
@@ -1783,25 +1783,6 @@ export function MobileAssistantRebuild({
                       {todayViewModel.body}
                     </Text>
                   )}
-
-                  <View
-                    style={{
-                      borderRadius: 13,
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.055)",
-                      backgroundColor: "rgba(255,255,255,0.018)",
-                      flexDirection: "row",
-                      gap: 8,
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <MaterialCommunityIcons name={"calendar-blank-outline" as never} size={15} color={palette.muted} style={{ marginTop: 1 }} />
-                    <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 17 }} numberOfLines={2}>
-                      I can draft a focus block; you confirm plan changes.
-                    </Text>
-                  </View>
 
                   <View style={{ flexDirection: assistantPanelLayout.actionDirection, gap: 8 }}>
                     <TouchableOpacity

@@ -2798,30 +2798,40 @@ export function MobileReviewSurface({
       )}
 
       {hasReviewCard ? (
-      <View style={{ gap: 10 }}>
-        <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Correct</Text>
+        <View style={{ ...cardBase(palette), borderRadius: 18, gap: 10, padding: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>{showAnswer ? "Answer ready" : "Reveal for confirmation"}</Text>
             <View style={pillStyle(palette, showAnswer)}>
               <Text {...REVIEW_TEXT_PROPS} style={{ color: showAnswer ? palette.accent : palette.muted, fontSize: 10, fontWeight: "800" }}>
                 {model.answerStateLabel}
               </Text>
             </View>
           </View>
-          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>{model.correctExplanation}</Text>
-      </View>
+          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>
+            {showAnswer ? model.correctExplanation : "Reveal the answer to confirm before grading."}
+          </Text>
+        </View>
+      ) : null}
 
-        <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
-          <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Why this now?</Text>
-          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>{model.whyThisNow}</Text>
+      {hasReviewCard ? (
+        <View style={{ ...cardBase(palette), borderRadius: 18, gap: 8, padding: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <MaterialCommunityIcons name={"target-account" as never} size={16} color={palette.accent} />
+            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Why this now?</Text>
+          </View>
+          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 12.5, lineHeight: 18 }} numberOfLines={3}>
+            {model.whyThisNow}
+          </Text>
           {primaryDeck ? (
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 17 }}>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }} numberOfLines={1}>
               Source: {primaryDeck.name}
             </Text>
           ) : null}
         </View>
+      ) : null}
 
-        {model.learningSignal ? (
+      {showAdvancedReview && hasReviewCard && model.learningSignal ? (
+        <View style={{ gap: 10 }}>
           <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
               <View style={{ flex: 1, gap: 4 }}>
@@ -2849,60 +2859,61 @@ export function MobileReviewSurface({
               </TouchableOpacity>
             ) : null}
           </View>
-        ) : null}
-      </View>
+        </View>
       ) : null}
 
-      <View style={{ ...cardBase(palette), gap: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Knowledge health</Text>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 20, fontWeight: "800" }}>{model.health.value}</Text>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{model.health.detail}</Text>
-          </View>
-          <View style={{ ...pillStyle(palette, model.health.label === "Stable"), alignSelf: "flex-start" }}>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-              {model.health.label}
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ gap: 8 }}>
-          <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Queue ladder</Text>
-          {model.queueLadder.map((stage) => (
-            <View key={stage.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ width: 94, color: stage.active ? palette.accent : palette.muted, fontSize: 11.5, fontWeight: "800" }}>
-                {stage.label}
-              </Text>
-              <View style={{ flex: 1, height: 6, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
-                <View
-                  style={{
-                    width: `${Math.min(100, Math.max(8, Number(stage.value) * 18))}%`,
-                    height: "100%",
-                    backgroundColor: stage.active ? palette.accent : "rgba(255,255,255,0.18)",
-                  }}
-                />
-              </View>
-              <Text {...REVIEW_TEXT_PROPS} style={{ width: 20, textAlign: "right", color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
-                {stage.value}
+      {showAdvancedReview ? (
+        <View style={{ ...cardBase(palette), gap: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Knowledge health</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 20, fontWeight: "800" }}>{model.health.value}</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{model.health.detail}</Text>
+            </View>
+            <View style={{ ...pillStyle(palette, model.health.label === "Stable"), alignSelf: "flex-start" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                {model.health.label}
               </Text>
             </View>
-          ))}
-        </View>
+          </View>
 
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Session progress</Text>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
-              {reviewReviewedCount > 0 ? model.session.label : "Session not started"}
-            </Text>
+          <View style={{ gap: 8 }}>
+            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Queue ladder</Text>
+            {model.queueLadder.map((stage) => (
+              <View key={stage.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Text {...REVIEW_TEXT_PROPS} style={{ width: 94, color: stage.active ? palette.accent : palette.muted, fontSize: 11.5, fontWeight: "800" }}>
+                  {stage.label}
+                </Text>
+                <View style={{ flex: 1, height: 6, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
+                  <View
+                    style={{
+                      width: `${Math.min(100, Math.max(8, Number(stage.value) * 18))}%`,
+                      height: "100%",
+                      backgroundColor: stage.active ? palette.accent : "rgba(255,255,255,0.18)",
+                    }}
+                  />
+                </View>
+                <Text {...REVIEW_TEXT_PROPS} style={{ width: 20, textAlign: "right", color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
+                  {stage.value}
+                </Text>
+              </View>
+            ))}
           </View>
-          <View style={{ height: 8, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
-            <View style={{ width: `${model.session.progressRatio * 100}%`, height: "100%", backgroundColor: palette.accent }} />
+
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Session progress</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
+                {reviewReviewedCount > 0 ? model.session.label : "Session not started"}
+              </Text>
+            </View>
+            <View style={{ height: 8, borderRadius: 999, backgroundColor: palette.surfaceHighest, overflow: "hidden" }}>
+              <View style={{ width: `${model.session.progressRatio * 100}%`, height: "100%", backgroundColor: palette.accent }} />
+            </View>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{model.session.detail}</Text>
           </View>
-          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{model.session.detail}</Text>
         </View>
-      </View>
+      ) : null}
 
       <TouchableOpacity style={{ alignItems: "center" }} onPress={toggleMissionTools}>
         <Text {...REVIEW_TEXT_PROPS} style={[kickerStyle(palette), { fontSize: 11 }]}>
