@@ -55,14 +55,15 @@ STARLOG_AUTH_RESET_TOKEN=<long-random-one-time-token>
 curl -fsS -X POST "https://starlog-api-production.up.railway.app/v1/auth/reset-passphrase" \
   -H "Content-Type: application/json" \
   -H "X-Starlog-Reset-Token: $STARLOG_AUTH_RESET_TOKEN" \
-  -d '{"passphrase":"<new-single-user-passphrase>"}'
+  -d '{"passphrase":"<new-single-user-passphrase>","confirmation":"RESET PASSPHRASE"}'
 ```
 
 4. Verify login with the new passphrase.
 5. Remove `STARLOG_AUTH_RESET_TOKEN` from Railway after verification.
 
 The reset endpoint is disabled when `STARLOG_AUTH_RESET_TOKEN` is unset and clears existing
-Starlog sessions when it changes the passphrase.
+Starlog sessions when it changes the passphrase. Reset tokens are one-time per Starlog database;
+if a reset must be retried after a successful call, rotate `STARLOG_AUTH_RESET_TOKEN` first.
 
 Automated hosted probe (recommended, includes the `/assistant` + `/review` + `/decks` regression guard):
 

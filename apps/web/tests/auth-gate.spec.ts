@@ -108,3 +108,26 @@ test("setup on an existing Starlog reports the passphrase recovery path", async 
   await expect(page.getByText("Passphrase not accepted for this Starlog.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
 });
+
+test("stale authenticated sessions are cleared when the API rejects the token", async ({ page }) => {
+  await page.addInitScript(
+    ({ token }) => {
+      window.localStorage.setItem("starlog-token", token);
+    },
+    { token: "stale-token-after-reset" },
+  );
+
+  await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Invalid auth token" }),
+    });
+  });
+
+  await page.goto("/assistant");
+
+  await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+  await expect(page).toHaveURL("/login");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("starlog-token"))).toBe("");
+});

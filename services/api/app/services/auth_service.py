@@ -1,5 +1,5 @@
 from datetime import timedelta
-from sqlite3 import Connection
+from sqlite3 import Connection, IntegrityError
 
 from app.core.config import get_settings
 from app.core.security import create_session_token, hash_passphrase, verify_passphrase
@@ -45,19 +45,29 @@ def login(conn: Connection, passphrase: str) -> tuple[str, str] | None:
     return token.plain, expires_at.isoformat()
 
 
-def reset_passphrase(conn: Connection, passphrase: str) -> bool:
+def reset_passphrase(conn: Connection, passphrase: str, reset_token_hash: str) -> str:
     user = execute_fetchone(conn, "SELECT id FROM users LIMIT 1")
     if user is None:
-        return False
+        return "not_bootstrapped"
+
+    now = utc_now()
+    try:
+        conn.execute(
+            "INSERT INTO auth_reset_uses (token_hash, used_at) VALUES (?, ?)",
+            (reset_token_hash, now.isoformat()),
+        )
+    except IntegrityError:
+        conn.rollback()
+        return "token_used"
 
     conn.execute(
         "UPDATE users SET passphrase_hash = ? WHERE id = ?",
         (hash_passphrase(passphrase), user["id"]),
     )
     conn.execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
-    events_service.emit(conn, "auth.passphrase_reset", {"user_id": user["id"]})
+    events_service.emit(conn, "auth.passphrase_reset", {"user_id": user["id"], "sessions_revoked": True})
     conn.commit()
-    return True
+    return "reset"
 
 
 def get_user_id_from_token_hash(conn: Connection, token_hash: str) -> str | None:

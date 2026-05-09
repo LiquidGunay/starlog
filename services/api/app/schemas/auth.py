@@ -13,6 +13,7 @@ class LoginRequest(BaseModel):
 
 class ResetPassphraseRequest(BaseModel):
     passphrase: str = Field(..., min_length=12)
+    confirmation: str = Field(..., pattern="^RESET PASSPHRASE$")
 
 
 class AuthResponse(BaseModel):
