@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import {
   API_BASE,
@@ -12,6 +12,50 @@ import {
   routeAssistantWeekly,
   seedAssistantSession,
 } from "./assistant-concept-fixtures";
+
+async function expectNoHorizontalOverflow(label: string, locator: Locator) {
+  await expect(locator, `${label} should be visible before measuring overflow`).toBeVisible();
+  const report = await locator.evaluate((rootElement) => {
+    const root = rootElement as HTMLElement;
+    const rootRect = root.getBoundingClientRect();
+    const leftLimit = Math.max(0, rootRect.left);
+    const rightLimit = Math.min(window.innerWidth, rootRect.right);
+    const visibleElements = [root, ...Array.from(root.querySelectorAll<HTMLElement>("section, article, div, ul, li, h1, h2, h3, p, span, strong, a, button"))]
+      .filter((element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      });
+
+    const overflowing = visibleElements
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const scrollOverflow = Math.ceil(element.scrollWidth - element.clientWidth);
+        const leftOverflow = Math.ceil(leftLimit - rect.left);
+        const rightOverflow = Math.ceil(rect.right - rightLimit);
+        const text = (element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 90);
+        return {
+          tag: element.tagName.toLowerCase(),
+          className: typeof element.className === "string" ? element.className : "",
+          text,
+          scrollOverflow,
+          leftOverflow,
+          rightOverflow,
+        };
+      })
+      .filter((entry) => entry.scrollOverflow > 1 || entry.leftOverflow > 1 || entry.rightOverflow > 1)
+      .slice(0, 8);
+
+    return {
+      rootClassName: typeof root.className === "string" ? root.className : "",
+      rootClientWidth: root.clientWidth,
+      rootScrollWidth: root.scrollWidth,
+      overflowing,
+    };
+  });
+
+  expect(report.overflowing, `${label} horizontal overflow: ${JSON.stringify(report, null, 2)}`).toEqual([]);
+}
 
 test("PWA assistant renders and submits a schema-driven dynamic panel", async ({ page }) => {
   await seedAssistantSession(page);
@@ -124,6 +168,7 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
   await expect(page.getByRole("radio", { name: /Move project forward/ })).toBeChecked();
   await expect(page.getByLabel("Protect this focus block")).toBeChecked();
   await expect(page.getByText("Planner can reserve 9:30-11:00 AM for focus.")).toBeVisible();
+  await expectNoHorizontalOverflow("dynamic panel", page.getByTestId("dynamic-panel-renderer").first());
 
   await page.getByRole("button", { name: "Confirm focus" }).click();
 
@@ -224,8 +269,8 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
   await expect(page.getByRole("region", { name: "Recommended next move" })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Finish onboarding flow polish" })).toBeVisible();
-  await expect(page.getByLabel("Why this recommendation").getByText("5 open tasks include launch polish")).toBeVisible();
-  await expect(page.getByLabel("Why this recommendation").getByText("4 reviews are due after the focus block")).toBeVisible();
+  await expect(page.getByLabel("Why now").getByText("5 open tasks include launch polish")).toBeVisible();
+  await expect(page.getByLabel("Why now").getByText("4 reviews are due after the focus block")).toBeVisible();
   await expect(page.getByLabel("At a glance").getByText("Planner")).toBeVisible();
   await expect(page.getByLabel("At a glance").getByText("5", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Secondary options").getByRole("link", { name: "Adjust plan" })).toHaveAttribute("href", "/planner");
@@ -246,6 +291,16 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
     "Start a 90 minute focus block for onboarding flow polish.",
   );
   await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Open Review" })).toHaveAttribute("href", "/review");
+  const todayPanel = page.getByRole("region", { name: "Recommended next move" });
+  await expectNoHorizontalOverflow("desktop Today cockpit", todayPanel);
+  await expectNoHorizontalOverflow("desktop reason stack", page.getByLabel("Why now"));
+  await expectNoHorizontalOverflow("desktop at-a-glance panel", page.getByLabel("At a glance"));
+  await expectNoHorizontalOverflow("desktop quick actions", page.getByLabel("Quick actions"));
+  await expectNoHorizontalOverflow("desktop Now rail", page.locator("aside article", { hasText: "Now" }).first());
+  await expectNoHorizontalOverflow("desktop Open loops rail", page.locator("aside article", { hasText: "Open loops" }).first());
+  await expectNoHorizontalOverflow("desktop Current context rail", page.locator("aside article", { hasText: "Current context" }).first());
+  const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(desktopOverflow).toBe(false);
   await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-concept-cockpit.png", fullPage: true });
 });
 
@@ -366,6 +421,140 @@ test("PWA assistant normal thread keeps ambient rows separate from message bubbl
   await expect(activity.getByText("domain tool").first()).toBeHidden();
   await expect(page.locator("main")).not.toContainText(/protocol|runtime|tool_call|tool_result|Diagnostics/i);
   await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-normal-thread-ambient-row.png", fullPage: true });
+});
+
+test("PWA assistant compact cockpit keeps actions and reasons capped on mobile", async ({ page }) => {
+  await seedAssistantSession(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const longRecommendationTitle =
+    "FinishLaunchPackagingPassWithAnUnbrokenRecommendationTitleThatMustWrapInsideTheCockpitInsteadOfOverflowing";
+
+  await routeAssistantThread(page, () => assistantThreadSnapshot());
+  await routeAssistantToday(page, () =>
+    assistantTodaySummary({
+      open_interrupt_count: 1,
+      open_loops: [
+        { key: "open_tasks", label: "Open tasks", count: 8, href: "/planner" },
+        { key: "overdue_tasks", label: "Overdue tasks", count: 6, href: "/planner" },
+        { key: "due_reviews", label: "Reviews due", count: 4, href: "/review" },
+        { key: "unprocessed_library", label: "Library inbox", count: 3, href: "/library" },
+        { key: "open_commitments", label: "Open commitments", count: 5, href: "/planner" },
+        { key: "stale_projects", label: "Stale projects", count: 2, href: "/planner" },
+      ],
+      recommended_next_move: {
+        key: "focus_packaging",
+        title: longRecommendationTitle,
+        body: "A 90 minute focus block is available before team sync.",
+        surface: "planner",
+        href: null,
+        action_label: "Start focus",
+        prompt: "Start a 90 minute focus block for launch packaging.",
+        priority: 95,
+        urgency: "high",
+      },
+      reason_stack: [
+        "8 open tasks are active now",
+        "6 overdue items should clear first",
+        "3 captures can be triaged after focus",
+        "4 reviews are queued for this afternoon",
+      ],
+      quick_actions: [
+        {
+          key: "open_planner",
+          title: "Open Planner",
+          surface: "planner",
+          href: "/planner",
+          action_label: "OpenPlannerWithoutOverflowingTheCompactQuickActionRow",
+          prompt: "Open planner to confirm timing.",
+          enabled: true,
+          count: 8,
+          reason: null,
+          priority: 10,
+        },
+        {
+          key: "open_review",
+          title: "Open Review",
+          surface: "review",
+          href: "/review",
+          action_label: "Open Review",
+          prompt: "Review queued items.",
+          enabled: true,
+          count: 4,
+          reason: null,
+          priority: 20,
+        },
+        {
+          key: "process_inbox",
+          title: "Process inbox",
+          surface: "library",
+          href: "/library",
+          action_label: "Process inbox",
+          prompt: "Process my latest Library captures.",
+          enabled: true,
+          count: 3,
+          reason: null,
+          priority: 30,
+        },
+        {
+          key: "create_task",
+          title: "Create task",
+          surface: "planner",
+          action_label: "Create task",
+          prompt: "Create a task from this move.",
+          enabled: true,
+          count: 1,
+          reason: null,
+          priority: 40,
+        },
+        {
+          key: "open_library",
+          title: "Open library",
+          surface: "library",
+          href: "/library",
+          action_label: "Open library",
+          prompt: "Review captured context.",
+          enabled: true,
+          count: 1,
+          reason: null,
+          priority: 50,
+        },
+      ],
+      at_a_glance: [
+        { key: "planner", label: "PlannerBacklogWithUnbrokenLabelThatMustWrap", count: 8, href: "/planner" },
+        { key: "library", label: "Library inbox", count: 3, href: "/library" },
+        { key: "review", label: "Review due", count: 4, href: "/review" },
+        { key: "commitments", label: "Open commitments", count: 5, href: "/planner" },
+      ],
+    }),
+  );
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: longRecommendationTitle })).toBeVisible();
+  await expect(page.getByLabel("Quick actions").locator("span")).toHaveCount(3);
+  await expect(page.getByLabel("Why now").locator("li")).toHaveCount(2);
+  await expectNoHorizontalOverflow("mobile Today cockpit", page.getByRole("region", { name: "Recommended next move" }));
+  await expectNoHorizontalOverflow("mobile long recommendation heading", page.getByRole("heading", { name: longRecommendationTitle }));
+  await expectNoHorizontalOverflow("mobile reason stack", page.getByLabel("Why now"));
+  await expectNoHorizontalOverflow("mobile at-a-glance panel", page.getByLabel("At a glance"));
+  await expectNoHorizontalOverflow("mobile quick actions", page.getByLabel("Quick actions"));
+  await expectNoHorizontalOverflow(
+    "mobile needs-attention panel",
+    page.getByText("Needs attention", { exact: true }).locator("xpath=ancestor::section[1]").first(),
+  );
+  await expectNoHorizontalOverflow(
+    "mobile current-context panel",
+    page.getByText("Current context", { exact: true }).locator("xpath=ancestor::section[1]").first(),
+  );
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(overflow).toBe(false);
+
+  await page.getByRole("button", { name: "Start focus" }).click();
+  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
+    "Start a 90 minute focus block for launch packaging.",
+  );
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-cockpit-compact-mobile.png", fullPage: true });
 });
 
 test("PWA assistant Today cockpit renders compact strategic context actions", async ({ page }) => {
@@ -649,8 +838,8 @@ test("PWA assistant Today cockpit falls back to count-derived recommendation wit
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "Triage overdue tasks" })).toBeVisible();
-  await expect(page.getByLabel("Why this recommendation").getByText("2 tasks overdue")).toBeVisible();
-  await expect(page.getByLabel("Why this recommendation").getByText("6 open tasks total")).toBeVisible();
+  await expect(page.getByLabel("Why now").getByText("2 tasks overdue")).toBeVisible();
+  await expect(page.getByLabel("Why now").getByText("6 open tasks total")).toBeVisible();
   await expect(page.getByLabel("At a glance").getByText("Overdue tasks")).toBeVisible();
   await expect(page.getByLabel("Strategic context")).toHaveCount(0);
 

@@ -1,6 +1,7 @@
 .panel {
   display: grid;
   gap: 14px;
+  min-width: 0;
   padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -68,6 +69,7 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .eyebrowRow {
@@ -81,6 +83,8 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(244, 241, 232, 0.58);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .eyebrowRow span {
@@ -93,6 +97,7 @@
 .copy {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .copy h3 {
@@ -100,6 +105,8 @@
   color: #f4f1e8;
   font-size: 22px;
   line-height: 1.22;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .copy p,
@@ -107,11 +114,15 @@
   margin: 0;
   color: rgba(244, 241, 232, 0.78);
   line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .entityLink {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 7px 11px;
@@ -120,6 +131,8 @@
   font-size: 12px;
   letter-spacing: 0.04em;
   text-decoration: none;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .entityLink:hover {
@@ -134,12 +147,15 @@
 .field {
   display: grid;
   gap: 8px;
+  min-width: 0;
   color: rgba(244, 241, 232, 0.82);
   font-size: 14px;
 }
 
 .fieldLabel {
   font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .field input,
@@ -185,17 +201,22 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .quickDates button,
 .primaryButton,
 .secondaryButton,
 .dangerButton {
+  min-width: 0;
+  max-width: 100%;
   border: 0;
   border-radius: 999px;
   padding: 10px 14px;
   font: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .quickDates button {

@@ -303,6 +303,32 @@ function formatCount(count: number, singular: string, plural = `${singular}s`): 
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+const RECOMMENDED_REASON_LIMIT = 2;
+const RECOMMENDED_SECONDARY_ACTION_LIMIT = 2;
+const QUICK_ACTION_LIMIT = 3;
+const CONTEXT_ITEM_PREVIEW_LIMIT = 3;
+
+function compactReasons(values: Array<string | null | undefined>, limit = RECOMMENDED_REASON_LIMIT): string[] {
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const reason of normalized) {
+    if (seen.has(reason)) {
+      continue;
+    }
+    seen.add(reason);
+    out.push(reason);
+    if (out.length >= limit) {
+      break;
+    }
+  }
+
+  return out;
+}
+
 function buildFallbackRecommendedMove(
   todaySummary: AssistantTodaySummary | null | undefined,
   openLoops: TodayItem[],
@@ -320,13 +346,13 @@ function buildFallbackRecommendedMove(
   if (openInterrupts > 0 || (!todaySummary && openLoops.length > 0)) {
     return {
       title: "Resolve the waiting decision",
-      reasons: [
+      reasons: compactReasons([
         openInterrupts > 0
-          ? `${formatCount(openInterrupts, "Assistant decision")} waiting`
+          ? `${formatCount(openInterrupts, "pending decision")} waiting`
           : `${formatCount(openLoops.length, "open loop")} in the thread`,
         activeRuns > 0 ? `${formatCount(activeRuns, "active run")} may continue after this` : "Clearing it keeps the cockpit current",
         openTasks > 0 ? `${formatCount(openTasks, "open task")} still needs planning` : "No separate dashboard step needed",
-      ],
+      ]),
       primaryAction: {
         label: "Review decision",
         prompt: "Help me resolve the pending Assistant decision and explain the next step.",
@@ -341,11 +367,11 @@ function buildFallbackRecommendedMove(
   if (overdueTasks > 0) {
     return {
       title: "Triage overdue tasks",
-      reasons: [
+      reasons: compactReasons([
         `${formatCount(overdueTasks, "task")} overdue`,
         openTasks > overdueTasks ? `${formatCount(openTasks, "open task")} total` : "Planner pressure is the clearest signal",
         dueReviews > 0 ? `${formatCount(dueReviews, "review")} also due` : "Review queue is not the first blocker",
-      ],
+      ]),
       primaryAction: { label: "Plan recovery", prompt: "Triage my overdue tasks and propose the next bounded move." },
       secondaryActions: [
         { label: "Open Planner", href: "/planner" },
@@ -357,11 +383,11 @@ function buildFallbackRecommendedMove(
   if (dueReviews > 0) {
     return {
       title: "Clear the review queue",
-      reasons: [
+      reasons: compactReasons([
         `${formatCount(dueReviews, "review")} due now`,
         openTasks > 0 ? `${formatCount(openTasks, "open task")} can wait behind a short review pass` : "No higher task pressure is visible",
         "A focused review session keeps learning fresh",
-      ],
+      ]),
       primaryAction: { label: "Start review", href: "/review" },
       secondaryActions: [
         { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
@@ -373,11 +399,11 @@ function buildFallbackRecommendedMove(
   if (libraryInbox > 0) {
     return {
       title: "Process the Library inbox",
-      reasons: [
+      reasons: compactReasons([
         `${formatCount(libraryInbox, "capture")} still needs routing`,
         openTasks > 0 ? `${formatCount(openTasks, "open task")} may be linked to captured material` : "Processing captures can create the right tasks",
         "Source fidelity stays intact when captures are routed early",
-      ],
+      ]),
       primaryAction: { label: "Process captures", prompt: "Process my latest Library captures and route anything actionable." },
       secondaryActions: [
         { label: "Open Library", href: "/library" },
@@ -388,13 +414,13 @@ function buildFallbackRecommendedMove(
 
   return {
     title: openTasks > 0 || openCommitments > 0 ? "Shape today’s plan" : "Set the first useful move",
-    reasons: [
+    reasons: compactReasons([
       openTasks > 0 ? `${formatCount(openTasks, "open task")} available to schedule` : "No urgent open loop is visible",
       openCommitments > 0 ? `${formatCount(openCommitments, "open commitment")} needs follow-through` : "Commitment pressure is low",
       contextItems.length > 0 || snapshot.messages.length > 0
         ? "Starlog has current context to work from"
         : "A short plan gives the day a clean starting point",
-    ],
+    ]),
     primaryAction: { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
     secondaryActions: [
       { label: "Open Planner", href: "/planner" },
@@ -417,10 +443,10 @@ function buildRecommendedMove(
   if (title && primaryLabel && (primaryHref || primaryPrompt)) {
     return {
       title,
-      reasons: [
+      reasons: compactReasons([
         ...(todaySummary?.reason_stack || []).filter(Boolean),
         ...(enriched.body ? [enriched.body] : []),
-      ].slice(0, 4),
+      ]),
       primaryAction: {
         label: primaryLabel,
         href: primaryHref,
@@ -428,7 +454,7 @@ function buildRecommendedMove(
       },
       secondaryActions: buildQuickActions(todaySummary)
         .filter((action) => action.label !== primaryLabel && (action.href || action.prompt))
-        .slice(0, 3),
+        .slice(0, RECOMMENDED_SECONDARY_ACTION_LIMIT),
     };
   }
   return buildFallbackRecommendedMove(todaySummary, openLoops, contextItems, snapshot);
@@ -441,7 +467,7 @@ function buildAtAGlanceItems(
 ): Array<{ label: string; value: number }> {
   const loops = todaySummary?.at_a_glance?.length ? todaySummary.at_a_glance : todaySummary?.open_loops || [];
   if (loops.length > 0) {
-    return loops.slice(0, 5).map((loop) => ({
+    return loops.slice(0, CONTEXT_ITEM_PREVIEW_LIMIT).map((loop) => ({
       label: loop.label,
       value: Number.isFinite(loop.count) ? loop.count : 0,
     }));
@@ -463,7 +489,7 @@ function buildQuickActions(todaySummary: AssistantTodaySummary | null | undefine
       reason: action.reason,
     }))
     .filter((action) => action.label && action.enabled !== false && (action.href || action.prompt))
-    .slice(0, 4);
+    .slice(0, QUICK_ACTION_LIMIT);
   if (enrichedActions.length > 0) {
     return enrichedActions;
   }
@@ -472,7 +498,7 @@ function buildQuickActions(todaySummary: AssistantTodaySummary | null | undefine
     { label: "Open Planner", href: "/planner" },
     { label: "Start review", href: "/review" },
     { label: "Process captures", prompt: "Process my latest Library captures and route anything actionable." },
-  ];
+  ].slice(0, QUICK_ACTION_LIMIT);
 }
 
 function firstStrategicItem(...items: Array<StrategicContextItem | StrategicContextItem[] | null | undefined>): StrategicContextItem | null {
@@ -713,13 +739,15 @@ function hasWeeklyContent(weeklySummary: AssistantWeeklySummary | null | undefin
 }
 
 function collectTodayOpenLoops(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
-  const explicitItems = (providedItems || []).filter((item) => item.label !== "No open loops in this thread").slice(0, 4);
+  const explicitItems = (providedItems || [])
+    .filter((item) => item.label !== "No open loops in this thread")
+    .slice(0, CONTEXT_ITEM_PREVIEW_LIMIT);
   if (explicitItems.length > 0) {
     return explicitItems;
   }
   return snapshot.interrupts
     .filter((interrupt) => interrupt.status === "pending")
-    .slice(0, 4)
+    .slice(0, CONTEXT_ITEM_PREVIEW_LIMIT)
     .map((interrupt) => ({
       label: pendingInterruptTodayLabel(interrupt),
       href: interrupt.entity_ref?.href || undefined,
@@ -727,7 +755,7 @@ function collectTodayOpenLoops(snapshot: AssistantThreadSnapshot, providedItems:
 }
 
 function collectTodayContext(snapshot: AssistantThreadSnapshot, providedItems: TodayItem[] | undefined): TodayItem[] {
-  const explicitItems = (providedItems || []).slice(0, 4);
+  const explicitItems = (providedItems || []).slice(0, CONTEXT_ITEM_PREVIEW_LIMIT);
   if (explicitItems.length > 0) {
     return explicitItems;
   }
@@ -746,7 +774,7 @@ function collectTodayContext(snapshot: AssistantThreadSnapshot, providedItems: T
         label,
         href: part.card.entity_ref?.href || undefined,
       });
-      if (context.length >= 4) {
+      if (context.length >= CONTEXT_ITEM_PREVIEW_LIMIT) {
         return context;
       }
     }
@@ -1378,7 +1406,9 @@ function TodayPanel({
   onQuickStart: (prompt: string) => void;
 }) {
   const recommendedMove = buildRecommendedMove(todaySummary, openLoops, contextItems, snapshot);
-  const reasons = recommendedMove.reasons.length > 0 ? recommendedMove.reasons : ["Starlog has enough current context to recommend one next move."];
+  const reasons = recommendedMove.reasons.length > 0
+    ? recommendedMove.reasons
+    : ["Current context is in place for a focused next move."];
   const atAGlanceItems = buildAtAGlanceItems(todaySummary, openLoops, contextItems);
   const quickActions = buildQuickActions(todaySummary);
   const strategicRows = buildStrategicContextRows(todaySummary);
@@ -1439,10 +1469,10 @@ function TodayPanel({
 
       <article className={styles.recommendedMove}>
         <div className={styles.recommendedMoveCopy}>
-          <p className={styles.recommendedMoveLabel}>Do this next</p>
+          <p className={styles.recommendedMoveLabel}>Action now</p>
           <h3>{recommendedMove.title}</h3>
-          <div className={styles.reasonStack} aria-label="Why this recommendation">
-            <span>Why</span>
+          <div className={styles.reasonStack} aria-label="Why now">
+            <span>Why now</span>
             <ul>
               {reasons.map((reason) => (
                 <li key={reason}>{reason}</li>
@@ -1567,7 +1597,7 @@ function TodayPanel({
           </div>
           {openLoops.length > 0 ? (
             <ul className={styles.todayList}>
-              {openLoops.slice(0, 4).map((item, index) => (
+              {openLoops.slice(0, CONTEXT_ITEM_PREVIEW_LIMIT).map((item, index) => (
                 <li key={`loop-${item.label}-${index}`}>
                   {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
                 </li>
@@ -1585,7 +1615,7 @@ function TodayPanel({
           </div>
           {contextItems.length > 0 ? (
             <ul className={styles.todayList}>
-              {contextItems.slice(0, 4).map((item, index) => (
+              {contextItems.slice(0, CONTEXT_ITEM_PREVIEW_LIMIT).map((item, index) => (
                 <li key={`context-${item.label}-${index}`}>
                   {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
                 </li>
