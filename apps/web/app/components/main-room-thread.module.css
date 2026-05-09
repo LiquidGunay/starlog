@@ -32,6 +32,7 @@
   align-self: start;
   display: grid;
   gap: 14px;
+  min-width: 0;
   padding: 22px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -47,6 +48,7 @@
   grid-template-columns: 68px minmax(0, 1fr);
   gap: 8px 16px;
   align-items: center;
+  min-width: 0;
   max-width: 720px;
 }
 
@@ -56,6 +58,8 @@
   font-size: 16px;
   letter-spacing: 0;
   grid-column: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .todayHeader h2 {
@@ -64,6 +68,8 @@
   font-size: 28px;
   line-height: 1.12;
   grid-column: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .todayHeader p {
@@ -94,6 +100,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
+  min-width: 0;
   padding: 0 0 4px 82px;
   border: 0;
   background: transparent;
@@ -102,6 +109,7 @@
 .recommendedMoveCopy {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .recommendedMoveLabel {
@@ -110,6 +118,8 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .recommendedMove h3 {
@@ -117,11 +127,14 @@
   color: #f4f1e8;
   font-size: 28px;
   line-height: 1.14;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .reasonStack {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .reasonStack > span {
@@ -129,6 +142,8 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .reasonStack ul {
@@ -163,6 +178,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .recommendedActions {
@@ -172,12 +188,15 @@
 
 .secondaryActions {
   justify-content: flex-start;
+  min-width: 0;
 }
 
 .recommendedActions a,
 .recommendedActions button,
 .quickActions a,
 .quickActions button {
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
@@ -188,12 +207,17 @@
   font-weight: 650;
   cursor: pointer;
   text-decoration: none;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .quickActions > span {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .quickActions small {
@@ -245,6 +269,8 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: #fbf7ee;
   font-size: 18px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .atAGlance div {
@@ -263,12 +289,16 @@
   color: #8fcbff;
   font-size: 15px;
   line-height: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .atAGlance span {
   color: rgba(244, 241, 232, 0.84);
   font-size: 15px;
   line-height: 1.3;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .todayGrid {
@@ -299,6 +329,11 @@
   letter-spacing: 0.12em;
 }
 
+.todayBlockHeader span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .todayBlockHeader strong {
   display: inline-flex;
   align-items: center;
@@ -315,6 +350,7 @@
 .strategicContext {
   display: grid;
   gap: 12px;
+  min-width: 0;
   padding: 12px;
   border-radius: 8px;
   border: 1px solid rgba(143, 181, 210, 0.16);
@@ -325,6 +361,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+  min-width: 0;
 }
 
 .strategicContextItem {
@@ -349,6 +386,8 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .strategicContextCopy strong {
@@ -367,6 +406,8 @@
 
 .strategicContextItem a,
 .strategicContextItem button {
+  min-width: 0;
+  max-width: 100%;
   min-height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
@@ -377,7 +418,8 @@
   font-size: 13px;
   cursor: pointer;
   text-decoration: none;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .strategicContextItem a:hover,
@@ -393,6 +435,7 @@
 .weeklyReview {
   display: grid;
   gap: 10px;
+  min-width: 0;
   padding: 14px;
   border-radius: 8px;
   border: 1px solid rgba(166, 194, 151, 0.16);
@@ -403,6 +446,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  min-width: 0;
 }
 
 .weeklyReviewColumn {
@@ -417,6 +461,8 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .weeklyReviewColumn ul {
@@ -455,18 +501,23 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .weeklyActions > span {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .weeklyActions a,
 .weeklyActions button,
 .weeklyDisabledAction {
+  min-width: 0;
+  max-width: 100%;
   min-height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
@@ -476,7 +527,8 @@
   font: inherit;
   font-size: 13px;
   text-decoration: none;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .weeklyActions a:hover,

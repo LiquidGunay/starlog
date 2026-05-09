@@ -42,6 +42,8 @@
 .syncState {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   min-height: 28px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 999px;
@@ -50,6 +52,8 @@
   color: rgba(244, 241, 232, 0.75);
   font-size: 13px;
   line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .syncState {
@@ -287,6 +291,7 @@
   display: grid;
   gap: 14px;
   align-content: start;
+  min-width: 0;
 }
 
 .sideCard {
@@ -303,12 +308,16 @@
 .sideCard h2 {
   margin: 0 0 12px;
   font-size: 24px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sideCard h3 {
   margin: 0 0 8px;
   font-size: 16px;
   font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sideCard .sideLabel {
@@ -318,12 +327,16 @@
   font-size: 12px;
   font-weight: 600;
   color: rgba(244, 241, 232, 0.56);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sideCard p,
 .sideCard li {
   color: rgba(244, 241, 232, 0.76);
   line-height: 1.7;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sideCard ul {
@@ -355,6 +368,7 @@
 .railList button {
   display: block;
   width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 8px;
   padding: 8px 0;
@@ -364,6 +378,8 @@
   font-size: 14px;
   line-height: 1.45;
   text-align: left;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .railList button {
