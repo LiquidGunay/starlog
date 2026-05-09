@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { AuthGate } from "./components/auth-gate";
 import { TopNavigation } from "./components/top-navigation";
 import { SessionProvider } from "./session-provider";
 import { ThemeProvider } from "./theme-provider";
@@ -20,8 +21,10 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <SessionProvider>
-            <TopNavigation />
-            {children}
+            <AuthGate>
+              <TopNavigation />
+              {children}
+            </AuthGate>
           </SessionProvider>
         </ThemeProvider>
       </body>

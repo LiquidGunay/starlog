@@ -518,6 +518,7 @@ test("PWA assistant Today cockpit renders compact strategic context actions", as
 
 test("PWA assistant empty cockpit renders weekly systems review with real actions", async ({ page }) => {
   await seedAssistantSession(page);
+  await page.clock.setFixedTime(new Date("2026-04-29T12:00:00.000Z"));
 
   const weeklyRequests: string[] = [];
   await routeAssistantThread(page, () => assistantThreadSnapshot());

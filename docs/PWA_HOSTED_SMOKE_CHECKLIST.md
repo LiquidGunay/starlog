@@ -38,6 +38,32 @@ Latest public checks from this repo pass:
 - `curl -I https://starlog-web-production.up.railway.app` -> `HTTP/2 200`
 - `curl https://starlog-api-production.up.railway.app/v1/health` -> `{"status":"ok","env":"prod","users":1}`
 
+## Hosted passphrase reset
+
+Use this only for the single-user hosted instance when the original passphrase is lost.
+
+1. Deploy API code that includes `POST /v1/auth/reset-passphrase`.
+2. Set a temporary secret on the Railway API service:
+
+```text
+STARLOG_AUTH_RESET_TOKEN=<long-random-one-time-token>
+```
+
+3. Reset the passphrase from a trusted shell:
+
+```bash
+curl -fsS -X POST "https://starlog-api-production.up.railway.app/v1/auth/reset-passphrase" \
+  -H "Content-Type: application/json" \
+  -H "X-Starlog-Reset-Token: $STARLOG_AUTH_RESET_TOKEN" \
+  -d '{"passphrase":"<new-single-user-passphrase>"}'
+```
+
+4. Verify login with the new passphrase.
+5. Remove `STARLOG_AUTH_RESET_TOKEN` from Railway after verification.
+
+The reset endpoint is disabled when `STARLOG_AUTH_RESET_TOKEN` is unset and clears existing
+Starlog sessions when it changes the passphrase.
+
 Automated hosted probe (recommended, includes the `/assistant` + `/review` + `/decks` regression guard):
 
 ```bash

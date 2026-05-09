@@ -33,6 +33,7 @@ type MutationResult<T> = {
 type SessionConfig = {
   apiBase: string;
   token: string;
+  hydrated: boolean;
   clientId: string;
   isOnline: boolean;
   outbox: QueuedMutation[];
@@ -399,6 +400,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
     () => ({
       apiBase,
       token,
+      hydrated,
       clientId,
       isOnline,
       outbox,
@@ -423,6 +425,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
       outbox,
       replayLog,
       token,
+      hydrated,
     ],
   );
 

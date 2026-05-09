@@ -129,6 +129,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - When reusing shared dependencies across worktrees, verify symlinks, `PYTHONPATH`, and build outputs still point at the active checkout before trusting validation results.
 - Prefer exact evidence over optimistic success text: confirm builds, installs, screenshots, and route transitions directly.
 - For Android validation from WSL on this host, treat Windows `adb.exe`, Windows-visible APK staging paths, and manual device unlock as the reliable baseline.
+- When Windows `adb.exe` is driven from WSL, stream device files through `adb exec-out ... > /home/ubuntu/...` instead of `adb pull ... /home/ubuntu/...`; Windows `adb pull` cannot create Linux-side paths.
 - Preserve explicitly stated interaction contracts when redesigning assistant and support surfaces.
 - For major UI overhauls, refresh the repo-local reference artifact before changing shared components.
 - Major UI work must compare against `artifacts/ui-concept` mockups, rebuild the UX rather than reskin old components, and validate responsive mobile behavior so text does not wrap awkwardly or collide.

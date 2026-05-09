@@ -45,6 +45,21 @@ def login(conn: Connection, passphrase: str) -> tuple[str, str] | None:
     return token.plain, expires_at.isoformat()
 
 
+def reset_passphrase(conn: Connection, passphrase: str) -> bool:
+    user = execute_fetchone(conn, "SELECT id FROM users LIMIT 1")
+    if user is None:
+        return False
+
+    conn.execute(
+        "UPDATE users SET passphrase_hash = ? WHERE id = ?",
+        (hash_passphrase(passphrase), user["id"]),
+    )
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
+    events_service.emit(conn, "auth.passphrase_reset", {"user_id": user["id"]})
+    conn.commit()
+    return True
+
+
 def get_user_id_from_token_hash(conn: Connection, token_hash: str) -> str | None:
     now = iso(utc_now())
     row = execute_fetchone(

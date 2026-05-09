@@ -445,7 +445,7 @@ snapshot_phone_state() {
   adb_cmd shell dumpsys activity top >"$TOP_ACTIVITY_PATH" 2>/dev/null || true
   adb_cmd shell dumpsys window policy >"$WINDOW_POLICY_PATH" 2>/dev/null || true
   adb_cmd shell uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1 || true
-  adb_cmd pull /sdcard/window_dump.xml "$BUILD_DIR/${prefix}.xml" >/dev/null 2>&1 || true
+  adb_cmd exec-out cat /sdcard/window_dump.xml >"$BUILD_DIR/${prefix}.xml" 2>/dev/null || true
   adb_cmd exec-out screencap -p >"$BUILD_DIR/${prefix}.png" 2>/dev/null || true
 }
 
@@ -571,7 +571,7 @@ install_apk() {
 
 dump_ui() {
   adb_cmd shell uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1 || return 1
-  adb_cmd pull /sdcard/window_dump.xml "$UI_XML" >/dev/null 2>&1 || return 1
+  adb_cmd exec-out cat /sdcard/window_dump.xml >"$UI_XML" 2>/dev/null || return 1
 }
 
 ui_has_text() {

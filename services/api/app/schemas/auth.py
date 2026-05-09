@@ -11,6 +11,10 @@ class LoginRequest(BaseModel):
     passphrase: str = Field(..., min_length=8)
 
 
+class ResetPassphraseRequest(BaseModel):
+    passphrase: str = Field(..., min_length=12)
+
+
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

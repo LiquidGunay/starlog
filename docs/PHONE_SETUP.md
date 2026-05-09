@@ -144,6 +144,10 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 7. Record the configured preview UI in a dated artifact folder, for example:
    - `artifacts/phone-current/<date>/`
 
+If the hosted Starlog passphrase is lost, reset it through the operator-only API path in
+[PWA_HOSTED_SMOKE_CHECKLIST.md](/home/ubuntu/starlog/docs/PWA_HOSTED_SMOKE_CHECKLIST.md#hosted-passphrase-reset),
+then sign in again on the PWA and phone with the new passphrase.
+
 Observed notes from the 2026-03-16 production pass:
 
 - The preview launcher component resolves to `com.starlog.app.preview/com.starlog.app.dev.MainActivity`, not `com.starlog.app.preview/.MainActivity`.
