@@ -31,8 +31,8 @@
 .todayPanel {
   align-self: start;
   display: grid;
-  gap: 16px;
-  padding: 28px;
+  gap: 14px;
+  padding: 22px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background:
@@ -44,8 +44,8 @@
 
 .todayHeader {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 8px 20px;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 8px 16px;
   align-items: center;
   max-width: 720px;
 }
@@ -53,7 +53,7 @@
 .todayKicker {
   margin: 0;
   color: #f6bd61;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 0;
   grid-column: 2;
 }
@@ -61,7 +61,7 @@
 .todayHeader h2 {
   margin: 0;
   color: #f4f1e8;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1.12;
   grid-column: 2;
 }
@@ -77,31 +77,31 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 74px;
-  height: 74px;
+  width: 62px;
+  height: 62px;
   border-radius: 999px;
   border: 1px solid rgba(246, 189, 97, 0.56);
   background:
     radial-gradient(circle, rgba(246, 189, 97, 0.2), transparent 58%),
     rgba(7, 12, 18, 0.72);
   color: #f6bd61;
-  font-size: 42px;
+  font-size: 32px;
   box-shadow: 0 0 52px rgba(246, 189, 97, 0.22);
 }
 
 .recommendedMove {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
+  gap: 14px;
   align-items: start;
-  padding: 0 0 4px 108px;
+  padding: 0 0 4px 82px;
   border: 0;
   background: transparent;
 }
 
 .recommendedMoveCopy {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .recommendedMoveLabel {
@@ -142,6 +142,7 @@
 .reasonStack li {
   color: rgba(244, 241, 232, 0.78);
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .reasonStack li::before {
@@ -240,7 +241,7 @@
 .atAGlance h3 {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 16px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: #fbf7ee;
   font-size: 18px;
@@ -251,9 +252,9 @@
   grid-template-columns: subgrid;
   grid-column: 1 / -1;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   min-width: 0;
-  padding: 12px 18px;
+  padding: 10px 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -273,15 +274,15 @@
 .todayGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .todayBlock {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(0, 0, 0, 0.16);
@@ -291,7 +292,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   color: rgba(244, 241, 232, 0.58);
   font-size: 12px;
   text-transform: uppercase;
@@ -314,7 +315,7 @@
 .strategicContext {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: 12px;
   border-radius: 8px;
   border: 1px solid rgba(143, 181, 210, 0.16);
   background: rgba(0, 0, 0, 0.13);
@@ -323,16 +324,16 @@
 .strategicContextList {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .strategicContextItem {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
-  padding: 10px;
+  padding: 9px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -391,7 +392,7 @@
 
 .weeklyReview {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   padding: 14px;
   border-radius: 8px;
   border: 1px solid rgba(166, 194, 151, 0.16);
