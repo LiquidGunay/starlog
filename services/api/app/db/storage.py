@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS auth_reset_uses (
+  token_hash TEXT PRIMARY KEY,
+  used_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sync_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id TEXT NOT NULL,
@@ -831,6 +836,10 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           used_at TEXT,
           worker_id TEXT,
           created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS auth_reset_uses (
+          token_hash TEXT PRIMARY KEY,
+          used_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS worker_sessions (
           id TEXT PRIMARY KEY,

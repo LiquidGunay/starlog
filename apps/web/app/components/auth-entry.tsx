@@ -23,6 +23,38 @@ function inferIdentity(apiBase: string): string {
   }
 }
 
+async function responseErrorDetail(response: Response): Promise<string> {
+  const body = await response.text();
+  if (!body) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+  } catch {
+    // Fall through to the raw response text.
+  }
+
+  return body;
+}
+
+async function authErrorMessage(response: Response, action: AuthMode): Promise<string> {
+  const detail = await responseErrorDetail(response);
+  if (response.status === 401) {
+    return "Passphrase not accepted for this Starlog. Use the original passphrase or reset the hosted backend.";
+  }
+  if (response.status === 409 && action === "bootstrap") {
+    return "This Starlog is already set up. Sign in with the original passphrase, or reset the backend before creating a new one.";
+  }
+  if (response.status === 422) {
+    return "Use a passphrase of at least 12 characters for setup, or at least 8 characters for sign in.";
+  }
+  return `${action === "bootstrap" ? "Setup" : "Login"} failed (${response.status})${detail ? `: ${detail}` : ""}`;
+}
+
 export function AuthEntry() {
   const router = useRouter();
   const { apiBase, token, setApiBase, setToken } = useSessionConfig();
@@ -42,8 +74,7 @@ export function AuthEntry() {
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(body || `Login failed (${response.status})`);
+      throw new Error(await authErrorMessage(response, "login"));
     }
 
     const payload = (await response.json()) as AuthResponse;
@@ -82,8 +113,7 @@ export function AuthEntry() {
       });
 
       if (response.status !== 201 && response.status !== 409) {
-        const body = await response.text();
-        throw new Error(body || `Bootstrap failed (${response.status})`);
+        throw new Error(await authErrorMessage(response, "bootstrap"));
       }
 
       await login(passphrase.trim());
@@ -188,12 +218,14 @@ export function AuthEntry() {
 
         <footer className="auth-footer">
           <p>{hasSession ? "Primary routes:" : productCopy.brand.tagline}</p>
-          <div className="auth-footer-links">
-            <Link href="/assistant">{PRODUCT_SURFACES.assistant.label}</Link>
-            <Link href="/library">{PRODUCT_SURFACES.library.label}</Link>
-            <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
-            <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
-          </div>
+          {hasSession ? (
+            <div className="auth-footer-links">
+              <Link href="/assistant">{PRODUCT_SURFACES.assistant.label}</Link>
+              <Link href="/library">{PRODUCT_SURFACES.library.label}</Link>
+              <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
+              <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
+            </div>
+          ) : null}
         </footer>
       </section>
     </main>

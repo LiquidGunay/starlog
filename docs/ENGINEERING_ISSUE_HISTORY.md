@@ -16,6 +16,11 @@ debugging chronology here instead.
 
 - Windows `adb.exe` from WSL is the reliable phone-control path on this host; Linux `adb` may stay empty even when the phone is connected.
 - Windows `adb.exe install` must use a native Windows path like `C:\Temp\...`; WSL-style `/mnt/c/...` paths are unreliable for installs.
+- 2026-05-09: The fresh local SRS phone validation falsely timed out waiting for login UI text
+  because `adb pull /sdcard/window_dump.xml /home/ubuntu/...` was executed by Windows `adb.exe`,
+  which cannot write to the Linux-side path. The app was visible and manual ADB taps completed
+  login, Review load, reveal, and Good rating. The validation script now streams UI XML through
+  `adb exec-out cat ... > /home/ubuntu/...`.
 - The OPPO validation device must remain manually unlocked, and sideload flows may pause behind Google Play Protect prompts.
 - The fresh local Android validation loop now uses device-ABI-only builds, bounded `versionCode`s, and `latest.apk` / `latest.json` pointers to avoid repeated rebuild confusion.
 
@@ -30,6 +35,10 @@ debugging chronology here instead.
 - Observatory redesign work must preserve explicit interaction contracts like collapsible side panes.
 - Main Room card labels must match actual behavior; navigation-style labels should navigate, not mutate a draft.
 - Mobile tabs that represent different surfaces need independent draft state; shared composer state causes lossy UX.
+- 2026-05-09: Hosted first-run setup needs follow-up. During personal-phone Railway setup,
+  the user reported that the `Set Up Starlog` button did not appear to work. Reproduce on
+  the hosted PWA/native login flow, verify whether the backend is already bootstrapped versus
+  the bootstrap request failing silently, and add a visible error/recovery path.
 
 ### Docs and process drift
 

@@ -707,6 +707,71 @@ function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/$/, "");
 }
 
+async function responseErrorDetail(response: Response): Promise<string> {
+  const body = await response.text();
+  if (!body) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+  } catch {
+    // Fall through to the raw response text.
+  }
+
+  return body;
+}
+
+async function mobileAuthErrorMessage(response: Response, action: "login" | "setup"): Promise<string> {
+  const detail = await responseErrorDetail(response);
+  if (response.status === 401) {
+    return "Passphrase not accepted for this Starlog. Use the original passphrase or reset the hosted backend.";
+  }
+  if (response.status === 409 && action === "setup") {
+    return "This Starlog is already set up. Sign in with the original passphrase, or reset the backend before creating a new one.";
+  }
+  if (response.status === 422) {
+    return "Use a passphrase of at least 12 characters for setup, or at least 8 characters for sign in.";
+  }
+  return `${action === "setup" ? "Setup" : "Login"} failed: ${response.status}${detail ? ` ${detail}` : ""}`;
+}
+
+async function requestMobileLogin(apiBase: string, passphrase: string): Promise<string> {
+  const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ passphrase }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await mobileAuthErrorMessage(response, "login"));
+  }
+
+  const payload = (await response.json()) as { access_token: string };
+  return payload.access_token;
+}
+
+async function requestMobileBootstrap(apiBase: string, passphrase: string): Promise<201 | 409> {
+  const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/auth/bootstrap`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ passphrase }),
+  });
+
+  if (response.status === 201 || response.status === 409) {
+    return response.status;
+  }
+
+  throw new Error(await mobileAuthErrorMessage(response, "setup"));
+}
+
 function shouldCommitReviewSummaryResponse(
   requested: MobileReviewSummaryRequestToken,
   currentRequest: MobileReviewSummaryRequestToken,
@@ -2377,28 +2442,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function loginObservatorySession() {
-    if (authPassphrase.trim().length < 8) {
+    const passphrase = authPassphrase.trim();
+    if (passphrase.length < 8) {
       setStatus("Use at least 8 characters for the passphrase");
       return;
     }
 
     setAuthBusy("login");
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ passphrase: authPassphrase.trim() }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Login failed: ${response.status} ${errorBody}`);
-      }
-
-      const payload = (await response.json()) as { access_token: string };
-      setToken(payload.access_token);
+      const accessToken = await requestMobileLogin(apiBase, passphrase);
+      setToken(accessToken);
       setStatus("Starlog is ready on mobile");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Login failed");
@@ -2408,28 +2461,18 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }
 
   async function bootstrapObservatorySession() {
-    if (authPassphrase.trim().length < 12) {
+    const passphrase = authPassphrase.trim();
+    if (passphrase.length < 12) {
       setStatus("Setup requires a passphrase of at least 12 characters");
       return;
     }
 
     setAuthBusy("bootstrap");
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/auth/bootstrap`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ passphrase: authPassphrase.trim() }),
-      });
-
-      if (response.status !== 201 && response.status !== 409) {
-        const errorBody = await response.text();
-        throw new Error(`Bootstrap failed: ${response.status} ${errorBody}`);
-      }
-
-      await loginObservatorySession();
-      setStatus(response.status === 201 ? "Starlog is set up on this device" : "Starlog was already set up. Session refreshed.");
+      const bootstrapStatus = await requestMobileBootstrap(apiBase, passphrase);
+      const accessToken = await requestMobileLogin(apiBase, passphrase);
+      setToken(accessToken);
+      setStatus(bootstrapStatus === 201 ? "Starlog is set up on this device" : "Starlog was already set up. Session refreshed.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Bootstrap failed");
     } finally {

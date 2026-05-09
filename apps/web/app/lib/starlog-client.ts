@@ -10,6 +10,16 @@ export class ApiError extends Error {
   }
 }
 
+const AUTH_INVALIDATED_EVENT = "starlog-auth-invalidated";
+
+function dispatchAuthInvalidated(path: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent(AUTH_INVALIDATED_EVENT, { detail: { path } }));
+}
+
 export async function apiRequest<T>(
   apiBase: string,
   token: string,
@@ -27,6 +37,9 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const body = await response.text();
+    if (response.status === 401 && token) {
+      dispatchAuthInvalidated(path);
+    }
     throw new ApiError(response.status, body);
   }
 

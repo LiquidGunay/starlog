@@ -4,6 +4,7 @@ from sqlite3 import IntegrityError
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.db.storage import get_connection
 
 
@@ -21,6 +22,92 @@ def test_health_and_auth_bootstrap(client: TestClient) -> None:
     login = client.post("/v1/auth/login", json={"passphrase": "correct horse battery staple"})
     assert login.status_code == 200
     assert login.json()["token_type"] == "bearer"
+
+
+def test_operator_passphrase_reset_requires_configured_token(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client.post("/v1/auth/bootstrap", json={"passphrase": "correct horse battery staple"})
+
+    disabled = client.post(
+        "/v1/auth/reset-passphrase",
+        json={"passphrase": "new correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+        headers={"X-Starlog-Reset-Token": "reset-token"},
+    )
+    assert disabled.status_code == 404
+
+    monkeypatch.setenv("STARLOG_AUTH_RESET_TOKEN", "reset-token")
+    get_settings.cache_clear()
+    try:
+        forbidden = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "new correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+            headers={"X-Starlog-Reset-Token": "wrong-token"},
+        )
+        assert forbidden.status_code == 403
+
+        missing_token = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "new correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+        )
+        assert missing_token.status_code == 403
+
+        blank_token = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "new correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+            headers={"X-Starlog-Reset-Token": "   "},
+        )
+        assert blank_token.status_code == 403
+
+        missing_confirmation = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "new correct horse battery staple"},
+            headers={"X-Starlog-Reset-Token": "reset-token"},
+        )
+        assert missing_confirmation.status_code == 422
+
+        old_login = client.post("/v1/auth/login", json={"passphrase": "correct horse battery staple"})
+        assert old_login.status_code == 200
+        old_token = old_login.json()["access_token"]
+
+        reset = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "new correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+            headers={"X-Starlog-Reset-Token": "reset-token"},
+        )
+        assert reset.status_code == 200
+        assert reset.json() == {"reset": True}
+
+        repeated_reset = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "another correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+            headers={"X-Starlog-Reset-Token": "reset-token"},
+        )
+        assert repeated_reset.status_code == 409
+
+        expired_session = client.get("/v1/events?cursor=0", headers={"Authorization": f"Bearer {old_token}"})
+        assert expired_session.status_code == 401
+
+        old_login_after_reset = client.post("/v1/auth/login", json={"passphrase": "correct horse battery staple"})
+        assert old_login_after_reset.status_code == 401
+
+        new_login = client.post("/v1/auth/login", json={"passphrase": "new correct horse battery staple"})
+        assert new_login.status_code == 200
+
+        monkeypatch.setenv("STARLOG_AUTH_RESET_TOKEN", "rotated-reset-token")
+        get_settings.cache_clear()
+        rotated_reset = client.post(
+            "/v1/auth/reset-passphrase",
+            json={"passphrase": "rotated correct horse battery staple", "confirmation": "RESET PASSPHRASE"},
+            headers={"X-Starlog-Reset-Token": "rotated-reset-token"},
+        )
+        assert rotated_reset.status_code == 200
+
+        rotated_login = client.post("/v1/auth/login", json={"passphrase": "rotated correct horse battery staple"})
+        assert rotated_login.status_code == 200
+    finally:
+        get_settings.cache_clear()
 
 
 def test_artifact_graph_actions(client: TestClient, auth_headers: dict[str, str]) -> None:

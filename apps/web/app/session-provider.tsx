@@ -33,6 +33,7 @@ type MutationResult<T> = {
 type SessionConfig = {
   apiBase: string;
   token: string;
+  hydrated: boolean;
   clientId: string;
   isOnline: boolean;
   outbox: QueuedMutation[];
@@ -53,6 +54,7 @@ type SessionConfig = {
 const SessionContext = createContext<SessionConfig | null>(null);
 const LOCAL_API_BASE = "http://localhost:8000";
 const PRODUCTION_API_BASE = "https://starlog-api-production.up.railway.app";
+const AUTH_INVALIDATED_EVENT = "starlog-auth-invalidated";
 
 function inferDefaultApiBase(): string {
   if (typeof window === "undefined") {
@@ -165,6 +167,18 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
     return () => {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onAuthInvalidated = () => {
+      setTokenState("");
+      setFlushSummary("Session expired. Sign in again.");
+    };
+
+    window.addEventListener(AUTH_INVALIDATED_EVENT, onAuthInvalidated);
+    return () => {
+      window.removeEventListener(AUTH_INVALIDATED_EVENT, onAuthInvalidated);
     };
   }, []);
 
@@ -399,6 +413,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
     () => ({
       apiBase,
       token,
+      hydrated,
       clientId,
       isOnline,
       outbox,
@@ -423,6 +438,7 @@ export function SessionProvider({ children }: Readonly<{ children: ReactNode }>)
       outbox,
       replayLog,
       token,
+      hydrated,
     ],
   );
 
