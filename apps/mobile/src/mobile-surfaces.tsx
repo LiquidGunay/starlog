@@ -2813,47 +2813,52 @@ export function MobileReviewSurface({
         </View>
       ) : null}
 
-      {showAdvancedReview && hasReviewCard ? (
+      {hasReviewCard ? (
+        <View style={{ ...cardBase(palette), borderRadius: 18, gap: 8, padding: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <MaterialCommunityIcons name={"target-account" as never} size={16} color={palette.accent} />
+            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Why this now?</Text>
+          </View>
+          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 12.5, lineHeight: 18 }} numberOfLines={3}>
+            {model.whyThisNow}
+          </Text>
+          {primaryDeck ? (
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }} numberOfLines={1}>
+              Source: {primaryDeck.name}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {showAdvancedReview && hasReviewCard && model.learningSignal ? (
         <View style={{ gap: 10 }}>
           <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Why this now?</Text>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>{model.whyThisNow}</Text>
-            {primaryDeck ? (
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 17 }}>
-                Source: {primaryDeck.name}
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>{model.learningSignal.eyebrow}</Text>
+                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>
+                  {model.learningSignal.title}
+                </Text>
+              </View>
+              <View style={pillStyle(palette, model.learningSignal.tone === "drill")}>
+                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                  {model.learningSignal.tone === "drill" ? "Recommended" : "Signal"}
+                </Text>
+              </View>
+            </View>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 12.5, lineHeight: 18 }}>{model.learningSignal.body}</Text>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 17 }}>{model.learningSignal.detail}</Text>
+            {model.learningSignal.action?.kind === "assistant_prompt" ? (
+              <TouchableOpacity
+                style={{ ...pillStyle(palette), minHeight: 40, justifyContent: "center", alignSelf: "flex-start" }}
+                onPress={() => suggestAssistantAsk(model.learningSignal?.action?.prompt ?? "")}
+              >
+                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
+                  {model.learningSignal.action.label}
+                </Text>
+              </TouchableOpacity>
             ) : null}
           </View>
-
-          {model.learningSignal ? (
-            <View style={{ ...cardBase(palette), gap: 10, padding: 14 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>{model.learningSignal.eyebrow}</Text>
-                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "800" }}>
-                    {model.learningSignal.title}
-                  </Text>
-                </View>
-                <View style={pillStyle(palette, model.learningSignal.tone === "drill")}>
-                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-                    {model.learningSignal.tone === "drill" ? "Recommended" : "Signal"}
-                  </Text>
-                </View>
-              </View>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 12.5, lineHeight: 18 }}>{model.learningSignal.body}</Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 17 }}>{model.learningSignal.detail}</Text>
-              {model.learningSignal.action?.kind === "assistant_prompt" ? (
-                <TouchableOpacity
-                  style={{ ...pillStyle(palette), minHeight: 40, justifyContent: "center", alignSelf: "flex-start" }}
-                  onPress={() => suggestAssistantAsk(model.learningSignal?.action?.prompt ?? "")}
-                >
-                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
-                    {model.learningSignal.action.label}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
         </View>
       ) : null}
 

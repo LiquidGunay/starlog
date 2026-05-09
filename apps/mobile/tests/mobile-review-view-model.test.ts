@@ -66,6 +66,8 @@ assert.equal(hidden.session.label, "2 reviewed");
 assert.equal(hidden.session.progressRatio, 0.25);
 assert.equal(hidden.correctExplanation, "Reveal the answer when you have committed to a retrieval attempt.");
 assert.equal(hidden.learningSignal, null);
+assert.equal(hidden.whyThisNow.includes("Application transfer is the highest-pressure review source"), true);
+assert.equal(hidden.whyThisNow.includes("live judgment instead of passive recall"), true);
 
 const productionSummaryShape = deriveMobileReviewViewModel({
   ...hiddenInputBase(),
