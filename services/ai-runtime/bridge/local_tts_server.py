@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -68,7 +69,7 @@ def load_local_tts_config() -> LocalTtsConfig:
         host=os.getenv("STARLOG_LOCAL_TTS_HOST", DEFAULT_LOCAL_TTS_HOST).strip() or DEFAULT_LOCAL_TTS_HOST,
         port=_read_int("STARLOG_LOCAL_TTS_PORT", DEFAULT_LOCAL_TTS_PORT),
         auth_token=os.getenv("STARLOG_LOCAL_TTS_AUTH_TOKEN", "").strip(),
-        backend=os.getenv("STARLOG_LOCAL_TTS_BACKEND", "command").strip() or "command",
+        backend=(os.getenv("STARLOG_LOCAL_TTS_BACKEND", "command").strip() or "command").lower(),
         provider_name=os.getenv("STARLOG_LOCAL_TTS_PROVIDER_NAME", "local_tts_server").strip() or "local_tts_server",
         command_template=os.getenv("STARLOG_LOCAL_TTS_COMMAND", "").strip(),
         gpu_mode=os.getenv("STARLOG_LOCAL_TTS_GPU_MODE", "auto").strip() or "auto",
@@ -119,7 +120,43 @@ def _run_tts_command(template: str, *, output_path: Path, text: str, voice_name:
     return rendered_path
 
 
+def _run_kitten_tts(*, output_path: Path, text: str, voice_name: str | None, model_name: str | None) -> str:
+    try:
+        from kittentts import KittenTTS
+        import soundfile as sf
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "KittenTTS backend requires the kittentts and soundfile packages. "
+                "Install them in the local voice runtime before selecting STARLOG_LOCAL_TTS_BACKEND=kitten."
+            ),
+        ) from exc
+
+    resolved_model_name = model_name or "KittenML/kitten-tts-nano-0.8"
+    voice = voice_name or "expr-voice-5-m"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="starlog-kitten-tts-") as temp_dir:
+        temp_output_path = Path(temp_dir) / output_path.name
+        model = KittenTTS(resolved_model_name)
+        audio = model.generate(text, voice=voice)
+        sf.write(str(temp_output_path), audio, 24000)
+        temp_output_path.replace(output_path)
+
+    if not output_path.exists():
+        raise HTTPException(status_code=502, detail=f"KittenTTS did not create audio output: {output_path}")
+    return str(output_path)
+
+
 app = FastAPI(title="Starlog Local TTS Server", version="0.1.0")
+
+
+def _health_detail(config: LocalTtsConfig) -> str:
+    if config.backend == "kitten":
+        return f"Local TTS server is configured for {config.provider_name} with KittenTTS backend."
+    if config.command_template:
+        return f"Local TTS server is configured for {config.provider_name} with backend {config.backend}."
+    return "Configure STARLOG_LOCAL_TTS_COMMAND to enable synthesis."
 
 
 @app.get("/health", response_model=LocalTtsHealthResponse)
@@ -134,11 +171,7 @@ def health(request: Request) -> LocalTtsHealthResponse:
         authenticated=_is_authenticated(request, config.auth_token),
         gpu_mode=config.gpu_mode,
         model_name=config.model_name or None,
-        detail=(
-            f"Local TTS server is configured for {config.provider_name} with backend {config.backend}."
-            if config.command_template
-            else "Configure STARLOG_LOCAL_TTS_COMMAND to enable synthesis."
-        ),
+        detail=_health_detail(config),
     )
 
 
@@ -156,13 +189,21 @@ def speak(payload: LocalTtsSpeakRequest, request: Request) -> LocalTtsSpeakRespo
         )
 
     output_path = Path(payload.output_path or "/tmp/starlog-local-tts-output.wav")
-    rendered_path = _run_tts_command(
-        config.command_template,
-        output_path=output_path,
-        text=payload.text,
-        voice_name=payload.voice_name,
-        rate_wpm=payload.rate_wpm,
-    )
+    if config.backend == "kitten":
+        rendered_path = _run_kitten_tts(
+            output_path=output_path,
+            text=payload.text,
+            voice_name=payload.voice_name,
+            model_name=config.model_name or None,
+        )
+    else:
+        rendered_path = _run_tts_command(
+            config.command_template,
+            output_path=output_path,
+            text=payload.text,
+            voice_name=payload.voice_name,
+            rate_wpm=payload.rate_wpm,
+        )
     return LocalTtsSpeakResponse(
         status="ok",
         provider=config.provider_name,

@@ -1,6 +1,7 @@
 # Morning Briefing And Voice
 
-This is the current working path for a spoken morning briefing on phone.
+This is the native-first phone path for a spoken morning briefing.
+Use the phone PWA only as a fallback when the native app is unavailable.
 
 ## What Works Now
 
@@ -12,6 +13,7 @@ This is the current working path for a spoken morning briefing on phone.
 - Queued TTS job creation through `/v1/briefings/{briefing_id}/audio/render`.
 - Laptop-local worker completion for `tts` jobs.
 - Native phone cache/playback of briefing packages.
+- Host-side synthesis + native playback contract (phone remains the consumer boundary for briefing audio).
 - Native phone alarm scheduling that opens the cached briefing path.
 
 ## Setup
@@ -34,6 +36,27 @@ Configure one local TTS runtime. A command-template provider is the most portabl
 export STARLOG_TTS_COMMAND='piper --model /ABS/PATH/en_US-lessac-medium.onnx --output_file {output_path}'
 ```
 
+For a smaller neural local TTS runtime, the Starlog local TTS server can also use KittenTTS when
+the Python packages are installed in the local voice environment:
+
+```bash
+uv pip install 'soundfile>=0.12' \
+  'https://github.com/KittenML/KittenTTS/releases/download/0.8.1/kittentts-0.8.1-py3-none-any.whl'
+export STARLOG_LOCAL_TTS_BACKEND='kitten'
+export STARLOG_LOCAL_TTS_PROVIDER_NAME='kitten_tts'
+export STARLOG_LOCAL_TTS_MODEL_NAME='KittenML/kitten-tts-nano-0.8'
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
+  python scripts/local_tts_server.py
+```
+
+V1 split: synthesis runs through the host-side worker, while the native app still consumes cached audio files.
+In-app bundled KittenTTS should plug into that same `briefing-{date}.wav` path only after Android-native ONNX proofing.
+
+That means:
+- the command and render queue are host-driven today,
+- the cached `briefing-{date}.wav` contract remains unchanged on phone,
+- `expo-speech` remains the fallback output when host rendering is unavailable.
+
 Start the worker:
 
 ```bash
@@ -49,7 +72,7 @@ Briefing audio itself only needs the TTS runtime.
 
 ## Generate And Render From Assistant
 
-In `/assistant` on PWA or phone, send:
+In `/assistant` on native app or PWA fallback, send:
 
 ```text
 generate briefing for today
@@ -67,7 +90,7 @@ The second command queues a TTS job. Keep the worker running until the job compl
 
 1. Open the native app.
 2. Set API base and bearer token.
-3. Open `Planner`.
+3. Open `Assistant` for generate/render commands and `Planner` for alarm setup.
 4. In the briefing/alarm area:
    - refresh or generate the briefing package
    - queue audio render if needed

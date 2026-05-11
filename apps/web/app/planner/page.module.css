@@ -361,6 +361,56 @@
   gap: 0.4rem;
 }
 
+.alarmControlRow {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.alarmField {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.alarmField :global(.input) {
+  min-width: 0;
+  width: 100%;
+  font-family: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.alarmRows {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.alarmRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 45%);
+  padding-top: 0.45rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.alarmTime {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .conflictCard p {
   margin: 0;
   color: var(--muted);

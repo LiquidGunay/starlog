@@ -29,6 +29,7 @@ type MainRoomThreadProps = {
   todayOpenLoops?: TodayItem[];
   todayContextItems?: TodayItem[];
   onQuickStart: (prompt: string) => void;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
@@ -1084,10 +1085,12 @@ function groupMessageParts(parts: AssistantMessagePart[]): MessagePartGroup[] {
 function CardSection({
   card,
   busy,
+  inlineBusyActionIds,
   onCardAction,
 }: {
   card: AssistantCard;
   busy: boolean;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
 }) {
   const registry = getConversationCardRegistryEntry(card.kind, card.title);
@@ -1115,17 +1118,20 @@ function CardSection({
       ) : null}
       {card.actions.length > 0 ? (
         <div className={styles.actions}>
-          {card.actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
-              onClick={() => void onCardAction(action)}
-              disabled={busy}
-            >
-              {action.label}
-            </button>
-          ))}
+          {card.actions.map((action) => {
+            const actionBusy = inlineBusyActionIds.includes(action.id);
+            return (
+              <button
+                key={action.id}
+                type="button"
+                className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
+                onClick={() => void onCardAction(action)}
+                disabled={busy || actionBusy}
+              >
+                {actionBusy ? `Running ${action.label}` : action.label}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </section>
@@ -1135,10 +1141,12 @@ function CardSection({
 function AmbientUpdateSection({
   update,
   busy,
+  inlineBusyActionIds,
   onCardAction,
 }: {
   update: AssistantAmbientUpdate;
   busy: boolean;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
 }) {
   return (
@@ -1152,17 +1160,20 @@ function AmbientUpdateSection({
       </div>
       {update.actions && update.actions.length > 0 ? (
         <div className={styles.actions}>
-          {update.actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
-              onClick={() => void onCardAction(action)}
-              disabled={busy}
-            >
-              {action.label}
-            </button>
-          ))}
+          {update.actions.map((action) => {
+            const actionBusy = inlineBusyActionIds.includes(action.id);
+            return (
+              <button
+                key={action.id}
+                type="button"
+                className={`${styles.actionButton} ${styles[`action_${action.style || "secondary"}`]}`}
+                onClick={() => void onCardAction(action)}
+                disabled={busy || actionBusy}
+              >
+                {actionBusy ? `Running ${action.label}` : action.label}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -1172,16 +1183,18 @@ function AmbientUpdateSection({
 function AmbientTimelineRow({
   update,
   busy,
+  inlineBusyActionIds,
   onCardAction,
 }: {
   update: AssistantAmbientUpdate;
   busy: boolean;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
 }) {
   return (
     <div className={styles.ambientRow} aria-label="Ambient update">
       <span>{new Date(update.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-      <AmbientUpdateSection update={update} busy={busy} onCardAction={onCardAction} />
+      <AmbientUpdateSection update={update} busy={busy} inlineBusyActionIds={inlineBusyActionIds} onCardAction={onCardAction} />
     </div>
   );
 }
@@ -1189,10 +1202,12 @@ function AmbientTimelineRow({
 function ToolResultSection({
   result,
   busy,
+  inlineBusyActionIds,
   onCardAction,
 }: {
   result: AssistantToolResult;
   busy: boolean;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
 }) {
   const rows = summarizeOutput(result.output || {});
@@ -1224,7 +1239,9 @@ function ToolResultSection({
           </dl>
         ) : null}
       </details>
-      {result.card ? <CardSection card={result.card} busy={busy} onCardAction={onCardAction} /> : null}
+      {result.card ? (
+        <CardSection card={result.card} busy={busy} inlineBusyActionIds={inlineBusyActionIds} onCardAction={onCardAction} />
+      ) : null}
     </section>
   );
 }
@@ -1325,10 +1342,12 @@ function ActivityTechnicalDetails({ part }: { part: ActivityPart }) {
 function ActivityStrip({
   parts,
   busy,
+  inlineBusyActionIds,
   onCardAction,
 }: {
   parts: ActivityPart[];
   busy: boolean;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
 }) {
   return (
@@ -1350,7 +1369,13 @@ function ActivityStrip({
       </details>
       {parts.map((part) =>
         part.type === "tool_result" && part.tool_result.card ? (
-          <CardSection key={`${part.id}-card`} card={part.tool_result.card} busy={busy} onCardAction={onCardAction} />
+          <CardSection
+            key={`${part.id}-card`}
+            card={part.tool_result.card}
+            busy={busy}
+            inlineBusyActionIds={inlineBusyActionIds}
+            onCardAction={onCardAction}
+          />
         ) : null,
       )}
     </section>
@@ -1634,6 +1659,7 @@ function MessagePart({
   message,
   interruptById,
   busy,
+  inlineBusyActionIds,
   onCardAction,
   onInterruptSubmit,
   onInterruptDismiss,
@@ -1641,6 +1667,7 @@ function MessagePart({
   message: AssistantThreadMessage;
   interruptById: Record<string, AssistantInterrupt>;
   busy: boolean;
+  inlineBusyActionIds: string[];
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
   onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
@@ -1663,18 +1690,27 @@ function MessagePart({
           key={part.id}
           update={part.update}
           busy={busy}
+          inlineBusyActionIds={inlineBusyActionIds}
           onCardAction={onCardAction}
         />
       );
     }
     if (part.type === "card") {
-      return <CardSection key={part.id} card={part.card} busy={busy} onCardAction={onCardAction} />;
+      return <CardSection key={part.id} card={part.card} busy={busy} inlineBusyActionIds={inlineBusyActionIds} onCardAction={onCardAction} />;
     }
     if (part.type === "tool_call") {
       return <ToolCallSection key={part.id} toolCall={part.tool_call} />;
     }
     if (part.type === "tool_result") {
-      return <ToolResultSection key={part.id} result={part.tool_result} busy={busy} onCardAction={onCardAction} />;
+      return (
+        <ToolResultSection
+          key={part.id}
+          result={part.tool_result}
+          busy={busy}
+          inlineBusyActionIds={inlineBusyActionIds}
+          onCardAction={onCardAction}
+        />
+      );
     }
     if (part.type === "interrupt_resolution") {
       return (
@@ -1740,7 +1776,13 @@ function MessagePart({
           <div className={styles.bubble}>
             {bubbleGroups.map((group) =>
               group.kind === "activity" ? (
-                <ActivityStrip key={group.id} parts={group.parts} busy={busy} onCardAction={onCardAction} />
+                <ActivityStrip
+                  key={group.id}
+                  parts={group.parts}
+                  busy={busy}
+                  inlineBusyActionIds={inlineBusyActionIds}
+                  onCardAction={onCardAction}
+                />
               ) : (
                 renderPart(group.part)
               ),
@@ -1753,6 +1795,7 @@ function MessagePart({
           key={`ambient-row:${part.id}`}
           update={part.update}
           busy={busy}
+          inlineBusyActionIds={inlineBusyActionIds}
           onCardAction={onCardAction}
         />
       ))}
@@ -1769,6 +1812,7 @@ export function MainRoomThread({
   todayOpenLoops,
   todayContextItems,
   onQuickStart,
+  inlineBusyActionIds,
   onCardAction,
   onInterruptSubmit,
   onInterruptDismiss,
@@ -1804,6 +1848,7 @@ export function MainRoomThread({
             message={message}
             interruptById={interruptById}
             busy={busy}
+            inlineBusyActionIds={inlineBusyActionIds}
             onCardAction={onCardAction}
             onInterruptSubmit={onInterruptSubmit}
             onInterruptDismiss={onInterruptDismiss}

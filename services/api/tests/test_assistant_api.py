@@ -398,6 +398,14 @@ def test_assistant_runtime_turn_emits_tool_result_part_for_recent_trace(
     assert tool_result_part["tool_result"]["metadata"]["projection"] == "runtime_recent_trace"
     assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "list_due_cards"
     assert tool_result_part["tool_result"]["card"]["kind"] == "review_queue"
+    assert not any(card["kind"] == "assistant_summary" for card in assistant_message["cards"])
+    assert len(
+        [
+            card
+            for card in assistant_message["cards"]
+            if card["kind"] == "review_queue" and card.get("metadata", {}).get("projection") == "runtime_recent_trace"
+        ]
+    ) == 1
 
     with get_connection() as conn:
         trace_row = conn.execute(
@@ -453,6 +461,14 @@ def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
     assert tool_result_part["tool_result"]["tool_call_id"] == tool_call_part["tool_call"]["id"]
     assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "create_task"
     assert tool_result_part["tool_result"]["card"]["kind"] == "task_list"
+    assert not any(card["kind"] == "assistant_summary" for card in assistant_message["cards"])
+    assert len(
+        [
+            card
+            for card in assistant_message["cards"]
+            if card["kind"] == "task_list" and card.get("metadata", {}).get("projection") == "runtime_recent_trace"
+        ]
+    ) == 1
 
     with get_connection() as conn:
         thread = assistant_thread_service.get_thread(conn, "primary")

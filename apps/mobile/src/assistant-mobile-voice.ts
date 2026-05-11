@@ -22,19 +22,48 @@ type AssistantLocalSttFlowOptions = {
   onTranscript: (transcript: string) => Promise<void>;
 };
 
+export type CachedBriefingPlaybackMode = "no_cached_briefing" | "cached_audio" | "cached_text_only";
+
+type BriefingPlaybackOptions = {
+  mode: CachedBriefingPlaybackMode;
+  briefingPlaybackPreference: "offline_first" | "refresh_then_cache";
+};
+
+export function resolveCachedBriefingPlaybackMode(input: {
+  cachedPath: string | null;
+  hasCachedAudio: boolean;
+}): CachedBriefingPlaybackMode {
+  if (!input.cachedPath) {
+    return "no_cached_briefing";
+  }
+  return input.hasCachedAudio ? "cached_audio" : "cached_text_only";
+}
+
+export function assistantBriefingPlaybackStatus({ mode, briefingPlaybackPreference }: BriefingPlaybackOptions): string {
+  if (mode === "cached_audio") {
+    return "Briefing playback source: cached worker audio available (host render path, KittenTTS-compatible when configured).";
+  }
+  if (mode === "cached_text_only") {
+    return "Briefing playback source: cached text only; using expo-speech fallback on device.";
+  }
+  if (briefingPlaybackPreference === "offline_first") {
+    return "No cached briefing yet. Playback preference is offline-first.";
+  }
+  return "No cached briefing yet. Playback preference is refresh-first.";
+}
+
 export function deriveAssistantVoiceActionState(options: {
   localSttListening: boolean;
-  voiceRecording: boolean;
-  voiceClipReady: boolean;
-  voiceClipTarget: AssistantVoiceTarget;
+  isAssistantRecording: boolean;
+  isAssistantClipReady: boolean;
 }): AssistantVoiceActionState {
   if (options.localSttListening) {
     return "listening";
   }
-  if (options.voiceRecording && options.voiceClipTarget === "assistant") {
+  if (options.isAssistantRecording) {
     return "recording";
   }
-  if (options.voiceClipReady && options.voiceClipTarget === "assistant") {
+  if (options.isAssistantClipReady) {
     return "ready";
   }
   return "idle";
@@ -74,18 +103,17 @@ export function assistantVoiceClipConflictMessage(options: {
 
 export function assistantVoicePanelStatus(options: {
   sttUsesOnDevice: boolean;
-  voiceRecording: boolean;
-  voiceClipTarget: AssistantVoiceTarget;
-  voiceClipReady: boolean;
+  isAssistantRecording: boolean;
+  isAssistantClipReady: boolean;
   voiceClipDurationMs: number;
 }): string {
   if (options.sttUsesOnDevice) {
     return "Voice commands now use Android speech recognition on the phone, then send the transcript through the normal assistant command endpoint.";
   }
-  if (options.voiceRecording && options.voiceClipTarget === "assistant") {
+  if (options.isAssistantRecording) {
     return "Voice clip for commands: recording...";
   }
-  if (options.voiceClipReady && options.voiceClipTarget === "assistant") {
+  if (options.isAssistantClipReady) {
     return `Voice clip for commands: ${Math.round(options.voiceClipDurationMs / 1000)}s ready`;
   }
   return "Voice clip for commands: none";

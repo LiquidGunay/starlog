@@ -2,6 +2,11 @@
 
 Starlog has repeatable Playwright smoke coverage for the new assistant-first UI concept through `playwright.ui-functional.config.ts`. The harness starts the Next dev server so it remains fast enough for feature-branch iteration; release packaging checks still use the existing PWA release-gate scripts.
 
+The native app is the primary phone client. These browser/mobile-viewport harnesses are still useful for
+fast layout and protocol checks, but they do not replace installed Android validation for voice,
+share capture, briefing cache/playback, alarms, or local runtime work. Treat the mobile PWA as a
+fallback surface, not the main phone implementation target.
+
 This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and assistant protocol snapshots so the UI can be validated deterministically.
 
 ## Commands
@@ -21,6 +26,16 @@ Targeted commands that are useful during UI work:
 ./node_modules/.bin/playwright test --config=playwright.ui-functional.config.ts --project=mobile-chromium apps/web/tests/ui-functional/mobile-assistant-concept.functional.spec.ts
 ./node_modules/.bin/playwright test --config=playwright.web.config.ts apps/web/tests/pwa-dynamic-panel-renderer.spec.ts
 ```
+
+Live functional PWA smoke for the actual click path:
+
+```bash
+TMPDIR=/tmp STARLOG_LIVE_FUNCTIONAL_API_PORT=8042 STARLOG_LIVE_FUNCTIONAL_WEB_PORT=3024 \
+  ./node_modules/.bin/playwright test -c playwright.live-functional.config.ts \
+  --project=pwa-live-chromium apps/web/tests/live-functional/pwa-live-user-flow.spec.ts --headed
+```
+
+That browser smoke should be paired with native Android proof for phone-owned flows.
 
 ## Coverage
 

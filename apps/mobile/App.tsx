@@ -87,8 +87,11 @@ import {
   assistantLocalSttBlockedReason,
   assistantPrimaryVoiceAction,
   assistantRecordedVoiceBlockedReason,
+  assistantBriefingPlaybackStatus,
   assistantVoicePanelStatus,
+  resolveCachedBriefingPlaybackMode,
   deriveAssistantVoiceActionState,
+  type CachedBriefingPlaybackMode,
   runAssistantLocalSttFlow,
 } from "./src/assistant-mobile-voice";
 import {
@@ -1157,6 +1160,7 @@ async function writePersistedState(payload: PersistedState): Promise<void> {
   const sanitized: PersistedState = {
     ...payload,
     token: "",
+    dueCards: [],
   };
   const db = await stateDatabase();
   await db.runAsync(
@@ -1403,6 +1407,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [localSttListening, setLocalSttListening] = useState(false);
   const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
   const [cachedPath, setCachedPath] = useState<string | null>(null);
+  const [cachedBriefingPlaybackMode, setCachedBriefingPlaybackMode] = useState<CachedBriefingPlaybackMode>(
+    "no_cached_briefing",
+  );
   const [voiceRoutePreference, setVoiceRoutePreference] = useState<VoiceRoutePreference>(DEFAULT_VOICE_ROUTE_PREFERENCE);
   const [briefingPlaybackPreference, setBriefingPlaybackPreference] = useState<BriefingPlaybackPreference>(
     DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
@@ -1473,11 +1480,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const isAssistantMode = activeTab === "assistant";
   const captureVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "capture";
   const captureVoiceClipReady = Boolean(voiceClipUri) && voiceClipTarget === "capture";
+  const assistantVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "assistant";
+  const assistantVoiceClipReady = Boolean(voiceClipUri) && voiceClipTarget === "assistant";
   const assistantVoiceActionState = deriveAssistantVoiceActionState({
     localSttListening,
-    voiceRecording: Boolean(voiceRecording),
-    voiceClipReady: Boolean(voiceClipUri),
-    voiceClipTarget,
+    isAssistantRecording: assistantVoiceRecording,
+    isAssistantClipReady: assistantVoiceClipReady,
   });
   const assistantVoiceActionHintText = assistantVoiceActionHint(assistantVoiceActionState);
   const threadMessages = useMemo(() => {
@@ -2598,6 +2606,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
       const info = await FileSystem.getInfoAsync(cachedPath);
       if (!info.exists) {
+        setCachedBriefingPlaybackMode("no_cached_briefing");
         setStatus("Cached briefing file not found");
         return;
       }
@@ -2618,6 +2627,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
+      await refreshCachedBriefingPlaybackMode(path);
       const cachedBriefing = await readCachedBriefing(path);
       await playBriefingPayload(cachedBriefing, "cached");
     } catch (error) {
@@ -2671,6 +2681,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
+      await refreshCachedBriefingPlaybackMode(path);
       setStatus(
         briefing.audioRef
           ? `Cached briefing package for ${briefingDate} with audio`
@@ -2716,14 +2727,34 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function refreshCachedBriefingPlaybackMode(cachedBriefingPath: string | null) {
+    if (!cachedBriefingPath) {
+      setCachedBriefingPlaybackMode("no_cached_briefing");
+      return;
+    }
+    try {
+      const cachedBriefing = await readCachedBriefing(cachedBriefingPath);
+      setCachedBriefingPlaybackMode(
+        resolveCachedBriefingPlaybackMode({
+          cachedPath: cachedBriefingPath,
+          hasCachedAudio: Boolean(cachedBriefing.audioPath),
+        }),
+      );
+    } catch {
+      setCachedBriefingPlaybackMode("no_cached_briefing");
+    }
+  }
+
+  useEffect(() => {
+    void refreshCachedBriefingPlaybackMode(cachedPath);
+  }, [cachedPath]);
+
   const holdToTalkLabel = captureVoiceRecording ? "Release to stop" : "Hold to talk";
   const offlineBriefingStatus = cachedPath
     ? `Offline briefing cached for ${briefingDate}`
     : "No offline briefing cached yet";
   const briefingPlaybackStatus =
-    briefingPlaybackPreference === "offline_first"
-      ? "Playback preference: use the cached offline package first."
-      : "Playback preference: refresh from the API, recache, then play.";
+    assistantBriefingPlaybackStatus({ mode: cachedBriefingPlaybackMode, briefingPlaybackPreference });
   const captureCommandPreview = notesInstructionDraft.trim() || DEFAULT_NOTES_INSTRUCTION_DRAFT;
   const captureSourcePreview = quickCaptureSourceUrl.trim() || "Attach a source URL, title, excerpt, or one spoken instruction.";
   const captureBodyPreview =
@@ -3588,7 +3619,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setArtifactGraph(persisted.artifactGraph);
         setArtifactVersions(persisted.artifactVersions);
         setSelectedArtifactDetail(persisted.selectedArtifactDetail ?? null);
-        setDueCards(persisted.dueCards || []);
+        setDueCards([]);
         setExecutionPolicy(persisted.executionPolicy || defaultExecutionPolicy());
         setHomeDraft(persisted.homeDraft || persisted.assistantCommand || DEFAULT_HOME_DRAFT);
         setNotesInstructionDraft(
@@ -3875,7 +3906,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       artifactGraph,
       artifactVersions,
       selectedArtifactDetail,
-      dueCards,
+      dueCards: [],
       executionPolicy,
       voiceRoutePreference,
       briefingPlaybackPreference,
@@ -4388,9 +4419,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   localSttLabel={localSttProbeLabel(localSttAvailable)}
                   voiceCommandStatus={assistantVoicePanelStatus({
                     sttUsesOnDevice: sttResolution.active === "on_device",
-                    voiceRecording: Boolean(voiceRecording),
-                    voiceClipTarget,
-                    voiceClipReady: Boolean(voiceClipUri),
+                    isAssistantRecording: assistantVoiceRecording,
+                    isAssistantClipReady: assistantVoiceClipReady,
                     voiceClipDurationMs,
                   })}
                   conversationTitle={conversationTitle}

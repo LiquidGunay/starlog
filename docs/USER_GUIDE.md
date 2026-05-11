@@ -53,7 +53,10 @@ when a support surface needs attention.
 
 ## Phone
 
-The native mobile app is the primary phone client. Use it for:
+The native mobile app is the primary phone client. Use the mobile PWA only as a fallback when
+the installable app is unavailable or you need a quick browser check.
+
+Use the native app for:
 
 - quick capture
 - Assistant commands

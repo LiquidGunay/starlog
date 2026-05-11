@@ -59,4 +59,5 @@ ios/
 # Playwright / local test artifacts
 test-results/
 apps/web/test-results/
+apps/web/tsconfig.live-functional.*.json
 artifacts/pwa-release-gate/test-results/

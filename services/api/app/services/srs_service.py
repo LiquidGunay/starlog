@@ -90,9 +90,9 @@ def ensure_default_deck(conn: Connection) -> dict:
             """
             SELECT id, name, description, schedule_json, created_at, updated_at
             FROM card_decks
-            WHERE id = ?
+            WHERE name = ?
             """,
-            (deck_id,),
+            (DEFAULT_DECK_NAME,),
         )
     if existing is None:
         raise RuntimeError("Default deck missing after creation")
