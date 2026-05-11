@@ -77,6 +77,12 @@ import {
   ReviewSessionSection,
 } from "./src/mobile-support-panel-sections";
 import { MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
+import {
+  isMobileAssistantMode,
+  shouldCloseAssistantPanelOnTabChange,
+  shouldScrollShellToTopOnTabChange,
+  shouldShowMobileTopBar,
+} from "./src/mobile-shell-state";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
@@ -1470,7 +1476,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
-  const isAssistantMode = activeTab === "assistant";
+  const isAssistantMode = isMobileAssistantMode(activeTab);
   const captureVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "capture";
   const captureVoiceClipReady = Boolean(voiceClipUri) && voiceClipTarget === "capture";
   const assistantVoiceActionState = deriveAssistantVoiceActionState({
@@ -1582,7 +1588,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [voiceRecording]);
 
   useEffect(() => {
-    if (activeTab !== "assistant" && assistantPanelOpen) {
+    if (shouldCloseAssistantPanelOnTabChange(activeTab, assistantPanelOpen)) {
       setAssistantPanelOpen(false);
     }
   }, [activeTab, assistantPanelOpen]);
@@ -4012,7 +4018,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
-    if (activeTab !== "assistant") {
+    if (shouldScrollShellToTopOnTabChange(activeTab)) {
       requestAnimationFrame(() => {
         mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
       });
@@ -4060,7 +4066,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
-      {!isAssistantMode ? (
+      {shouldShowMobileTopBar(activeTab) ? (
         <MobileTopBar
           styles={styles}
           palette={palette}
