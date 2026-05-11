@@ -133,6 +133,13 @@ type MobileAssistantRebuildProps = {
   onAssistantTodayAction: (action: MobileAssistantTodayAction) => void;
 };
 
+export function mobileAssistantMicDisabled(options: {
+  pendingConversationTurn: boolean;
+  voiceActionState: MobileAssistantRebuildProps["voiceActionState"];
+}): boolean {
+  return options.pendingConversationTurn && options.voiceActionState !== "listening";
+}
+
 function bodyLines(body?: string | null): string[] {
   return (body || "")
     .split(/\n+/)
@@ -1546,6 +1553,7 @@ export function MobileAssistantRebuild({
 
   const voiceIcon =
     voiceActionState === "recording" ? "stop" : voiceActionState === "listening" ? "waveform" : "microphone-outline";
+  const voiceMicDisabled = mobileAssistantMicDisabled({ pendingConversationTurn, voiceActionState });
   const showVoiceHint = voiceActionState !== "idle" || Boolean(voiceActionHint);
   const displaySuggestions = useMemo(
     () => mobileAssistantPromptChips(suggestionPills, homeDraft),
@@ -2440,8 +2448,10 @@ export function MobileAssistantRebuild({
                   : voiceActionState === "ready"
                     ? "rgba(166, 222, 191, 0.18)"
                     : "rgba(255,255,255,0.04)",
+              opacity: voiceMicDisabled ? 0.48 : 1,
             }}
             onPress={onVoiceAction}
+            disabled={voiceMicDisabled}
           >
             <MaterialCommunityIcons name={voiceIcon as never} size={17} color={voiceActionState === "recording" ? palette.error : palette.text} />
           </TouchableOpacity>
