@@ -25,7 +25,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
+import { cancelSpeechRecognition, clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 import {
   assistantThreadMessageToLegacyMessage,
 } from "@starlog/contracts";
@@ -3348,6 +3348,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await runAssistantLocalSttFlow({
       prompt: execute ? "Speak the command to execute" : "Speak the command to plan",
       listeningStatus: "Listening for an on-device voice command...",
+      cancelledStatus: "On-device voice command cancelled",
       requestPermission: () => Audio.requestPermissionsAsync(),
       recognizeSpeechOnce,
       setListening: setLocalSttListening,
@@ -3378,6 +3379,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await runAssistantLocalSttFlow({
       prompt: "Speak your message for Assistant",
       listeningStatus: "Listening for an Assistant message...",
+      cancelledStatus: "On-device Assistant listening cancelled",
       requestPermission: () => Audio.requestPermissionsAsync(),
       recognizeSpeechOnce,
       setListening: setLocalSttListening,
@@ -3520,6 +3522,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     });
     if (nextAction.kind === "blocked") {
       setStatus(nextAction.message);
+      return;
+    }
+    if (nextAction.kind === "cancel_listening") {
+      const cancelled = await cancelSpeechRecognition();
+      if (!cancelled) {
+        setStatus("On-device listening cancellation failed or is unavailable in this build.");
+        return;
+      }
+      setLocalSttListening(false);
+      setStatus("On-device Assistant listening cancelled");
       return;
     }
     if (nextAction.kind === "listen") {

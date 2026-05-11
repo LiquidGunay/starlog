@@ -2,6 +2,7 @@ export type AssistantVoiceActionState = "idle" | "listening" | "recording" | "re
 export type AssistantVoiceTarget = "assistant" | "capture" | null;
 export type AssistantVoiceUsage = "stt" | "message" | "command";
 export type AssistantVoicePrimaryAction =
+  | { kind: "cancel_listening" }
   | { kind: "listen" }
   | { kind: "start_recording" }
   | { kind: "stop_recording" }
@@ -15,6 +16,7 @@ type AssistantSpeechTranscript = {
 type AssistantLocalSttFlowOptions = {
   prompt: string;
   listeningStatus: string;
+  cancelledStatus?: string;
   requestPermission: () => Promise<{ granted: boolean }>;
   recognizeSpeechOnce: (options: { prompt: string }) => Promise<AssistantSpeechTranscript>;
   setListening: (value: boolean) => void;
@@ -42,7 +44,7 @@ export function deriveAssistantVoiceActionState(options: {
 
 export function assistantVoiceActionHint(state: AssistantVoiceActionState): string | null {
   if (state === "listening") {
-    return "Listening for an on-device message...";
+    return "Listening for an on-device message. Tap the mic again to cancel.";
   }
   if (state === "recording") {
     return "Recording voice input. Tap the mic again to stop.";
@@ -152,6 +154,9 @@ export function assistantPrimaryVoiceAction(options: {
   hasVoiceClip: boolean;
   voiceClipTarget: AssistantVoiceTarget;
 }): AssistantVoicePrimaryAction {
+  if (options.localSttListening) {
+    return { kind: "cancel_listening" };
+  }
   if (options.pendingConversationTurn) {
     return { kind: "blocked", message: "Wait for the current Assistant reply to finish" };
   }
@@ -207,6 +212,12 @@ export async function runAssistantLocalSttFlow(options: AssistantLocalSttFlowOpt
     }
     await options.onTranscript(transcript);
   } catch (error) {
+    const nativeCode = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+    const message = error instanceof Error ? error.message : "";
+    if (nativeCode === "stt_cancelled" || message === "stt_cancelled") {
+      options.setStatus(options.cancelledStatus || "On-device speech recognition cancelled");
+      return;
+    }
     options.setStatus(error instanceof Error ? error.message : "On-device STT failed");
   } finally {
     options.setListening(false);

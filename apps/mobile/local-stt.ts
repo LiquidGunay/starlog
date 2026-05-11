@@ -19,6 +19,7 @@ type NativeLocalSttModule = {
   getCurrentIntentUrl?(): Promise<string | null>;
   isAvailable(): Promise<boolean>;
   recognizeOnce(options?: LocalSttOptions): Promise<LocalSttResult>;
+  cancelRecognition?(): Promise<boolean>;
 };
 
 const localSttModule = NativeModules.StarlogLocalStt as NativeLocalSttModule | undefined;
@@ -39,6 +40,18 @@ export async function recognizeSpeechOnce(options: LocalSttOptions = {}): Promis
     throw new Error("On-device STT is only available in the Android dev build.");
   }
   return localSttModule.recognizeOnce(options);
+}
+
+export async function cancelSpeechRecognition(): Promise<boolean> {
+  if (Platform.OS !== "android" || !localSttModule?.cancelRecognition) {
+    return false;
+  }
+  try {
+    return Boolean(await localSttModule.cancelRecognition());
+  } catch {
+    // Cancellation is best-effort, but callers need to know when native did not cancel.
+    return false;
+  }
 }
 
 export async function getCurrentIntentUrl(): Promise<string | null> {
