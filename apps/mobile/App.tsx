@@ -83,6 +83,13 @@ import {
   shouldScrollShellToTopOnTabChange,
   shouldShowMobileTopBar,
 } from "./src/mobile-shell-state";
+import {
+  MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
+  MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL,
+  normalizeKittenTtsBundleState,
+  resolveMobileLocalTtsStatus,
+  speakMobileLocalText,
+} from "./src/mobile-local-tts";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
@@ -439,6 +446,7 @@ const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
 const MOBILE_SECURE_TOKEN_KEY = "starlog.api.token";
+const KITTEN_TTS_BUNDLE_STATE = normalizeKittenTtsBundleState(RUNTIME_ENV.EXPO_PUBLIC_STARLOG_KITTEN_TTS_STATUS);
 const SERIF_FONT_FAMILY = Platform.select({ ios: "Georgia", android: "serif", default: undefined });
 const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
   llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
@@ -449,7 +457,7 @@ const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]
 const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
   llm: "codex_local",
   stt: "whisper_local",
-  tts: "piper_local",
+  tts: MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
 };
 const DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES = 12;
 
@@ -1508,6 +1516,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [conversationMessages, showFullConversationThread]);
   const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
+  const mobileLocalTtsStatus = useMemo(
+    () => resolveMobileLocalTtsStatus(KITTEN_TTS_BUNDLE_STATE),
+    [],
+  );
   const llmResolution = useMemo(
     () =>
       resolveExecutionTarget(
@@ -1548,9 +1560,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         "tts",
         ["on_device"],
         "on_device",
-        "Mobile speech playback currently stays on-device.",
+        mobileLocalTtsStatus.policyReason,
       ),
-    [executionPolicy],
+    [executionPolicy, mobileLocalTtsStatus.policyReason],
   );
   const stationHour12 = ((alarmHour + 11) % 12) + 1;
   const stationPeriod = alarmHour >= 12 ? "PM" : "AM";
@@ -2707,7 +2719,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          provider_hint: BATCH_PROVIDER_HINT.tts ?? "piper_local",
+          provider_hint: BATCH_PROVIDER_HINT.tts ?? MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
         }),
       });
       if (!response.ok) {
@@ -2716,7 +2728,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       const payload = (await response.json()) as { id: string };
-      setStatus(`Queued briefing audio job ${payload.id} via ${formatExecutionTarget(ttsResolution.active)}`);
+      setStatus(`Queued briefing audio job ${payload.id} via ${MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to queue briefing audio");
     }
@@ -2822,8 +2834,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         }
       }
 
-      Speech.speak(briefing.text);
-      setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing text`);
+      const playback = speakMobileLocalText(briefing.text, Speech, mobileLocalTtsStatus);
+      setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing text via ${playback.providerLabel}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to play briefing");
     }
