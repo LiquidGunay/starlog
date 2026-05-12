@@ -85,6 +85,7 @@ import {
 } from "./src/mobile-shell-state";
 import {
   MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
+  MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL,
   normalizeKittenTtsBundleState,
   resolveMobileLocalTtsStatus,
   speakMobileLocalText,
@@ -2727,7 +2728,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       const payload = (await response.json()) as { id: string };
-      setStatus(`Queued briefing audio job ${payload.id} via ${formatExecutionTarget(ttsResolution.active)}`);
+      setStatus(`Queued briefing audio job ${payload.id} via ${MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to queue briefing audio");
     }

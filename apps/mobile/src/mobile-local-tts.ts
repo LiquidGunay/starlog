@@ -1,6 +1,6 @@
 export type KittenTtsBundleState = "not_packaged" | "assets_packaged" | "native_runtime_ready";
 
-export type MobileLocalTtsProvider = "expo_speech" | "kitten_tts_native";
+export type MobileLocalTtsProvider = "expo_speech";
 
 export type MobileLocalTtsStatus = {
   provider: MobileLocalTtsProvider;
@@ -27,6 +27,7 @@ export const KITTEN_TTS_NATIVE_BUNDLE = {
 } as const;
 
 export const MOBILE_BRIEFING_AUDIO_PROVIDER_HINT = "desktop_bridge_tts";
+export const MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL = "desktop bridge TTS";
 
 export function normalizeKittenTtsBundleState(value: string | undefined | null): KittenTtsBundleState {
   const normalized = (value ?? "").trim().toLowerCase();
@@ -36,20 +37,7 @@ export function normalizeKittenTtsBundleState(value: string | undefined | null):
   return "not_packaged";
 }
 
-export function resolveMobileLocalTtsStatus(
-  kittenBundleState: KittenTtsBundleState,
-  nativeRuntimeAvailable = false,
-): MobileLocalTtsStatus {
-  if (kittenBundleState === "native_runtime_ready" && nativeRuntimeAvailable) {
-    return {
-      provider: "kitten_tts_native",
-      providerLabel: "Kitten TTS",
-      kittenBundleState,
-      nativeRuntimeAvailable: true,
-      policyReason: "Mobile speech playback stays on-device through the bundled Kitten TTS runtime.",
-    };
-  }
-
+export function resolveMobileLocalTtsStatus(kittenBundleState: KittenTtsBundleState): MobileLocalTtsStatus {
   const packagedNote =
     kittenBundleState === "native_runtime_ready"
       ? " Kitten native runtime is configured, but this build has not registered the native speech adapter yet."

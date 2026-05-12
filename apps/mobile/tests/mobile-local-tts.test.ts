@@ -1,5 +1,6 @@
 import {
   MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
+  MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL,
   normalizeKittenTtsBundleState,
   resolveMobileLocalTtsStatus,
   speakMobileLocalText,
@@ -19,6 +20,7 @@ assert.equal(normalizeKittenTtsBundleState("unknown"), "not_packaged");
 assert.equal(normalizeKittenTtsBundleState(" assets_packaged "), "assets_packaged");
 assert.equal(normalizeKittenTtsBundleState("native_runtime_ready"), "native_runtime_ready");
 assert.equal(MOBILE_BRIEFING_AUDIO_PROVIDER_HINT, "desktop_bridge_tts");
+assert.equal(MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL, "desktop bridge TTS");
 
 const expectedProviders: Array<[KittenTtsBundleState, string, string]> = [
   ["not_packaged", "expo_speech", "OS speech"],
@@ -33,11 +35,6 @@ for (const [state, provider, providerLabel] of expectedProviders) {
   assert.equal(status.kittenBundleState, state);
   assert.equal(status.nativeRuntimeAvailable, false);
 }
-
-const nativeReadyStatus = resolveMobileLocalTtsStatus("native_runtime_ready", true);
-assert.equal(nativeReadyStatus.provider, "kitten_tts_native");
-assert.equal(nativeReadyStatus.providerLabel, "Kitten TTS");
-assert.equal(nativeReadyStatus.nativeRuntimeAvailable, true);
 
 const spoken: string[] = [];
 const playback = speakMobileLocalText(
