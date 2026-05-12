@@ -216,6 +216,59 @@ assert.equal(emptySummary.planGroups[1].summaryLabel, "None");
 assert.equal(emptySummary.nextFocus.timeLabel, "Unscheduled");
 assert.equal(emptySummary.upcoming.timeLabel, "None");
 
+const unscheduledWithoutCachedBriefing = deriveMobilePlannerViewModel({
+  now: new Date("2026-04-28T12:00:00Z"),
+  alarmScheduled: false,
+  offlinePlaybackAvailable: false,
+  summary: {
+    date: "2026-04-28",
+    task_buckets: [],
+    block_buckets: [],
+    calendar_event_count: 0,
+    conflict_count: 0,
+    focus_minutes: 0,
+    buffer_minutes: 0,
+    generated_at: "2026-04-28T11:55:00Z",
+  },
+});
+
+assert.deepEqual(unscheduledWithoutCachedBriefing.alarmBriefing, {
+  chipLabel: "Cache first",
+  chipIcon: "bell-outline",
+  cardBody: "Cache briefing before scheduling",
+  statusLabel: "Cache required",
+  toggleEnabled: false,
+  toggleScheduled: false,
+  offlinePlaybackAvailable: false,
+});
+
+const scheduledWithoutCachedBriefing = deriveMobilePlannerViewModel({
+  now: new Date("2026-04-28T12:00:00Z"),
+  alarmScheduled: true,
+  nextBriefingCountdown: "18h",
+  offlinePlaybackAvailable: false,
+  summary: {
+    date: "2026-04-28",
+    task_buckets: [],
+    block_buckets: [],
+    calendar_event_count: 0,
+    conflict_count: 0,
+    focus_minutes: 0,
+    buffer_minutes: 0,
+    generated_at: "2026-04-28T11:55:00Z",
+  },
+});
+
+assert.deepEqual(scheduledWithoutCachedBriefing.alarmBriefing, {
+  chipLabel: "18h",
+  chipIcon: "bell-ring-outline",
+  cardBody: "Scheduled; cache briefing before playback",
+  statusLabel: "Scheduled",
+  toggleEnabled: true,
+  toggleScheduled: true,
+  offlinePlaybackAvailable: false,
+});
+
 const countOnlySummary = deriveMobilePlannerViewModel({
   now: new Date("2026-04-28T12:00:00Z"),
   summary: {
