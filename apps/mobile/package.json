@@ -19,7 +19,8 @@
     "verify:android:production-config": "APP_VARIANT=production ./node_modules/.bin/expo config --json",
     "build:android:production:local": "../../scripts/android_prepare_production_release.sh",
     "test:planner-functional": "./node_modules/.bin/tsc -p tsconfig.planner-tests.json && node ../../.tmp/mobile-planner-tests/apps/mobile/tests/mobile-planner-view-model.test.js",
-    "test:review-functional": "./node_modules/.bin/tsc -p tsconfig.review-tests.json && node ../../.tmp/mobile-review-tests/apps/mobile/tests/mobile-review-view-model.test.js"
+    "test:review-functional": "./node_modules/.bin/tsc -p tsconfig.review-tests.json && node ../../.tmp/mobile-review-tests/apps/mobile/tests/mobile-review-view-model.test.js",
+    "test:assistant-thread-actions": "./node_modules/.bin/tsc -p tsconfig.assistant-thread-actions-tests.json --outDir /tmp/mobile-assistant-thread-actions-tests && node /tmp/mobile-assistant-thread-actions-tests/apps/mobile/tests/assistant-mobile-thread-actions.test.js"
   },
   "dependencies": {
     "@starlog/contracts": "workspace:*",
