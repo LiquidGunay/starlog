@@ -25,7 +25,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-import { clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
+import { cancelSpeechRecognition, clearCurrentIntentUrl, getCurrentIntentUrl, probeLocalSttAvailability, recognizeSpeechOnce } from "./local-stt";
 import {
   assistantThreadMessageToLegacyMessage,
 } from "@starlog/contracts";
@@ -77,6 +77,19 @@ import {
   ReviewSessionSection,
 } from "./src/mobile-support-panel-sections";
 import { MobileBottomNav, MobileTopBar } from "./src/mobile-shell";
+import {
+  isMobileAssistantMode,
+  shouldCloseAssistantPanelOnTabChange,
+  shouldScrollShellToTopOnTabChange,
+  shouldShowMobileTopBar,
+} from "./src/mobile-shell-state";
+import {
+  MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
+  MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL,
+  normalizeKittenTtsBundleState,
+  resolveMobileLocalTtsStatus,
+  speakMobileLocalText,
+} from "./src/mobile-local-tts";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
@@ -131,6 +144,11 @@ type BriefingPayload = {
   text: string;
   audioRef?: string | null;
   audioPath?: string | null;
+};
+
+type ValidatedCachedBriefing = {
+  briefing: BriefingPayload;
+  path: string;
 };
 
 type PendingTextCapture = {
@@ -436,6 +454,7 @@ const DEFAULT_FILE_MIME = "application/octet-stream";
 const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
 const MOBILE_SECURE_TOKEN_KEY = "starlog.api.token";
+const KITTEN_TTS_BUNDLE_STATE = normalizeKittenTtsBundleState(RUNTIME_ENV.EXPO_PUBLIC_STARLOG_KITTEN_TTS_STATUS);
 const SERIF_FONT_FAMILY = Platform.select({ ios: "Georgia", android: "serif", default: undefined });
 const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
   llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
@@ -446,7 +465,7 @@ const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]
 const BATCH_PROVIDER_HINT: Partial<Record<ExecutionPolicyFamily, string>> = {
   llm: "codex_local",
   stt: "whisper_local",
-  tts: "piper_local",
+  tts: MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
 };
 const DEFAULT_MOBILE_THREAD_VISIBLE_MESSAGES = 12;
 
@@ -1247,6 +1266,23 @@ async function readCachedBriefing(path: string): Promise<BriefingPayload> {
   return JSON.parse(text) as BriefingPayload;
 }
 
+async function loadValidCachedBriefing(path: string | null, expectedDate: string): Promise<ValidatedCachedBriefing | null> {
+  if (!path) {
+    return null;
+  }
+  const info = await FileSystem.getInfoAsync(path);
+  if (!info.exists) {
+    return null;
+  }
+
+  const briefing = await readCachedBriefing(path);
+  if (briefing.date !== expectedDate) {
+    return null;
+  }
+
+  return { briefing, path };
+}
+
 type ParsedAppDeepLink = {
   params: Record<string, string>;
   route: string;
@@ -1410,6 +1446,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [cachedBriefingPlaybackMode, setCachedBriefingPlaybackMode] = useState<CachedBriefingPlaybackMode>(
     "no_cached_briefing",
   );
+  const [cachedBriefingAvailable, setCachedBriefingAvailable] = useState(false);
+  const [validatedCachedBriefingDate, setValidatedCachedBriefingDate] = useState<string | null>(null);
+  const briefingCacheRef = useRef<{ briefingDate: string; cachedPath: string | null }>({
+    briefingDate,
+    cachedPath: null,
+  });
   const [voiceRoutePreference, setVoiceRoutePreference] = useState<VoiceRoutePreference>(DEFAULT_VOICE_ROUTE_PREFERENCE);
   const [briefingPlaybackPreference, setBriefingPlaybackPreference] = useState<BriefingPlaybackPreference>(
     DEFAULT_BRIEFING_PLAYBACK_PREFERENCE,
@@ -1477,7 +1519,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     resetOnBackground: false,
   });
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
-  const isAssistantMode = activeTab === "assistant";
+  const isAssistantMode = isMobileAssistantMode(activeTab);
   const captureVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "capture";
   const captureVoiceClipReady = Boolean(voiceClipUri) && voiceClipTarget === "capture";
   const assistantVoiceRecording = Boolean(voiceRecording) && voiceClipTarget === "assistant";
@@ -1510,6 +1552,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [conversationMessages, showFullConversationThread]);
   const hiddenConversationMessageCount = Math.max(0, conversationMessages.length - visibleConversationMessages.length);
   const sttTargets = useMemo(() => supportedSttTargets(localSttAvailable), [localSttAvailable]);
+  const mobileLocalTtsStatus = useMemo(
+    () => resolveMobileLocalTtsStatus(KITTEN_TTS_BUNDLE_STATE),
+    [],
+  );
   const llmResolution = useMemo(
     () =>
       resolveExecutionTarget(
@@ -1550,9 +1596,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         "tts",
         ["on_device"],
         "on_device",
-        "Mobile speech playback currently stays on-device.",
+        mobileLocalTtsStatus.policyReason,
       ),
-    [executionPolicy],
+    [executionPolicy, mobileLocalTtsStatus.policyReason],
   );
   const stationHour12 = ((alarmHour + 11) % 12) + 1;
   const stationPeriod = alarmHour >= 12 ? "PM" : "AM";
@@ -1590,7 +1636,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [voiceRecording]);
 
   useEffect(() => {
-    if (activeTab !== "assistant" && assistantPanelOpen) {
+    if (shouldCloseAssistantPanelOnTabChange(activeTab, assistantPanelOpen)) {
       setAssistantPanelOpen(false);
     }
   }, [activeTab, assistantPanelOpen]);
@@ -2598,20 +2644,34 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return true;
   }
 
+  async function confirmCachedBriefingAvailable(): Promise<ValidatedCachedBriefing | null> {
+    if (!cachedPath) {
+      setCachedBriefingAvailable(false);
+      setValidatedCachedBriefingDate(null);
+      briefingCacheRef.current = { briefingDate, cachedPath: null };
+      return null;
+    }
+    const validated = await loadValidCachedBriefing(cachedPath, briefingDate).catch(() => null);
+    setCachedBriefingAvailable(Boolean(validated));
+    setValidatedCachedBriefingDate(validated?.briefing.date ?? null);
+    if (!validated) {
+      setCachedPath(null);
+      briefingCacheRef.current = { briefingDate, cachedPath: null };
+      return null;
+    }
+    briefingCacheRef.current = { briefingDate, cachedPath: validated.path };
+    return validated;
+  }
+
   async function playCachedBriefing() {
     try {
-      if (!cachedPath) {
-        setStatus("No cached briefing yet");
+      const hadCachedPath = Boolean(cachedPath);
+      const cached = await confirmCachedBriefingAvailable();
+      if (!cached) {
+        setStatus(hadCachedPath ? "Cached briefing unavailable for selected date" : "No cached briefing yet");
         return;
       }
-      const info = await FileSystem.getInfoAsync(cachedPath);
-      if (!info.exists) {
-        setCachedBriefingPlaybackMode("no_cached_briefing");
-        setStatus("Cached briefing file not found");
-        return;
-      }
-      const briefing = await readCachedBriefing(cachedPath);
-      await playBriefingPayload(briefing, "cached");
+      await playBriefingPayload(cached.briefing, "cached");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to play cached briefing");
     }
@@ -2625,10 +2685,17 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
       const baseUrl = normalizeBaseUrl(apiBase);
       const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
+      if (briefing.date !== briefingDate) {
+        throw new Error(`Briefing date mismatch: expected ${briefingDate}, received ${briefing.date}`);
+      }
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
       await refreshCachedBriefingPlaybackMode(path);
       const cachedBriefing = await readCachedBriefing(path);
+      setCachedBriefingAvailable(true);
+      setValidatedCachedBriefingDate(briefing.date);
+      briefingCacheRef.current = { briefingDate: briefing.date, cachedPath: path };
+      await refreshScheduledMorningAlarmForCachedBriefing(path);
       await playBriefingPayload(cachedBriefing, "cached");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to refresh and play briefing");
@@ -2679,13 +2746,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
       const baseUrl = normalizeBaseUrl(apiBase);
       const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
+      if (briefing.date !== briefingDate) {
+        throw new Error(`Briefing date mismatch: expected ${briefingDate}, received ${briefing.date}`);
+      }
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
       await refreshCachedBriefingPlaybackMode(path);
+      setCachedBriefingAvailable(true);
+      setValidatedCachedBriefingDate(briefing.date);
+      briefingCacheRef.current = { briefingDate: briefing.date, cachedPath: path };
+      const alarmUpdated = await refreshScheduledMorningAlarmForCachedBriefing(path);
       setStatus(
-        briefing.audioRef
+        `${briefing.audioRef
           ? `Cached briefing package for ${briefingDate} with audio`
-          : `Cached briefing for ${briefingDate} (text only)`,
+          : `Cached briefing for ${briefingDate} (text only)`}${alarmUpdated ? "; alarm updated" : ""}`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to cache briefing");
@@ -2712,7 +2786,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          provider_hint: BATCH_PROVIDER_HINT.tts ?? "piper_local",
+          provider_hint: BATCH_PROVIDER_HINT.tts ?? MOBILE_BRIEFING_AUDIO_PROVIDER_HINT,
         }),
       });
       if (!response.ok) {
@@ -2721,7 +2795,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       const payload = (await response.json()) as { id: string };
-      setStatus(`Queued briefing audio job ${payload.id} via ${formatExecutionTarget(ttsResolution.active)}`);
+      setStatus(`Queued briefing audio job ${payload.id} via ${MOBILE_BRIEFING_AUDIO_PROVIDER_LABEL}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to queue briefing audio");
     }
@@ -2749,8 +2823,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     void refreshCachedBriefingPlaybackMode(cachedPath);
   }, [cachedPath]);
 
+  function updateBriefingDate(nextDate: string) {
+    setBriefingDate(nextDate);
+    setCachedBriefingAvailable(false);
+    setValidatedCachedBriefingDate(null);
+    briefingCacheRef.current = { briefingDate: nextDate, cachedPath };
+  }
+
   const holdToTalkLabel = captureVoiceRecording ? "Release to stop" : "Hold to talk";
-  const offlineBriefingStatus = cachedPath
+  const cachedBriefingAvailableForDate = cachedBriefingAvailable && validatedCachedBriefingDate === briefingDate;
+  const offlineBriefingStatus = cachedBriefingAvailableForDate
     ? `Offline briefing cached for ${briefingDate}`
     : "No offline briefing cached yet";
   const briefingPlaybackStatus =
@@ -2768,7 +2850,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     sttResolution.active === "on_device"
       ? "Phone-local STT/TTS first, then bridge or hosted fallback."
       : sttFallbackReason(localSttAvailable);
-  const briefingHeroCopy = cachedPath
+  const briefingHeroCopy = cachedBriefingAvailableForDate
     ? "Your day, condensed into one elegant ritual."
     : "Cache the brief first, then let one next action carry the day.";
   const nextActionPreview =
@@ -2777,8 +2859,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   async function scheduleMorningAlarm() {
     try {
-      if (!cachedPath) {
-        setStatus("Cache briefing before scheduling");
+      const cached = await confirmCachedBriefingAvailable();
+      if (!cached) {
+        setStatus("Cache briefing for selected date before scheduling");
         return;
       }
 
@@ -2787,33 +2870,66 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         return;
       }
 
-      if (alarmNotificationId) {
-        await Notifications.cancelScheduledNotificationAsync(alarmNotificationId);
-      }
-
-      const trigger: Notifications.DailyTriggerInput = {
-        hour: boundedInt(alarmHour, 0, 23),
-        minute: boundedInt(alarmMinute, 0, 59),
-        repeats: true,
-      };
-
-      const identifier = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "Starlog Morning Brief",
-          body: "Tap to play your cached spoken briefing.",
-          data: {
-            briefingPath: cachedPath,
-            fallbackText: "Briefing cache missing. Open Starlog companion to refresh.",
-          },
-          ...(Platform.OS === "android" ? { channelId: "starlog-morning" } : {}),
-        },
-        trigger,
-      });
-
-      setAlarmNotificationId(identifier);
+      const { trigger } = await scheduleMorningAlarmNotification(cached.path);
       setStatus(`Daily alarm scheduled for ${toHourMinuteLabel(trigger.hour, trigger.minute)}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to schedule alarm");
+    }
+  }
+
+  async function scheduleMorningAlarmNotification(briefingPath: string): Promise<{
+    identifier: string;
+    trigger: Notifications.DailyTriggerInput;
+  }> {
+    const previousAlarmNotificationId = alarmNotificationId;
+    if (previousAlarmNotificationId) {
+      await Notifications.cancelScheduledNotificationAsync(previousAlarmNotificationId);
+      setAlarmNotificationId(null);
+    }
+
+    const trigger: Notifications.DailyTriggerInput = {
+      hour: boundedInt(alarmHour, 0, 23),
+      minute: boundedInt(alarmMinute, 0, 59),
+      repeats: true,
+    };
+
+    const identifier = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Starlog Morning Brief",
+        body: "Tap to play your cached spoken briefing.",
+        data: {
+          briefingDate,
+          briefingPath,
+          fallbackText: "Briefing cache missing. Open Starlog companion to refresh.",
+        },
+        ...(Platform.OS === "android" ? { channelId: "starlog-morning" } : {}),
+      },
+      trigger,
+    });
+
+    setAlarmNotificationId(identifier);
+    return { identifier, trigger };
+  }
+
+  async function refreshScheduledMorningAlarmForCachedBriefing(briefingPath: string): Promise<boolean> {
+    if (!alarmNotificationId) {
+      return false;
+    }
+
+    try {
+      const permission = await Notifications.getPermissionsAsync();
+      setNotificationPermission(permission.status);
+      if (!permission.granted) {
+        await Notifications.cancelScheduledNotificationAsync(alarmNotificationId);
+        setAlarmNotificationId(null);
+        return false;
+      }
+
+      await scheduleMorningAlarmNotification(briefingPath);
+      return true;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to update scheduled alarm cache");
+      return false;
     }
   }
 
@@ -2847,8 +2963,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         }
       }
 
-      Speech.speak(briefing.text);
-      setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing text`);
+      const playback = speakMobileLocalText(briefing.text, Speech, mobileLocalTtsStatus);
+      setStatus(`${mode === "scheduled" ? "Playing scheduled" : "Playing cached"} briefing text via ${playback.providerLabel}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to play briefing");
     }
@@ -3379,6 +3495,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await runAssistantLocalSttFlow({
       prompt: execute ? "Speak the command to execute" : "Speak the command to plan",
       listeningStatus: "Listening for an on-device voice command...",
+      cancelledStatus: "On-device voice command cancelled",
       requestPermission: () => Audio.requestPermissionsAsync(),
       recognizeSpeechOnce,
       setListening: setLocalSttListening,
@@ -3409,6 +3526,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await runAssistantLocalSttFlow({
       prompt: "Speak your message for Assistant",
       listeningStatus: "Listening for an Assistant message...",
+      cancelledStatus: "On-device Assistant listening cancelled",
       requestPermission: () => Audio.requestPermissionsAsync(),
       recognizeSpeechOnce,
       setListening: setLocalSttListening,
@@ -3553,6 +3671,16 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setStatus(nextAction.message);
       return;
     }
+    if (nextAction.kind === "cancel_listening") {
+      const cancelled = await cancelSpeechRecognition();
+      if (!cancelled) {
+        setStatus("On-device listening cancellation failed or is unavailable in this build.");
+        return;
+      }
+      setLocalSttListening(false);
+      setStatus("On-device Assistant listening cancelled");
+      return;
+    }
     if (nextAction.kind === "listen") {
       await submitLocalVoiceConversationTurn();
       return;
@@ -3658,19 +3786,52 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
     const notificationSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      const scheduledBriefingDate = typeof data?.briefingDate === "string" ? data.briefingDate : null;
       const briefingPath = typeof data?.briefingPath === "string" ? data.briefingPath : null;
       const fallbackText = typeof data?.fallbackText === "string" ? data.fallbackText : null;
 
-      if (!briefingPath) {
+      const currentCache = briefingCacheRef.current;
+      const candidates = [
+        currentCache.cachedPath
+          ? { expectedDate: currentCache.briefingDate, path: currentCache.cachedPath }
+          : null,
+        briefingPath
+          ? { expectedDate: scheduledBriefingDate ?? currentCache.briefingDate, path: briefingPath }
+          : null,
+      ].filter((candidate): candidate is { expectedDate: string; path: string } => Boolean(candidate));
+
+      if (candidates.length === 0) {
         if (fallbackText) {
           Speech.speak(fallbackText);
         }
         return;
       }
 
-      readCachedBriefing(briefingPath)
-        .then((briefing) => {
-          return playBriefingPayload(briefing, "scheduled");
+      candidates
+        .reduce<Promise<ValidatedCachedBriefing | null>>(async (previous, candidate) => {
+          const match = await previous;
+          if (match) {
+            return match;
+          }
+          return loadValidCachedBriefing(candidate.path, candidate.expectedDate).catch(() => null);
+        }, Promise.resolve(null))
+        .then((cached) => {
+          if (!cached) {
+            setCachedBriefingAvailable(false);
+            setValidatedCachedBriefingDate(null);
+            if (currentCache.cachedPath) {
+              setCachedPath(null);
+            }
+            throw new Error("Cached briefing unavailable");
+          }
+          setCachedPath(cached.path);
+          setCachedBriefingAvailable(true);
+          setValidatedCachedBriefingDate(cached.briefing.date);
+          briefingCacheRef.current = {
+            briefingDate: cached.briefing.date,
+            cachedPath: cached.path,
+          };
+          return playBriefingPayload(cached.briefing, "scheduled");
         })
         .catch(() => {
           if (fallbackText) {
@@ -3879,6 +4040,45 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [hydrated, token]);
 
   useEffect(() => {
+    briefingCacheRef.current = { briefingDate, cachedPath };
+  }, [briefingDate, cachedPath]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    let active = true;
+    loadValidCachedBriefing(cachedPath, briefingDate)
+      .then((validated) => {
+        if (!active) {
+          return;
+        }
+        setCachedBriefingAvailable(Boolean(validated));
+        setValidatedCachedBriefingDate(validated?.briefing.date ?? null);
+        if (cachedPath && !validated) {
+          setCachedPath(null);
+          briefingCacheRef.current = { briefingDate, cachedPath: null };
+        } else if (validated) {
+          briefingCacheRef.current = { briefingDate, cachedPath: validated.path };
+        }
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setCachedBriefingAvailable(false);
+        setValidatedCachedBriefingDate(null);
+        if (cachedPath) {
+          setCachedPath(null);
+        }
+        briefingCacheRef.current = { briefingDate, cachedPath: null };
+      });
+    return () => {
+      active = false;
+    };
+  }, [briefingDate, cachedPath, hydrated]);
+
+  useEffect(() => {
     if (!hydrated) {
       return;
     }
@@ -4031,7 +4231,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
-    if (activeTab !== "assistant") {
+    if (shouldScrollShellToTopOnTabChange(activeTab)) {
       requestAnimationFrame(() => {
         mainScrollViewRef.current?.scrollTo({ y: 0, animated: false });
       });
@@ -4079,7 +4279,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
-      {!isAssistantMode ? (
+      {shouldShowMobileTopBar(activeTab) ? (
         <MobileTopBar
           styles={styles}
           palette={palette}
@@ -4293,7 +4493,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             playBriefing={playBriefing}
             queueBriefingAudio={() => queueBriefingAudio().catch(() => undefined)}
             generateAndCache={() => generateAndCache().catch(() => undefined)}
-            canPlayOffline={Boolean(cachedPath || briefingPlaybackPreference !== "offline_first")}
+            canPlayOffline={Boolean(cachedBriefingAvailableForDate || briefingPlaybackPreference !== "offline_first")}
+            cachedBriefingAvailable={cachedBriefingAvailableForDate}
             nextActionPreview={nextActionPreview}
             openPwa={openPwa}
             openReview={() => {
@@ -4612,7 +4813,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                   token={token}
                   setToken={setToken}
                   briefingDate={briefingDate}
-                  setBriefingDate={setBriefingDate}
+                  setBriefingDate={updateBriefingDate}
                   alarmHour={alarmHour}
                   setAlarmHour={setAlarmHour}
                   alarmMinute={alarmMinute}
@@ -4637,7 +4838,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
                     clearMorningAlarm().catch(() => undefined);
                   }}
                   notificationPermission={notificationPermission}
-                  cachedPath={cachedPath}
+                  cachedPath={cachedBriefingAvailableForDate ? cachedPath : null}
                   alarmNotificationId={alarmNotificationId}
                   toHourMinuteLabel={toHourMinuteLabel}
                   status={status}

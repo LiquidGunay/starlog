@@ -102,6 +102,35 @@ The second command queues a TTS job. Keep the worker running until the job compl
 If no rendered audio is available, the phone falls back to speaking the briefing text with on-device
 speech output.
 
+## Kitten TTS Native Bundle Path
+
+Kitten TTS is a plausible native-app bundle candidate, but it should enter Starlog through a native
+runtime seam rather than as a Python package inside the React Native app.
+
+Current upstream facts checked on 2026-05-12:
+
+- KittenTTS is an ONNX-based Python library in developer preview, with 15M to 80M parameter models.
+- `kitten-tts-nano-0.8-int8` is the smallest target, about 25 MB, Apache-2.0, and produces 24 kHz
+  audio.
+- The upstream roadmap still lists a mobile SDK as future work.
+- ONNX Runtime has a React Native package, but using it still requires a native build path and model
+  assets packaged with the app.
+
+Implications for Starlog:
+
+- Expo Go is not enough for this path. Keep using native Android preview/production builds for local
+  voice work.
+- Do not commit model binaries until the exact model version, license file, APK size impact, and
+  runtime backend are pinned.
+- Package the model and voice data under native app assets once selected; do not ship those assets to
+  the PWA.
+- Keep `expo-speech` as the on-device fallback until a native Kitten runtime can synthesize to a local
+  audio file and return a playable URI.
+- `EXPO_PUBLIC_STARLOG_KITTEN_TTS_STATUS` may describe packaged assets, but it must not switch playback
+  away from `expo-speech` until a native adapter is registered in the app.
+- The first runtime PR should wire Android assets plus an ONNX/native module, register that native
+  adapter, then validate `Play Briefing` and scheduled alarm playback on the physical phone.
+
 ## Smoke Test
 
 Run the API-level smoke:

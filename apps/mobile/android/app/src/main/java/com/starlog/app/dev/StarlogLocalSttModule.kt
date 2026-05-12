@@ -124,15 +124,27 @@ class StarlogLocalSttModule(reactContext: ReactApplicationContext) : ReactContex
           putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
         }
       }
-      recognizer.startListening(intent)
+      try {
+        recognizer.startListening(intent)
+      } catch (error: RuntimeException) {
+        failPending("stt_start_failed", error.message ?: "Android speech recognition failed to start.")
+      }
+    }
+  }
+
+  @ReactMethod
+  fun cancelRecognition(promise: Promise) {
+    mainHandler.post {
+      val hadPendingRecognition = pendingPromise != null || speechRecognizer != null
+      cancelPendingRecognition()
+      promise.resolve(hadPendingRecognition)
     }
   }
 
   override fun invalidate() {
     super.invalidate()
     mainHandler.post {
-      failPending("stt_cancelled", "Android speech recognition was interrupted.")
-      cleanupRecognizer()
+      cancelPendingRecognition()
     }
   }
 
@@ -150,10 +162,29 @@ class StarlogLocalSttModule(reactContext: ReactApplicationContext) : ReactContex
     promise?.reject(code, message)
   }
 
+  private fun cancelPendingRecognition() {
+    val promise = pendingPromise
+    pendingPromise = null
+    cleanupRecognizer(cancelFirst = true)
+    promise?.reject("stt_cancelled", "stt_cancelled")
+  }
+
   private fun cleanupRecognizer() {
-    speechRecognizer?.setRecognitionListener(null)
-    speechRecognizer?.destroy()
+    cleanupRecognizer(cancelFirst = false)
+  }
+
+  private fun cleanupRecognizer(cancelFirst: Boolean) {
+    val recognizer = speechRecognizer ?: return
     speechRecognizer = null
+    recognizer.setRecognitionListener(null)
+    if (cancelFirst) {
+      try {
+        recognizer.cancel()
+      } catch (_: RuntimeException) {
+        // The recognizer may already be stopping or torn down by the platform.
+      }
+    }
+    recognizer.destroy()
   }
 
   private fun errorCode(error: Int): String {
