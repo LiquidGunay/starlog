@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/mobile-assistant-thread-actions-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/assistant-mobile-thread-actions.ts",
+    "tests/assistant-mobile-thread-actions.test.ts"
+  ]
+}
