@@ -229,6 +229,36 @@ def _briefing_has_section_items(payload: dict[str, Any], kinds: set[str]) -> boo
     return False
 
 
+def _briefing_card_from_event_payload(
+    *,
+    entity_ref: dict[str, Any] | None,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    briefing_id = str(payload.get("briefing_id") or (entity_ref or {}).get("entity_id") or "").strip()
+    briefing_date = str(payload.get("date") or (entity_ref or {}).get("title") or briefing_id).strip()
+    sections = payload.get("sections") if isinstance(payload.get("sections"), list) else []
+    source_refs = payload.get("source_refs") if isinstance(payload.get("source_refs"), list) else []
+    return {
+        "kind": "briefing",
+        "title": "Briefing ready",
+        "body": str(payload.get("body") or "Briefing ready.").strip() or "Briefing ready.",
+        "entity_ref": entity_ref
+        if isinstance(entity_ref, dict)
+        else {
+            "entity_type": "briefing",
+            "entity_id": briefing_id,
+            "href": f"/planner?briefing={briefing_id}",
+            "title": briefing_date or briefing_id,
+        },
+        "metadata": {
+            "briefing_id": briefing_id,
+            "date": briefing_date or None,
+            "section_count": len(sections),
+            "source_refs": source_refs,
+        },
+    }
+
+
 def _build_morning_focus_options(
     conn: Connection,
     *,
@@ -1182,6 +1212,9 @@ def create_surface_event(
             metadata={"surface_event": event, "interrupt_id": interrupt["id"]},
             parts=[
                 assistant_projection_service.text_part("Here is your morning briefing. Choose one focused way to start."),
+                assistant_projection_service.card_part(
+                    _briefing_card_from_event_payload(entity_ref=entity_ref, payload=payload)
+                ),
                 assistant_projection_service.interrupt_request_part(interrupt),
             ],
         )
