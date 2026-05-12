@@ -170,6 +170,7 @@ type MobileCalendarSurfaceProps = SharedProps & {
   queueBriefingAudio: () => void;
   generateAndCache: () => void;
   canPlayOffline: boolean;
+  cachedBriefingAvailable: boolean;
   nextActionPreview: string;
   openPwa: () => void;
   openReview: () => void;
@@ -3067,6 +3068,7 @@ export function MobileCalendarSurface({
   queueBriefingAudio,
   generateAndCache,
   canPlayOffline,
+  cachedBriefingAvailable,
   nextActionPreview,
   openPwa,
   openReview,
@@ -3081,6 +3083,7 @@ export function MobileCalendarSurface({
     nextActionPreview,
     alarmScheduled,
     nextBriefingCountdown,
+    offlinePlaybackAvailable: cachedBriefingAvailable,
   });
   const plannerLoaded = Boolean(plannerSummary);
   const plannerNavy = "rgba(5, 16, 29, 0.94)";
@@ -3090,6 +3093,7 @@ export function MobileCalendarSurface({
   const compactDecisionDetail = plannerLoaded ? "Counts synced" : "Not loaded";
   const visibleDecisionLabel = plannerLoaded ? planner.decisionLabel : "Planner not loaded";
   const visibleBriefingChip = plannerLoaded ? planner.alarmBriefing.chipLabel : "Load Planner state";
+  const canUseBriefingPlayback = plannerLoaded && canPlayOffline;
 
   return (
     <View style={{ gap: 9, paddingBottom: 120 }}>
@@ -3399,6 +3403,7 @@ export function MobileCalendarSurface({
             <Text {...PLANNER_TIGHT_TEXT_PROPS} style={bodyStyle(palette)}>{planner.alarmBriefing.cardBody}</Text>
           </View>
           <TouchableOpacity
+            accessibilityLabel={planner.alarmBriefing.toggleEnabled ? "Toggle morning alarm" : planner.alarmBriefing.cardBody}
             style={{
               width: 54,
               height: 32,
@@ -3426,11 +3431,11 @@ export function MobileCalendarSurface({
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
           <TouchableOpacity
             accessibilityLabel="Play cached briefing"
-            style={{ ...pillStyle(palette), opacity: planner.alarmBriefing.offlinePlaybackAvailable && canPlayOffline ? 1 : 0.5 }}
+            style={{ ...pillStyle(palette), opacity: canUseBriefingPlayback ? 1 : 0.5 }}
             onPress={playBriefing}
-            disabled={!planner.alarmBriefing.offlinePlaybackAvailable || !canPlayOffline}
+            disabled={!canUseBriefingPlayback}
           >
-            <MaterialCommunityIcons name="play" size={18} color={planner.alarmBriefing.offlinePlaybackAvailable && canPlayOffline ? palette.accent : palette.muted} />
+            <MaterialCommunityIcons name="play" size={18} color={canUseBriefingPlayback ? palette.accent : palette.muted} />
           </TouchableOpacity>
           <TouchableOpacity accessibilityLabel="Queue briefing audio" style={pillStyle(palette)} onPress={queueBriefingAudio}>
             <MaterialCommunityIcons name="text-to-speech" size={18} color={palette.accent} />

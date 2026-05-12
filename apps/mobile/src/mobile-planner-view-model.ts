@@ -108,6 +108,7 @@ export function deriveMobilePlannerViewModel(input: {
   nextActionPreview?: string;
   alarmScheduled?: boolean;
   nextBriefingCountdown?: string;
+  offlinePlaybackAvailable?: boolean;
 }): MobilePlannerViewModel {
   const now = input.now ?? new Date();
   const selectedDate = parsePlannerDate(input.selectedDate ?? input.summary?.date, now);
@@ -140,6 +141,7 @@ export function deriveMobilePlannerViewModel(input: {
     hasSummary,
     alarmScheduled: Boolean(input.alarmScheduled),
     nextBriefingCountdown: input.nextBriefingCountdown,
+    offlinePlaybackAvailable: input.offlinePlaybackAvailable ?? true,
   });
   const scheduledCommitments = buildScheduledCommitments({
     hasSummary,
@@ -349,6 +351,7 @@ function buildAlarmBriefingDisplay(input: {
   hasSummary: boolean;
   alarmScheduled: boolean;
   nextBriefingCountdown?: string;
+  offlinePlaybackAvailable: boolean;
 }): MobilePlannerViewModel["alarmBriefing"] {
   if (!input.hasSummary) {
     return {
@@ -366,11 +369,25 @@ function buildAlarmBriefingDisplay(input: {
     return {
       chipLabel: input.nextBriefingCountdown || "Scheduled",
       chipIcon: "bell-ring-outline",
-      cardBody: input.nextBriefingCountdown ? `${input.nextBriefingCountdown} until play` : "Briefing alarm is scheduled",
+      cardBody: input.offlinePlaybackAvailable
+        ? input.nextBriefingCountdown ? `${input.nextBriefingCountdown} until play` : "Briefing alarm is scheduled"
+        : "Scheduled; cache briefing before playback",
       statusLabel: "Scheduled",
       toggleEnabled: true,
       toggleScheduled: true,
-      offlinePlaybackAvailable: true,
+      offlinePlaybackAvailable: input.offlinePlaybackAvailable,
+    };
+  }
+
+  if (!input.offlinePlaybackAvailable) {
+    return {
+      chipLabel: "Cache first",
+      chipIcon: "bell-outline",
+      cardBody: "Cache briefing before scheduling",
+      statusLabel: "Cache required",
+      toggleEnabled: false,
+      toggleScheduled: false,
+      offlinePlaybackAvailable: false,
     };
   }
 
