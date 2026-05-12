@@ -124,14 +124,20 @@ def _default_actions(card: dict[str, Any]) -> list[dict[str, Any]]:
 
     if kind == "review_queue":
         actions: list[dict[str, Any]] = []
-        if entity_type == "card" and entity_id:
-            for label, rating, style in [("Hard", 3, "secondary"), ("Good", 4, "primary"), ("Easy", 5, "ghost")]:
+        review_card_id = entity_id if entity_type == "card" and entity_id else str(metadata.get("card_id") or "").strip()
+        if review_card_id:
+            for label, rating, style in [
+                ("Again", 1, "secondary"),
+                ("Hard", 3, "secondary"),
+                ("Good", 4, "primary"),
+                ("Easy", 5, "ghost"),
+            ]:
                 actions.append(
                     _mutation_action(
                         f"review_{rating}",
                         label,
                         "/v1/reviews",
-                        {"card_id": entity_id, "rating": rating},
+                        {"card_id": review_card_id, "rating": rating},
                         style=style,
                     )
                 )
@@ -526,7 +532,12 @@ def _review_queue_card(cards: list[dict[str, Any]], *, title: str, metadata: dic
     )
 
 
-def _briefing_card(briefing: dict[str, Any], *, title: str = "Briefing") -> dict[str, Any]:
+def _briefing_card(
+    briefing: dict[str, Any],
+    *,
+    title: str = "Briefing",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     audio_ref = str(briefing.get("audio_ref") or "").strip() or None
     return normalize_card(
         {
@@ -539,9 +550,24 @@ def _briefing_card(briefing: dict[str, Any], *, title: str = "Briefing") -> dict
                 "date": briefing.get("date"),
                 "audio_ref": audio_ref,
                 "audio_content_url": _media_content_url(audio_ref),
+                **(metadata or {}),
             },
         }
     )
+
+
+def _briefing_result_metadata(result: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    job = result.get("job") if isinstance(result.get("job"), dict) else None
+    if job is not None:
+        metadata["job_id"] = job.get("id")
+        metadata["job_action"] = job.get("action")
+    alarm = result.get("alarm") if isinstance(result.get("alarm"), dict) else None
+    if alarm is not None:
+        metadata["alarm_id"] = alarm.get("id")
+        metadata["alarm_trigger_at"] = alarm.get("trigger_at")
+        metadata["alarm_device_target"] = alarm.get("device_target")
+    return metadata
 
 
 def _memory_suggestion_card(suggestion: dict[str, Any], *, page: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -657,10 +683,12 @@ def project_step_cards(conn: Connection, step: Any) -> list[dict[str, Any]]:
             title = "Briefing audio"
         if tool_name == "schedule_morning_brief_alarm":
             title = "Morning briefing"
-        return [_briefing_card(result_dict["briefing"], title=title)]
+        return [_briefing_card(result_dict["briefing"], title=title, metadata=_briefing_result_metadata(result_dict))]
 
     if tool_name == "list_due_cards":
-        cards = result_dict if isinstance(result, list) else result_dict.get("cards")
+        cards = result if isinstance(result, list) else result_dict.get("cards")
+        if not isinstance(cards, list):
+            cards = result_dict.get("value")
         due_cards = cards if isinstance(cards, list) else []
         return [_review_queue_card(due_cards, title="Review queue")]
 
