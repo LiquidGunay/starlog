@@ -59,6 +59,7 @@ export default function DeckBrowserPage() {
   const [deckName, setDeckName] = useState("");
   const [deckDescription, setDeckDescription] = useState("");
   const [deckSchedule, setDeckSchedule] = useState<DeckSchedule>(DEFAULT_SCHEDULE);
+  const [isCreatingDeck, setIsCreatingDeck] = useState(false);
 
   const [cardPrompt, setCardPrompt] = useState("");
   const [cardAnswer, setCardAnswer] = useState("");
@@ -81,12 +82,12 @@ export default function DeckBrowserPage() {
     }
     const payload = await apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks");
     setDecks(payload);
-    if (!selectedDeckId && payload[0]) {
+    if (!isCreatingDeck && !selectedDeckId && payload[0]) {
       setSelectedDeckId(payload[0].id);
       setCardDeckId(payload[0].id);
     }
     return payload;
-  }, [apiBase, missingConfig, selectedDeckId, token]);
+  }, [apiBase, isCreatingDeck, missingConfig, selectedDeckId, token]);
 
   const loadCards = useCallback(async (nextDeckFilter = selectedDeckFilter) => {
     if (missingConfig) {
@@ -147,6 +148,7 @@ export default function DeckBrowserPage() {
 
   function clearDeckEditor() {
     setSelectedDeckId("");
+    setIsCreatingDeck(true);
     setDeckName("");
     setDeckDescription("");
     setDeckSchedule(DEFAULT_SCHEDULE);
@@ -181,6 +183,7 @@ export default function DeckBrowserPage() {
       });
       setSelectedDeckId(created.id);
       setCardDeckId(created.id);
+      setIsCreatingDeck(false);
       setStatus(`Created deck ${created.name}`);
       await reload(selectedDeckFilter);
     } catch (error) {
@@ -207,6 +210,7 @@ export default function DeckBrowserPage() {
         }),
       });
       setStatus(`Saved deck ${updated.name}`);
+      setIsCreatingDeck(false);
       await reload(selectedDeckFilter);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to save deck");
@@ -300,6 +304,7 @@ export default function DeckBrowserPage() {
               className="button"
               type="button"
               onClick={() => {
+                setIsCreatingDeck(false);
                 setSelectedDeckFilter("all");
                 void reload("all");
               }}
@@ -316,6 +321,7 @@ export default function DeckBrowserPage() {
                   setSelectedDeckFilter(deck.id);
                   setSelectedDeckId(deck.id);
                   setCardDeckId(deck.id);
+                  setIsCreatingDeck(false);
                   void reload(deck.id);
                 }}
                 disabled={missingConfig}
@@ -337,7 +343,14 @@ export default function DeckBrowserPage() {
               <ul className="review-browser-list">
                 {decks.map((deck) => (
                   <li key={deck.id} className={deck.id === selectedDeckId ? "review-browser-item active" : "review-browser-item"}>
-                    <button className="button" type="button" onClick={() => setSelectedDeckId(deck.id)}>
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={() => {
+                        setSelectedDeckId(deck.id);
+                        setIsCreatingDeck(false);
+                      }}
+                    >
                       {deck.name}
                     </button>
                     <p className="console-copy">

@@ -820,44 +820,55 @@ async function openCaptureInLibrary(entry) {
 async function askAssistantAboutCapture(entry) {
   const { apiBase, webBase, token } = readConfig();
   const prompt = assistantPromptForCapture(entry);
-  if (token) {
-    try {
-      const response = await fetch(`${apiBase}/v1/assistant/handoffs`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          source_surface: "desktop_helper",
-          artifact_id: entry.artifactId,
-          draft: prompt,
-        }),
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      const payload = await response.json();
-      if (typeof payload?.token === "string" && payload.token) {
-        await openSupportUrl(
-          `${webBase}/assistant?handoff=${encodeURIComponent(payload.token)}`,
-          `${productCopy.brand.name} Assistant`,
-        );
-        setStatus("Opened Assistant handoff for the selected capture");
-        return;
-      }
-      throw new Error("Assistant handoff token missing from response");
-    } catch (error) {
-      console.warn("Assistant handoff token request failed", error);
-    }
+
+  const fallbackToDraft = async (statusMessage) => {
+    await openSupportUrl(
+      `${webBase}/assistant?draft=${encodeURIComponent(prompt)}`,
+      `${productCopy.brand.name} Assistant`,
+    );
+    setStatus(statusMessage);
+  };
+
+  if (!token) {
+    await fallbackToDraft("No bearer token; opened Assistant draft with capture context instead.");
+    return;
   }
 
-  await openSupportUrl(
-    `${webBase}/assistant?draft=${encodeURIComponent(prompt)}`,
-    `${productCopy.brand.name} Assistant`,
+  try {
+    const response = await fetch(`${apiBase}/v1/assistant/handoffs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        source_surface: "desktop_helper",
+        artifact_id: entry.artifactId,
+        draft: prompt,
+      }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+    const payload = await response.json();
+    if (typeof payload?.token === "string" && payload.token) {
+      await openSupportUrl(
+        `${webBase}/assistant?handoff=${encodeURIComponent(payload.token)}`,
+        `${productCopy.brand.name} Assistant`,
+      );
+      setStatus("Opened Assistant handoff for the selected capture");
+      return;
+    }
+    throw new Error("Assistant handoff token missing from response");
+  } catch (error) {
+    console.warn("Assistant handoff token request failed", error);
+    setStatus(`Could not create verified handoff: ${errorMessage(error, "request failed")}.`);
+  }
+
+  await fallbackToDraft(
+    "Could not create a verified handoff. Opened Assistant draft with capture context instead.",
   );
-  setStatus("Opened Assistant draft without verified helper context");
 }
 
 function renderRecentCaptures(entries) {

@@ -603,6 +603,7 @@ function AssistantPageContent() {
   const [handoff, setHandoff] = useState<AssistantHandoff | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [inlineBusyActionIds, setInlineBusyActionIds] = useState<string[]>([]);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
 
@@ -1011,6 +1012,7 @@ function AssistantPageContent() {
       return;
     }
 
+    setInlineBusyActionIds((current) => (current.includes(action.id) ? current : [...current, action.id]));
     setSending(true);
     setError(null);
     try {
@@ -1040,6 +1042,7 @@ function AssistantPageContent() {
     } catch (err) {
       setError(err instanceof ApiError ? err.body : `Failed to run "${action.label}".`);
     } finally {
+      setInlineBusyActionIds((current) => current.filter((actionId) => actionId !== action.id));
       setSending(false);
     }
   }
@@ -1167,6 +1170,7 @@ function AssistantPageContent() {
               todayOpenLoops={cockpitOpenLoops}
               todayContextItems={contextItems}
               onQuickStart={handleQuickStart}
+              inlineBusyActionIds={inlineBusyActionIds}
               onCardAction={handleCardAction}
               onInterruptSubmit={submitInterrupt}
               onInterruptDismiss={dismissInterrupt}

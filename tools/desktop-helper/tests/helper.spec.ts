@@ -529,6 +529,73 @@ test("recent capture handoff actions open Library and Assistant with capture con
   ]);
 });
 
+test("Ask Assistant falls back to draft handoff with clear status when verified handoff fails", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "starlog.desktop-helper.recent-captures.v1",
+      JSON.stringify([
+        {
+          artifactId: "artifact-helper-2",
+          title: "Desktop clip",
+          kind: "clipboard",
+          summary: "Draft fallback path is useful for testing handoff failures.",
+          capturedAt: "2026-04-22T09:00:00.000Z",
+          appName: "Codex",
+          windowTitle: "Research",
+          captureBackend: "browser-clipboard",
+        },
+      ]),
+    );
+    Object.defineProperty(window, "__openedUrls", {
+      configurable: true,
+      value: [],
+      writable: true,
+    });
+    window.open = (url) => {
+      window.__openedUrls.push(String(url));
+      return null;
+    };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = String(input);
+      if (url === "http://localhost:8000/v1/assistant/handoffs") {
+        return new Response(
+          JSON.stringify({ error: "service unavailable" }),
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+      return realFetch(input, init);
+    };
+  });
+
+  await page.goto("/index.html");
+  await page.getByLabel("Bearer token").fill("token-123");
+  await page.getByLabel("Web app base").fill("https://starlog.example");
+
+  await page.getByRole("button", { name: "Ask Assistant" }).click();
+
+  await expect(page.locator("#status")).toContainText(
+    "Could not create a verified handoff",
+  );
+  await expect(page.locator("#status")).toContainText(
+    "Opened Assistant draft with capture context instead",
+  );
+
+  await expect
+    .poll(async () => page.evaluate(() => (window.__openedUrls || []).length))
+    .toBe(1);
+  const openedUrl = await page.evaluate(() => (window.__openedUrls || [])[0]);
+  expect(openedUrl).toContain("https://starlog.example/assistant?draft=");
+
+  const draft = decodeURIComponent(new URL(openedUrl).searchParams.get("draft") || "");
+  expect(draft).toContain("Artifact ID: artifact-helper-2");
+});
+
 test("recent screenshot captures render stored previews", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem(

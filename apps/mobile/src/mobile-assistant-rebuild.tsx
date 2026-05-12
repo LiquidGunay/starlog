@@ -2495,6 +2495,9 @@ export function MobileAssistantRebuild({
               placeholder={productCopy.assistant.inputPlaceholder}
               placeholderTextColor={palette.muted}
               multiline
+              returnKeyType="send"
+              blurOnSubmit
+              onSubmitEditing={runAssistantTurn}
               style={{
                 minHeight: 32,
                 maxHeight: 82,
@@ -2518,6 +2521,10 @@ export function MobileAssistantRebuild({
             }}
             disabled={pendingConversationTurn}
             onPress={runAssistantTurn}
+            accessibilityRole="button"
+            accessibilityLabel="Send assistant message"
+            testID="assistant-send-message"
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <MaterialCommunityIcons name={pendingConversationTurn ? "dots-horizontal" : "arrow-up"} size={19} color={palette.onAccent} />
           </TouchableOpacity>

@@ -921,7 +921,7 @@ test("mutation card actions confirm, execute, and refresh the thread snapshot", 
 
   await page.goto("/assistant");
   await expect(page.getByText("Thread prompt ready")).toBeVisible();
-  await expect(page.getByText("1 planning item is active from this thread.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Morning briefing" })).toBeVisible();
   await page.getByRole("button", { name: "Cache audio" }).click();
 
   await expect.poll(() => mutationCalls).toBe(1);

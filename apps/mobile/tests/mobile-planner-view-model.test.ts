@@ -59,7 +59,7 @@ assert.equal(model.decisionLabel, "Resolve the overlap before adding new work.")
 assert.deepEqual(model.alarmBriefing, {
   chipLabel: "18h",
   chipIcon: "bell-ring-outline",
-  cardBody: "18h until play",
+  cardBody: "18h until alarm",
   statusLabel: "Scheduled",
   toggleEnabled: true,
   toggleScheduled: true,

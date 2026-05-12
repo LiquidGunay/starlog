@@ -255,6 +255,14 @@ def _assistant_summary_card(response_text: str) -> dict[str, Any]:
     }
 
 
+def _same_card(card_a: dict[str, Any] | None, card_b: dict[str, Any] | None) -> bool:
+    if card_a is card_b:
+        return True
+    if not isinstance(card_a, dict) or not isinstance(card_b, dict):
+        return False
+    return card_a == card_b
+
+
 def _thread_context_card(*, last_intent: str, latest_tool: str | None) -> dict[str, Any]:
     return {
         "kind": "thread_context",
@@ -511,7 +519,7 @@ def _tool_result_part_from_trace(trace: dict[str, Any]) -> dict[str, Any] | None
 
 
 def _project_chat_turn_cards(context: dict[str, Any], *, response_text: str, last_intent: str, latest_tool: str | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    cards: list[dict[str, Any]] = [_assistant_summary_card(response_text)]
+    cards: list[dict[str, Any]] = []
     if last_intent or latest_tool:
         cards.append(_thread_context_card(last_intent=last_intent, latest_tool=latest_tool))
 
@@ -538,6 +546,9 @@ def _project_chat_turn_cards(context: dict[str, Any], *, response_text: str, las
         memory_card = _knowledge_note_card_from_memory(context)
         if memory_card is not None:
             cards.append(memory_card)
+
+    if not cards:
+        cards.append(_assistant_summary_card(response_text))
 
     return cards, projected_trace_parts
 
@@ -671,7 +682,7 @@ def execute_chat_turn(title: str | None, text: str, context: dict[str, Any]) -> 
         else None
     )
     for card in cards:
-        if trace_projection_card is not None and card is trace_projection_card:
+        if trace_projection_card is not None and _same_card(card, trace_projection_card):
             continue
         parts.append(_card_part(card))
     parts.extend(projected_trace_parts)

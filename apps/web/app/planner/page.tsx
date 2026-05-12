@@ -93,6 +93,14 @@ type BriefingPackage = {
   audio_ref?: string | null;
 };
 
+type AlarmPlan = {
+  id: string;
+  trigger_at: string;
+  briefing_package_id: string;
+  device_target: string;
+  created_at: string;
+};
+
 type SyncSummary = {
   run_id: string;
   pushed: number;
@@ -124,6 +132,7 @@ const PLANNER_CONFLICTS_SNAPSHOT = "planner.conflicts";
 const PLANNER_OAUTH_STATUS_SNAPSHOT = "planner.oauth_status";
 const PLANNER_SUMMARY_SNAPSHOT = "planner.summary";
 const PLANNER_DATE_SNAPSHOT = "planner.date";
+const PLANNER_ALARMS_SNAPSHOT = "planner.alarms";
 const PLANNER_CACHE_PREFIXES = ["planner.", "calendar."];
 const PLANNER_BLOCKS_ENTITY_SCOPE = "planner.blocks";
 const PLANNER_EVENTS_ENTITY_SCOPE = "planner.events";
@@ -284,7 +293,11 @@ export default function PlannerPage() {
     () => readEntitySnapshot<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
   );
   const [latestBriefing, setLatestBriefing] = useState<BriefingPackage | null>(null);
+  const [alarms, setAlarms] = useState<AlarmPlan[]>(() => readEntitySnapshot<AlarmPlan[]>(PLANNER_ALARMS_SNAPSHOT, []));
   const [latestSyncSummary, setLatestSyncSummary] = useState<SyncSummary | null>(null);
+  const [alarmTriggerAt, setAlarmTriggerAt] = useState(`${today}T07:00`);
+  const [alarmScheduleStatus, setAlarmScheduleStatus] = useState("");
+  const [isSchedulingAlarm, setIsSchedulingAlarm] = useState(false);
   const [status, setStatus] = useState("Ready");
   const sidecarPane = usePaneCollapsed(PLANNER_SIDECAR_PANE_SNAPSHOT);
 
@@ -293,6 +306,7 @@ export default function PlannerPage() {
   const repairableConflictCount = unresolvedConflicts.length;
   const summaryOnlyConflictCount = Math.max(0, activeSummary.conflict_count - repairableConflictCount);
   const conflictCount = Math.max(activeSummary.conflict_count, repairableConflictCount);
+  const hasAlarmControl = Boolean(latestBriefing);
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const blockItems = blocks
@@ -387,13 +401,14 @@ export default function PlannerPage() {
     let cancelled = false;
 
     void (async () => {
-      const [cachedDate, cachedSummary, cachedBlocks, cachedEvents, cachedConflicts, cachedOauth] = await Promise.all([
+      const [cachedDate, cachedSummary, cachedBlocks, cachedEvents, cachedConflicts, cachedOauth, cachedAlarms] = await Promise.all([
         readEntitySnapshotAsync<string>(PLANNER_DATE_SNAPSHOT, today),
         readEntitySnapshotAsync<PlannerSurfaceSummary | null>(PLANNER_SUMMARY_SNAPSHOT, null),
         readEntitySnapshotAsync<Block[]>(PLANNER_BLOCKS_SNAPSHOT, []),
         readEntitySnapshotAsync<EventItem[]>(PLANNER_EVENTS_SNAPSHOT, []),
         readEntitySnapshotAsync<Conflict[]>(PLANNER_CONFLICTS_SNAPSHOT, []),
         readEntitySnapshotAsync<OAuthStatus | null>(PLANNER_OAUTH_STATUS_SNAPSHOT, null),
+        readEntitySnapshotAsync<AlarmPlan[]>(PLANNER_ALARMS_SNAPSHOT, []),
       ]);
 
       if (cancelled) {
@@ -418,6 +433,7 @@ export default function PlannerPage() {
       if (cachedOauth) {
         setOauthStatus(cachedOauth);
       }
+      setAlarms(cachedAlarms);
     })();
 
     return () => {
@@ -460,21 +476,24 @@ export default function PlannerPage() {
 
   const load = useCallback(async () => {
     try {
-      const [summaryPayload, blockPayload, eventPayload, conflictPayload, oauthPayload] = await Promise.all([
+      const [summaryPayload, blockPayload, eventPayload, conflictPayload, oauthPayload, alarmPayload] = await Promise.all([
         loadSummary(),
         apiRequest<Block[]>(apiBase, token, `/v1/planning/blocks/${date}`),
         apiRequest<EventItem[]>(apiBase, token, "/v1/calendar/events"),
         apiRequest<Conflict[]>(apiBase, token, "/v1/calendar/sync/google/conflicts"),
         apiRequest<OAuthStatus>(apiBase, token, "/v1/calendar/sync/google/oauth/status"),
+        apiRequest<AlarmPlan[]>(apiBase, token, "/v1/alarms"),
       ]);
       setBlocks(blockPayload);
       setEvents(eventPayload);
       setConflicts(conflictPayload);
       setOauthStatus(oauthPayload);
+      setAlarms(alarmPayload);
       writeEntitySnapshot(PLANNER_BLOCKS_SNAPSHOT, blockPayload);
       writeEntitySnapshot(PLANNER_EVENTS_SNAPSHOT, eventPayload);
       writeEntitySnapshot(PLANNER_CONFLICTS_SNAPSHOT, conflictPayload);
       writeEntitySnapshot(PLANNER_OAUTH_STATUS_SNAPSHOT, oauthPayload);
+      writeEntitySnapshot(PLANNER_ALARMS_SNAPSHOT, alarmPayload);
       cachePlannerBlocks(blockPayload);
       cachePlannerEvents(eventPayload);
       cachePlannerConflicts(conflictPayload);
@@ -523,10 +542,60 @@ export default function PlannerPage() {
         body: JSON.stringify({ date, provider: "planner_web" }),
       });
       setLatestBriefing(briefing);
+      setAlarmTriggerAt(`${briefing.date}T07:00`);
       setStatus(`Prepared briefing for ${briefing.date}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Briefing generation failed");
     }
+  }
+
+  async function scheduleAlarm() {
+    if (isSchedulingAlarm) {
+      return;
+    }
+    if (!latestBriefing) {
+      setAlarmScheduleStatus("Prepare a briefing first.");
+      return;
+    }
+
+    const trigger = new Date(alarmTriggerAt);
+    if (Number.isNaN(trigger.valueOf())) {
+      setAlarmScheduleStatus("Choose a valid alarm time.");
+      return;
+    }
+
+    setIsSchedulingAlarm(true);
+    try {
+      const payload = await apiRequest<AlarmPlan>(apiBase, token, "/v1/alarms", {
+        method: "POST",
+        body: JSON.stringify({
+          trigger_at: trigger.toISOString(),
+          briefing_package_id: latestBriefing.id,
+          device_target: "pwa",
+        }),
+      });
+      setAlarms((previous) => {
+        const updated = [
+          payload,
+          ...previous.filter((alarm) => (
+            alarm.briefing_package_id !== payload.briefing_package_id
+            || alarm.trigger_at !== payload.trigger_at
+            || alarm.device_target !== payload.device_target
+          )),
+        ];
+        writeEntitySnapshot(PLANNER_ALARMS_SNAPSHOT, updated);
+        return updated;
+      });
+      setAlarmScheduleStatus("Alarm scheduled");
+    } catch (error) {
+      setAlarmScheduleStatus(error instanceof Error ? error.message : "Alarm schedule failed");
+    } finally {
+      setIsSchedulingAlarm(false);
+    }
+  }
+
+  function formatAlarmDateTime(iso: string): string {
+    return new Date(iso).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
   }
 
   async function runGoogleSync() {
@@ -976,10 +1045,40 @@ export default function PlannerPage() {
                   {latestBriefing ? (
                     <p className="status">Briefing prepared for {latestBriefing.date}</p>
                   ) : null}
+                  {alarmScheduleStatus ? (
+                    <p className="status" aria-live="polite">{alarmScheduleStatus}</p>
+                  ) : null}
+                  {hasAlarmControl ? (
+                    <div className={styles.alarmControlRow}>
+                      <label className={styles.alarmField}>
+                        <span>Alarm time</span>
+                        <input
+                          className="input"
+                          type="datetime-local"
+                          value={alarmTriggerAt}
+                          onChange={(event) => setAlarmTriggerAt(event.target.value)}
+                          aria-label="Alarm time"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                  {alarms.length > 0 ? (
+                    <div className={styles.alarmRows}>
+                      {alarms.map((alarm) => (
+                        <article key={alarm.id} className={styles.alarmRow}>
+                          <span className={styles.alarmTime}>{formatAlarmDateTime(alarm.trigger_at)}</span>
+                          <span>{alarm.device_target}</span>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="button-row">
                     <button className="button" type="button" onClick={() => runGoogleSync()}>Run Google sync</button>
                     <button className="button" type="button" onClick={() => addSampleEvent()}>Add event</button>
                     <button className="button" type="button" onClick={() => generateBriefing()}>Prepare briefing</button>
+                    <button className="button" type="button" disabled={isSchedulingAlarm} onClick={() => scheduleAlarm()}>
+                      {isSchedulingAlarm ? "Scheduling..." : "Schedule alarm"}
+                    </button>
                   </div>
                 </section>
               </AprilPanel>

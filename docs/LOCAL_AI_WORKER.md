@@ -122,6 +122,22 @@ PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
   python scripts/local_tts_server.py
 ```
 
+KittenTTS is supported as a resident server backend for small local briefing renders when the
+`kittentts` and `soundfile` packages are present:
+
+```bash
+uv pip install 'soundfile>=0.12' \
+  'https://github.com/KittenML/KittenTTS/releases/download/0.8.1/kittentts-0.8.1-py3-none-any.whl'
+export STARLOG_LOCAL_TTS_BACKEND='kitten'
+export STARLOG_LOCAL_TTS_PROVIDER_NAME='kitten_tts'
+export STARLOG_LOCAL_TTS_MODEL_NAME='KittenML/kitten-tts-nano-0.8'
+PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime \
+  python scripts/local_tts_server.py
+```
+
+This keeps the same `/v1/tts/speak` bridge contract as command-backed providers, so the API worker
+and phone briefing cache do not need separate server-side handling.
+
 The official Microsoft `VibeVoice` repo is back online, but the TTS code was removed after September 2025. If you have a working community or internal VibeVoice command path, point `STARLOG_LOCAL_TTS_COMMAND` at it and set `STARLOG_LOCAL_TTS_PROVIDER_NAME` accordingly. Otherwise, use Piper or another local TTS command as the closest viable fallback while keeping the bridge on the same server abstraction.
 
 ## Run against a local API

@@ -60,7 +60,8 @@ def test_execute_chat_turn_returns_structured_response() -> None:
     assert "Summarize where we left off." in payload.user_prompt
     assert payload.parts[0]["type"] == "text"
     assert payload.parts[-1]["type"] == "status"
-    assert payload.cards[0]["kind"] == "assistant_summary"
+    assert payload.cards[0]["kind"] == "thread_context"
+    assert not any(card["kind"] == "assistant_summary" for card in payload.cards)
     assert payload.session_state["last_turn_kind"] == "chat_turn"
     assert payload.session_state["last_user_message"] == "Summarize where we left off."
 
@@ -84,6 +85,7 @@ def test_execute_chat_turn_projects_capture_card_from_helper_handoff() -> None:
     assert capture_card["metadata"]["artifact_id"] == "art_helper_1"
     assert capture_card["metadata"]["projection"] == "runtime_handoff"
     assert any(part["type"] == "card" and part["card"]["kind"] == "capture_item" for part in payload.parts)
+    assert not any(card["kind"] == "assistant_summary" for card in payload.cards)
 
 
 def test_execute_chat_turn_projects_recent_review_trace_into_review_queue() -> None:
@@ -120,6 +122,17 @@ def test_execute_chat_turn_projects_recent_review_trace_into_review_queue() -> N
     assert tool_result["tool_call_id"] == "trace_due_1"
     assert tool_result["metadata"]["tool_name"] == "list_due_cards"
     assert tool_result["card"]["kind"] == "review_queue"
+    assert not any(card["kind"] == "assistant_summary" for card in payload.cards)
+    assert (
+        len(
+            [
+                card
+                for card in payload.cards
+                if card["kind"] == "review_queue" and card["metadata"].get("projection") == "runtime_recent_trace"
+            ]
+        )
+        == 1
+    )
 
 
 def test_execute_chat_turn_projects_recent_task_trace_into_tool_result() -> None:
@@ -152,6 +165,17 @@ def test_execute_chat_turn_projects_recent_task_trace_into_tool_result() -> None
     assert tool_result["tool_call_id"] == tool_call["id"]
     assert tool_result["card"]["kind"] == "task_list"
     assert tool_result["card"]["metadata"]["task_ids"] == ["tsk_1"]
+    assert not any(card["kind"] == "assistant_summary" for card in payload.cards)
+    assert (
+        len(
+            [
+                card
+                for card in payload.cards
+                if card["kind"] == "task_list" and card["metadata"].get("projection") == "runtime_recent_trace"
+            ]
+        )
+        == 1
+    )
 
 
 def test_execute_chat_turn_prefers_server_projected_trace_cards() -> None:

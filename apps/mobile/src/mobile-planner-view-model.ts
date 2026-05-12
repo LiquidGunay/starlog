@@ -370,7 +370,7 @@ function buildAlarmBriefingDisplay(input: {
       chipLabel: input.nextBriefingCountdown || "Scheduled",
       chipIcon: "bell-ring-outline",
       cardBody: input.offlinePlaybackAvailable
-        ? input.nextBriefingCountdown ? `${input.nextBriefingCountdown} until play` : "Briefing alarm is scheduled"
+        ? input.nextBriefingCountdown ? `${input.nextBriefingCountdown} until alarm` : "Briefing alarm is scheduled"
         : "Scheduled; cache briefing before playback",
       statusLabel: "Scheduled",
       toggleEnabled: true,

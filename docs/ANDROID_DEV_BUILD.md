@@ -1,6 +1,9 @@
 # Android Dev Build
 
-This is the active native-mobile path for Starlog. It keeps the Expo-managed app, but switches from Expo Go-only testing to a local Android development build so native modules can be used directly.
+This is the active native-mobile path for Starlog and the primary phone-client path for v1.
+It keeps the Expo-managed app, but switches from Expo Go-only testing to local Android
+development, preview, and production builds so native modules can be used directly. The
+mobile PWA remains fallback-only for phone use.
 
 ## What this enables
 
@@ -11,6 +14,7 @@ This is the active native-mobile path for Starlog. It keeps the Expo-managed app
   - SQLite-backed mobile state
   - audio recording for voice-note capture
   - Android share-intent receive via `expo-share-intent`
+  - briefing cache/playback and alarm validation on the installed phone app
   - any iOS share-extension config remains non-v1 and does not affect the Android validation path documented here
 
 ## Files added for this path
