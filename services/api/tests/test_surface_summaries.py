@@ -765,7 +765,7 @@ def test_assistant_today_recommends_study_loop_for_signal_boosted_due_reviews(
     now = utc_now()
     with get_connection() as conn:
         card_id = _insert_review_card(conn, card_type="qa", due_at=now - timedelta(minutes=10))
-        topic_id = _insert_study_topic(conn, title="Heap practice", read=False)
+        topic_id = _insert_study_topic(conn, title="Heap practice", read=True)
         _link_review_card_to_topic(conn, card_id=card_id, topic_id=topic_id, gate_required=False)
         conn.execute(
             """

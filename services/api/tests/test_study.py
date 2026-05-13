@@ -252,8 +252,12 @@ def test_agent_study_commands_expose_tools_and_intents(
 ) -> None:
     tools = client.get("/v1/agent/tools", headers=auth_headers)
     assert tools.status_code == 200
-    tool_names = {item["name"] for item in tools.json()}
+    tool_payloads = {item["name"]: item for item in tools.json()}
+    tool_names = set(tool_payloads)
     assert {"mark_study_topic_read", "unlock_study_topic", "create_study_question_request"}.issubset(tool_names)
+    assert tool_payloads["mark_study_topic_read"]["confirmation_policy"]["mode"] == "never"
+    assert tool_payloads["unlock_study_topic"]["confirmation_policy"]["mode"] == "never"
+    assert tool_payloads["create_study_question_request"]["confirmation_policy"]["mode"] == "never"
 
     intents = client.get("/v1/agent/intents", headers=auth_headers)
     assert intents.status_code == 200
@@ -310,6 +314,10 @@ def test_due_cards_prioritize_study_signals_then_due_date_fallback(
 
     read = client.post(f"/v1/study/topics/{read_topic['id']}/read", headers=auth_headers)
     assert read.status_code == 200
+    practice_read = client.post(f"/v1/study/topics/{practice_topic['id']}/read", headers=auth_headers)
+    assert practice_read.status_code == 200
+    question_read = client.post(f"/v1/study/topics/{question_topic['id']}/read", headers=auth_headers)
+    assert question_read.status_code == 200
     item = client.post(
         "/v1/study/practice-items",
         json={
@@ -360,13 +368,53 @@ def test_due_cards_prioritize_study_signals_then_due_date_fallback(
     ordered_ids = [item["id"] for item in due.json()]
 
     assert ordered_ids[:6] == [
-        low_review["id"],
         practice_miss["id"],
         question_request["id"],
+        low_review["id"],
         topic_read["id"],
         plain_earlier["id"],
         plain_later["id"],
     ]
+
+
+def test_due_cards_ignore_unread_topic_question_signals_until_topic_read(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    linked_card = _create_due_card(client, auth_headers, prompt="Unread question signal card")
+    plain_card = _create_due_card(client, auth_headers, prompt="Plain earlier due card")
+    _source, topic = _create_source_and_topic(client, auth_headers)
+    _link_card_to_topic(client, auth_headers, card_id=linked_card["id"], topic_id=topic["id"], gate_required=False)
+
+    request = client.post(
+        "/v1/study/question-requests",
+        json={"topic_id": topic["id"], "question": "Quiz me on graph traversal follow-ups."},
+        headers=auth_headers,
+    )
+    assert request.status_code == 201
+
+    now = utc_now()
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE cards SET due_at = ? WHERE id = ?",
+            ((now - timedelta(days=1)).isoformat(), linked_card["id"]),
+        )
+        conn.execute(
+            "UPDATE cards SET due_at = ? WHERE id = ?",
+            ((now - timedelta(days=2)).isoformat(), plain_card["id"]),
+        )
+        conn.commit()
+
+    due_before_read = client.get("/v1/cards/due?limit=2", headers=auth_headers)
+    assert due_before_read.status_code == 200
+    assert [item["id"] for item in due_before_read.json()[:2]] == [plain_card["id"], linked_card["id"]]
+
+    read = client.post(f"/v1/study/topics/{topic['id']}/read", headers=auth_headers)
+    assert read.status_code == 200
+
+    due_after_read = client.get("/v1/cards/due?limit=2", headers=auth_headers)
+    assert due_after_read.status_code == 200
+    assert [item["id"] for item in due_after_read.json()[:2]] == [linked_card["id"], plain_card["id"]]
 
 
 def test_study_primitives_record_chunks_practice_and_question_requests(

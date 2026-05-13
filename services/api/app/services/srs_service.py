@@ -83,14 +83,18 @@ def card_signal_score_sql(card_ref: str = "c") -> str:
         SELECT COUNT(DISTINCT sqr.id) * 30
         FROM card_topic_links ctl
         JOIN study_question_requests sqr ON sqr.topic_id = ctl.topic_id
+        JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
         WHERE ctl.card_id = {card_ref}.id
+          AND COALESCE(stp.read_at, '') != ''
           AND sqr.created_at >= ?
       )
       + (
         SELECT COUNT(DISTINCT pa.id) * 35
         FROM card_topic_links ctl
         JOIN practice_attempts pa ON pa.topic_id = ctl.topic_id
+        JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
         WHERE ctl.card_id = {card_ref}.id
+          AND COALESCE(stp.read_at, '') != ''
           AND pa.attempted_at >= ?
           AND (pa.correct = 0 OR pa.rating <= 2)
       )

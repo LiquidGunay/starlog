@@ -777,14 +777,24 @@ def _upsert_card_topic_links(
     review_inputs: list[dict[str, Any]],
     now_iso: str,
 ) -> dict[str, int]:
-    status = {"created": 0, "updated": 0, "unchanged": 0, "primary_links": 0, "prerequisite_links": 0}
+    status = {
+        "created": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "primary_links": 0,
+        "prerequisite_links": 0,
+    }
     for review_input in review_inputs:
         card_id = _db_id("crd", review_input["external_id"])
-        links = [(str(review_input["pattern"]), False, "primary")]
+        links = [(str(review_input["pattern"]), True, "primary")]
         links.extend((str(prerequisite), True, "prerequisite") for prerequisite in review_input["prerequisites"])
+        desired_topic_ids: set[str] = set()
+        import_link_prefix = f"{_db_id('card_topic', review_input['external_id'])}_%"
         for pattern, gate_required, link_kind in links:
             topic_id = _topic_id(source_id, pattern)
             link_id = _db_id("card_topic", review_input["external_id"], link_kind, pattern)
+            desired_topic_ids.add(topic_id)
             row = conn.execute(
                 "SELECT * FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
                 (card_id, topic_id),
@@ -800,17 +810,31 @@ def _upsert_card_topic_links(
                 )
                 _merge_status(status, _upsert_status(False, True))
             else:
-                changed = int(row["gate_required"]) != expected_gate
+                row_id = str(row["id"])
+                id_changed = row_id != link_id and row_id.startswith(import_link_prefix[:-1])
+                gate_changed = int(row["gate_required"]) != expected_gate
+                changed = id_changed or gate_changed
                 if changed:
                     conn.execute(
-                        "UPDATE card_topic_links SET gate_required = ? WHERE card_id = ? AND topic_id = ?",
-                        (expected_gate, card_id, topic_id),
+                        "UPDATE card_topic_links SET id = ?, gate_required = ? WHERE card_id = ? AND topic_id = ?",
+                        (link_id if id_changed else row_id, expected_gate, card_id, topic_id),
                     )
                 _merge_status(status, _upsert_status(True, changed))
             if link_kind == "primary":
                 status["primary_links"] += 1
             else:
                 status["prerequisite_links"] += 1
+        placeholders = ",".join("?" for _ in desired_topic_ids)
+        cursor = conn.execute(
+            f"""
+            DELETE FROM card_topic_links
+            WHERE card_id = ?
+              AND id LIKE ?
+              AND topic_id NOT IN ({placeholders})
+            """,
+            (card_id, import_link_prefix, *sorted(desired_topic_ids)),
+        )
+        status["deleted"] += max(cursor.rowcount, 0)
     return status
 
 

@@ -454,10 +454,6 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=MarkStudyTopicReadToolArgs,
         backing_endpoint="/v1/study/topics/{topic_id}/read",
         handler=_mark_study_topic_read,
-        confirmation_policy=AgentToolConfirmationPolicy(
-            mode="always",
-            reason="Study progress changes should be confirmed in assisted plans.",
-        ),
     ),
     "unlock_study_topic": ToolSpec(
         name="unlock_study_topic",
@@ -465,10 +461,6 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=UnlockStudyTopicToolArgs,
         backing_endpoint="/v1/study/topics/{topic_id}/unlock",
         handler=_unlock_study_topic,
-        confirmation_policy=AgentToolConfirmationPolicy(
-            mode="always",
-            reason="Study progress changes should be confirmed in assisted plans.",
-        ),
     ),
     "create_study_question_request": ToolSpec(
         name="create_study_question_request",
@@ -476,10 +468,6 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=CreateStudyQuestionRequestToolArgs,
         backing_endpoint="/v1/study/question-requests",
         handler=_create_study_question_request,
-        confirmation_policy=AgentToolConfirmationPolicy(
-            mode="always",
-            reason="Study question requests add study work and should be confirmed in assisted plans.",
-        ),
     ),
     "search_starlog": ToolSpec(
         name="search_starlog",

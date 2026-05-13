@@ -49,8 +49,8 @@ The importer is idempotent. Re-running it reconciles the stable Study source, pa
 practice items, generated artifact/card payloads, note blocks, SRS cards, and card-topic links.
 Problem cards keep existing review state (`due_at`, interval, repetitions, ease, suspended) while
 prompt, answer, tags, provenance payloads, and topic links are updated from the JSON source.
-Primary pattern links are non-gating; prerequisite pattern links are gating where the source lists
-prerequisites. The import intentionally stores no proprietary solution text.
+Primary and prerequisite pattern links are gating so NeetCode review stays limited to topics the user
+has marked as read. The import intentionally stores no proprietary solution text.
 
 Regenerate the Part II deck:
 

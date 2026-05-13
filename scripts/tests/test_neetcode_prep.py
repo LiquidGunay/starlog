@@ -131,6 +131,7 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
         assert second["adapter"]["cards"]["created"] == 0
         assert second["adapter"]["cards"]["unchanged"] == 150
         assert second["adapter"]["card_topic_links"]["created"] == 0
+        assert second["adapter"]["card_topic_links"]["deleted"] == 0
 
         with get_connection() as conn:
             counts = {
@@ -191,14 +192,57 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
             assert "No solution text was imported." in card["answer"]
 
             first_due_at = card["due_at"]
+            primary_topic = neetcode._topic_id(first["adapter"]["source_id"], "Two Pointers")
+            stale_topic = neetcode._topic_id(first["adapter"]["source_id"], "Stack")
+            manual_topic = neetcode._topic_id(first["adapter"]["source_id"], "Binary Search")
             conn.execute(
                 "UPDATE cards SET due_at = ?, interval_days = ?, repetitions = ?, ease_factor = ? WHERE id = ?",
                 ("2030-01-01T00:00:00+00:00", 21, 4, 1.9, card["id"]),
+            )
+            conn.execute(
+                """
+                UPDATE card_topic_links
+                SET id = ?
+                WHERE card_id = ? AND topic_id = ?
+                """,
+                (
+                    neetcode._db_id("card_topic", "neetcode-150-010", "prerequisite", "Two Pointers"),
+                    card["id"],
+                    primary_topic,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    neetcode._db_id("card_topic", "neetcode-150-010", "prerequisite", "Stack"),
+                    card["id"],
+                    stale_topic,
+                    1,
+                    "2026-04-01T00:00:00+00:00",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    "manual_card_topic_neetcode_150_010_binary_search",
+                    card["id"],
+                    manual_topic,
+                    0,
+                    "2026-04-01T00:00:00+00:00",
+                ),
             )
             conn.commit()
 
         third = neetcode.import_neetcode_source(source_path, adapter)
         assert third["adapter"]["cards"]["unchanged"] == 150
+        assert third["adapter"]["card_topic_links"]["updated"] == 1
+        assert third["adapter"]["card_topic_links"]["deleted"] == 1
 
         with get_connection() as conn:
             preserved = conn.execute(
@@ -211,11 +255,10 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
             assert preserved["ease_factor"] == 1.9
             assert first_due_at != preserved["due_at"]
 
-            primary_topic = neetcode._topic_id(first["adapter"]["source_id"], "Two Pointers")
             prereq_topic = neetcode._topic_id(first["adapter"]["source_id"], "Arrays & Hashing")
             links = conn.execute(
                 """
-                SELECT topic_id, gate_required
+                SELECT id, topic_id, gate_required
                 FROM card_topic_links
                 WHERE card_id = ?
                 ORDER BY gate_required ASC, topic_id ASC
@@ -223,9 +266,20 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
                 (neetcode._db_id("crd", "neetcode-150-010"),),
             ).fetchall()
             assert {row["topic_id"]: row["gate_required"] for row in links} == {
-                primary_topic: 0,
+                primary_topic: 1,
                 prereq_topic: 1,
+                manual_topic: 0,
             }
+            remaining_stale = conn.execute(
+                "SELECT id FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
+                (neetcode._db_id("crd", "neetcode-150-010"), stale_topic),
+            ).fetchone()
+            assert remaining_stale is None
+            primary_link = conn.execute(
+                "SELECT id FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
+                (neetcode._db_id("crd", "neetcode-150-010"), primary_topic),
+            ).fetchone()
+            assert primary_link["id"] == neetcode._db_id("card_topic", "neetcode-150-010", "primary", "Two Pointers")
     finally:
         get_settings.cache_clear()
 
