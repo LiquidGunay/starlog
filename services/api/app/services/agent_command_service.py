@@ -15,6 +15,7 @@ from app.services import (
     conversation_card_service,
     conversation_service,
     integrations_service,
+    study_service,
     tasks_service,
 )
 
@@ -77,6 +78,16 @@ COMMAND_INTENTS: list[AgentCommandIntent] = [
         name="review_search",
         description="Load due cards or search Starlog content.",
         examples=["load due cards", "search for spaced repetition"],
+    ),
+    AgentCommandIntent(
+        name="study_progress",
+        description="Mark study topics read, unlock study topics, or request topic-specific quiz questions.",
+        examples=[
+            "I read Breadth-first search",
+            "mark Breadth-first search read",
+            "unlock Neetcode sliding window drills",
+            "quiz me on application questions for embeddings",
+        ],
     ),
     AgentCommandIntent(
         name="execution_policy",
@@ -166,6 +177,21 @@ def _resolve_task(conn: Connection, target: str) -> dict[str, Any]:
     if partial:
         return partial[0]
     raise ValueError(f"Task not found for reference: {normalized}")
+
+
+def _resolve_study_topic(conn: Connection, target: str) -> dict[str, Any]:
+    return study_service.resolve_topic_reference(conn, _clean_quotes(target))
+
+
+def _study_topic_message(action: str, topic: dict[str, Any]) -> str:
+    return f"{action} study topic {topic['title']}"
+
+
+def _question_request_text(topic: dict[str, Any], preference: str | None) -> str:
+    clean_preference = " ".join((preference or "").split()).strip()
+    if clean_preference:
+        return f"Quiz me on {clean_preference} questions for {topic['title']}"
+    return f"Quiz me on {topic['title']}"
 
 
 def _artifact_action_call(conn: Connection, action: str, target: str | None) -> PlannedToolCall:
@@ -475,6 +501,53 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
             PlannedToolCall("list_due_cards", {"limit": 20}, "Load due cards"),
         ]
 
+    read_topic_match = re.match(r"^(?:i\s+read|read)\s+(.+)$", text, re.IGNORECASE)
+    if read_topic_match:
+        topic = _resolve_study_topic(conn, read_topic_match.group(1))
+        message = _study_topic_message("Mark read", topic)
+        return "mark_study_topic_read", message, [
+            PlannedToolCall("mark_study_topic_read", {"topic_id": str(topic["id"])}, message),
+        ]
+
+    mark_topic_read_match = re.match(r"^mark\s+(?!task\b)(.+?)\s+(?:as\s+)?read$", text, re.IGNORECASE)
+    if mark_topic_read_match:
+        topic = _resolve_study_topic(conn, mark_topic_read_match.group(1))
+        message = _study_topic_message("Mark read", topic)
+        return "mark_study_topic_read", message, [
+            PlannedToolCall("mark_study_topic_read", {"topic_id": str(topic["id"])}, message),
+        ]
+
+    unlock_topic_match = re.match(r"^unlock\s+(.+)$", text, re.IGNORECASE)
+    if unlock_topic_match:
+        topic = _resolve_study_topic(conn, unlock_topic_match.group(1))
+        message = _study_topic_message("Unlock", topic)
+        return "unlock_study_topic", message, [
+            PlannedToolCall("unlock_study_topic", {"topic_id": str(topic["id"])}, message),
+        ]
+
+    quiz_match = re.match(r"^quiz\s+me(?:\s+on)?\s+(.+)$", text, re.IGNORECASE)
+    if quiz_match:
+        target = _clean_quotes(quiz_match.group(1))
+        preference: str | None = None
+        topic_ref = target
+        preference_match = re.match(r"^(.+?)\s+questions?\s+for\s+(.+)$", target, re.IGNORECASE)
+        if preference_match:
+            preference = _clean_quotes(preference_match.group(1))
+            topic_ref = _clean_quotes(preference_match.group(2))
+        topic = _resolve_study_topic(conn, topic_ref)
+        question = _question_request_text(topic, preference)
+        message = f"Request study questions for {topic['title']}"
+        response: dict[str, Any] = {"origin": "assistant_command"}
+        if preference:
+            response["question_preference"] = preference
+        return "create_study_question_request", message, [
+            PlannedToolCall(
+                "create_study_question_request",
+                {"topic_id": str(topic["id"]), "question": question, "response": response},
+                message,
+            ),
+        ]
+
     get_policy_match = re.match(r"^(?:show|view|get|list)\s+(?:execution\s+policy|policy)$", text, re.IGNORECASE)
     if get_policy_match:
         return "get_execution_policy", "Show execution policy", [
@@ -496,6 +569,8 @@ def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[s
     raise ValueError(
         "Command not recognized. Try commands like 'summarize latest artifact', "
         "'create task Review notes due tomorrow priority 4', "
+        "'mark Breadth-first search read', "
+        "'quiz me on application questions for embeddings', "
         "'list tasks', "
         "'show execution policy', "
         "'create event Deep Work from 2026-03-07 09:00 to 2026-03-07 10:00', "
