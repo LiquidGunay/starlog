@@ -141,6 +141,115 @@ def test_study_topic_read_unblocks_gated_due_cards(
     assert json.loads(surface_events[0]["payload_json"])["source_id"] == source["id"]
 
 
+def test_agent_study_read_command_unblocks_gated_due_card(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    card = _create_due_card(client, auth_headers, prompt="BFS gated card")
+    _source, topic = _create_source_and_topic(client, auth_headers)
+    _link_card_to_topic(client, auth_headers, card_id=card["id"], topic_id=topic["id"], gate_required=True)
+
+    due_before_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_before_read.status_code == 200
+    assert card["id"] not in {item["id"] for item in due_before_read.json()}
+
+    command = client.post(
+        "/v1/agent/command",
+        json={"command": "I read Breadth-first search", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert command.status_code == 200
+    payload = command.json()
+    assert payload["matched_intent"] == "mark_study_topic_read"
+    assert payload["status"] == "executed"
+    assert payload["steps"][0]["tool_name"] == "mark_study_topic_read"
+    assert payload["steps"][0]["arguments"]["topic_id"] == topic["id"]
+    assert payload["steps"][0]["result"]["topic"]["status"] == "read"
+
+    due_after_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_after_read.status_code == 200
+    assert card["id"] in {item["id"] for item in due_after_read.json()}
+
+
+def test_agent_study_quiz_command_creates_topic_question_request(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    source, _topic = _create_source_and_topic(client, auth_headers)
+    embeddings = _create_topic(client, auth_headers, source["id"], "Embeddings", 2)
+
+    command = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "quiz me on application questions for embeddings",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert command.status_code == 200
+    payload = command.json()
+    assert payload["matched_intent"] == "create_study_question_request"
+    assert payload["steps"][0]["tool_name"] == "create_study_question_request"
+    request = payload["steps"][0]["result"]["request"]
+    assert request["topic_id"] == embeddings["id"]
+    assert request["source_id"] == source["id"]
+    assert request["question"] == "Quiz me on application questions for Embeddings"
+    assert request["response"]["question_preference"] == "application"
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT topic_id, source_id, question, response_json FROM study_question_requests WHERE id = ?",
+            (request["id"],),
+        ).fetchone()
+
+    assert row is not None
+    assert row["topic_id"] == embeddings["id"]
+    assert row["source_id"] == source["id"]
+    assert row["question"] == "Quiz me on application questions for Embeddings"
+    assert json.loads(row["response_json"])["question_preference"] == "application"
+
+
+def test_agent_study_commands_expose_tools_and_intents(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    tools = client.get("/v1/agent/tools", headers=auth_headers)
+    assert tools.status_code == 200
+    tool_names = {item["name"] for item in tools.json()}
+    assert {"mark_study_topic_read", "unlock_study_topic", "create_study_question_request"}.issubset(tool_names)
+
+    intents = client.get("/v1/agent/intents", headers=auth_headers)
+    assert intents.status_code == 200
+    study_intent = next(item for item in intents.json() if item["name"] == "study_progress")
+    assert "mark Breadth-first search read" in study_intent["examples"]
+    assert "quiz me on application questions for embeddings" in study_intent["examples"]
+
+
+def test_agent_study_topic_reference_errors_are_clear_400(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    source, _topic = _create_source_and_topic(client, auth_headers)
+    _create_topic(client, auth_headers, source["id"], "Breadth-first spanning tree", 2)
+
+    ambiguous = client.post(
+        "/v1/agent/command",
+        json={"command": "mark Breadth-first read", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert ambiguous.status_code == 400
+    assert "Ambiguous study topic reference 'Breadth-first'" in ambiguous.json()["detail"]
+
+    unknown = client.post(
+        "/v1/agent/command",
+        json={"command": "unlock Dynamic programming", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert unknown.status_code == 400
+    assert unknown.json()["detail"] == "Study topic not found for reference: Dynamic programming"
+
+
 def test_due_cards_prioritize_study_signals_then_due_date_fallback(
     client: TestClient,
     auth_headers: dict[str, str],

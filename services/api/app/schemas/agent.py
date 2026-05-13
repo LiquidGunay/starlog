@@ -147,6 +147,21 @@ class SubmitReviewToolArgs(BaseModel):
     latency_ms: int | None = Field(default=None, ge=0)
 
 
+class MarkStudyTopicReadToolArgs(BaseModel):
+    topic_id: str = Field(..., min_length=1)
+
+
+class UnlockStudyTopicToolArgs(BaseModel):
+    topic_id: str = Field(..., min_length=1)
+
+
+class CreateStudyQuestionRequestToolArgs(BaseModel):
+    topic_id: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1)
+    status: str = Field(default="requested", min_length=1)
+    response: dict[str, Any] = Field(default_factory=dict)
+
+
 class SearchStarlogToolArgs(BaseModel):
     query: str = Field(..., min_length=1)
     limit: int = Field(default=10, ge=1, le=100)

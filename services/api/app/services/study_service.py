@@ -181,6 +181,30 @@ def get_topic(conn: Connection, topic_id: str) -> dict | None:
     return _format_topic(row) if row else None
 
 
+def resolve_topic_reference(conn: Connection, reference: str) -> dict:
+    normalized = reference.strip()
+    if not normalized:
+        raise ValueError("Study topic reference is required")
+
+    direct = get_topic(conn, normalized)
+    if direct is not None:
+        return direct
+
+    rows = list_topics(conn, source_id=None, limit=500)
+    exact = [row for row in rows if str(row.get("title") or "").strip() == normalized]
+    if len(exact) == 1:
+        return exact[0]
+
+    needle = normalized.lower()
+    partial = [row for row in rows if needle in str(row.get("title") or "").strip().lower()]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        titles = ", ".join(str(row.get("title") or row["id"]) for row in partial[:5])
+        raise ValueError(f"Ambiguous study topic reference '{normalized}'. Matches: {titles}")
+    raise ValueError(f"Study topic not found for reference: {normalized}")
+
+
 def unlock_topic(conn: Connection, topic_id: str) -> dict:
     _ensure_topic(conn, topic_id)
     now = utc_now().isoformat()
