@@ -33,3 +33,15 @@ python3 scripts/build_ml_interview_srs_deck.py --output data/ml_interviews_part_
 ```
 
 The full deck is generated from the public Part II question index and aligned answers from the open `zafstojano/ml-interview-questions-and-answers` repository when available. Missing cards are retried with OpenAI-backed study answers, and only fall back to a short heuristic if both sources fail. Each imported card gets stable tags derived from section, difficulty, and answer source, plus a linked note block with import key, source URL/path, section, index, difficulty, answer provenance, and full source metadata.
+
+For local PDF-based deck prep, preflight the source PDF before creating cards:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/pdf_deck_preflight.py \
+  --pdf "/home/ubuntu/starlog/Inference Engineering.pdf"
+```
+
+The preflight writes evidence under `artifacts/pdf-deck-preflight/<timestamp>/` and generates no
+cards. Treat `evidence_status: unproven` or `rejected_as_noise: true` as a blocker until local
+LiteParse/OCR/text-layer extraction or reliable notes are available.
