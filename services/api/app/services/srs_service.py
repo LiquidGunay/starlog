@@ -115,7 +115,23 @@ def list_decks(conn: Connection) -> list[dict]:
           d.created_at,
           d.updated_at,
           COUNT(c.id) AS card_count,
-          SUM(CASE WHEN c.suspended = 0 AND c.due_at <= ? THEN 1 ELSE 0 END) AS due_count
+          SUM(
+            CASE
+              WHEN c.suspended = 0
+                AND c.due_at <= ?
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM card_topic_links ctl
+                  LEFT JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+                  WHERE ctl.card_id = c.id
+                    AND ctl.gate_required = 1
+                    AND COALESCE(stp.read_at, '') = ''
+                    AND COALESCE(stp.status, '') != 'read'
+                )
+              THEN 1
+              ELSE 0
+            END
+          ) AS due_count
         FROM card_decks d
         LEFT JOIN cards c ON c.deck_id = d.id
         GROUP BY d.id
@@ -380,7 +396,17 @@ def due_cards(conn: Connection, limit: int) -> list[dict]:
                card_type, prompt, answer, tags_json, suspended, due_at, interval_days, repetitions, ease_factor,
                created_at, updated_at
         FROM cards
-        WHERE suspended = 0 AND due_at <= ?
+        WHERE suspended = 0
+          AND due_at <= ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM card_topic_links ctl
+            LEFT JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+            WHERE ctl.card_id = cards.id
+              AND ctl.gate_required = 1
+              AND COALESCE(stp.read_at, '') = ''
+              AND COALESCE(stp.status, '') != 'read'
+          )
         ORDER BY due_at ASC
         LIMIT ?
         """,

@@ -26,6 +26,7 @@ from app.api.routes import (
     search,
     srs,
     strategic_context,
+    study,
     surfaces,
     sync,
     tasks,
@@ -50,6 +51,7 @@ api_router.include_router(strategic_context.router, tags=["strategic-context"])
 api_router.include_router(calendar.router, tags=["calendar"])
 api_router.include_router(planning.router, tags=["planning"])
 api_router.include_router(srs.router, tags=["srs"])
+api_router.include_router(study.router, tags=["study"])
 api_router.include_router(search.router, tags=["search"])
 api_router.include_router(research.router, tags=["research"])
 api_router.include_router(briefings.router, tags=["briefings"])
