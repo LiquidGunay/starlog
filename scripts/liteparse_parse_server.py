@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,31 @@ def _bool_field(value: str | None, default: bool) -> bool:
     if value is None or not value.strip():
         return default
     return value.strip().lower() not in {"0", "false", "no"}
+
+
+def _clean_page_text(text: str) -> str:
+    without_dot_leaders = re.sub(r"\.{5,}", " ", text)
+    without_rule_artifacts = re.sub(r"[_\-]{5,}", " ", without_dot_leaders)
+    return without_rule_artifacts.strip()
+
+
+def _text_from_liteparse_payload(payload: dict[str, object]) -> str:
+    top_level_text = str(payload.get("text") or "").strip()
+    if top_level_text:
+        return top_level_text
+
+    pages = payload.get("pages")
+    if not isinstance(pages, list):
+        return ""
+
+    page_texts: list[str] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        page_text = _clean_page_text(str(page.get("text") or ""))
+        if page_text:
+            page_texts.append(page_text)
+    return "\n\n".join(page_texts)
 
 
 def _run_liteparse(
@@ -141,7 +167,7 @@ async def parse(
         temp_path.unlink(missing_ok=True)
 
     return {
-        "text": str(payload.get("text") or ""),
+        "text": _text_from_liteparse_payload(payload),
         "pages": payload.get("pages") or [],
         "metadata": {
             "engine": "liteparse",

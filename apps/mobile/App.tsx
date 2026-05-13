@@ -327,6 +327,21 @@ type MobileStudyProgressSummary = {
   due_unlocked_card_count: number;
 };
 
+type MobileStudyTopic = {
+  id: string;
+  source_id: string;
+  parent_topic_id?: string | null;
+  title: string;
+  summary?: string | null;
+  display_order: number;
+  status: "locked" | "unlocked" | "read" | string;
+  manually_unlocked: boolean;
+  unlocked_at?: string | null;
+  read_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type MobileReviewSummaryRequestToken = {
   requestId: number;
   token: string;
@@ -732,6 +747,35 @@ function tomorrowDateString(): string {
 
 function todayDateString(): string {
   return localDateStringForAssistantToday();
+}
+
+function dateOnlyUtcMillis(value: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const millis = Date.UTC(year, month - 1, day);
+  const parsed = new Date(millis);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+    return null;
+  }
+  return millis;
+}
+
+function normalizeCurrentBriefingDate(value: string, today = todayDateString()): { date: string; reset: boolean } {
+  const selectedMillis = dateOnlyUtcMillis(value);
+  const todayMillis = dateOnlyUtcMillis(today);
+  if (selectedMillis === null || todayMillis === null) {
+    return { date: today, reset: true };
+  }
+  const daysFromToday = Math.round((selectedMillis - todayMillis) / 86_400_000);
+  if (daysFromToday < 0 || daysFromToday > 7) {
+    return { date: today, reset: true };
+  }
+  return { date: value, reset: false };
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -1480,6 +1524,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
   const [reviewSummary, setReviewSummary] = useState<MobileReviewSurfaceSummary | null>(null);
   const [studyProgress, setStudyProgress] = useState<MobileStudyProgressSummary | null>(null);
+  const [studyTopics, setStudyTopics] = useState<MobileStudyTopic[]>([]);
+  const [studyBusyAction, setStudyBusyAction] = useState<string | null>(null);
   const reviewSummaryRequestRef = useRef<MobileReviewSummaryRequestToken>({ requestId: 0, token: "", apiBase: "" });
   const reviewSummarySessionRef = useRef({ token: "", apiBase: normalizeBaseUrl(DEFAULT_API_BASE) });
   const reviewRevealEventCardIdRef = useRef<string | null>(null);
@@ -1632,6 +1678,12 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const reviewRetentionLabel = reviewStats.reviewed > 0
     ? `${Math.round(((reviewStats.good + reviewStats.easy) / reviewStats.reviewed) * 100)}%`
     : "0%";
+  const activeStudyTopic = useMemo(() => {
+    return studyTopics.find((topic) => topic.status === "unlocked")
+      ?? studyTopics.find((topic) => topic.status === "locked")
+      ?? studyTopics.find((topic) => topic.status === "read")
+      ?? null;
+  }, [studyTopics]);
   reviewSummarySessionRef.current = { token, apiBase: normalizeBaseUrl(apiBase) };
 
   useEffect(() => {
@@ -2504,6 +2556,130 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function loadStudyTopics(origin: "auto" | "manual") {
+    try {
+      if (!token) {
+        setStudyTopics([]);
+        return;
+      }
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/study/topics?limit=12`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Study topics fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as MobileStudyTopic[];
+      setStudyTopics(payload);
+      if (origin === "manual") {
+        setStatus("Loaded study topics");
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load study topics");
+      }
+    }
+  }
+
+  async function refreshReviewAfterStudyMutation(): Promise<void> {
+    if (!token) {
+      return;
+    }
+    const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/cards/due?limit=20`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Due cards refresh failed: ${response.status} ${errorBody}`);
+    }
+    const payload = (await response.json()) as DueCard[];
+    setDueCards(payload);
+    setShowAnswer(false);
+    reviewRevealEventCardIdRef.current = null;
+    cardPromptStartedAt.current = payload.length > 0 ? Date.now() : null;
+    await Promise.allSettled([
+      loadReviewDecks(),
+      loadReviewSummary("auto"),
+      loadStudyProgress("auto"),
+      loadStudyTopics("auto"),
+    ]);
+  }
+
+  function studyQuestionPrompt(topic: Pick<MobileStudyTopic, "title">, mode: "recall" | "application"): string {
+    if (mode === "application") {
+      return `Create one application interview question for "${topic.title}" that forces me to use the idea in a realistic coding or system-design scenario.`;
+    }
+    return `Create one concise recall question for "${topic.title}" and keep it answerable from the source material.`;
+  }
+
+  async function updateStudyTopic(topic: Pick<MobileStudyTopic, "id" | "title">, action: "unlock" | "read") {
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+    const busyKey = `${action}:${topic.id}`;
+    setStudyBusyAction(busyKey);
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/study/topics/${encodeURIComponent(topic.id)}/${action}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Study topic ${action} failed: ${response.status} ${errorBody}`);
+      }
+      const updated = (await response.json()) as MobileStudyTopic;
+      setStudyTopics((previous) => previous.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
+      await refreshReviewAfterStudyMutation();
+      setStatus(action === "read" ? `Marked ${topic.title} read; due queue refreshed` : `Unlocked ${topic.title}; due queue refreshed`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : `Failed to ${action} study topic`);
+    } finally {
+      setStudyBusyAction(null);
+    }
+  }
+
+  async function requestStudyQuestion(topic: Pick<MobileStudyTopic, "id" | "title">, mode: "recall" | "application") {
+    if (!token) {
+      setStatus("Add API token first");
+      return;
+    }
+    const busyKey = `${mode}:${topic.id}`;
+    setStudyBusyAction(busyKey);
+    try {
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/study/question-requests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          topic_id: topic.id,
+          question: studyQuestionPrompt(topic, mode),
+          response: {
+            question_preference: mode,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Study question request failed: ${response.status} ${errorBody}`);
+      }
+      await refreshReviewAfterStudyMutation();
+      setStatus(`Requested a ${mode} question for ${topic.title}; Review refreshed`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to request study question");
+    } finally {
+      setStudyBusyAction(null);
+    }
+  }
+
   async function loadPlannerSummary(origin: "auto" | "manual") {
     try {
       if (!token) {
@@ -2591,6 +2767,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       void loadReviewDecks();
       void loadReviewSummary("auto");
       void loadStudyProgress("auto");
+      void loadStudyTopics("auto");
       setReviewStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
       setShowAnswer(false);
       reviewRevealEventCardIdRef.current = null;
@@ -2647,6 +2824,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       void loadReviewDecks();
       void loadReviewSummary("auto");
       void loadStudyProgress("auto");
+      void loadStudyTopics("auto");
       setStatus(`Recorded rating ${rating}. ${remaining.length} due card(s) left`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to submit review");
@@ -2683,22 +2861,40 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return true;
   }
 
+  function ensureCurrentBriefingDate(): string {
+    const current = normalizeCurrentBriefingDate(briefingDate);
+    if (!current.reset) {
+      return current.date;
+    }
+    setBriefingDate(current.date);
+    setCachedPath(null);
+    setCachedBriefingAvailable(false);
+    setValidatedCachedBriefingDate(null);
+    briefingCacheRef.current = { briefingDate: current.date, cachedPath: null };
+    setStatus(`Briefing date reset to ${current.date}; cache today's briefing before scheduling`);
+    return current.date;
+  }
+
   async function confirmCachedBriefingAvailable(): Promise<ValidatedCachedBriefing | null> {
+    const currentBriefingDate = ensureCurrentBriefingDate();
+    if (currentBriefingDate !== briefingDate) {
+      return null;
+    }
     if (!cachedPath) {
       setCachedBriefingAvailable(false);
       setValidatedCachedBriefingDate(null);
-      briefingCacheRef.current = { briefingDate, cachedPath: null };
+      briefingCacheRef.current = { briefingDate: currentBriefingDate, cachedPath: null };
       return null;
     }
-    const validated = await loadValidCachedBriefing(cachedPath, briefingDate).catch(() => null);
+    const validated = await loadValidCachedBriefing(cachedPath, currentBriefingDate).catch(() => null);
     setCachedBriefingAvailable(Boolean(validated));
     setValidatedCachedBriefingDate(validated?.briefing.date ?? null);
     if (!validated) {
       setCachedPath(null);
-      briefingCacheRef.current = { briefingDate, cachedPath: null };
+      briefingCacheRef.current = { briefingDate: currentBriefingDate, cachedPath: null };
       return null;
     }
-    briefingCacheRef.current = { briefingDate, cachedPath: validated.path };
+    briefingCacheRef.current = { briefingDate: currentBriefingDate, cachedPath: validated.path };
     return validated;
   }
 
@@ -2722,10 +2918,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("Add API token first");
         return;
       }
+      const currentBriefingDate = ensureCurrentBriefingDate();
       const baseUrl = normalizeBaseUrl(apiBase);
-      const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
-      if (briefing.date !== briefingDate) {
-        throw new Error(`Briefing date mismatch: expected ${briefingDate}, received ${briefing.date}`);
+      const briefing = await loadBriefingFromApi(baseUrl, token, currentBriefingDate);
+      if (briefing.date !== currentBriefingDate) {
+        throw new Error(`Briefing date mismatch: expected ${currentBriefingDate}, received ${briefing.date}`);
       }
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
@@ -2783,10 +2980,11 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("Add API token first");
         return;
       }
+      const currentBriefingDate = ensureCurrentBriefingDate();
       const baseUrl = normalizeBaseUrl(apiBase);
-      const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
-      if (briefing.date !== briefingDate) {
-        throw new Error(`Briefing date mismatch: expected ${briefingDate}, received ${briefing.date}`);
+      const briefing = await loadBriefingFromApi(baseUrl, token, currentBriefingDate);
+      if (briefing.date !== currentBriefingDate) {
+        throw new Error(`Briefing date mismatch: expected ${currentBriefingDate}, received ${briefing.date}`);
       }
       const path = await cacheBriefing(baseUrl, token, briefing);
       setCachedPath(path);
@@ -2797,8 +2995,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       const alarmUpdated = await refreshScheduledMorningAlarmForCachedBriefing(path);
       setStatus(
         `${briefing.audioRef
-          ? `Cached briefing package for ${briefingDate} with audio`
-          : `Cached briefing for ${briefingDate} (text only)`}${alarmUpdated ? "; alarm updated" : ""}`,
+          ? `Cached briefing package for ${currentBriefingDate} with audio`
+          : `Cached briefing for ${currentBriefingDate} (text only)`}${alarmUpdated ? "; alarm updated" : ""}`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to cache briefing");
@@ -2811,8 +3009,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("Add API token first");
         return;
       }
+      const currentBriefingDate = ensureCurrentBriefingDate();
       const baseUrl = normalizeBaseUrl(apiBase);
-      const briefing = await loadBriefingFromApi(baseUrl, token, briefingDate);
+      const briefing = await loadBriefingFromApi(baseUrl, token, currentBriefingDate);
       if (briefing.audioRef) {
         setStatus("Briefing audio already exists. Cache again to download it locally.");
         return;
@@ -2863,10 +3062,17 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [cachedPath]);
 
   function updateBriefingDate(nextDate: string) {
-    setBriefingDate(nextDate);
+    const normalized = normalizeCurrentBriefingDate(nextDate);
+    setBriefingDate(normalized.date);
     setCachedBriefingAvailable(false);
     setValidatedCachedBriefingDate(null);
-    briefingCacheRef.current = { briefingDate: nextDate, cachedPath };
+    if (normalized.reset) {
+      setCachedPath(null);
+      briefingCacheRef.current = { briefingDate: normalized.date, cachedPath: null };
+      setStatus(`Briefing date reset to ${normalized.date}`);
+      return;
+    }
+    briefingCacheRef.current = { briefingDate: normalized.date, cachedPath };
   }
 
   const holdToTalkLabel = captureVoiceRecording ? "Release to stop" : "Hold to talk";
@@ -3763,6 +3969,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       if (active && persisted) {
+        const persistedBriefingDate = normalizeCurrentBriefingDate(persisted.briefingDate);
+        if (persistedBriefingDate.reset && persisted.alarmNotificationId) {
+          Notifications.cancelScheduledNotificationAsync(persisted.alarmNotificationId).catch(() => undefined);
+        }
         setApiBase(persisted.apiBase || DEFAULT_API_BASE);
         setPwaBase(persisted.pwaBase || DEFAULT_PWA_BASE);
         setToken(recoveredToken);
@@ -3773,13 +3983,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setVoiceClipUri(persisted.voiceClipUri ?? null);
         setVoiceClipDurationMs(persisted.voiceClipDurationMs ?? 0);
         setVoiceClipTarget(persisted.voiceClipTarget ?? (persisted.voiceClipUri ? "capture" : null));
-        setBriefingDate(persisted.briefingDate);
-        setCachedPath(persisted.cachedPath);
+        setBriefingDate(persistedBriefingDate.date);
+        setCachedPath(persistedBriefingDate.reset ? null : persisted.cachedPath);
         setVoiceRoutePreference(normalizeVoiceRoutePreference(persisted.voiceRoutePreference));
         setBriefingPlaybackPreference(normalizeBriefingPlaybackPreference(persisted.briefingPlaybackPreference));
         setAlarmHour(boundedInt(persisted.alarmHour, 0, 23));
         setAlarmMinute(boundedInt(persisted.alarmMinute, 0, 59));
-        setAlarmNotificationId(persisted.alarmNotificationId);
+        setAlarmNotificationId(persistedBriefingDate.reset ? null : persisted.alarmNotificationId);
         setPendingCaptures(persisted.pendingCaptures || []);
         setArtifacts(persisted.artifacts || []);
         setSelectedArtifactId(persisted.selectedArtifactId || "");
@@ -4240,12 +4450,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setReviewDecks([]);
       setReviewSummary(null);
       setStudyProgress(null);
+      setStudyTopics([]);
       return;
     }
     setReviewSummary(null);
     loadReviewDecks().catch(() => undefined);
     loadReviewSummary("auto").catch(() => undefined);
     loadStudyProgress("auto").catch(() => undefined);
+    loadStudyTopics("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -4254,6 +4466,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
     loadReviewSummary("auto").catch(() => undefined);
     loadStudyProgress("auto").catch(() => undefined);
+    loadStudyTopics("auto").catch(() => undefined);
   }, [hydrated, token, apiBase, activeTab]);
 
   useEffect(() => {
@@ -4338,6 +4551,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
               loadReviewSummary("manual").catch(() => undefined);
               loadReviewDecks().catch(() => undefined);
               loadStudyProgress("manual").catch(() => undefined);
+              loadStudyTopics("manual").catch(() => undefined);
             }
           }}
           onToggleDiagnostics={() => {
@@ -4486,6 +4700,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewRecommendedDrill={reviewSummary?.recommended_drill ?? null}
             reviewDecks={reviewDecks}
             studyProgress={studyProgress}
+            activeStudyTopic={activeStudyTopic}
+            studyBusyAction={studyBusyAction}
+            updateStudyTopic={(topic, action) => {
+              updateStudyTopic(topic, action).catch(() => undefined);
+            }}
+            requestStudyQuestion={(topic, mode) => {
+              requestStudyQuestion(topic, mode).catch(() => undefined);
+            }}
             showAnswer={showAnswer}
             revealAnswer={revealPrimaryReviewAnswer}
             loadDueCards={() => {

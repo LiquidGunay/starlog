@@ -37,10 +37,20 @@ an empty `notes` placeholder for user annotations. It intentionally excludes pro
 problem statements, and generated answers.
 
 `scripts/import_neetcode_150.py --dry-run` validates the list against the current NeetCode taxonomy
-and builds deterministic practice-oriented review input payloads. The non-dry-run path is a narrow
-adapter seam for WI-STUDY-CORE: once `app.services.study_core_service` exposes `upsert_review_inputs`
-or `upsert_review_input`, the same stable `external_id` payloads can be idempotently upserted without
-changing the source data format.
+and builds deterministic practice-oriented review input payloads without mutating local storage.
+Run without `--dry-run` to import the same payloads into the local Study Core and SRS SQLite DB:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api python3 scripts/import_neetcode_150.py --source data/neetcode_150.json
+```
+
+The importer is idempotent. Re-running it reconciles the stable Study source, pattern topics,
+practice items, generated artifact/card payloads, note blocks, SRS cards, and card-topic links.
+Problem cards keep existing review state (`due_at`, interval, repetitions, ease, suspended) while
+prompt, answer, tags, provenance payloads, and topic links are updated from the JSON source.
+Primary pattern links are non-gating; prerequisite pattern links are gating where the source lists
+prerequisites. The import intentionally stores no proprietary solution text.
 
 Regenerate the Part II deck:
 

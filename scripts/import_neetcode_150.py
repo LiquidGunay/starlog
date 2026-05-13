@@ -3,16 +3,26 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib
 import json
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+API_DIR = ROOT_DIR / "services/api"
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
+
 DEFAULT_SOURCE_PATH = ROOT_DIR / "data/neetcode_150.json"
+IMPORT_KEY_PREFIX = "neetcode-150"
+DECK_NAME = "NeetCode 150"
+DECK_DESCRIPTION = "Coding interview practice cards generated from the local NeetCode 150 source list."
+ARTIFACT_TITLE = "NeetCode 150 Study Core import"
+NOTE_TITLE = "NeetCode 150 Study Core import"
 
 EXPECTED_PATTERN_COUNTS = {
     "Arrays & Hashing": 9,
@@ -65,45 +75,743 @@ class DryRunReviewInputAdapter:
 
 
 @dataclass
-class StudyCoreReviewInputAdapter:
-    """Thin adapter seam for WI-STUDY-CORE.
-
-    This intentionally avoids importing backend schema code at module import time. Once
-    study-core lands, expose either app.services.study_core_service.upsert_review_inputs
-    or upsert_review_input and this script can apply the same stable payloads.
-    """
-
-    module_name: str = "app.services.study_core_service"
+class StudyCoreLocalAdapter:
+    """Local Study Core/SRS adapter for deterministic NeetCode imports."""
 
     def upsert_review_inputs(self, collection_id: str, review_inputs: list[dict[str, Any]]) -> dict[str, Any]:
+        if not review_inputs:
+            return {
+                "adapter": "study_core_local",
+                "collection_id": collection_id,
+                "created": 0,
+                "updated": 0,
+                "unchanged": 0,
+            }
+
+        from app.core.time import utc_now  # noqa: E402
+        from app.db.storage import get_connection, init_storage  # noqa: E402
+        from app.services import srs_service  # noqa: E402
+
+        init_storage()
+        now_iso = utc_now().isoformat()
+        with get_connection() as conn:
+            default_schedule = srs_service.ensure_default_deck(conn)["schedule"]
+            deck_id, schedule = _ensure_deck(conn, default_schedule, now_iso)
+            artifact_id, artifact_status = _upsert_artifact(conn, collection_id, review_inputs, now_iso)
+            source_id, source_status = _upsert_study_source(
+                conn,
+                collection_id,
+                review_inputs,
+                artifact_id=artifact_id,
+                now_iso=now_iso,
+            )
+            topic_status = _upsert_pattern_topics(conn, source_id, review_inputs, now_iso)
+            card_set_version_id = _ensure_card_set_version(conn, artifact_id, now_iso)
+            note_id, note_status = _upsert_note(conn, artifact_id, len(review_inputs), now_iso)
+            _ensure_relation(
+                conn,
+                artifact_id,
+                "artifact.card_set_version",
+                "card_set_version",
+                card_set_version_id,
+                now_iso,
+            )
+            _ensure_relation(conn, artifact_id, "artifact.note", "note", note_id, now_iso)
+            item_status = _upsert_practice_items(conn, source_id, review_inputs, now_iso)
+            card_status = _upsert_cards(
+                conn,
+                deck_id=deck_id,
+                schedule=schedule,
+                artifact_id=artifact_id,
+                note_id=note_id,
+                card_set_version_id=card_set_version_id,
+                review_inputs=review_inputs,
+                now_iso=now_iso,
+            )
+            link_status = _upsert_card_topic_links(conn, source_id, review_inputs, now_iso)
+            conn.commit()
+
+        return {
+            "adapter": "study_core_local",
+            "collection_id": collection_id,
+            "source_id": source_id,
+            "deck_id": deck_id,
+            "artifact_id": artifact_id,
+            "card_set_version_id": card_set_version_id,
+            "note_id": note_id,
+            "source": source_status,
+            "topics": topic_status,
+            "practice_items": item_status,
+            "cards": card_status,
+            "card_topic_links": link_status,
+            "artifact": artifact_status,
+            "note": note_status,
+        }
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_") or "unknown"
+
+
+def _db_id(prefix: str, *parts: object) -> str:
+    return f"{prefix}_{'_'.join(_slug(str(part)) for part in parts if str(part).strip())}"
+
+
+def _json(payload: Any, *, pretty: bool = False) -> str:
+    if pretty:
+        return json.dumps(payload, indent=2, sort_keys=True)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _decode_json(value: Any, fallback: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
         try:
-            module = importlib.import_module(self.module_name)
-        except ModuleNotFoundError as exc:
-            raise RuntimeError(
-                f"Study-core adapter unavailable: could not import {self.module_name}. "
-                "Run with --dry-run until WI-STUDY-CORE provides the review input API."
-            ) from exc
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return fallback
+    return fallback
 
-        bulk_upsert = getattr(module, "upsert_review_inputs", None)
-        if callable(bulk_upsert):
-            return _coerce_adapter_summary(bulk_upsert(collection_id, review_inputs), len(review_inputs))
 
-        single_upsert = getattr(module, "upsert_review_input", None)
-        if callable(single_upsert):
-            for review_input in review_inputs:
-                single_upsert(collection_id, review_input)
-            return {"adapter": self.module_name, "collection_id": collection_id, "upserted": len(review_inputs)}
+def _record_changed(row: Any, expected: dict[str, Any]) -> bool:
+    for key, value in expected.items():
+        current = row[key]
+        if current != value:
+            return True
+    return False
 
-        raise RuntimeError(
-            f"Study-core adapter unavailable: {self.module_name} exposes neither "
-            "upsert_review_inputs nor upsert_review_input."
+
+def _upsert_status(existed: bool, changed: bool) -> dict[str, int]:
+    return {
+        "created": 0 if existed else 1,
+        "updated": 1 if existed and changed else 0,
+        "unchanged": 1 if existed and not changed else 0,
+    }
+
+
+def _merge_status(target: dict[str, int], status: dict[str, int]) -> None:
+    for key in ("created", "updated", "unchanged"):
+        target[key] = target.get(key, 0) + int(status.get(key, 0))
+
+
+def _collection_title(review_inputs: list[dict[str, Any]]) -> str:
+    return str(review_inputs[0].get("source_collection_title") or "NeetCode 150 Practice Prep")
+
+
+def _source_list_url(review_inputs: list[dict[str, Any]]) -> str | None:
+    provenance = review_inputs[0].get("provenance")
+    if isinstance(provenance, dict):
+        return provenance.get("source_list_url")
+    return None
+
+
+def _source_metadata(collection_id: str, review_inputs: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "import_key": collection_id,
+        "external_id": collection_id,
+        "source_checked_at": review_inputs[0].get("provenance", {}).get("source_checked_at")
+        if isinstance(review_inputs[0].get("provenance"), dict)
+        else None,
+        "problem_count": len(review_inputs),
+        "pattern_counts": dict(Counter(str(item["pattern"]) for item in review_inputs)),
+        "difficulty_counts": dict(Counter(str(item["difficulty"]) for item in review_inputs)),
+        "content_hash": _stable_hash({"review_inputs": review_inputs}),
+    }
+
+
+def _upsert_study_source(
+    conn: Any,
+    collection_id: str,
+    review_inputs: list[dict[str, Any]],
+    *,
+    artifact_id: str,
+    now_iso: str,
+) -> tuple[str, dict[str, int]]:
+    source_id = _db_id("study_src", collection_id)
+    metadata_json = _json(_source_metadata(collection_id, review_inputs))
+    expected = {
+        "title": _collection_title(review_inputs),
+        "source_type": "interview_prep",
+        "artifact_id": artifact_id,
+        "url": _source_list_url(review_inputs),
+        "metadata_json": metadata_json,
+    }
+    row = conn.execute("SELECT * FROM study_sources WHERE id = ?", (source_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO study_sources (id, title, source_type, artifact_id, url, metadata_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_id,
+                expected["title"],
+                expected["source_type"],
+                expected["artifact_id"],
+                expected["url"],
+                expected["metadata_json"],
+                now_iso,
+                now_iso,
+            ),
         )
+        return source_id, _upsert_status(False, True)
+
+    changed = _record_changed(row, expected)
+    if changed:
+        conn.execute(
+            """
+            UPDATE study_sources
+            SET title = ?, source_type = ?, artifact_id = ?, url = ?, metadata_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                expected["title"],
+                expected["source_type"],
+                expected["artifact_id"],
+                expected["url"],
+                expected["metadata_json"],
+                now_iso,
+                source_id,
+            ),
+        )
+    return source_id, _upsert_status(True, changed)
 
 
-def _coerce_adapter_summary(raw: Any, count: int) -> dict[str, Any]:
-    if isinstance(raw, dict):
-        return raw
-    return {"upserted": count, "result": raw}
+def _topic_summary(pattern: str, review_inputs: list[dict[str, Any]]) -> str:
+    count = sum(1 for item in review_inputs if item["pattern"] == pattern)
+    prerequisite_for = sorted(
+        {
+            str(item["pattern"])
+            for item in review_inputs
+            if pattern in item.get("prerequisites", []) and item["pattern"] != pattern
+        }
+    )
+    suffix = f" Prerequisite for: {', '.join(prerequisite_for)}." if prerequisite_for else ""
+    return f"NeetCode 150 pattern topic with {count} practice problems.{suffix}"
+
+
+def _upsert_pattern_topics(
+    conn: Any,
+    source_id: str,
+    review_inputs: list[dict[str, Any]],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0}
+    for display_order, pattern in enumerate(EXPECTED_PATTERN_COUNTS, start=1):
+        topic_id = _topic_id(source_id, pattern)
+        expected = {
+            "source_id": source_id,
+            "parent_topic_id": None,
+            "title": pattern,
+            "summary": _topic_summary(pattern, review_inputs),
+            "display_order": display_order,
+        }
+        row = conn.execute("SELECT * FROM study_topics WHERE id = ?", (topic_id,)).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO study_topics (
+                  id, source_id, parent_topic_id, title, summary, display_order, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    topic_id,
+                    expected["source_id"],
+                    expected["parent_topic_id"],
+                    expected["title"],
+                    expected["summary"],
+                    expected["display_order"],
+                    now_iso,
+                    now_iso,
+                ),
+            )
+            _merge_status(status, _upsert_status(False, True))
+            continue
+
+        changed = _record_changed(row, expected)
+        if changed:
+            conn.execute(
+                """
+                UPDATE study_topics
+                SET source_id = ?, parent_topic_id = ?, title = ?, summary = ?, display_order = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    expected["source_id"],
+                    expected["parent_topic_id"],
+                    expected["title"],
+                    expected["summary"],
+                    expected["display_order"],
+                    now_iso,
+                    topic_id,
+                ),
+            )
+        _merge_status(status, _upsert_status(True, changed))
+    return status
+
+
+def _artifact_payload(collection_id: str, review_inputs: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "source_type": "study_core_import",
+        "title": ARTIFACT_TITLE,
+        "raw_content": f"{_collection_title(review_inputs)}\nSource: {_source_list_url(review_inputs) or 'local JSON'}",
+        "normalized_content": "Deterministic Study Core import payloads for NeetCode 150 coding practice.",
+        "extracted_content": _json(review_inputs, pretty=True),
+        "metadata": {
+            "import_key": collection_id,
+            "deck_name": DECK_NAME,
+            "source_url": _source_list_url(review_inputs),
+            "review_input_count": len(review_inputs),
+            "content_hash": _stable_hash({"review_inputs": review_inputs}),
+        },
+    }
+
+
+def _upsert_artifact(
+    conn: Any,
+    collection_id: str,
+    review_inputs: list[dict[str, Any]],
+    now_iso: str,
+) -> tuple[str, dict[str, int]]:
+    artifact_id = _db_id("art", collection_id)
+    payload = _artifact_payload(collection_id, review_inputs)
+    expected = {
+        "source_type": payload["source_type"],
+        "title": payload["title"],
+        "raw_content": payload["raw_content"],
+        "normalized_content": payload["normalized_content"],
+        "extracted_content": payload["extracted_content"],
+        "metadata_json": _json(payload["metadata"]),
+    }
+    row = conn.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO artifacts (
+              id, source_type, title, raw_content, normalized_content, extracted_content,
+              metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                artifact_id,
+                expected["source_type"],
+                expected["title"],
+                expected["raw_content"],
+                expected["normalized_content"],
+                expected["extracted_content"],
+                expected["metadata_json"],
+                now_iso,
+                now_iso,
+            ),
+        )
+        return artifact_id, _upsert_status(False, True)
+
+    changed = _record_changed(row, expected)
+    if changed:
+        conn.execute(
+            """
+            UPDATE artifacts
+            SET source_type = ?, title = ?, raw_content = ?, normalized_content = ?,
+                extracted_content = ?, metadata_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                expected["source_type"],
+                expected["title"],
+                expected["raw_content"],
+                expected["normalized_content"],
+                expected["extracted_content"],
+                expected["metadata_json"],
+                now_iso,
+                artifact_id,
+            ),
+        )
+    return artifact_id, _upsert_status(True, changed)
+
+
+def _ensure_card_set_version(conn: Any, artifact_id: str, now_iso: str) -> str:
+    row = conn.execute(
+        "SELECT id FROM card_set_versions WHERE artifact_id = ? AND version = 1",
+        (artifact_id,),
+    ).fetchone()
+    if row is not None:
+        return str(row["id"])
+    card_set_version_id = _db_id("csv", artifact_id, "v1")
+    conn.execute(
+        "INSERT INTO card_set_versions (id, artifact_id, version, created_at) VALUES (?, ?, ?, ?)",
+        (card_set_version_id, artifact_id, 1, now_iso),
+    )
+    return card_set_version_id
+
+
+def _upsert_note(conn: Any, artifact_id: str, review_input_count: int, now_iso: str) -> tuple[str, dict[str, int]]:
+    note_id = _db_id("nte", artifact_id)
+    body = (
+        "# NeetCode 150 Study Core import\n\n"
+        f"Import Key: {IMPORT_KEY_PREFIX}\n\n"
+        f"Review Inputs: {review_input_count}\n\n"
+        "Generated records preserve local source metadata and avoid solution text."
+    )
+    expected = {"title": NOTE_TITLE, "body_md": body}
+    row = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            "INSERT INTO notes (id, title, body_md, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (note_id, expected["title"], expected["body_md"], 1, now_iso, now_iso),
+        )
+        return note_id, _upsert_status(False, True)
+
+    changed = row["title"] != expected["title"] or row["body_md"] != expected["body_md"]
+    if changed:
+        conn.execute(
+            "UPDATE notes SET title = ?, body_md = ?, version = ?, updated_at = ? WHERE id = ?",
+            (expected["title"], expected["body_md"], int(row["version"]) + 1, now_iso, note_id),
+        )
+    return note_id, _upsert_status(True, changed)
+
+
+def _ensure_relation(
+    conn: Any,
+    artifact_id: str,
+    relation_type: str,
+    target_type: str,
+    target_id: str,
+    now_iso: str,
+) -> None:
+    relation_id = _db_id("rel", artifact_id, relation_type, target_type, target_id)
+    conn.execute(
+        """
+        INSERT INTO artifact_relations (id, artifact_id, relation_type, target_type, target_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+        """,
+        (relation_id, artifact_id, relation_type, target_type, target_id, now_iso),
+    )
+
+
+def _ensure_deck(conn: Any, default_schedule: dict[str, Any], now_iso: str) -> tuple[str, dict[str, Any]]:
+    row = conn.execute("SELECT id, schedule_json FROM card_decks WHERE name = ?", (DECK_NAME,)).fetchone()
+    if row is not None:
+        return str(row["id"]), _decode_json(row["schedule_json"], default_schedule)
+
+    deck_id = _db_id("cdk", IMPORT_KEY_PREFIX)
+    conn.execute(
+        """
+        INSERT INTO card_decks (id, name, description, schedule_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (deck_id, DECK_NAME, DECK_DESCRIPTION, _json(default_schedule), now_iso, now_iso),
+    )
+    return deck_id, default_schedule
+
+
+def _topic_id(source_id: str, pattern: str) -> str:
+    return _db_id("study_topic", source_id, pattern)
+
+
+def _practice_item_prompt(review_input: dict[str, Any]) -> str:
+    return str(review_input["practice_prompt"])
+
+
+def _practice_item_metadata(review_input: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "import_key": review_input["external_id"],
+        "external_id": review_input["external_id"],
+        "source_sequence": review_input["source_sequence"],
+        "difficulty": review_input["difficulty"],
+        "pattern": review_input["pattern"],
+        "prerequisites": review_input["prerequisites"],
+        "source_url": review_input["source_url"],
+        "content_hash": review_input["content_hash"],
+        "review_input": review_input,
+    }
+
+
+def _upsert_practice_items(
+    conn: Any,
+    source_id: str,
+    review_inputs: list[dict[str, Any]],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0}
+    for review_input in review_inputs:
+        item_id = _db_id("practice", review_input["external_id"])
+        expected = {
+            "source_id": source_id,
+            "topic_id": _topic_id(source_id, str(review_input["pattern"])),
+            "item_type": "coding_problem_practice",
+            "prompt": _practice_item_prompt(review_input),
+            "answer": None,
+            "metadata_json": _json(_practice_item_metadata(review_input)),
+        }
+        row = conn.execute("SELECT * FROM practice_items WHERE id = ?", (item_id,)).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO practice_items (
+                  id, source_id, topic_id, item_type, prompt, answer, metadata_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item_id,
+                    expected["source_id"],
+                    expected["topic_id"],
+                    expected["item_type"],
+                    expected["prompt"],
+                    expected["answer"],
+                    expected["metadata_json"],
+                    now_iso,
+                    now_iso,
+                ),
+            )
+            _merge_status(status, _upsert_status(False, True))
+            continue
+
+        changed = _record_changed(row, expected)
+        if changed:
+            conn.execute(
+                """
+                UPDATE practice_items
+                SET source_id = ?, topic_id = ?, item_type = ?, prompt = ?, answer = ?,
+                    metadata_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    expected["source_id"],
+                    expected["topic_id"],
+                    expected["item_type"],
+                    expected["prompt"],
+                    expected["answer"],
+                    expected["metadata_json"],
+                    now_iso,
+                    item_id,
+                ),
+            )
+        _merge_status(status, _upsert_status(True, changed))
+    return status
+
+
+def _card_tags(review_input: dict[str, Any]) -> list[str]:
+    return [
+        IMPORT_KEY_PREFIX,
+        f"pattern-{_slug(str(review_input['pattern'])).replace('_', '-')}",
+        f"difficulty-{_slug(str(review_input['difficulty'])).replace('_', '-')}",
+        "coding-practice",
+    ]
+
+
+def _card_answer(review_input: dict[str, Any]) -> str:
+    return (
+        f"Open: {review_input['source_url']}\n\n"
+        "After solving, record approach, edge cases, time and space complexity, mistakes, and next review notes. "
+        "No solution text was imported."
+    )
+
+
+def _note_block_content(review_input: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            f"Import Key: {review_input['external_id']}",
+            f"Source URL: {review_input['source_url']}",
+            f"Pattern: {review_input['pattern']}",
+            f"Difficulty: {review_input['difficulty']}",
+            f"Prerequisites: {', '.join(review_input['prerequisites']) or 'none'}",
+            f"Content Hash: {review_input['content_hash']}",
+            "",
+            "Practice Prompt:",
+            str(review_input["practice_prompt"]),
+            "",
+            "Review Input Payload:",
+            _json(review_input, pretty=True),
+        ]
+    ).strip()
+
+
+def _upsert_note_block(
+    conn: Any,
+    *,
+    note_id: str,
+    artifact_id: str,
+    review_input: dict[str, Any],
+    now_iso: str,
+) -> tuple[str, dict[str, int]]:
+    note_block_id = _db_id("blk", review_input["external_id"])
+    expected = {
+        "note_id": note_id,
+        "artifact_id": artifact_id,
+        "block_type": "coding_problem_practice",
+        "content": _note_block_content(review_input),
+    }
+    row = conn.execute("SELECT * FROM note_blocks WHERE id = ?", (note_block_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO note_blocks (id, note_id, artifact_id, block_type, content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                note_block_id,
+                expected["note_id"],
+                expected["artifact_id"],
+                expected["block_type"],
+                expected["content"],
+                now_iso,
+            ),
+        )
+        return note_block_id, _upsert_status(False, True)
+    changed = _record_changed(row, expected)
+    if changed:
+        conn.execute(
+            "UPDATE note_blocks SET note_id = ?, artifact_id = ?, block_type = ?, content = ? WHERE id = ?",
+            (
+                expected["note_id"],
+                expected["artifact_id"],
+                expected["block_type"],
+                expected["content"],
+                note_block_id,
+            ),
+        )
+    return note_block_id, _upsert_status(True, changed)
+
+
+def _upsert_cards(
+    conn: Any,
+    *,
+    deck_id: str,
+    schedule: dict[str, Any],
+    artifact_id: str,
+    note_id: str,
+    card_set_version_id: str,
+    review_inputs: list[dict[str, Any]],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0}
+    note_blocks = {"created": 0, "updated": 0, "unchanged": 0}
+    due_at = (
+        datetime.fromisoformat(now_iso) + timedelta(hours=int(schedule.get("new_cards_due_offset_hours", 24)))
+    ).isoformat()
+    for review_input in review_inputs:
+        card_id = _db_id("crd", review_input["external_id"])
+        note_block_id, note_block_status = _upsert_note_block(
+            conn,
+            note_id=note_id,
+            artifact_id=artifact_id,
+            review_input=review_input,
+            now_iso=now_iso,
+        )
+        _merge_status(note_blocks, note_block_status)
+        expected = {
+            "card_set_version_id": card_set_version_id,
+            "artifact_id": artifact_id,
+            "note_block_id": note_block_id,
+            "deck_id": deck_id,
+            "card_type": "drill",
+            "prompt": _practice_item_prompt(review_input),
+            "answer": _card_answer(review_input),
+            "tags_json": _json(_card_tags(review_input)),
+        }
+        row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO cards (
+                  id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+                  tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    card_id,
+                    expected["card_set_version_id"],
+                    expected["artifact_id"],
+                    expected["note_block_id"],
+                    expected["deck_id"],
+                    expected["card_type"],
+                    expected["prompt"],
+                    expected["answer"],
+                    expected["tags_json"],
+                    0,
+                    due_at,
+                    int(schedule.get("initial_interval_days", 1)),
+                    0,
+                    float(schedule.get("initial_ease_factor", 2.5)),
+                    now_iso,
+                    now_iso,
+                ),
+            )
+            _merge_status(status, _upsert_status(False, True))
+            continue
+
+        changed = _record_changed(row, expected)
+        if changed:
+            conn.execute(
+                """
+                UPDATE cards
+                SET card_set_version_id = ?, artifact_id = ?, note_block_id = ?, deck_id = ?, card_type = ?,
+                    prompt = ?, answer = ?, tags_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    expected["card_set_version_id"],
+                    expected["artifact_id"],
+                    expected["note_block_id"],
+                    expected["deck_id"],
+                    expected["card_type"],
+                    expected["prompt"],
+                    expected["answer"],
+                    expected["tags_json"],
+                    now_iso,
+                    card_id,
+                ),
+            )
+        _merge_status(status, _upsert_status(True, changed))
+    status["note_blocks_created"] = note_blocks["created"]
+    status["note_blocks_updated"] = note_blocks["updated"]
+    status["note_blocks_unchanged"] = note_blocks["unchanged"]
+    return status
+
+
+def _upsert_card_topic_links(
+    conn: Any,
+    source_id: str,
+    review_inputs: list[dict[str, Any]],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0, "primary_links": 0, "prerequisite_links": 0}
+    for review_input in review_inputs:
+        card_id = _db_id("crd", review_input["external_id"])
+        links = [(str(review_input["pattern"]), False, "primary")]
+        links.extend((str(prerequisite), True, "prerequisite") for prerequisite in review_input["prerequisites"])
+        for pattern, gate_required, link_kind in links:
+            topic_id = _topic_id(source_id, pattern)
+            link_id = _db_id("card_topic", review_input["external_id"], link_kind, pattern)
+            row = conn.execute(
+                "SELECT * FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
+                (card_id, topic_id),
+            ).fetchone()
+            expected_gate = 1 if gate_required else 0
+            if row is None:
+                conn.execute(
+                    """
+                    INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (link_id, card_id, topic_id, expected_gate, now_iso),
+                )
+                _merge_status(status, _upsert_status(False, True))
+            else:
+                changed = int(row["gate_required"]) != expected_gate
+                if changed:
+                    conn.execute(
+                        "UPDATE card_topic_links SET gate_required = ? WHERE card_id = ? AND topic_id = ?",
+                        (expected_gate, card_id, topic_id),
+                    )
+                _merge_status(status, _upsert_status(True, changed))
+            if link_kind == "primary":
+                status["primary_links"] += 1
+            else:
+                status["prerequisite_links"] += 1
+    return status
 
 
 def load_source(path: Path) -> dict[str, Any]:
@@ -269,7 +977,7 @@ def main() -> int:
     if args.dry_run:
         adapter = DryRunReviewInputAdapter()
     else:
-        adapter = StudyCoreReviewInputAdapter()
+        adapter = StudyCoreLocalAdapter()
 
     summary = import_neetcode_source(args.source, adapter)
     print(json.dumps(summary, indent=2, sort_keys=True))

@@ -65,11 +65,16 @@ The merged interview-prep slice currently supports this local loop:
 
 Known outcome for `Inference Engineering.pdf`:
 
-- Latest local preflight evidence from WI-PDF-DECK-PREP reported `provider=strings`,
-  `mode=heuristic_fallback`, `usable=false`, `readable=false`, `rejected_as_noise=true`, and
-  `cards_generated=0`.
-- That PDF is therefore **unproven for deck generation** until local LiteParse/OCR/text-layer
-  extraction or reliable notes provide readable source text.
+- Latest LiteParse direct CLI evidence used
+  `/tmp/starlog-liteparse-cli/node_modules/.bin/lit parse "Inference Engineering.pdf" --format json -o /tmp/inference-engineering-liteparse-noocr.json --max-pages 20 --no-ocr -q`.
+  LiteParse returned `pages[].text` and no top-level `text`, so `scripts/liteparse_parse_server.py`
+  now aggregates cleaned page text when top-level text is absent.
+- Latest local preflight evidence with a localhost LiteParse parse endpoint reported
+  `provider=liteparse_server`, `mode=liteparse`, `usable=true`, `readable=true`,
+  `rejected_as_noise=false`, `evidence_status=proven_local_text`, and `cards_generated=0`.
+- That PDF now has proven local LiteParse extraction for deck prep. The preflight remains
+  extraction-only, so the next step is to run the real local LiteParse parse server and import from
+  the readable extraction; do not generate cards from the older noisy `strings` reports.
 
 ## Unproven Or Pending
 
@@ -81,8 +86,9 @@ Known outcome for `Inference Engineering.pdf`:
 - **Assistant command UI coverage:** PWA Assistant command flow was manually validated for `I read ...`.
   Additional browser tests should cover `unlock ... drills` and `quiz me on ... questions for ...`
   through the visible Assistant surface, not only API tests.
-- **`Inference Engineering.pdf` cards:** blocked by unreadable local extraction. Do not generate weak
-  cards from the title or noisy `strings` output.
+- **`Inference Engineering.pdf` cards:** local LiteParse text extraction is proven, but cards have
+  not been generated yet. Import should use the readable `liteparse_server` extraction, not the older
+  noisy `strings` output.
 - **Native briefing date default:** the tested Android device had a stale selected briefing date
   (`2026-04-29`) in local app state while validating alarm scheduling on `2026-05-13`. The alarm flow
   works, but briefing-date reset/default behavior needs cleanup before release.

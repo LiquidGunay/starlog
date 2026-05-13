@@ -220,6 +220,90 @@ def _create_test_artifact(*, title: str = "Test artifact", source_type: str = "c
     return str(artifact["id"])
 
 
+def _create_assistant_study_source_and_topic(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    *,
+    source_title: str,
+    topic_title: str,
+) -> tuple[dict, dict]:
+    source_response = client.post(
+        "/v1/study/sources",
+        json={"title": source_title, "source_type": "manual", "metadata": {"course": "interview prep"}},
+        headers=auth_headers,
+    )
+    assert source_response.status_code == 201
+    source = source_response.json()
+
+    topic_response = client.post(
+        "/v1/study/topics",
+        json={
+            "source_id": source["id"],
+            "title": topic_title,
+            "summary": f"{topic_title} summary.",
+            "display_order": 1,
+        },
+        headers=auth_headers,
+    )
+    assert topic_response.status_code == 201
+    return source, topic_response.json()
+
+
+def _create_assistant_due_card(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    *,
+    prompt: str,
+) -> dict:
+    response = client.post(
+        "/v1/cards",
+        json={
+            "prompt": prompt,
+            "answer": "A gated card for the interview prep loop.",
+            "due_at": "2026-04-02T00:00:00+00:00",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def _post_assistant_study_command(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    *,
+    content: str,
+) -> dict:
+    response = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": content,
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def _assistant_tool_call(payload: dict, tool_name: str) -> dict:
+    return next(
+        part["tool_call"]
+        for part in payload["assistant_message"]["parts"]
+        if part["type"] == "tool_call" and part["tool_call"]["tool_name"] == tool_name
+    )
+
+
+def _assistant_tool_result_for_call(payload: dict, tool_call_id: str) -> dict:
+    return next(
+        part["tool_result"]
+        for part in payload["assistant_message"]["parts"]
+        if part["type"] == "tool_result" and part["tool_result"]["tool_call_id"] == tool_call_id
+    )
+
+
 def test_assistant_primary_thread_snapshot_bootstraps(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -487,6 +571,130 @@ def test_assistant_runtime_turn_stays_local_when_ai_runtime_env_started_bogus(
     payload = runtime_turn.json()
     assert payload["run"]["status"] == "completed"
     assert payload["assistant_message"]["metadata"]["chat_turn"]["provider_used"] == "local_prompt_preview"
+
+
+def test_assistant_primary_study_read_command_unblocks_gated_due_card(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    card = _create_assistant_due_card(client, auth_headers, prompt="BFS gated Assistant card")
+    _source, topic = _create_assistant_study_source_and_topic(
+        client,
+        auth_headers,
+        source_title="Graph Algorithms",
+        topic_title="Breadth-first search",
+    )
+    link_response = client.post(
+        "/v1/study/card-topic-links",
+        json={"card_id": card["id"], "topic_id": topic["id"], "gate_required": True},
+        headers=auth_headers,
+    )
+    assert link_response.status_code == 201
+
+    due_before_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_before_read.status_code == 200
+    assert card["id"] not in {item["id"] for item in due_before_read.json()}
+
+    payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="I read Breadth-first search",
+    )
+
+    assert payload["run"]["status"] == "completed"
+    assert payload["assistant_message"]["status"] == "complete"
+    assistant_command = payload["assistant_message"]["metadata"]["assistant_command"]
+    assert assistant_command["matched_intent"] == "mark_study_topic_read"
+    assert assistant_command["status"] == "executed"
+    tool_call = _assistant_tool_call(payload, "mark_study_topic_read")
+    assert tool_call["status"] == "complete"
+    assert tool_call["arguments"]["topic_id"] == topic["id"]
+    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    assert tool_result["status"] == "complete"
+    assert tool_result["output"]["topic"]["id"] == topic["id"]
+    assert tool_result["output"]["topic"]["status"] == "read"
+
+    due_after_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_after_read.status_code == 200
+    assert card["id"] in {item["id"] for item in due_after_read.json()}
+
+
+def test_assistant_primary_study_unlock_command_is_visible_and_executes(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    _source, topic = _create_assistant_study_source_and_topic(
+        client,
+        auth_headers,
+        source_title="Neetcode",
+        topic_title="Sliding Window",
+    )
+
+    payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="unlock Neetcode sliding window drills",
+    )
+
+    assert payload["run"]["status"] == "completed"
+    assistant_command = payload["assistant_message"]["metadata"]["assistant_command"]
+    assert assistant_command["matched_intent"] == "unlock_study_topic"
+    assert assistant_command["status"] == "executed"
+    tool_call = _assistant_tool_call(payload, "unlock_study_topic")
+    assert tool_call["status"] == "complete"
+    assert tool_call["arguments"]["topic_id"] == topic["id"]
+    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    assert tool_result["output"]["topic"]["status"] == "unlocked"
+    assert tool_result["output"]["topic"]["manually_unlocked"] is True
+
+
+def test_assistant_primary_study_quiz_command_is_visible_and_creates_request(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    source, _topic = _create_assistant_study_source_and_topic(
+        client,
+        auth_headers,
+        source_title="Interview Prep",
+        topic_title="Embeddings",
+    )
+
+    payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="quiz me on application questions for embeddings",
+    )
+
+    assert payload["run"]["status"] == "completed"
+    assistant_command = payload["assistant_message"]["metadata"]["assistant_command"]
+    assert assistant_command["matched_intent"] == "create_study_question_request"
+    assert assistant_command["status"] == "executed"
+    tool_call = _assistant_tool_call(payload, "create_study_question_request")
+    assert tool_call["status"] == "complete"
+    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    request = tool_result["output"]["request"]
+    assert request["source_id"] == source["id"]
+    assert request["question"] == "Quiz me on application questions for Embeddings"
+    assert request["response"]["question_preference"] == "application"
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT source_id, question, response_json FROM study_question_requests WHERE id = ?",
+            (request["id"],),
+        ).fetchone()
+
+    assert row is not None
+    assert row["source_id"] == source["id"]
+    assert row["question"] == "Quiz me on application questions for Embeddings"
+    assert json.loads(row["response_json"])["question_preference"] == "application"
 
 
 def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(

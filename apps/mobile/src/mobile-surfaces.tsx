@@ -111,6 +111,13 @@ type MobileNotesSurfaceProps = SharedProps & {
   toggleMissionTools: () => void;
 };
 
+type MobileReviewStudyTopic = {
+  id: string;
+  title: string;
+  summary?: string | null;
+  status: "locked" | "unlocked" | "read" | string;
+};
+
 type MobileReviewSurfaceProps = SharedProps & {
   reviewPrompt: string;
   reviewAnswer: string;
@@ -138,6 +145,10 @@ type MobileReviewSurfaceProps = SharedProps & {
     locked_topic_count: number;
     due_unlocked_card_count: number;
   } | null;
+  activeStudyTopic: MobileReviewStudyTopic | null;
+  studyBusyAction: string | null;
+  updateStudyTopic: (topic: MobileReviewStudyTopic, action: "unlock" | "read") => void;
+  requestStudyQuestion: (topic: MobileReviewStudyTopic, mode: "recall" | "application") => void;
   showAnswer: boolean;
   revealAnswer: () => void;
   loadDueCards: () => void;
@@ -2545,6 +2556,10 @@ export function MobileReviewSurface({
   reviewRecommendedDrill,
   reviewDecks,
   studyProgress,
+  activeStudyTopic,
+  studyBusyAction,
+  updateStudyTopic,
+  requestStudyQuestion,
   showAnswer,
   revealAnswer,
   loadDueCards,
@@ -2712,6 +2727,65 @@ export function MobileReviewSurface({
           <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>
             {studyProgress.read_topic_count} of {studyProgress.topic_count} topics read. Unread linked topics keep their cards out of this queue.
           </Text>
+        </View>
+      ) : null}
+
+      {activeStudyTopic ? (
+        <View style={{ ...cardBase(palette), borderRadius: 18, padding: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text {...REVIEW_TEXT_PROPS} style={[kickerStyle(palette), { letterSpacing: 0.8 }]}>Study loop</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 19, fontWeight: "800" }}>
+                {activeStudyTopic.title}
+              </Text>
+            </View>
+            <View style={{ ...pillStyle(palette, activeStudyTopic.status === "unlocked"), alignItems: "center" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: activeStudyTopic.status === "unlocked" ? palette.accent : palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                {activeStudyTopic.status}
+              </Text>
+            </View>
+          </View>
+          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>
+            {activeStudyTopic.summary || "Use this topic to unlock Review cards and request one focused interview question."}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {activeStudyTopic.status === "locked" ? (
+              <TouchableOpacity
+                style={{ ...pillStyle(palette), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+                disabled={Boolean(studyBusyAction)}
+                onPress={() => updateStudyTopic(activeStudyTopic, "unlock")}
+              >
+                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
+                  {studyBusyAction === `unlock:${activeStudyTopic.id}` ? "Unlocking" : "Unlock"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {activeStudyTopic.status !== "read" ? (
+              <TouchableOpacity
+                style={{ ...pillStyle(palette, true), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+                disabled={Boolean(studyBusyAction)}
+                onPress={() => updateStudyTopic(activeStudyTopic, "read")}
+              >
+                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "800" }}>
+                  {studyBusyAction === `read:${activeStudyTopic.id}` ? "Marking" : "Mark read"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={{ ...pillStyle(palette), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+              disabled={Boolean(studyBusyAction)}
+              onPress={() => requestStudyQuestion(activeStudyTopic, "recall")}
+            >
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Recall question</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+              disabled={Boolean(studyBusyAction)}
+              onPress={() => requestStudyQuestion(activeStudyTopic, "application")}
+            >
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Application question</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : null}
 

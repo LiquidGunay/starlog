@@ -26,6 +26,67 @@ def test_preflight_disables_nonlocal_pdf_server_env(monkeypatch) -> None:
     assert preflight.os.environ["STARLOG_PDF_OCR_SERVER_URL"] == "http://127.0.0.1:8829/ocr"
 
 
+def test_runtime_status_reports_local_liteparse_and_paddle_paths(monkeypatch) -> None:
+    available_modules = {
+        "fastapi",
+        "uvicorn",
+        "multipart",
+        "numpy",
+        "PIL",
+        "paddle",
+        "paddleocr",
+        "pypdf",
+        "fitz",
+    }
+    monkeypatch.setattr(
+        preflight.importlib.util,
+        "find_spec",
+        lambda name: object() if name in available_modules else None,
+    )
+    monkeypatch.setattr(
+        preflight.shutil,
+        "which",
+        lambda command: (
+            "/usr/local/bin/lit"
+            if command == "lit"
+            else "/usr/bin/strings"
+            if command == "strings"
+            else None
+        ),
+    )
+    monkeypatch.setenv("STARLOG_PDF_PARSE_SERVER_URL", "http://127.0.0.1:8830/parse")
+    monkeypatch.setenv("STARLOG_PDF_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
+    monkeypatch.setenv("STARLOG_PDF_PARSE_OCR_SERVER_URL", "http://127.0.0.1:8829/ocr")
+    monkeypatch.setattr(
+        preflight,
+        "_probe_local_server",
+        lambda value: {
+            "reachable": True,
+            "healthz_url": value.replace("/parse", "/healthz").replace("/ocr", "/healthz"),
+        },
+    )
+
+    runtime = preflight.runtime_status(preflight.disable_nonlocal_pdf_server_env())
+
+    direct_text = runtime["direct_text_layer"]
+    liteparse = runtime["liteparse"]
+    paddleocr = runtime["paddleocr"]
+    assert isinstance(direct_text, dict)
+    assert isinstance(liteparse, dict)
+    assert isinstance(paddleocr, dict)
+    assert direct_text["pypdf_available"] is True
+    assert direct_text["pymupdf_available"] is True
+    assert liteparse["binary"] == {
+        "configured": False,
+        "command": "lit",
+        "available": True,
+        "path": "/usr/local/bin/lit",
+    }
+    assert liteparse["server_modules_ready"] is True
+    assert paddleocr["server_modules_ready"] is True
+    assert runtime["strings_available"] is True
+
+
 def test_preflight_marks_unreadable_extraction_unproven(monkeypatch, tmp_path: Path) -> None:
     pdf_path = tmp_path / "Inference Engineering.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 local test payload")
@@ -56,6 +117,9 @@ def test_preflight_marks_unreadable_extraction_unproven(monkeypatch, tmp_path: P
     assert report["deck_generation"] == "blocked_unreadable_extraction"
     assert report["cards_generated"] == 0
     assert report["readable_excerpt"] == ""
+    assert "Do not generate cards from this run" in " ".join(
+        str(step) for step in report["next_local_steps"]
+    )
     assert Path(str(report["report_path"])).exists()
     assert Path(str(report["markdown_path"])).exists()
 
