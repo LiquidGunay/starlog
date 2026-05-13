@@ -130,6 +130,14 @@ type MobileReviewSurfaceProps = SharedProps & {
     due_count: number;
     card_count: number;
   }>;
+  studyProgress: {
+    source_count: number;
+    topic_count: number;
+    read_topic_count: number;
+    unlocked_topic_count: number;
+    locked_topic_count: number;
+    due_unlocked_card_count: number;
+  } | null;
   showAnswer: boolean;
   revealAnswer: () => void;
   loadDueCards: () => void;
@@ -2536,6 +2544,7 @@ export function MobileReviewSurface({
   reviewLearningInsights,
   reviewRecommendedDrill,
   reviewDecks,
+  studyProgress,
   showAnswer,
   revealAnswer,
   loadDueCards,
@@ -2660,6 +2669,51 @@ export function MobileReviewSurface({
           })}
         </View>
       </View>
+
+      {studyProgress ? (
+        <View style={{ ...cardBase(palette), borderRadius: 18, padding: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <Text {...REVIEW_TEXT_PROPS} style={[kickerStyle(palette), { letterSpacing: 0.8 }]}>Study progress</Text>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11, lineHeight: 15, fontWeight: "700" }}>
+              {studyProgress.source_count} source{studyProgress.source_count === 1 ? "" : "s"}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {[
+              ["Read", studyProgress.read_topic_count],
+              ["Unlocked", studyProgress.unlocked_topic_count],
+              ["Locked", studyProgress.locked_topic_count],
+              ["Due", studyProgress.due_unlocked_card_count],
+            ].map(([label, value]) => (
+              <View
+                key={label}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  backgroundColor: palette.surfaceHigh,
+                  paddingHorizontal: 6,
+                  paddingVertical: 8,
+                  gap: 3,
+                  alignItems: "center",
+                }}
+              >
+                <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 15, fontWeight: "800" }}>
+                  {value}
+                </Text>
+                <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 9.5, lineHeight: 12, fontWeight: "800", textTransform: "uppercase" }}>
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>
+            {studyProgress.read_topic_count} of {studyProgress.topic_count} topics read. Unread linked topics keep their cards out of this queue.
+          </Text>
+        </View>
+      ) : null}
 
       {hasReviewCard ? (
         <View style={{ ...cardBase(palette), borderRadius: 18, gap: 12, padding: 14 }}>

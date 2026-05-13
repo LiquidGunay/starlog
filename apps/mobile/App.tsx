@@ -318,6 +318,15 @@ type MobileReviewSurfaceSummary = {
   recommended_drill?: MobileReviewRecommendedDrill | null;
 };
 
+type MobileStudyProgressSummary = {
+  source_count: number;
+  topic_count: number;
+  read_topic_count: number;
+  unlocked_topic_count: number;
+  locked_topic_count: number;
+  due_unlocked_card_count: number;
+};
+
 type MobileReviewSummaryRequestToken = {
   requestId: number;
   token: string;
@@ -1470,6 +1479,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [dueCards, setDueCards] = useState<DueCard[]>([]);
   const [reviewDecks, setReviewDecks] = useState<CardDeckSummary[]>([]);
   const [reviewSummary, setReviewSummary] = useState<MobileReviewSurfaceSummary | null>(null);
+  const [studyProgress, setStudyProgress] = useState<MobileStudyProgressSummary | null>(null);
   const reviewSummaryRequestRef = useRef<MobileReviewSummaryRequestToken>({ requestId: 0, token: "", apiBase: "" });
   const reviewSummarySessionRef = useRef({ token: "", apiBase: normalizeBaseUrl(DEFAULT_API_BASE) });
   const reviewRevealEventCardIdRef = useRef<string | null>(null);
@@ -2467,6 +2477,33 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
+  async function loadStudyProgress(origin: "auto" | "manual") {
+    try {
+      if (!token) {
+        setStudyProgress(null);
+        return;
+      }
+      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/study/progress`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Study progress fetch failed: ${response.status} ${errorBody}`);
+      }
+      const payload = (await response.json()) as MobileStudyProgressSummary;
+      setStudyProgress(payload);
+      if (origin === "manual") {
+        setStatus("Loaded study progress");
+      }
+    } catch (error) {
+      if (origin === "manual") {
+        setStatus(error instanceof Error ? error.message : "Failed to load study progress");
+      }
+    }
+  }
+
   async function loadPlannerSummary(origin: "auto" | "manual") {
     try {
       if (!token) {
@@ -2553,6 +2590,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setDueCards(payload);
       void loadReviewDecks();
       void loadReviewSummary("auto");
+      void loadStudyProgress("auto");
       setReviewStats({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
       setShowAnswer(false);
       reviewRevealEventCardIdRef.current = null;
@@ -2608,6 +2646,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       cardPromptStartedAt.current = remaining.length > 0 ? Date.now() : null;
       void loadReviewDecks();
       void loadReviewSummary("auto");
+      void loadStudyProgress("auto");
       setStatus(`Recorded rating ${rating}. ${remaining.length} due card(s) left`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to submit review");
@@ -4200,11 +4239,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated || !token) {
       setReviewDecks([]);
       setReviewSummary(null);
+      setStudyProgress(null);
       return;
     }
     setReviewSummary(null);
     loadReviewDecks().catch(() => undefined);
     loadReviewSummary("auto").catch(() => undefined);
+    loadStudyProgress("auto").catch(() => undefined);
   }, [hydrated, token, apiBase]);
 
   useEffect(() => {
@@ -4212,6 +4253,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       return;
     }
     loadReviewSummary("auto").catch(() => undefined);
+    loadStudyProgress("auto").catch(() => undefined);
   }, [hydrated, token, apiBase, activeTab]);
 
   useEffect(() => {
@@ -4295,6 +4337,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             if (activeTab === "review") {
               loadReviewSummary("manual").catch(() => undefined);
               loadReviewDecks().catch(() => undefined);
+              loadStudyProgress("manual").catch(() => undefined);
             }
           }}
           onToggleDiagnostics={() => {
@@ -4442,6 +4485,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
             reviewLearningInsights={reviewSummary?.learning_insights ?? []}
             reviewRecommendedDrill={reviewSummary?.recommended_drill ?? null}
             reviewDecks={reviewDecks}
+            studyProgress={studyProgress}
             showAnswer={showAnswer}
             revealAnswer={revealPrimaryReviewAnswer}
             loadDueCards={() => {
