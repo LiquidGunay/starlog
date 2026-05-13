@@ -1,5 +1,6 @@
-import json
 import asyncio
+import json
+import os
 from datetime import timedelta
 
 import pytest
@@ -9,7 +10,16 @@ from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
-from app.services import ai_service, agent_service, artifacts_service, assistant_projection_service, assistant_run_service, assistant_thread_service, google_calendar_service
+from app.services import (
+    ai_runtime_service,
+    ai_service,
+    agent_service,
+    artifacts_service,
+    assistant_projection_service,
+    assistant_run_service,
+    assistant_thread_service,
+    google_calendar_service,
+)
 from app.services.common import new_id
 
 
@@ -448,6 +458,35 @@ def test_assistant_runtime_turn_emits_tool_result_part_for_recent_trace(
         trace_result = json.loads(trace_result)
     trace_cards = trace_result["cards"]
     assert any(card["kind"] == "review_queue" for card in trace_cards)
+
+
+def test_assistant_runtime_turn_stays_local_when_ai_runtime_env_started_bogus(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert os.environ.get(ai_runtime_service.AI_RUNTIME_BASE_ENV) is None
+
+    def fail_runtime_http(*_args, **_kwargs):
+        raise AssertionError("assistant API test attempted AI runtime HTTP")
+
+    monkeypatch.setattr(ai_runtime_service, "urlopen", fail_runtime_http)
+
+    runtime_turn = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "What should I focus on next?",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+
+    assert runtime_turn.status_code == 201
+    payload = runtime_turn.json()
+    assert payload["run"]["status"] == "completed"
+    assert payload["assistant_message"]["metadata"]["chat_turn"]["provider_used"] == "local_prompt_preview"
 
 
 def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
