@@ -124,6 +124,29 @@ def _artifact_source_text(artifact: dict) -> str:
     ).strip()
 
 
+def _artifact_pdf_extraction(artifact: dict) -> dict[str, Any]:
+    metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
+    research = metadata.get("research") if isinstance(metadata.get("research"), dict) else {}
+    extraction = research.get("pdf_extraction") if isinstance(research.get("pdf_extraction"), dict) else {}
+    return extraction
+
+
+def _pdf_card_block_reason(artifact: dict) -> str | None:
+    extraction = _artifact_pdf_extraction(artifact)
+    if not extraction:
+        return None
+    if extraction.get("used_notes_fallback") or extraction.get("notes_override_extracted"):
+        return None
+    if extraction.get("usable") or extraction.get("readable"):
+        return None
+    provider = str(extraction.get("provider") or "").strip()
+    if extraction.get("rejected_as_noise"):
+        return "PDF extraction was rejected as noise; add reliable notes or rerun with local OCR/LiteParse before making cards."
+    if provider in {"", "none"}:
+        return "PDF extraction is unavailable; add reliable notes or rerun with local OCR/LiteParse before making cards."
+    return None
+
+
 def _llm_text(output: dict, fallback: str) -> str:
     for key in ("summary", "text", "suggestion", "excerpt"):
         value = output.get(key)
@@ -329,6 +352,9 @@ def _create_summary(conn: Connection, artifact: dict) -> str:
 
 
 def _create_cards(conn: Connection, artifact: dict) -> str:
+    block_reason = _pdf_card_block_reason(artifact)
+    if block_reason is not None:
+        raise ValueError(block_reason)
     title = str(artifact.get("title") or "artifact")
     _, _, output = ai_service.run(
         conn,
@@ -442,6 +468,8 @@ def apply_deferred_action_result(
         summary_text = _llm_text(output, _default_summary_text(artifact))
         return _create_summary_record(conn, artifact, summary_text, provider_used)
     if action == "cards":
+        if _pdf_card_block_reason(artifact) is not None:
+            return None
         cards = _card_suggestions(output) or _default_card_rows(artifact)
         return _create_card_set_record(conn, artifact, cards)
     if action == "tasks":
@@ -474,6 +502,16 @@ def run_action(
         (run_id, artifact_id, action, "running", None, now),
     )
     conn.commit()
+
+    if action == "cards" and (block_reason := _pdf_card_block_reason(artifact)) is not None:
+        conn.execute("UPDATE action_runs SET status = ?, output_ref = ? WHERE id = ?", ("blocked", None, run_id))
+        events_service.emit(
+            conn,
+            "artifact.action_blocked",
+            {"artifact_id": artifact_id, "action": action, "reason": block_reason},
+        )
+        conn.commit()
+        return "blocked", None
 
     if defer and action in {"summarize", "cards", "tasks"}:
         from app.services import ai_jobs_service

@@ -114,6 +114,26 @@ The script:
 - `report.json` - machine-readable smoke output
 - `report.md` - human-readable summary and quiz-preview output
 
+## Local deck preflight for `Inference Engineering.pdf`
+
+Before making SRS cards from the local `Inference Engineering.pdf`, run the extraction-only preflight:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/pdf_deck_preflight.py \
+  --pdf "/home/ubuntu/starlog/Inference Engineering.pdf"
+```
+
+This path calls `pdf_ingest_service.extract_pdf_text(Path(...))` directly. It does not boot FastAPI,
+does not use `TestClient`, and only allows PDF parse/OCR server URLs on localhost. The report is
+written under `artifacts/pdf-deck-preflight/<timestamp>/` and includes provider, mode, usable,
+readable, and `rejected_as_noise` evidence.
+
+If local LiteParse/OCR/text-layer extraction is unavailable or unreadable, the report marks the
+evidence as `unproven`, writes `cards_generated: 0`, and blocks deck generation. The artifact action
+path also blocks review-card generation for manual PDFs whose extraction was rejected as noise unless
+the user supplied reliable notes.
+
 ## Validation
 
 Focused regression:
