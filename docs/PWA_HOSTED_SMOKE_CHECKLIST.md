@@ -2,6 +2,10 @@
 
 Run this against a production-like hosted setup before launch.
 
+For current confidence and freshness caveats across surfaces, see
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md). This checklist keeps the hosted
+PWA smoke procedure and historical hosted evidence.
+
 ## Automated local hosted simulation
 
 ```bash

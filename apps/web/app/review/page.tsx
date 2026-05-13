@@ -51,6 +51,30 @@ type ReviewSurfaceSummary = {
   generated_at: string;
 };
 
+type StudyProgress = {
+  source_count: number;
+  topic_count: number;
+  read_topic_count: number;
+  unlocked_topic_count: number;
+  locked_topic_count: number;
+  due_unlocked_card_count: number;
+};
+
+type StudyTopic = {
+  id: string;
+  source_id: string;
+  parent_topic_id?: string | null;
+  title: string;
+  summary?: string | null;
+  display_order: number;
+  status: "locked" | "unlocked" | "read" | string;
+  manually_unlocked: boolean;
+  unlocked_at?: string | null;
+  read_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type LearningInsight = {
   key: string;
   title: string;
@@ -202,6 +226,13 @@ function assistantDraftHref(prompt: string): string {
   return `/assistant?draft=${encodeURIComponent(prompt)}`;
 }
 
+function studyQuestionPrompt(topic: StudyTopic, mode: "recall" | "application"): string {
+  if (mode === "application") {
+    return `Create one application interview question for "${topic.title}" that forces me to use the idea in a realistic coding or system-design scenario.`;
+  }
+  return `Create one concise recall question for "${topic.title}" and keep it answerable from the source material.`;
+}
+
 function summaryDeckBuckets(summary: ReviewSurfaceSummary | null, decks: Deck[]): CountBucket[] {
   if (summary?.deck_buckets.length) {
     return summary.deck_buckets;
@@ -276,6 +307,9 @@ export default function ReviewPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [summary, setSummary] = useState<ReviewSurfaceSummary | null>(null);
+  const [studyProgress, setStudyProgress] = useState<StudyProgress | null>(null);
+  const [studyTopics, setStudyTopics] = useState<StudyTopic[]>([]);
+  const [studyBusyAction, setStudyBusyAction] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [revealedCardId, setRevealedCardId] = useState<string | null>(null);
   const [status, setStatus] = useState("SRS queue idle.");
@@ -307,6 +341,45 @@ export default function ReviewPage() {
   const learningInsights = (summary?.learning_insights ?? []).slice(0, 3);
   const recommendedDrill = summary?.recommended_drill ?? null;
   const recommendedDrillMode = reviewModeLabel(recommendedDrill?.mode);
+  const activeStudyTopic = useMemo(() => {
+    return studyTopics.find((topic) => topic.status === "unlocked")
+      ?? studyTopics.find((topic) => topic.status === "locked")
+      ?? studyTopics.find((topic) => topic.status === "read")
+      ?? null;
+  }, [studyTopics]);
+  const whyThisNow = recommendedDrill?.reason
+    || learningInsights[0]?.body
+    || (overdueCount > 0
+      ? `${overdueCount} item(s) are overdue, so due review gets priority before adding new material.`
+      : `${dueCount} item(s) are due in the current ladder queue.`);
+
+  const loadStudyData = useCallback(async () => {
+    if (missingConfig) {
+      return;
+    }
+    const [progressResult, topicResult] = await Promise.allSettled([
+      apiRequest<StudyProgress>(apiBase, token, "/v1/study/progress"),
+      apiRequest<StudyTopic[]>(apiBase, token, "/v1/study/topics?limit=12"),
+    ]);
+    if (progressResult.status === "fulfilled") {
+      setStudyProgress(progressResult.value);
+    }
+    if (topicResult.status === "fulfilled") {
+      setStudyTopics(topicResult.value);
+    }
+  }, [apiBase, missingConfig, token]);
+
+  const loadReviewQueueData = useCallback(async () => {
+    const [summaryPayload, nextCards, nextDecks] = await Promise.all([
+      apiRequest<ReviewSurfaceSummary>(apiBase, token, "/v1/surfaces/review/summary"),
+      apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42"),
+      apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks"),
+    ]);
+    setSummary(summaryPayload);
+    setCards(nextCards);
+    setDecks(nextDecks);
+    return { summaryPayload, nextCards, nextDecks };
+  }, [apiBase, token]);
 
   const loadReviewData = useCallback(async () => {
     if (missingConfig) {
@@ -316,14 +389,8 @@ export default function ReviewPage() {
 
     setLoading(true);
     try {
-      const [summaryPayload, nextCards, nextDecks] = await Promise.all([
-        apiRequest<ReviewSurfaceSummary>(apiBase, token, "/v1/surfaces/review/summary"),
-        apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42"),
-        apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks"),
-      ]);
-      setSummary(summaryPayload);
-      setCards(nextCards);
-      setDecks(nextDecks);
+      const { summaryPayload, nextDecks } = await loadReviewQueueData();
+      await loadStudyData();
       setStats(emptyStats());
       setShowAnswer(false);
       setRevealedCardId(null);
@@ -333,7 +400,7 @@ export default function ReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiBase, missingConfig, token]);
+  }, [loadReviewQueueData, loadStudyData, missingConfig]);
 
   useEffect(() => {
     if (attemptedInitialLoad || missingConfig) {
@@ -412,6 +479,57 @@ export default function ReviewPage() {
     }
   }
 
+  async function updateStudyTopic(topic: StudyTopic, action: "unlock" | "read") {
+    if (missingConfig) {
+      setStatus("Open login and connect a station before updating study progress.");
+      return;
+    }
+    setStudyBusyAction(`${action}:${topic.id}`);
+    try {
+      const updated = await apiRequest<StudyTopic>(apiBase, token, `/v1/study/topics/${topic.id}/${action}`, {
+        method: "POST",
+      });
+      setStudyTopics((previous) => previous.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
+      const [, reviewRefresh] = await Promise.allSettled([
+        loadStudyData(),
+        loadReviewQueueData(),
+      ]);
+      if (reviewRefresh.status === "rejected") {
+        const detail = reviewRefresh.reason instanceof Error ? reviewRefresh.reason.message : "failed to refresh Review queue";
+        setStatus(`${action === "read" ? `Marked ${topic.title} read` : `Unlocked ${topic.title}`}, but ${detail}.`);
+        return;
+      }
+      setStatus(action === "read" ? `Marked ${topic.title} read; linked due cards can enter review.` : `Unlocked ${topic.title}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : `Failed to ${action} topic`);
+    } finally {
+      setStudyBusyAction(null);
+    }
+  }
+
+  async function requestStudyQuestion(topic: StudyTopic, mode: "recall" | "application") {
+    if (missingConfig) {
+      setStatus("Open login and connect a station before requesting questions.");
+      return;
+    }
+    const question = studyQuestionPrompt(topic, mode);
+    setStudyBusyAction(`${mode}:${topic.id}`);
+    try {
+      await apiRequest(apiBase, token, "/v1/study/question-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          topic_id: topic.id,
+          question,
+        }),
+      });
+      setStatus(`Requested a ${mode} question for ${topic.title}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to request study question");
+    } finally {
+      setStudyBusyAction(null);
+    }
+  }
+
   return (
     <AprilWorkspaceShell
       activeSurface="srs-review"
@@ -457,6 +575,14 @@ export default function ReviewPage() {
               <Link href={missingConfig ? "/login" : "/runtime"}>{missingConfig ? "Open Login" : "Runtime"}</Link>
             </div>
           </div>
+          <div className="april-rail-section">
+            <span className="april-rail-section-label">Study Progress</span>
+            <div className="april-review-rail-health">
+              <div><strong>{studyProgress?.read_topic_count ?? 0}</strong><span>Read</span></div>
+              <div><strong>{studyProgress?.unlocked_topic_count ?? 0}</strong><span>Unlocked</span></div>
+              <div><strong>{studyProgress?.locked_topic_count ?? 0}</strong><span>Locked</span></div>
+            </div>
+          </div>
         </>
       )}
     >
@@ -483,7 +609,10 @@ export default function ReviewPage() {
                 {currentCard ? `Card ${stats.reviewed + 1} of ${Math.max(reviewedTotal, 1)}` : "Awaiting queue"}
               </strong>
             </div>
-            <span>{stats.reviewed} reviewed</span>
+            <span>
+              {stats.reviewed} reviewed
+              {studyProgress ? ` · ${studyProgress.read_topic_count}/${studyProgress.topic_count} topics read` : ""}
+            </span>
           </div>
           <div className="april-review-progress-bar">
             <span style={{ width: `${sessionProgress}%` }} />
@@ -559,11 +688,7 @@ export default function ReviewPage() {
                 <div className="april-review-context-grid" aria-label="Review context">
                   <div>
                     <span className="review-sidebar-kicker">Why this now</span>
-                    <p>
-                      {overdueCount > 0
-                        ? `${overdueCount} item(s) are overdue, so due review gets priority before adding new material.`
-                        : `${dueCount} item(s) are due in the current ladder queue.`}
-                    </p>
+                    <p>{whyThisNow}</p>
                   </div>
                   <div>
                     <span className="review-sidebar-kicker">Source trace</span>
@@ -632,6 +757,68 @@ export default function ReviewPage() {
                   <span key={`bar-${index}`} style={{ height: `${height}%` }} className={index >= 4 ? "active" : ""} />
                 ))}
               </div>
+            </AprilPanel>
+
+            <AprilPanel className="april-review-side-card">
+              <span className="review-sidebar-kicker">Study loop</span>
+              {activeStudyTopic ? (
+                <div className="april-review-study-topic">
+                  <div className="april-review-drill-head">
+                    <strong>{activeStudyTopic.title}</strong>
+                    <span>{activeStudyTopic.status}</span>
+                  </div>
+                  {activeStudyTopic.summary ? <p>{activeStudyTopic.summary}</p> : <p>Use this topic to unlock review cards and request one focused question.</p>}
+                  <div className="april-review-side-actions">
+                    {activeStudyTopic.status === "locked" ? (
+                      <button
+                        className="april-chip-button"
+                        type="button"
+                        onClick={() => void updateStudyTopic(activeStudyTopic, "unlock")}
+                        disabled={studyBusyAction !== null}
+                      >
+                        {studyBusyAction === `unlock:${activeStudyTopic.id}` ? "Unlocking..." : "Unlock"}
+                      </button>
+                    ) : null}
+                    {activeStudyTopic.status !== "read" ? (
+                      <button
+                        className="april-chip-button"
+                        type="button"
+                        onClick={() => void updateStudyTopic(activeStudyTopic, "read")}
+                        disabled={studyBusyAction !== null}
+                      >
+                        {studyBusyAction === `read:${activeStudyTopic.id}` ? "Marking..." : "Mark Read"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="april-review-study-question-actions">
+                    <button
+                      className="april-chip-button muted"
+                      type="button"
+                      onClick={() => void requestStudyQuestion(activeStudyTopic, "recall")}
+                      disabled={studyBusyAction !== null}
+                    >
+                      Recall Question
+                    </button>
+                    <button
+                      className="april-chip-button muted"
+                      type="button"
+                      onClick={() => void requestStudyQuestion(activeStudyTopic, "application")}
+                      disabled={studyBusyAction !== null}
+                    >
+                      Application Question
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="review-copy">No study topics loaded yet. Import or prepare interview material to start the unlock loop.</p>
+              )}
+              {studyProgress ? (
+                <div className="april-review-health-list">
+                  <div><span>Sources</span><strong>{studyProgress.source_count}</strong></div>
+                  <div><span>Topics</span><strong>{studyProgress.topic_count}</strong></div>
+                  <div><span>Due unlocked</span><strong>{studyProgress.due_unlocked_card_count}</strong></div>
+                </div>
+              ) : null}
             </AprilPanel>
 
             <AprilPanel className="april-review-side-card">

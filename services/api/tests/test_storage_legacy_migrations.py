@@ -105,6 +105,37 @@ def test_init_storage_migrates_legacy_cards_without_deck_columns(
         ).fetchone()
         assert deck_index is not None
 
+        study_tables = {
+            row["name"]
+            for row in migrated.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                  AND name IN (
+                    'study_sources',
+                    'study_topics',
+                    'study_topic_progress',
+                    'source_chunks',
+                    'card_topic_links',
+                    'practice_items',
+                    'practice_attempts',
+                    'study_question_requests'
+                  )
+                """
+            ).fetchall()
+        }
+        assert study_tables == {
+            "study_sources",
+            "study_topics",
+            "study_topic_progress",
+            "source_chunks",
+            "card_topic_links",
+            "practice_items",
+            "practice_attempts",
+            "study_question_requests",
+        }
+
         row = migrated.execute(
             "SELECT deck_id, tags_json, suspended, updated_at FROM cards WHERE id = 'crd_legacy'"
         ).fetchone()

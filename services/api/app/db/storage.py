@@ -179,6 +179,109 @@ CREATE TABLE IF NOT EXISTS review_events (
   FOREIGN KEY (card_id) REFERENCES cards(id)
 );
 
+CREATE TABLE IF NOT EXISTS study_sources (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  artifact_id TEXT,
+  url TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+);
+
+CREATE TABLE IF NOT EXISTS study_topics (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  parent_topic_id TEXT,
+  title TEXT NOT NULL,
+  summary TEXT,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (source_id) REFERENCES study_sources(id),
+  FOREIGN KEY (parent_topic_id) REFERENCES study_topics(id)
+);
+
+CREATE TABLE IF NOT EXISTS study_topic_progress (
+  topic_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  manually_unlocked INTEGER NOT NULL DEFAULT 0,
+  unlocked_at TEXT,
+  read_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+);
+
+CREATE TABLE IF NOT EXISTS source_chunks (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  topic_id TEXT,
+  artifact_id TEXT,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (source_id) REFERENCES study_sources(id),
+  FOREIGN KEY (topic_id) REFERENCES study_topics(id),
+  FOREIGN KEY (artifact_id) REFERENCES artifacts(id),
+  UNIQUE(source_id, chunk_index)
+);
+
+CREATE TABLE IF NOT EXISTS card_topic_links (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL,
+  topic_id TEXT NOT NULL,
+  gate_required INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (card_id) REFERENCES cards(id),
+  FOREIGN KEY (topic_id) REFERENCES study_topics(id),
+  UNIQUE(card_id, topic_id)
+);
+
+CREATE TABLE IF NOT EXISTS practice_items (
+  id TEXT PRIMARY KEY,
+  source_id TEXT,
+  topic_id TEXT,
+  item_type TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  answer TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (source_id) REFERENCES study_sources(id),
+  FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+);
+
+CREATE TABLE IF NOT EXISTS practice_attempts (
+  id TEXT PRIMARY KEY,
+  practice_item_id TEXT,
+  topic_id TEXT,
+  rating INTEGER,
+  response_text TEXT,
+  correct INTEGER,
+  latency_ms INTEGER,
+  metadata_json TEXT NOT NULL,
+  attempted_at TEXT NOT NULL,
+  FOREIGN KEY (practice_item_id) REFERENCES practice_items(id),
+  FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+);
+
+CREATE TABLE IF NOT EXISTS study_question_requests (
+  id TEXT PRIMARY KEY,
+  source_id TEXT,
+  topic_id TEXT,
+  question TEXT NOT NULL,
+  status TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (source_id) REFERENCES study_sources(id),
+  FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -717,6 +820,13 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_media_assets_created_at ON media_assets(created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
+CREATE INDEX IF NOT EXISTS idx_study_topics_source ON study_topics(source_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_source_chunks_topic ON source_chunks(topic_id, chunk_index);
+CREATE INDEX IF NOT EXISTS idx_card_topic_links_card ON card_topic_links(card_id);
+CREATE INDEX IF NOT EXISTS idx_card_topic_links_topic ON card_topic_links(topic_id);
+CREATE INDEX IF NOT EXISTS idx_practice_items_topic ON practice_items(topic_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_practice_attempts_item ON practice_attempts(practice_item_id, attempted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_study_question_requests_topic ON study_question_requests(topic_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_starts ON calendar_events(starts_at);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_deleted ON calendar_events(deleted, starts_at);
@@ -841,6 +951,108 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           token_hash TEXT PRIMARY KEY,
           used_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS study_sources (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          artifact_id TEXT,
+          url TEXT,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+        );
+        CREATE TABLE IF NOT EXISTS study_topics (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL,
+          parent_topic_id TEXT,
+          title TEXT NOT NULL,
+          summary TEXT,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (source_id) REFERENCES study_sources(id),
+          FOREIGN KEY (parent_topic_id) REFERENCES study_topics(id)
+        );
+        CREATE TABLE IF NOT EXISTS study_topic_progress (
+          topic_id TEXT PRIMARY KEY,
+          status TEXT NOT NULL,
+          manually_unlocked INTEGER NOT NULL DEFAULT 0,
+          unlocked_at TEXT,
+          read_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+        );
+        CREATE TABLE IF NOT EXISTS source_chunks (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL,
+          topic_id TEXT,
+          artifact_id TEXT,
+          chunk_index INTEGER NOT NULL,
+          content TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (source_id) REFERENCES study_sources(id),
+          FOREIGN KEY (topic_id) REFERENCES study_topics(id),
+          FOREIGN KEY (artifact_id) REFERENCES artifacts(id),
+          UNIQUE(source_id, chunk_index)
+        );
+        CREATE TABLE IF NOT EXISTS card_topic_links (
+          id TEXT PRIMARY KEY,
+          card_id TEXT NOT NULL,
+          topic_id TEXT NOT NULL,
+          gate_required INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (card_id) REFERENCES cards(id),
+          FOREIGN KEY (topic_id) REFERENCES study_topics(id),
+          UNIQUE(card_id, topic_id)
+        );
+        CREATE TABLE IF NOT EXISTS practice_items (
+          id TEXT PRIMARY KEY,
+          source_id TEXT,
+          topic_id TEXT,
+          item_type TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          answer TEXT,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (source_id) REFERENCES study_sources(id),
+          FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+        );
+        CREATE TABLE IF NOT EXISTS practice_attempts (
+          id TEXT PRIMARY KEY,
+          practice_item_id TEXT,
+          topic_id TEXT,
+          rating INTEGER,
+          response_text TEXT,
+          correct INTEGER,
+          latency_ms INTEGER,
+          metadata_json TEXT NOT NULL,
+          attempted_at TEXT NOT NULL,
+          FOREIGN KEY (practice_item_id) REFERENCES practice_items(id),
+          FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+        );
+        CREATE TABLE IF NOT EXISTS study_question_requests (
+          id TEXT PRIMARY KEY,
+          source_id TEXT,
+          topic_id TEXT,
+          question TEXT NOT NULL,
+          status TEXT NOT NULL,
+          response_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (source_id) REFERENCES study_sources(id),
+          FOREIGN KEY (topic_id) REFERENCES study_topics(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_study_topics_source ON study_topics(source_id, display_order);
+        CREATE INDEX IF NOT EXISTS idx_source_chunks_topic ON source_chunks(topic_id, chunk_index);
+        CREATE INDEX IF NOT EXISTS idx_card_topic_links_card ON card_topic_links(card_id);
+        CREATE INDEX IF NOT EXISTS idx_card_topic_links_topic ON card_topic_links(topic_id);
+        CREATE INDEX IF NOT EXISTS idx_practice_items_topic ON practice_items(topic_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_practice_attempts_item ON practice_attempts(practice_item_id, attempted_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_study_question_requests_topic ON study_question_requests(topic_id, created_at DESC);
         CREATE TABLE IF NOT EXISTS worker_sessions (
           id TEXT PRIMARY KEY,
           worker_id TEXT NOT NULL UNIQUE,

@@ -48,6 +48,8 @@ EVENT_VISIBILITY_POLICY: Final[dict[str, AssistantEventVisibility]] = {
     "review.answer.revealed": VISIBILITY_DYNAMIC_PANEL,
     "review.answer.graded": VISIBILITY_AMBIENT,
     "review.repeated_failure": VISIBILITY_ASSISTANT_MESSAGE,
+    "study.topic.read": VISIBILITY_AMBIENT,
+    "study.question.requested": VISIBILITY_AMBIENT,
     "briefing.generated": VISIBILITY_DYNAMIC_PANEL,
     "briefing.played": VISIBILITY_AMBIENT,
     "assistant.recommendation.deferred": VISIBILITY_INTERNAL,

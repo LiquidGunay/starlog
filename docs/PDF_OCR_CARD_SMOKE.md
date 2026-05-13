@@ -2,6 +2,9 @@
 
 Date: `2026-03-30`
 
+For the current PDF deck-prep status and `Inference Engineering.pdf` outcome, see
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
+
 This branch upgrades the manual PDF ingest path so Starlog stores extraction metadata plus any
 available extracted PDF text on the artifact, rather than only the blob reference and title.
 
@@ -48,9 +51,10 @@ This branch now includes two optional local runtime seams:
 - `STARLOG_PDF_OCR_SERVER_URL`
 - `STARLOG_PDF_OCR_LANGUAGE`
 
-Recommended local setup on this host:
+Recommended local setup on this host from the canonical checkout:
 
 ```bash
+cd /home/ubuntu/starlog
 uv venv .venv-paddleocr-gpu --python 3.12
 uv venv .venv-liteparse --python 3.12
 uv pip install --python .venv-paddleocr-gpu/bin/python paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu130/
@@ -63,21 +67,22 @@ npm i -g @llamaindex/liteparse
 Run the local PaddleOCR server first:
 
 ```bash
-cd /home/ubuntu/starlog-worktrees/pdf-ocr-liteparse-paddle
+cd /home/ubuntu/starlog
 STARLOG_PADDLEOCR_USE_GPU=1 .venv-paddleocr-gpu/bin/python scripts/paddleocr_gpu_server.py
 ```
 
 Then run the LiteParse parse server and point it at PaddleOCR:
 
 ```bash
-cd /home/ubuntu/starlog-worktrees/pdf-ocr-liteparse-paddle
-.venv-liteparse/bin/python scripts/liteparse_parse_server.py
+cd /home/ubuntu/starlog
+STARLOG_LITEPARSE_OCR_SERVER_URL=http://127.0.0.1:8829/ocr \
+  .venv-liteparse/bin/python scripts/liteparse_parse_server.py
 ```
 
 The API smoke can then target the LiteParse server, which in turn can call PaddleOCR:
 
 ```bash
-cd /home/ubuntu/starlog-worktrees/pdf-ocr-liteparse-paddle
+cd /home/ubuntu/starlog
 ./services/api/.venv/bin/python scripts/pdf_artifact_smoke.py \
   --parse-server-url http://127.0.0.1:8830/parse \
   --ocr-server-url http://127.0.0.1:8829/ocr
@@ -114,11 +119,58 @@ The script:
 - `report.json` - machine-readable smoke output
 - `report.md` - human-readable summary and quiz-preview output
 
+## Local deck preflight for `Inference Engineering.pdf`
+
+Before making SRS cards from the local `Inference Engineering.pdf`, run the extraction-only preflight:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/pdf_deck_preflight.py \
+  --pdf "/home/ubuntu/starlog/Inference Engineering.pdf"
+```
+
+This path calls `pdf_ingest_service.extract_pdf_text(Path(...))` directly. It does not boot FastAPI,
+does not use `TestClient`, and only allows PDF parse/OCR server URLs on localhost. The report is
+written under `artifacts/pdf-deck-preflight/<timestamp>/` and includes provider, mode, usable,
+readable, `rejected_as_noise`, local runtime diagnostics, and next local steps.
+
+If local LiteParse/OCR/text-layer extraction is unavailable or unreadable, the report marks the
+evidence as `unproven`, writes `cards_generated: 0`, and blocks deck generation. The artifact action
+path also blocks review-card generation for manual PDFs whose extraction was rejected as noise unless
+the user supplied reliable notes.
+
+Latest canonical-checkout result on 2026-05-13:
+
+- Command:
+  `/tmp/starlog-liteparse-cli/node_modules/.bin/lit parse "Inference Engineering.pdf" --format json -o /tmp/inference-engineering-liteparse-noocr.json --max-pages 20 --no-ocr -q`
+- LiteParse direct CLI output:
+  top-level JSON only had `pages`; 16 of the first 20 pages had `pages[].text`, with no top-level
+  `text`.
+- Server adapter fix:
+  `scripts/liteparse_parse_server.py` now uses top-level `text` when present and otherwise
+  aggregates cleaned `pages[].text`.
+- Preflight validation command:
+  `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8891/parse PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/pdf_deck_preflight.py --pdf "/home/ubuntu/starlog/Inference Engineering.pdf"`
+- Evidence:
+  local preflight report `20260513T151430Z` confirmed the metrics below; do not commit generated
+  readable-excerpt reports when they contain book text.
+- Extraction:
+  `provider=liteparse_server`, `mode=liteparse`, `usable=true`, `readable=true`,
+  `rejected_as_noise=false`, `evidence_status=proven_local_text`, `cards_generated=0`
+- Runtime diagnostics:
+  the canonical API venv still lacks `pypdf`, `pymupdf`, LiteParse server deps, and PaddleOCR deps;
+  the successful preflight used a temporary localhost parse-server shim backed by the local
+  `/tmp` LiteParse CLI output.
+- Next safe import step:
+  run the real `scripts/liteparse_parse_server.py` with a local LiteParse CLI environment, rerun
+  preflight with `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8830/parse`, then import from the
+  readable LiteParse extraction. OCR is not required for this PDF when LiteParse `--no-ocr` succeeds.
+
 ## Validation
 
 Focused regression:
 
 ```bash
 cd services/api
-PYTHONPATH=/home/ubuntu/starlog-worktrees/pdf-ocr-liteparse-paddle/services/api ./.venv/bin/pytest -q tests/test_pdf_ingest_service.py tests/test_research.py
+PYTHONPATH=/home/ubuntu/starlog/services/api ./.venv/bin/pytest -q tests/test_pdf_ingest_service.py tests/test_research.py
 ```

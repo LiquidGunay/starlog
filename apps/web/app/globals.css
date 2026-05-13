@@ -1276,6 +1276,34 @@ a {
   padding-left: 0.7rem;
 }
 
+.april-review-study-topic {
+  display: grid;
+  gap: 0.65rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(73, 71, 63, 0.14);
+  background: rgba(39, 23, 30, 0.68);
+  padding: 0.85rem;
+}
+
+.april-review-study-topic p {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted), white 7%);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.april-review-study-question-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.april-review-study-question-actions .april-chip-button {
+  justify-content: center;
+  min-height: 2.35rem;
+  text-align: center;
+}
+
 .april-review-context-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

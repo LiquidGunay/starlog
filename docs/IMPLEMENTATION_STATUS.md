@@ -1,5 +1,9 @@
 # Starlog Implementation Status
 
+This is a historical implementation log, not the concise current-state source of truth. For the
+short list of what works today, what is unproven, and where to find evidence, start with
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
+
 `PLAN.md` is the canonical forward-looking spec. For the current Assistant UI evidence and repeatable
 PWA/mobile functional checks, use `docs/UI_CONCEPT_COMPARISON_2026-04-29.md`,
 `docs/UI_FUNCTIONAL_TEST_HARNESSES.md`, and `docs/ANDROID_DEV_BUILD.md`.

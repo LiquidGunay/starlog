@@ -23,6 +23,7 @@ from app.schemas.agent import (
     ListDueCardsToolArgs,
     ListNotesToolArgs,
     ListTasksToolArgs,
+    MarkStudyTopicReadToolArgs,
     RenderBriefingAudioToolArgs,
     RunArtifactActionToolArgs,
     ScheduleMorningBriefAlarmToolArgs,
@@ -31,6 +32,8 @@ from app.schemas.agent import (
     SubmitReviewToolArgs,
     UpdateNoteToolArgs,
     UpdateTaskToolArgs,
+    UnlockStudyTopicToolArgs,
+    CreateStudyQuestionRequestToolArgs,
 )
 from app.services import (
     artifacts_service,
@@ -42,6 +45,7 @@ from app.services import (
     planning_service,
     search_service,
     srs_service,
+    study_service,
     tasks_service,
 )
 
@@ -230,6 +234,26 @@ def _submit_review(conn: Connection, args: SubmitReviewToolArgs) -> dict[str, An
     if review is None:
         raise LookupError(f"Card not found: {args.card_id}")
     return review
+
+
+def _mark_study_topic_read(conn: Connection, args: MarkStudyTopicReadToolArgs) -> dict[str, Any]:
+    return {"topic": study_service.mark_topic_read(conn, args.topic_id)}
+
+
+def _unlock_study_topic(conn: Connection, args: UnlockStudyTopicToolArgs) -> dict[str, Any]:
+    return {"topic": study_service.unlock_topic(conn, args.topic_id)}
+
+
+def _create_study_question_request(conn: Connection, args: CreateStudyQuestionRequestToolArgs) -> dict[str, Any]:
+    request = study_service.create_question_request(
+        conn,
+        source_id=None,
+        topic_id=args.topic_id,
+        question=args.question,
+        status=args.status,
+        response=args.response,
+    )
+    return {"request": request}
 
 
 def _search_starlog(conn: Connection, args: SearchStarlogToolArgs) -> list[dict[str, Any]]:
@@ -423,6 +447,27 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         arg_model=SubmitReviewToolArgs,
         backing_endpoint="/v1/reviews",
         handler=_submit_review,
+    ),
+    "mark_study_topic_read": ToolSpec(
+        name="mark_study_topic_read",
+        description="Mark a Study Core topic as read so gated review cards linked to that topic can become due.",
+        arg_model=MarkStudyTopicReadToolArgs,
+        backing_endpoint="/v1/study/topics/{topic_id}/read",
+        handler=_mark_study_topic_read,
+    ),
+    "unlock_study_topic": ToolSpec(
+        name="unlock_study_topic",
+        description="Manually unlock a Study Core topic without marking it read.",
+        arg_model=UnlockStudyTopicToolArgs,
+        backing_endpoint="/v1/study/topics/{topic_id}/unlock",
+        handler=_unlock_study_topic,
+    ),
+    "create_study_question_request": ToolSpec(
+        name="create_study_question_request",
+        description="Create a Study Core question or quiz request linked to a study topic.",
+        arg_model=CreateStudyQuestionRequestToolArgs,
+        backing_endpoint="/v1/study/question-requests",
+        handler=_create_study_question_request,
     ),
     "search_starlog": ToolSpec(
         name="search_starlog",
