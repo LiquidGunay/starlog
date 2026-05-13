@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "starlog-api"
 version = "0.1.0"
 description = "Starlog API service"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.118.0,<0.119.0",
   "uvicorn[standard]>=0.31.0,<0.32.0",
