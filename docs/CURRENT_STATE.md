@@ -3,8 +3,8 @@
 Last updated: 2026-05-13
 
 This is the concise status page for what Starlog can be treated as working today versus what still
-needs fresh proof. It is a docs-only synthesis of repo-local code, tests, and recent workitem
-evidence; this update did not run new product validation.
+needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
+functional evidence.
 
 Use [PLAN.md](/home/ubuntu/starlog/PLAN.md) and [VISION.md](/home/ubuntu/starlog/VISION.md) for
 where Starlog is going. Use this page for current implementation confidence.
@@ -23,6 +23,13 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Study Core backend:** `/v1/study/*` routes and services exist for sources, topics, source chunks,
   card-topic links, practice items, practice attempts, question requests, and progress summary.
   Attempt creation and topic-read events can reflect into the Assistant event stream.
+- **Study Assistant commands:** deterministic Assistant commands can mark topics read, unlock topics,
+  and create topic-specific question requests. Covered commands include `I read ...`,
+  `mark ... read`, `unlock Neetcode sliding window drills`, and
+  `quiz me on application questions for embeddings`.
+- **Event-backed recommendations and gated Review ordering:** due-card queries exclude unread gated
+  cards, preserve due-date fallback, and now include deterministic study signals from topic reads,
+  question requests, review grades, and practice attempts.
 - **ML Interviews Part II SRS deck import:** `data/ml_interviews_part_ii_qa_cards.jsonl` is the
   checked-in deck source. `scripts/bootstrap_ml_interview_srs.py` is idempotent: it reuses the named
   deck, bootstrap artifact, first card-set version, and deck note while preserving existing review
@@ -35,10 +42,12 @@ where Starlog is going. Use this page for current implementation confidence.
   practice entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user
   notes. `scripts/import_neetcode_150.py --dry-run` validates taxonomy counts and builds stable
   review-input payloads without proprietary problem text or generated answers.
-- **Historical desktop/PWA/mobile foundations:** earlier evidence covers the PWA Assistant/Library/
-  Review surfaces, native Android shell, desktop helper, local AI worker, briefings, alarms, and
-  hosted PWA/Railway path. Treat this as implementation existence and historical proof, not current
-  release proof.
+- **Minimal PWA/native interview-prep UI:** the PWA Review surface has thin controls for topic
+  unlock/read, question-mode requests, progress state, and recommendation rationale. Native Android
+  Review shows study progress and can load, reveal, and grade backend-owned cards.
+- **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
+  Native Android Planner can cache a briefing package and schedule local notification playback after
+  granting notification permission.
 
 ## Current Interview-Prep Loop
 
@@ -47,10 +56,12 @@ The merged interview-prep slice currently supports this local loop:
 1. Import or validate structured study material:
    - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
    - NeetCode 150 source validation via `scripts/import_neetcode_150.py --dry-run`.
-2. Use Study Core APIs to model sources, topics, source chunks, practice items, attempts, question
-   requests, and progress.
-3. Review SRS cards through the existing Review/Card APIs.
-4. Preflight local PDFs before creating cards from them.
+2. Mark a topic read through the Assistant or the Review surface.
+3. Unlock only cards linked to read/unlocked topics; unread gated cards stay out of due review.
+4. Request question style preferences, such as application questions, against a topic.
+5. Review and grade cards through the PWA or Android native Review surface.
+6. Feed review/question/practice events into deterministic recommendation scoring.
+7. Preflight local PDFs before creating cards from them.
 
 Known outcome for `Inference Engineering.pdf`:
 
@@ -62,16 +73,19 @@ Known outcome for `Inference Engineering.pdf`:
 
 ## Unproven Or Pending
 
-- **Recommendation loop:** recommendation ranking, proactive study prioritization, and "what should I
-  do next?" UI behavior are still pending unless a later merged workitem adds fresh evidence.
-- **Functional mobile interview-prep evidence:** no current phone run proves the full interview-prep
-  loop end to end. Existing phone screenshots and Android validation are historical or route-specific.
-- **Current UI proof for interview prep:** no fresh desktop/mobile UI proof was run for Study Core,
-  NeetCode, ML deck review, or PDF preflight as part of this docs update.
-- **NeetCode non-dry-run import into Study Core:** the checked-in list and dry-run payload generation
-  work, but the non-dry-run adapter still depends on a concrete Study Core review-input upsert API.
+- **NeetCode Study Core import:** the checked-in list and dry-run payload generation work, but the
+  non-dry-run adapter still depends on a concrete Study Core review-input upsert API.
+- **Native topic mutation controls:** Android native Review currently proves study progress display,
+  queue refresh, reveal, grade, briefing cache, and local alarm scheduling. Topic unlock/read and
+  question-request mutations are still stronger on PWA than native.
+- **Assistant command UI coverage:** PWA Assistant command flow was manually validated for `I read ...`.
+  Additional browser tests should cover `unlock ... drills` and `quiz me on ... questions for ...`
+  through the visible Assistant surface, not only API tests.
 - **`Inference Engineering.pdf` cards:** blocked by unreadable local extraction. Do not generate weak
   cards from the title or noisy `strings` output.
+- **Native briefing date default:** the tested Android device had a stale selected briefing date
+  (`2026-04-29`) in local app state while validating alarm scheduling on `2026-05-13`. The alarm flow
+  works, but briefing-date reset/default behavior needs cleanup before release.
 - **Fresh end-to-end release confidence:** re-run [docs/CROSS_SURFACE_PROOF.md](/home/ubuntu/starlog/docs/CROSS_SURFACE_PROOF.md)
   before claiming current web + phone + helper release readiness.
 - **Production Android store readiness:** Android release-signing, signed production QA smoke, store
@@ -83,6 +97,13 @@ Known outcome for `Inference Engineering.pdf`:
   provider polish and fallback behavior still need focused validation.
 
 ## Evidence Map
+
+- Latest local functional evidence:
+  [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
+- Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
+  `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL.
+- Fresh frontend/native validation: `corepack pnpm --filter web build` passed, and
+  `corepack pnpm --filter mobile exec tsc --noEmit -p tsconfig.json` passed.
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),
