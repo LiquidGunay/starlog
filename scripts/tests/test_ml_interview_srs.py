@@ -11,8 +11,8 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-import bootstrap_ml_interview_srs as bootstrap
-import build_ml_interview_srs_deck as build
+import bootstrap_ml_interview_srs as bootstrap  # noqa: E402
+import build_ml_interview_srs_deck as build  # noqa: E402
 
 
 def test_parse_list_items_keeps_multiline_continuations() -> None:
@@ -99,11 +99,34 @@ def test_build_note_block_content_contains_provenance() -> None:
 
     content = bootstrap.build_note_block_content(card)
 
+    assert "Import Key: ml-interviews-part-ii:0001" in content
     assert "Source URL: https://example.test/source" in content
+    assert "Source Path: unspecified" in content
     assert "Section: Sample Section" in content
     assert "Question Index: 0001" in content
     assert "Answer Source: heuristic" in content
+    assert "Tags: ml-interviews-part-ii, section-sample-section, difficulty-e, source-heuristic" in content
     assert "X is the first quantity." in content
+
+
+def test_stable_card_tags_use_section_difficulty_and_source() -> None:
+    card = {
+        "prompt": "What is X?",
+        "answer": "X is the first quantity.",
+        "source_url": "https://example.test/source",
+        "section": "5.2.2 Stats",
+        "question_index": "0001",
+        "question": "What is X?",
+        "difficulty": "H",
+        "metadata": {"answer_source": "zafstojano/ml-interview-questions-and-answers"},
+    }
+
+    assert bootstrap.stable_card_tags(card) == [
+        "ml-interviews-part-ii",
+        "section-5-2-2-stats",
+        "difficulty-h",
+        "source-zafstojano-ml-interview-questions-and-answers",
+    ]
 
 
 def test_load_cards_accepts_metadata(tmp_path: Path) -> None:
@@ -132,3 +155,123 @@ def test_load_cards_accepts_metadata(tmp_path: Path) -> None:
 
     assert len(cards) == 1
     assert cards[0]["metadata"]["answer_source"] == "heuristic"
+
+
+def test_load_cards_rejects_duplicate_question_index(tmp_path: Path) -> None:
+    deck_path = tmp_path / "deck.jsonl"
+    record = {
+        "card_type": "qa",
+        "prompt": "What is X?",
+        "answer": "X is the first quantity.",
+        "source_url": "https://example.test/source",
+        "section": "Sample Section",
+        "question_index": "0001",
+        "question": "What is X?",
+        "metadata": {"answer_source": "heuristic"},
+    }
+    deck_path.write_text("\n".join([json.dumps(record), json.dumps(record)]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicates question_index: 0001"):
+        bootstrap.load_cards(deck_path)
+
+
+def test_import_cards_is_idempotent_and_preserves_review_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck_path = tmp_path / "deck.jsonl"
+    deck_path.write_text(
+        json.dumps(
+            {
+                "card_type": "qa",
+                "prompt": "What is X?",
+                "answer": "X is the first quantity.",
+                "source_url": "https://example.test/source",
+                "section": "Sample Section",
+                "question_index": "0001",
+                "question": "What is X?",
+                "difficulty": "E",
+                "metadata": {
+                    "answer_source": "heuristic",
+                    "source_path": "contents/sample.md",
+                    "source_url": "https://example.test/source",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.db.storage import get_connection
+
+    get_settings.cache_clear()
+    try:
+        first = bootstrap.import_cards(deck_path, dry_run=False)
+
+        assert first["deck_name"] == "ML Interviews Part II"
+        assert first["inserted_cards"] == 1
+        assert first["updated_cards"] == 0
+
+        with get_connection() as conn:
+            card = conn.execute("SELECT id FROM cards").fetchone()
+            assert card is not None
+            conn.execute(
+                """
+                UPDATE cards
+                SET due_at = ?, interval_days = ?, repetitions = ?, ease_factor = ?
+                WHERE id = ?
+                """,
+                ("2030-01-01T00:00:00+00:00", 42, 7, 1.8, card["id"]),
+            )
+            conn.commit()
+
+        second = bootstrap.import_cards(deck_path, dry_run=False)
+
+        assert second["artifact_id"] == first["artifact_id"]
+        assert second["card_set_version_id"] == first["card_set_version_id"]
+        assert second["deck_id"] == first["deck_id"]
+        assert second["note_id"] == first["note_id"]
+        assert second["inserted_cards"] == 0
+        assert second["updated_cards"] == 0
+        assert second["unchanged_cards"] == 1
+
+        with get_connection() as conn:
+            counts = {
+                table: conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"]
+                for table in (
+                    "artifacts",
+                    "card_set_versions",
+                    "notes",
+                    "cards",
+                    "note_blocks",
+                )
+            }
+            assert counts == {
+                "artifacts": 1,
+                "card_set_versions": 1,
+                "notes": 1,
+                "cards": 1,
+                "note_blocks": 1,
+            }
+            deck = conn.execute("SELECT name FROM card_decks WHERE id = ?", (first["deck_id"],)).fetchone()
+            assert deck["name"] == "ML Interviews Part II"
+            card = conn.execute(
+                "SELECT deck_id, tags_json, due_at, interval_days, repetitions, ease_factor FROM cards"
+            ).fetchone()
+            assert card["deck_id"] == first["deck_id"]
+            assert json.loads(card["tags_json"]) == [
+                "ml-interviews-part-ii",
+                "section-sample-section",
+                "difficulty-e",
+                "source-heuristic",
+            ]
+            assert card["due_at"] == "2030-01-01T00:00:00+00:00"
+            assert card["interval_days"] == 42
+            assert card["repetitions"] == 7
+            assert card["ease_factor"] == 1.8
+            note_block = conn.execute("SELECT content FROM note_blocks").fetchone()
+            assert "Source Path: contents/sample.md" in note_block["content"]
+            assert '"answer_source": "heuristic"' in note_block["content"]
+    finally:
+        get_settings.cache_clear()
