@@ -379,7 +379,73 @@ def create_practice_attempt(
     row = execute_fetchone(conn, "SELECT * FROM practice_attempts WHERE id = ?", (attempt_id,))
     if row is None:
         raise RuntimeError("Practice attempt creation failed")
-    return _format_practice_attempt(row)
+    attempt = _format_practice_attempt(row)
+    events_service.emit(
+        conn,
+        "practice.attempt.logged",
+        {
+            "attempt_id": attempt["id"],
+            "practice_item_id": attempt.get("practice_item_id"),
+            "topic_id": attempt.get("topic_id"),
+            "rating": attempt.get("rating"),
+            "correct": attempt.get("correct"),
+        },
+    )
+    conn.commit()
+    return attempt
+
+
+def progress_summary(conn: Connection) -> dict:
+    topic_counts = execute_fetchone(
+        conn,
+        """
+        SELECT
+          COUNT(*) AS topic_count,
+          SUM(CASE WHEN COALESCE(p.read_at, '') != '' OR COALESCE(p.status, '') = 'read' THEN 1 ELSE 0 END) AS read_topic_count,
+          SUM(
+            CASE
+              WHEN (COALESCE(p.read_at, '') = '' AND COALESCE(p.status, '') = 'unlocked')
+              THEN 1
+              ELSE 0
+            END
+          ) AS unlocked_topic_count
+        FROM study_topics t
+        LEFT JOIN study_topic_progress p ON p.topic_id = t.id
+        """,
+    ) or {}
+    source_counts = execute_fetchone(conn, "SELECT COUNT(*) AS source_count FROM study_sources") or {}
+    now = utc_now().isoformat()
+    due_cards = execute_fetchone(
+        conn,
+        """
+        SELECT COUNT(*) AS due_unlocked_card_count
+        FROM cards c
+        WHERE c.suspended = 0
+          AND c.due_at <= ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM card_topic_links ctl
+            LEFT JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+            WHERE ctl.card_id = c.id
+              AND ctl.gate_required = 1
+              AND COALESCE(stp.read_at, '') = ''
+              AND COALESCE(stp.status, '') != 'read'
+          )
+        """,
+        (now,),
+    ) or {}
+    topic_count = int(topic_counts.get("topic_count") or 0)
+    read_topic_count = int(topic_counts.get("read_topic_count") or 0)
+    unlocked_topic_count = int(topic_counts.get("unlocked_topic_count") or 0)
+    locked_topic_count = max(0, topic_count - read_topic_count - unlocked_topic_count)
+    return {
+        "source_count": int(source_counts.get("source_count") or 0),
+        "topic_count": topic_count,
+        "read_topic_count": read_topic_count,
+        "unlocked_topic_count": unlocked_topic_count,
+        "locked_topic_count": locked_topic_count,
+        "due_unlocked_card_count": int(due_cards.get("due_unlocked_card_count") or 0),
+    }
 
 
 def create_question_request(

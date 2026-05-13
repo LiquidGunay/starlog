@@ -168,6 +168,9 @@ def test_study_primitives_record_chunks_practice_and_question_requests(
     assert request_payload["status"] == "requested"
 
     with get_connection() as conn:
+        attempt_event = conn.execute(
+            "SELECT payload_json FROM domain_events WHERE event_type = 'practice.attempt.logged'"
+        ).fetchone()
         domain_event = conn.execute(
             "SELECT payload_json FROM domain_events WHERE event_type = 'study.question.requested'"
         ).fetchone()
@@ -179,6 +182,15 @@ def test_study_primitives_record_chunks_practice_and_question_requests(
             """
         ).fetchone()
 
+    assert attempt_event is not None
+    attempt_payload = json.loads(attempt_event["payload_json"])
+    assert attempt_payload == {
+        "attempt_id": attempt.json()["id"],
+        "correct": True,
+        "practice_item_id": item_payload["id"],
+        "rating": 4,
+        "topic_id": topic["id"],
+    }
     assert domain_event is not None
     assert json.loads(domain_event["payload_json"])["request_id"] == request_payload["id"]
     assert surface_event is not None
@@ -186,3 +198,50 @@ def test_study_primitives_record_chunks_practice_and_question_requests(
     assert surface_event["visibility"] == "ambient"
     assert json.loads(surface_event["entity_ref_json"])["entity_id"] == request_payload["id"]
     assert json.loads(surface_event["payload_json"])["request_id"] == request_payload["id"]
+
+
+def test_study_progress_summary_counts_topics_and_due_unlocked_cards(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    card = _create_due_card(client, auth_headers)
+    source, topic = _create_source_and_topic(client, auth_headers)
+
+    link_response = client.post(
+        "/v1/study/card-topic-links",
+        json={"card_id": card["id"], "topic_id": topic["id"]},
+        headers=auth_headers,
+    )
+    assert link_response.status_code == 201
+
+    initial = client.get("/v1/study/progress", headers=auth_headers)
+    assert initial.status_code == 200
+    assert initial.json() == {
+        "source_count": 1,
+        "topic_count": 1,
+        "read_topic_count": 0,
+        "unlocked_topic_count": 0,
+        "locked_topic_count": 1,
+        "due_unlocked_card_count": 0,
+    }
+
+    unlocked = client.post(f"/v1/study/topics/{topic['id']}/unlock", headers=auth_headers)
+    assert unlocked.status_code == 200
+    unlocked_progress = client.get("/v1/study/progress", headers=auth_headers)
+    assert unlocked_progress.status_code == 200
+    assert unlocked_progress.json()["unlocked_topic_count"] == 1
+    assert unlocked_progress.json()["locked_topic_count"] == 0
+    assert unlocked_progress.json()["due_unlocked_card_count"] == 0
+
+    read = client.post(f"/v1/study/topics/{topic['id']}/read", headers=auth_headers)
+    assert read.status_code == 200
+    read_progress = client.get("/v1/study/progress", headers=auth_headers)
+    assert read_progress.status_code == 200
+    assert read_progress.json() == {
+        "source_count": 1,
+        "topic_count": 1,
+        "read_topic_count": 1,
+        "unlocked_topic_count": 0,
+        "locked_topic_count": 0,
+        "due_unlocked_card_count": 1,
+    }

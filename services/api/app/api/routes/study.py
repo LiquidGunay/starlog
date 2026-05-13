@@ -15,6 +15,7 @@ from app.schemas.study import (
     SourceChunkResponse,
     StudyQuestionRequestCreateRequest,
     StudyQuestionRequestResponse,
+    StudyProgressResponse,
     StudySourceCreateRequest,
     StudySourceResponse,
     StudyTopicCreateRequest,
@@ -87,6 +88,14 @@ def create_study_source(
         metadata=payload.metadata,
     )
     return StudySourceResponse.model_validate(source)
+
+
+@router.get("/progress", response_model=StudyProgressResponse)
+def get_study_progress(
+    _user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> StudyProgressResponse:
+    return StudyProgressResponse.model_validate(study_service.progress_summary(db))
 
 
 @router.get("/topics", response_model=list[StudyTopicResponse])

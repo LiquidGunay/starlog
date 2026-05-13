@@ -46,6 +46,15 @@ class StudyTopicResponse(BaseModel):
     updated_at: datetime
 
 
+class StudyProgressResponse(BaseModel):
+    source_count: int = 0
+    topic_count: int = 0
+    read_topic_count: int = 0
+    unlocked_topic_count: int = 0
+    locked_topic_count: int = 0
+    due_unlocked_card_count: int = 0
+
+
 class SourceChunkCreateRequest(BaseModel):
     source_id: str = Field(..., min_length=1)
     topic_id: str | None = None
