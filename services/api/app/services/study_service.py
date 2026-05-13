@@ -422,6 +422,7 @@ def progress_summary(conn: Connection) -> dict:
         FROM cards c
         WHERE c.suspended = 0
           AND c.due_at <= ?
+          AND EXISTS (SELECT 1 FROM card_topic_links ctl WHERE ctl.card_id = c.id)
           AND NOT EXISTS (
             SELECT 1
             FROM card_topic_links ctl
