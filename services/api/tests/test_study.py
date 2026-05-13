@@ -210,6 +210,42 @@ def test_agent_study_quiz_command_creates_topic_question_request(
     assert json.loads(row["response_json"])["question_preference"] == "application"
 
 
+def test_agent_study_unlock_command_normalizes_source_and_drills_context(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    source_response = client.post(
+        "/v1/study/sources",
+        json={
+            "title": "Neetcode",
+            "source_type": "manual",
+            "metadata": {"course": "patterns"},
+        },
+        headers=auth_headers,
+    )
+    assert source_response.status_code == 201
+    source = source_response.json()
+    topic = _create_topic(client, auth_headers, source["id"], "Sliding Window", 1)
+
+    command = client.post(
+        "/v1/agent/command",
+        json={
+            "command": "unlock Neetcode sliding window drills",
+            "execute": True,
+            "device_target": "web-pwa",
+        },
+        headers=auth_headers,
+    )
+    assert command.status_code == 200
+    payload = command.json()
+    assert payload["matched_intent"] == "unlock_study_topic"
+    assert payload["steps"][0]["tool_name"] == "unlock_study_topic"
+    assert payload["steps"][0]["arguments"]["topic_id"] == topic["id"]
+    assert payload["steps"][0]["result"]["topic"]["id"] == topic["id"]
+    assert payload["steps"][0]["result"]["topic"]["status"] == "unlocked"
+    assert payload["steps"][0]["result"]["topic"]["manually_unlocked"] is True
+
+
 def test_agent_study_commands_expose_tools_and_intents(
     client: TestClient,
     auth_headers: dict[str, str],

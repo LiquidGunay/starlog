@@ -1,4 +1,5 @@
 import json
+import re
 from sqlite3 import Connection, IntegrityError
 from typing import Any
 
@@ -181,8 +182,76 @@ def get_topic(conn: Connection, topic_id: str) -> dict | None:
     return _format_topic(row) if row else None
 
 
+_LEADING_TOPIC_CONTEXT_WORDS = {
+    "topic",
+    "topics",
+    "pattern",
+    "patterns",
+    "module",
+    "lesson",
+    "chapter",
+    "section",
+}
+_TRAILING_TOPIC_CONTEXT_WORDS = {
+    "card",
+    "cards",
+    "drill",
+    "drills",
+    "exercise",
+    "exercises",
+    "practice",
+    "problem",
+    "problems",
+    "question",
+    "questions",
+}
+
+
+def _compact_reference(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def _strip_topic_context_words(value: str) -> str:
+    words = _compact_reference(value).split()
+    while words and words[0].lower() in _LEADING_TOPIC_CONTEXT_WORDS:
+        words.pop(0)
+    while words and words[-1].lower() in _TRAILING_TOPIC_CONTEXT_WORDS:
+        words.pop()
+    return " ".join(words)
+
+
+def _remove_source_title(reference: str, source_title: str) -> str | None:
+    pattern = re.compile(rf"(?<!\w){re.escape(source_title)}(?!\w)", re.IGNORECASE)
+    if not pattern.search(reference):
+        return None
+    return _compact_reference(pattern.sub(" ", reference))
+
+
+def _resolve_topic_from_rows(rows: list[dict], reference: str, *, original_reference: str) -> dict | None:
+    candidate = _strip_topic_context_words(reference)
+    if not candidate:
+        return None
+
+    exact = [row for row in rows if str(row.get("title") or "").strip() == candidate]
+    if len(exact) == 1:
+        return exact[0]
+
+    needle = candidate.lower()
+    casefold_exact = [row for row in rows if str(row.get("title") or "").strip().lower() == needle]
+    if len(casefold_exact) == 1:
+        return casefold_exact[0]
+
+    partial = [row for row in rows if needle in str(row.get("title") or "").strip().lower()]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        titles = ", ".join(str(row.get("title") or row["id"]) for row in partial[:5])
+        raise ValueError(f"Ambiguous study topic reference '{original_reference}'. Matches: {titles}")
+    return None
+
+
 def resolve_topic_reference(conn: Connection, reference: str) -> dict:
-    normalized = reference.strip()
+    normalized = _compact_reference(reference)
     if not normalized:
         raise ValueError("Study topic reference is required")
 
@@ -191,17 +260,23 @@ def resolve_topic_reference(conn: Connection, reference: str) -> dict:
         return direct
 
     rows = list_topics(conn, source_id=None, limit=500)
-    exact = [row for row in rows if str(row.get("title") or "").strip() == normalized]
-    if len(exact) == 1:
-        return exact[0]
+    resolved = _resolve_topic_from_rows(rows, normalized, original_reference=normalized)
+    if resolved is not None:
+        return resolved
 
-    needle = normalized.lower()
-    partial = [row for row in rows if needle in str(row.get("title") or "").strip().lower()]
-    if len(partial) == 1:
-        return partial[0]
-    if len(partial) > 1:
-        titles = ", ".join(str(row.get("title") or row["id"]) for row in partial[:5])
-        raise ValueError(f"Ambiguous study topic reference '{normalized}'. Matches: {titles}")
+    sources = list_sources(conn, limit=500)
+    for source in sources:
+        source_title = str(source.get("title") or "").strip()
+        if not source_title:
+            continue
+        source_scoped_reference = _remove_source_title(normalized, source_title)
+        if source_scoped_reference is None:
+            continue
+        source_rows = [row for row in rows if row.get("source_id") == source["id"]]
+        resolved = _resolve_topic_from_rows(source_rows, source_scoped_reference, original_reference=normalized)
+        if resolved is not None:
+            return resolved
+
     raise ValueError(f"Study topic not found for reference: {normalized}")
 
 
