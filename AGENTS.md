@@ -68,6 +68,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `starlog_assistant_ui_contracts_and_api_blueprint.md` — canonical contracts, API, and storage blueprint for the new assistant protocol.
 - `starlog_assistant_ui_repo_execution_checklist.md` — canonical execution-ordered migration checklist for the assistant reset.
 - `README.md` — top-level user-facing product README for install, sign-in handoff, release status, and operator entrypoints; keep developer internals and secrets out of it.
+- `docs/CURRENT_STATE.md` — concise current-state summary for what works today, what remains unproven, and where the evidence lives.
 - `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local UI reference for the assistant reset.
 - `artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md` — active PWA UI concept reference; use with sibling PNG mockups.
 - `artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md` — active mobile UI concept reference; use with sibling PNG mockups.
@@ -78,7 +79,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PARALLEL_AGENT_WORKFLOW.md` — subagent-only workflow for workitem locking, extra worktrees, branch cleanup, and shared dependency reuse.
 - `docs/DESKTOP_HELPER_MAIN_LAPTOP_SETUP.md` — daily-use install, prerequisite, config, smoke, and reset handoff for the desktop helper on the main laptop.
 - `docs/DESKTOP_HELPER_V1_RELEASE.md` — desktop helper distribution runbook, artifact pipeline, and release packaging notes.
-- `docs/IMPLEMENTATION_STATUS.md` — current shipped capability snapshot, validations, and next implementation targets.
+- `docs/IMPLEMENTATION_STATUS.md` — historical implementation log and validation chronology; prefer `docs/CURRENT_STATE.md` for current works-today/unproven status.
 - `docs/LOCAL_AI_WORKER.md` — laptop-local AI worker responsibilities, provider routing, and runtime setup.
 - `docs/CODEX_PHONE_PWA_CONNECTION.md` — user-facing guide for connecting phone/PWA Starlog clients to Codex through the API, local worker, or experimental server-side bridge without exposing provider credentials in clients.
 - `docs/PHONE_SETUP.md` — laptop-to-phone local testing and setup guide for PWA/mobile use.
@@ -93,6 +94,8 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `docs/PWA_RAILWAY_PROD_CONFIG_CHECKLIST.md` — required Railway production config for API/web services.
 - `docs/PWA_RELEASE_VERIFICATION_GATE.md` — mandatory pre-release gate for PWA builds/tests.
 - `docs/RAILWAY_DEPLOY.md` — recommended Railway deployment model and supporting runbooks.
+- `docs/RELEASE_HANDOFF.md` — generated release bundle snapshot from `scripts/release_handoff.py`; do not hand-edit unless intentionally syncing regenerated release metadata.
+- `docs/RELEASE_HANDOFF_RUNBOOK.md` — release handoff generation and publication runbook.
 - `docs/srs/README.md` — SRS deck/bootstrap references and import commands.
 - `services/ai-runtime/prompts/README.md` — prompt pack conventions for user-editable assistant and agent behavior files.
 - `services/ai-runtime/prompts/*.md` — canonical assistant/agent behavior and workflow prompt templates; prefer editing these markdown files over changing inline prompt strings in code.

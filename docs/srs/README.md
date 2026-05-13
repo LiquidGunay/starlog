@@ -1,6 +1,8 @@
 # SRS Bootstrap Decks
 
 This directory stores reviewable card decks that can seed Starlog's spaced-repetition queue.
+For the current works-today versus unproven interview-prep status, see
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
 
 Current deck:
 

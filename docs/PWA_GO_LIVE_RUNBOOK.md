@@ -1,5 +1,9 @@
 # PWA Go-Live Runbook
 
+For the concise current-state summary and freshness caveats, start with
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md). This runbook keeps the detailed
+PWA deployment and rollback procedure.
+
 ## Deployment order
 
 1. Run release gate: `bash ./scripts/pwa_release_gate.sh`
@@ -13,7 +17,7 @@
    - Railway manual smoke: `docs/PWA_HOSTED_SMOKE_CHECKLIST.md`
 7. Run portability drill: `./scripts/pwa_portability_drill.sh`
 
-## Current release-candidate evidence
+## Historical release-candidate evidence
 
 - Public web URL: `https://starlog-web-production.up.railway.app`
 - Public API URL: `https://starlog-api-production.up.railway.app`
