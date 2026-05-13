@@ -33,6 +33,7 @@ Important:
 
 User docs:
 
+- [docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md)
 - [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md)
 - [docs/MORNING_BRIEFING_AND_VOICE.md](/home/ubuntu/starlog/docs/MORNING_BRIEFING_AND_VOICE.md)
 - [docs/CODEX_PHONE_PWA_CONNECTION.md](/home/ubuntu/starlog/docs/CODEX_PHONE_PWA_CONNECTION.md)
@@ -193,6 +194,7 @@ Setup and release docs:
 ## Repo Entry Points
 
 - product direction: [PLAN.md](/home/ubuntu/starlog/PLAN.md)
+- current state: [docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md)
 - repo rules: [AGENTS.md](/home/ubuntu/starlog/AGENTS.md)
 - assistant UI/backend reset: [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md)
 - user guide: [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md)

@@ -2,6 +2,9 @@
 
 Date: `2026-03-30`
 
+For the current PDF deck-prep status and `Inference Engineering.pdf` outcome, see
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
+
 This branch upgrades the manual PDF ingest path so Starlog stores extraction metadata plus any
 available extracted PDF text on the artifact, rather than only the blob reference and title.
 

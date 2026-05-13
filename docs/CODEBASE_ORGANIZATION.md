@@ -260,6 +260,7 @@ Examples:
 
 1. `AGENTS.md` for repo rules, lock workflow, and validation runbooks.
 2. `README.md` for product-level setup and surface overview.
-3. `docs/IMPLEMENTATION_STATUS.md` for the current shipped snapshot.
+3. `docs/CURRENT_STATE.md` for the concise current-state summary.
 4. This file for code ownership and navigation.
-5. The specific surface runbook that matches your task, such as Android, desktop helper, or PWA release docs.
+5. `docs/IMPLEMENTATION_STATUS.md` only when you need the historical implementation log.
+6. The specific surface runbook that matches your task, such as Android, desktop helper, or PWA release docs.
