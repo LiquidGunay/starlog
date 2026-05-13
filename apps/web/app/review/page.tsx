@@ -357,13 +357,29 @@ export default function ReviewPage() {
     if (missingConfig) {
       return;
     }
-    const [progressPayload, topicPayload] = await Promise.all([
+    const [progressResult, topicResult] = await Promise.allSettled([
       apiRequest<StudyProgress>(apiBase, token, "/v1/study/progress"),
       apiRequest<StudyTopic[]>(apiBase, token, "/v1/study/topics?limit=12"),
     ]);
-    setStudyProgress(progressPayload);
-    setStudyTopics(topicPayload);
+    if (progressResult.status === "fulfilled") {
+      setStudyProgress(progressResult.value);
+    }
+    if (topicResult.status === "fulfilled") {
+      setStudyTopics(topicResult.value);
+    }
   }, [apiBase, missingConfig, token]);
+
+  const loadReviewQueueData = useCallback(async () => {
+    const [summaryPayload, nextCards, nextDecks] = await Promise.all([
+      apiRequest<ReviewSurfaceSummary>(apiBase, token, "/v1/surfaces/review/summary"),
+      apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42"),
+      apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks"),
+    ]);
+    setSummary(summaryPayload);
+    setCards(nextCards);
+    setDecks(nextDecks);
+    return { summaryPayload, nextCards, nextDecks };
+  }, [apiBase, token]);
 
   const loadReviewData = useCallback(async () => {
     if (missingConfig) {
@@ -373,18 +389,8 @@ export default function ReviewPage() {
 
     setLoading(true);
     try {
-      const [summaryPayload, nextCards, nextDecks, progressPayload, topicPayload] = await Promise.all([
-        apiRequest<ReviewSurfaceSummary>(apiBase, token, "/v1/surfaces/review/summary"),
-        apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42"),
-        apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks"),
-        apiRequest<StudyProgress>(apiBase, token, "/v1/study/progress"),
-        apiRequest<StudyTopic[]>(apiBase, token, "/v1/study/topics?limit=12"),
-      ]);
-      setSummary(summaryPayload);
-      setCards(nextCards);
-      setDecks(nextDecks);
-      setStudyProgress(progressPayload);
-      setStudyTopics(topicPayload);
+      const { summaryPayload, nextDecks } = await loadReviewQueueData();
+      await loadStudyData();
       setStats(emptyStats());
       setShowAnswer(false);
       setRevealedCardId(null);
@@ -394,7 +400,7 @@ export default function ReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiBase, missingConfig, token]);
+  }, [loadReviewQueueData, loadStudyData, missingConfig]);
 
   useEffect(() => {
     if (attemptedInitialLoad || missingConfig) {
@@ -484,10 +490,15 @@ export default function ReviewPage() {
         method: "POST",
       });
       setStudyTopics((previous) => previous.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
-      await Promise.all([
+      const [, reviewRefresh] = await Promise.allSettled([
         loadStudyData(),
-        apiRequest<Card[]>(apiBase, token, "/v1/cards/due?limit=42").then((nextCards) => setCards(nextCards)),
+        loadReviewQueueData(),
       ]);
+      if (reviewRefresh.status === "rejected") {
+        const detail = reviewRefresh.reason instanceof Error ? reviewRefresh.reason.message : "failed to refresh Review queue";
+        setStatus(`${action === "read" ? `Marked ${topic.title} read` : `Unlocked ${topic.title}`}, but ${detail}.`);
+        return;
+      }
       setStatus(action === "read" ? `Marked ${topic.title} read; linked due cards can enter review.` : `Unlocked ${topic.title}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : `Failed to ${action} topic`);
