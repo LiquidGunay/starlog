@@ -2,6 +2,7 @@ import json
 import asyncio
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes import assistant as assistant_routes
@@ -96,18 +97,42 @@ def _parse_sse_events(raw_stream: str, *, stop_event: str = "cursor", limit: int
     return events
 
 
-async def _collect_stream_output(stream) -> str:
+async def _collect_stream_output(
+    stream,
+    *,
+    stop_event: str = "cursor",
+    max_chunks: int = 16,
+    timeout_seconds: float = 1.0,
+) -> str:
     chunks: list[str] = []
-    cursor_started = False
-    async for chunk in stream:
-        chunks.append(chunk)
-        if chunk.startswith("event: cursor"):
-            cursor_started = True
-            continue
-        if cursor_started and chunk.startswith("data:"):
-            break
-    await stream.aclose()
-    return "".join(chunks)
+    stop_event_started = False
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            async for chunk in stream:
+                chunks.append(chunk)
+                if len(chunks) > max_chunks:
+                    raise AssertionError(f"stream exceeded {max_chunks} chunks before {stop_event}")
+                if chunk.startswith(f"event: {stop_event}"):
+                    stop_event_started = True
+                    continue
+                if stop_event_started and chunk.startswith("data:"):
+                    return "".join(chunks)
+    except TimeoutError as exc:
+        raise AssertionError(f"stream did not emit {stop_event} within {timeout_seconds} seconds") from exc
+    finally:
+        await stream.aclose()
+    raise AssertionError(f"stream closed before emitting {stop_event}")
+
+
+async def _keep_alive_stream():
+    while True:
+        yield ": keep-alive\n\n"
+        await asyncio.sleep(0)
+
+
+def test_assistant_stream_collector_is_bounded() -> None:
+    with pytest.raises(AssertionError, match="stream exceeded 2 chunks"):
+        asyncio.run(_collect_stream_output(_keep_alive_stream(), max_chunks=2))
 
 
 def _secondary_auth_headers() -> dict[str, str]:
