@@ -453,6 +453,44 @@ def _insert_review_event(
     return event_id
 
 
+def _insert_study_topic(conn, *, title: str = "Study topic", read: bool = False) -> str:
+    now = utc_now()
+    source_id = new_id("study_source")
+    topic_id = new_id("study_topic")
+    conn.execute(
+        """
+        INSERT INTO study_sources (id, title, source_type, artifact_id, url, metadata_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (source_id, f"{title} source", "manual", None, None, "{}", _iso(now), _iso(now)),
+    )
+    conn.execute(
+        """
+        INSERT INTO study_topics (id, source_id, parent_topic_id, title, summary, display_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (topic_id, source_id, None, title, f"{title} summary", 1, _iso(now), _iso(now)),
+    )
+    if read:
+        conn.execute(
+            """
+            INSERT INTO study_topic_progress (topic_id, status, manually_unlocked, unlocked_at, read_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (topic_id, "read", 0, _iso(now), _iso(now), _iso(now), _iso(now)),
+        )
+    return topic_id
+
+
+def _link_review_card_to_topic(conn, *, card_id: str, topic_id: str, gate_required: bool = True) -> str:
+    link_id = new_id("card_topic")
+    conn.execute(
+        "INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at) VALUES (?, ?, ?, ?, ?)",
+        (link_id, card_id, topic_id, 1 if gate_required else 0, _iso(utc_now())),
+    )
+    return link_id
+
+
 def _insert_active_goal(conn, *, title: str = "Keep strategy visible", reviewed_days_ago: int = 0) -> str:
     now = utc_now()
     reviewed_at = now - timedelta(days=reviewed_days_ago)
@@ -682,6 +720,80 @@ def test_review_summary_is_neutral_when_no_learning_data_exists(
         "reason": "No due cards or recent low ratings found.",
         "enabled": False,
     }
+
+
+def test_review_summary_and_assistant_today_exclude_unread_gated_study_cards(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    now = utc_now()
+    with get_connection() as conn:
+        generic_card = _insert_review_card(conn, card_type="qa", due_at=now - timedelta(days=1))
+        read_card = _insert_review_card(conn, card_type="scenario", due_at=now - timedelta(days=1))
+        gated_unread_card = _insert_review_card(conn, card_type="connect", due_at=now - timedelta(days=2))
+        read_topic = _insert_study_topic(conn, title="Read dynamic programming", read=True)
+        unread_topic = _insert_study_topic(conn, title="Unread graph search", read=False)
+        _link_review_card_to_topic(conn, card_id=read_card, topic_id=read_topic, gate_required=True)
+        _link_review_card_to_topic(conn, card_id=gated_unread_card, topic_id=unread_topic, gate_required=True)
+        conn.commit()
+
+    review = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+
+    assert review.status_code == 200
+    review_payload = review.json()
+    assert review_payload["queue_health"]["due_count"] == 2
+    assert review_payload["queue_health"]["overdue_count"] == 2
+    assert review_payload["queue_health"]["due_soon_count"] == 2
+    assert _bucket(review_payload, "ladder_counts", "recall") == 1
+    assert _bucket(review_payload, "ladder_counts", "application") == 1
+    assert _bucket(review_payload, "ladder_counts", "synthesis") == 0
+
+    assistant = client.get("/v1/surfaces/assistant/today", headers=auth_headers)
+
+    assert assistant.status_code == 200
+    assistant_payload = assistant.json()
+    assert _open_loop(assistant_payload, "due_reviews") == 2
+    assert _at_a_glance(assistant_payload, "review") == 2
+    assert _quick_action(assistant_payload, "start_review")["count"] == 2
+    assert generic_card != gated_unread_card
+
+
+def test_assistant_today_recommends_study_loop_for_signal_boosted_due_reviews(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    now = utc_now()
+    with get_connection() as conn:
+        card_id = _insert_review_card(conn, card_type="qa", due_at=now - timedelta(minutes=10))
+        topic_id = _insert_study_topic(conn, title="Heap practice", read=False)
+        _link_review_card_to_topic(conn, card_id=card_id, topic_id=topic_id, gate_required=False)
+        conn.execute(
+            """
+            INSERT INTO study_question_requests (
+              id, source_id, topic_id, question, status, response_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id("study_question"),
+                None,
+                topic_id,
+                "Give me another heap interview question.",
+                "requested",
+                "{}",
+                _iso(now),
+                _iso(now),
+            ),
+        )
+        conn.commit()
+
+    response = client.get("/v1/surfaces/assistant/today", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommended_next_move"]["key"] == "continue_study_loop"
+    assert payload["recommended_next_move"]["body"] == "1 review card due with recent study/review signals."
+    assert payload["recommended_next_move"]["prompt"] == "Start my study-informed review queue."
+    assert payload["reason_stack"] == ["1 study-loop review card due"]
 
 
 def test_assistant_today_summary_is_read_only_and_composes_open_loops(

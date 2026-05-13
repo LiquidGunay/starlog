@@ -1,15 +1,18 @@
 import json
+from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from app.core.time import utc_now
 from app.db.storage import get_connection
+from app.services.common import new_id
 
 
-def _create_due_card(client: TestClient, auth_headers: dict[str, str]) -> dict:
+def _create_due_card(client: TestClient, auth_headers: dict[str, str], *, prompt: str = "What is a gated recall card?") -> dict:
     response = client.post(
         "/v1/cards",
         json={
-            "prompt": "What is a gated recall card?",
+            "prompt": prompt,
             "answer": "A card that waits until its topic has been read.",
             "due_at": "2026-04-02T00:00:00+00:00",
         },
@@ -46,6 +49,38 @@ def _create_source_and_topic(client: TestClient, auth_headers: dict[str, str]) -
     topic = topic_response.json()
     assert topic["status"] == "locked"
     return source, topic
+
+
+def _create_topic(client: TestClient, auth_headers: dict[str, str], source_id: str, title: str, display_order: int) -> dict:
+    topic_response = client.post(
+        "/v1/study/topics",
+        json={
+            "source_id": source_id,
+            "title": title,
+            "summary": f"{title} summary.",
+            "display_order": display_order,
+        },
+        headers=auth_headers,
+    )
+    assert topic_response.status_code == 201
+    return topic_response.json()
+
+
+def _link_card_to_topic(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    *,
+    card_id: str,
+    topic_id: str,
+    gate_required: bool = False,
+) -> dict:
+    link_response = client.post(
+        "/v1/study/card-topic-links",
+        json={"card_id": card_id, "topic_id": topic_id, "gate_required": gate_required},
+        headers=auth_headers,
+    )
+    assert link_response.status_code == 201
+    return link_response.json()
 
 
 def test_study_topic_read_unblocks_gated_due_cards(
@@ -104,6 +139,89 @@ def test_study_topic_read_unblocks_gated_due_cards(
     assert surface_events[0]["visibility"] == "ambient"
     assert json.loads(surface_events[0]["entity_ref_json"])["entity_id"] == topic["id"]
     assert json.loads(surface_events[0]["payload_json"])["source_id"] == source["id"]
+
+
+def test_due_cards_prioritize_study_signals_then_due_date_fallback(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    low_review = _create_due_card(client, auth_headers, prompt="Low review card")
+    practice_miss = _create_due_card(client, auth_headers, prompt="Practice miss card")
+    question_request = _create_due_card(client, auth_headers, prompt="Question request card")
+    topic_read = _create_due_card(client, auth_headers, prompt="Topic read card")
+    plain_earlier = _create_due_card(client, auth_headers, prompt="Plain earlier card")
+    plain_later = _create_due_card(client, auth_headers, prompt="Plain later card")
+
+    source, read_topic = _create_source_and_topic(client, auth_headers)
+    practice_topic = _create_topic(client, auth_headers, source["id"], "Practice misses", 2)
+    question_topic = _create_topic(client, auth_headers, source["id"], "Question requests", 3)
+    plain_topic = _create_topic(client, auth_headers, source["id"], "Plain fallback", 4)
+
+    _link_card_to_topic(client, auth_headers, card_id=practice_miss["id"], topic_id=practice_topic["id"])
+    _link_card_to_topic(client, auth_headers, card_id=question_request["id"], topic_id=question_topic["id"])
+    _link_card_to_topic(client, auth_headers, card_id=topic_read["id"], topic_id=read_topic["id"], gate_required=True)
+    _link_card_to_topic(client, auth_headers, card_id=plain_earlier["id"], topic_id=plain_topic["id"])
+    _link_card_to_topic(client, auth_headers, card_id=plain_later["id"], topic_id=plain_topic["id"])
+
+    read = client.post(f"/v1/study/topics/{read_topic['id']}/read", headers=auth_headers)
+    assert read.status_code == 200
+    item = client.post(
+        "/v1/study/practice-items",
+        json={
+            "source_id": source["id"],
+            "topic_id": practice_topic["id"],
+            "prompt": "Miss this practice item.",
+            "answer": "Try again.",
+        },
+        headers=auth_headers,
+    )
+    assert item.status_code == 201
+    attempt = client.post(
+        "/v1/study/practice-attempts",
+        json={
+            "practice_item_id": item.json()["id"],
+            "rating": 1,
+            "response_text": "Wrong",
+            "correct": False,
+        },
+        headers=auth_headers,
+    )
+    assert attempt.status_code == 201
+    request = client.post(
+        "/v1/study/question-requests",
+        json={"topic_id": question_topic["id"], "question": "Give me another graph traversal question."},
+        headers=auth_headers,
+    )
+    assert request.status_code == 201
+
+    now = utc_now()
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO review_events (id, card_id, rating, latency_ms, reviewed_at) VALUES (?, ?, ?, ?, ?)",
+            (new_id("rev"), low_review["id"], 1, 900, (now - timedelta(hours=1)).isoformat()),
+        )
+        conn.execute(
+            "UPDATE cards SET due_at = ? WHERE id = ?",
+            ((now - timedelta(days=10)).isoformat(), plain_earlier["id"]),
+        )
+        conn.execute(
+            "UPDATE cards SET due_at = ? WHERE id = ?",
+            ((now - timedelta(days=1)).isoformat(), plain_later["id"]),
+        )
+        conn.commit()
+
+    due = client.get("/v1/cards/due?limit=6", headers=auth_headers)
+    assert due.status_code == 200
+    ordered_ids = [item["id"] for item in due.json()]
+
+    assert ordered_ids[:6] == [
+        low_review["id"],
+        practice_miss["id"],
+        question_request["id"],
+        topic_read["id"],
+        plain_earlier["id"],
+        plain_later["id"],
+    ]
 
 
 def test_study_primitives_record_chunks_practice_and_question_requests(
@@ -205,6 +323,7 @@ def test_study_progress_summary_counts_topics_and_due_unlocked_cards(
     auth_headers: dict[str, str],
 ) -> None:
     card = _create_due_card(client, auth_headers)
+    generic_card = _create_due_card(client, auth_headers, prompt="Generic SRS card")
     source, topic = _create_source_and_topic(client, auth_headers)
 
     link_response = client.post(
@@ -245,3 +364,6 @@ def test_study_progress_summary_counts_topics_and_due_unlocked_cards(
         "locked_topic_count": 0,
         "due_unlocked_card_count": 1,
     }
+    due_cards = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_cards.status_code == 200
+    assert {card["id"], generic_card["id"]}.issubset({item["id"] for item in due_cards.json()})

@@ -5,7 +5,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import review_mode_service, strategic_context_service
+from app.services import review_mode_service, srs_service, strategic_context_service
 from app.services.common import execute_fetchall, execute_fetchone
 
 OPEN_TASK_STATUSES_SQL = "status NOT IN ('done', 'completed', 'cancelled', 'canceled')"
@@ -314,6 +314,46 @@ def _mode_counts_from_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def _review_due_stats(conn: Connection, *, now: datetime, start: str, due_soon: str | None = None) -> dict[str, int]:
+    signal_score_sql = srs_service.card_signal_score_sql("c")
+    row = execute_fetchone(
+        conn,
+        f"""
+        SELECT
+          SUM(CASE WHEN c.suspended = 0 AND c.due_at <= ? AND {srs_service.available_card_condition("c")} THEN 1 ELSE 0 END) AS due_count,
+          SUM(CASE WHEN c.suspended = 0 AND c.due_at < ? AND {srs_service.available_card_condition("c")} THEN 1 ELSE 0 END) AS overdue_count,
+          SUM(CASE WHEN c.suspended = 0 AND c.due_at <= ? AND {srs_service.available_card_condition("c")} THEN 1 ELSE 0 END) AS due_soon_count,
+          SUM(
+            CASE
+              WHEN c.suspended = 0
+                AND c.due_at <= ?
+                AND {srs_service.available_card_condition("c")}
+                AND ({signal_score_sql}) > 0
+              THEN 1
+              ELSE 0
+            END
+          ) AS due_signal_count,
+          SUM(CASE WHEN c.suspended = 1 THEN 1 ELSE 0 END) AS suspended_count
+        FROM cards c
+        WHERE c.suspended = 0 OR c.suspended = 1
+        """,
+        (
+            now.isoformat(),
+            start,
+            due_soon or now.isoformat(),
+            now.isoformat(),
+            *srs_service.card_signal_score_params(now),
+        ),
+    ) or {}
+    return {
+        "due_count": int(row.get("due_count") or 0),
+        "overdue_count": int(row.get("overdue_count") or 0),
+        "due_soon_count": int(row.get("due_soon_count") or 0),
+        "due_signal_count": int(row.get("due_signal_count") or 0),
+        "suspended_count": int(row.get("suspended_count") or 0),
+    }
+
+
 def _mode_title(mode: str) -> str:
     return mode.replace("_", " ").title()
 
@@ -463,47 +503,39 @@ def review_summary(conn: Connection) -> dict[str, Any]:
 
     due_mode_rows = execute_fetchall(
         conn,
-        """
-        SELECT card_type, COUNT(*) AS count
-        FROM cards
-        WHERE suspended = 0 AND due_at <= ?
-        GROUP BY card_type
+        f"""
+        SELECT c.card_type, COUNT(*) AS count
+        FROM cards c
+        WHERE c.suspended = 0
+          AND c.due_at <= ?
+          AND {srs_service.available_card_condition("c")}
+        GROUP BY c.card_type
         """,
         (now.isoformat(),),
     )
     total_mode_rows = execute_fetchall(
         conn,
-        """
-        SELECT card_type, COUNT(*) AS count
-        FROM cards
-        WHERE suspended = 0
-        GROUP BY card_type
+        f"""
+        SELECT c.card_type, COUNT(*) AS count
+        FROM cards c
+        WHERE c.suspended = 0
+          AND {srs_service.available_card_condition("c")}
+        GROUP BY c.card_type
         """,
     )
     deck_rows = execute_fetchall(
         conn,
-        """
+        f"""
         SELECT COALESCE(d.name, 'Inbox') AS key, COALESCE(d.name, 'Inbox') AS label, COUNT(c.id) AS count
         FROM cards c
         LEFT JOIN card_decks d ON d.id = c.deck_id
         WHERE c.suspended = 0
+          AND {srs_service.available_card_condition("c")}
         GROUP BY COALESCE(d.name, 'Inbox')
         ORDER BY count DESC, label ASC
         """,
     )
-    health_row = execute_fetchone(
-        conn,
-        """
-        SELECT
-          SUM(CASE WHEN suspended = 0 AND due_at <= ? THEN 1 ELSE 0 END) AS due_count,
-          SUM(CASE WHEN suspended = 0 AND due_at < ? THEN 1 ELSE 0 END) AS overdue_count,
-          SUM(CASE WHEN suspended = 0 AND due_at <= ? THEN 1 ELSE 0 END) AS due_soon_count,
-          SUM(CASE WHEN suspended = 1 THEN 1 ELSE 0 END) AS suspended_count
-        FROM cards
-        WHERE suspended = 0 OR suspended = 1
-        """,
-        (now.isoformat(), start, due_soon),
-    ) or {}
+    health_row = _review_due_stats(conn, now=now, start=start, due_soon=due_soon)
     review_row = execute_fetchone(
         conn,
         """
@@ -523,8 +555,10 @@ def review_summary(conn: Connection) -> dict[str, Any]:
         FROM review_events re
         JOIN cards c ON c.id = re.card_id
         WHERE re.reviewed_at >= ? AND re.rating <= ?
+          AND c.suspended = 0
+          AND {available_condition}
         GROUP BY c.card_type
-        """,
+        """.format(available_condition=srs_service.available_card_condition("c")),
         (recent_review_cutoff, LOW_RATING_THRESHOLD),
     )
     recent_review_event_count = _count(
@@ -789,6 +823,21 @@ def _assistant_recommended_next_move(counts: dict[str, int]) -> dict[str, Any]:
             "urgency": "medium",
         }
     if counts["due_reviews"] > 0:
+        if counts.get("due_review_signal_count", 0) > 0:
+            return {
+                "key": "continue_study_loop",
+                "title": "Continue study loop",
+                "body": (
+                    f"{_count_phrase(counts['due_review_signal_count'], 'review card')} "
+                    "due with recent study/review signals."
+                ),
+                "surface": "review",
+                "href": "/review",
+                "action_label": "Start review",
+                "prompt": "Start my study-informed review queue.",
+                "priority": 72,
+                "urgency": "medium",
+            }
         return {
             "key": "start_due_review",
             "title": "Start due review",
@@ -843,7 +892,10 @@ def _assistant_reason_stack(counts: dict[str, int]) -> list[str]:
     if counts["unprocessed_library"] > 0:
         reasons.append(f"{_count_phrase(counts['unprocessed_library'], 'library capture')} unprocessed")
     if counts["due_reviews"] > 0:
-        reasons.append(f"{_count_phrase(counts['due_reviews'], 'review card')} due")
+        if counts.get("due_review_signal_count", 0) > 0:
+            reasons.append(f"{_count_phrase(counts['due_review_signal_count'], 'study-loop review card')} due")
+        else:
+            reasons.append(f"{_count_phrase(counts['due_reviews'], 'review card')} due")
     if len(reasons) < 4 and counts["open_commitments"] > 0:
         reasons.append(f"{_count_phrase(counts['open_commitments'], 'commitment')} open")
     if len(reasons) < 4 and counts["open_tasks"] > 0:
@@ -1252,7 +1304,8 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         f"SELECT COUNT(*) FROM tasks WHERE {OPEN_TASK_STATUSES_SQL} AND due_at IS NOT NULL AND due_at < ?",
         (start,),
     )
-    due_reviews = _count(conn, "SELECT COUNT(*) FROM cards WHERE suspended = 0 AND due_at <= ?", (generated_at.isoformat(),))
+    review_stats = _review_due_stats(conn, now=generated_at, start=start)
+    due_reviews = review_stats["due_count"]
     unprocessed_library = _count(
         conn,
         """
@@ -1279,6 +1332,7 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         "overdue_commitments": int(strategic_context["overdue_commitment_count"]),
         "projects_missing_next_action": int(strategic_context["project_missing_next_action_count"]),
         "due_reviews": due_reviews,
+        "due_review_signal_count": review_stats["due_signal_count"],
         "unprocessed_library": unprocessed_library,
         "open_commitments": open_commitments,
     }

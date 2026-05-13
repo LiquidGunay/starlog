@@ -12,6 +12,7 @@ DEFAULT_SCHEDULE = {
     "initial_interval_days": 1,
     "initial_ease_factor": 2.5,
 }
+SIGNAL_LOOKBACK_DAYS = 14
 
 
 def _normalize_schedule(schedule: dict | None) -> dict:
@@ -40,6 +41,7 @@ def _normalize_tags(tags: list[str] | None) -> list[str]:
 
 def _format_card(row: dict) -> dict:
     payload = dict(row)
+    payload.pop("signal_score", None)
     payload["tags"] = _normalize_tags(payload.pop("tags_json", []))
     payload["suspended"] = bool(payload.get("suspended", 0))
     payload["review_mode"] = review_mode_service.review_mode_for_card_type(payload.get("card_type"))
@@ -52,6 +54,59 @@ def _format_deck(row: dict) -> dict:
     payload["card_count"] = int(payload.get("card_count") or 0)
     payload["due_count"] = int(payload.get("due_count") or 0)
     return payload
+
+
+def available_card_condition(card_ref: str = "c") -> str:
+    return f"""
+      NOT EXISTS (
+        SELECT 1
+        FROM card_topic_links ctl
+        LEFT JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+        WHERE ctl.card_id = {card_ref}.id
+          AND ctl.gate_required = 1
+          AND COALESCE(stp.read_at, '') = ''
+          AND COALESCE(stp.status, '') != 'read'
+      )
+    """
+
+
+def card_signal_score_sql(card_ref: str = "c") -> str:
+    return f"""
+      (
+        SELECT COUNT(*) * 40
+        FROM review_events re
+        WHERE re.card_id = {card_ref}.id
+          AND re.rating <= 2
+          AND re.reviewed_at >= ?
+      )
+      + (
+        SELECT COUNT(DISTINCT sqr.id) * 30
+        FROM card_topic_links ctl
+        JOIN study_question_requests sqr ON sqr.topic_id = ctl.topic_id
+        WHERE ctl.card_id = {card_ref}.id
+          AND sqr.created_at >= ?
+      )
+      + (
+        SELECT COUNT(DISTINCT pa.id) * 35
+        FROM card_topic_links ctl
+        JOIN practice_attempts pa ON pa.topic_id = ctl.topic_id
+        WHERE ctl.card_id = {card_ref}.id
+          AND pa.attempted_at >= ?
+          AND (pa.correct = 0 OR pa.rating <= 2)
+      )
+      + (
+        SELECT COUNT(DISTINCT stp.topic_id) * 20
+        FROM card_topic_links ctl
+        JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+        WHERE ctl.card_id = {card_ref}.id
+          AND stp.read_at >= ?
+      )
+    """
+
+
+def card_signal_score_params(now: datetime | None = None) -> tuple[str, str, str, str]:
+    cutoff = ((now or utc_now()) - timedelta(days=SIGNAL_LOOKBACK_DAYS)).isoformat()
+    return (cutoff, cutoff, cutoff, cutoff)
 
 
 def ensure_default_deck(conn: Connection) -> dict:
@@ -388,29 +443,24 @@ def update_card(conn: Connection, card_id: str, payload: dict) -> dict | None:
 
 def due_cards(conn: Connection, limit: int) -> list[dict]:
     default_deck = ensure_default_deck(conn)
-    now = utc_now().isoformat()
+    now = utc_now()
+    signal_score_sql = card_signal_score_sql("c")
     rows = execute_fetchall(
         conn,
         f"""
-        SELECT id, card_set_version_id, artifact_id, note_block_id, COALESCE(deck_id, '{default_deck["id"]}') AS deck_id,
-               card_type, prompt, answer, tags_json, suspended, due_at, interval_days, repetitions, ease_factor,
-               created_at, updated_at
-        FROM cards
-        WHERE suspended = 0
-          AND due_at <= ?
-          AND NOT EXISTS (
-            SELECT 1
-            FROM card_topic_links ctl
-            LEFT JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
-            WHERE ctl.card_id = cards.id
-              AND ctl.gate_required = 1
-              AND COALESCE(stp.read_at, '') = ''
-              AND COALESCE(stp.status, '') != 'read'
-          )
-        ORDER BY due_at ASC
+        SELECT c.id, c.card_set_version_id, c.artifact_id, c.note_block_id,
+               COALESCE(c.deck_id, '{default_deck["id"]}') AS deck_id,
+               c.card_type, c.prompt, c.answer, c.tags_json, c.suspended, c.due_at, c.interval_days, c.repetitions,
+               c.ease_factor, c.created_at, c.updated_at,
+               ({signal_score_sql}) AS signal_score
+        FROM cards c
+        WHERE c.suspended = 0
+          AND c.due_at <= ?
+          AND {available_card_condition("c")}
+        ORDER BY signal_score DESC, c.due_at ASC, c.id ASC
         LIMIT ?
         """,
-        (now, limit),
+        (*card_signal_score_params(now), now.isoformat(), limit),
     )
     return [_format_card(row) for row in rows]
 
