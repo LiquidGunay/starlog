@@ -68,6 +68,7 @@ import {
 } from "./src/mobile-assistant-today-view-model";
 import {
   normalizeCurrentBriefingDate,
+  normalizePersistedBriefingState,
   todayBriefingDate,
 } from "./src/mobile-briefing-date";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
@@ -3923,9 +3924,15 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       }
 
       if (active && persisted) {
-        const persistedBriefingDate = normalizeCurrentBriefingDate(persisted.briefingDate);
-        if (persistedBriefingDate.reset && persisted.alarmNotificationId) {
-          Notifications.cancelScheduledNotificationAsync(persisted.alarmNotificationId).catch(() => undefined);
+        const persistedBriefing = normalizePersistedBriefingState({
+          briefingDate: persisted.briefingDate,
+          cachedPath: persisted.cachedPath,
+          alarmNotificationId: persisted.alarmNotificationId,
+        });
+        if (persistedBriefing.canceledAlarmNotificationId) {
+          Notifications.cancelScheduledNotificationAsync(persistedBriefing.canceledAlarmNotificationId).catch(
+            () => undefined,
+          );
         }
         setApiBase(persisted.apiBase || DEFAULT_API_BASE);
         setPwaBase(persisted.pwaBase || DEFAULT_PWA_BASE);
@@ -3937,13 +3944,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setVoiceClipUri(persisted.voiceClipUri ?? null);
         setVoiceClipDurationMs(persisted.voiceClipDurationMs ?? 0);
         setVoiceClipTarget(persisted.voiceClipTarget ?? (persisted.voiceClipUri ? "capture" : null));
-        setBriefingDate(persistedBriefingDate.date);
-        setCachedPath(persistedBriefingDate.reset ? null : persisted.cachedPath);
+        setBriefingDate(persistedBriefing.briefingDate);
+        setCachedPath(persistedBriefing.cachedPath);
         setVoiceRoutePreference(normalizeVoiceRoutePreference(persisted.voiceRoutePreference));
         setBriefingPlaybackPreference(normalizeBriefingPlaybackPreference(persisted.briefingPlaybackPreference));
         setAlarmHour(boundedInt(persisted.alarmHour, 0, 23));
         setAlarmMinute(boundedInt(persisted.alarmMinute, 0, 59));
-        setAlarmNotificationId(persistedBriefingDate.reset ? null : persisted.alarmNotificationId);
+        setAlarmNotificationId(persistedBriefing.alarmNotificationId);
         setPendingCaptures(persisted.pendingCaptures || []);
         setArtifacts(persisted.artifacts || []);
         setSelectedArtifactId(persisted.selectedArtifactId || "");

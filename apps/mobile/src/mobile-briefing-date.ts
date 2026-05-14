@@ -5,6 +5,20 @@ export type NormalizedBriefingDate = {
   reset: boolean;
 };
 
+export type PersistedBriefingStateInput = {
+  briefingDate: string;
+  cachedPath: string | null;
+  alarmNotificationId: string | null;
+};
+
+export type NormalizedPersistedBriefingState = {
+  briefingDate: string;
+  cachedPath: string | null;
+  alarmNotificationId: string | null;
+  canceledAlarmNotificationId: string | null;
+  reset: boolean;
+};
+
 export function todayBriefingDate(now: Date = new Date()): string {
   return localDateStringForAssistantToday(now);
 }
@@ -39,4 +53,28 @@ export function normalizeCurrentBriefingDate(
     return { date: today, reset: true };
   }
   return { date: value, reset: false };
+}
+
+export function normalizePersistedBriefingState(
+  persisted: PersistedBriefingStateInput,
+  today = todayBriefingDate(),
+): NormalizedPersistedBriefingState {
+  const normalized = normalizeCurrentBriefingDate(persisted.briefingDate, today);
+  if (!normalized.reset) {
+    return {
+      briefingDate: normalized.date,
+      cachedPath: persisted.cachedPath,
+      alarmNotificationId: persisted.alarmNotificationId,
+      canceledAlarmNotificationId: null,
+      reset: false,
+    };
+  }
+
+  return {
+    briefingDate: normalized.date,
+    cachedPath: null,
+    alarmNotificationId: null,
+    canceledAlarmNotificationId: persisted.alarmNotificationId,
+    reset: true,
+  };
 }

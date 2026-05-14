@@ -131,8 +131,9 @@ Known outcome for `Inference Engineering.pdf`:
   recommendation-backed briefing hints in live PWA/Android local validation. The remaining gap is validated,
   consistent rendering of these hints in production Assistant UI surfaces.
 - **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
-  the current day, but a device that already carries stale persisted briefing-date state still needs
-  a dedicated state-migration/reset proof before release.
+  the current day, and stale persisted briefing-date normalization is now covered by a focused mobile
+  unit test. A device that already carries stale persisted briefing-date state still needs physical
+  state-migration/reset proof before release.
 - **Fresh end-to-end release confidence:** re-run [docs/CROSS_SURFACE_PROOF.md](/home/ubuntu/starlog/docs/CROSS_SURFACE_PROOF.md)
   before claiming current web + phone + helper release readiness.
 - **Production Android store readiness:** Android release-signing, signed production QA smoke, store
