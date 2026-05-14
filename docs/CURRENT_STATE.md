@@ -39,6 +39,14 @@ where Starlog is going. Use this page for current implementation confidence.
   FastAPI `TestClient`, and only allows localhost parse/OCR server URLs. It now writes
   provenance-only `candidate_cards.jsonl` for proven local extraction and records blocked chunk
   hashes for unproven extraction; it does not persist source excerpts as card content.
+- **PDF final-card safety path:** `scripts/build_pdf_review_cards.py` is the next step after preflight.
+  It only writes final SRS-compatible review-card JSONL when extraction is proven and comes from
+  trusted local providers (`liteparse_server`, `ocr_server`, or `pypdf`). `strings` and noisy scanned
+  chunks are recorded as blocked evidence instead of weak review cards. `scripts/import_pdf_review_cards.py`
+  repeatably upserts the generated JSONL into a source-scoped PDF deck plus Study Core
+  source/topic/chunk records, with card-topic links gated until the PDF topic is marked read.
+  It rejects untrusted or mixed-source JSONL and removes stale gated links when a card's imported
+  PDF section is corrected.
 - **NeetCode 150 Study Core importer:** `data/neetcode_150.json` contains 150 factual practice
   entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user notes.
   `scripts/import_neetcode_150.py` can validate dry-run payloads and perform an idempotent local
@@ -61,6 +69,8 @@ The merged interview-prep slice currently supports this local loop:
 1. Import or validate structured study material:
    - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
    - NeetCode 150 local Study Core/SRS import via `scripts/import_neetcode_150.py`.
+   - `Inference Engineering.pdf` review cards via local LiteParse/OCR preflight, final-card build,
+     and `scripts/import_pdf_review_cards.py`.
 2. Mark a topic read through the Assistant or the Review surface.
 3. Unlock only cards linked to read/unlocked topics; unread gated cards stay out of due review.
 4. Request question style preferences, such as application questions, against a topic.
@@ -77,15 +87,17 @@ Known outcome for `Inference Engineering.pdf`:
 - Latest local preflight evidence with a localhost LiteParse parse endpoint reported
   `provider=liteparse_server`, `mode=liteparse`, `usable=true`, `readable=true`,
   `rejected_as_noise=false`, `evidence_status=proven_local_text`, and `cards_generated=0`.
-- That PDF now has proven local LiteParse extraction for deck prep. The preflight can prepare
-  provenance-only candidate records from readable local extraction, but it still does not create
-  final review cards; do not generate cards from older noisy `strings` reports.
+- Fresh local builder/import evidence on 2026-05-14 generated 8 Chapter 0 review cards from
+  LiteParse extraction into `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/`, then imported
+  them into a temp DB with 8 cards, 8 gated card-topic links, 8 source-backed answer chunks, one
+  Study source, and one Study topic. Due review was empty before marking `Chapter 0: Inference`
+  read and contained all 8 cards after the read marker.
 
 ## Unproven Or Pending
 
-- **`Inference Engineering.pdf` final cards:** local LiteParse text extraction and provenance-only
-  candidate generation are proven, but final user-reviewable cards have not been generated yet.
-  Import should use readable local extraction, not older noisy `strings` output.
+- **Full-book `Inference Engineering.pdf` coverage:** Chapter 0 final-card generation/import is proven
+  through the guarded local path. Broader chapter coverage still needs a larger trusted extraction
+  run and human review of generated local JSONL before import.
 - **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
   the current day, but a device that already carries stale persisted briefing-date state still needs
   a dedicated state-migration/reset proof before release.
@@ -115,6 +127,12 @@ Known outcome for `Inference Engineering.pdf`:
 - Fresh frontend/native validation: the Next.js production build passed,
   `corepack pnpm --filter mobile test:study-mutations` passed, and the focused Playwright PWA
   Assistant study-command test passed against a local production web server with mocked API routes.
+- Fresh PDF deck-script validation proves `strings` cannot pass preflight/final-card generation,
+  trusted LiteParse/local OCR extraction can produce final review-card JSONL, and noisy scanned
+  extraction records blocked segments instead of weak cards. Temp DB validation of
+  `scripts/import_pdf_review_cards.py` proves generated PDF cards remain gated until the imported
+  Study topic is marked read. The importer is an upsert path for reviewed JSONL; it does not delete
+  absent cards from earlier imports.
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),
@@ -127,6 +145,8 @@ Known outcome for `Inference Engineering.pdf`:
 - PDF extraction/preflight:
   [docs/PDF_OCR_CARD_SMOKE.md](/home/ubuntu/starlog/docs/PDF_OCR_CARD_SMOKE.md),
   [scripts/pdf_deck_preflight.py](/home/ubuntu/starlog/scripts/pdf_deck_preflight.py), and
+  [scripts/build_pdf_review_cards.py](/home/ubuntu/starlog/scripts/build_pdf_review_cards.py), plus
+  [scripts/import_pdf_review_cards.py](/home/ubuntu/starlog/scripts/import_pdf_review_cards.py), plus
   [services/api/tests/test_artifacts_pdf_cards.py](/home/ubuntu/starlog/services/api/tests/test_artifacts_pdf_cards.py)
 - NeetCode source/import:
   [data/neetcode_150.json](/home/ubuntu/starlog/data/neetcode_150.json),

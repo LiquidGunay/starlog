@@ -139,6 +139,38 @@ evidence as `unproven`, writes `cards_generated: 0`, and blocks deck generation.
 path also blocks review-card generation for manual PDFs whose extraction was rejected as noise unless
 the user supplied reliable notes.
 
+After preflight passes with trusted local extraction, build final review-card JSONL with:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/build_pdf_review_cards.py \
+  --pdf "/home/ubuntu/starlog/Inference Engineering.pdf" \
+  --fail-on-blocked
+```
+
+This final-card builder reuses the same local URL restrictions and trust gate. It only writes
+`review_cards.jsonl` when the provider is `liteparse_server`, `ocr_server`, or `pypdf` and the
+individual source chunk is readable and content-like. Front matter, table-of-contents chunks,
+appendix/resource-list chunks, `strings` fallback output, and noisy/scanned chunks are written as
+blocked segment evidence rather than converted into weak cards. Do not commit generated
+`review_cards.jsonl` files when they contain source excerpts from local PDFs.
+
+After locally reviewing the generated JSONL, import it into the SRS/Study Core loop with:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/import_pdf_review_cards.py \
+  /path/to/review_cards.jsonl
+```
+
+The importer rejects untrusted providers, spoofed answer sources, and mixed-source JSONL. It
+creates/reuses the `Inference Engineering` deck, creates source-scoped PDF Study sources and topics
+from card sections, stores source-backed answer chunks with provenance hashes and word bounds, and
+links every card to its topic with `gate_required = 1`. The cards stay out of due review until the
+matching imported PDF topic is marked read. Re-importing corrected sections replaces stale gated
+links for the same PDF source, but the importer does not delete cards omitted from later reviewed
+JSONL files.
+
 Latest canonical-checkout result on 2026-05-13:
 
 - Command:
@@ -163,8 +195,14 @@ Latest canonical-checkout result on 2026-05-13:
   `/tmp` LiteParse CLI output.
 - Next safe import step:
   run the real `scripts/liteparse_parse_server.py` with a local LiteParse CLI environment, rerun
-  preflight with `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8830/parse`, then import from the
-  readable LiteParse extraction. OCR is not required for this PDF when LiteParse `--no-ocr` succeeds.
+  preflight with `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8830/parse`, then run
+  `scripts/build_pdf_review_cards.py` and `scripts/import_pdf_review_cards.py` against the same
+  trusted extraction path. OCR is not required for this PDF when LiteParse `--no-ocr` succeeds.
+- 2026-05-14 local proof:
+  the real LiteParse path generated 8 Chapter 0 cards in `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/`.
+  Importing that JSONL into a temp DB produced 8 cards, 8 gated card-topic links, 8 source-backed
+  answer chunks, one Study source, and one Study topic. Due review was empty before marking
+  `Chapter 0: Inference` read and contained all 8 cards after the read marker.
 
 ## Validation
 
