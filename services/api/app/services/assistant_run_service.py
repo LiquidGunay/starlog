@@ -21,6 +21,7 @@ from app.services import (
     conversation_card_service,
     conversation_service,
     integrations_service,
+    memory_service,
     memory_vault_service,
     review_mode_service,
     srs_service,
@@ -505,6 +506,7 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
             "request_metadata": metadata,
             "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
             "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],
+            "recommendation_hints": memory_service.list_recommendation_hints(conn, limit=8),
             "ui_capabilities": _ui_capability_manifest(),
         },
     }

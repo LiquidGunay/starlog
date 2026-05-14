@@ -131,9 +131,20 @@ def record_recommendation_event(
 def list_recommendation_hints(
     conn: Connection,
     *,
-    surface: str,
+    surface: str | None = None,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
+    if surface is None:
+        rows = execute_fetchall(
+            conn,
+            """
+            SELECT * FROM recommendation_events
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return [_recommendation_payload(row) for row in rows]
     rows = execute_fetchall(
         conn,
         """

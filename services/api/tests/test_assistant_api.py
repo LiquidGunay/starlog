@@ -18,6 +18,7 @@ from app.services import (
     assistant_projection_service,
     assistant_run_service,
     assistant_thread_service,
+    memory_service,
     google_calendar_service,
 )
 from app.services.common import new_id
@@ -362,6 +363,53 @@ def test_assistant_snapshot_exposes_strategic_context_cards(
 
     runtime_context_cards = runtime_request["context"]["strategic_context_cards"]
     assert [card["kind"] for card in runtime_context_cards] == ["goal_status", "project_status", "commitment_status"]
+
+
+def test_assistant_runtime_request_includes_recommendation_hints(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    hint_entity_id = new_id("card")
+    with get_connection() as conn:
+        thread = assistant_thread_service.get_thread(conn, "primary")
+        memory_service.record_recommendation_event(
+            conn,
+            surface="briefing",
+            signal_type="briefing_review",
+            entity_type="card",
+            entity_id=hint_entity_id,
+            weight=1.0,
+            metadata={"source": "runtime_test"},
+        )
+        assistant_hint_entity_id = new_id("card")
+        memory_service.record_recommendation_event(
+            conn,
+            surface="assistant",
+            signal_type="assistant_review",
+            entity_type="card",
+            entity_id=assistant_hint_entity_id,
+            weight=1.0,
+            metadata={"source": "runtime_test"},
+        )
+        briefing_hints = memory_service.list_recommendation_hints(conn, surface="briefing", limit=8)
+        runtime_request = assistant_run_service._build_runtime_request(  # noqa: SLF001
+            conn,
+            thread_id=thread["id"],
+            content="Any review signals available?",
+            metadata={"surface": "assistant_web", "client_timezone": "UTC"},
+        )
+
+    assert [hint["entity_id"] for hint in briefing_hints] == [hint_entity_id]
+    hints = runtime_request["context"]["recommendation_hints"]
+    assert len(hints) == 2
+    assert any(
+        hint["entity_type"] == "card" and hint["entity_id"] == hint_entity_id and hint["surface"] == "briefing"
+        for hint in hints
+    )
+    assert any(
+        hint["entity_type"] == "card" and hint["entity_id"] == assistant_hint_entity_id and hint["surface"] == "assistant"
+        for hint in hints
+    )
 
 
 def test_assistant_handoff_token_is_resolved_into_trusted_context(

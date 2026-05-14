@@ -855,6 +855,7 @@ CREATE INDEX IF NOT EXISTS idx_worker_pairings_expires ON worker_pairings(expire
 CREATE INDEX IF NOT EXISTS idx_worker_sessions_class_seen ON worker_sessions(worker_class, last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_entity_conflicts_open ON entity_conflicts(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recommendation_events_created ON recommendation_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_pages_namespace_updated ON memory_pages(namespace, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_pages_path ON memory_pages(path);
 CREATE INDEX IF NOT EXISTS idx_memory_page_versions_page_version ON memory_page_versions(page_id, version DESC);
@@ -1411,6 +1412,7 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_conversation_interrupts_thread_status ON conversation_interrupts(thread_id, status, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_conversation_surface_events_thread_created ON conversation_surface_events(thread_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_recommendation_events_surface_created ON recommendation_events(surface, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_recommendation_events_created ON recommendation_events(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_memory_pages_namespace_updated ON memory_pages(namespace, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_memory_pages_path ON memory_pages(path);
         CREATE INDEX IF NOT EXISTS idx_memory_page_versions_page_version ON memory_page_versions(page_id, version DESC);
