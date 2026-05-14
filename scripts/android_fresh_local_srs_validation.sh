@@ -2014,6 +2014,78 @@ if latest:
 PY
 }
 
+latest_briefing_package_marker() {
+  "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" <<'PY'
+from pathlib import Path
+import sqlite3
+import sys
+
+db_path = Path(sys.argv[1])
+with sqlite3.connect(db_path) as conn:
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT id, date, created_at FROM briefing_packages ORDER BY created_at DESC, id DESC LIMIT 1"
+    ).fetchone()
+if row is None:
+    raise SystemExit(1)
+
+print(f"{row['id']}|{row['date']}|{row['created_at']}")
+PY
+}
+
+assert_latest_briefing_has_recommendation_hints() {
+  local previous_marker="${1:-}"
+  local deadline=$((SECONDS + 45))
+  local status=""
+  local briefing_date=""
+  local briefing_id=""
+  local briefing_marker=""
+  local reason=""
+
+  while (( SECONDS < deadline )); do
+    briefing_marker="$(latest_briefing_package_marker || true)"
+    if [[ -n "$briefing_marker" && "$briefing_marker" != "$previous_marker" ]]; then
+      IFS='|' read -r briefing_id briefing_date _ <<< "$briefing_marker"
+      status="$(curl -sS -o "$BUILD_DIR/briefing-latest.json" -w '%{http_code}' \
+        "$API_BASE/v1/briefings/$briefing_date" \
+        -H "Authorization: Bearer $STARLOG_LOCAL_ACCESS_TOKEN")"
+      if [[ "$status" == "200" ]]; then
+        reason="$(python3 - "$BUILD_DIR/briefing-latest.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+payload = json.loads(open(path, encoding="utf-8").read())
+recommendation_hints = payload.get("recommendation_hints") or []
+if not isinstance(recommendation_hints, list):
+    raise SystemExit(1)
+if not recommendation_hints:
+    raise SystemExit(2)
+
+if not any(
+    item.get("surface") == "briefing" and str(item.get("signal_type")).startswith("briefing_")
+    for item in recommendation_hints
+):
+    raise SystemExit(3)
+
+print(len(recommendation_hints))
+PY
+)" || reason=""
+
+        if [[ -n "$reason" ]]; then
+          log "Briefing recommendation hints validated (briefing id=${briefing_id}, date=${briefing_date}, count=${reason})"
+          return 0
+        fi
+      fi
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/planner-briefing-hints-timeout.png"
+  snapshot_phone_state "planner-briefing-hints-timeout"
+  fail "Did not observe a new recommendation-backed briefing payload after cache generation (last status: ${status:-unknown}, marker: ${briefing_marker:-none})"
+}
+
 query_due_count() {
   local out_file="$1"
   if [[ -z "$STARLOG_LOCAL_ACCESS_TOKEN" ]]; then
@@ -2388,6 +2460,51 @@ PY
     done
   done
 
+  dump_ui || true
+  coords="$(python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+
+
+def bounds_of(value: str):
+    return tuple(map(int, re.findall(r"\d+", value)))
+
+
+screen_right = 0
+edit_bounds = None
+for node in root.iter("node"):
+    if "bounds" not in node.attrib:
+        continue
+    left, top, right, bottom = bounds_of(node.attrib["bounds"])
+    screen_right = max(screen_right, right)
+    if edit_bounds is None and node.attrib.get("class") == "android.widget.EditText":
+        edit_bounds = (left, top, right, bottom)
+
+if edit_bounds is None:
+    raise SystemExit(1)
+
+left, top, right, bottom = edit_bounds
+x = min(max(right + 126, right + 40), max(1, screen_right - 80))
+y = (top + bottom) // 2
+print(f"{x} {y}")
+PY
+)" || coords=""
+  if [[ -n "$coords" ]]; then
+    adb_cmd shell input tap ${coords} >/dev/null
+    sleep 3
+    status_line="$(latest_assistant_turn_status_after_line "$log_line_before" || true)"
+    if [[ -n "$status_line" ]]; then
+      return 0
+    fi
+    dump_ui || true
+    if assistant_command_cleared "$expected_command"; then
+      return 0
+    fi
+  fi
+
   capture_screen "$SCREENSHOT_DIR/assistant-send-verify-fail.png"
   snapshot_phone_state "assistant-send-verify-fail"
   return 1
@@ -2514,6 +2631,8 @@ launch_and_validate_review() {
   fi
 
   adb_cmd shell input text "${ASSISTANT_COMMAND// /%s}" >/dev/null
+  adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+  sleep 3
   local assistant_send_rc=0
   if tap_send_after_first_edit_text "$ASSISTANT_COMMAND" "$assistant_api_log_line_before" 300; then
     assistant_send_rc=0
@@ -2587,13 +2706,20 @@ launch_and_validate_review() {
 
   local planner_alarm_state
   planner_alarm_state="$(ui_planner_alarm_state)"
-  if [[ "$planner_alarm_state" == "cache_missing" || "$planner_alarm_state" == "blocked" ]]; then
-    log "Planner alarm shows missing cached briefing; generating cache before scheduling"
+  if [[ "$planner_alarm_state" != "scheduled" ]]; then
+    log "Planner alarm is not scheduled; generating briefing cache before scheduling"
+    local briefing_marker_before
+    briefing_marker_before="$(latest_briefing_package_marker || true)"
     if ! tap_planner_alarm_cache_control; then
       snapshot_phone_state "planner-alarm-cache-control-missing"
       fail "Could not locate planner cache control; cannot validate planner alarm scheduling path"
     fi
+    capture_screen "$SCREENSHOT_DIR/planner-alarm-cache-triggered.png"
+    snapshot_phone_state "planner-alarm-cache-triggered"
     wait_for_planner_alarm_cache_ready
+    capture_screen "$SCREENSHOT_DIR/planner-alarm-cache-ready.png"
+    snapshot_phone_state "planner-alarm-cache-ready"
+    assert_latest_briefing_has_recommendation_hints "$briefing_marker_before"
     planner_alarm_state="$(ui_planner_alarm_state)"
   fi
 
@@ -2661,6 +2787,8 @@ payload = {
         "assistant_open": f"{screenshot_dir}/assistant-open.png",
         "assistant_command": f"{screenshot_dir}/assistant-command.png",
         "planner_open": f"{screenshot_dir}/planner-open.png",
+        "planner_alarm_cache_triggered": f"{screenshot_dir}/planner-alarm-cache-triggered.png",
+        "planner_alarm_cache_ready": f"{screenshot_dir}/planner-alarm-cache-ready.png",
         "planner_alarm": f"{screenshot_dir}/planner-alarm.png",
     },
     "evidence_files": {
@@ -2671,6 +2799,7 @@ payload = {
         "review_answer_xml": f"{path.parent}/review-answer.xml",
         "review_rated_xml": f"{path.parent}/review-rated.xml",
         "planner_alarm_xml": f"{path.parent}/planner-alarm.xml",
+        "latest_briefing_json": f"{path.parent}/briefing-latest.json",
     },
     "validated_flows": [
         "assistant_command_submitted",
@@ -2680,6 +2809,7 @@ payload = {
         "review_answer_revealed",
         "review_good_grade_submitted",
         "planner_briefing_cache_generated",
+        "planner_briefing_recommendation_hints_validated",
         "planner_alarm_scheduled",
     ],
 }

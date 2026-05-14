@@ -1,11 +1,9 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 const API_BASE = `http://127.0.0.1:${process.env.STARLOG_LIVE_FUNCTIONAL_API_PORT || "8035"}`;
 const TEST_PASSPHRASE = "starlog-local-live-passphrase-2026";
 const TEST_RUN_ID = `live-functional-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const CARD_PROMPT = "What did the live PWA functional smoke verify?";
-const CARD_ANSWER = "Assistant interaction, review card setup, review grading, and alarm scheduling.";
-const DECK_NAME = `Live functional deck ${TEST_RUN_ID}`;
+const INTERVIEW_PREP_TOPIC_TITLE = "Sliding Window";
 
 function nowOffsetMinutes(minutes: number): string {
   const now = new Date();
@@ -19,6 +17,72 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
 
 type JsonResponse = {
   json: () => Promise<unknown>;
+};
+
+type StarlogSession = {
+  apiBase: string;
+  token: string;
+};
+
+type AssistantCommand = {
+  matched_intent: string;
+  status: string;
+};
+
+type AssistantCommandMetadata = {
+  metadata?: {
+    assistant_command?: AssistantCommand;
+  };
+};
+
+type AssistantMessagePayload = {
+  user_message: {
+    role: string;
+  };
+  assistant_message: {
+    role: string;
+    parts?: Array<{ text?: string }>;
+    metadata?: AssistantCommandMetadata["metadata"];
+  };
+};
+
+type StudyTopic = {
+  id: string;
+  title: string;
+  status: string;
+};
+
+type DueCard = {
+  id: string;
+  prompt: string;
+  answer: string;
+  card_type: string;
+  review_mode: string;
+};
+
+type RecommendationHint = {
+  signal_type: string;
+};
+
+type BriefingPayload = {
+  id: string;
+  recommendation_hints: RecommendationHint[];
+};
+
+type ReviewRevealPayload = {
+  source_surface: string;
+  kind: string;
+  payload?: {
+    card_id?: string;
+  };
+  entity_ref?: {
+    entity_id?: string;
+  };
+};
+
+type ReviewGradePayload = {
+  card_id: string;
+  rating: number;
 };
 
 function isAssistantThreadMessageUrl(url: string): boolean {
@@ -46,9 +110,70 @@ async function expectJsonWith<T>(response: JsonResponse, matcher: (payload: T) =
   matcher(payload);
 }
 
-test("live PWA user flow covers assistant, review setup, review, and alarm", async ({ page }, testInfo) => {
-  const runDeckName = `${DECK_NAME}-w${testInfo.workerIndex}-r${testInfo.retry}`;
-  const runCardPrompt = `${CARD_PROMPT} (w${testInfo.workerIndex} r${testInfo.retry})`;
+async function getAuthenticatedSession(page: Page): Promise<StarlogSession> {
+  const session = await page.evaluate(() => ({
+    apiBase: window.localStorage.getItem("starlog-api-base"),
+    token: window.localStorage.getItem("starlog-token"),
+  }));
+  expect(session.apiBase).toBeTruthy();
+  expect(session.token).toBeTruthy();
+  return {
+    apiBase: session.apiBase || API_BASE,
+    token: session.token || "",
+  };
+}
+
+async function apiGetJson<T>(page: Page, session: StarlogSession, path: string): Promise<T> {
+  const response = await page.request.get(`${session.apiBase}${path}`, {
+    headers: {
+      Authorization: `Bearer ${session.token}`,
+    },
+  });
+  expect(response.status()).toBeGreaterThanOrEqual(200);
+  expect(response.status()).toBeLessThan(300);
+  return (await response.json()) as T;
+}
+
+async function sendAssistantMessage(
+  page: Page,
+  composer: Locator,
+  message: string,
+): Promise<AssistantMessagePayload> {
+  const assistantMessageRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && isAssistantThreadMessageUrl(request.url()),
+  );
+
+  const assistantMessageResponse = page.waitForResponse((response) => {
+    return response.request().method() === "POST"
+      && isAssistantThreadMessageUrl(response.url())
+      && response.status() >= 200
+      && response.status() < 300;
+  });
+
+  await composer.fill(message);
+  await Promise.all([
+    assistantMessageRequest,
+    assistantMessageResponse,
+    page.getByRole("button", { name: "Send" }).click(),
+  ]);
+
+  const requestPayload = (await assistantMessageRequest).postDataJSON() as { content: string };
+  expect(requestPayload.content).toBe(message);
+  const response = await assistantMessageResponse;
+  return (await response.json()) as AssistantMessagePayload;
+}
+
+function latestCommandMessage(page: Page, expected: string | RegExp): Locator {
+  return page.locator("main article").filter({ hasText: expected }).last();
+}
+
+function escapedRegExp(value: string): RegExp {
+  return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+}
+
+test("live PWA user flow covers study loop + review + briefing hints and alarm", async ({ page }, testInfo) => {
+  const studyTag = `run:${TEST_RUN_ID}-w${testInfo.workerIndex}-r${testInfo.retry}`;
+  const assistantSmokeText = `Live functional smoke checks interview-prep study loop validation (${studyTag})`;
 
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.getByLabel("Universal Identifier").fill(API_BASE);
@@ -65,137 +190,75 @@ test("live PWA user flow covers assistant, review setup, review, and alarm", asy
 
   const composer = page.getByPlaceholder("Ask, capture, plan, review, or move something forward...");
   await expect(composer).toBeEnabled();
-  const assistantMessageText =
-    "Remember that this live functional smoke is checking the Assistant, Review, and alarm paths.";
-  await composer.fill(assistantMessageText);
 
-  const assistantMessageRequest = page.waitForRequest((request) =>
-    request.method() === "POST" && isAssistantThreadMessageUrl(request.url()),
-  );
-
-  const assistantMessageResponse = page.waitForResponse((response) => {
-    return response.request().method() === "POST"
-      && isAssistantThreadMessageUrl(response.url())
-      && response.status() >= 200
-      && response.status() < 300;
-  });
-  await Promise.all([
-    assistantMessageRequest,
-    assistantMessageResponse,
-    page.getByRole("button", { name: "Send" }).click(),
-  ]);
-
-  const assistantSendPayload = (await assistantMessageRequest).postDataJSON() as { content: string };
-  expect(assistantSendPayload.content).toBe(assistantMessageText);
-
-  await expectJsonWith<{ user_message: { role: string }; assistant_message: { role: string } }>(
-    await assistantMessageResponse,
-    (payload) => {
-      expect(payload.user_message.role).toBe("user");
-      expect(payload.assistant_message.role).toBe("assistant");
-    },
-  );
-
+  const assistantSmokeResponse = await sendAssistantMessage(page, composer, assistantSmokeText);
+  expect(assistantSmokeResponse.user_message.role).toBe("user");
+  expect(assistantSmokeResponse.assistant_message.role).toBe("assistant");
   await expect(composer).toHaveValue("");
-  await expect(
-    page
-      .locator("main article")
-      .filter({ has: page.getByText("You", { exact: false }) })
-      .filter({ hasText: /live functional smoke is checking/i })
-      .first(),
-  ).toBeVisible();
-  await screenshot(page, testInfo, "02-assistant-message-sent");
+  await expect(latestCommandMessage(page, /live functional smoke checks interview-prep study loop/i)).toBeVisible();
+  await screenshot(page, testInfo, "02-assistant-opened");
 
-  await page.goto("/review/decks");
-  await expect(page.getByRole("heading", { name: "Deck Browser" })).toBeVisible();
-  const deckEditor = page.locator("div.panel.glass", { has: page.getByRole("heading", { name: "Deck editor" }) });
-  const cardEditor = page.locator("div.panel.glass", { has: page.getByRole("heading", { name: "Card editor" }) });
-  const deckListPanel = page.locator("div.panel.glass").filter({ has: page.locator("ul.review-browser-list") });
-  const cardListPanel = page.locator("div.panel.glass").filter({ has: page.locator("ul.review-browser-list.scroll-panel") });
-  const deckNameInput = deckEditor.locator("#deck-name");
-  const deckDescriptionInput = deckEditor.locator("#deck-description");
-  const deckSubmitButton = deckEditor.getByRole("button", { name: "Create Deck" });
-  const cardPromptInput = cardEditor.locator("#card-prompt");
-  const cardAnswerInput = cardEditor.locator("#card-answer");
-  const cardTagsInput = cardEditor.locator("#card-tags");
-  const cardDueInput = cardEditor.locator("#card-due");
-  const cardSubmitButton = cardEditor.getByRole("button", { name: "Create Card" });
-
-  const deckButton = deckListPanel.getByRole("button", { name: runDeckName, exact: true });
-  const deckExists = (await deckButton.count()) > 0;
-  if (!deckExists) {
-    const createDeckRequest = page.waitForRequest((request) =>
-      request.url().endsWith("/v1/cards/decks") && request.method() === "POST",
-    );
-    const createDeckResponse = page.waitForResponse((response) =>
-      response.url().endsWith("/v1/cards/decks") && response.request().method() === "POST",
-    );
-
-    await page.getByRole("button", { name: "New Deck" }).click();
-    await deckNameInput.fill(runDeckName);
-    await deckNameInput.blur();
-    await expect(deckNameInput).toHaveValue(runDeckName);
-    await deckDescriptionInput.fill("Created through the browser during live functional validation.");
-
-    await Promise.all([
-      deckSubmitButton.click(),
-      createDeckRequest,
-      createDeckResponse,
-    ]);
-
-    const createDeckResponsePayload = await createDeckResponse;
-    const createDeckRequestPayload = (await createDeckRequest).postDataJSON() as Record<string, unknown>;
-    expect(createDeckRequestPayload).toMatchObject({ name: runDeckName });
-    expect(createDeckResponsePayload.status()).toBe(201);
-
-    await expect(deckButton).toBeVisible();
+  const session = await getAuthenticatedSession(page);
+  const studyTopics = await apiGetJson<StudyTopic[]>(page, session, "/v1/study/topics?limit=120");
+  expect(studyTopics.length).toBeGreaterThan(0);
+  const studyTopic = studyTopics.find((topic) => topic.title === INTERVIEW_PREP_TOPIC_TITLE);
+  if (!studyTopic) {
+    throw new Error(`Expected seeded topic '${INTERVIEW_PREP_TOPIC_TITLE}' to be present in study topics.`);
   }
-  await expect(deckButton).toBeVisible();
-  await deckButton.click();
+  expect(studyTopic.title).toBe(INTERVIEW_PREP_TOPIC_TITLE);
 
-  const cardButton = cardListPanel.getByRole("button", { name: runCardPrompt, exact: true });
-  const cardExists = (await cardButton.count()) > 0;
-  if (!cardExists) {
-    const createCardRequest = page.waitForRequest((request) =>
-      request.url().endsWith("/v1/cards") && request.method() === "POST",
-    );
-    const createCardResponse = page.waitForResponse((response) =>
-      response.url().endsWith("/v1/cards") && response.request().method() === "POST",
-    );
+  const unlockCommand = `unlock ${studyTopic.title}`;
+  const unlockResponse = await sendAssistantMessage(page, composer, unlockCommand);
+  const unlockCommandMetadata = unlockResponse.assistant_message.metadata?.assistant_command;
+  expect(unlockCommandMetadata).toMatchObject({
+    matched_intent: "unlock_study_topic",
+    status: "executed",
+  });
+  await expect(latestCommandMessage(page, escapedRegExp(studyTopic.title))).toBeVisible();
 
-    await page.getByRole("button", { name: "New Card" }).click();
-    await cardPromptInput.fill(runCardPrompt);
-    await expect(cardPromptInput).toHaveValue(runCardPrompt);
-    await cardAnswerInput.fill(CARD_ANSWER);
-    await cardTagsInput.fill("live-functional, pwa");
-    await cardDueInput.fill(nowOffsetMinutes(-5));
+  const readCommand = `I read ${studyTopic.title}`;
+  const readResponse = await sendAssistantMessage(page, composer, readCommand);
+  const readCommandMetadata = readResponse.assistant_message.metadata?.assistant_command;
+  expect(readCommandMetadata).toMatchObject({
+    matched_intent: "mark_study_topic_read",
+    status: "executed",
+  });
+  await expect(latestCommandMessage(page, escapedRegExp(studyTopic.title))).toBeVisible();
 
-    await Promise.all([
-      createCardRequest,
-      createCardResponse,
-      cardSubmitButton.click(),
-    ]);
+  const quizCommand = `quiz me on ${studyTopic.title}`;
+  const quizResponse = await sendAssistantMessage(page, composer, quizCommand);
+  const quizCommandMetadata = quizResponse.assistant_message.metadata?.assistant_command;
+  expect(quizCommandMetadata).toMatchObject({
+    matched_intent: "create_study_question_request",
+    status: "executed",
+  });
+  await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
+  await screenshot(page, testInfo, "03-study-commands");
 
-    const createCardRequestPayload = (await createCardRequest).postDataJSON() as Record<string, unknown>;
-    expect(createCardRequestPayload).toMatchObject({ prompt: runCardPrompt });
-  }
-  await expect(cardButton).toBeVisible();
-  await screenshot(page, testInfo, "03-review-card-created");
+  const dueCards = await apiGetJson<DueCard[]>(page, session, "/v1/cards/due?limit=20");
+  expect(dueCards.length).toBeGreaterThan(0);
+  const expectedDueCard = dueCards[0];
 
   await page.goto("/review");
-  await expect(page.getByText(runCardPrompt)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reveal Answer" })).toBeVisible();
 
   const reviewRevealRequest = page.waitForRequest((request) =>
     request.method() === "POST" && isReviewRevealRequest(request.url()),
   );
   await page.getByRole("button", { name: "Reveal Answer" }).click();
-  const revealRequest = await reviewRevealRequest;
-  expect(await revealRequest.postDataJSON()).toMatchObject({
+  const revealPayload = (await reviewRevealRequest).postDataJSON() as ReviewRevealPayload;
+  expect(revealPayload).toMatchObject({
     source_surface: "review",
     kind: "review.answer.revealed",
   });
 
-  await expect(page.getByText(CARD_ANSWER)).toBeVisible();
+  const revealedCardId = revealPayload.payload?.card_id || revealPayload.entity_ref?.entity_id;
+  const dueCardIds = new Set(dueCards.map((card) => card.id));
+  expect(revealedCardId).toBeTruthy();
+  expect(dueCardIds.has(revealedCardId || "")).toBe(true);
+  const expectedRevealedCard = dueCards.find((card) => card.id === revealedCardId) ?? expectedDueCard;
+  await expect(page.getByText(expectedRevealedCard.answer.split("\n")[0], { exact: false }).first()).toBeVisible();
+  await screenshot(page, testInfo, "04-review-reveal");
 
   const reviewGradeRequest = page.waitForRequest((request) =>
     request.method() === "POST" && isReviewGradingRequest(request.url()),
@@ -208,17 +271,17 @@ test("live PWA user flow covers assistant, review setup, review, and alarm", asy
     reviewGradeRequest,
     reviewGradeResponse,
   ]);
-  const reviewRequestPayload = (await reviewGradeRequest).postDataJSON() as {
-    card_id: string;
-    rating: number;
-  };
-  const reviewResponse = await reviewGradeResponse;
 
+  const reviewRequestPayload = (await reviewGradeRequest).postDataJSON() as ReviewGradePayload;
   expect(reviewRequestPayload).toMatchObject({
     card_id: expect.any(String),
     rating: 4,
   });
+  if (revealedCardId) {
+    expect(reviewRequestPayload.card_id).toBe(revealedCardId);
+  }
 
+  const reviewResponse = await reviewGradeResponse;
   await expectJsonWith<{
     card_id: string;
     card_type: string | null;
@@ -241,22 +304,27 @@ test("live PWA user flow covers assistant, review setup, review, and alarm", asy
       expect(Number.isNaN(Date.parse(payload.next_due_at))).toBe(false);
     },
   );
-
   await expect(page.getByText(/Recorded Good/i)).toBeVisible();
-  await screenshot(page, testInfo, "04-review-card-graded");
+  await screenshot(page, testInfo, "05-review-graded");
 
   await page.goto("/planner");
   await expect(page.getByRole("heading", { name: /Execution plan for/ })).toBeVisible();
 
   const briefingCreateResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && isBriefingGenerateRequest(response.url())
+    response.request().method() === "POST" && isBriefingGenerateRequest(response.url()),
   );
   await page.getByRole("button", { name: "Prepare briefing" }).click();
   const briefingResponse = await briefingCreateResponse;
-
-  const briefingPayload = (await briefingResponse.json()) as { id: string };
+  const briefingPayload = (await briefingResponse.json()) as BriefingPayload;
   expect(briefingPayload.id).toBeTruthy();
-
+  expect(Array.isArray(briefingPayload.recommendation_hints)).toBe(true);
+  expect(briefingPayload.recommendation_hints.length).toBeGreaterThan(0);
+  expect(
+    briefingPayload.recommendation_hints.some((hint) =>
+      ["briefing_review", "briefing_study", "assistant_review", "briefing_focus", "briefing_schedule"].includes(hint.signal_type),
+    ),
+  ).toBeTruthy();
+  await screenshot(page, testInfo, "06-briefing-generated");
   await expect(page.getByText(/Briefing prepared for/)).toBeVisible();
 
   const createAlarmRequest = page.waitForRequest((request) =>
@@ -284,5 +352,5 @@ test("live PWA user flow covers assistant, review setup, review, and alarm", asy
 
   await expect(page.getByText(/Alarm scheduled/i)).toBeVisible();
   await expect(page.locator("article", { hasText: /pwa/i })).toBeVisible();
-  await screenshot(page, testInfo, "05-alarm-scheduled");
+  await screenshot(page, testInfo, "07-alarm-scheduled");
 });

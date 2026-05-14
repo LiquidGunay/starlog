@@ -230,6 +230,7 @@ What this loop does:
 - uninstalls prior Starlog phone packages before install
 - installs the new APK with Windows `adb.exe install --no-streaming -r`
 - launches the April login UI, establishes the fresh local station, opens the review tab, loads due cards, reveals an answer, and records one `Good` rating
+- validates Planner cache generation as briefing evidence and asserts recommendation-hints presence before alarm scheduling
 - mirrors the latest installable APK at `.localdata/android-local-validation/builds/latest.apk`
 
 Performance defaults for this loop:
