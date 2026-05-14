@@ -45,8 +45,8 @@ where Starlog is going. Use this page for current implementation confidence.
   Study Core/SRS import without proprietary problem text or generated answers.
 - **Minimal PWA/native interview-prep UI:** the PWA Review surface has thin controls for topic
   unlock/read, question-mode requests, progress state, and recommendation rationale. Native Android
-  Review shows study progress and can load, reveal, and grade backend-owned cards. Native study
-  mutation request helpers are covered for unlock/read and question-request payloads.
+  Review shows study progress, can unlock/read topics, create question-mode requests, load/reveal
+  backend-owned cards, and submit review grades on a physical-device local validation loop.
 - **Visible PWA Assistant study commands:** mocked Playwright coverage boots the PWA and submits
   visible Assistant commands for unlocking NeetCode drills, marking `Sliding Window` read, and
   requesting application questions.
@@ -83,14 +83,12 @@ Known outcome for `Inference Engineering.pdf`:
 
 ## Unproven Or Pending
 
-- **Native topic mutation device proof:** Android native request helpers are tested, but a fresh
-  physical-device click-through for topic unlock/read and question requests is still pending.
 - **`Inference Engineering.pdf` final cards:** local LiteParse text extraction and provenance-only
   candidate generation are proven, but final user-reviewable cards have not been generated yet.
   Import should use readable local extraction, not older noisy `strings` output.
-- **Native briefing date default:** the tested Android device had a stale selected briefing date
-  (`2026-04-29`) in local app state while validating alarm scheduling on `2026-05-13`. The alarm flow
-  works, but briefing-date reset/default behavior needs cleanup before release.
+- **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
+  the current day, but a device that already carries stale persisted briefing-date state still needs
+  a dedicated state-migration/reset proof before release.
 - **Fresh end-to-end release confidence:** re-run [docs/CROSS_SURFACE_PROOF.md](/home/ubuntu/starlog/docs/CROSS_SURFACE_PROOF.md)
   before claiming current web + phone + helper release readiness.
 - **Production Android store readiness:** Android release-signing, signed production QA smoke, store
@@ -105,6 +103,11 @@ Known outcome for `Inference Engineering.pdf`:
 
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
+- Fresh Android native functional proof: `/tmp/starlog-android-local-validation/builds/20260514T111058Z/`
+  contains indexed screenshots in `latest.json` plus API evidence in `local-api.log` for Assistant
+  command submission, native Study Core unlock/read/question writes, Review reveal and `Good` grade
+  submission, briefing cache generation, notification permission, and Planner alarm scheduling on
+  the connected Android device.
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
   `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
   clean Python 3.12 `uv` environment and prove that marking `Sliding Window` read releases a linked
