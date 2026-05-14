@@ -19,6 +19,9 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Merged #204 (briefing review pressure):** briefing service now uses deterministic, signal-scored review
   pressure (`due_card_count` + `low-review` + `study` signals) for scheduling pressure and ordered briefing
   card selection.
+- **Merged #206 (live interview-prep validation):** deterministic `Sliding Window` interview-prep seeding
+  now drives the live PWA functional harness and the Android fresh-local validation loop, including Assistant
+  study commands, Review reveal/grade, briefing recommendation hints, and alarm scheduling evidence.
 
 ## Works Today
 
@@ -69,16 +72,16 @@ where Starlog is going. Use this page for current implementation confidence.
   unlock/read, question-mode requests, progress state, and recommendation rationale. Native Android
   Review shows study progress, can unlock/read topics, create question-mode requests, load/reveal
   backend-owned cards, and submit review grades on a physical-device local validation loop.
-- **Visible PWA Assistant study commands:** mocked Playwright coverage boots the PWA and submits
-  visible Assistant commands for unlocking NeetCode drills, marking `Sliding Window` read, and
-  requesting application questions.
+- **Live PWA interview-prep loop:** Playwright boots the local API and PWA, submits visible Assistant
+  commands for `Sliding Window`, verifies due-card gating, reveals and grades a Review card, generates
+  a recommendation-backed briefing, and creates an alarm.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
 
 ## Current Interview-Prep Loop
 
-Current status after PRs #202-#204:
+Current status after PRs #202-#206:
 
 1. Import or validate structured study material:
    - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
@@ -93,7 +96,7 @@ Current status after PRs #202-#204:
 4. Request question style preferences, such as application questions, against a topic.
    - **Status:** works as deterministic Assistant command flow into `study_question_requests`.
 5. Review and grade cards through the PWA or Android native Review surface.
-   - **Status:** works on both surfaces with local-device grading evidence.
+   - **Status:** works on both surfaces with live local PWA and Android physical-device grading evidence.
 6. Feed review/question/practice events into deterministic recommendation scoring.
    - **Status:** works; PR #204 also injects these signals into briefing review pressure.
 7. Preflight local PDFs before creating cards from them.
@@ -101,7 +104,8 @@ Current status after PRs #202-#204:
 
 Key loop evidence path for this status:
 - `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/` (builder/import artifacts for Chapter 0)
-- `/tmp/starlog-android-local-validation/builds/20260514T111058Z/` (native validation API log + `latest.json` evidence)
+- `/tmp/starlog-live-functional-study-validation-reviewfix/` (live PWA API/web/browser flow evidence)
+- `/tmp/starlog-android-local-validation/builds/20260514T200744Z/` (native validation API log + `latest.json` evidence)
 
 Known outcome for `Inference Engineering.pdf`:
 
@@ -123,8 +127,9 @@ Known outcome for `Inference Engineering.pdf`:
 - **Full-book `Inference Engineering.pdf` coverage:** Chapter 0 final-card generation/import is proven
   through the guarded local path. Broader chapter coverage still needs a larger trusted extraction
   run and human review of generated local JSONL before import.
-- **Assistant recommendation hint surfacing:** PR #203 verifies runtime payload exposure; the remaining gap is
-  validated, consistent rendering of these hints in production Assistant UI surfaces.
+- **Assistant recommendation hint surfacing:** PR #203 verifies runtime payload exposure and PR #206 proves
+  recommendation-backed briefing hints in live PWA/Android local validation. The remaining gap is validated,
+  consistent rendering of these hints in production Assistant UI surfaces.
 - **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
   the current day, but a device that already carries stale persisted briefing-date state still needs
   a dedicated state-migration/reset proof before release.
@@ -142,7 +147,7 @@ Known outcome for `Inference Engineering.pdf`:
 
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
-- Fresh Android native functional proof: `/tmp/starlog-android-local-validation/builds/20260514T111058Z/`
+- Fresh Android native functional proof: `/tmp/starlog-android-local-validation/builds/20260514T200744Z/`
   contains indexed screenshots in `latest.json` plus API evidence in `local-api.log` for Assistant
   command submission, native Study Core unlock/read/question writes, Review reveal and `Good` grade
   submission, briefing cache generation, notification permission, and Planner alarm scheduling on
