@@ -139,6 +139,21 @@ evidence as `unproven`, writes `cards_generated: 0`, and blocks deck generation.
 path also blocks review-card generation for manual PDFs whose extraction was rejected as noise unless
 the user supplied reliable notes.
 
+After preflight passes with trusted local extraction, build final review-card JSONL with:
+
+```bash
+cd /home/ubuntu/starlog
+PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/build_pdf_review_cards.py \
+  --pdf "/home/ubuntu/starlog/Inference Engineering.pdf" \
+  --fail-on-blocked
+```
+
+This final-card builder reuses the same local URL restrictions and trust gate. It only writes
+`review_cards.jsonl` when the provider is `liteparse_server`, `ocr_server`, or `pypdf` and the
+individual source chunk is readable. `strings` fallback output and noisy/scanned chunks are written
+as blocked segment evidence with `cards_generated: 0` rather than converted into weak cards. Do not
+commit generated `review_cards.jsonl` files when they contain source excerpts from local PDFs.
+
 Latest canonical-checkout result on 2026-05-13:
 
 - Command:
@@ -163,8 +178,9 @@ Latest canonical-checkout result on 2026-05-13:
   `/tmp` LiteParse CLI output.
 - Next safe import step:
   run the real `scripts/liteparse_parse_server.py` with a local LiteParse CLI environment, rerun
-  preflight with `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8830/parse`, then import from the
-  readable LiteParse extraction. OCR is not required for this PDF when LiteParse `--no-ocr` succeeds.
+  preflight with `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8830/parse`, then run
+  `scripts/build_pdf_review_cards.py` against the same trusted extraction path. OCR is not required
+  for this PDF when LiteParse `--no-ocr` succeeds.
 
 ## Validation
 

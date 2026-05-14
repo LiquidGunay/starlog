@@ -39,6 +39,10 @@ where Starlog is going. Use this page for current implementation confidence.
   FastAPI `TestClient`, and only allows localhost parse/OCR server URLs. It now writes
   provenance-only `candidate_cards.jsonl` for proven local extraction and records blocked chunk
   hashes for unproven extraction; it does not persist source excerpts as card content.
+- **PDF final-card safety path:** `scripts/build_pdf_review_cards.py` is the next step after preflight.
+  It only writes final SRS-compatible review-card JSONL when extraction is proven and comes from
+  trusted local providers (`liteparse_server`, `ocr_server`, or `pypdf`). `strings` and noisy scanned
+  chunks are recorded as blocked evidence instead of weak review cards.
 - **NeetCode 150 Study Core importer:** `data/neetcode_150.json` contains 150 factual practice
   entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user notes.
   `scripts/import_neetcode_150.py` can validate dry-run payloads and perform an idempotent local
@@ -83,9 +87,9 @@ Known outcome for `Inference Engineering.pdf`:
 
 ## Unproven Or Pending
 
-- **`Inference Engineering.pdf` final cards:** local LiteParse text extraction and provenance-only
-  candidate generation are proven, but final user-reviewable cards have not been generated yet.
-  Import should use readable local extraction, not older noisy `strings` output.
+- **`Inference Engineering.pdf` final card import:** local LiteParse text extraction and the guarded
+  final-card builder path are implemented, but a fresh real-server run still needs to produce and
+  review the local `review_cards.jsonl` before importing it into the SRS deck.
 - **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
   the current day, but a device that already carries stale persisted briefing-date state still needs
   a dedicated state-migration/reset proof before release.
@@ -115,6 +119,9 @@ Known outcome for `Inference Engineering.pdf`:
 - Fresh frontend/native validation: the Next.js production build passed,
   `corepack pnpm --filter mobile test:study-mutations` passed, and the focused Playwright PWA
   Assistant study-command test passed against a local production web server with mocked API routes.
+- Fresh PDF deck-script validation proves `strings` cannot pass preflight/final-card generation,
+  trusted LiteParse/local OCR extraction can produce final review-card JSONL, and noisy scanned
+  extraction records blocked segments instead of weak cards.
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),
@@ -127,6 +134,7 @@ Known outcome for `Inference Engineering.pdf`:
 - PDF extraction/preflight:
   [docs/PDF_OCR_CARD_SMOKE.md](/home/ubuntu/starlog/docs/PDF_OCR_CARD_SMOKE.md),
   [scripts/pdf_deck_preflight.py](/home/ubuntu/starlog/scripts/pdf_deck_preflight.py), and
+  [scripts/build_pdf_review_cards.py](/home/ubuntu/starlog/scripts/build_pdf_review_cards.py), plus
   [services/api/tests/test_artifacts_pdf_cards.py](/home/ubuntu/starlog/services/api/tests/test_artifacts_pdf_cards.py)
 - NeetCode source/import:
   [data/neetcode_150.json](/home/ubuntu/starlog/data/neetcode_150.json),
