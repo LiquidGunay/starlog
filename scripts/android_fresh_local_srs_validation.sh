@@ -1660,7 +1660,14 @@ if any("no briefing alarm scheduled" in t or "alarm is not scheduled yet" in t f
     print("unscheduled")
     raise SystemExit(0)
 
-if any("until play" in t or "alarm scheduled" in t or "daily alarm scheduled" in t or "scheduled for" in t for t in texts):
+if any(
+    "until play" in t
+    or "until alarm" in t
+    or "alarm scheduled" in t
+    or "daily alarm scheduled" in t
+    or "scheduled for" in t
+    for t in texts
+):
     print("scheduled")
     raise SystemExit(0)
 
