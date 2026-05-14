@@ -9,6 +9,17 @@ functional evidence.
 Use [PLAN.md](/home/ubuntu/starlog/PLAN.md) and [VISION.md](/home/ubuntu/starlog/VISION.md) for
 where Starlog is going. Use this page for current implementation confidence.
 
+## Post-Merge PR Status
+
+- **Merged #202 (PDF import into Study Core):** trusted local PDF review-card JSONL is now imported into
+  Study Core with topic-level gating, stable source/topic/chunk artifacts, and stale topic-link cleanup.
+- **Merged #203 (assistant runtime recommendation hints):** Assistant runtime context includes
+  `recommendation_hints` from assistant memory and exposes them through the same runtime contract used by
+  the Assistant surfaces.
+- **Merged #204 (briefing review pressure):** briefing service now uses deterministic, signal-scored review
+  pressure (`due_card_count` + `low-review` + `study` signals) for scheduling pressure and ordered briefing
+  card selection.
+
 ## Works Today
 
 - **Core local stack:** the repo contains a FastAPI backend, Next.js PWA, native mobile app, desktop
@@ -29,7 +40,10 @@ where Starlog is going. Use this page for current implementation confidence.
   `quiz me on application questions for embeddings`.
 - **Event-backed recommendations and gated Review ordering:** due-card queries exclude unread gated
   cards, preserve due-date fallback, and now include deterministic study signals from topic reads,
-  question requests, review grades, and practice attempts.
+  question requests, review grades, and practice attempts. PR #204 adds review-pressure signals to this
+  same scoring path in the briefing flow.
+- **Assistant recommendation context:** PR #203 adds `recommendation_hints` into the assistant runtime
+  request context so clients can consume deterministic recommendation rationale from the same backend memory.
 - **ML Interviews Part II SRS deck import:** `data/ml_interviews_part_ii_qa_cards.jsonl` is the
   checked-in deck source. `scripts/bootstrap_ml_interview_srs.py` is idempotent: it reuses the named
   deck, bootstrap artifact, first card-set version, and deck note while preserving existing review
@@ -64,19 +78,30 @@ where Starlog is going. Use this page for current implementation confidence.
 
 ## Current Interview-Prep Loop
 
-The merged interview-prep slice currently supports this local loop:
+Current status after PRs #202-#204:
 
 1. Import or validate structured study material:
    - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
    - NeetCode 150 local Study Core/SRS import via `scripts/import_neetcode_150.py`.
    - `Inference Engineering.pdf` review cards via local LiteParse/OCR preflight, final-card build,
      and `scripts/import_pdf_review_cards.py`.
+   - **Status:** works for Chapter 0 of `Inference Engineering.pdf` via trusted providers; full-chapter import still in proof.
 2. Mark a topic read through the Assistant or the Review surface.
+   - **Status:** works; mark/read state gates card release.
 3. Unlock only cards linked to read/unlocked topics; unread gated cards stay out of due review.
+   - **Status:** works end-to-end when linked card-topic progress is available.
 4. Request question style preferences, such as application questions, against a topic.
+   - **Status:** works as deterministic Assistant command flow into `study_question_requests`.
 5. Review and grade cards through the PWA or Android native Review surface.
+   - **Status:** works on both surfaces with local-device grading evidence.
 6. Feed review/question/practice events into deterministic recommendation scoring.
+   - **Status:** works; PR #204 also injects these signals into briefing review pressure.
 7. Preflight local PDFs before creating cards from them.
+   - **Status:** works with `scripts/pdf_deck_preflight.py` and `scripts/build_pdf_review_cards.py`.
+
+Key loop evidence path for this status:
+- `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/` (builder/import artifacts for Chapter 0)
+- `/tmp/starlog-android-local-validation/builds/20260514T111058Z/` (native validation API log + `latest.json` evidence)
 
 Known outcome for `Inference Engineering.pdf`:
 
@@ -98,6 +123,8 @@ Known outcome for `Inference Engineering.pdf`:
 - **Full-book `Inference Engineering.pdf` coverage:** Chapter 0 final-card generation/import is proven
   through the guarded local path. Broader chapter coverage still needs a larger trusted extraction
   run and human review of generated local JSONL before import.
+- **Assistant recommendation hint surfacing:** PR #203 verifies runtime payload exposure; the remaining gap is
+  validated, consistent rendering of these hints in production Assistant UI surfaces.
 - **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
   the current day, but a device that already carries stale persisted briefing-date state still needs
   a dedicated state-migration/reset proof before release.
@@ -133,6 +160,11 @@ Known outcome for `Inference Engineering.pdf`:
   `scripts/import_pdf_review_cards.py` proves generated PDF cards remain gated until the imported
   Study topic is marked read. The importer is an upsert path for reviewed JSONL; it does not delete
   absent cards from earlier imports.
+- Recommendation-hints and briefing-pressure regression coverage from merged PRs:
+  [services/api/tests/test_assistant_api.py](/home/ubuntu/starlog/services/api/tests/test_assistant_api.py),
+  [services/api/tests/test_storage_legacy_migrations.py](/home/ubuntu/starlog/services/api/tests/test_storage_legacy_migrations.py),
+  [services/api/tests/test_briefing_memory.py](/home/ubuntu/starlog/services/api/tests/test_briefing_memory.py), and
+  [services/api/app/services/memory_service.py](/home/ubuntu/starlog/services/api/app/services/memory_service.py).
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),
@@ -145,8 +177,10 @@ Known outcome for `Inference Engineering.pdf`:
 - PDF extraction/preflight:
   [docs/PDF_OCR_CARD_SMOKE.md](/home/ubuntu/starlog/docs/PDF_OCR_CARD_SMOKE.md),
   [scripts/pdf_deck_preflight.py](/home/ubuntu/starlog/scripts/pdf_deck_preflight.py), and
-  [scripts/build_pdf_review_cards.py](/home/ubuntu/starlog/scripts/build_pdf_review_cards.py), plus
-  [scripts/import_pdf_review_cards.py](/home/ubuntu/starlog/scripts/import_pdf_review_cards.py), plus
+  [scripts/build_pdf_review_cards.py](/home/ubuntu/starlog/scripts/build_pdf_review_cards.py),
+  [scripts/import_pdf_review_cards.py](/home/ubuntu/starlog/scripts/import_pdf_review_cards.py),
+  [scripts/tests/test_build_pdf_review_cards.py](/home/ubuntu/starlog/scripts/tests/test_build_pdf_review_cards.py),
+  [scripts/tests/test_import_pdf_review_cards.py](/home/ubuntu/starlog/scripts/tests/test_import_pdf_review_cards.py), and
   [services/api/tests/test_artifacts_pdf_cards.py](/home/ubuntu/starlog/services/api/tests/test_artifacts_pdf_cards.py)
 - NeetCode source/import:
   [data/neetcode_150.json](/home/ubuntu/starlog/data/neetcode_150.json),
