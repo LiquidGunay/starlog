@@ -1,6 +1,7 @@
 import {
   dateOnlyUtcMillis,
   normalizeCurrentBriefingDate,
+  normalizePersistedBriefingState,
   todayBriefingDate,
 } from "../src/mobile-briefing-date";
 
@@ -46,5 +47,41 @@ assert.deepEqual(normalizeCurrentBriefingDate("not-a-date", "2026-05-13"), {
   date: "2026-05-13",
   reset: true,
 });
+
+assert.deepEqual(
+  normalizePersistedBriefingState(
+    {
+      briefingDate: "2026-05-12",
+      cachedPath: "file:///old/briefing-2026-05-12.json",
+      alarmNotificationId: "alarm-old",
+    },
+    "2026-05-13",
+  ),
+  {
+    briefingDate: "2026-05-13",
+    cachedPath: null,
+    alarmNotificationId: null,
+    canceledAlarmNotificationId: "alarm-old",
+    reset: true,
+  },
+);
+
+assert.deepEqual(
+  normalizePersistedBriefingState(
+    {
+      briefingDate: "2026-05-16",
+      cachedPath: "file:///new/briefing-2026-05-16.json",
+      alarmNotificationId: "alarm-new",
+    },
+    "2026-05-13",
+  ),
+  {
+    briefingDate: "2026-05-16",
+    cachedPath: "file:///new/briefing-2026-05-16.json",
+    alarmNotificationId: "alarm-new",
+    canceledAlarmNotificationId: null,
+    reset: false,
+  },
+);
 
 console.log("mobile briefing date tests passed");
