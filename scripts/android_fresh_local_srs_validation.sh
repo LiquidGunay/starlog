@@ -20,6 +20,7 @@ WINDOWS_TEMP_ROOT="${WINDOWS_TEMP_ROOT:-/mnt/c/Temp}"
 API_PORT="${API_PORT:-8000}"
 API_BASE="${API_BASE:-http://127.0.0.1:${API_PORT}}"
 DECK_PATH="${DECK_PATH:-$ROOT_DIR/data/ml_interviews_part_ii_qa_cards.jsonl}"
+NEETCODE_SOURCE_PATH="${NEETCODE_SOURCE_PATH:-$ROOT_DIR/data/neetcode_150.json}"
 STARLOG_VERSION_NAME="${STARLOG_VERSION_NAME:-0.1.0-april.devtest.$(date -u +%Y%m%dT%H%M%SZ)}"
 # Keep versionCode below Android's signed-int max while still encoding UTC freshness.
 STARLOG_ANDROID_VERSION_CODE="${STARLOG_ANDROID_VERSION_CODE:-1$(date -u +%y%j%H%M)}"
@@ -165,6 +166,7 @@ ensure_requirements() {
   [[ -x "$ANDROID_SDK_ROOT/platform-tools/adb" || -f "$ADB" ]] || fail "Android SDK/adb not found"
   [[ -x "$VENV_PYTHON" ]] || fail "services/api virtualenv python not found: $VENV_PYTHON"
   [[ -f "$DECK_PATH" ]] || fail "Deck file not found: $DECK_PATH"
+  [[ -f "$NEETCODE_SOURCE_PATH" ]] || fail "NeetCode source file not found: $NEETCODE_SOURCE_PATH"
 }
 
 create_passphrase() {
@@ -309,6 +311,38 @@ with sqlite3.connect(str(db_path)) as conn:
     if cursor.rowcount <= 0:
         raise SystemExit(f"No cards updated for card_set_version_id={card_set_version_id}")
     conn.commit()
+PY
+}
+
+import_local_neetcode_study_core() {
+  log "Importing NeetCode Study Core source into fresh local DB"
+  STARLOG_DB_PATH="$RUNTIME_DIR/starlog.db" \
+  STARLOG_MEDIA_DIR="$RUNTIME_DIR/media" \
+  PYTHONPATH="$ROOT_DIR/services/api" \
+  "$VENV_PYTHON" "$ROOT_DIR/scripts/import_neetcode_150.py" --source "$NEETCODE_SOURCE_PATH" >"$BUILD_DIR/neetcode-import.json"
+  "$VENV_PYTHON" - "$BUILD_DIR/neetcode-import.json" "$RUNTIME_DIR/starlog.db" <<'PY'
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+summary_path = Path(sys.argv[1])
+db_path = Path(sys.argv[2])
+
+payload = json.loads(summary_path.read_text(encoding="utf-8"))
+if payload.get("problem_count") != 150:
+    raise SystemExit(f"Expected 150 NeetCode problems, got {payload.get('problem_count')}")
+
+with sqlite3.connect(str(db_path)) as conn:
+    conn.row_factory = sqlite3.Row
+    counts = {
+        "study_sources": conn.execute("SELECT COUNT(*) FROM study_sources").fetchone()[0],
+        "study_topics": conn.execute("SELECT COUNT(*) FROM study_topics").fetchone()[0],
+        "card_topic_links": conn.execute("SELECT COUNT(*) FROM card_topic_links").fetchone()[0],
+    }
+
+if counts["study_sources"] < 1 or counts["study_topics"] < 1 or counts["card_topic_links"] < 1:
+    raise SystemExit(f"NeetCode Study Core import did not create expected rows: {counts}")
 PY
 }
 
@@ -702,12 +736,52 @@ dump_ui() {
 ui_has_text() {
   local needle="$1"
   python3 - "$UI_XML" "$needle" <<'PY'
+import re
 import sys
 import xml.etree.ElementTree as ET
 
 path, needle = sys.argv[1], sys.argv[2].lower()
 root = ET.parse(path).getroot()
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def bottom_nav_top():
+    candidates = []
+    for node in root.iter("node"):
+        desc = (node.attrib.get("content-desc") or "").lower()
+        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+            continue
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
 for node in root.iter("node"):
+    if not is_visible(node):
+        continue
     text = (node.attrib.get("text") or "").lower()
     desc = (node.attrib.get("content-desc") or "").lower()
     if needle in text or needle in desc:
@@ -730,7 +804,46 @@ def normalize(value: str) -> str:
 
 path, needle = sys.argv[1], normalize(sys.argv[2])
 root = ET.parse(path).getroot()
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def bottom_nav_top():
+    candidates = []
+    for node in root.iter("node"):
+        desc = (node.attrib.get("content-desc") or "").lower()
+        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+            continue
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
 for node in root.iter("node"):
+    if not is_visible(node):
+        continue
     text = normalize(node.attrib.get("text") or "")
     desc = normalize(node.attrib.get("content-desc") or "")
     if text == needle or desc == needle or desc == f"[{needle}]":
@@ -749,15 +862,56 @@ import xml.etree.ElementTree as ET
 path, needle = sys.argv[1], sys.argv[2].lower()
 root = ET.parse(path).getroot()
 
-def center(bounds: str) -> str:
-    left, top, right, bottom = map(int, re.findall(r"\d+", bounds))
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def center(bounds: tuple[int, int, int, int]) -> str:
+    left, top, right, bottom = bounds
     return f"{(left + right) // 2} {(top + bottom) // 2}"
 
+
+def bottom_nav_top():
+    candidates = []
+    for node in root.iter("node"):
+        desc = (node.attrib.get("content-desc") or "").lower()
+        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+            continue
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
 for node in root.iter("node"):
+    if not is_visible(node):
+        continue
     text = (node.attrib.get("text") or "").lower()
     desc = (node.attrib.get("content-desc") or "").lower()
     if needle in text or needle in desc:
-        print(center(node.attrib["bounds"]))
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        print(center(bounds))
         raise SystemExit(0)
 raise SystemExit(1)
 PY
@@ -773,12 +927,50 @@ import xml.etree.ElementTree as ET
 path, needle = sys.argv[1], sys.argv[2].lower()
 root = ET.parse(path).getroot()
 
-def center(bounds: str) -> str:
-    left, top, right, bottom = map(int, re.findall(r"\d+", bounds))
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def center(bounds: tuple[int, int, int, int]) -> str:
+    left, top, right, bottom = bounds
     return f"{(left + right) // 2} {(top + bottom) // 2}"
+
+
+def bottom_nav_top():
+    candidates = []
+    for node in root.iter("node"):
+        desc = (node.attrib.get("content-desc") or "").lower()
+        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+            continue
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
 
 exact_matches = []
 for node in root.iter("node"):
+    if not is_visible(node):
+        continue
     text = (node.attrib.get("text") or "").strip().lower()
     desc = (node.attrib.get("content-desc") or "").strip().lower()
     if text == needle or desc == needle or desc == f"[{needle}]":
@@ -789,10 +981,16 @@ if not exact_matches:
 
 for node in exact_matches:
     if node.attrib.get("clickable") == "true":
-        print(center(node.attrib["bounds"]))
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        print(center(bounds))
         raise SystemExit(0)
 
-print(center(exact_matches[0].attrib["bounds"]))
+first_bounds = bounds_of(exact_matches[0])
+if not first_bounds:
+    raise SystemExit(1)
+print(center(first_bounds))
 PY
 }
 
@@ -954,6 +1152,33 @@ wait_for_planner_surface() {
   fail "Timed out waiting for Planner tab surface"
 }
 
+wait_for_review_surface() {
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    if ui_has_text "Starlog Review" || ui_has_text "Focused Review" || ui_has_text "Knowledge Health" || ui_has_text "Load due cards" || ui_has_text "Reveal answer" || ui_has_text "Hide answer" || ui_has_text "Study progress" || ui_has_text "Recall review"; then
+      return 0
+    fi
+    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=review" -n "$APP_COMPONENT" >/dev/null || true
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/review-surface-timeout.png"
+  snapshot_phone_state "review-surface-timeout"
+  fail "Timed out waiting for Review tab surface"
+}
+
+ensure_review_surface() {
+  adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=review" -n "$APP_COMPONENT" >/dev/null || true
+  wait_for_review_surface
+}
+
 wait_for_ui_text() {
   local needle="$1"
   local deadline=$((SECONDS + 60))
@@ -1014,6 +1239,37 @@ scroll_until_any_ui_text() {
   capture_screen "$SCREENSHOT_DIR/scroll-until-ui-text-timeout.png"
   snapshot_phone_state "scroll-until-ui-text-timeout"
   fail "Timed out scrolling for any UI text: ${needles[*]}"
+}
+
+scroll_until_any_ui_text_in_review() {
+  local fail_suffix="$1"
+  shift
+  local deadline=$((SECONDS + 45))
+  local needles=("$@")
+  local attempts=0
+  ensure_review_surface
+  while (( SECONDS < deadline )); do
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    for needle in "${needles[@]}"; do
+      if ui_has_exact_text "$needle"; then
+        return 0
+      fi
+    done
+    if (( attempts < 8 )); then
+      scroll_review_controls
+    else
+      scroll_review_controls_reverse
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/review-${fail_suffix}-timeout.png"
+  snapshot_phone_state "review-${fail_suffix}-timeout"
+  fail "Timed out in review while scrolling for any UI text: ${needles[*]}"
 }
 
 tap_text() {
@@ -1448,6 +1704,16 @@ for node in root.iter("node"):
     if any(token in text for token in noise_markers) or any(token in desc for token in noise_markers):
         continue
 
+    alarm_hint = (
+        "toggle" in desc
+        or "switch" in text
+        or "morning alarm" in desc
+        or "alarm" in desc
+    )
+    inside_tight_region = top >= region_top and bottom <= region_bottom + 180
+    if not inside_tight_region and not alarm_hint:
+        continue
+
     score = abs(center_y - region_mid_y)
     score_reasons = [f"center_y_delta={abs(center_y - region_mid_y)}"]
 
@@ -1465,11 +1731,11 @@ for node in root.iter("node"):
     elif class_name in {"android.widget.button", "android.widget.imagebutton"}:
         score += 30
         score_reasons.append("button_penalty")
-    if "toggle" in desc or "switch" in text:
+    if alarm_hint:
         score -= 80
         score_reasons.append("alarm_hint")
 
-    if top < region_top or bottom > region_bottom + 180:
+    if not inside_tight_region:
         score += 80
         score_reasons.append("outside_tight_region")
 
@@ -1844,6 +2110,127 @@ assert_review_grade_recorded() {
   fail "Did not observe a successful /v1/reviews write or due-card state progress after tapping Good (last status: ${status:-none}, due-before: ${due_count_before:-unknown}, due-after: ${due_count_after:-unknown})"
 }
 
+study_mutation_statuses_after_line() {
+  local start_line="$1"
+  python3 - "$API_LOG" "$start_line" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+start_line = int(sys.argv[2])
+lines = open(path, errors="ignore").read().splitlines()
+statuses = {"unlock": "", "read": "", "question": ""}
+patterns = {
+    "unlock": re.compile(r'"POST /v1/study/topics/[^/]+/unlock HTTP/[0-9.]+"\s+(\d{3})'),
+    "read": re.compile(r'"POST /v1/study/topics/[^/]+/read HTTP/[0-9.]+"\s+(\d{3})'),
+    "question": re.compile(r'"POST /v1/study/question-requests HTTP/[0-9.]+"\s+(\d{3})'),
+}
+for line in lines[start_line:]:
+    for key, pattern in patterns.items():
+        match = pattern.search(line)
+        if match:
+            statuses[key] = match.group(1)
+print(json.dumps(statuses, sort_keys=True))
+PY
+}
+
+assert_native_study_mutations_recorded() {
+  local log_line_before="$1"
+  local deadline=$((SECONDS + 35))
+  local statuses_json=""
+
+  while (( SECONDS < deadline )); do
+    statuses_json="$(study_mutation_statuses_after_line "$log_line_before" || true)"
+    if [[ -n "$statuses_json" ]]; then
+      if python3 - "$statuses_json" <<'PY'
+import json
+import sys
+
+statuses = json.loads(sys.argv[1])
+for key in ("unlock", "read", "question"):
+    value = statuses.get(key) or ""
+    if not value.startswith("2"):
+        raise SystemExit(1)
+PY
+      then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/native-study-mutation-timeout.png"
+  snapshot_phone_state "native-study-mutation-timeout"
+  fail "Did not observe successful native study unlock/read/question API writes (last statuses: ${statuses_json:-none})"
+}
+
+assert_native_study_db_progress() {
+  "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" <<'PY'
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+with sqlite3.connect(db_path) as conn:
+    progress = conn.execute(
+        "SELECT COUNT(*) FROM study_topic_progress WHERE status = 'read' AND read_at IS NOT NULL"
+    ).fetchone()[0]
+    requests = conn.execute("SELECT COUNT(*) FROM study_question_requests").fetchone()[0]
+
+if progress < 1:
+    raise SystemExit("Expected at least one read Study Core topic after native validation")
+if requests < 1:
+    raise SystemExit("Expected at least one Study Core question request after native validation")
+PY
+}
+
+wait_for_native_study_controls() {
+  local deadline=$((SECONDS + 45))
+  while (( SECONDS < deadline )); do
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    if ui_has_text "Study loop" && ui_has_text "Unlock" && ui_has_text "Mark read" && ui_has_text "Application question"; then
+      return 0
+    fi
+    if ui_has_text "Study progress" && ui_has_text "0 sources"; then
+      sleep 1
+      continue
+    fi
+    adb_cmd shell input swipe 540 1500 540 950 220 >/dev/null || true
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/native-study-controls-timeout.png"
+  snapshot_phone_state "native-study-controls-timeout"
+  fail "Timed out waiting for native Study Core controls in Review"
+}
+
+validate_native_study_controls() {
+  log "Validating native Study Core unlock/read/question controls"
+  wait_for_native_study_controls
+  capture_screen "$SCREENSHOT_DIR/native-study-before.png"
+  snapshot_phone_state "native-study-before"
+
+  local study_api_log_line_before
+  study_api_log_line_before="$(wc -l < "$API_LOG")"
+
+  tap_exact_text "Unlock"
+  sleep 2
+  wait_for_any_ui_text "Mark read" "Application question"
+  tap_exact_text "Mark read"
+  sleep 2
+  wait_for_any_ui_text "Study loop" "Application question"
+  tap_exact_text "Application question"
+  sleep 2
+
+  capture_screen "$SCREENSHOT_DIR/native-study-after.png"
+  snapshot_phone_state "native-study-after"
+  assert_native_study_mutations_recorded "$study_api_log_line_before"
+  assert_native_study_db_progress
+}
+
 tap_send_after_first_edit_text() {
   local expected_command="$1"
   local log_line_before="$2"
@@ -2079,6 +2466,10 @@ scroll_review_controls() {
   adb_cmd shell input swipe 540 1800 540 1200 250 >/dev/null
 }
 
+scroll_review_controls_reverse() {
+  adb_cmd shell input swipe 540 1200 540 1800 250 >/dev/null
+}
+
 launch_and_validate_review() {
   log "Launching app into fresh login state"
   adb_cmd reverse "tcp:${API_PORT}" "tcp:${API_PORT}" >/dev/null
@@ -2140,29 +2531,28 @@ launch_and_validate_review() {
   snapshot_phone_state "assistant-command"
   assert_assistant_turn_recorded "$assistant_api_log_line_before"
 
-  local deadline=$((SECONDS + 60))
-  while (( SECONDS < deadline )); do
-    sleep 2
-    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=review" -n "$APP_COMPONENT" >/dev/null || true
-    dump_ui
-    if ui_has_text "Knowledge Health" || ui_has_text "Load due cards" || ui_has_text "Focused Review"; then
-      break
-    fi
-  done
-
+  ensure_review_surface
   capture_screen "$SCREENSHOT_DIR/review-entry.png"
-  if ui_has_text "Load due cards"; then
-    scroll_review_controls
-    sleep 1
-    tap_exact_text "Load due cards"
+  if ! ui_has_text "Study loop" && ! ui_has_exact_text "Load due cards" && ! ui_has_exact_text "Reveal answer" && ! ui_has_exact_text "Hide answer"; then
+    scroll_until_any_ui_text "Study loop" "Load due cards" "Reveal answer" "Hide answer"
   fi
-  wait_for_any_ui_text "Focused Review" "Reveal answer" "Hide answer"
+  if ui_has_exact_text "Load due cards"; then
+    tap_exact_text "Load due cards"
+    sleep 1
+  fi
   capture_screen "$SCREENSHOT_DIR/review-loaded.png"
+  validate_native_study_controls
+  ensure_review_surface
+  capture_screen "$SCREENSHOT_DIR/review-after-native-study-controls.png"
+  snapshot_phone_state "review-after-native-study-controls"
 
-  scroll_until_any_ui_text "Reveal answer" "Hide answer"
-  tap_exact_text "Reveal answer"
+  scroll_until_any_ui_text_in_review "reveal" "Reveal answer" "Hide answer"
+  if ui_has_exact_text "Reveal answer"; then
+    tap_exact_text "Reveal answer"
+  fi
   sleep 2
   capture_screen "$SCREENSHOT_DIR/review-answer.png"
+  snapshot_phone_state "review-answer"
 
   local review_api_log_line_before
   review_api_log_line_before="$(wc -l < "$API_LOG")"
@@ -2173,10 +2563,12 @@ launch_and_validate_review() {
     review_due_count_before=""
   fi
 
-  scroll_until_any_ui_text "Good" "Again" "Easy" "Hard"
+  ensure_review_surface
+  scroll_until_any_ui_text_in_review "grade" "Good"
   tap_exact_text "Good"
   sleep 2
   capture_screen "$SCREENSHOT_DIR/review-rated.png"
+  snapshot_phone_state "review-rated"
   assert_review_grade_recorded "$review_api_log_line_before" "$review_due_count_before"
 
   log "Opening Planner tab and toggling alarm schedule control"
@@ -2195,7 +2587,7 @@ launch_and_validate_review() {
 
   local planner_alarm_state
   planner_alarm_state="$(ui_planner_alarm_state)"
-  if [[ "$planner_alarm_state" == "cache_missing" ]]; then
+  if [[ "$planner_alarm_state" == "cache_missing" || "$planner_alarm_state" == "blocked" ]]; then
     log "Planner alarm shows missing cached briefing; generating cache before scheduling"
     if ! tap_planner_alarm_cache_control; then
       snapshot_phone_state "planner-alarm-cache-control-missing"
@@ -2261,13 +2653,35 @@ payload = {
         "login": f"{screenshot_dir}/login.png",
         "review_entry": f"{screenshot_dir}/review-entry.png",
         "review_loaded": f"{screenshot_dir}/review-loaded.png",
+        "review_after_native_study_controls": f"{screenshot_dir}/review-after-native-study-controls.png",
         "review_answer": f"{screenshot_dir}/review-answer.png",
         "review_rated": f"{screenshot_dir}/review-rated.png",
+        "native_study_before": f"{screenshot_dir}/native-study-before.png",
+        "native_study_after": f"{screenshot_dir}/native-study-after.png",
         "assistant_open": f"{screenshot_dir}/assistant-open.png",
         "assistant_command": f"{screenshot_dir}/assistant-command.png",
         "planner_open": f"{screenshot_dir}/planner-open.png",
         "planner_alarm": f"{screenshot_dir}/planner-alarm.png",
     },
+    "evidence_files": {
+        "api_log": f"{path.parent}/local-api.log",
+        "native_study_before_xml": f"{path.parent}/native-study-before.xml",
+        "native_study_after_xml": f"{path.parent}/native-study-after.xml",
+        "review_after_native_study_controls_xml": f"{path.parent}/review-after-native-study-controls.xml",
+        "review_answer_xml": f"{path.parent}/review-answer.xml",
+        "review_rated_xml": f"{path.parent}/review-rated.xml",
+        "planner_alarm_xml": f"{path.parent}/planner-alarm.xml",
+    },
+    "validated_flows": [
+        "assistant_command_submitted",
+        "native_study_topic_unlocked",
+        "native_study_topic_marked_read",
+        "native_study_question_request_created",
+        "review_answer_revealed",
+        "review_good_grade_submitted",
+        "planner_briefing_cache_generated",
+        "planner_alarm_scheduled",
+    ],
 }
 if include_local_metadata:
     payload["local_paths"] = {
@@ -2277,7 +2691,7 @@ if include_local_metadata:
         "runtime_dir": os.environ["RUNTIME_DIR_ENV"],
         "passphrase_file": os.environ["PASSPHRASE_FILE_ENV"],
     }
-path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
   cp "$METADATA_PATH" "$LATEST_METADATA_PATH"
 }
@@ -2295,6 +2709,7 @@ preflight_phone_state
 start_local_api
 bootstrap_local_station
 import_local_srs_deck
+import_local_neetcode_study_core
 verify_local_review_queue
 if [[ "$SKIP_BUILD" == "1" ]]; then
   stage_existing_apk
