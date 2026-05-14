@@ -90,6 +90,10 @@ import {
   resolveMobileLocalTtsStatus,
   speakMobileLocalText,
 } from "./src/mobile-local-tts";
+import {
+  executeRequestStudyQuestion,
+  executeUpdateStudyTopicMutation,
+} from "./src/mobile-study-mutations";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
@@ -2609,13 +2613,6 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     ]);
   }
 
-  function studyQuestionPrompt(topic: Pick<MobileStudyTopic, "title">, mode: "recall" | "application"): string {
-    if (mode === "application") {
-      return `Create one application interview question for "${topic.title}" that forces me to use the idea in a realistic coding or system-design scenario.`;
-    }
-    return `Create one concise recall question for "${topic.title}" and keep it answerable from the source material.`;
-  }
-
   async function updateStudyTopic(topic: Pick<MobileStudyTopic, "id" | "title">, action: "unlock" | "read") {
     if (!token) {
       setStatus("Add API token first");
@@ -2624,17 +2621,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     const busyKey = `${action}:${topic.id}`;
     setStudyBusyAction(busyKey);
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/study/topics/${encodeURIComponent(topic.id)}/${action}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const updated = await executeUpdateStudyTopicMutation<MobileStudyTopic>({
+        apiBase: normalizeBaseUrl(apiBase),
+        token,
+        topic,
+        action,
+        fetchImpl: fetch,
       });
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Study topic ${action} failed: ${response.status} ${errorBody}`);
-      }
-      const updated = (await response.json()) as MobileStudyTopic;
       setStudyTopics((previous) => previous.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
       await refreshReviewAfterStudyMutation();
       setStatus(action === "read" ? `Marked ${topic.title} read; due queue refreshed` : `Unlocked ${topic.title}; due queue refreshed`);
@@ -2653,24 +2646,13 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     const busyKey = `${mode}:${topic.id}`;
     setStudyBusyAction(busyKey);
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/study/question-requests`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          topic_id: topic.id,
-          question: studyQuestionPrompt(topic, mode),
-          response: {
-            question_preference: mode,
-          },
-        }),
+      await executeRequestStudyQuestion({
+        apiBase: normalizeBaseUrl(apiBase),
+        token,
+        topic,
+        mode,
+        fetchImpl: fetch,
       });
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Study question request failed: ${response.status} ${errorBody}`);
-      }
       await refreshReviewAfterStudyMutation();
       setStatus(`Requested a ${mode} question for ${topic.title}; Review refreshed`);
     } catch (error) {

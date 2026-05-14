@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -36,15 +36,20 @@ where Starlog is going. Use this page for current implementation confidence.
   scheduling state. Dry-run import is documented in [docs/srs/README.md](/home/ubuntu/starlog/docs/srs/README.md).
 - **PDF deck preflight safety path:** `scripts/pdf_deck_preflight.py` calls
   `pdf_ingest_service.extract_pdf_text(Path(...))` directly. It does not boot FastAPI, does not use
-  FastAPI `TestClient`, and only allows localhost parse/OCR server URLs. Manual PDF card generation
-  is blocked when extraction is unavailable or rejected as noise unless reliable user notes exist.
-- **NeetCode 150 source list and dry-run importer:** `data/neetcode_150.json` contains 150 factual
-  practice entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user
-  notes. `scripts/import_neetcode_150.py --dry-run` validates taxonomy counts and builds stable
-  review-input payloads without proprietary problem text or generated answers.
+  FastAPI `TestClient`, and only allows localhost parse/OCR server URLs. It now writes
+  provenance-only `candidate_cards.jsonl` for proven local extraction and records blocked chunk
+  hashes for unproven extraction; it does not persist source excerpts as card content.
+- **NeetCode 150 Study Core importer:** `data/neetcode_150.json` contains 150 factual practice
+  entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user notes.
+  `scripts/import_neetcode_150.py` can validate dry-run payloads and perform an idempotent local
+  Study Core/SRS import without proprietary problem text or generated answers.
 - **Minimal PWA/native interview-prep UI:** the PWA Review surface has thin controls for topic
   unlock/read, question-mode requests, progress state, and recommendation rationale. Native Android
-  Review shows study progress and can load, reveal, and grade backend-owned cards.
+  Review shows study progress and can load, reveal, and grade backend-owned cards. Native study
+  mutation request helpers are covered for unlock/read and question-request payloads.
+- **Visible PWA Assistant study commands:** mocked Playwright coverage boots the PWA and submits
+  visible Assistant commands for unlocking NeetCode drills, marking `Sliding Window` read, and
+  requesting application questions.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
@@ -55,7 +60,7 @@ The merged interview-prep slice currently supports this local loop:
 
 1. Import or validate structured study material:
    - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
-   - NeetCode 150 source validation via `scripts/import_neetcode_150.py --dry-run`.
+   - NeetCode 150 local Study Core/SRS import via `scripts/import_neetcode_150.py`.
 2. Mark a topic read through the Assistant or the Review surface.
 3. Unlock only cards linked to read/unlocked topics; unread gated cards stay out of due review.
 4. Request question style preferences, such as application questions, against a topic.
@@ -72,23 +77,17 @@ Known outcome for `Inference Engineering.pdf`:
 - Latest local preflight evidence with a localhost LiteParse parse endpoint reported
   `provider=liteparse_server`, `mode=liteparse`, `usable=true`, `readable=true`,
   `rejected_as_noise=false`, `evidence_status=proven_local_text`, and `cards_generated=0`.
-- That PDF now has proven local LiteParse extraction for deck prep. The preflight remains
-  extraction-only, so the next step is to run the real local LiteParse parse server and import from
-  the readable extraction; do not generate cards from the older noisy `strings` reports.
+- That PDF now has proven local LiteParse extraction for deck prep. The preflight can prepare
+  provenance-only candidate records from readable local extraction, but it still does not create
+  final review cards; do not generate cards from older noisy `strings` reports.
 
 ## Unproven Or Pending
 
-- **NeetCode Study Core import:** the checked-in list and dry-run payload generation work, but the
-  non-dry-run adapter still depends on a concrete Study Core review-input upsert API.
-- **Native topic mutation controls:** Android native Review currently proves study progress display,
-  queue refresh, reveal, grade, briefing cache, and local alarm scheduling. Topic unlock/read and
-  question-request mutations are still stronger on PWA than native.
-- **Assistant command UI coverage:** PWA Assistant command flow was manually validated for `I read ...`.
-  Additional browser tests should cover `unlock ... drills` and `quiz me on ... questions for ...`
-  through the visible Assistant surface, not only API tests.
-- **`Inference Engineering.pdf` cards:** local LiteParse text extraction is proven, but cards have
-  not been generated yet. Import should use the readable `liteparse_server` extraction, not the older
-  noisy `strings` output.
+- **Native topic mutation device proof:** Android native request helpers are tested, but a fresh
+  physical-device click-through for topic unlock/read and question requests is still pending.
+- **`Inference Engineering.pdf` final cards:** local LiteParse text extraction and provenance-only
+  candidate generation are proven, but final user-reviewable cards have not been generated yet.
+  Import should use readable local extraction, not older noisy `strings` output.
 - **Native briefing date default:** the tested Android device had a stale selected briefing date
   (`2026-04-29`) in local app state while validating alarm scheduling on `2026-05-13`. The alarm flow
   works, but briefing-date reset/default behavior needs cleanup before release.
@@ -107,9 +106,12 @@ Known outcome for `Inference Engineering.pdf`:
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
-  `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL.
-- Fresh frontend/native validation: `corepack pnpm --filter web build` passed, and
-  `corepack pnpm --filter mobile exec tsc --noEmit -p tsconfig.json` passed.
+  `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
+  clean Python 3.12 `uv` environment and prove that marking `Sliding Window` read releases a linked
+  gated card only after prerequisites/read state are satisfied.
+- Fresh frontend/native validation: the Next.js production build passed,
+  `corepack pnpm --filter mobile test:study-mutations` passed, and the focused Playwright PWA
+  Assistant study-command test passed against a local production web server with mocked API routes.
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),
