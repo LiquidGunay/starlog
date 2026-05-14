@@ -60,6 +60,29 @@ def _source_title(pdf_path: Path) -> str:
     return re.sub(r"\s+", " ", pdf_path.stem.replace("_", " ")).strip() or "PDF source"
 
 
+def _chapter_section_title(text: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    repeated = re.match(
+        r"^CHAPTER\s+(\d+)\s+(?P<title>[A-Z][A-Za-z][A-Za-z &:/().,\-]{0,50}?)(?:\s+(?P=title))?(?:\s+\d+)?(?:\s+(?P=title))?\s+(?=(?P=title)\s+(?:is|are|adds|means|uses|requires|turns|starts)\b)",
+        normalized,
+    )
+    if repeated:
+        return f"Chapter {repeated.group(1)}: {repeated.group('title').strip()}"
+    words = text.split()
+    if len(words) < 4 or words[0] != "CHAPTER" or not words[1].isdigit():
+        return None
+    max_title_words = min(8, len(words) - 3)
+    for title_words in range(max_title_words, 0, -1):
+        title = " ".join(words[2 : 2 + title_words]).strip(" :-")
+        candidate = " ".join(words[2 + title_words :]).strip()
+        if not title or candidate[:1].islower():
+            continue
+        first_sentence = re.search(r"([^.!?]{40,}?[.!?])(?:\s+|$)", candidate)
+        if first_sentence and first_sentence.start() == 0 and _sentence_is_reviewable(first_sentence.group(1).strip()):
+            return f"Chapter {words[1]}: {title}"
+    return None
+
+
 def _first_sentence(text: str) -> str:
     normalized = _strip_chapter_heading(re.sub(r"\s+", " ", text).strip())
     for match in re.finditer(r"([^.!?]{40,}?[.!?])(?:\s+|$)", normalized):
@@ -135,25 +158,34 @@ def _trim_structural_front_matter(text: str) -> tuple[str, dict[str, Any]]:
     normalized = re.sub(r"\s+", " ", text).strip()
     toc_index = normalized.lower().find("table of contents")
     if toc_index < 0 or toc_index > 3000:
-        return normalized, {"trimmed": False, "reason": "", "character_start": 0, "word_start": 0}
+        return normalized, {
+            "trimmed": False,
+            "reason": "",
+            "character_start": 0,
+            "word_start": 0,
+            "section": _chapter_section_title(normalized),
+        }
 
     for match in CHAPTER_BODY_PATTERN.finditer(normalized):
         if match.start() <= toc_index + 500:
             continue
         tail = normalized[match.start() : match.start() + 900]
         if _content_block_reason(tail) is None:
+            trimmed = normalized[match.start() :].strip()
             word_start = _word_offset_for_char(normalized, match.start())
-            return normalized[match.start() :].strip(), {
+            return trimmed, {
                 "trimmed": True,
                 "reason": "Skipped structural front matter, table of contents, and preface before first detected chapter body.",
                 "character_start": match.start(),
                 "word_start": word_start,
+                "section": _chapter_section_title(trimmed),
             }
     return normalized, {
         "trimmed": False,
         "reason": "No post-TOC chapter body anchor found.",
         "character_start": 0,
         "word_start": 0,
+        "section": None,
     }
 
 
@@ -164,16 +196,16 @@ def _build_review_card(
     source_sha: str,
     provider: str,
     mode: str,
+    section_title: str,
     card_number: int,
     chunk_index: int,
     word_start: int,
     word_end: int,
     chunk_text: str,
 ) -> dict[str, Any]:
-    title = _source_title(pdf_path)
     chunk_hash = preflight._sha256_text(chunk_text)  # type: ignore[attr-defined]
     question_index = f"{card_number:04d}"
-    prompt = f"What is the source-backed takeaway from {title} chunk {question_index}?"
+    prompt = f"What is the source-backed takeaway from {section_title} chunk {question_index}?"
     answer = _first_sentence(chunk_text)
     return {
         "answer": answer,
@@ -194,7 +226,7 @@ def _build_review_card(
         "prompt": prompt,
         "question": prompt,
         "question_index": question_index,
-        "section": title,
+        "section": section_title,
         "source_url": f"file://{pdf_path}",
     }
 
@@ -265,6 +297,7 @@ def build_report(
 
     trusted_extraction = evidence_status == "proven_local_text" and provider in TRUSTED_FINAL_CARD_PROVIDERS
     if trusted_extraction:
+        section_title = str(front_matter.get("section") or _chapter_section_title(text) or _source_title(pdf_path))
         scan_limit = max(max_cards, max_scan_chunks)
         chunks = preflight._segment_text(text, max_segments=scan_limit)  # type: ignore[attr-defined]
         word_offset = int(front_matter.get("word_start") or 0)
@@ -301,6 +334,7 @@ def build_report(
                     source_sha=source_sha,
                     provider=provider,
                     mode=mode,
+                    section_title=section_title,
                     card_number=len(cards) + 1,
                     chunk_index=chunk_index,
                     word_start=source_word_start,

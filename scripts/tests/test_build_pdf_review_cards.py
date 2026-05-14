@@ -158,8 +158,18 @@ def test_review_card_builder_trims_to_chapter_body_after_toc(monkeypatch, tmp_pa
     assert report["front_matter"]["trimmed"] is True
     cards = [json.loads(line) for line in Path(str(report["cards_path"])).read_text(encoding="utf-8").splitlines()]
     assert cards[0]["answer"].startswith("Inference is the second phase")
+    assert cards[0]["section"] == "Chapter 0: Inference"
     assert "copyright" not in cards[0]["answer"].lower()
     assert "table of contents" not in cards[0]["answer"].lower()
+
+
+def test_chapter_section_title_handles_repeated_title_and_page_number() -> None:
+    text = (
+        "CHAPTER 0 Inference Inference 17 Inference Inference is the second phase in a "
+        "generative AI model lifecycle. Production systems need reliable serving."
+    )
+
+    assert builder._chapter_section_title(text) == "Chapter 0: Inference"
 
 
 def test_content_gate_rejects_non_body_chunks() -> None:
