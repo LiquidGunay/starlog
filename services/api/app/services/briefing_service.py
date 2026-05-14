@@ -4,7 +4,7 @@ from sqlite3 import Connection
 from typing import Any
 
 from app.core.time import utc_now
-from app.services import ai_jobs_service, events_service, integrations_service, memory_service, memory_vault_service
+from app.services import ai_jobs_service, events_service, integrations_service, memory_service, memory_vault_service, srs_service
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 
@@ -36,22 +36,75 @@ def _calendar_blocks(conn: Connection, date: str) -> list[dict[str, Any]]:
 
 
 def _review_pressure(conn: Connection) -> tuple[int, list[dict[str, Any]]]:
-    cards_due = conn.execute(
-        "SELECT COUNT(*) FROM cards WHERE due_at <= ?",
-        (utc_now().isoformat(),),
-    ).fetchone()[0]
+    now = utc_now()
+    now_iso = now.isoformat()
+    signal_score_sql = srs_service.card_signal_score_sql("c")
+    signal_score_params = srs_service.card_signal_score_params(now)
+    cards_due = execute_fetchone(
+        conn,
+        f"""
+        SELECT COUNT(*) AS due_count
+        FROM cards c
+        WHERE c.suspended = 0
+          AND c.due_at <= ?
+          AND {srs_service.available_card_condition("c")}
+        """,
+        (now_iso,),
+    )
     cards = execute_fetchall(
         conn,
-        """
-        SELECT id, prompt, due_at
-        FROM cards
-        WHERE due_at <= ?
-        ORDER BY due_at ASC
+        f"""
+        SELECT c.id, c.prompt, c.due_at,
+               ({signal_score_sql}) AS signal_score,
+               CASE WHEN EXISTS(
+                 SELECT 1
+                 FROM review_events re
+                 WHERE re.card_id = c.id
+                   AND re.rating <= 2
+                   AND re.reviewed_at >= ?
+               ) THEN 1 ELSE 0 END AS has_low_review_signal,
+               CASE WHEN (
+                 EXISTS(
+                   SELECT 1
+                   FROM card_topic_links ctl
+                   JOIN study_question_requests sqr ON sqr.topic_id = ctl.topic_id
+                   JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+                   WHERE ctl.card_id = c.id
+                     AND COALESCE(stp.read_at, '') != ''
+                     AND sqr.created_at >= ?
+                 )
+                 OR EXISTS(
+                   SELECT 1
+                   FROM card_topic_links ctl
+                   JOIN practice_attempts pa ON pa.topic_id = ctl.topic_id
+                   JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+                   WHERE ctl.card_id = c.id
+                     AND COALESCE(stp.read_at, '') != ''
+                     AND pa.attempted_at >= ?
+                     AND (pa.correct = 0 OR pa.rating <= 2)
+                 )
+                 OR EXISTS(
+                   SELECT 1
+                   FROM card_topic_links ctl
+                   JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+                   WHERE ctl.card_id = c.id
+                     AND stp.read_at >= ?
+                 )
+               ) THEN 1 ELSE 0 END AS has_study_signal
+        FROM cards c
+        WHERE c.suspended = 0
+          AND c.due_at <= ?
+          AND {srs_service.available_card_condition("c")}
+        ORDER BY signal_score DESC, c.due_at ASC, c.id ASC
         LIMIT 5
         """,
-        (utc_now().isoformat(),),
+        (
+            *signal_score_params,
+            *signal_score_params,
+            now_iso,
+        ),
     )
-    return int(cards_due), cards
+    return int(cards_due["due_count"] or 0), cards
 
 
 def _latest_research_digest(conn: Connection, date: str) -> dict[str, Any] | None:
