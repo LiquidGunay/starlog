@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -280,6 +281,81 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
                 (neetcode._db_id("crd", "neetcode-150-010"), primary_topic),
             ).fetchone()
             assert primary_link["id"] == neetcode._db_id("card_topic", "neetcode-150-010", "primary", "Two Pointers")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_local_study_core_sliding_window_read_releases_gated_due_card(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.core.time import utc_now
+    from app.db.storage import get_connection
+    from app.services import srs_service, study_service
+
+    get_settings.cache_clear()
+    try:
+        summary = neetcode.import_neetcode_source(
+            REPO_ROOT / "data/neetcode_150.json",
+            neetcode.StudyCoreLocalAdapter(),
+        )
+
+        with get_connection() as conn:
+            sliding_window_topic = conn.execute(
+                "SELECT id FROM study_topics WHERE title = ?",
+                ("Sliding Window",),
+            ).fetchone()
+            assert sliding_window_topic is not None
+
+            card = conn.execute(
+                """
+                SELECT c.id, c.answer
+                FROM cards c
+                JOIN card_topic_links ctl ON ctl.card_id = c.id
+                WHERE ctl.topic_id = ? AND ctl.gate_required = 1
+                ORDER BY c.id
+                LIMIT 1
+                """,
+                (sliding_window_topic["id"],),
+            ).fetchone()
+            assert card is not None
+            assert "No solution text was imported." in card["answer"]
+
+            linked_topics = conn.execute(
+                """
+                SELECT t.id, t.title
+                FROM card_topic_links ctl
+                JOIN study_topics t ON t.id = ctl.topic_id
+                WHERE ctl.card_id = ? AND ctl.gate_required = 1
+                ORDER BY t.display_order
+                """,
+                (card["id"],),
+            ).fetchall()
+            linked_topic_titles = [row["title"] for row in linked_topics]
+            assert linked_topic_titles == ["Arrays & Hashing", "Two Pointers", "Sliding Window"]
+
+            due_at = (utc_now() - timedelta(minutes=5)).isoformat()
+            conn.execute("UPDATE cards SET due_at = ? WHERE id = ?", (due_at, card["id"]))
+            conn.commit()
+
+            for topic in linked_topics:
+                if topic["title"] != "Sliding Window":
+                    study_service.mark_topic_read(conn, topic["id"])
+
+            due_before = {row["id"] for row in srs_service.due_cards(conn, 200)}
+            assert card["id"] not in due_before
+
+            topic_read = study_service.mark_topic_read(conn, sliding_window_topic["id"])
+            assert topic_read["status"] == "read"
+            assert topic_read["read_at"] is not None
+
+            due_after = {row["id"] for row in srs_service.due_cards(conn, 200)}
+            assert card["id"] in due_after
+            assert summary["adapter"]["card_topic_links"]["primary_links"] == 150
+            assert summary["adapter"]["card_topic_links"]["prerequisite_links"] == 166
     finally:
         get_settings.cache_clear()
 

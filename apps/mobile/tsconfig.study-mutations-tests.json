@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/mobile-study-mutations-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-study-mutations.ts",
+    "tests/mobile-study-mutations.test.ts"
+  ]
+}

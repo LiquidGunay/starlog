@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -30,6 +32,9 @@ PADDLEOCR_SERVER_MODULES = (
     "paddle",
     "paddleocr",
 )
+DEFAULT_CHUNK_WORDS = 160
+DEFAULT_CHUNK_OVERLAP = 30
+DEFAULT_MAX_CANDIDATE_CHUNKS = 14
 
 
 def parse_args() -> argparse.Namespace:
@@ -139,6 +144,160 @@ def _probe_local_server(value: str, *, timeout: float = 0.5) -> dict[str, object
     return {"reachable": True, "healthz_url": healthz_url, "response": payload}
 
 
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sha256_path(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _source_slug(path: Path) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", path.stem.lower())
+    return slug.strip("-") or "pdf"
+
+
+def _segment_text(
+    text: str,
+    *,
+    chunk_words: int = DEFAULT_CHUNK_WORDS,
+    overlap_words: int = DEFAULT_CHUNK_OVERLAP,
+    max_segments: int | None = None,
+) -> list[tuple[int, int, str]]:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if not normalized:
+        return []
+
+    words = normalized.split()
+    chunk_words = max(1, chunk_words)
+    overlap_words = max(0, overlap_words)
+    if overlap_words >= chunk_words:
+        overlap_words = max(0, chunk_words // 3)
+    step = max(1, chunk_words - overlap_words)
+
+    segments: list[tuple[int, int, str]] = []
+    start = 0
+    while start < len(words):
+        end = min(start + chunk_words, len(words))
+        chunk = " ".join(words[start:end])
+        if not chunk:
+            break
+        segments.append((start, end, chunk))
+        if end >= len(words):
+            break
+        if max_segments is not None and len(segments) >= max_segments:
+            break
+        start += step
+    return segments
+
+
+def _build_candidate_cards(
+    pdf_path: Path,
+    run_id: str,
+    extraction: dict[str, object],
+    text: str,
+    *,
+    chunk_words: int = DEFAULT_CHUNK_WORDS,
+    overlap_words: int = DEFAULT_CHUNK_OVERLAP,
+    max_cards: int = DEFAULT_MAX_CANDIDATE_CHUNKS,
+) -> list[dict[str, object]]:
+    source_slug = _source_slug(pdf_path)
+    source_sha = _sha256_path(pdf_path)
+    chunks = _segment_text(
+        text,
+        chunk_words=chunk_words,
+        overlap_words=overlap_words,
+        max_segments=max_cards,
+    )
+    if not chunks:
+        return []
+
+    candidates: list[dict[str, object]] = []
+    for index, (start_word, end_word, chunk_text) in enumerate(chunks):
+        chunk_hash = _sha256_text(chunk_text)
+        candidates.append(
+            {
+                "candidate_id": f"{source_slug}-{chunk_hash[:16]}",
+                "status": "candidate",
+                "card_type": "qa",
+                "prompt": "Draft a single high-signal QA flashcard from this source chunk.",
+                "answer": "",
+                "provenance": {
+                    "source": {
+                        "run_id": run_id,
+                        "pdf_path": str(pdf_path),
+                        "pdf_sha256": source_sha,
+                        "provider": extraction.get("provider") or "none",
+                        "mode": extraction.get("mode") or "unavailable",
+                    },
+                    "readability": {
+                        "readable": bool(extraction.get("readable")),
+                        "usable": bool(extraction.get("usable")),
+                        "readability_score": extraction.get("readability_score"),
+                    },
+                    "chunk": {
+                        "index": index,
+                        "word_start": start_word,
+                        "word_end": end_word,
+                        "word_count": max(0, end_word - start_word),
+                        "character_count": len(chunk_text),
+                        "content_sha256": chunk_hash,
+                    },
+                },
+            }
+        )
+    return candidates
+
+
+def _build_blocked_segments(
+    text: str,
+    run_id: str,
+    reason: str,
+    *,
+    chunk_words: int = DEFAULT_CHUNK_WORDS,
+    overlap_words: int = DEFAULT_CHUNK_OVERLAP,
+    max_segments: int = DEFAULT_MAX_CANDIDATE_CHUNKS,
+) -> list[dict[str, object]]:
+    chunks = _segment_text(
+        text,
+        chunk_words=chunk_words,
+        overlap_words=overlap_words,
+        max_segments=max_segments,
+    )
+    if not chunks:
+        return [
+            {
+                "segment_id": f"source-block-{run_id[:6]}",
+                "reason": reason,
+                "status": "blocked",
+                "word_start": 0,
+                "word_end": 0,
+                "word_count": 0,
+                "content_sha256": "",
+            }
+        ]
+
+    blocked: list[dict[str, object]] = []
+    for index, (start_word, end_word, chunk_text) in enumerate(chunks):
+        blocked.append(
+            {
+                "segment_id": f"source-block-{run_id[:6]}-{index:02d}",
+                "reason": reason,
+                "status": "blocked",
+                "chunk_index": index,
+                "word_start": start_word,
+                "word_end": end_word,
+                "word_count": max(0, end_word - start_word),
+                "content_sha256": _sha256_text(chunk_text),
+            }
+        )
+    return blocked
+
+
 def runtime_status(server_env: dict[str, dict[str, str | bool]] | None = None) -> dict[str, object]:
     repo_root = Path(__file__).resolve().parents[1]
     server_env = server_env or disable_nonlocal_pdf_server_env()
@@ -180,6 +339,8 @@ def runtime_status(server_env: dict[str, dict[str, str | bool]] | None = None) -
 
 
 def _status_label(usable: bool, readable: bool, rejected_as_noise: bool, provider: str) -> tuple[str, str]:
+    if provider == "strings":
+        return "unproven", "blocked_string_fallback"
     if usable or readable:
         return "proven_local_text", "preflight_passed"
     if rejected_as_noise:
@@ -250,6 +411,10 @@ def _next_local_steps(report: dict[str, object]) -> list[str]:
 
     if extraction.get("rejected_as_noise"):
         steps.append("Do not generate cards from this run; the current extraction was rejected as noisy/unreadable.")
+    if extraction.get("provider") == "strings":
+        steps.append(
+            "Do not use `strings` output for card prep; rerun with local LiteParse or direct text-layer extraction."
+        )
     return steps
 
 
@@ -280,6 +445,37 @@ def build_report(pdf_path: Path, output_dir: Path) -> dict[str, object]:
     run_dir = output_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    candidate_count = 0
+    blocked_chunks: list[dict[str, object]] = []
+    candidate_cards_path = ""
+    candidate_cards: list[dict[str, object]] = []
+    if evidence_status == "proven_local_text" and provider != "strings":
+        candidate_cards = _build_candidate_cards(
+            pdf_path,
+            run_id,
+            {
+                "provider": provider,
+                "mode": extraction.get("mode") or "unavailable",
+                "readable": readable,
+                "usable": usable,
+                "readability_score": extraction.get("readability_score"),
+            },
+            text,
+        )
+        candidate_count = len(candidate_cards)
+        if candidate_cards:
+            candidate_cards_path = str((run_dir / "candidate_cards.jsonl"))
+            (run_dir / "candidate_cards.jsonl").write_text(
+                "\n".join(json.dumps(item, sort_keys=True) for item in candidate_cards) + "\n",
+                encoding="utf-8",
+            )
+    elif text:
+        blocked_chunks = _build_blocked_segments(
+            text,
+            run_id,
+            f"Card candidates blocked: {deck_generation}",
+        )
+
     report: dict[str, object] = {
         "run_id": run_id,
         "pdf_path": str(pdf_path),
@@ -306,10 +502,17 @@ def build_report(pdf_path: Path, output_dir: Path) -> dict[str, object]:
         "evidence_status": evidence_status,
         "deck_generation": deck_generation,
         "cards_generated": 0,
-        "readable_excerpt": text[:1000] if usable or readable else "",
+        "candidate_cards_path": candidate_cards_path,
+        "candidate_count": candidate_count,
+        "candidate_window": {
+            "chunk_words": DEFAULT_CHUNK_WORDS,
+            "chunk_overlap": DEFAULT_CHUNK_OVERLAP,
+            "max_candidates": DEFAULT_MAX_CANDIDATE_CHUNKS,
+        },
+        "blocked_chunks": blocked_chunks,
         "unproven_note": ""
-        if usable or readable
-        else "No deck cards were generated because local extraction did not prove readable source text.",
+        if evidence_status == "proven_local_text"
+        else "No deck cards were generated because local extraction did not prove safe readable source text.",
     }
     report["next_local_steps"] = _next_local_steps(report)
 
@@ -340,6 +543,8 @@ def _markdown_report(report: dict[str, object]) -> str:
         f"- Evidence status: `{report['evidence_status']}`",
         f"- Deck generation: `{report['deck_generation']}`",
         f"- Cards generated: `{report['cards_generated']}`",
+        f"- Candidate cards generated: `{report['candidate_count']}`",
+        f"- Candidate file: `{report.get('candidate_cards_path')}`",
         "",
     ]
     lines.extend(_markdown_runtime(runtime))
@@ -351,9 +556,15 @@ def _markdown_report(report: dict[str, object]) -> str:
     note = str(report.get("unproven_note") or "")
     if note:
         lines.extend(["## Unproven Evidence", "", note, ""])
-    excerpt = str(report.get("readable_excerpt") or "")
-    if excerpt:
-        lines.extend(["## Readable Excerpt", "", excerpt, ""])
+    blocked_chunks = report.get("blocked_chunks")
+    if isinstance(blocked_chunks, list) and blocked_chunks:
+        lines.extend(["## Blocked Segments", ""])
+        for segment in blocked_chunks:
+            lines.append(
+                f"- segment={segment.get('segment_id')} reason={segment.get('reason')} "
+                f"words={segment.get('word_count')}"
+            )
+        lines.append("")
     return "\n".join(lines) + "\n"
 
 
@@ -404,6 +615,8 @@ def main() -> int:
                 "evidence_status": report["evidence_status"],
                 "deck_generation": report["deck_generation"],
                 "cards_generated": report["cards_generated"],
+                "candidate_count": report["candidate_count"],  # type: ignore[index]
+                "candidate_cards_path": report["candidate_cards_path"],  # type: ignore[index]
             },
             sort_keys=True,
         )
