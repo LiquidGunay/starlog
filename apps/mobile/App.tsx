@@ -66,6 +66,10 @@ import {
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./src/mobile-assistant-today-view-model";
+import {
+  normalizeCurrentBriefingDate,
+  todayBriefingDate,
+} from "./src/mobile-briefing-date";
 import { MobileOpsChip, MobileSupportPanel } from "./src/mobile-ops-panels";
 import {
   AssistantToolsSection,
@@ -743,43 +747,8 @@ async function writeSecureToken(rawToken: string): Promise<void> {
   }
 }
 
-function tomorrowDateString(): string {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  return localDateStringForAssistantToday(next);
-}
-
 function todayDateString(): string {
   return localDateStringForAssistantToday();
-}
-
-function dateOnlyUtcMillis(value: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
-    return null;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const millis = Date.UTC(year, month - 1, day);
-  const parsed = new Date(millis);
-  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
-    return null;
-  }
-  return millis;
-}
-
-function normalizeCurrentBriefingDate(value: string, today = todayDateString()): { date: string; reset: boolean } {
-  const selectedMillis = dateOnlyUtcMillis(value);
-  const todayMillis = dateOnlyUtcMillis(today);
-  if (selectedMillis === null || todayMillis === null) {
-    return { date: today, reset: true };
-  }
-  const daysFromToday = Math.round((selectedMillis - todayMillis) / 86_400_000);
-  if (daysFromToday < 0 || daysFromToday > 7) {
-    return { date: today, reset: true };
-  }
-  return { date: value, reset: false };
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -1498,7 +1467,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const [voiceClipTarget, setVoiceClipTarget] = useState<VoiceClipTarget | null>(null);
   const [localSttAvailable, setLocalSttAvailable] = useState(false);
   const [localSttListening, setLocalSttListening] = useState(false);
-  const [briefingDate, setBriefingDate] = useState(tomorrowDateString());
+  const [briefingDate, setBriefingDate] = useState(todayBriefingDate());
   const [cachedPath, setCachedPath] = useState<string | null>(null);
   const [cachedBriefingPlaybackMode, setCachedBriefingPlaybackMode] = useState<CachedBriefingPlaybackMode>(
     "no_cached_briefing",
@@ -2913,7 +2882,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setCachedBriefingAvailable(true);
       setValidatedCachedBriefingDate(briefing.date);
       briefingCacheRef.current = { briefingDate: briefing.date, cachedPath: path };
-      await refreshScheduledMorningAlarmForCachedBriefing(path);
+      await refreshScheduledMorningAlarmForCachedBriefing(path, briefing.date);
       await playBriefingPayload(cachedBriefing, "cached");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to refresh and play briefing");
@@ -2974,7 +2943,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setCachedBriefingAvailable(true);
       setValidatedCachedBriefingDate(briefing.date);
       briefingCacheRef.current = { briefingDate: briefing.date, cachedPath: path };
-      const alarmUpdated = await refreshScheduledMorningAlarmForCachedBriefing(path);
+      const alarmUpdated = await refreshScheduledMorningAlarmForCachedBriefing(path, briefing.date);
       setStatus(
         `${briefing.audioRef
           ? `Cached briefing package for ${currentBriefingDate} with audio`
@@ -3097,14 +3066,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         return;
       }
 
-      const { trigger } = await scheduleMorningAlarmNotification(cached.path);
+      const { trigger } = await scheduleMorningAlarmNotification(cached.path, cached.briefing.date);
       setStatus(`Daily alarm scheduled for ${toHourMinuteLabel(trigger.hour, trigger.minute)}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to schedule alarm");
     }
   }
 
-  async function scheduleMorningAlarmNotification(briefingPath: string): Promise<{
+  async function scheduleMorningAlarmNotification(briefingPath: string, scheduledBriefingDate: string): Promise<{
     identifier: string;
     trigger: Notifications.DailyTriggerInput;
   }> {
@@ -3125,7 +3094,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         title: "Starlog Morning Brief",
         body: "Tap to play your cached spoken briefing.",
         data: {
-          briefingDate,
+          briefingDate: scheduledBriefingDate,
           briefingPath,
           fallbackText: "Briefing cache missing. Open Starlog companion to refresh.",
         },
@@ -3138,7 +3107,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return { identifier, trigger };
   }
 
-  async function refreshScheduledMorningAlarmForCachedBriefing(briefingPath: string): Promise<boolean> {
+  async function refreshScheduledMorningAlarmForCachedBriefing(
+    briefingPath: string,
+    scheduledBriefingDate: string,
+  ): Promise<boolean> {
     if (!alarmNotificationId) {
       return false;
     }
@@ -3152,7 +3124,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         return false;
       }
 
-      await scheduleMorningAlarmNotification(briefingPath);
+      await scheduleMorningAlarmNotification(briefingPath, scheduledBriefingDate);
       return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to update scheduled alarm cache");
