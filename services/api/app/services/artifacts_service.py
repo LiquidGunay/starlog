@@ -137,9 +137,11 @@ def _pdf_card_block_reason(artifact: dict) -> str | None:
         return None
     if extraction.get("used_notes_fallback") or extraction.get("notes_override_extracted"):
         return None
+    provider = str(extraction.get("provider") or "").strip()
+    if provider == "strings":
+        return "PDF extraction came from noisy `strings` fallback; rerun with local OCR/LiteParse or add reliable notes before making cards."
     if extraction.get("usable") or extraction.get("readable"):
         return None
-    provider = str(extraction.get("provider") or "").strip()
     if extraction.get("rejected_as_noise"):
         return "PDF extraction was rejected as noise; add reliable notes or rerun with local OCR/LiteParse before making cards."
     if provider in {"", "none"}:
