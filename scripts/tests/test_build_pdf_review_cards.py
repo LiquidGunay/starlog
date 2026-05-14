@@ -25,6 +25,17 @@ def _trusted_text() -> str:
     )
 
 
+def _body_text() -> str:
+    paragraph = (
+        "Inference engineering starts when a team defines the behavior that a model system must "
+        "deliver under production traffic. The team measures request quality, latency, routing "
+        "choices, cache behavior, and recovery paths before changing the serving configuration. "
+        "A useful interview review card should ask about those operating tradeoffs because they "
+        "connect model selection, infrastructure limits, and user-visible reliability."
+    )
+    return " ".join([paragraph] * 4)
+
+
 def _write_pdf(tmp_path: Path) -> Path:
     pdf_path = tmp_path / "Inference Engineering.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 local test payload")
@@ -85,6 +96,83 @@ def test_review_card_builder_accepts_liteparse_and_writes_final_cards(monkeypatc
     assert cards[0]["answer"].startswith("Inference engineering turns model calls")
     assert cards[0]["metadata"]["provider"] == "liteparse_server"
     assert cards[0]["metadata"]["answer_source"] == "trusted_local_pdf_extraction"
+
+
+def test_review_card_builder_skips_front_matter_toc_and_resource_lists(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = _write_pdf(tmp_path)
+    front_matter = (
+        "INFERENCE ENGINEERING BY PHILIP KIELY Published by Baseten Books Copyright 2026 "
+        "All rights reserved ISBN 979 8 9943597 2 3 Cover art and editorial credits. "
+    )
+    toc = (
+        "Table of Contents Chapter 0 Inference 15 Chapter 1 Prerequisites 23 "
+        "1.1 Scale and Specialization 26 1.2 About Your App 27 1.3 Model Selection 31 "
+        "2.1 Neural Networks 42 2.2 LLM Inference Mechanics 46 3.1 Hardware 73 "
+    )
+    appendix = (
+        "Appendix Resources References Links example.com docs.example.org vendor.ai "
+        "further reading bibliography collected resources. "
+    )
+    extracted = " ".join([front_matter] * 4 + [toc] * 4 + [appendix] * 2 + [_body_text()])
+    _patch_extraction(monkeypatch, provider="liteparse_server", text=extracted, readable=True)
+
+    report = builder.build_report(pdf_path, tmp_path / "cards", max_cards=2, max_scan_chunks=12)
+
+    assert report["final_card_status"] == "ready"
+    assert report["cards_generated"] >= 1
+    reasons = {segment["reason"] for segment in report["blocked_segments"]}
+    assert "Segment blocked: front matter is not a final review-card source." in reasons
+    assert "Segment blocked: table-of-contents text is not a final review-card source." in reasons
+    assert "Segment blocked: appendix/resource-list text is not a final review-card source." in reasons
+    cards = [json.loads(line) for line in Path(str(report["cards_path"])).read_text(encoding="utf-8").splitlines()]
+    assert cards[0]["metadata"]["word_start"] > 0
+    answer = cards[0]["answer"].lower()
+    assert "copyright" not in answer
+    assert "table of contents" not in answer
+    assert "appendix resources" not in answer
+    assert (
+        "model system" in answer
+        or "inference engineering starts" in answer
+        or "team measures request quality" in answer
+    )
+
+
+def test_review_card_builder_trims_to_chapter_body_after_toc(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = _write_pdf(tmp_path)
+    front_matter = (
+        "Title Page Copyright 2026 All rights reserved ISBN 123. "
+        "Table of Contents Chapter 0 Inference 15 Chapter 1 Prerequisites 23 "
+        "1.1 Scale and Specialization 26 1.2 Model Selection 31 "
+    )
+    chapter_body = (
+        "CHAPTER 0 Inference Inference is the second phase in a generative AI model lifecycle. "
+        "Production teams use inference engineering to optimize latency, throughput, reliability, "
+        "and cost after model quality is good enough for a product. "
+        "This is the material that should become review cards."
+    )
+    extracted = " ".join([front_matter] * 5 + [chapter_body] * 4)
+    _patch_extraction(monkeypatch, provider="liteparse_server", text=extracted, readable=True)
+
+    report = builder.build_report(pdf_path, tmp_path / "cards", max_cards=1)
+
+    assert report["front_matter"]["trimmed"] is True
+    cards = [json.loads(line) for line in Path(str(report["cards_path"])).read_text(encoding="utf-8").splitlines()]
+    assert cards[0]["answer"].startswith("Inference is the second phase")
+    assert "copyright" not in cards[0]["answer"].lower()
+    assert "table of contents" not in cards[0]["answer"].lower()
+
+
+def test_content_gate_rejects_non_body_chunks() -> None:
+    assert builder._content_block_reason(
+        "Published by Example Press Copyright 2026 All rights reserved ISBN 12345"
+    ) == "Segment blocked: front matter is not a final review-card source."
+    assert builder._content_block_reason(
+        "Table of Contents Chapter 1 Setup 9 1.1 Background 10 1.2 Model Selection 12 2.1 Serving 40"
+    ) == "Segment blocked: table-of-contents text is not a final review-card source."
+    assert builder._content_block_reason(
+        "Appendix Resources References Links example.com docs.example.org vendor.ai"
+    ) == "Segment blocked: appendix/resource-list text is not a final review-card source."
+    assert builder._content_block_reason(_body_text()) is None
 
 
 def test_review_card_builder_accepts_local_ocr(monkeypatch, tmp_path: Path) -> None:

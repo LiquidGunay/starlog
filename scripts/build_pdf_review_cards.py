@@ -23,6 +23,25 @@ TRUSTED_FINAL_CARD_PROVIDERS = {"liteparse_server", "ocr_server", "pypdf"}
 DEFAULT_OUTPUT_DIR = ROOT_DIR / "artifacts/pdf-review-cards"
 DEFAULT_MAX_CARDS = 14
 DEFAULT_MIN_SEGMENT_WORDS = 24
+DEFAULT_MAX_SCAN_CHUNKS = 80
+
+FRONT_MATTER_PATTERNS = (
+    r"\ball rights reserved\b",
+    r"\bcopyright\b",
+    r"\bisbn\b",
+    r"\bcover art\b",
+    r"\bedited by\b",
+    r"\bpublished by\b",
+    r"\bpublisher\b",
+)
+TOC_HEADING_PATTERN = re.compile(
+    r"(?:\bchapter\s+\d+[\w.:\- ]{3,80}\s+\d+\b|\b\d+(?:\.\d+){1,4}\s+[A-Z][A-Za-z][A-Za-z /&,\-()]{2,80}\s+\d+\b)"
+)
+RESOURCE_LIST_PATTERNS = (
+    r"\bappendix\b.{0,120}\b(resources?|references?|further reading|bibliography|links?)\b",
+    r"\b(resources?|references?|further reading|bibliography|links?)\b.{0,120}\bappendix\b",
+)
+CHAPTER_BODY_PATTERN = re.compile(r"\bCHAPTER\s+\d+\b")
 
 
 def _quality_for_text(text: str, provider: str, mode: str) -> dict[str, Any]:
@@ -42,11 +61,100 @@ def _source_title(pdf_path: Path) -> str:
 
 
 def _first_sentence(text: str) -> str:
-    normalized = re.sub(r"\s+", " ", text).strip()
-    match = re.search(r"(.{80,}?[.!?])\s+[A-Z0-9]", normalized)
-    if match:
-        return match.group(1).strip()
+    normalized = _strip_chapter_heading(re.sub(r"\s+", " ", text).strip())
+    for match in re.finditer(r"([^.!?]{40,}?[.!?])(?:\s+|$)", normalized):
+        sentence = match.group(1).strip()
+        if _sentence_is_reviewable(sentence):
+            return sentence
     return normalized[:520].strip()
+
+
+def _strip_chapter_heading(text: str) -> str:
+    words = text.split()
+    if len(words) < 4 or words[0].lower() != "chapter" or not words[1].isdigit():
+        return text.strip()
+    max_title_words = min(8, len(words) - 3)
+    for title_words in range(max_title_words, 0, -1):
+        candidate = " ".join(words[2 + title_words :]).strip()
+        if candidate[:1].islower():
+            continue
+        first_sentence = re.search(r"([^.!?]{40,}?[.!?])(?:\s+|$)", candidate)
+        if first_sentence and first_sentence.start() == 0 and _sentence_is_reviewable(first_sentence.group(1).strip()):
+            return candidate
+    return text.strip()
+
+
+def _sentence_is_reviewable(sentence: str) -> bool:
+    words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sentence)
+    if len(words) < 8:
+        return False
+    if not sentence[:1].isalpha() or sentence[:1].islower():
+        return False
+    lower = sentence.lower()
+    if any(re.search(pattern, lower) for pattern in FRONT_MATTER_PATTERNS):
+        return False
+    if "table of contents" in lower:
+        return False
+    numeric_tokens = re.findall(r"\b\d+(?:\.\d+)*\b", sentence)
+    return len(numeric_tokens) <= max(2, len(words) // 6)
+
+
+def _content_sentence_count(text: str) -> int:
+    count = 0
+    for sentence in re.split(r"[.!?]+", text):
+        words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", sentence)
+        if len(words) < 8:
+            continue
+        lowercase_words = sum(1 for word in words if word[:1].islower())
+        if lowercase_words >= 4:
+            count += 1
+    return count
+
+
+def _content_block_reason(text: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    lower = normalized.lower()
+    if any(re.search(pattern, lower) for pattern in FRONT_MATTER_PATTERNS):
+        return "Segment blocked: front matter is not a final review-card source."
+    if "table of contents" in lower or len(TOC_HEADING_PATTERN.findall(normalized)) >= 4:
+        return "Segment blocked: table-of-contents text is not a final review-card source."
+    if any(re.search(pattern, lower) for pattern in RESOURCE_LIST_PATTERNS):
+        return "Segment blocked: appendix/resource-list text is not a final review-card source."
+    if len(re.findall(r"https?://|www\.|[A-Za-z0-9.-]+\.(?:com|org|net|io|ai|edu)\b", lower)) >= 3:
+        return "Segment blocked: resource-list text is not a final review-card source."
+    if _content_sentence_count(normalized) < 2:
+        return "Segment blocked: source chunk does not contain enough prose content for a final card."
+    return None
+
+
+def _word_offset_for_char(text: str, char_index: int) -> int:
+    return len(re.findall(r"\S+", text[:char_index]))
+
+
+def _trim_structural_front_matter(text: str) -> tuple[str, dict[str, Any]]:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    toc_index = normalized.lower().find("table of contents")
+    if toc_index < 0 or toc_index > 3000:
+        return normalized, {"trimmed": False, "reason": "", "character_start": 0, "word_start": 0}
+
+    for match in CHAPTER_BODY_PATTERN.finditer(normalized):
+        if match.start() <= toc_index + 500:
+            continue
+        tail = normalized[match.start() : match.start() + 900]
+        if _content_block_reason(tail) is None:
+            word_start = _word_offset_for_char(normalized, match.start())
+            return normalized[match.start() :].strip(), {
+                "trimmed": True,
+                "reason": "Skipped structural front matter, table of contents, and preface before first detected chapter body.",
+                "character_start": match.start(),
+                "word_start": word_start,
+            }
+    return normalized, {
+        "trimmed": False,
+        "reason": "No post-TOC chapter body anchor found.",
+        "character_start": 0,
+        "word_start": 0,
+    }
 
 
 def _build_review_card(
@@ -56,6 +164,7 @@ def _build_review_card(
     source_sha: str,
     provider: str,
     mode: str,
+    card_number: int,
     chunk_index: int,
     word_start: int,
     word_end: int,
@@ -63,7 +172,7 @@ def _build_review_card(
 ) -> dict[str, Any]:
     title = _source_title(pdf_path)
     chunk_hash = preflight._sha256_text(chunk_text)  # type: ignore[attr-defined]
-    question_index = f"{chunk_index + 1:04d}"
+    question_index = f"{card_number:04d}"
     prompt = f"What is the source-backed takeaway from {title} chunk {question_index}?"
     answer = _first_sentence(chunk_text)
     return {
@@ -121,6 +230,7 @@ def build_report(
     *,
     max_cards: int = DEFAULT_MAX_CARDS,
     min_segment_words: int = DEFAULT_MIN_SEGMENT_WORDS,
+    max_scan_chunks: int = DEFAULT_MAX_SCAN_CHUNKS,
 ) -> dict[str, Any]:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -129,7 +239,8 @@ def build_report(
 
     server_env = preflight.disable_nonlocal_pdf_server_env()
     extraction = pdf_ingest_service.extract_pdf_text(pdf_path)
-    text = str(extraction.get("text") or "").strip()
+    raw_text = str(extraction.get("text") or "").strip()
+    text, front_matter = _trim_structural_front_matter(raw_text)
     provider = str(extraction.get("provider") or "none")
     mode = str(extraction.get("mode") or "unavailable")
     usable = bool(extraction.get("usable")) and bool(text)
@@ -154,22 +265,35 @@ def build_report(
 
     trusted_extraction = evidence_status == "proven_local_text" and provider in TRUSTED_FINAL_CARD_PROVIDERS
     if trusted_extraction:
-        chunks = preflight._segment_text(text, max_segments=max_cards)  # type: ignore[attr-defined]
+        scan_limit = max(max_cards, max_scan_chunks)
+        chunks = preflight._segment_text(text, max_segments=scan_limit)  # type: ignore[attr-defined]
+        word_offset = int(front_matter.get("word_start") or 0)
         for chunk_index, (word_start, word_end, chunk_text) in enumerate(chunks):
+            source_word_start = word_start + word_offset
+            source_word_end = word_end + word_offset
             segment_quality = _quality_for_text(chunk_text, provider, mode)
             word_count = max(0, word_end - word_start)
-            if word_count < min_segment_words or not bool(segment_quality.get("readable")):
+            block_reason = _content_block_reason(chunk_text)
+            if word_count < min_segment_words:
+                block_reason = "Segment blocked: trusted extraction chunk was too thin."
+            elif not bool(segment_quality.get("readable")):
+                block_reason = "Segment blocked: trusted extraction chunk was unreadable."
+            elif block_reason is None and not _sentence_is_reviewable(_first_sentence(chunk_text)):
+                block_reason = "Segment blocked: source chunk did not contain a clean reviewable answer sentence."
+            if block_reason is not None:
                 blocked_segments.append(
                     _blocked_segment(
                         run_id=run_id,
-                        reason="Segment blocked: trusted extraction chunk was too thin or unreadable.",
+                        reason=block_reason,
                         chunk_index=chunk_index,
-                        word_start=word_start,
-                        word_end=word_end,
+                        word_start=source_word_start,
+                        word_end=source_word_end,
                         chunk_text=chunk_text,
                     )
                 )
                 continue
+            if len(cards) >= max_cards:
+                break
             cards.append(
                 _build_review_card(
                     pdf_path=pdf_path,
@@ -177,9 +301,10 @@ def build_report(
                     source_sha=source_sha,
                     provider=provider,
                     mode=mode,
+                    card_number=len(cards) + 1,
                     chunk_index=chunk_index,
-                    word_start=word_start,
-                    word_end=word_end,
+                    word_start=source_word_start,
+                    word_end=source_word_end,
                     chunk_text=chunk_text,
                 )
             )
@@ -225,10 +350,12 @@ def build_report(
         "cards_path": cards_path,
         "trusted_final_card_providers": sorted(TRUSTED_FINAL_CARD_PROVIDERS),
         "blocked_segments": blocked_segments,
+        "front_matter": front_matter,
         "card_window": {
             "chunk_words": preflight.DEFAULT_CHUNK_WORDS,
             "chunk_overlap": preflight.DEFAULT_CHUNK_OVERLAP,
             "max_cards": max_cards,
+            "max_scan_chunks": max(max_cards, max_scan_chunks),
             "min_segment_words": min_segment_words,
         },
     }
@@ -282,6 +409,7 @@ def main() -> int:
     parser.add_argument("--pdf", type=Path, default=ROOT_DIR / "Inference Engineering.pdf")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--max-cards", type=int, default=DEFAULT_MAX_CARDS)
+    parser.add_argument("--max-scan-chunks", type=int, default=DEFAULT_MAX_SCAN_CHUNKS)
     parser.add_argument(
         "--fail-on-blocked",
         action="store_true",
@@ -291,7 +419,12 @@ def main() -> int:
     output_dir = args.output_dir
     if not output_dir.is_absolute():
         output_dir = ROOT_DIR / output_dir
-    report = build_report(args.pdf.expanduser().resolve(), output_dir.resolve(), max_cards=max(1, args.max_cards))
+    report = build_report(
+        args.pdf.expanduser().resolve(),
+        output_dir.resolve(),
+        max_cards=max(1, args.max_cards),
+        max_scan_chunks=max(1, args.max_scan_chunks),
+    )
     print(
         json.dumps(
             {

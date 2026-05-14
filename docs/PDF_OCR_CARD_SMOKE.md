@@ -150,9 +150,10 @@ PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/build_pdf_review
 
 This final-card builder reuses the same local URL restrictions and trust gate. It only writes
 `review_cards.jsonl` when the provider is `liteparse_server`, `ocr_server`, or `pypdf` and the
-individual source chunk is readable. `strings` fallback output and noisy/scanned chunks are written
-as blocked segment evidence with `cards_generated: 0` rather than converted into weak cards. Do not
-commit generated `review_cards.jsonl` files when they contain source excerpts from local PDFs.
+individual source chunk is readable and content-like. Front matter, table-of-contents chunks,
+appendix/resource-list chunks, `strings` fallback output, and noisy/scanned chunks are written as
+blocked segment evidence rather than converted into weak cards. Do not commit generated
+`review_cards.jsonl` files when they contain source excerpts from local PDFs.
 
 Latest canonical-checkout result on 2026-05-13:
 
