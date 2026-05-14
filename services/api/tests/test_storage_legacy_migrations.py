@@ -104,6 +104,10 @@ def test_init_storage_migrates_legacy_cards_without_deck_columns(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_cards_deck_due_at'"
         ).fetchone()
         assert deck_index is not None
+        recommendation_index = migrated.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_recommendation_events_created'"
+        ).fetchone()
+        assert recommendation_index is not None
 
         study_tables = {
             row["name"]
