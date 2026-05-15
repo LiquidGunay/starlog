@@ -339,6 +339,196 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
         get_settings.cache_clear()
 
 
+def test_local_study_core_import_retires_legacy_generic_problem_card(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.core.time import utc_now
+    from app.db.storage import get_connection
+    from app.services import srs_service, study_service
+
+    get_settings.cache_clear()
+    try:
+        source_path = REPO_ROOT / "data/neetcode_150.json"
+        adapter = neetcode.StudyCoreLocalAdapter()
+        first = neetcode.import_neetcode_source(source_path, adapter)
+
+        legacy_external_id = "neetcode-150-001"
+        legacy_card_id = neetcode._db_id("crd", legacy_external_id)
+        legacy_note_block_id = neetcode._db_id("blk", legacy_external_id)
+        due_at = (utc_now() - timedelta(minutes=5)).isoformat()
+        with get_connection() as conn:
+            topic = conn.execute(
+                "SELECT id FROM study_topics WHERE title = ?",
+                ("Arrays & Hashing",),
+            ).fetchone()
+            assert topic is not None
+            study_service.mark_topic_read(conn, topic["id"])
+            conn.execute(
+                """
+                INSERT INTO note_blocks (id, note_id, artifact_id, block_type, content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    legacy_note_block_id,
+                    first["adapter"]["note_id"],
+                    first["adapter"]["artifact_id"],
+                    "coding_problem_review_card",
+                    "Legacy NeetCode generic card",
+                    due_at,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO cards (
+                  id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+                  tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    legacy_card_id,
+                    first["adapter"]["card_set_version_id"],
+                    first["adapter"]["artifact_id"],
+                    legacy_note_block_id,
+                    first["adapter"]["deck_id"],
+                    "understanding",
+                    "Legacy generic Contains Duplicate prompt",
+                    "Legacy generic answer",
+                    json.dumps(["neetcode-150", "coding-practice"]),
+                    0,
+                    due_at,
+                    9,
+                    3,
+                    2.1,
+                    due_at,
+                    due_at,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    neetcode._db_id("card_topic", legacy_external_id, "primary", "Arrays & Hashing"),
+                    legacy_card_id,
+                    topic["id"],
+                    1,
+                    due_at,
+                ),
+            )
+            conn.commit()
+
+            due_before = {row["id"] for row in srs_service.due_cards(conn, 800)}
+            assert legacy_card_id in due_before
+
+        second = neetcode.import_neetcode_source(source_path, adapter)
+        assert second["adapter"]["legacy_cards"]["cards_deleted"] == 1
+        assert second["adapter"]["legacy_cards"]["links_deleted"] == 1
+        assert second["adapter"]["legacy_cards"]["note_blocks_deleted"] == 1
+        assert second["adapter"]["legacy_cards"]["state_migrated"] == 4
+
+        with get_connection() as conn:
+            due_after = {row["id"] for row in srs_service.due_cards(conn, 800)}
+            assert legacy_card_id not in due_after
+            assert conn.execute("SELECT id FROM cards WHERE id = ?", (legacy_card_id,)).fetchone() is None
+            assert (
+                conn.execute("SELECT id FROM card_topic_links WHERE card_id = ?", (legacy_card_id,)).fetchone()
+                is None
+            )
+            assert conn.execute("SELECT id FROM note_blocks WHERE id = ?", (legacy_note_block_id,)).fetchone() is None
+
+            migrated_axis_card = conn.execute(
+                "SELECT due_at, interval_days, repetitions, ease_factor FROM cards WHERE id = ?",
+                (neetcode._db_id("crd", legacy_external_id, "pattern_recognition"),),
+            ).fetchone()
+            assert migrated_axis_card["due_at"] == due_at
+            assert migrated_axis_card["interval_days"] == 9
+            assert migrated_axis_card["repetitions"] == 3
+            assert migrated_axis_card["ease_factor"] == 2.1
+    finally:
+        get_settings.cache_clear()
+
+
+def test_local_study_core_import_preserves_non_owned_deterministic_card_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.core.time import utc_now
+    from app.db.storage import get_connection
+
+    get_settings.cache_clear()
+    try:
+        source_path = REPO_ROOT / "data/neetcode_150.json"
+        adapter = neetcode.StudyCoreLocalAdapter()
+        first = neetcode.import_neetcode_source(source_path, adapter)
+
+        external_id = "neetcode-150-002"
+        card_id = neetcode._db_id("crd", external_id)
+        link_id = neetcode._db_id("card_topic", external_id, "primary", "Arrays & Hashing")
+        now = utc_now().isoformat()
+        with get_connection() as conn:
+            topic = conn.execute(
+                "SELECT id FROM study_topics WHERE title = ?",
+                ("Arrays & Hashing",),
+            ).fetchone()
+            assert topic is not None
+            conn.execute(
+                """
+                INSERT INTO cards (
+                  id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+                  tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    card_id,
+                    None,
+                    None,
+                    None,
+                    first["adapter"]["deck_id"],
+                    "understanding",
+                    "Personal card that happens to use an old deterministic id",
+                    "Personal answer",
+                    json.dumps(["personal"]),
+                    0,
+                    now,
+                    1,
+                    0,
+                    2.5,
+                    now,
+                    now,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (link_id, card_id, topic["id"], 1, now),
+            )
+            conn.commit()
+
+        second = neetcode.import_neetcode_source(source_path, adapter)
+        assert second["adapter"]["legacy_cards"]["cards_deleted"] == 0
+
+        with get_connection() as conn:
+            card = conn.execute("SELECT tags_json FROM cards WHERE id = ?", (card_id,)).fetchone()
+            assert json.loads(card["tags_json"]) == ["personal"]
+            link = conn.execute(
+                "SELECT id FROM card_topic_links WHERE id = ? AND card_id = ?",
+                (link_id, card_id),
+            ).fetchone()
+            assert link is not None
+    finally:
+        get_settings.cache_clear()
+
+
 def test_local_study_core_sliding_window_read_releases_gated_due_card(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

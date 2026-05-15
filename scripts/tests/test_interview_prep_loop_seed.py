@@ -30,6 +30,9 @@ def test_neetcode_topic_read_gates_due_cards(tmp_path: Path) -> None:
     ]
     assert summary["card_id"]
     assert len(summary["card_ids"]) == 2
+    assert len(summary["problem_keys"]) == 2
+    assert len(set(summary["problem_keys"])) == 2
+    assert all(card_id.startswith(problem_key) for card_id, problem_key in zip(summary["card_ids"], summary["problem_keys"]))
     assert summary["due"]["before_mark_read"]["card_in_due_queue"] is False
     assert summary["due"]["after_mark_read_before_request"]["card_in_due_queue"] is False
     assert summary["due"]["after_mark_read"]["card_in_due_queue"] is True

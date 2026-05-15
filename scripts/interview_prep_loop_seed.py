@@ -22,6 +22,14 @@ import import_neetcode_150 as neetcode  # noqa: E402
 DEFAULT_NEETCODE_SOURCE_PATH = ROOT_DIR / "data" / "neetcode_150.json"
 
 
+def _problem_key_from_card_id(card_id: str) -> str | None:
+    for axis in neetcode.REVIEW_CARD_AXES:
+        suffix = f"_{axis['id']}"
+        if card_id.endswith(suffix):
+            return card_id[: -len(suffix)]
+    return None
+
+
 def _set_runtime_paths(*, db_path: Path, media_dir: Path) -> dict[str, str | None]:
     previous_db_path = os.environ.get("STARLOG_DB_PATH")
     previous_media_dir = os.environ.get("STARLOG_MEDIA_DIR")
@@ -79,14 +87,26 @@ def seed_interview_topic_gate_harness(
                 FROM cards c
                 JOIN card_topic_links ctl ON ctl.card_id = c.id
                 WHERE ctl.topic_id = ? AND ctl.gate_required = 1
+                  AND ctl.id GLOB ?
                 ORDER BY c.id
-                LIMIT 2
                 """,
-                (topic_id,),
+                (topic_id, f"*_primary_{neetcode._slug(topic_title)}"),
             ).fetchall()
-            if len(card_rows) < 2:
+            card_ids: list[str] = []
+            problem_keys: list[str] = []
+            seen_problem_keys: set[str] = set()
+            for row in card_rows:
+                card_id = str(row["id"])
+                problem_key = _problem_key_from_card_id(card_id)
+                if problem_key is None or problem_key in seen_problem_keys:
+                    continue
+                seen_problem_keys.add(problem_key)
+                problem_keys.append(problem_key)
+                card_ids.append(card_id)
+                if len(card_ids) == 2:
+                    break
+            if len(card_ids) < 2:
                 raise RuntimeError(f"Expected at least two gated cards linked to topic '{topic_title}'")
-            card_ids = [str(row["id"]) for row in card_rows]
             primary_card_id = card_ids[0]
 
             def due_seed_card_ids() -> set[str]:
@@ -152,6 +172,7 @@ def seed_interview_topic_gate_harness(
             },
             "card_id": primary_card_id,
             "card_ids": card_ids,
+            "problem_keys": problem_keys,
             "due": {
                 "before_mark_read": pre_auth_status,
                 "after_mark_read_before_request": pre_read_status,

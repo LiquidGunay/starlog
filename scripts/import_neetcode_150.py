@@ -187,6 +187,13 @@ class StudyCoreLocalAdapter:
                 review_inputs=review_inputs,
                 now_iso=now_iso,
             )
+            legacy_status = _retire_legacy_problem_cards(
+                conn,
+                artifact_id=artifact_id,
+                review_inputs=review_inputs,
+                schedule=schedule,
+                now_iso=now_iso,
+            )
             link_status = _upsert_card_topic_links(conn, source_id, review_inputs, now_iso)
             conn.commit()
 
@@ -202,6 +209,7 @@ class StudyCoreLocalAdapter:
             "topics": topic_status,
             "practice_items": item_status,
             "cards": card_status,
+            "legacy_cards": legacy_status,
             "card_topic_links": link_status,
             "artifact": artifact_status,
             "note": note_status,
@@ -871,6 +879,135 @@ def _upsert_cards(
     status["note_blocks_created"] = note_blocks["created"]
     status["note_blocks_updated"] = note_blocks["updated"]
     status["note_blocks_unchanged"] = note_blocks["unchanged"]
+    return status
+
+
+def _legacy_card_importer_owned(row: Any, *, artifact_id: str, legacy_note_block_id: str) -> bool:
+    if row["artifact_id"] == artifact_id or row["note_block_id"] == legacy_note_block_id:
+        return True
+    tags = _decode_json(row["tags_json"], [])
+    return isinstance(tags, list) and IMPORT_KEY_PREFIX in tags
+
+
+def _legacy_card_link_id_prefix(external_id: str) -> str:
+    return f"{_db_id('card_topic', external_id)}_"
+
+
+def _legacy_note_block_importer_owned(row: Any, *, artifact_id: str) -> bool:
+    if row["artifact_id"] == artifact_id:
+        return True
+    content = str(row["content"] or "")
+    return f"Import Key: {IMPORT_KEY_PREFIX}" in content or f"Import Key: {IMPORT_KEY_PREFIX}-" in content
+
+
+def _fresh_axis_card(row: Any) -> bool:
+    return int(row["repetitions"]) == 0
+
+
+def _retire_legacy_problem_cards(
+    conn: Any,
+    *,
+    artifact_id: str,
+    review_inputs: list[dict[str, Any]],
+    schedule: dict[str, Any],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {
+        "cards_deleted": 0,
+        "cards_suspended": 0,
+        "links_deleted": 0,
+        "note_blocks_deleted": 0,
+        "state_migrated": 0,
+    }
+    initial_interval_days = int(schedule.get("initial_interval_days", 1))
+    initial_ease_factor = float(schedule.get("initial_ease_factor", 2.5))
+    for review_input in review_inputs:
+        external_id = str(review_input["external_id"])
+        legacy_card_id = _db_id("crd", external_id)
+        legacy_note_block_id = _db_id("blk", external_id)
+        legacy_card = conn.execute("SELECT * FROM cards WHERE id = ?", (legacy_card_id,)).fetchone()
+        legacy_card_owned = legacy_card is not None and _legacy_card_importer_owned(
+            legacy_card,
+            artifact_id=artifact_id,
+            legacy_note_block_id=legacy_note_block_id,
+        )
+
+        if legacy_card_owned:
+            for card_spec in _review_card_specs(review_input):
+                axis_card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_spec["card_id"],)).fetchone()
+                if axis_card is None or not _fresh_axis_card(axis_card):
+                    continue
+                axis_review_events = conn.execute(
+                    "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
+                    (card_spec["card_id"],),
+                ).fetchone()["count"]
+                if int(axis_review_events) > 0:
+                    continue
+                axis_is_initial = (
+                    int(axis_card["interval_days"]) == initial_interval_days
+                    and float(axis_card["ease_factor"]) == initial_ease_factor
+                )
+                if not axis_is_initial:
+                    continue
+                conn.execute(
+                    """
+                    UPDATE cards
+                    SET suspended = ?, due_at = ?, interval_days = ?, repetitions = ?,
+                        ease_factor = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        int(legacy_card["suspended"]),
+                        legacy_card["due_at"],
+                        int(legacy_card["interval_days"]),
+                        int(legacy_card["repetitions"]),
+                        float(legacy_card["ease_factor"]),
+                        now_iso,
+                        card_spec["card_id"],
+                    ),
+                )
+                status["state_migrated"] += 1
+
+            cursor = conn.execute("DELETE FROM card_topic_links WHERE card_id = ?", (legacy_card_id,))
+            status["links_deleted"] += max(cursor.rowcount, 0)
+            review_events = conn.execute(
+                "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
+                (legacy_card_id,),
+            ).fetchone()["count"]
+            if int(review_events) == 0:
+                cursor = conn.execute("DELETE FROM cards WHERE id = ?", (legacy_card_id,))
+                status["cards_deleted"] += max(cursor.rowcount, 0)
+            elif int(legacy_card["suspended"]) == 0:
+                conn.execute(
+                    "UPDATE cards SET suspended = 1, updated_at = ? WHERE id = ?",
+                    (now_iso, legacy_card_id),
+                )
+                status["cards_suspended"] += 1
+
+        if legacy_card is None:
+            cursor = conn.execute(
+                """
+                DELETE FROM card_topic_links
+                WHERE card_id = ?
+                  AND id GLOB ?
+                """,
+                (legacy_card_id, f"{_legacy_card_link_id_prefix(external_id)}*"),
+            )
+            status["links_deleted"] += max(cursor.rowcount, 0)
+
+        if legacy_card_owned or legacy_card is None:
+            note_block_refs = conn.execute(
+                "SELECT COUNT(*) AS count FROM cards WHERE note_block_id = ?",
+                (legacy_note_block_id,),
+            ).fetchone()["count"]
+            note_block = conn.execute("SELECT * FROM note_blocks WHERE id = ?", (legacy_note_block_id,)).fetchone()
+            if (
+                int(note_block_refs) == 0
+                and note_block is not None
+                and _legacy_note_block_importer_owned(note_block, artifact_id=artifact_id)
+            ):
+                cursor = conn.execute("DELETE FROM note_blocks WHERE id = ?", (legacy_note_block_id,))
+                status["note_blocks_deleted"] += max(cursor.rowcount, 0)
     return status
 
 
