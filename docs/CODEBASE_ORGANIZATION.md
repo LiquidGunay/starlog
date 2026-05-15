@@ -16,7 +16,7 @@ Starlog is organized as a monorepo with three main product layers:
 
 User-facing clients.
 
-- `apps/web` — the installable PWA and current primary workspace.
+- `apps/web` — the desktop web Assistant and installable PWA/fallback mobile web surface.
 - `apps/mobile` — the native mobile companion focused on capture, alarms, offline playback, and quick review.
 
 ### `services/`
@@ -72,7 +72,7 @@ Typical places to inspect:
 Start here for:
 
 - chat and thread presentation
-- artifact views and inline card rendering
+- artifact views and assistant protocol/card projection rendering
 - provider/settings UI
 - offline/sync UX
 - PWA design-system work
