@@ -128,14 +128,13 @@ test("opens an empty assistant thread to the Today state", async ({ page }) => {
 
   await page.goto("/assistant");
 
-  await expect(page.getByText("Today in Starlog")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose the next useful move." })).toBeVisible();
-  await expect(page.getByLabel("Today quick starts").getByRole("button", { name: "Plan today" })).toBeVisible();
-  await expect(page.getByText("Capture triage ready")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resolve the waiting decision" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Capture needs triage" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Process captures" }).click();
+  await page.getByRole("button", { name: "Process latest capture" }).click();
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
-    "Process my latest captures and route anything actionable.",
+    /^Process (my latest Library captures and route anything actionable\.|latest capture)$/,
   );
 });
 
@@ -196,6 +195,11 @@ test("renders rich assistant thread parts from the snapshot", async ({ page }) =
                   label: "Planner sync is still reconciling background changes.",
                 },
                 {
+                  type: "status",
+                  id: "part_status_2",
+                  status: "unlocked",
+                },
+                {
                   type: "tool_result",
                   id: "part_tool_result_1",
                   tool_result: {
@@ -249,16 +253,15 @@ test("renders rich assistant thread parts from the snapshot", async ({ page }) =
 
   await page.goto("/assistant");
 
-  await expect(page.getByRole("heading", { name: "Assistant thread", exact: true })).toBeVisible();
   await expect(page.getByText("Planner noticed a conflict and surfaced it in the thread.")).toBeVisible();
   await expect(page.getByText("Planner conflict detected")).toBeVisible();
-  await expect(page.getByText("Resolve overlap")).toBeVisible();
-  await expect(page.getByText("Awaiting thread decision")).toBeVisible();
-  await expect(page.getByText("tb_1")).toBeVisible();
+  await expect(page.getByText("Planner conflict", { exact: true })).toBeVisible();
   await expect(page.getByText("Planner sync is still reconciling background changes.")).toBeVisible();
-  await expect(page.getByText("briefing_job_1")).toBeVisible();
+  await expect(page.getByText("Ready for review")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Check complete" })).toHaveCount(2);
   await expect(page.getByText("Morning briefing audio")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open audio" })).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/tool_name|resolve_planner_conflict|tb_1|briefing_job_1|unlocked|Raw|Diagnostics/i);
 });
 
 test("desktop helper handoff draft prefills the assistant composer", async ({ page }) => {
@@ -281,7 +284,9 @@ test("desktop helper handoff draft prefills the assistant composer", async ({ pa
 
   await page.goto("/assistant?handoff=handoff_token_123");
 
-  await expect(page.locator("textarea")).toHaveValue("Help me process artifact art_123.");
+  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
+    "Help me process artifact art_123.",
+  );
   await expect(page.getByText("Desktop Helper handoff")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open in Library" })).toBeVisible();
 });
@@ -583,7 +588,6 @@ test("resolved planner activity no longer keeps the planner surface active", asy
   await page.goto("/assistant");
 
   await expect(page.getByText("Planner conflict resolved")).toBeVisible();
-  await expect(page.getByText("Tasks, calendar, time blocks, and briefings.")).toBeVisible();
   await expect(page.getByText("1 planning item is active from this thread.")).toHaveCount(0);
 });
 
@@ -771,10 +775,10 @@ test("navigation and composer card actions stay live in the assistant thread", a
 
   await page.getByRole("button", { name: "Ask follow-up" }).click();
   await expect(
-    page.getByPlaceholder("Capture, plan, review, or ask the Assistant to move something forward."),
+    page.getByPlaceholder("Ask, capture, plan, review, or move something forward..."),
   ).toHaveValue("Summarize the current review queue and suggest the first card to grade.");
 
-  await page.locator("article").filter({ hasText: "Due cards" }).getByRole("button", { name: "Open Review" }).click();
+  await page.getByRole("link", { name: "Open Review" }).last().click();
   await expect(page).toHaveURL(/\/review$/);
 });
 
@@ -1272,8 +1276,8 @@ test("planner briefing generation feeds the morning focus interrupt", async ({ p
   });
 
   await page.goto("/planner");
-  await page.getByRole("button", { name: "Generate briefing" }).click();
-  await expect(page.getByText(`Generated briefing for ${briefing.date}. Assistant focus prompt is ready.`)).toBeVisible();
+  await page.getByRole("button", { name: "Prepare briefing" }).click();
+  await expect(page.getByText(`Prepared briefing for ${briefing.date}`)).toBeVisible();
 
   await page.goto("/assistant");
   await expect(page.getByText("Here is your morning briefing. Choose one focused way to start.")).toBeVisible();
@@ -1544,4 +1548,125 @@ test("planner conflict resolution clears the assistant interrupt and leaves a fo
   await expect(page.getByText("Planner conflict resolved")).toBeVisible();
   await expect(page.getByText("remote_evt_2 was resolved in Planner with local wins.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Apply choice" })).toHaveCount(0);
+});
+
+test("assistant-ui interview review data UI submits a grade without raw protocol labels", async ({ page }) => {
+  await seedSession(page);
+  const submissions: Array<Record<string, unknown>> = [];
+  const reviewInterrupt = {
+    id: "interrupt_interview_review_1",
+    thread_id: "thr_primary",
+    run_id: "run_interview_review_1",
+    status: "pending",
+    interrupt_type: "choice",
+    tool_name: "grade_review_recall",
+    renderer_key: "interview.review_grade",
+    renderer_version: 1,
+    placement: "sidecar",
+    structured_content: {
+      card_id: "card_interview_1",
+      prompt: "How would you explain the event loop to a product engineer?",
+      answer: "It coordinates queued work and callbacks without blocking the main thread.",
+      recommendation_reason: "Recent misses on async JavaScript make a short recall grade the highest-value next step.",
+    },
+    ui_meta: { tone: "review" },
+    title: "Grade interview recall",
+    body: "Pick the grade that matches your recall.",
+    entity_ref: { entity_type: "card", entity_id: "card_interview_1", href: "/review?card=card_interview_1", title: "Event loop card" },
+    fields: [
+      {
+        id: "rating",
+        kind: "select",
+        label: "Recall quality",
+        required: true,
+        options: [
+          { label: "Again", value: "1" },
+          { label: "Hard", value: "3" },
+          { label: "Good", value: "4" },
+          { label: "Easy", value: "5" },
+        ],
+      },
+    ],
+    primary_label: "Save grade",
+    secondary_label: "Keep in Review",
+    consequence_preview: "Updates the next review interval.",
+    recommended_defaults: { rating: "3" },
+    metadata: {},
+    created_at: "2026-04-21T09:12:00.000Z",
+    resolved_at: null,
+    resolution: null,
+  };
+
+  await routeDynamicAssistantShell(page, () =>
+    threadSnapshot({
+      last_message_at: "2026-04-21T09:12:00.000Z",
+      last_preview_text: "Grade this interview recall.",
+      interrupts: [reviewInterrupt],
+      messages: [
+        {
+          id: "msg_interview_review_1",
+          thread_id: "thr_primary",
+          run_id: "run_interview_review_1",
+          role: "assistant",
+          status: "requires_action",
+          parts: [
+            {
+              type: "text",
+              id: "part_interview_review_text",
+              text: "Grade this interview recall so I can schedule the next pass.",
+            },
+            {
+              type: "interrupt_request",
+              id: "part_interview_review_interrupt",
+              interrupt: reviewInterrupt,
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:12:00.000Z",
+          updated_at: "2026-04-21T09:12:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+  await page.route(`${API_BASE}/v1/assistant/interrupts/interrupt_interview_review_1/submit`, async (route) => {
+    submissions.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        threadSnapshot({
+          messages: [
+            {
+              id: "msg_interview_done",
+              thread_id: "thr_primary",
+              run_id: null,
+              role: "assistant",
+              status: "complete",
+              parts: [{ type: "text", id: "part_interview_done", text: "Saved the interview review grade." }],
+              metadata: {},
+              created_at: "2026-04-21T09:13:00.000Z",
+              updated_at: "2026-04-21T09:13:00.000Z",
+            },
+          ],
+          interrupts: [],
+          next_cursor: "2026-04-21T09:13:00.000Z",
+        }),
+      ),
+    });
+  });
+
+  await page.goto("/assistant");
+
+  await expect(page.getByText("Grade this interview recall so I can schedule the next pass.")).toBeVisible();
+  await expect(page.getByText("Interview review")).toBeVisible();
+  await expect(page.getByText("How would you explain the event loop to a product engineer?")).toBeVisible();
+  await expect(page.getByText("Recent misses on async JavaScript make a short recall grade the highest-value next step.")).toBeVisible();
+  await page.getByRole("radio", { name: "Good" }).click();
+  await page.getByRole("button", { name: "Save grade" }).click();
+
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0].values).toEqual(expect.objectContaining({ rating: "4" }));
+  await expect(page.getByText("Saved the interview review grade.")).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/grade_review_recall|renderer_key|structured_content|tool_name|card_interview_1|Raw|Diagnostics/i);
 });

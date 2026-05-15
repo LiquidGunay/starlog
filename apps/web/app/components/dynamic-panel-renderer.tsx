@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { AssistantEntityRef, AssistantInterrupt, AssistantInterruptField } from "@starlog/contracts";
 
@@ -796,8 +796,14 @@ function EmptyConfirmPanel() {
 }
 
 export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: DynamicPanelRendererProps) {
-  const defaults = useMemo(() => initialValues(interrupt), [interrupt]);
-  const [values, setValues] = useState<Record<string, unknown>>(defaults);
+  const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(interrupt));
+  const valuesRef = useRef<Record<string, unknown>>(values);
+  const interruptIdRef = useRef(interrupt.id);
+  const setPanelValues: SetValues = (action) => {
+    const nextValues = typeof action === "function" ? action(valuesRef.current) : action;
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+  };
   const variant = panelTone(interrupt);
   const secondaryLabel = interrupt.secondary_label || interrupt.defer_label || "Not now";
   const visibleFields = isReviewGradePanel(interrupt)
@@ -810,8 +816,14 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
       : null;
 
   useEffect(() => {
-    setValues(defaults);
-  }, [defaults]);
+    if (interruptIdRef.current === interrupt.id) {
+      return;
+    }
+    const nextValues = initialValues(interrupt);
+    interruptIdRef.current = interrupt.id;
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+  }, [interrupt]);
 
   return (
     <section
@@ -837,7 +849,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
       <ReviewGradePreview
         interrupt={interrupt}
         values={values}
-        onSupportAction={(value) => setFieldValue(setValues, "support_action", value)}
+        onSupportAction={(value) => setFieldValue(setPanelValues, "support_action", value)}
       />
       <ClarificationPreview interrupt={interrupt} />
       <EntityPickerPreview interrupt={interrupt} values={values} />
@@ -850,7 +862,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
               interrupt={interrupt}
               field={field}
               values={values}
-              setValues={setValues}
+              setValues={setPanelValues}
               variant={variant}
               interruptId={interrupt.id}
             />
@@ -876,7 +888,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
             type="button"
             onClick={() => {
               if (secondarySubmits(interrupt, secondaryLabel)) {
-                const valuesWithoutDate = { ...values };
+                const valuesWithoutDate = { ...valuesRef.current };
                 delete valuesWithoutDate.due_date;
                 void onSubmit(interrupt.id, valuesWithoutDate);
                 return;
@@ -891,7 +903,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
         )}
         <button
           type="button"
-          onClick={() => void onSubmit(interrupt.id, values)}
+          onClick={() => void onSubmit(interrupt.id, valuesRef.current)}
           disabled={busy}
           className={interrupt.destructive ? styles.dangerButton : styles.primaryButton}
         >

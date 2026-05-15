@@ -12,10 +12,11 @@ import type {
   AssistantThreadSnapshot,
 } from "@starlog/contracts";
 
-import { MainRoomThread, type AssistantTodaySummary, type AssistantWeeklySummary } from "../components/main-room-thread";
+import type { AssistantTodaySummary, AssistantWeeklySummary } from "../components/main-room-thread";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { StarlogAssistantRuntimeProvider } from "./runtime/starlog-runtime-provider";
+import { StarlogAssistantComposer, StarlogAssistantThread, type ComposerDraftSeed } from "./starlog-assistant-thread";
 import { summarizeSupportSurfaces } from "./support-surfaces";
 import styles from "./page.module.css";
 
@@ -590,8 +591,6 @@ function AssistantPageContent() {
   const { apiBase, token, mutateWithQueue } = useSessionConfig();
   const clientTimezone =
     typeof Intl !== "undefined" ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC";
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const snapshotRef = useRef<AssistantThreadSnapshot | null>(null);
   const cursorRef = useRef<string | null>(null);
   const authBlockedRef = useRef(false);
   const appliedDraftRef = useRef<string | null>(null);
@@ -599,7 +598,7 @@ function AssistantPageContent() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [todaySummary, setTodaySummary] = useState<AssistantTodaySummary | null>(null);
   const [weeklySummary, setWeeklySummary] = useState<AssistantWeeklySummary | null>(null);
-  const [composer, setComposer] = useState("");
+  const [composerDraft, setComposerDraft] = useState<ComposerDraftSeed | null>(null);
   const [handoff, setHandoff] = useState<AssistantHandoff | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -613,9 +612,9 @@ function AssistantPageContent() {
     setError(STREAM_AUTH_ERROR);
   }, []);
 
-  useEffect(() => {
-    snapshotRef.current = snapshot;
-  }, [snapshot]);
+  const queueComposerDraft = useCallback((text: string) => {
+    setComposerDraft((current) => ({ id: (current?.id || 0) + 1, text }));
+  }, []);
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -637,11 +636,8 @@ function AssistantPageContent() {
       return;
     }
     appliedDraftRef.current = `draft:${genericDraft}`;
-    setComposer((current) => current.trim() ? current : genericDraft);
-    window.requestAnimationFrame(() => {
-      composerRef.current?.focus();
-    });
-  }, [genericDraft, handoffToken]);
+    queueComposerDraft(genericDraft);
+  }, [genericDraft, handoffToken, queueComposerDraft]);
 
   useEffect(() => {
     if (!handoffToken) {
@@ -673,10 +669,7 @@ function AssistantPageContent() {
         setError(null);
         if (appliedDraftRef.current !== `handoff:${handoffToken}`) {
           appliedDraftRef.current = `handoff:${handoffToken}`;
-          setComposer((current) => current.trim() ? current : nextHandoff.draft);
-          window.requestAnimationFrame(() => {
-            composerRef.current?.focus();
-          });
+          queueComposerDraft(nextHandoff.draft);
         }
       } catch (err) {
         if (cancelled) {
@@ -695,7 +688,7 @@ function AssistantPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [apiBase, applyAuthFailure, handoffToken, token]);
+  }, [apiBase, applyAuthFailure, handoffToken, queueComposerDraft, token]);
 
   const loadSnapshot = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) {
@@ -947,7 +940,6 @@ function AssistantPageContent() {
       );
       setSnapshot(payload.snapshot);
       setCursor(payload.snapshot.next_cursor || null);
-      setComposer("");
       if (handoff) {
         setHandoff(null);
         appliedDraftRef.current = null;
@@ -961,10 +953,7 @@ function AssistantPageContent() {
   }
 
   function handleQuickStart(prompt: string) {
-    setComposer(prompt);
-    window.requestAnimationFrame(() => {
-      composerRef.current?.focus();
-    });
+    queueComposerDraft(prompt);
   }
 
   async function handleCardAction(action: AssistantCardAction) {
@@ -987,8 +976,7 @@ function AssistantPageContent() {
     if (action.kind === "composer") {
       const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
       if (prompt) {
-        setComposer(prompt);
-        composerRef.current?.focus();
+        queueComposerDraft(prompt);
       }
       return;
     }
@@ -1161,7 +1149,7 @@ function AssistantPageContent() {
 
         <section className={styles.layout}>
           <div className={styles.threadColumn}>
-            <MainRoomThread
+            <StarlogAssistantThread
               snapshot={normalizedSnapshot}
               loading={loading}
               busy={sending}
@@ -1206,46 +1194,13 @@ function AssistantPageContent() {
                 </div>
               </section>
             ) : null}
-            <form
-              className={styles.composer}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void sendMessage(composer);
-              }}
-            >
-              <div className={styles.composerChips} aria-label="Assistant shortcuts">
-                {[
-                  "Capture",
-                  "Plan today",
-                  "Process latest capture",
-                  "Start review",
-                  "Create task",
-                ].map((chip) => (
-                  <button
-                    key={chip}
-                    type="button"
-                    onClick={() => setComposer((current) => (current.trim() ? current : chip))}
-                    disabled={!snapshot || sending}
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
-              <textarea
-                ref={composerRef}
-                value={composer}
-                onChange={(event) => setComposer(event.target.value)}
-                placeholder="Ask, capture, plan, review, or move something forward..."
-                rows={4}
-                disabled={!snapshot || sending}
-              />
-              <div className={styles.composerBar}>
-                <span>{error || (sending ? "Starlog is working..." : "Voice, capture, planning, and review all land in this thread.")}</span>
-                <button type="submit" disabled={!snapshot || sending || !composer.trim()}>
-                  Send
-                </button>
-              </div>
-            </form>
+            <StarlogAssistantComposer
+              draft={composerDraft}
+              disabled={!snapshot}
+              busy={sending}
+              error={error}
+              onShortcut={queueComposerDraft}
+            />
           </div>
 
           <aside className={styles.sideRail}>

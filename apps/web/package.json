@@ -12,6 +12,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.12.25",
     "@starlog/contracts": "workspace:*",
+    "@starlog/dynamic-ui": "workspace:*",
     "next": "15.0.7",
     "react": "18.3.1",
     "react-dom": "18.3.1"

@@ -183,6 +183,16 @@ function dynamicPanelSnapshot() {
             { label: "Easy", value: "5" },
           ],
         },
+        {
+          id: "support_action",
+          kind: "select",
+          label: "Review support",
+          required: false,
+          options: [
+            { label: "Show worked example", value: "worked_example" },
+            { label: "Ask a hint", value: "hint" },
+          ],
+        },
       ],
       primary_label: "Save grade",
       secondary_label: "Keep in Review",
@@ -343,13 +353,17 @@ test("renders assistant-ui-compatible dynamic panel variants without diagnostic 
 
   await page.goto("/assistant");
 
-  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(7);
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(6);
   await expect(page.locator('[data-panel-tool="request_due_date"]')).toContainText("Task setup");
   await expect(page.locator('[data-panel-tool="triage_capture"]')).toContainText("Capture triage");
   await expect(page.locator('[data-panel-tool="resolve_planner_conflict"]')).toContainText("Deep Work");
   await expect(page.locator('[data-panel-tool="resolve_planner_conflict"]')).toContainText(/overlap/i);
-  await expect(page.locator('[data-panel-tool="grade_review_recall"]')).toContainText("Again");
-  await expect(page.locator('[data-panel-tool="grade_review_recall"]')).toContainText("Good");
+  const reviewCard = page.getByTestId("assistant-ui-review-grade");
+  await expect(reviewCard).toContainText("Interview review");
+  await expect(reviewCard).toContainText("Again");
+  await expect(reviewCard).toContainText("Good");
+  await expect(reviewCard.getByRole("button", { name: "Show worked example" })).toBeVisible();
+  await expect(page.locator('[data-panel-tool="grade_review_recall"]')).toHaveCount(0);
   await expect(page.locator('[data-panel-tool="choose_morning_focus"]')).toContainText("Protect the first useful block.");
   await expect(page.locator('[data-panel-tool="defer_recommendation"]')).toContainText("No thanks, keep it in view");
   await expect(page.locator('[data-panel-tool="confirm_plan_change"]')).toContainText("Confirm this change before Starlog applies it.");
@@ -394,13 +408,16 @@ test("submits and dismisses dynamic panels through existing assistant interrupt 
   });
   expect(typeof submissions[0].values.client_timezone).toBe("string");
 
-  const reviewPanel = page.locator('[data-panel-tool="grade_review_recall"]');
+  const reviewPanel = page.getByTestId("assistant-ui-review-grade");
+  await reviewPanel.getByRole("button", { name: "Show worked example" }).click();
+  await expect(reviewPanel.getByRole("button", { name: "Show worked example" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => submissions.length).toBe(1);
   await reviewPanel.getByRole("radio", { name: /Good/ }).click();
   await reviewPanel.getByRole("button", { name: "Save grade" }).click();
 
   await expect.poll(() => submissions.length).toBe(2);
   expect(submissions[1].url).toContain("/v1/assistant/interrupts/interrupt_review/submit");
-  expect(submissions[1].values).toMatchObject({ rating: "4" });
+  expect(submissions[1].values).toMatchObject({ rating: "4", support_action: "worked_example" });
 
   await page.locator('[data-panel-tool="defer_recommendation"]').getByRole("button", { name: "No thanks, keep it in view" }).click();
   await expect.poll(() => dismissals.length).toBe(1);
