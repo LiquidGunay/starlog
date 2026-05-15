@@ -47,6 +47,9 @@ where Starlog is going. Use this page for current implementation confidence.
   same scoring path in the briefing flow.
 - **Assistant recommendation context:** PR #203 adds `recommendation_hints` into the assistant runtime
   request context so clients can consume deterministic recommendation rationale from the same backend memory.
+  Assistant Today also folds stored recommendation events into its `reason_stack`, so existing
+  PWA/native "why now" UI can render recommendation-backed rationale without a separate surface
+  contract.
 - **ML Interviews Part II SRS deck import:** `data/ml_interviews_part_ii_qa_cards.jsonl` is the
   checked-in deck source. `scripts/bootstrap_ml_interview_srs.py` is idempotent: it reuses the named
   deck, bootstrap artifact, first card-set version, and deck note while preserving existing review
@@ -127,9 +130,6 @@ Known outcome for `Inference Engineering.pdf`:
 - **Full-book `Inference Engineering.pdf` coverage:** Chapter 0 final-card generation/import is proven
   through the guarded local path. Broader chapter coverage still needs a larger trusted extraction
   run and human review of generated local JSONL before import.
-- **Assistant recommendation hint surfacing:** PR #203 verifies runtime payload exposure and PR #206 proves
-  recommendation-backed briefing hints in live PWA/Android local validation. The remaining gap is validated,
-  consistent rendering of these hints in production Assistant UI surfaces.
 - **Persisted native briefing-date cleanup:** fresh native alarm flows default and schedule against
   the current day, and stale persisted briefing-date normalization is now covered by a focused mobile
   unit test. A device that already carries stale persisted briefing-date state still needs physical
@@ -171,6 +171,10 @@ Known outcome for `Inference Engineering.pdf`:
   [services/api/tests/test_storage_legacy_migrations.py](/home/ubuntu/starlog/services/api/tests/test_storage_legacy_migrations.py),
   [services/api/tests/test_briefing_memory.py](/home/ubuntu/starlog/services/api/tests/test_briefing_memory.py), and
   [services/api/app/services/memory_service.py](/home/ubuntu/starlog/services/api/app/services/memory_service.py).
+- Focused Assistant recommendation surfacing validation: Python 3.12
+  `tests/test_surface_summaries.py` coverage verifies recommendation events appear in Assistant Today
+  `reason_stack`, and `/tmp/starlog-pwa-reason-stack/` contains a Playwright browser proof that the
+  PWA Assistant renders those "Why now" reasons.
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),
