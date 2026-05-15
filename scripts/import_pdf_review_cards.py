@@ -20,8 +20,11 @@ DECK_NAME = "Inference Engineering"
 DECK_DESCRIPTION = "Interview-prep review cards generated from trusted local PDF extraction."
 ARTIFACT_TITLE = "Inference Engineering PDF review cards"
 NOTE_TITLE = "Inference Engineering PDF review cards"
+SOURCE_EVIDENCE_ARTIFACT_TITLE = "Inference Engineering PDF source evidence"
+SOURCE_EVIDENCE_TOPIC_TITLE = "Unproven extraction evidence"
 TRUSTED_PROVIDERS = {"liteparse_server", "ocr_server", "pypdf"}
 TRUSTED_ANSWER_SOURCE = "trusted_local_pdf_extraction"
+REPORT_EVIDENCE_CHUNK_INDEX_OFFSET = 1_000_000
 
 
 def _json(payload: Any, *, pretty: bool = False) -> str:
@@ -158,6 +161,13 @@ def _card_import_key(card: dict[str, Any]) -> str:
 
 def _source_key(cards: list[dict[str, Any]]) -> str:
     pdf_sha = str(cards[0]["metadata"]["pdf_sha256"]).strip()
+    return f"{IMPORT_KEY_PREFIX}:{pdf_sha}"
+
+
+def _source_key_from_pdf_sha(pdf_sha: str) -> str:
+    pdf_sha = str(pdf_sha or "").strip()
+    if not pdf_sha:
+        raise ValueError("PDF source evidence report is missing pdf_sha256")
     return f"{IMPORT_KEY_PREFIX}:{pdf_sha}"
 
 
@@ -322,6 +332,128 @@ def _ensure_relation(conn: Any, artifact_id: str, relation_type: str, target_typ
     )
 
 
+def _sha256_path(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _report_pdf_sha(report: dict[str, Any]) -> str:
+    pdf_sha = str(report.get("pdf_sha256") or "").strip()
+    if pdf_sha:
+        return pdf_sha
+    pdf_path = Path(str(report.get("pdf_path") or "")).expanduser()
+    if pdf_path.is_file():
+        return _sha256_path(pdf_path)
+    raise ValueError("PDF source evidence report is missing pdf_sha256 and pdf_path is unavailable")
+
+
+def _report_source_url(report: dict[str, Any]) -> str:
+    pdf_path = str(report.get("pdf_path") or "").strip()
+    return f"file://{pdf_path}" if pdf_path.startswith("/") else ""
+
+
+def _validate_cards_match_report(cards_path: Path, *, source_key: str, pdf_sha: str) -> None:
+    cards = load_cards(cards_path)
+    cards_source_key = _source_key(cards)
+    cards_pdf_sha = str(cards[0]["metadata"].get("pdf_sha256") or "").strip()
+    if cards_source_key != source_key or cards_pdf_sha != pdf_sha:
+        raise ValueError(
+            "Ready PDF card import source mismatch: cards file does not match report pdf_sha256/source_key"
+        )
+
+
+def _report_json_summary(report: dict[str, Any], *, pdf_sha: str, cards_path: str) -> str:
+    extraction = report.get("extraction") if isinstance(report.get("extraction"), dict) else {}
+    summary = {
+        "cards_generated": report.get("cards_generated") or 0,
+        "cards_path": cards_path,
+        "deck_generation": report.get("deck_generation") or "",
+        "evidence_status": report.get("evidence_status") or "unproven",
+        "final_card_status": report.get("final_card_status") or "",
+        "pdf_path": report.get("pdf_path") or "",
+        "pdf_sha256": pdf_sha,
+        "provider": extraction.get("provider") or "none",
+        "mode": extraction.get("mode") or "unavailable",
+        "readable": bool(extraction.get("readable")),
+        "usable": bool(extraction.get("usable")),
+        "rejected_as_noise": bool(extraction.get("rejected_as_noise")),
+    }
+    return _json(summary, pretty=True)
+
+
+def _ensure_source_evidence_artifact(
+    conn: Any,
+    report_path: Path,
+    report: dict[str, Any],
+    *,
+    pdf_sha: str,
+    cards_path: str,
+    now_iso: str,
+) -> str:
+    source_key = _source_key_from_pdf_sha(pdf_sha)
+    artifact_id = _stable_id("art", source_key, "source-evidence")
+    metadata = {
+        "import_key": source_key,
+        "report_path": str(report_path),
+        "cards_path": cards_path,
+        "pdf_sha256": pdf_sha,
+        "pdf_path": report.get("pdf_path") or "",
+        "cloud_ocr_policy": report.get("cloud_ocr_policy") or "",
+    }
+    expected = {
+        "source_type": "pdf_source_evidence",
+        "title": SOURCE_EVIDENCE_ARTIFACT_TITLE,
+        "raw_content": f"{DECK_NAME}\nSource: {_report_source_url(report)}",
+        "normalized_content": _report_json_summary(report, pdf_sha=pdf_sha, cards_path=cards_path),
+        "extracted_content": "",
+        "metadata_json": _json(metadata),
+    }
+    row = conn.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO artifacts (
+              id, source_type, title, raw_content, normalized_content, extracted_content,
+              metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                artifact_id,
+                expected["source_type"],
+                expected["title"],
+                expected["raw_content"],
+                expected["normalized_content"],
+                expected["extracted_content"],
+                expected["metadata_json"],
+                now_iso,
+                now_iso,
+            ),
+        )
+    elif any(row[key] != value for key, value in expected.items()):
+        conn.execute(
+            """
+            UPDATE artifacts
+            SET source_type = ?, title = ?, raw_content = ?, normalized_content = ?,
+                extracted_content = ?, metadata_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                expected["source_type"],
+                expected["title"],
+                expected["raw_content"],
+                expected["normalized_content"],
+                expected["extracted_content"],
+                expected["metadata_json"],
+                now_iso,
+                artifact_id,
+            ),
+        )
+    return artifact_id
+
+
 def _ensure_study_source(conn: Any, artifact_id: str, cards: list[dict[str, Any]], now_iso: str) -> str:
     source_key = _source_key(cards)
     source_id = _stable_id("study_src", source_key)
@@ -375,6 +507,78 @@ def _ensure_study_source(conn: Any, artifact_id: str, cards: list[dict[str, Any]
     return source_id
 
 
+def _ensure_report_study_source(
+    conn: Any,
+    *,
+    source_key: str,
+    artifact_id: str,
+    report: dict[str, Any],
+    pdf_sha: str,
+    now_iso: str,
+) -> str:
+    source_id = _stable_id("study_src", source_key)
+    extraction = report.get("extraction") if isinstance(report.get("extraction"), dict) else {}
+    metadata = {
+        "import_key": source_key,
+        "pdf_sha256": pdf_sha,
+        "source_path": report.get("pdf_path") or "",
+        "evidence_status": report.get("evidence_status") or "unproven",
+        "deck_generation": report.get("deck_generation") or "",
+        "provider": extraction.get("provider") or "none",
+        "mode": extraction.get("mode") or "unavailable",
+    }
+    expected = {
+        "title": DECK_NAME,
+        "source_type": "pdf_book",
+        "url": _report_source_url(report),
+        "metadata_json": _json(metadata),
+    }
+    row = conn.execute("SELECT * FROM study_sources WHERE id = ?", (source_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO study_sources (id, title, source_type, artifact_id, url, metadata_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_id,
+                expected["title"],
+                expected["source_type"],
+                artifact_id,
+                expected["url"],
+                expected["metadata_json"],
+                now_iso,
+                now_iso,
+            ),
+        )
+    else:
+        existing_artifact_id = row["artifact_id"] or artifact_id
+        if (
+            row["title"] != expected["title"]
+            or row["source_type"] != expected["source_type"]
+            or row["artifact_id"] != existing_artifact_id
+            or row["url"] != expected["url"]
+            or row["metadata_json"] != expected["metadata_json"]
+        ):
+            conn.execute(
+                """
+                UPDATE study_sources
+                SET title = ?, source_type = ?, artifact_id = ?, url = ?, metadata_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    expected["title"],
+                    expected["source_type"],
+                    existing_artifact_id,
+                    expected["url"],
+                    expected["metadata_json"],
+                    now_iso,
+                    source_id,
+                ),
+            )
+    return source_id
+
+
 def _ensure_topics(conn: Any, source_id: str, cards: list[dict[str, Any]], now_iso: str) -> dict[str, str]:
     topic_ids: dict[str, str] = {}
     sections = list(dict.fromkeys(str(card["section"]).strip() for card in cards))
@@ -409,6 +613,31 @@ def _ensure_topics(conn: Any, source_id: str, cards: list[dict[str, Any]], now_i
     return topic_ids
 
 
+def _ensure_report_topic(conn: Any, source_id: str, now_iso: str) -> str:
+    topic_id = _stable_id("study_topic", source_id, SOURCE_EVIDENCE_TOPIC_TITLE)
+    summary = "Local PDF extraction evidence that is not trusted enough to generate review cards."
+    row = conn.execute("SELECT * FROM study_topics WHERE id = ?", (topic_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO study_topics (
+              id, source_id, parent_topic_id, title, summary, display_order, created_at, updated_at
+            ) VALUES (?, ?, NULL, ?, ?, 0, ?, ?)
+            """,
+            (topic_id, source_id, SOURCE_EVIDENCE_TOPIC_TITLE, summary, now_iso, now_iso),
+        )
+    elif row["source_id"] != source_id or row["title"] != SOURCE_EVIDENCE_TOPIC_TITLE or row["summary"] != summary:
+        conn.execute(
+            """
+            UPDATE study_topics
+            SET source_id = ?, parent_topic_id = NULL, title = ?, summary = ?, display_order = 0, updated_at = ?
+            WHERE id = ?
+            """,
+            (source_id, SOURCE_EVIDENCE_TOPIC_TITLE, summary, now_iso, topic_id),
+        )
+    return topic_id
+
+
 def _upsert_chunk(conn: Any, source_id: str, topic_id: str, artifact_id: str, card: dict[str, Any], now_iso: str) -> None:
     metadata = dict(card["metadata"])
     chunk_index = _chunk_index(card)
@@ -441,6 +670,137 @@ def _upsert_chunk(conn: Any, source_id: str, topic_id: str, artifact_id: str, ca
             "UPDATE source_chunks SET topic_id = ?, artifact_id = ?, content = ?, metadata_json = ? WHERE id = ?",
             (topic_id, artifact_id, content, metadata_json, row["id"]),
         )
+
+
+def _segment_int(segment: dict[str, Any], key: str, default: int = 0) -> int:
+    try:
+        value = int(segment.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return max(0, value)
+
+
+def _report_chunk_index(segment: dict[str, Any]) -> tuple[int, int]:
+    source_chunk_index = _segment_int(segment, "chunk_index", len(str(segment.get("segment_id") or "")))
+    return source_chunk_index, REPORT_EVIDENCE_CHUNK_INDEX_OFFSET + source_chunk_index
+
+
+def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
+    blocked = report.get("blocked_segments")
+    if not isinstance(blocked, list):
+        blocked = report.get("blocked_chunks")
+    segments: list[dict[str, Any]] = []
+    if isinstance(blocked, list):
+        for segment in blocked:
+            if isinstance(segment, dict):
+                item = dict(segment)
+                item.setdefault("status", "blocked")
+                item.setdefault("page_status", "unproven")
+                segments.append(item)
+    candidate_cards_path = str(report.get("candidate_cards_path") or "").strip()
+    if candidate_cards_path:
+        path = Path(candidate_cards_path)
+        if path.is_file():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                candidate = json.loads(line)
+                provenance = candidate.get("provenance") if isinstance(candidate, dict) else {}
+                chunk = provenance.get("chunk") if isinstance(provenance, dict) else {}
+                if not isinstance(chunk, dict):
+                    continue
+                segments.append(
+                    {
+                        "status": str(candidate.get("status") or "candidate"),
+                        "chunk_index": chunk.get("index"),
+                        "word_start": chunk.get("word_start"),
+                        "word_end": chunk.get("word_end"),
+                        "word_count": chunk.get("word_count"),
+                        "content_sha256": chunk.get("content_sha256"),
+                        "page_status": "unproven",
+                        "reason": "Trusted local extraction candidate; cards require explicit final import.",
+                    }
+                )
+    if not segments and str(report.get("evidence_status") or "") != "proven_local_text":
+        segments.append(
+            {
+                "chunk_index": 0,
+                "content_sha256": "",
+                "page_status": "unproven",
+                "reason": report.get("deck_generation") or "Local PDF extraction was unavailable or unproven.",
+                "status": "blocked",
+                "word_count": 0,
+                "word_end": 0,
+                "word_start": 0,
+            }
+        )
+    return segments
+
+
+def _upsert_report_chunk(
+    conn: Any,
+    *,
+    source_id: str,
+    topic_id: str,
+    artifact_id: str,
+    report: dict[str, Any],
+    report_path: Path,
+    pdf_sha: str,
+    segment: dict[str, Any],
+    now_iso: str,
+) -> str:
+    source_chunk_index, chunk_index = _report_chunk_index(segment)
+    content_hash = str(segment.get("content_sha256") or "").strip()
+    chunk_id = _stable_id("study_chunk", source_id, chunk_index)
+    status = str(segment.get("status") or "blocked")
+    reason = str(segment.get("reason") or report.get("deck_generation") or "unproven extraction")
+    content = (
+        f"{status.title()} PDF source page/segment. "
+        f"Reason: {reason} "
+        f"Content SHA256: {content_hash or 'unavailable'}."
+    )
+    metadata = {
+        "content_sha256": content_hash,
+        "deck_generation": report.get("deck_generation") or "",
+        "evidence_status": report.get("evidence_status") or "unproven",
+        "page_end": segment.get("page_end"),
+        "page_label": segment.get("page_label"),
+        "page_start": segment.get("page_start"),
+        "page_status": segment.get("page_status") or "unproven",
+        "pdf_sha256": pdf_sha,
+        "reason": reason,
+        "report_path": str(report_path),
+        "source_chunk_index": source_chunk_index,
+        "source_chunk_import": "inference_pdf_report",
+        "status": status,
+        "word_count": _segment_int(segment, "word_count"),
+        "word_end": _segment_int(segment, "word_end"),
+        "word_start": _segment_int(segment, "word_start"),
+    }
+    row = conn.execute("SELECT * FROM source_chunks WHERE source_id = ? AND chunk_index = ?", (source_id, chunk_index)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO source_chunks (id, source_id, topic_id, artifact_id, chunk_index, content, metadata_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (chunk_id, source_id, topic_id, artifact_id, chunk_index, content, _json(metadata), now_iso),
+        )
+        return chunk_id
+    existing_metadata = _decode_json(row["metadata_json"], {})
+    if existing_metadata.get("source_chunk_import") != "inference_pdf_report":
+        return str(row["id"])
+    if (
+        row["topic_id"] != topic_id
+        or row["artifact_id"] != artifact_id
+        or row["content"] != content
+        or row["metadata_json"] != _json(metadata)
+    ):
+        conn.execute(
+            "UPDATE source_chunks SET topic_id = ?, artifact_id = ?, content = ?, metadata_json = ? WHERE id = ?",
+            (topic_id, artifact_id, content, _json(metadata), row["id"]),
+        )
+    return str(row["id"])
 
 
 def _upsert_card(
@@ -551,6 +911,104 @@ def _upsert_card(
     return card_id
 
 
+def load_source_report(path: Path) -> dict[str, Any]:
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid PDF source evidence report JSON: {path}") from exc
+    if not isinstance(report, dict):
+        raise ValueError("PDF source evidence report must be a JSON object")
+    return report
+
+
+def import_source_report(
+    report_path: Path,
+    *,
+    cards_path: Path | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    report = load_source_report(report_path)
+    pdf_sha = _report_pdf_sha(report)
+    source_key = _source_key_from_pdf_sha(pdf_sha)
+    report_cards_path = cards_path
+    if report_cards_path is None:
+        raw_cards_path = str(report.get("cards_path") or "").strip()
+        if raw_cards_path:
+            report_cards_path = Path(raw_cards_path)
+    ready_cards_path = (
+        report_cards_path
+        if report_cards_path and report_cards_path.is_file() and str(report.get("final_card_status") or "") == "ready"
+        else None
+    )
+    if ready_cards_path is not None:
+        _validate_cards_match_report(ready_cards_path, source_key=source_key, pdf_sha=pdf_sha)
+
+    segments = _report_segments(report)
+    summary: dict[str, Any] = {
+        "cards_path": str(report_cards_path) if report_cards_path else "",
+        "deck_generation": report.get("deck_generation") or "",
+        "dry_run": dry_run,
+        "evidence_status": report.get("evidence_status") or "unproven",
+        "pdf_sha256": pdf_sha,
+        "report_path": str(report_path),
+        "segment_count": len(segments),
+        "source_key": source_key,
+    }
+    if dry_run:
+        return summary
+
+    from app.core.time import utc_now  # noqa: E402
+    from app.db.storage import get_connection, init_storage  # noqa: E402
+
+    init_storage()
+    now_iso = utc_now().isoformat()
+    with get_connection() as conn:
+        evidence_artifact_id = _ensure_source_evidence_artifact(
+            conn,
+            report_path,
+            report,
+            pdf_sha=pdf_sha,
+            cards_path=summary["cards_path"],
+            now_iso=now_iso,
+        )
+        source_id = _ensure_report_study_source(
+            conn,
+            source_key=source_key,
+            artifact_id=evidence_artifact_id,
+            report=report,
+            pdf_sha=pdf_sha,
+            now_iso=now_iso,
+        )
+        topic_id = _ensure_report_topic(conn, source_id, now_iso)
+        chunk_ids = [
+            _upsert_report_chunk(
+                conn,
+                source_id=source_id,
+                topic_id=topic_id,
+                artifact_id=evidence_artifact_id,
+                report=report,
+                report_path=report_path,
+                pdf_sha=pdf_sha,
+                segment=segment,
+                now_iso=now_iso,
+            )
+            for segment in segments
+        ]
+        conn.commit()
+
+    summary.update(
+        {
+            "artifact_id": evidence_artifact_id,
+            "chunk_ids": chunk_ids,
+            "source_id": source_id,
+            "topic_id": topic_id,
+        }
+    )
+    if ready_cards_path is not None:
+        summary["card_import"] = import_cards(ready_cards_path)
+    return summary
+
+
 def import_cards(cards_path: Path, *, dry_run: bool = False) -> dict[str, Any]:
     cards = load_cards(cards_path)
     summary: dict[str, Any] = {
@@ -618,10 +1076,32 @@ def import_cards(cards_path: Path, *, dry_run: bool = False) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Import trusted local PDF review cards into SRS and Study Core.")
-    parser.add_argument("cards", type=Path, help="Path to review_cards.jsonl from build_pdf_review_cards.py.")
+    parser = argparse.ArgumentParser(
+        description="Import trusted local PDF review cards and/or source evidence into SRS and Study Core."
+    )
+    parser.add_argument("cards", type=Path, nargs="?", help="Path to review_cards.jsonl from build_pdf_review_cards.py.")
+    parser.add_argument(
+        "--source-report",
+        type=Path,
+        help="Path to report.json from build_pdf_review_cards.py or pdf_deck_preflight.py.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate the cards without mutating the DB.")
     args = parser.parse_args()
+    if args.source_report:
+        print(
+            json.dumps(
+                import_source_report(
+                    args.source_report.expanduser().resolve(),
+                    cards_path=args.cards.expanduser().resolve() if args.cards else None,
+                    dry_run=args.dry_run,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.cards is None:
+        parser.error("cards path or --source-report is required")
     print(json.dumps(import_cards(args.cards.expanduser().resolve(), dry_run=args.dry_run), indent=2, sort_keys=True))
     return 0
 

@@ -52,6 +52,47 @@ def _write_cards(path: Path, cards: list[dict]) -> None:
     path.write_text("\n".join(json.dumps(card, sort_keys=True) for card in cards) + "\n", encoding="utf-8")
 
 
+def _write_report(
+    path: Path,
+    *,
+    pdf_path: str = "/tmp/Inference Engineering.pdf",
+    pdf_sha: str = "pdf-sha",
+    final_card_status: str = "blocked",
+    cards_path: str = "",
+) -> None:
+    report = {
+        "blocked_segments": [
+            {
+                "chunk_index": 0,
+                "content_sha256": "blocked-chunk-sha",
+                "page_label": "scan-unknown",
+                "page_status": "unproven",
+                "reason": "Final review cards blocked: blocked_string_fallback",
+                "status": "blocked",
+                "word_count": 160,
+                "word_end": 160,
+                "word_start": 0,
+            }
+        ],
+        "cards_generated": 0,
+        "cards_path": cards_path,
+        "cloud_ocr_policy": "disabled; only localhost parse/OCR server URLs are allowed",
+        "deck_generation": "blocked_string_fallback" if final_card_status == "blocked" else "preflight_passed",
+        "evidence_status": "unproven" if final_card_status == "blocked" else "proven_local_text",
+        "extraction": {
+            "mode": "heuristic_fallback" if final_card_status == "blocked" else "liteparse",
+            "provider": "strings" if final_card_status == "blocked" else "liteparse_server",
+            "readable": final_card_status != "blocked",
+            "rejected_as_noise": final_card_status == "blocked",
+            "usable": final_card_status != "blocked",
+        },
+        "final_card_status": final_card_status,
+        "pdf_path": pdf_path,
+        "pdf_sha256": pdf_sha,
+    }
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def test_import_pdf_review_cards_creates_gated_srs_cards(monkeypatch, tmp_path: Path) -> None:
     db_path = tmp_path / "starlog.db"
     media_dir = tmp_path / "media"
@@ -93,6 +134,122 @@ def test_import_pdf_review_cards_creates_gated_srs_cards(monkeypatch, tmp_path: 
             due_ids = [card["id"] for card in srs_service.due_cards(conn, 10)]
 
         assert due_ids == summary["card_ids"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_import_source_report_records_unproven_segments_without_cards(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "starlog.db"
+    media_dir = tmp_path / "media"
+    report_path = tmp_path / "report.json"
+    _write_report(report_path)
+    monkeypatch.setenv("STARLOG_DB_PATH", str(db_path))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(media_dir))
+
+    from app.core.config import get_settings  # noqa: E402
+    from app.db.storage import get_connection  # noqa: E402
+
+    get_settings.cache_clear()
+    try:
+        summary = importer.import_source_report(report_path)
+        second_summary = importer.import_source_report(report_path)
+
+        assert summary["source_id"] == second_summary["source_id"]
+        assert summary["segment_count"] == 1
+        assert "card_import" not in summary
+
+        with get_connection() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM study_sources").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM study_topics").fetchone()[0] == 1
+            chunk = conn.execute("SELECT content, metadata_json FROM source_chunks").fetchone()
+
+        assert chunk is not None
+        assert "Final review cards blocked" in chunk["content"]
+        assert "book text" not in chunk["content"].lower()
+        metadata = json.loads(chunk["metadata_json"])
+        assert metadata["source_chunk_import"] == "inference_pdf_report"
+        assert metadata["status"] == "blocked"
+        assert metadata["page_label"] == "scan-unknown"
+        assert metadata["page_status"] == "unproven"
+        assert metadata["content_sha256"] == "blocked-chunk-sha"
+        assert metadata["evidence_status"] == "unproven"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_import_source_report_imports_ready_cards_without_overwriting_same_index_evidence(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "starlog.db"
+    media_dir = tmp_path / "media"
+    cards_path = tmp_path / "review_cards.jsonl"
+    report_path = tmp_path / "report.json"
+    _write_cards(cards_path, [_card(0, chunk_index=0)])
+    _write_report(report_path, final_card_status="ready", cards_path=str(cards_path))
+    monkeypatch.setenv("STARLOG_DB_PATH", str(db_path))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(media_dir))
+
+    from app.core.config import get_settings  # noqa: E402
+    from app.db.storage import get_connection  # noqa: E402
+
+    get_settings.cache_clear()
+    try:
+        summary = importer.import_source_report(report_path)
+
+        assert summary["card_import"]["card_count"] == 1
+        assert summary["card_import"]["source_id"] == summary["source_id"]
+
+        with get_connection() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM card_topic_links WHERE gate_required = 1").fetchone()[0] == 1
+            chunks = conn.execute("SELECT chunk_index, content, metadata_json FROM source_chunks ORDER BY chunk_index").fetchall()
+
+        assert [row["chunk_index"] for row in chunks] == [0, importer.REPORT_EVIDENCE_CHUNK_INDEX_OFFSET]
+        card_metadata = json.loads(chunks[0]["metadata_json"])
+        blocked_metadata = json.loads(chunks[1]["metadata_json"])
+        assert blocked_metadata["source_chunk_import"] == "inference_pdf_report"
+        assert blocked_metadata["source_chunk_index"] == 0
+        assert blocked_metadata["status"] == "blocked"
+        assert blocked_metadata["page_status"] == "unproven"
+        assert blocked_metadata["content_sha256"] == "blocked-chunk-sha"
+        assert card_metadata["content_kind"] == "card_answer_excerpt"
+        assert "source_chunk_import" not in card_metadata
+    finally:
+        get_settings.cache_clear()
+
+
+def test_import_source_report_rejects_ready_cards_from_different_pdf(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "starlog.db"
+    media_dir = tmp_path / "media"
+    cards_path = tmp_path / "review_cards.jsonl"
+    report_path = tmp_path / "report.json"
+    _write_cards(cards_path, [_card(0, pdf_sha="different-pdf-sha")])
+    _write_report(report_path, final_card_status="ready", cards_path=str(cards_path), pdf_sha="report-pdf-sha")
+    monkeypatch.setenv("STARLOG_DB_PATH", str(db_path))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(media_dir))
+
+    from app.core.config import get_settings  # noqa: E402
+    from app.db.storage import get_connection, init_storage  # noqa: E402
+
+    get_settings.cache_clear()
+    try:
+        try:
+            importer.import_source_report(report_path)
+        except ValueError as exc:
+            assert "source mismatch" in str(exc)
+        else:
+            raise AssertionError("Expected ready report import to reject mismatched card source")
+
+        init_storage()
+        with get_connection() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM source_chunks").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM study_sources").fetchone()[0] == 0
     finally:
         get_settings.cache_clear()
 
