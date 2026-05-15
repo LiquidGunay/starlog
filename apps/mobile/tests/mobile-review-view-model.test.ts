@@ -235,6 +235,75 @@ assert.equal(revealed.revealLabel, "Explanation shown");
 assert.equal(revealed.correctExplanation, "C. Pre-fill workspace defaults and allow skip");
 assert.equal(revealed.queueLadder.find((stage) => stage.label === "Application")?.value, "4");
 
+const interviewLoopReady = deriveMobileReviewViewModel({
+  prompt: "You need the longest subarray with at most two distinct values. Which window invariant keeps the algorithm linear?",
+  answer: "Maintain counts inside the current window and shrink from the left whenever more than two distinct values are present.",
+  dueCount: 1,
+  cardType: "application_case",
+  meta: "Due from unlocked interview topic",
+  retentionLabel: "New",
+  stats: { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 },
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  showAnswer: false,
+  hasReviewCard: true,
+  status: "Loaded 1 due card",
+  recommendedDrill: {
+    mode: "application",
+    title: "Sliding window application drill",
+    body: "Practice the unlocked interview topic before adding another source.",
+    prompt: "Quiz me on application questions for Sliding Window Interview Patterns.",
+    reason: "You just unlocked this interview-prep topic and one application card is due now.",
+    enabled: true,
+  },
+});
+
+assert.equal(interviewLoopReady.activeStage, "Application");
+assert.equal(interviewLoopReady.cardProgressLabel, "1 of 1");
+assert.equal(interviewLoopReady.gradeOptions.every((option) => !option.enabled), true);
+assert.equal(interviewLoopReady.learningSignal?.detail, "You just unlocked this interview-prep topic and one application card is due now.");
+assert.equal(interviewLoopReady.learningSignal?.action?.prompt, "Quiz me on application questions for Sliding Window Interview Patterns.");
+
+const interviewLoopRevealed = deriveMobileReviewViewModel({
+  ...interviewLoopInputBase(),
+  showAnswer: true,
+  hasReviewCard: true,
+});
+
+assert.equal(interviewLoopRevealed.revealLabel, "Explanation shown");
+assert.equal(interviewLoopRevealed.answerStateLabel, "Answer open");
+assert.equal(interviewLoopRevealed.correctExplanation, "Maintain counts inside the current window and shrink from the left whenever more than two distinct values are present.");
+assert.equal(interviewLoopRevealed.gradeOptions.find((option) => option.label === "Good")?.enabled, true);
+
+const interviewLoopGraded = deriveMobileReviewViewModel({
+  ...interviewLoopInputBase(),
+  dueCount: 0,
+  stats: { reviewed: 1, again: 0, hard: 0, good: 1, easy: 0 },
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 0,
+      card_count: 1,
+    },
+  ],
+  showAnswer: false,
+  hasReviewCard: false,
+});
+
+assert.equal(interviewLoopGraded.statusChips[0].value, "Clear");
+assert.equal(interviewLoopGraded.session.label, "1 reviewed");
+assert.equal(interviewLoopGraded.session.detail, "0 again / 0 hard / 1 good / 0 easy");
+assert.equal(interviewLoopGraded.health.detail, "1 reviewed this session; 1 landed as Good or Easy.");
+
 const idle = deriveMobileReviewViewModel({
   ...hiddenInputBase(),
   dueCount: 0,
@@ -284,5 +353,35 @@ function hiddenInputBase() {
     status: "Loaded 6 due card(s)",
     showAnswer: false,
     hasReviewCard: true,
+  };
+}
+
+function interviewLoopInputBase() {
+  return {
+    prompt: "You need the longest subarray with at most two distinct values. Which window invariant keeps the algorithm linear?",
+    answer: "Maintain counts inside the current window and shrink from the left whenever more than two distinct values are present.",
+    dueCount: 1,
+    cardType: "application_case",
+    meta: "Due from unlocked interview topic",
+    retentionLabel: "New",
+    stats: { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 },
+    decks: [
+      {
+        id: "deck-interview",
+        name: "Interview application",
+        description: "Application transfer for coding interviews",
+        due_count: 1,
+        card_count: 1,
+      },
+    ],
+    status: "Loaded 1 due card",
+    recommendedDrill: {
+      mode: "application" as const,
+      title: "Sliding window application drill",
+      body: "Practice the unlocked interview topic before adding another source.",
+      prompt: "Quiz me on application questions for Sliding Window Interview Patterns.",
+      reason: "You just unlocked this interview-prep topic and one application card is due now.",
+      enabled: true,
+    },
   };
 }

@@ -233,6 +233,10 @@ function studyQuestionPrompt(topic: StudyTopic, mode: "recall" | "application"):
   return `Create one concise recall question for "${topic.title}" and keep it answerable from the source material.`;
 }
 
+function studyQuestionModeArticle(mode: "recall" | "application"): string {
+  return mode === "application" ? "an" : "a";
+}
+
 function summaryDeckBuckets(summary: ReviewSurfaceSummary | null, decks: Deck[]): CountBucket[] {
   if (summary?.deck_buckets.length) {
     return summary.deck_buckets;
@@ -520,9 +524,12 @@ export default function ReviewPage() {
         body: JSON.stringify({
           topic_id: topic.id,
           question,
+          response: {
+            question_preference: mode,
+          },
         }),
       });
-      setStatus(`Requested a ${mode} question for ${topic.title}.`);
+      setStatus(`Requested ${studyQuestionModeArticle(mode)} ${mode} question for ${topic.title}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to request study question");
     } finally {
@@ -571,7 +578,7 @@ export default function ReviewPage() {
             <span className="april-rail-section-label">Return Points</span>
             <div className="april-rail-link-stack">
               <Link href="/review/decks">Deck Workspace</Link>
-              <Link href="/notes">Library</Link>
+              <Link href="/library">Library</Link>
               <Link href={missingConfig ? "/login" : "/runtime"}>{missingConfig ? "Open Login" : "Runtime"}</Link>
             </div>
           </div>

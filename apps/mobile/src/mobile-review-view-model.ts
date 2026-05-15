@@ -204,14 +204,14 @@ export function deriveMobileReviewViewModel(input: {
 }
 
 export function deriveReviewStage(cardType: string, prompt: string): MobileReviewStage {
-  const text = `${cardType} ${prompt}`.toLowerCase();
+  const text = `${cardType} ${prompt}`.toLowerCase().replace(/[_-]+/g, " ");
   if (/\b(judg(e|ment)|critique|trade-?off|decide|should|risk)\b/.test(text)) {
     return "Judgment";
   }
   if (/\b(synthesi[sz]e|combine|compare|relationship|connect)\b/.test(text)) {
     return "Synthesis";
   }
-  if (/\b(apply|scenario|which change|what would|case|project|workflow|onboarding|implementation)\b/.test(text)) {
+  if (/\b(apply|application|scenario|which change|what would|case|project|workflow|onboarding|implementation)\b/.test(text)) {
     return "Application";
   }
   if (/\b(explain|why|how|understand|principle)\b/.test(text)) {
