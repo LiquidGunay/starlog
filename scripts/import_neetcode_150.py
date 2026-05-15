@@ -55,6 +55,65 @@ REQUIRED_ITEM_FIELDS = {
     "prerequisites",
     "notes",
 }
+REVIEW_CARD_AXES = (
+    {
+        "id": "pattern_recognition",
+        "label": "Pattern recognition",
+        "card_type": "scenario",
+        "tag": "pattern-recognition",
+        "prompt": (
+            "Before opening {title}, identify the observable cues that should make you reach for "
+            "{pattern}. What input shape, constraint, or operation hints would you look for?"
+        ),
+        "answer": (
+            "Use this as a self-check for recognizing the pattern, not for recalling a solution. "
+            "Name the cues you observed, compare them with the listed pattern, then record any "
+            "competing patterns you considered."
+        ),
+    },
+    {
+        "id": "edge_cases",
+        "label": "Edge cases",
+        "card_type": "judgment",
+        "tag": "edge-cases",
+        "prompt": (
+            "For {title}, list the boundary cases you would test before submitting. Include empty, "
+            "minimal, duplicate, ordering, and constraint-boundary cases when they apply."
+        ),
+        "answer": (
+            "After attempting the problem, compare your tests against the failure modes you actually "
+            "hit. Keep concrete examples in your editable notes; no source solution text is imported."
+        ),
+    },
+    {
+        "id": "complexity",
+        "label": "Complexity",
+        "card_type": "understanding",
+        "tag": "complexity",
+        "prompt": (
+            "State the expected time and space complexity for your {pattern} approach to {title}. "
+            "Which operation dominates, and what data structure choice controls the bound?"
+        ),
+        "answer": (
+            "Self-grade by explaining the dominant loop, recursion, heap, map, graph traversal, or DP "
+            "state count in your own words. Update the note after solving if your first estimate was wrong."
+        ),
+    },
+    {
+        "id": "implementation_traps",
+        "label": "Implementation traps",
+        "card_type": "critique",
+        "tag": "implementation-traps",
+        "prompt": (
+            "Name the implementation traps for {title}: off-by-one risks, state invariants, mutation "
+            "hazards, duplicate handling, and language-specific pitfalls."
+        ),
+        "answer": (
+            "Check the traps against your submitted code or scratch solution. Record the bugs you found, "
+            "the invariant that prevents them, and what you will watch for next time."
+        ),
+    },
+)
 
 
 class ReviewInputAdapter(Protocol):
@@ -214,6 +273,8 @@ def _source_metadata(collection_id: str, review_inputs: list[dict[str, Any]]) ->
         if isinstance(review_inputs[0].get("provenance"), dict)
         else None,
         "problem_count": len(review_inputs),
+        "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
+        "review_card_count": len(review_inputs) * len(REVIEW_CARD_AXES),
         "pattern_counts": dict(Counter(str(item["pattern"]) for item in review_inputs)),
         "difficulty_counts": dict(Counter(str(item["difficulty"]) for item in review_inputs)),
         "content_hash": _stable_hash({"review_inputs": review_inputs}),
@@ -363,6 +424,8 @@ def _artifact_payload(collection_id: str, review_inputs: list[dict[str, Any]]) -
             "deck_name": DECK_NAME,
             "source_url": _source_list_url(review_inputs),
             "review_input_count": len(review_inputs),
+            "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
+            "review_card_count": len(review_inputs) * len(REVIEW_CARD_AXES),
             "content_hash": _stable_hash({"review_inputs": review_inputs}),
         },
     }
@@ -451,6 +514,7 @@ def _upsert_note(conn: Any, artifact_id: str, review_input_count: int, now_iso: 
         "# NeetCode 150 Study Core import\n\n"
         f"Import Key: {IMPORT_KEY_PREFIX}\n\n"
         f"Review Inputs: {review_input_count}\n\n"
+        f"Generated Review Cards: {review_input_count * len(REVIEW_CARD_AXES)}\n\n"
         "Generated records preserve local source metadata and avoid solution text."
     )
     expected = {"title": NOTE_TITLE, "body_md": body}
@@ -528,6 +592,42 @@ def _practice_item_metadata(review_input: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _review_card_specs(review_input: dict[str, Any]) -> list[dict[str, Any]]:
+    specs: list[dict[str, Any]] = []
+    for axis in REVIEW_CARD_AXES:
+        axis_id = str(axis["id"])
+        title = str(review_input["title"])
+        pattern = str(review_input["pattern"])
+        prompt = str(axis["prompt"]).format(title=title, pattern=pattern, difficulty=review_input["difficulty"])
+        answer = (
+            f"Open: {review_input['source_url']}\n\n"
+            f"{axis['label']} review. {axis['answer']} "
+            "This card contains no copied problem statement or solution text."
+        )
+        specs.append(
+            {
+                "axis_id": axis_id,
+                "axis_label": axis["label"],
+                "card_id": _db_id("crd", review_input["external_id"], axis_id),
+                "note_block_id": _db_id("blk", review_input["external_id"], axis_id),
+                "card_type": axis["card_type"],
+                "prompt": prompt,
+                "answer": answer,
+                "tags": _card_tags(review_input, str(axis["tag"])),
+                "content_hash": _stable_hash(
+                    {
+                        "external_id": review_input["external_id"],
+                        "axis_id": axis_id,
+                        "prompt": prompt,
+                        "answer": answer,
+                        "tags": _card_tags(review_input, str(axis["tag"])),
+                    }
+                ),
+            }
+        )
+    return specs
+
+
 def _upsert_practice_items(
     conn: Any,
     source_id: str,
@@ -592,35 +692,35 @@ def _upsert_practice_items(
     return status
 
 
-def _card_tags(review_input: dict[str, Any]) -> list[str]:
-    return [
+def _card_tags(review_input: dict[str, Any], axis_tag: str | None = None) -> list[str]:
+    tags = [
         IMPORT_KEY_PREFIX,
         f"pattern-{_slug(str(review_input['pattern'])).replace('_', '-')}",
         f"difficulty-{_slug(str(review_input['difficulty'])).replace('_', '-')}",
         "coding-practice",
     ]
+    if axis_tag:
+        tags.append(axis_tag)
+    return tags
 
 
-def _card_answer(review_input: dict[str, Any]) -> str:
-    return (
-        f"Open: {review_input['source_url']}\n\n"
-        "After solving, record approach, edge cases, time and space complexity, mistakes, and next review notes. "
-        "No solution text was imported."
-    )
-
-
-def _note_block_content(review_input: dict[str, Any]) -> str:
+def _note_block_content(review_input: dict[str, Any], card_spec: dict[str, Any]) -> str:
     return "\n".join(
         [
             f"Import Key: {review_input['external_id']}",
+            f"Review Axis: {card_spec['axis_label']}",
             f"Source URL: {review_input['source_url']}",
             f"Pattern: {review_input['pattern']}",
             f"Difficulty: {review_input['difficulty']}",
             f"Prerequisites: {', '.join(review_input['prerequisites']) or 'none'}",
             f"Content Hash: {review_input['content_hash']}",
+            f"Card Hash: {card_spec['content_hash']}",
             "",
-            "Practice Prompt:",
-            str(review_input["practice_prompt"]),
+            "Card Prompt:",
+            str(card_spec["prompt"]),
+            "",
+            "Card Answer Guidance:",
+            str(card_spec["answer"]),
             "",
             "Review Input Payload:",
             _json(review_input, pretty=True),
@@ -634,14 +734,15 @@ def _upsert_note_block(
     note_id: str,
     artifact_id: str,
     review_input: dict[str, Any],
+    card_spec: dict[str, Any],
     now_iso: str,
 ) -> tuple[str, dict[str, int]]:
-    note_block_id = _db_id("blk", review_input["external_id"])
+    note_block_id = str(card_spec["note_block_id"])
     expected = {
         "note_id": note_id,
         "artifact_id": artifact_id,
-        "block_type": "coding_problem_practice",
-        "content": _note_block_content(review_input),
+        "block_type": "coding_problem_review_card",
+        "content": _note_block_content(review_input, card_spec),
     }
     row = conn.execute("SELECT * FROM note_blocks WHERE id = ?", (note_block_id,)).fetchone()
     if row is None:
@@ -692,79 +793,81 @@ def _upsert_cards(
         datetime.fromisoformat(now_iso) + timedelta(hours=int(schedule.get("new_cards_due_offset_hours", 24)))
     ).isoformat()
     for review_input in review_inputs:
-        card_id = _db_id("crd", review_input["external_id"])
-        note_block_id, note_block_status = _upsert_note_block(
-            conn,
-            note_id=note_id,
-            artifact_id=artifact_id,
-            review_input=review_input,
-            now_iso=now_iso,
-        )
-        _merge_status(note_blocks, note_block_status)
-        expected = {
-            "card_set_version_id": card_set_version_id,
-            "artifact_id": artifact_id,
-            "note_block_id": note_block_id,
-            "deck_id": deck_id,
-            "card_type": "drill",
-            "prompt": _practice_item_prompt(review_input),
-            "answer": _card_answer(review_input),
-            "tags_json": _json(_card_tags(review_input)),
-        }
-        row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
-        if row is None:
-            conn.execute(
-                """
-                INSERT INTO cards (
-                  id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
-                  tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    card_id,
-                    expected["card_set_version_id"],
-                    expected["artifact_id"],
-                    expected["note_block_id"],
-                    expected["deck_id"],
-                    expected["card_type"],
-                    expected["prompt"],
-                    expected["answer"],
-                    expected["tags_json"],
-                    0,
-                    due_at,
-                    int(schedule.get("initial_interval_days", 1)),
-                    0,
-                    float(schedule.get("initial_ease_factor", 2.5)),
-                    now_iso,
-                    now_iso,
-                ),
+        for card_spec in _review_card_specs(review_input):
+            card_id = str(card_spec["card_id"])
+            note_block_id, note_block_status = _upsert_note_block(
+                conn,
+                note_id=note_id,
+                artifact_id=artifact_id,
+                review_input=review_input,
+                card_spec=card_spec,
+                now_iso=now_iso,
             )
-            _merge_status(status, _upsert_status(False, True))
-            continue
+            _merge_status(note_blocks, note_block_status)
+            expected = {
+                "card_set_version_id": card_set_version_id,
+                "artifact_id": artifact_id,
+                "note_block_id": note_block_id,
+                "deck_id": deck_id,
+                "card_type": card_spec["card_type"],
+                "prompt": card_spec["prompt"],
+                "answer": card_spec["answer"],
+                "tags_json": _json(card_spec["tags"]),
+            }
+            row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+            if row is None:
+                conn.execute(
+                    """
+                    INSERT INTO cards (
+                      id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+                      tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        card_id,
+                        expected["card_set_version_id"],
+                        expected["artifact_id"],
+                        expected["note_block_id"],
+                        expected["deck_id"],
+                        expected["card_type"],
+                        expected["prompt"],
+                        expected["answer"],
+                        expected["tags_json"],
+                        0,
+                        due_at,
+                        int(schedule.get("initial_interval_days", 1)),
+                        0,
+                        float(schedule.get("initial_ease_factor", 2.5)),
+                        now_iso,
+                        now_iso,
+                    ),
+                )
+                _merge_status(status, _upsert_status(False, True))
+                continue
 
-        changed = _record_changed(row, expected)
-        if changed:
-            conn.execute(
-                """
-                UPDATE cards
-                SET card_set_version_id = ?, artifact_id = ?, note_block_id = ?, deck_id = ?, card_type = ?,
-                    prompt = ?, answer = ?, tags_json = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    expected["card_set_version_id"],
-                    expected["artifact_id"],
-                    expected["note_block_id"],
-                    expected["deck_id"],
-                    expected["card_type"],
-                    expected["prompt"],
-                    expected["answer"],
-                    expected["tags_json"],
-                    now_iso,
-                    card_id,
-                ),
-            )
-        _merge_status(status, _upsert_status(True, changed))
+            changed = _record_changed(row, expected)
+            if changed:
+                conn.execute(
+                    """
+                    UPDATE cards
+                    SET card_set_version_id = ?, artifact_id = ?, note_block_id = ?, deck_id = ?, card_type = ?,
+                        prompt = ?, answer = ?, tags_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        expected["card_set_version_id"],
+                        expected["artifact_id"],
+                        expected["note_block_id"],
+                        expected["deck_id"],
+                        expected["card_type"],
+                        expected["prompt"],
+                        expected["answer"],
+                        expected["tags_json"],
+                        now_iso,
+                        card_id,
+                    ),
+                )
+            _merge_status(status, _upsert_status(True, changed))
     status["note_blocks_created"] = note_blocks["created"]
     status["note_blocks_updated"] = note_blocks["updated"]
     status["note_blocks_unchanged"] = note_blocks["unchanged"]
@@ -786,55 +889,56 @@ def _upsert_card_topic_links(
         "prerequisite_links": 0,
     }
     for review_input in review_inputs:
-        card_id = _db_id("crd", review_input["external_id"])
-        links = [(str(review_input["pattern"]), True, "primary")]
-        links.extend((str(prerequisite), True, "prerequisite") for prerequisite in review_input["prerequisites"])
-        desired_topic_ids: set[str] = set()
-        import_link_prefix = f"{_db_id('card_topic', review_input['external_id'])}_%"
-        for pattern, gate_required, link_kind in links:
-            topic_id = _topic_id(source_id, pattern)
-            link_id = _db_id("card_topic", review_input["external_id"], link_kind, pattern)
-            desired_topic_ids.add(topic_id)
-            row = conn.execute(
-                "SELECT * FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
-                (card_id, topic_id),
-            ).fetchone()
-            expected_gate = 1 if gate_required else 0
-            if row is None:
-                conn.execute(
-                    """
-                    INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (link_id, card_id, topic_id, expected_gate, now_iso),
-                )
-                _merge_status(status, _upsert_status(False, True))
-            else:
-                row_id = str(row["id"])
-                id_changed = row_id != link_id and row_id.startswith(import_link_prefix[:-1])
-                gate_changed = int(row["gate_required"]) != expected_gate
-                changed = id_changed or gate_changed
-                if changed:
+        for card_spec in _review_card_specs(review_input):
+            card_id = str(card_spec["card_id"])
+            links = [(str(review_input["pattern"]), True, "primary")]
+            links.extend((str(prerequisite), True, "prerequisite") for prerequisite in review_input["prerequisites"])
+            desired_topic_ids: set[str] = set()
+            import_link_prefix = f"{_db_id('card_topic', review_input['external_id'], card_spec['axis_id'])}_%"
+            for pattern, gate_required, link_kind in links:
+                topic_id = _topic_id(source_id, pattern)
+                link_id = _db_id("card_topic", review_input["external_id"], card_spec["axis_id"], link_kind, pattern)
+                desired_topic_ids.add(topic_id)
+                row = conn.execute(
+                    "SELECT * FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
+                    (card_id, topic_id),
+                ).fetchone()
+                expected_gate = 1 if gate_required else 0
+                if row is None:
                     conn.execute(
-                        "UPDATE card_topic_links SET id = ?, gate_required = ? WHERE card_id = ? AND topic_id = ?",
-                        (link_id if id_changed else row_id, expected_gate, card_id, topic_id),
+                        """
+                        INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (link_id, card_id, topic_id, expected_gate, now_iso),
                     )
-                _merge_status(status, _upsert_status(True, changed))
-            if link_kind == "primary":
-                status["primary_links"] += 1
-            else:
-                status["prerequisite_links"] += 1
-        placeholders = ",".join("?" for _ in desired_topic_ids)
-        cursor = conn.execute(
-            f"""
-            DELETE FROM card_topic_links
-            WHERE card_id = ?
-              AND id LIKE ?
-              AND topic_id NOT IN ({placeholders})
-            """,
-            (card_id, import_link_prefix, *sorted(desired_topic_ids)),
-        )
-        status["deleted"] += max(cursor.rowcount, 0)
+                    _merge_status(status, _upsert_status(False, True))
+                else:
+                    row_id = str(row["id"])
+                    id_changed = row_id != link_id and row_id.startswith(import_link_prefix[:-1])
+                    gate_changed = int(row["gate_required"]) != expected_gate
+                    changed = id_changed or gate_changed
+                    if changed:
+                        conn.execute(
+                            "UPDATE card_topic_links SET id = ?, gate_required = ? WHERE card_id = ? AND topic_id = ?",
+                            (link_id if id_changed else row_id, expected_gate, card_id, topic_id),
+                        )
+                    _merge_status(status, _upsert_status(True, changed))
+                if link_kind == "primary":
+                    status["primary_links"] += 1
+                else:
+                    status["prerequisite_links"] += 1
+            placeholders = ",".join("?" for _ in desired_topic_ids)
+            cursor = conn.execute(
+                f"""
+                DELETE FROM card_topic_links
+                WHERE card_id = ?
+                  AND id LIKE ?
+                  AND topic_id NOT IN ({placeholders})
+                """,
+                (card_id, import_link_prefix, *sorted(desired_topic_ids)),
+            )
+            status["deleted"] += max(cursor.rowcount, 0)
     return status
 
 
@@ -969,6 +1073,8 @@ def summarize(source_path: Path, source: dict[str, Any], review_inputs: list[dic
         "source_url": source["source_url"],
         "problem_count": len(items),
         "review_input_count": len(review_inputs),
+        "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
+        "review_card_count": len(review_inputs) * len(REVIEW_CARD_AXES),
         "pattern_counts": dict(Counter(item["pattern"] for item in items)),
         "difficulty_counts": dict(Counter(item["difficulty"] for item in items)),
         "adapter": adapter_summary,
