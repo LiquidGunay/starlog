@@ -1,7 +1,8 @@
-import type { AssistantInterrupt, AssistantInterruptField } from "@starlog/contracts";
+import type { AssistantDynamicUiPlacement, AssistantInterrupt, AssistantInterruptField } from "@starlog/contracts";
 
 export type PanelTone = "focus" | "task" | "capture" | "conflict" | "review" | "clarify" | "defer" | "entity" | "default";
 export type MobilePanelRenderState = "active" | "queued" | "resolved";
+export type MobileDynamicPanelPlacement = "inline" | "native_sheet";
 
 export const DYNAMIC_PANEL_TOOL_TONES: Record<string, PanelTone> = {
   choose_morning_focus: "focus",
@@ -21,7 +22,13 @@ export type MobileDynamicPanelState = {
   interrupt: AssistantInterrupt;
   values: Record<string, unknown>;
   renderState: MobilePanelRenderState;
+  placement: MobileDynamicPanelPlacement;
   displayModeLabel: string;
+};
+
+export type MobileSheetLifecycleState = {
+  openSheetInterruptId: string | null;
+  dismissedSheetInterruptId: string | null;
 };
 
 export type MobilePanelOptionViewModel = {
@@ -191,15 +198,27 @@ export function panelKicker(interrupt: AssistantInterrupt): string {
   if (isEntityPickerPanel(interrupt)) {
     return "Project link";
   }
-  return interrupt.tool_name.replace(/_/g, " ");
+  return "Assistant decision";
 }
 
 export function mobilePanelDisplayModeLabel(interrupt: AssistantInterrupt): string {
-  if (interrupt.display_mode === "bottom_sheet") {
-    return "opens as sheet";
+  const placement = mobileInterruptPlacement(interrupt);
+  if (placement === "bottom_sheet") {
+    return "sheet";
   }
-  if (interrupt.display_mode === "sidecar") {
+  if (placement === "sidecar") {
     return "inline on mobile";
+  }
+  return "inline";
+}
+
+function mobileInterruptPlacement(interrupt: AssistantInterrupt): AssistantDynamicUiPlacement | null | undefined {
+  return interrupt.placement ?? interrupt.display_mode;
+}
+
+export function mobileDynamicPanelPlacement(interrupt: AssistantInterrupt): MobileDynamicPanelPlacement {
+  if (interrupt.status === "pending" && mobileInterruptPlacement(interrupt) === "bottom_sheet") {
+    return "native_sheet";
   }
   return "inline";
 }
@@ -215,9 +234,30 @@ export function mobileDynamicPanelStates(
       interrupt,
       values: valuesByInterruptId[interrupt.id] || defaultPanelValues(interrupt),
       renderState: pending ? (interrupt.id === activeId ? "active" : "queued") : "resolved",
+      placement: mobileDynamicPanelPlacement(interrupt),
       displayModeLabel: mobilePanelDisplayModeLabel(interrupt),
     };
   });
+}
+
+export function nextMobileSheetLifecycleState(
+  activeSheetInterruptId: string | null,
+  state: MobileSheetLifecycleState,
+): MobileSheetLifecycleState {
+  if (!activeSheetInterruptId) {
+    return { openSheetInterruptId: null, dismissedSheetInterruptId: null };
+  }
+
+  const dismissedSheetInterruptId =
+    state.dismissedSheetInterruptId === activeSheetInterruptId ? state.dismissedSheetInterruptId : null;
+  const openSheetInterruptId =
+    state.openSheetInterruptId === activeSheetInterruptId
+      ? state.openSheetInterruptId
+      : dismissedSheetInterruptId === activeSheetInterruptId
+        ? null
+        : activeSheetInterruptId;
+
+  return { openSheetInterruptId, dismissedSheetInterruptId };
 }
 
 export function panelSubmitPayload(

@@ -22,14 +22,18 @@
     "test:planner-functional": "./node_modules/.bin/tsc -p tsconfig.planner-tests.json && node ../../.tmp/mobile-planner-tests/apps/mobile/tests/mobile-planner-view-model.test.js",
     "test:review-functional": "./node_modules/.bin/tsc -p tsconfig.review-tests.json && node ../../.tmp/mobile-review-tests/apps/mobile/tests/mobile-review-view-model.test.js",
     "test:study-mutations": "./node_modules/.bin/tsc -p tsconfig.study-mutations-tests.json --outDir /tmp/mobile-study-mutations-tests && node /tmp/mobile-study-mutations-tests/apps/mobile/tests/mobile-study-mutations.test.js",
-    "test:assistant-thread-actions": "./node_modules/.bin/tsc -p tsconfig.assistant-thread-actions-tests.json --outDir /tmp/mobile-assistant-thread-actions-tests && node /tmp/mobile-assistant-thread-actions-tests/apps/mobile/tests/assistant-mobile-thread-actions.test.js"
+    "test:assistant-thread-actions": "./node_modules/.bin/tsc -p tsconfig.assistant-thread-actions-tests.json --outDir /tmp/mobile-assistant-thread-actions-tests && node /tmp/mobile-assistant-thread-actions-tests/apps/mobile/tests/assistant-mobile-thread-actions.test.js",
+    "test:assistant-aui": "./node_modules/.bin/tsc -p tsconfig.assistant-aui-tests.json && node ../../.tmp/mobile-assistant-aui-tests/apps/mobile/tests/mobile-assistant-aui-adapter.test.js"
   },
   "dependencies": {
-    "@starlog/contracts": "workspace:*",
+    "@assistant-ui/core": "0.2.2",
+    "@assistant-ui/react-native": "0.1.16",
     "@babel/runtime": "^7.28.6",
     "@expo/vector-icons": "^14.0.2",
     "@react-native/assets-registry": "0.74.87",
     "@react-native/gradle-plugin": "0.74.87",
+    "@starlog/contracts": "workspace:*",
+    "assistant-cloud": "0.1.27",
     "expo": "~51.0.0",
     "expo-asset": "~10.0.10",
     "expo-av": "~14.0.7",

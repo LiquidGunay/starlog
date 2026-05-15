@@ -14,10 +14,11 @@ import type {
 } from "@starlog/contracts";
 import { productCopy } from "@starlog/contracts";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { ScrollView, Switch, Text as RNText, TextInput as RNTextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import { Modal, ScrollView, Switch, Text as RNText, TextInput as RNTextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 
 import { mobileConversationCardLabel } from "./conversation-cards";
 import {
+  assistantToolDisplayLabel,
   attachmentActionLabel,
   summarizeOutput,
   supportSurfaceActionLabel,
@@ -42,6 +43,7 @@ import {
   mobilePanelOptionViewModels,
   mobileReviewGradePreview,
   mobileTaskDetailPreview,
+  nextMobileSheetLifecycleState,
   panelDismissPayload,
   panelKicker,
   panelSubmitPayload,
@@ -494,10 +496,10 @@ function ToolCallRow({
       }}
     >
       <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-        Tool call
+        Assistant step
       </Text>
       <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: "800" }}>
-        {toolCall.title || toolCall.tool_name}
+        {assistantToolDisplayLabel(toolCall.tool_name, toolCall.title)}
       </Text>
       <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolStatusSummary(toolCall)}</Text>
       {argumentRows.map(([key, value]) => (
@@ -540,7 +542,7 @@ function ToolResultRow({
       }}
     >
       <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-        Tool result
+        Step update
       </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         {badges.map((badge) => (
@@ -1499,6 +1501,8 @@ export function MobileAssistantRebuild({
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
+  const [openSheetInterruptId, setOpenSheetInterruptId] = useState<string | null>(null);
+  const [dismissedSheetInterruptId, setDismissedSheetInterruptId] = useState<string | null>(null);
   const [selectedFallbackFocus, setSelectedFallbackFocus] = useState<(typeof MORNING_FOCUS_OPTIONS)[number]["key"]>("project");
   const dimensions = useWindowDimensions();
   const assistantPanelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
@@ -1570,6 +1574,70 @@ export function MobileAssistantRebuild({
   const showFallbackFocusChooser = todayViewModel.isFallbackMorningFocus;
   const selectedFallbackFocusOption =
     MORNING_FOCUS_OPTIONS.find((option) => option.key === selectedFallbackFocus) || MORNING_FOCUS_OPTIONS[0];
+  const activeSheetPanelState = panelStates.find((state) => state.renderState === "active" && state.placement === "native_sheet") || null;
+  const activeSheetInterruptId = activeSheetPanelState?.interrupt.id ?? null;
+  const visibleSheetPanelState =
+    activeSheetPanelState && openSheetInterruptId === activeSheetPanelState.interrupt.id ? activeSheetPanelState : null;
+
+  useEffect(() => {
+    const nextSheetState = nextMobileSheetLifecycleState(activeSheetInterruptId, {
+      openSheetInterruptId,
+      dismissedSheetInterruptId,
+    });
+    if (nextSheetState.openSheetInterruptId !== openSheetInterruptId) {
+      setOpenSheetInterruptId(nextSheetState.openSheetInterruptId);
+    }
+    if (nextSheetState.dismissedSheetInterruptId !== dismissedSheetInterruptId) {
+      setDismissedSheetInterruptId(nextSheetState.dismissedSheetInterruptId);
+    }
+  }, [activeSheetInterruptId, dismissedSheetInterruptId, openSheetInterruptId]);
+
+  const closeSheetForActiveInterrupt = () => {
+    setDismissedSheetInterruptId(activeSheetInterruptId);
+    setOpenSheetInterruptId(null);
+  };
+
+  const reopenSheetForInterrupt = (interruptId: string) => {
+    setDismissedSheetInterruptId(null);
+    setOpenSheetInterruptId(interruptId);
+  };
+
+  const updateInterruptValue = (interrupt: AssistantInterrupt, fieldId: string, value: unknown) =>
+    setInterruptValuesById((previous) => ({
+      ...previous,
+      [interrupt.id]: {
+        ...(previous[interrupt.id] || defaultPanelValues(interrupt)),
+        [fieldId]: value,
+      },
+    }));
+
+  const submitInterrupt = (interrupt: AssistantInterrupt, valuesOverride?: Record<string, unknown>) => {
+    const payload = valuesOverride ? { interruptId: interrupt.id, values: valuesOverride } : panelSubmitPayload(interrupt, interruptValuesById);
+    setDismissedSheetInterruptId(interrupt.id);
+    setOpenSheetInterruptId(null);
+    onInterruptSubmit(payload.interruptId, payload.values);
+  };
+
+  const dismissInterrupt = (interrupt: AssistantInterrupt) => {
+    const payload = panelDismissPayload(interrupt);
+    setDismissedSheetInterruptId(interrupt.id);
+    setOpenSheetInterruptId(null);
+    onInterruptDismiss(payload.interruptId);
+  };
+
+  const renderDynamicPanel = (interrupt: AssistantInterrupt, values: Record<string, unknown>) => (
+    <DynamicPanelRenderer
+      key={interrupt.id}
+      interrupt={interrupt}
+      values={values}
+      palette={palette}
+      active={interrupt.id === activePanelId}
+      onValueChange={(fieldId, value) => updateInterruptValue(interrupt, fieldId, value)}
+      onSubmit={(valuesOverride) => submitInterrupt(interrupt, valuesOverride)}
+      onDismiss={() => dismissInterrupt(interrupt)}
+      onOpenEntityRef={onOpenEntityRef}
+    />
+  );
 
   return (
     <View style={{ gap: 16, paddingTop: 4 }}>
@@ -2268,35 +2336,34 @@ export function MobileAssistantRebuild({
                           </View>
                         );
                       }
-                      return (
-                        <DynamicPanelRenderer
-                          key={interrupt.id}
-                          interrupt={interrupt}
-                          values={values}
-                          palette={palette}
-                          active={interrupt.id === activePanelId}
-                          onValueChange={(fieldId, value) =>
-                            setInterruptValuesById((previous) => ({
-                              ...previous,
-                              [interrupt.id]: {
-                                ...(previous[interrupt.id] || defaultPanelValues(interrupt)),
-                                [fieldId]: value,
-                              },
-                            }))
-                          }
-                          onSubmit={(valuesOverride) => {
-                            const payload = valuesOverride
-                              ? { interruptId: interrupt.id, values: valuesOverride }
-                              : panelSubmitPayload(interrupt, interruptValuesById);
-                            onInterruptSubmit(payload.interruptId, payload.values);
-                          }}
-                          onDismiss={() => {
-                            const payload = panelDismissPayload(interrupt);
-                            onInterruptDismiss(payload.interruptId);
-                          }}
-                          onOpenEntityRef={onOpenEntityRef}
-                        />
-                      );
+                      if (panelState?.placement === "native_sheet") {
+                        return (
+                          <TouchableOpacity
+                            key={interrupt.id}
+                            style={{
+                              borderRadius: 14,
+                              paddingHorizontal: 11,
+                              paddingVertical: 10,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.05)",
+                              backgroundColor: "rgba(255,255,255,0.014)",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                            onPress={() => reopenSheetForInterrupt(interrupt.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Open ${panelKicker(interrupt)} sheet`}
+                          >
+                            <MaterialCommunityIcons name={"dock-bottom" as never} size={15} color={palette.accent} />
+                            <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                              {panelKicker(interrupt)} is open in a sheet.
+                            </Text>
+                            <MaterialCommunityIcons name={"chevron-up" as never} size={17} color={palette.muted} />
+                          </TouchableOpacity>
+                        );
+                      }
+                      return renderDynamicPanel(interrupt, values);
                     })}
                   </View>
                 ) : null}
@@ -2560,6 +2627,50 @@ export function MobileAssistantRebuild({
           </ScrollView>
         ) : null}
       </View>
+
+      <Modal
+        visible={Boolean(visibleSheetPanelState)}
+        transparent
+        animationType="slide"
+        onRequestClose={closeSheetForActiveInterrupt}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.48)" }}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={closeSheetForActiveInterrupt}
+            accessibilityRole="button"
+            accessibilityLabel="Close assistant sheet"
+          />
+          <View
+            style={{
+              maxHeight: "84%",
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingHorizontal: 14,
+              paddingTop: 10,
+              paddingBottom: 18,
+              backgroundColor: "#101720",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.08)",
+            }}
+          >
+            <View style={{ alignItems: "center", paddingBottom: 10 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 4,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,255,255,0.18)",
+                }}
+              />
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+              {visibleSheetPanelState ? renderDynamicPanel(visibleSheetPanelState.interrupt, visibleSheetPanelState.values) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
