@@ -24,6 +24,7 @@ SOURCE_EVIDENCE_ARTIFACT_TITLE = "Inference Engineering PDF source evidence"
 SOURCE_EVIDENCE_TOPIC_TITLE = "Unproven extraction evidence"
 TRUSTED_PROVIDERS = {"liteparse_server", "ocr_server", "pypdf"}
 TRUSTED_ANSWER_SOURCE = "trusted_local_pdf_extraction"
+REPORT_EVIDENCE_CHUNK_INDEX_OFFSET = 1_000_000
 
 
 def _json(payload: Any, *, pretty: bool = False) -> str:
@@ -354,6 +355,16 @@ def _report_source_url(report: dict[str, Any]) -> str:
     return f"file://{pdf_path}" if pdf_path.startswith("/") else ""
 
 
+def _validate_cards_match_report(cards_path: Path, *, source_key: str, pdf_sha: str) -> None:
+    cards = load_cards(cards_path)
+    cards_source_key = _source_key(cards)
+    cards_pdf_sha = str(cards[0]["metadata"].get("pdf_sha256") or "").strip()
+    if cards_source_key != source_key or cards_pdf_sha != pdf_sha:
+        raise ValueError(
+            "Ready PDF card import source mismatch: cards file does not match report pdf_sha256/source_key"
+        )
+
+
 def _report_json_summary(report: dict[str, Any], *, pdf_sha: str, cards_path: str) -> str:
     extraction = report.get("extraction") if isinstance(report.get("extraction"), dict) else {}
     summary = {
@@ -669,6 +680,11 @@ def _segment_int(segment: dict[str, Any], key: str, default: int = 0) -> int:
     return max(0, value)
 
 
+def _report_chunk_index(segment: dict[str, Any]) -> tuple[int, int]:
+    source_chunk_index = _segment_int(segment, "chunk_index", len(str(segment.get("segment_id") or "")))
+    return source_chunk_index, REPORT_EVIDENCE_CHUNK_INDEX_OFFSET + source_chunk_index
+
+
 def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
     blocked = report.get("blocked_segments")
     if not isinstance(blocked, list):
@@ -733,7 +749,7 @@ def _upsert_report_chunk(
     segment: dict[str, Any],
     now_iso: str,
 ) -> str:
-    chunk_index = _segment_int(segment, "chunk_index", len(str(segment.get("segment_id") or "")))
+    source_chunk_index, chunk_index = _report_chunk_index(segment)
     content_hash = str(segment.get("content_sha256") or "").strip()
     chunk_id = _stable_id("study_chunk", source_id, chunk_index)
     status = str(segment.get("status") or "blocked")
@@ -754,6 +770,7 @@ def _upsert_report_chunk(
         "pdf_sha256": pdf_sha,
         "reason": reason,
         "report_path": str(report_path),
+        "source_chunk_index": source_chunk_index,
         "source_chunk_import": "inference_pdf_report",
         "status": status,
         "word_count": _segment_int(segment, "word_count"),
@@ -918,6 +935,13 @@ def import_source_report(
         raw_cards_path = str(report.get("cards_path") or "").strip()
         if raw_cards_path:
             report_cards_path = Path(raw_cards_path)
+    ready_cards_path = (
+        report_cards_path
+        if report_cards_path and report_cards_path.is_file() and str(report.get("final_card_status") or "") == "ready"
+        else None
+    )
+    if ready_cards_path is not None:
+        _validate_cards_match_report(ready_cards_path, source_key=source_key, pdf_sha=pdf_sha)
 
     segments = _report_segments(report)
     summary: dict[str, Any] = {
@@ -980,8 +1004,8 @@ def import_source_report(
             "topic_id": topic_id,
         }
     )
-    if report_cards_path and report_cards_path.is_file() and str(report.get("final_card_status") or "") == "ready":
-        summary["card_import"] = import_cards(report_cards_path)
+    if ready_cards_path is not None:
+        summary["card_import"] = import_cards(ready_cards_path)
     return summary
 
 
