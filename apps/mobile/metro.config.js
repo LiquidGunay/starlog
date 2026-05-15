@@ -93,6 +93,7 @@ config.resolver.nodeModulesPaths = [
   realpathIfPresent(workspaceNodeModulesRoot),
 ];
 config.resolver.unstable_enableSymlinks = true;
+config.resolver.unstable_enablePackageExports = true;
 config.resolver.blockList = metroExclusionList(
   collectDuplicatePackageRoots("react", path.resolve(mobileNodeModulesRoot, "react")).map(
     (blockedPackageRoot) => new RegExp(`^${blockedPackageRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:/.*)?$`),
