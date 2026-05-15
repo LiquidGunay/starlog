@@ -90,9 +90,10 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Live PWA interview-prep loop:** Playwright boots the local API and PWA, submits visible Assistant
   commands for `Sliding Window`, verifies due-card gating, reveals and grades a Review card, generates
   a recommendation-backed briefing, and creates an alarm.
-- **Hosted PWA reachability:** `https://starlog-web-production.up.railway.app/login` currently serves
-  the login page, and `https://starlog-api-production.up.railway.app/v1/health` returns an OK
-  production health payload. This proves public reachability, not hosted passphrase login.
+- **Hosted PWA reachability and login:** `https://starlog-web-production.up.railway.app/login`
+  currently serves the login page, `https://starlog-api-production.up.railway.app/v1/health`
+  returns an OK production health payload, and hosted passphrase login returned HTTP 200 on
+  2026-05-15. This proves access/login, not full hosted workflow freshness.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
@@ -154,9 +155,9 @@ Known outcome for `Inference Engineering.pdf`:
 - **Production Android store readiness:** Android release-signing, signed production QA smoke, store
   packaging, and final screenshots still require
   [docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md](/home/ubuntu/starlog/docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md).
-- **Railway production freshness:** hosted page/API reachability was checked on 2026-05-15, but hosted
-  passphrase login, hosted smoke, and release gate checks still need a fresh run before relying on
-  hosted deployment state.
+- **Railway production freshness:** hosted page/API reachability and passphrase login were checked on
+  2026-05-15, but hosted smoke and release gate checks still need a fresh run before relying on
+  full hosted deployment state.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
 - **Full assistant-ui runtime parity:** web assistant-ui coverage is partial and intentionally keeps
