@@ -171,6 +171,61 @@ def test_agent_study_read_command_unblocks_gated_due_card(
     assert card["id"] in {item["id"] for item in due_after_read.json()}
 
 
+def test_agent_study_unlock_then_read_command_controls_gated_due_card(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    card = _create_due_card(client, auth_headers, prompt="Interview heap invariant")
+    visible_card = _create_due_card(client, auth_headers, prompt="Ungated interview card")
+    _source, topic = _create_source_and_topic(client, auth_headers)
+    _link_card_to_topic(client, auth_headers, card_id=card["id"], topic_id=topic["id"], gate_required=True)
+
+    due_before_unlock = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_before_unlock.status_code == 200
+    due_before_unlock_ids = {item["id"] for item in due_before_unlock.json()}
+    assert visible_card["id"] in due_before_unlock_ids
+    assert card["id"] not in due_before_unlock_ids
+
+    unlock = client.post(
+        "/v1/agent/command",
+        json={"command": "unlock Breadth-first search", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert unlock.status_code == 200
+    unlock_payload = unlock.json()
+    assert unlock_payload["matched_intent"] == "unlock_study_topic"
+    assert unlock_payload["status"] == "executed"
+    assert unlock_payload["steps"][0]["tool_name"] == "unlock_study_topic"
+    assert unlock_payload["steps"][0]["arguments"]["topic_id"] == topic["id"]
+    assert unlock_payload["steps"][0]["result"]["topic"]["status"] == "unlocked"
+    assert unlock_payload["steps"][0]["result"]["topic"]["manually_unlocked"] is True
+
+    due_after_unlock = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_after_unlock.status_code == 200
+    due_after_unlock_ids = {item["id"] for item in due_after_unlock.json()}
+    assert visible_card["id"] in due_after_unlock_ids
+    assert card["id"] not in due_after_unlock_ids
+
+    read = client.post(
+        "/v1/agent/command",
+        json={"command": "mark Breadth-first search read", "execute": True, "device_target": "web-pwa"},
+        headers=auth_headers,
+    )
+    assert read.status_code == 200
+    read_payload = read.json()
+    assert read_payload["matched_intent"] == "mark_study_topic_read"
+    assert read_payload["status"] == "executed"
+    assert read_payload["steps"][0]["tool_name"] == "mark_study_topic_read"
+    assert read_payload["steps"][0]["arguments"]["topic_id"] == topic["id"]
+    assert read_payload["steps"][0]["result"]["topic"]["status"] == "read"
+
+    due_after_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_after_read.status_code == 200
+    due_after_read_ids = {item["id"] for item in due_after_read.json()}
+    assert visible_card["id"] in due_after_read_ids
+    assert card["id"] in due_after_read_ids
+
+
 def test_agent_study_quiz_command_creates_topic_question_request(
     client: TestClient,
     auth_headers: dict[str, str],
