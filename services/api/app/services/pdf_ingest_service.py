@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import os
 import re
 import subprocess
+import time
 import uuid
 from collections import Counter
 from pathlib import Path
@@ -38,14 +40,23 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _extract_with_parse_server(path: Path) -> str | None:
+def _env_bounded_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    return max(minimum, min(_env_int(name, default), maximum))
+
+
+def _parse_max_pages() -> int:
+    max_page_limit = _env_bounded_int("STARLOG_PDF_PARSE_MAX_PAGE_LIMIT", 48, minimum=1, maximum=512)
+    return max(1, min(_env_int("STARLOG_PDF_PARSE_MAX_PAGES", 16), max_page_limit))
+
+
+def _extract_with_parse_server(path: Path, *, max_characters: int | None = None) -> str | None:
     server_url = _parse_server_url()
     if not server_url:
         return None
 
     language = os.getenv("STARLOG_PDF_OCR_LANGUAGE", "en").strip() or "en"
     dpi = max(110, _env_int("STARLOG_PDF_PARSE_DPI", _env_int("STARLOG_PDF_OCR_DPI", 170)))
-    max_pages = max(1, min(_env_int("STARLOG_PDF_PARSE_MAX_PAGES", 16), 48))
+    max_pages = _parse_max_pages()
     timeout = max(10, _env_int("STARLOG_PDF_PARSE_TIMEOUT_SECONDS", _env_int("STARLOG_PDF_OCR_TIMEOUT_SECONDS", 90)))
     ocr_enabled = os.getenv("STARLOG_PDF_PARSE_OCR_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
     ocr_server_url = os.getenv("STARLOG_PDF_PARSE_OCR_SERVER_URL", "").strip() or _ocr_server_url() or ""
@@ -88,7 +99,7 @@ def _extract_with_parse_server(path: Path) -> str | None:
     return text or None
 
 
-def _extract_with_ocr_server(path: Path) -> str | None:
+def _extract_with_ocr_server(path: Path, *, max_characters: int | None = None) -> str | None:
     server_url = _ocr_server_url()
     if not server_url or importlib.util.find_spec("fitz") is None:
         return None
@@ -106,6 +117,7 @@ def _extract_with_ocr_server(path: Path) -> str | None:
         return None
 
     parts: list[str] = []
+    total_characters = 0
     try:
         for page_index in range(min(len(document), max_pages)):
             page = document.load_page(page_index)
@@ -138,6 +150,9 @@ def _extract_with_ocr_server(path: Path) -> str | None:
             page_text = _normalize_text(" ".join(str(item.get("text") or "") for item in results))
             if page_text:
                 parts.append(page_text)
+                total_characters += len(page_text)
+                if max_characters is not None and total_characters >= max_characters:
+                    break
     except (OSError, ValueError, URLError, TimeoutError):
         return None
     finally:
@@ -147,7 +162,7 @@ def _extract_with_ocr_server(path: Path) -> str | None:
     return text or None
 
 
-def _extract_with_pypdf(path: Path) -> str | None:
+def _extract_with_pypdf(path: Path, *, max_characters: int | None = None) -> str | None:
     if importlib.util.find_spec("pypdf") is None:
         return None
 
@@ -155,44 +170,95 @@ def _extract_with_pypdf(path: Path) -> str | None:
 
     reader = PdfReader(str(path))
     parts: list[str] = []
-    for page in reader.pages:
+    max_pages = _parse_max_pages()
+    total_characters = 0
+    for page_index, page in enumerate(reader.pages):
+        if page_index >= max_pages:
+            break
         page_text = page.extract_text() or ""
         if page_text.strip():
             parts.append(page_text)
+            total_characters += len(page_text)
+            if max_characters is not None and total_characters >= max_characters:
+                break
     text = _normalize_text("\n".join(parts))
     return text or None
 
 
-def _extract_with_strings(path: Path) -> str | None:
+def _extract_with_strings(path: Path, *, max_characters: int | None = None) -> str | None:
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             ["strings", "-n", "8", str(path)],
-            check=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
         )
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except FileNotFoundError:
         return None
 
     lines = []
-    for raw_line in result.stdout.splitlines():
-        line = _normalize_text(raw_line)
-        if len(line) < 20:
-            continue
-        if line.startswith("<<") or line.startswith(">>"):
-            continue
-        if any(token in line for token in ("/Type", "/Filter", "/Length", "/Root", "/XRef", "endobj", "stream", "xref", "trailer")):
-            continue
-        letter_count = sum(char.isalpha() for char in line)
-        symbol_count = sum(char in "<>/[]{}" for char in line)
-        if letter_count < 12:
-            continue
-        if symbol_count and symbol_count * 3 > max(letter_count, 1):
-            continue
-        lines.append(line)
+    total_characters = 0
+    timeout = max(2, _env_int("STARLOG_PDF_STRINGS_TIMEOUT_SECONDS", 10))
+    deadline = time.monotonic() + timeout
+    try:
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = _normalize_text(raw_line)
+            if len(line) < 20:
+                continue
+            if line.startswith("<<") or line.startswith(">>"):
+                continue
+            if any(
+                token in line
+                for token in (
+                    "/Type",
+                    "/Filter",
+                    "/Length",
+                    "/Root",
+                    "/XRef",
+                    "endobj",
+                    "stream",
+                    "xref",
+                    "trailer",
+                )
+            ):
+                continue
+            letter_count = sum(char.isalpha() for char in line)
+            symbol_count = sum(char in "<>/[]{}" for char in line)
+            if letter_count < 12:
+                continue
+            if symbol_count and symbol_count * 3 > max(letter_count, 1):
+                continue
+            lines.append(line)
+            total_characters += len(line)
+            if (
+                len(lines) >= 400
+                or (max_characters is not None and total_characters >= max_characters)
+                or time.monotonic() >= deadline
+            ):
+                break
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1)
 
-    text = _normalize_text("\n".join(lines[:400]))
+    text = _normalize_text("\n".join(lines))
     return text or None
+
+
+def _extractor_accepts_max_characters(extractor: Any) -> bool:
+    try:
+        signature = inspect.signature(extractor)
+    except (TypeError, ValueError):
+        return False
+    parameters = signature.parameters
+    return "max_characters" in parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )
 
 
 def _quality_flags(text: str) -> dict[str, Any]:
@@ -351,7 +417,8 @@ def _fallback_rank(candidate: dict[str, Any]) -> tuple[int, int, int, int, int]:
     )
 
 
-def extract_pdf_text(path: Path) -> dict[str, Any]:
+def extract_pdf_text(path: Path, *, max_characters: int | None = None) -> dict[str, Any]:
+    text_limit = max(1000, max_characters if max_characters is not None else _env_int("STARLOG_PDF_EXTRACT_MAX_CHARS", 20000))
     fallback_candidate: dict[str, Any] | None = None
     fallback_rank: tuple[int, int, int, int, int] | None = None
     for provider_name, extractor, mode in (
@@ -361,16 +428,23 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
         ("strings", _extract_with_strings, "heuristic_fallback"),
     ):
         try:
-            text = extractor(path)
+            if _extractor_accepts_max_characters(extractor):
+                text = extractor(path, max_characters=text_limit)
+            else:
+                text = extractor(path)
         except Exception:
             continue
         if text:
-            quality = _quality_flags(text[:20000])
+            extracted_text = text[:text_limit]
+            quality = _quality_flags(extracted_text)
             candidate = {
-                "text": text[:20000],
+                "text": extracted_text,
                 "provider": provider_name,
                 "mode": mode,
                 **quality,
+                "source_characters": len(text),
+                "truncated": len(text) > len(extracted_text),
+                "text_limit": text_limit,
             }
             candidate["readable"] = _candidate_is_readable(candidate)
             candidate_rank = _fallback_rank(candidate)
@@ -393,4 +467,7 @@ def extract_pdf_text(path: Path) -> dict[str, Any]:
         "unique_ratio": 0.0,
         "unique_characters": 0,
         "long_word_count": 0,
+        "source_characters": 0,
+        "truncated": False,
+        "text_limit": text_limit,
     }
