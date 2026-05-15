@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import re
@@ -56,6 +57,41 @@ def load_cards(path: Path) -> list[dict[str, Any]]:
 def slug_tag(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
     return slug or "unknown"
+
+
+def db_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    return slug or "unknown"
+
+
+def db_id(prefix: str, *parts: object) -> str:
+    return f"{prefix}_{'_'.join(db_slug(str(part)) for part in parts if str(part).strip())}"
+
+
+def json_compact(payload: Any) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def stable_hash(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def record_changed(row: Any, expected: dict[str, Any]) -> bool:
+    return any(row[key] != value for key, value in expected.items())
+
+
+def upsert_status(existed: bool, changed: bool) -> dict[str, int]:
+    return {
+        "created": 0 if existed else 1,
+        "updated": 1 if existed and changed else 0,
+        "unchanged": 1 if existed and not changed else 0,
+    }
+
+
+def merge_status(target: dict[str, int], status: dict[str, int]) -> None:
+    for key in ("created", "updated", "unchanged"):
+        target[key] = target.get(key, 0) + int(status.get(key, 0))
 
 
 def stable_card_key(card: dict[str, Any]) -> str:
@@ -162,6 +198,320 @@ def _artifact_payload(deck_path: Path, cards: list[dict[str, Any]]) -> dict[str,
             "card_count": len(cards),
         },
     }
+
+
+def _source_id() -> str:
+    return db_id("study_src", IMPORT_KEY_PREFIX)
+
+
+def _section_title(card: dict[str, Any]) -> str:
+    metadata = card.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return str(card.get("section") or metadata.get("section") or "Unsectioned").strip() or "Unsectioned"
+
+
+def _section_titles(cards: list[dict[str, Any]]) -> list[str]:
+    titles: list[str] = []
+    seen: set[str] = set()
+    for card in cards:
+        title = _section_title(card)
+        if title in seen:
+            continue
+        seen.add(title)
+        titles.append(title)
+    return titles
+
+
+def _section_topic_id(source_id: str, section: str) -> str:
+    return db_id("study_topic", source_id, section)
+
+
+def _source_metadata(deck_path: Path, cards: list[dict[str, Any]]) -> dict[str, Any]:
+    sections = [_section_title(card) for card in cards]
+    difficulties = [
+        str(card.get("difficulty") or (card.get("metadata") or {}).get("difficulty") or "unspecified")
+        for card in cards
+    ]
+    return {
+        "import_key": IMPORT_KEY_PREFIX,
+        "deck_name": DECK_NAME,
+        "deck_path": _relative_deck_path(deck_path),
+        "source_url": SOURCE_URL,
+        "card_count": len(cards),
+        "section_count": len(set(sections)),
+        "section_counts": dict(Counter(sections)),
+        "difficulty_counts": dict(Counter(difficulties)),
+        "content_hash": stable_hash(cards),
+    }
+
+
+def _upsert_study_source(conn: Any, deck_path: Path, cards: list[dict[str, Any]], artifact_id: str, now_iso: str) -> tuple[str, dict[str, int]]:
+    source_id = _source_id()
+    expected = {
+        "title": DECK_NAME,
+        "source_type": "interview_prep",
+        "artifact_id": artifact_id,
+        "url": SOURCE_URL,
+        "metadata_json": json_compact(_source_metadata(deck_path, cards)),
+    }
+    row = conn.execute("SELECT * FROM study_sources WHERE id = ?", (source_id,)).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO study_sources (id, title, source_type, artifact_id, url, metadata_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_id,
+                expected["title"],
+                expected["source_type"],
+                expected["artifact_id"],
+                expected["url"],
+                expected["metadata_json"],
+                now_iso,
+                now_iso,
+            ),
+        )
+        return source_id, upsert_status(False, True)
+
+    changed = record_changed(row, expected)
+    if changed:
+        conn.execute(
+            """
+            UPDATE study_sources
+            SET title = ?, source_type = ?, artifact_id = ?, url = ?, metadata_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                expected["title"],
+                expected["source_type"],
+                expected["artifact_id"],
+                expected["url"],
+                expected["metadata_json"],
+                now_iso,
+                source_id,
+            ),
+        )
+    return source_id, upsert_status(True, changed)
+
+
+def _section_summary(section: str, cards: list[dict[str, Any]]) -> str:
+    section_cards = [card for card in cards if _section_title(card) == section]
+    difficulty_counts = Counter(
+        str(card.get("difficulty") or (card.get("metadata") or {}).get("difficulty") or "unspecified")
+        for card in section_cards
+    )
+    mix = ", ".join(f"{key}: {difficulty_counts[key]}" for key in sorted(difficulty_counts))
+    return f"ML Interviews Part II section with {len(section_cards)} review cards. Difficulty mix: {mix}."
+
+
+def _upsert_section_topics(conn: Any, source_id: str, cards: list[dict[str, Any]], now_iso: str) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0}
+    for display_order, section in enumerate(_section_titles(cards), start=1):
+        topic_id = _section_topic_id(source_id, section)
+        expected = {
+            "source_id": source_id,
+            "parent_topic_id": None,
+            "title": section,
+            "summary": _section_summary(section, cards),
+            "display_order": display_order,
+        }
+        row = conn.execute("SELECT * FROM study_topics WHERE id = ?", (topic_id,)).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO study_topics (
+                  id, source_id, parent_topic_id, title, summary, display_order, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    topic_id,
+                    expected["source_id"],
+                    expected["parent_topic_id"],
+                    expected["title"],
+                    expected["summary"],
+                    expected["display_order"],
+                    now_iso,
+                    now_iso,
+                ),
+            )
+            merge_status(status, upsert_status(False, True))
+            continue
+
+        changed = record_changed(row, expected)
+        if changed:
+            conn.execute(
+                """
+                UPDATE study_topics
+                SET source_id = ?, parent_topic_id = ?, title = ?, summary = ?, display_order = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    expected["source_id"],
+                    expected["parent_topic_id"],
+                    expected["title"],
+                    expected["summary"],
+                    expected["display_order"],
+                    now_iso,
+                    topic_id,
+                ),
+            )
+        merge_status(status, upsert_status(True, changed))
+    return status
+
+
+def _delete_stale_section_topics(conn: Any, source_id: str, cards: list[dict[str, Any]]) -> int:
+    current_topic_ids = {_section_topic_id(source_id, section) for section in _section_titles(cards)}
+    topic_id_prefix = f"{db_id('study_topic', source_id)}_%"
+    if not current_topic_ids:
+        return 0
+    placeholders = ",".join("?" for _ in current_topic_ids)
+    stale_rows = conn.execute(
+        f"""
+        SELECT id
+        FROM study_topics
+        WHERE source_id = ?
+          AND id LIKE ?
+          AND id NOT IN ({placeholders})
+        """,
+        (source_id, topic_id_prefix, *sorted(current_topic_ids)),
+    ).fetchall()
+    stale_topic_ids = [str(row["id"]) for row in stale_rows]
+    if not stale_topic_ids:
+        return 0
+
+    stale_placeholders = ",".join("?" for _ in stale_topic_ids)
+    conn.execute(
+        f"DELETE FROM study_topic_progress WHERE topic_id IN ({stale_placeholders})",
+        tuple(stale_topic_ids),
+    )
+    cursor = conn.execute(
+        f"""
+        DELETE FROM study_topics
+        WHERE source_id = ?
+          AND id LIKE ?
+          AND id IN ({stale_placeholders})
+        """,
+        (source_id, topic_id_prefix, *stale_topic_ids),
+    )
+    return max(cursor.rowcount, 0)
+
+
+def _section_chunk_content(section: str, cards: list[dict[str, Any]]) -> str:
+    section_cards = [card for card in cards if _section_title(card) == section]
+    prompts = "\n".join(
+        f"- {card['question_index']}: {str(card.get('question') or card.get('prompt') or '').strip()}"
+        for card in section_cards
+    )
+    source_urls = sorted({str(card.get("source_url") or "").strip() for card in section_cards if card.get("source_url")})
+    return "\n".join(
+        [
+            f"# {section}",
+            "",
+            f"Source URLs: {', '.join(source_urls) or SOURCE_URL}",
+            f"Cards: {len(section_cards)}",
+            "",
+            "Questions:",
+            prompts,
+        ]
+    ).strip()
+
+
+def _upsert_source_chunks(
+    conn: Any,
+    source_id: str,
+    artifact_id: str,
+    cards: list[dict[str, Any]],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0}
+    current_topic_ids = {_section_topic_id(source_id, section) for section in _section_titles(cards)}
+    current_chunk_indexes = set(range(1, len(current_topic_ids) + 1))
+    for chunk_index, section in enumerate(_section_titles(cards), start=1):
+        topic_id = _section_topic_id(source_id, section)
+        section_cards = [card for card in cards if _section_title(card) == section]
+        expected = {
+            "source_id": source_id,
+            "topic_id": topic_id,
+            "artifact_id": artifact_id,
+            "chunk_index": chunk_index,
+            "content": _section_chunk_content(section, cards),
+            "metadata_json": json_compact(
+                {
+                    "import_key": IMPORT_KEY_PREFIX,
+                    "section": section,
+                    "card_count": len(section_cards),
+                    "question_indexes": [card["question_index"] for card in section_cards],
+                    "content_hash": stable_hash(section_cards),
+                }
+            ),
+        }
+        row = conn.execute(
+            "SELECT * FROM source_chunks WHERE source_id = ? AND chunk_index = ?",
+            (source_id, chunk_index),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO source_chunks (
+                  id, source_id, topic_id, artifact_id, chunk_index, content, metadata_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    db_id("study_chunk", source_id, chunk_index),
+                    expected["source_id"],
+                    expected["topic_id"],
+                    expected["artifact_id"],
+                    expected["chunk_index"],
+                    expected["content"],
+                    expected["metadata_json"],
+                    now_iso,
+                ),
+            )
+            merge_status(status, upsert_status(False, True))
+            continue
+
+        changed = record_changed(row, expected)
+        if changed:
+            conn.execute(
+                """
+                UPDATE source_chunks
+                SET source_id = ?, topic_id = ?, artifact_id = ?, chunk_index = ?, content = ?, metadata_json = ?
+                WHERE id = ?
+                """,
+                (
+                    expected["source_id"],
+                    expected["topic_id"],
+                    expected["artifact_id"],
+                    expected["chunk_index"],
+                    expected["content"],
+                    expected["metadata_json"],
+                    row["id"],
+                ),
+            )
+        merge_status(status, upsert_status(True, changed))
+    if current_topic_ids and current_chunk_indexes:
+        topic_placeholders = ",".join("?" for _ in current_topic_ids)
+        chunk_placeholders = ",".join("?" for _ in current_chunk_indexes)
+        cursor = conn.execute(
+            f"""
+            DELETE FROM source_chunks
+            WHERE source_id = ?
+              AND id LIKE ?
+              AND (
+                topic_id NOT IN ({topic_placeholders})
+                OR chunk_index NOT IN ({chunk_placeholders})
+              )
+            """,
+            (
+                source_id,
+                f"{db_id('study_chunk', source_id)}_%",
+                *sorted(current_topic_ids),
+                *sorted(current_chunk_indexes),
+            ),
+        )
+        status["deleted"] += max(cursor.rowcount, 0)
+    return status
 
 
 def _decoded_schedule(value: Any, fallback: dict[str, Any]) -> dict[str, Any]:
@@ -485,6 +835,89 @@ def _update_card_if_needed(
     return True
 
 
+def _upsert_card_topic_links(
+    conn: Any,
+    *,
+    source_id: str,
+    card_set_version_id: str,
+    cards: list[dict[str, Any]],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0, "section_links": 0}
+    cards_by_key = _existing_cards_by_key(conn, card_set_version_id)
+    source_topic_ids = {
+        _section_topic_id(source_id, section)
+        for section in _section_titles(cards)
+    }
+    link_id_prefix = f"{db_id('card_topic', IMPORT_KEY_PREFIX)}%"
+    for card in cards:
+        card_key = stable_card_key(card)
+        card_row = cards_by_key.get(card_key)
+        if card_row is None:
+            raise RuntimeError(f"Imported card missing after upsert: {card_key}")
+        card_id = str(card_row["id"])
+        section = _section_title(card)
+        topic_id = _section_topic_id(source_id, section)
+        link_id = db_id("card_topic", card_key, "section", section)
+        row = conn.execute(
+            "SELECT * FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
+            (card_id, topic_id),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (link_id, card_id, topic_id, 1, now_iso),
+            )
+            merge_status(status, upsert_status(False, True))
+        else:
+            row_id = str(row["id"])
+            id_changed = row_id != link_id and row_id.startswith(db_id("card_topic", card_key))
+            gate_changed = int(row["gate_required"]) != 1
+            changed = id_changed or gate_changed
+            if changed:
+                conn.execute(
+                    "UPDATE card_topic_links SET id = ?, gate_required = ? WHERE card_id = ? AND topic_id = ?",
+                    (link_id if id_changed else row_id, 1, card_id, topic_id),
+                )
+            merge_status(status, upsert_status(True, changed))
+        status["section_links"] += 1
+
+        stale_cursor = conn.execute(
+            """
+            DELETE FROM card_topic_links
+            WHERE card_id = ?
+              AND id LIKE ?
+              AND topic_id != ?
+            """,
+            (
+                card_id,
+                f"{db_id('card_topic', card_key)}%",
+                topic_id,
+            ),
+        )
+        status["deleted"] += max(stale_cursor.rowcount, 0)
+    if source_topic_ids:
+        placeholders = ",".join("?" for _ in source_topic_ids)
+        stale_source_cursor = conn.execute(
+            f"""
+            DELETE FROM card_topic_links
+            WHERE id LIKE ?
+              AND topic_id IN (
+                SELECT id
+                FROM study_topics
+                WHERE source_id = ?
+              )
+              AND topic_id NOT IN ({placeholders})
+            """,
+            (link_id_prefix, source_id, *sorted(source_topic_ids)),
+        )
+        status["deleted"] += max(stale_source_cursor.rowcount, 0)
+    return status
+
+
 def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
     cards = load_cards(deck_path)
     summary = {
@@ -509,6 +942,9 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
         default_schedule = srs_service.ensure_default_deck(conn)["schedule"]
         deck_id, schedule = _ensure_deck(conn, new_id, default_schedule, now_iso)
         artifact_id = _ensure_artifact(conn, new_id, deck_path, cards, now_iso)
+        source_id, source_status = _upsert_study_source(conn, deck_path, cards, artifact_id, now_iso)
+        topic_status = _upsert_section_topics(conn, source_id, cards, now_iso)
+        chunk_status = _upsert_source_chunks(conn, source_id, artifact_id, cards, now_iso)
         card_set_version_id = _ensure_card_set_version(conn, new_id, artifact_id, now_iso)
         note_id = _ensure_note(conn, new_id, artifact_id, len(cards), now_iso)
         _ensure_relation(
@@ -553,6 +989,14 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
                 updated_cards += 1
             else:
                 unchanged_cards += 1
+        link_status = _upsert_card_topic_links(
+            conn,
+            source_id=source_id,
+            card_set_version_id=card_set_version_id,
+            cards=cards,
+            now_iso=now_iso,
+        )
+        topic_status["deleted"] += _delete_stale_section_topics(conn, source_id, cards)
         conn.commit()
 
     summary.update(
@@ -561,6 +1005,11 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
             "card_set_version_id": card_set_version_id,
             "deck_id": deck_id,
             "note_id": note_id,
+            "source_id": source_id,
+            "source": source_status,
+            "topics": topic_status,
+            "source_chunks": chunk_status,
+            "card_topic_links": link_status,
             "inserted_cards": inserted_cards,
             "updated_cards": updated_cards,
             "unchanged_cards": unchanged_cards,
