@@ -60,6 +60,7 @@ Current functional areas:
 | Mobile Planner viewport | `apps/web/tests/ui-functional/mobile-planner.functional.spec.ts` | Phone-width Planner Assistant handoff drafts and conflict review link behavior. |
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Learning ladder, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
+| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device login, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade, briefing recommendation hints, notification permission, and Planner alarm scheduling. |
 
 ## Dynamic UI Coverage Boundary
 
@@ -73,8 +74,9 @@ Covered:
 - Resolved panels leave the UI in a settled state.
 - Supported desktop web assistant-ui paths can render structured protocol parts while unsupported
   shapes remain covered by Starlog compatibility/fallback rendering.
-- React Native view-model tests cover mobile dynamic-panel shaping while the native assistant-ui-style
-  path remains in progress.
+- React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
+  path has installed-device proof for the transcript slice, while full dynamic-panel parity remains
+  in progress.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:
@@ -129,6 +131,12 @@ These are current-state findings, not expected behavior.
 
 ## Native Mobile Gap
 
-This is not native Android/iOS automation. The current Expo mobile app cannot run as an Expo web harness without adding `react-native-web` and `@expo/metro-runtime`, and this workitem does not add a native automation stack such as Maestro or Detox. Native device coverage remains the next gap for the primary mobile app.
+The browser viewport harness is not native Android/iOS automation. The current Expo mobile app cannot run as an Expo web harness without adding `react-native-web` and `@expo/metro-runtime`, and this workitem does not add a native automation stack such as Maestro or Detox.
+
+For native Android product-flow proof, use `scripts/android_fresh_local_srs_validation.sh`. The
+2026-05-15 run under `/tmp/starlog-functional-master/.localdata/android-local-validation/builds/20260515T183923Z/`
+validated login, Assistant command submission, native Study Core unlock/read/question controls,
+Review reveal/grade, briefing recommendation hints, and Planner alarm scheduling on the connected
+phone. This is still not full native assistant-ui dynamic-panel parity.
 
 Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. A fresh active-device pass on 2026-04-29 captured native Assistant, Library, Planner, and Review screenshots under `artifacts/phone-current/2026-04-29/`. On this device, `adb shell svc power stayon true` exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture.

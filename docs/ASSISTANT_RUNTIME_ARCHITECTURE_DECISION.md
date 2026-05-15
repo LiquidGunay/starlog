@@ -96,8 +96,9 @@ Current status:
   not-yet-migrated tool/message shapes continue through Starlog compatibility
   projections and existing fallback render paths.
 - Native mobile must converge on the same Starlog assistant protocol. The React Native
-  assistant-ui-style implementation is in progress, with view-model and panel-state
-  coverage ahead of full installed-device dynamic-panel proof.
+  assistant-ui-style implementation is in progress; installed-device evidence now covers
+  the first assistant-ui RN transcript slice in the native interview-prep loop, while full
+  native dynamic-panel parity remains pending.
 - The mobile PWA remains a fallback phone surface and a useful browser/viewport test
   target. It is not the primary mobile UX redesign target.
 
