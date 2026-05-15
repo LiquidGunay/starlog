@@ -43,6 +43,7 @@ import {
   mobilePanelOptionViewModels,
   mobileReviewGradePreview,
   mobileTaskDetailPreview,
+  nextMobileSheetLifecycleState,
   panelDismissPayload,
   panelKicker,
   panelSubmitPayload,
@@ -1501,6 +1502,7 @@ export function MobileAssistantRebuild({
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
   const [openSheetInterruptId, setOpenSheetInterruptId] = useState<string | null>(null);
+  const [dismissedSheetInterruptId, setDismissedSheetInterruptId] = useState<string | null>(null);
   const [selectedFallbackFocus, setSelectedFallbackFocus] = useState<(typeof MORNING_FOCUS_OPTIONS)[number]["key"]>("project");
   const dimensions = useWindowDimensions();
   const assistantPanelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
@@ -1573,17 +1575,32 @@ export function MobileAssistantRebuild({
   const selectedFallbackFocusOption =
     MORNING_FOCUS_OPTIONS.find((option) => option.key === selectedFallbackFocus) || MORNING_FOCUS_OPTIONS[0];
   const activeSheetPanelState = panelStates.find((state) => state.renderState === "active" && state.placement === "native_sheet") || null;
+  const activeSheetInterruptId = activeSheetPanelState?.interrupt.id ?? null;
   const visibleSheetPanelState =
     activeSheetPanelState && openSheetInterruptId === activeSheetPanelState.interrupt.id ? activeSheetPanelState : null;
 
   useEffect(() => {
-    if (activeSheetPanelState && openSheetInterruptId !== activeSheetPanelState.interrupt.id) {
-      setOpenSheetInterruptId(activeSheetPanelState.interrupt.id);
+    const nextSheetState = nextMobileSheetLifecycleState(activeSheetInterruptId, {
+      openSheetInterruptId,
+      dismissedSheetInterruptId,
+    });
+    if (nextSheetState.openSheetInterruptId !== openSheetInterruptId) {
+      setOpenSheetInterruptId(nextSheetState.openSheetInterruptId);
     }
-    if (!activeSheetPanelState && openSheetInterruptId) {
-      setOpenSheetInterruptId(null);
+    if (nextSheetState.dismissedSheetInterruptId !== dismissedSheetInterruptId) {
+      setDismissedSheetInterruptId(nextSheetState.dismissedSheetInterruptId);
     }
-  }, [activeSheetPanelState, openSheetInterruptId]);
+  }, [activeSheetInterruptId, dismissedSheetInterruptId, openSheetInterruptId]);
+
+  const closeSheetForActiveInterrupt = () => {
+    setDismissedSheetInterruptId(activeSheetInterruptId);
+    setOpenSheetInterruptId(null);
+  };
+
+  const reopenSheetForInterrupt = (interruptId: string) => {
+    setDismissedSheetInterruptId(null);
+    setOpenSheetInterruptId(interruptId);
+  };
 
   const updateInterruptValue = (interrupt: AssistantInterrupt, fieldId: string, value: unknown) =>
     setInterruptValuesById((previous) => ({
@@ -1596,12 +1613,14 @@ export function MobileAssistantRebuild({
 
   const submitInterrupt = (interrupt: AssistantInterrupt, valuesOverride?: Record<string, unknown>) => {
     const payload = valuesOverride ? { interruptId: interrupt.id, values: valuesOverride } : panelSubmitPayload(interrupt, interruptValuesById);
+    setDismissedSheetInterruptId(interrupt.id);
     setOpenSheetInterruptId(null);
     onInterruptSubmit(payload.interruptId, payload.values);
   };
 
   const dismissInterrupt = (interrupt: AssistantInterrupt) => {
     const payload = panelDismissPayload(interrupt);
+    setDismissedSheetInterruptId(interrupt.id);
     setOpenSheetInterruptId(null);
     onInterruptDismiss(payload.interruptId);
   };
@@ -2332,7 +2351,7 @@ export function MobileAssistantRebuild({
                               alignItems: "center",
                               gap: 8,
                             }}
-                            onPress={() => setOpenSheetInterruptId(interrupt.id)}
+                            onPress={() => reopenSheetForInterrupt(interrupt.id)}
                             accessibilityRole="button"
                             accessibilityLabel={`Open ${panelKicker(interrupt)} sheet`}
                           >
@@ -2613,13 +2632,13 @@ export function MobileAssistantRebuild({
         visible={Boolean(visibleSheetPanelState)}
         transparent
         animationType="slide"
-        onRequestClose={() => setOpenSheetInterruptId(null)}
+        onRequestClose={closeSheetForActiveInterrupt}
       >
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.48)" }}>
           <TouchableOpacity
             style={{ flex: 1 }}
             activeOpacity={1}
-            onPress={() => setOpenSheetInterruptId(null)}
+            onPress={closeSheetForActiveInterrupt}
             accessibilityRole="button"
             accessibilityLabel="Close assistant sheet"
           />

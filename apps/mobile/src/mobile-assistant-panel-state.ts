@@ -26,6 +26,11 @@ export type MobileDynamicPanelState = {
   displayModeLabel: string;
 };
 
+export type MobileSheetLifecycleState = {
+  openSheetInterruptId: string | null;
+  dismissedSheetInterruptId: string | null;
+};
+
 export type MobilePanelOptionViewModel = {
   label: string;
   value: string;
@@ -233,6 +238,26 @@ export function mobileDynamicPanelStates(
       displayModeLabel: mobilePanelDisplayModeLabel(interrupt),
     };
   });
+}
+
+export function nextMobileSheetLifecycleState(
+  activeSheetInterruptId: string | null,
+  state: MobileSheetLifecycleState,
+): MobileSheetLifecycleState {
+  if (!activeSheetInterruptId) {
+    return { openSheetInterruptId: null, dismissedSheetInterruptId: null };
+  }
+
+  const dismissedSheetInterruptId =
+    state.dismissedSheetInterruptId === activeSheetInterruptId ? state.dismissedSheetInterruptId : null;
+  const openSheetInterruptId =
+    state.openSheetInterruptId === activeSheetInterruptId
+      ? state.openSheetInterruptId
+      : dismissedSheetInterruptId === activeSheetInterruptId
+        ? null
+        : activeSheetInterruptId;
+
+  return { openSheetInterruptId, dismissedSheetInterruptId };
 }
 
 export function panelSubmitPayload(

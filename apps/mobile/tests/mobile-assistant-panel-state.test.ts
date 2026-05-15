@@ -15,6 +15,7 @@ import {
   mobilePanelOptionViewModels,
   mobileReviewGradePreview,
   mobileTaskDetailPreview,
+  nextMobileSheetLifecycleState,
   panelDismissPayload,
   panelTone,
   panelSubmitPayload,
@@ -113,6 +114,22 @@ const contractSheet = interrupt({ id: "contract-sheet-panel", placement: "bottom
 assert.equal(mobileDynamicPanelPlacement(contractSheet), "native_sheet");
 const unknownPlacement = interrupt({ id: "unknown-placement-panel", placement: "floating_overlay", display_mode: "bottom_sheet" });
 assert.equal(mobileDynamicPanelPlacement(unknownPlacement), "inline");
+assert.deepEqual(
+  nextMobileSheetLifecycleState("sheet-panel", { openSheetInterruptId: null, dismissedSheetInterruptId: null }),
+  { openSheetInterruptId: "sheet-panel", dismissedSheetInterruptId: null },
+);
+assert.deepEqual(
+  nextMobileSheetLifecycleState("sheet-panel", { openSheetInterruptId: null, dismissedSheetInterruptId: "sheet-panel" }),
+  { openSheetInterruptId: null, dismissedSheetInterruptId: "sheet-panel" },
+);
+assert.deepEqual(
+  nextMobileSheetLifecycleState("next-sheet-panel", { openSheetInterruptId: null, dismissedSheetInterruptId: "sheet-panel" }),
+  { openSheetInterruptId: "next-sheet-panel", dismissedSheetInterruptId: null },
+);
+assert.deepEqual(
+  nextMobileSheetLifecycleState(null, { openSheetInterruptId: "sheet-panel", dismissedSheetInterruptId: "sheet-panel" }),
+  { openSheetInterruptId: null, dismissedSheetInterruptId: null },
+);
 
 assert.deepEqual(defaultPanelValues(first), { focus: "project" });
 
