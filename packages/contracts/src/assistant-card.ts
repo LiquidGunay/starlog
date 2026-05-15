@@ -1,3 +1,5 @@
+import type { AssistantDynamicUiPayload } from "./assistant-dynamic-ui";
+
 export const ASSISTANT_CARD_KINDS = [
   "assistant_summary",
   "thread_context",
@@ -38,7 +40,7 @@ export type AssistantCardAction = {
   requires_confirmation?: boolean;
 };
 
-export type AssistantCard = {
+export type AssistantCard = AssistantDynamicUiPayload & {
   kind: AssistantCardKind | string;
   version: number;
   title?: string | null;

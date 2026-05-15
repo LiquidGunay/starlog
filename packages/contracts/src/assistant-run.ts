@@ -1,4 +1,5 @@
 import type { AssistantCard, AssistantEntityRef } from "./assistant-card";
+import type { AssistantDynamicUiPayload } from "./assistant-dynamic-ui";
 import type { AssistantInterrupt } from "./assistant-interrupt";
 
 export type AssistantToolKind = "domain_tool" | "ui_tool" | "system_tool";
@@ -14,7 +15,7 @@ export type AssistantToolCall = {
   metadata: Record<string, unknown>;
 };
 
-export type AssistantToolResult = {
+export type AssistantToolResult = AssistantDynamicUiPayload & {
   id: string;
   tool_call_id: string;
   status: Exclude<AssistantToolStatus, "queued" | "running">;

@@ -127,6 +127,16 @@ importers:
 
   packages/contracts: {}
 
+  packages/dynamic-ui:
+    dependencies:
+      '@starlog/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+
   tools/desktop-helper:
     dependencies:
       '@tauri-apps/api':

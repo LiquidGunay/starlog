@@ -1,0 +1,16 @@
+{
+  "name": "@starlog/dynamic-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "tsc -p tsconfig.test.json && node /tmp/starlog-dynamic-ui-tests/packages/dynamic-ui/tests/dynamic-ui.test.js"
+  },
+  "dependencies": {
+    "@starlog/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3"
+  }
+}

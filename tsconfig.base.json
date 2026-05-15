@@ -7,6 +7,9 @@
     "paths": {
       "@starlog/contracts": [
         "packages/contracts/src/index.ts"
+      ],
+      "@starlog/dynamic-ui": [
+        "packages/dynamic-ui/src/index.ts"
       ]
     },
     "strict": true,
