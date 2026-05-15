@@ -306,7 +306,7 @@ def _section_summary(section: str, cards: list[dict[str, Any]]) -> str:
 
 
 def _upsert_section_topics(conn: Any, source_id: str, cards: list[dict[str, Any]], now_iso: str) -> dict[str, int]:
-    status = {"created": 0, "updated": 0, "unchanged": 0}
+    status = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0}
     for display_order, section in enumerate(_section_titles(cards), start=1):
         topic_id = _section_topic_id(source_id, section)
         expected = {
@@ -360,6 +360,43 @@ def _upsert_section_topics(conn: Any, source_id: str, cards: list[dict[str, Any]
     return status
 
 
+def _delete_stale_section_topics(conn: Any, source_id: str, cards: list[dict[str, Any]]) -> int:
+    current_topic_ids = {_section_topic_id(source_id, section) for section in _section_titles(cards)}
+    topic_id_prefix = f"{db_id('study_topic', source_id)}_%"
+    if not current_topic_ids:
+        return 0
+    placeholders = ",".join("?" for _ in current_topic_ids)
+    stale_rows = conn.execute(
+        f"""
+        SELECT id
+        FROM study_topics
+        WHERE source_id = ?
+          AND id LIKE ?
+          AND id NOT IN ({placeholders})
+        """,
+        (source_id, topic_id_prefix, *sorted(current_topic_ids)),
+    ).fetchall()
+    stale_topic_ids = [str(row["id"]) for row in stale_rows]
+    if not stale_topic_ids:
+        return 0
+
+    stale_placeholders = ",".join("?" for _ in stale_topic_ids)
+    conn.execute(
+        f"DELETE FROM study_topic_progress WHERE topic_id IN ({stale_placeholders})",
+        tuple(stale_topic_ids),
+    )
+    cursor = conn.execute(
+        f"""
+        DELETE FROM study_topics
+        WHERE source_id = ?
+          AND id LIKE ?
+          AND id IN ({stale_placeholders})
+        """,
+        (source_id, topic_id_prefix, *stale_topic_ids),
+    )
+    return max(cursor.rowcount, 0)
+
+
 def _section_chunk_content(section: str, cards: list[dict[str, Any]]) -> str:
     section_cards = [card for card in cards if _section_title(card) == section]
     prompts = "\n".join(
@@ -387,7 +424,9 @@ def _upsert_source_chunks(
     cards: list[dict[str, Any]],
     now_iso: str,
 ) -> dict[str, int]:
-    status = {"created": 0, "updated": 0, "unchanged": 0}
+    status = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0}
+    current_topic_ids = {_section_topic_id(source_id, section) for section in _section_titles(cards)}
+    current_chunk_indexes = set(range(1, len(current_topic_ids) + 1))
     for chunk_index, section in enumerate(_section_titles(cards), start=1):
         topic_id = _section_topic_id(source_id, section)
         section_cards = [card for card in cards if _section_title(card) == section]
@@ -451,6 +490,27 @@ def _upsert_source_chunks(
                 ),
             )
         merge_status(status, upsert_status(True, changed))
+    if current_topic_ids and current_chunk_indexes:
+        topic_placeholders = ",".join("?" for _ in current_topic_ids)
+        chunk_placeholders = ",".join("?" for _ in current_chunk_indexes)
+        cursor = conn.execute(
+            f"""
+            DELETE FROM source_chunks
+            WHERE source_id = ?
+              AND id LIKE ?
+              AND (
+                topic_id NOT IN ({topic_placeholders})
+                OR chunk_index NOT IN ({chunk_placeholders})
+              )
+            """,
+            (
+                source_id,
+                f"{db_id('study_chunk', source_id)}_%",
+                *sorted(current_topic_ids),
+                *sorted(current_chunk_indexes),
+            ),
+        )
+        status["deleted"] += max(cursor.rowcount, 0)
     return status
 
 
@@ -789,6 +849,7 @@ def _upsert_card_topic_links(
         _section_topic_id(source_id, section)
         for section in _section_titles(cards)
     }
+    link_id_prefix = f"{db_id('card_topic', IMPORT_KEY_PREFIX)}%"
     for card in cards:
         card_key = stable_card_key(card)
         card_row = cards_by_key.get(card_key)
@@ -824,23 +885,36 @@ def _upsert_card_topic_links(
             merge_status(status, upsert_status(True, changed))
         status["section_links"] += 1
 
-        placeholders = ",".join("?" for _ in source_topic_ids)
         stale_cursor = conn.execute(
-            f"""
+            """
             DELETE FROM card_topic_links
             WHERE card_id = ?
               AND id LIKE ?
-              AND topic_id IN ({placeholders})
               AND topic_id != ?
             """,
             (
                 card_id,
                 f"{db_id('card_topic', card_key)}%",
-                *sorted(source_topic_ids),
                 topic_id,
             ),
         )
         status["deleted"] += max(stale_cursor.rowcount, 0)
+    if source_topic_ids:
+        placeholders = ",".join("?" for _ in source_topic_ids)
+        stale_source_cursor = conn.execute(
+            f"""
+            DELETE FROM card_topic_links
+            WHERE id LIKE ?
+              AND topic_id IN (
+                SELECT id
+                FROM study_topics
+                WHERE source_id = ?
+              )
+              AND topic_id NOT IN ({placeholders})
+            """,
+            (link_id_prefix, source_id, *sorted(source_topic_ids)),
+        )
+        status["deleted"] += max(stale_source_cursor.rowcount, 0)
     return status
 
 
@@ -922,6 +996,7 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
             cards=cards,
             now_iso=now_iso,
         )
+        topic_status["deleted"] += _delete_stale_section_topics(conn, source_id, cards)
         conn.commit()
 
     summary.update(

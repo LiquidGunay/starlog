@@ -15,6 +15,33 @@ import bootstrap_ml_interview_srs as bootstrap  # noqa: E402
 import build_ml_interview_srs_deck as build  # noqa: E402
 
 
+def _ml_card(question_index: str, section: str, prompt: str | None = None) -> dict[str, object]:
+    prompt = prompt or f"What is concept {question_index}?"
+    source_slug = section.lower().replace(" ", "-")
+    return {
+        "card_type": "qa",
+        "prompt": prompt,
+        "answer": f"Answer for {question_index}.",
+        "source_url": f"https://example.test/{source_slug}",
+        "section": section,
+        "question_index": question_index,
+        "question": prompt,
+        "difficulty": "E",
+        "metadata": {
+            "answer_source": "heuristic",
+            "source_path": f"contents/{source_slug}.md",
+            "source_url": f"https://example.test/{source_slug}",
+            "section": section,
+            "question_index": question_index,
+            "difficulty": "E",
+        },
+    }
+
+
+def _write_deck(path: Path, cards: list[dict[str, object]]) -> None:
+    path.write_text("\n".join(json.dumps(card) for card in cards), encoding="utf-8")
+
+
 def test_parse_list_items_keeps_multiline_continuations() -> None:
     markdown = """- [E] Given the following matrix:
     \\begin{align*}
@@ -331,5 +358,96 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
             assert read["status"] == "read"
             assert read["read_at"] is not None
             assert card["id"] in {row["id"] for row in srs_service.due_cards(conn, 50)}
+    finally:
+        get_settings.cache_clear()
+
+
+def test_import_cards_removes_stale_section_link_after_rename_and_releases_due_card(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck_path = tmp_path / "deck.jsonl"
+    _write_deck(deck_path, [_ml_card("0001", "Old Section")])
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.db.storage import get_connection
+    from app.services import srs_service, study_service
+
+    get_settings.cache_clear()
+    try:
+        first = bootstrap.import_cards(deck_path, dry_run=False)
+        old_topic_id = bootstrap._section_topic_id(first["source_id"], "Old Section")
+
+        with get_connection() as conn:
+            card = conn.execute("SELECT id FROM cards").fetchone()
+            assert card is not None
+            conn.execute("UPDATE cards SET due_at = ? WHERE id = ?", ("2026-01-01T00:00:00+00:00", card["id"]))
+            conn.commit()
+
+        _write_deck(deck_path, [_ml_card("0001", "New Section")])
+        second = bootstrap.import_cards(deck_path, dry_run=False)
+
+        assert second["topics"]["deleted"] == 1
+        assert second["card_topic_links"]["deleted"] == 1
+        with get_connection() as conn:
+            new_topic = study_service.resolve_topic_reference(conn, "ML Interviews Part II New Section")
+            links = conn.execute(
+                """
+                SELECT topic_id, gate_required
+                FROM card_topic_links
+                WHERE card_id = ?
+                ORDER BY topic_id
+                """,
+                (card["id"],),
+            ).fetchall()
+            assert [(row["topic_id"], row["gate_required"]) for row in links] == [(new_topic["id"], 1)]
+            assert conn.execute("SELECT id FROM study_topics WHERE id = ?", (old_topic_id,)).fetchone() is None
+            assert card["id"] not in {row["id"] for row in srs_service.due_cards(conn, 50)}
+
+            read = study_service.mark_topic_read(conn, new_topic["id"])
+            assert read["status"] == "read"
+            assert card["id"] in {row["id"] for row in srs_service.due_cards(conn, 50)}
+    finally:
+        get_settings.cache_clear()
+
+
+def test_import_cards_removes_stale_section_topic_chunk_and_links_after_section_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck_path = tmp_path / "deck.jsonl"
+    _write_deck(deck_path, [_ml_card("0001", "Kept Section"), _ml_card("0002", "Removed Section")])
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.db.storage import get_connection
+
+    get_settings.cache_clear()
+    try:
+        first = bootstrap.import_cards(deck_path, dry_run=False)
+        removed_topic_id = bootstrap._section_topic_id(first["source_id"], "Removed Section")
+
+        _write_deck(deck_path, [_ml_card("0001", "Kept Section")])
+        second = bootstrap.import_cards(deck_path, dry_run=False)
+
+        assert second["topics"]["deleted"] == 1
+        assert second["source_chunks"]["deleted"] == 1
+        assert second["card_topic_links"]["deleted"] == 1
+
+        with get_connection() as conn:
+            topics = conn.execute("SELECT title FROM study_topics ORDER BY title").fetchall()
+            assert [row["title"] for row in topics] == ["Kept Section"]
+            chunks = conn.execute("SELECT chunk_index, topic_id, content FROM source_chunks").fetchall()
+            assert len(chunks) == 1
+            assert chunks[0]["chunk_index"] == 1
+            assert "Kept Section" in chunks[0]["content"]
+            assert "Removed Section" not in chunks[0]["content"]
+            assert conn.execute("SELECT id FROM study_topics WHERE id = ?", (removed_topic_id,)).fetchone() is None
+            stale_links = conn.execute(
+                "SELECT id FROM card_topic_links WHERE topic_id = ?",
+                (removed_topic_id,),
+            ).fetchall()
+            assert stale_links == []
     finally:
         get_settings.cache_clear()
