@@ -42,6 +42,9 @@ RESOURCE_LIST_PATTERNS = (
     r"\b(resources?|references?|further reading|bibliography|links?)\b.{0,120}\bappendix\b",
 )
 CHAPTER_BODY_PATTERN = re.compile(r"\bCHAPTER\s+\d+\b")
+PAGE_HEADER_SECTION_PATTERN = re.compile(
+    r"\bChapter\s+(\d+):\s+([A-Z][A-Za-z][A-Za-z &:/().,\-]{0,70}?)(?=\s{1,}(?:Figure|\d+\.\d+|[A-Z][a-z]|\W|$))"
+)
 
 
 def _quality_for_text(text: str, provider: str, mode: str) -> dict[str, Any]:
@@ -80,6 +83,22 @@ def _chapter_section_title(text: str) -> str | None:
         first_sentence = re.search(r"([^.!?]{40,}?[.!?])(?:\s+|$)", candidate)
         if first_sentence and first_sentence.start() == 0 and _sentence_is_reviewable(first_sentence.group(1).strip()):
             return f"Chapter {words[1]}: {title}"
+    return None
+
+
+def _page_header_section_title(text: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    for match in PAGE_HEADER_SECTION_PATTERN.finditer(normalized):
+        title = match.group(2).strip(" :-")
+        title = re.sub(r"\s+\d+$", "", title).strip(" :-")
+        title_words: list[str] = []
+        for word in title.split():
+            if title_words and word[:1].islower():
+                break
+            title_words.append(word)
+        title = " ".join(title_words).strip(" :-")
+        if title and len(title.split()) <= 8:
+            return f"Chapter {match.group(1)}: {title}"
     return None
 
 
@@ -263,6 +282,9 @@ def build_report(
     max_cards: int = DEFAULT_MAX_CARDS,
     min_segment_words: int = DEFAULT_MIN_SEGMENT_WORDS,
     max_scan_chunks: int = DEFAULT_MAX_SCAN_CHUNKS,
+    parse_max_pages: int = 16,
+    extract_max_chars: int = 20000,
+    spread_cards: bool = False,
 ) -> dict[str, Any]:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -270,7 +292,22 @@ def build_report(
         raise ValueError(f"PDF path is not a file: {pdf_path}")
 
     server_env = preflight.disable_nonlocal_pdf_server_env()
-    extraction = pdf_ingest_service.extract_pdf_text(pdf_path)
+    parse_max_pages = max(1, min(parse_max_pages, 512))
+    previous_page_limit = preflight.os.environ.get("STARLOG_PDF_PARSE_MAX_PAGE_LIMIT")
+    previous_pages = preflight.os.environ.get("STARLOG_PDF_PARSE_MAX_PAGES")
+    preflight.os.environ["STARLOG_PDF_PARSE_MAX_PAGE_LIMIT"] = str(parse_max_pages)
+    preflight.os.environ["STARLOG_PDF_PARSE_MAX_PAGES"] = str(parse_max_pages)
+    try:
+        extraction = pdf_ingest_service.extract_pdf_text(pdf_path, max_characters=max(1000, extract_max_chars))
+    finally:
+        if previous_page_limit is None:
+            preflight.os.environ.pop("STARLOG_PDF_PARSE_MAX_PAGE_LIMIT", None)
+        else:
+            preflight.os.environ["STARLOG_PDF_PARSE_MAX_PAGE_LIMIT"] = previous_page_limit
+        if previous_pages is None:
+            preflight.os.environ.pop("STARLOG_PDF_PARSE_MAX_PAGES", None)
+        else:
+            preflight.os.environ["STARLOG_PDF_PARSE_MAX_PAGES"] = previous_pages
     raw_text = str(extraction.get("text") or "").strip()
     text, front_matter = _trim_structural_front_matter(raw_text)
     provider = str(extraction.get("provider") or "none")
@@ -301,7 +338,11 @@ def build_report(
         scan_limit = max(max_cards, max_scan_chunks)
         chunks = preflight._segment_text(text, max_segments=scan_limit)  # type: ignore[attr-defined]
         word_offset = int(front_matter.get("word_start") or 0)
+        card_candidates: list[dict[str, Any]] = []
         for chunk_index, (word_start, word_end, chunk_text) in enumerate(chunks):
+            detected_section = _chapter_section_title(chunk_text) or _page_header_section_title(chunk_text)
+            if detected_section is not None:
+                section_title = detected_section
             source_word_start = word_start + word_offset
             source_word_end = word_end + word_offset
             segment_quality = _quality_for_text(chunk_text, provider, mode)
@@ -325,21 +366,50 @@ def build_report(
                     )
                 )
                 continue
-            if len(cards) >= max_cards:
+            card_candidates.append(
+                {
+                    "pdf_path": pdf_path,
+                    "run_id": run_id,
+                    "source_sha": source_sha,
+                    "provider": provider,
+                    "mode": mode,
+                    "section_title": section_title,
+                    "chunk_index": chunk_index,
+                    "word_start": source_word_start,
+                    "word_end": source_word_end,
+                    "chunk_text": chunk_text,
+                }
+            )
+            if not spread_cards and len(card_candidates) >= max_cards:
                 break
+
+        selected_candidates = card_candidates
+        if spread_cards and len(card_candidates) > max_cards:
+            if max_cards == 1:
+                selected_candidates = [card_candidates[0]]
+            else:
+                selected_indices = sorted(
+                    {
+                        round(index * (len(card_candidates) - 1) / (max_cards - 1))
+                        for index in range(max_cards)
+                    }
+                )
+                selected_candidates = [card_candidates[index] for index in selected_indices]
+
+        for card_number, candidate in enumerate(selected_candidates[:max_cards], start=1):
             cards.append(
                 _build_review_card(
-                    pdf_path=pdf_path,
-                    run_id=run_id,
-                    source_sha=source_sha,
-                    provider=provider,
-                    mode=mode,
-                    section_title=section_title,
+                    pdf_path=candidate["pdf_path"],
+                    run_id=candidate["run_id"],
+                    source_sha=candidate["source_sha"],
+                    provider=candidate["provider"],
+                    mode=candidate["mode"],
+                    section_title=candidate["section_title"],
                     card_number=len(cards) + 1,
-                    chunk_index=chunk_index,
-                    word_start=source_word_start,
-                    word_end=source_word_end,
-                    chunk_text=chunk_text,
+                    chunk_index=candidate["chunk_index"],
+                    word_start=candidate["word_start"],
+                    word_end=candidate["word_end"],
+                    chunk_text=candidate["chunk_text"],
                 )
             )
         if cards:
@@ -366,6 +436,9 @@ def build_report(
             "provider": provider,
             "mode": mode,
             "characters": int(extraction.get("characters") or 0),
+            "source_characters": int(extraction.get("source_characters") or extraction.get("characters") or 0),
+            "truncated": bool(extraction.get("truncated")),
+            "text_limit": int(extraction.get("text_limit") or max(1000, extract_max_chars)),
             "usable": usable,
             "readable": readable,
             "rejected_as_noise": rejected_as_noise,
@@ -391,6 +464,9 @@ def build_report(
             "max_cards": max_cards,
             "max_scan_chunks": max(max_cards, max_scan_chunks),
             "min_segment_words": min_segment_words,
+            "parse_max_pages": parse_max_pages,
+            "extract_max_chars": max(1000, extract_max_chars),
+            "spread_cards": spread_cards,
         },
     }
     report["report_path"] = str(run_dir / "report.json")
@@ -445,6 +521,23 @@ def main() -> int:
     parser.add_argument("--max-cards", type=int, default=DEFAULT_MAX_CARDS)
     parser.add_argument("--max-scan-chunks", type=int, default=DEFAULT_MAX_SCAN_CHUNKS)
     parser.add_argument(
+        "--parse-max-pages",
+        type=int,
+        default=16,
+        help="Maximum pages to request from a configured local LiteParse server.",
+    )
+    parser.add_argument(
+        "--extract-max-chars",
+        type=int,
+        default=20000,
+        help="Maximum extracted characters to inspect for final-card generation.",
+    )
+    parser.add_argument(
+        "--spread-cards",
+        action="store_true",
+        help="Evenly select cards across scanned chunks instead of taking the first valid chunks.",
+    )
+    parser.add_argument(
         "--fail-on-blocked",
         action="store_true",
         help="Return a non-zero exit code when no trusted final cards were produced.",
@@ -458,6 +551,9 @@ def main() -> int:
         output_dir.resolve(),
         max_cards=max(1, args.max_cards),
         max_scan_chunks=max(1, args.max_scan_chunks),
+        parse_max_pages=max(1, args.parse_max_pages),
+        extract_max_chars=max(1000, args.extract_max_chars),
+        spread_cards=args.spread_cards,
     )
     print(
         json.dumps(

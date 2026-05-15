@@ -57,6 +57,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Return a non-zero exit code when extraction is unavailable or rejected as noise.",
     )
+    parser.add_argument(
+        "--parse-max-pages",
+        type=int,
+        default=16,
+        help="Maximum pages to request from a configured local LiteParse server.",
+    )
+    parser.add_argument(
+        "--extract-max-chars",
+        type=int,
+        default=20000,
+        help="Maximum extracted characters to inspect for this local preflight report.",
+    )
     return parser.parse_args()
 
 
@@ -418,7 +430,13 @@ def _next_local_steps(report: dict[str, object]) -> list[str]:
     return steps
 
 
-def build_report(pdf_path: Path, output_dir: Path) -> dict[str, object]:
+def build_report(
+    pdf_path: Path,
+    output_dir: Path,
+    *,
+    parse_max_pages: int = 16,
+    extract_max_chars: int = 20000,
+) -> dict[str, object]:
     repo_root = Path(__file__).resolve().parents[1]
     services_api = repo_root / "services/api"
     if str(services_api) not in sys.path:
@@ -432,7 +450,22 @@ def build_report(pdf_path: Path, output_dir: Path) -> dict[str, object]:
         raise ValueError(f"PDF path is not a file: {pdf_path}")
 
     server_env = disable_nonlocal_pdf_server_env()
-    extraction = pdf_ingest_service.extract_pdf_text(pdf_path)
+    parse_max_pages = max(1, min(parse_max_pages, 512))
+    previous_page_limit = os.environ.get("STARLOG_PDF_PARSE_MAX_PAGE_LIMIT")
+    previous_pages = os.environ.get("STARLOG_PDF_PARSE_MAX_PAGES")
+    os.environ["STARLOG_PDF_PARSE_MAX_PAGE_LIMIT"] = str(parse_max_pages)
+    os.environ["STARLOG_PDF_PARSE_MAX_PAGES"] = str(parse_max_pages)
+    try:
+        extraction = pdf_ingest_service.extract_pdf_text(pdf_path, max_characters=max(1000, extract_max_chars))
+    finally:
+        if previous_page_limit is None:
+            os.environ.pop("STARLOG_PDF_PARSE_MAX_PAGE_LIMIT", None)
+        else:
+            os.environ["STARLOG_PDF_PARSE_MAX_PAGE_LIMIT"] = previous_page_limit
+        if previous_pages is None:
+            os.environ.pop("STARLOG_PDF_PARSE_MAX_PAGES", None)
+        else:
+            os.environ["STARLOG_PDF_PARSE_MAX_PAGES"] = previous_pages
     text = str(extraction.get("text") or "").strip()
     usable = bool(extraction.get("usable")) and bool(text)
     readable = bool(extraction.get("readable")) and bool(text)
@@ -488,6 +521,9 @@ def build_report(pdf_path: Path, output_dir: Path) -> dict[str, object]:
             "provider": provider,
             "mode": extraction.get("mode") or "unavailable",
             "characters": int(extraction.get("characters") or 0),
+            "source_characters": int(extraction.get("source_characters") or extraction.get("characters") or 0),
+            "truncated": bool(extraction.get("truncated")),
+            "text_limit": int(extraction.get("text_limit") or max(1000, extract_max_chars)),
             "usable": usable,
             "readable": readable,
             "rejected_as_noise": rejected_as_noise,
@@ -508,6 +544,8 @@ def build_report(pdf_path: Path, output_dir: Path) -> dict[str, object]:
             "chunk_words": DEFAULT_CHUNK_WORDS,
             "chunk_overlap": DEFAULT_CHUNK_OVERLAP,
             "max_candidates": DEFAULT_MAX_CANDIDATE_CHUNKS,
+            "parse_max_pages": parse_max_pages,
+            "extract_max_chars": max(1000, extract_max_chars),
         },
         "blocked_chunks": blocked_chunks,
         "unproven_note": ""
@@ -601,7 +639,12 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     if not output_dir.is_absolute():
         output_dir = Path(__file__).resolve().parents[1] / output_dir
-    report = build_report(Path(args.pdf).expanduser().resolve(), output_dir.resolve())
+    report = build_report(
+        Path(args.pdf).expanduser().resolve(),
+        output_dir.resolve(),
+        parse_max_pages=args.parse_max_pages,
+        extract_max_chars=args.extract_max_chars,
+    )
     print(
         json.dumps(
             {

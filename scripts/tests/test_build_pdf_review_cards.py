@@ -46,7 +46,7 @@ def _patch_extraction(monkeypatch, *, provider: str, text: str, readable: bool =
     monkeypatch.setattr(
         pdf_ingest_service,
         "extract_pdf_text",
-        lambda _path: {
+        lambda _path, **_kwargs: {
             "text": text,
             "provider": provider,
             "mode": "liteparse" if provider == "liteparse_server" else "ocr_server" if provider == "ocr_server" else "heuristic_fallback",
@@ -163,6 +163,33 @@ def test_review_card_builder_trims_to_chapter_body_after_toc(monkeypatch, tmp_pa
     assert "table of contents" not in cards[0]["answer"].lower()
 
 
+def test_review_card_builder_can_spread_cards_across_scanned_chunks(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = _write_pdf(tmp_path)
+    chapter_0 = "CHAPTER 0 Inference " + " ".join([_body_text()] * 3)
+    chapter_1 = "10 Chapter 1: Prerequisites " + " ".join([_body_text()] * 3)
+    chapter_2 = "40 Chapter 2: Models " + " ".join([_body_text()] * 3)
+    _patch_extraction(
+        monkeypatch,
+        provider="liteparse_server",
+        text=" ".join([chapter_0, chapter_1, chapter_2]),
+        readable=True,
+    )
+
+    report = builder.build_report(
+        pdf_path,
+        tmp_path / "cards",
+        max_cards=3,
+        max_scan_chunks=20,
+        spread_cards=True,
+    )
+
+    cards = [json.loads(line) for line in Path(str(report["cards_path"])).read_text(encoding="utf-8").splitlines()]
+    sections = {card["section"] for card in cards}
+    assert "Chapter 0: Inference" in sections
+    assert "Chapter 1: Prerequisites" in sections
+    assert "Chapter 2: Models" in sections
+
+
 def test_chapter_section_title_handles_repeated_title_and_page_number() -> None:
     text = (
         "CHAPTER 0 Inference Inference 17 Inference Inference is the second phase in a "
@@ -170,6 +197,15 @@ def test_chapter_section_title_handles_repeated_title_and_page_number() -> None:
     )
 
     assert builder._chapter_section_title(text) == "Chapter 0: Inference"
+
+
+def test_page_header_section_title_handles_running_headers() -> None:
+    text = (
+        "106 Chapter 4: Software Generative AI models have hundreds of gigabytes of weights. "
+        "These weights are split across dozens of safetensors files."
+    )
+
+    assert builder._page_header_section_title(text) == "Chapter 4: Software"
 
 
 def test_content_gate_rejects_non_body_chunks() -> None:
