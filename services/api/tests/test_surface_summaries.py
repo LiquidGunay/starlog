@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.core.time import utc_now
 from app.db.storage import get_connection
+from app.services import memory_service
 from app.services.common import new_id
 
 
@@ -794,6 +795,55 @@ def test_assistant_today_recommends_study_loop_for_signal_boosted_due_reviews(
     assert payload["recommended_next_move"]["body"] == "1 review card due with recent study/review signals."
     assert payload["recommended_next_move"]["prompt"] == "Start my study-informed review queue."
     assert payload["reason_stack"] == ["1 study-loop review card due"]
+
+
+def test_assistant_today_reason_stack_surfaces_recommendation_hints(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    with get_connection() as conn:
+        stale_hint = memory_service.record_recommendation_event(
+            conn,
+            surface="briefing",
+            signal_type="briefing_focus",
+            entity_type="task",
+            entity_id=new_id("tsk"),
+            weight=1.0,
+            metadata={"source": "assistant_today_test"},
+            commit=False,
+        )
+        conn.execute(
+            "UPDATE recommendation_events SET created_at = ? WHERE id = ?",
+            (_iso(utc_now() - timedelta(days=1)), stale_hint["id"]),
+        )
+        memory_service.record_recommendation_event(
+            conn,
+            surface="briefing",
+            signal_type="briefing_review",
+            entity_type="card",
+            entity_id=new_id("card"),
+            weight=0.75,
+            metadata={"source": "assistant_today_test"},
+            commit=False,
+        )
+        memory_service.record_recommendation_event(
+            conn,
+            surface="assistant",
+            signal_type="assistant_review",
+            entity_type="card",
+            entity_id=new_id("card"),
+            weight=1.0,
+            metadata={"source": "assistant_today_test"},
+            commit=True,
+        )
+
+    response = client.get("/v1/surfaces/assistant/today", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "1 briefing review recommendation available" in payload["reason_stack"]
+    assert "1 assistant review recommendation available" in payload["reason_stack"]
+    assert "1 briefing focus recommendation available" not in payload["reason_stack"]
 
 
 def test_assistant_today_summary_is_read_only_and_composes_open_loops(

@@ -25,6 +25,13 @@ GOAL_REVIEW_CADENCE_DAYS = {
     "quarterly": 90,
 }
 DEFAULT_GOAL_REVIEW_CADENCE_DAYS = 7
+RECOMMENDATION_HINT_REASON_LABELS = {
+    "assistant_review": "assistant review recommendation",
+    "briefing_review": "briefing review recommendation",
+    "briefing_focus": "briefing focus recommendation",
+    "briefing_schedule": "briefing schedule recommendation",
+    "briefing_research": "briefing research recommendation",
+}
 
 
 def _count(conn: Connection, sql: str, params: tuple[Any, ...] = ()) -> int:
@@ -879,7 +886,50 @@ def _assistant_recommended_next_move(counts: dict[str, int]) -> dict[str, Any]:
     }
 
 
-def _assistant_reason_stack(counts: dict[str, int]) -> list[str]:
+def _recommendation_hint_reasons(recommendation_hints: list[dict[str, Any]]) -> list[str]:
+    grouped: dict[str, int] = {}
+    for hint in recommendation_hints:
+        signal_type = str(hint.get("signal_type") or "")
+        label = RECOMMENDATION_HINT_REASON_LABELS.get(signal_type)
+        if label is None:
+            continue
+        grouped[label] = grouped.get(label, 0) + 1
+    return [f"{_count_phrase(count, label)} available" for label, count in grouped.items()]
+
+
+def _recommendation_hint_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "surface": row["surface"],
+        "signal_type": row["signal_type"],
+        "entity_type": row["entity_type"],
+        "entity_id": row["entity_id"],
+        "weight": float(row["weight"]),
+        "metadata": row["metadata_json"],
+        "created_at": row["created_at"],
+    }
+
+
+def _assistant_recommendation_hints(conn: Connection, *, day: date, limit: int = 8) -> list[dict[str, Any]]:
+    start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    end = start + timedelta(days=1)
+    rows = execute_fetchall(
+        conn,
+        """
+        SELECT * FROM recommendation_events
+        WHERE created_at >= ? AND created_at < ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (start.isoformat(), end.isoformat(), limit),
+    )
+    return [_recommendation_hint_payload(row) for row in rows]
+
+
+def _assistant_reason_stack(
+    counts: dict[str, int],
+    recommendation_hints: list[dict[str, Any]] | None = None,
+) -> list[str]:
     reasons: list[str] = []
     if counts["open_interrupt_count"] > 0:
         reasons.append(f"{_count_phrase(counts['open_interrupt_count'], 'assistant decision')} pending")
@@ -896,6 +946,11 @@ def _assistant_reason_stack(counts: dict[str, int]) -> list[str]:
             reasons.append(f"{_count_phrase(counts['due_review_signal_count'], 'study-loop review card')} due")
         else:
             reasons.append(f"{_count_phrase(counts['due_reviews'], 'review card')} due")
+    for reason in _recommendation_hint_reasons(recommendation_hints or []):
+        if len(reasons) >= 4:
+            break
+        if reason not in reasons:
+            reasons.append(reason)
     if len(reasons) < 4 and counts["open_commitments"] > 0:
         reasons.append(f"{_count_phrase(counts['open_commitments'], 'commitment')} open")
     if len(reasons) < 4 and counts["open_tasks"] > 0:
@@ -1336,6 +1391,7 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
         "unprocessed_library": unprocessed_library,
         "open_commitments": open_commitments,
     }
+    recommendation_hints = _assistant_recommendation_hints(conn, day=day, limit=8)
 
     return {
         "date": day.isoformat(),
@@ -1351,7 +1407,7 @@ def assistant_today_summary(conn: Connection, *, user_id: str, day_value: str | 
             _linked_bucket("open_commitments", "Open commitments", open_commitments, "/planner"),
         ],
         "recommended_next_move": _assistant_recommended_next_move(counts),
-        "reason_stack": _assistant_reason_stack(counts),
+        "reason_stack": _assistant_reason_stack(counts, recommendation_hints),
         "at_a_glance": _assistant_at_a_glance(counts),
         "quick_actions": _assistant_quick_actions(counts),
         "strategic_context": strategic_context,
