@@ -99,6 +99,7 @@ test("PWA assistant visible unlock study command execution", async ({ page }) =>
         },
       ],
     });
+    const messages = snapshot.messages as Array<Record<string, unknown>>;
 
     return {
       thread_id: "thr_primary",
@@ -237,6 +238,7 @@ test("PWA assistant submits visible study reading command payload", async ({ pag
         },
       ],
     });
+    const messages = snapshot.messages as Array<Record<string, unknown>>;
 
     return {
       thread_id: "thr_primary",
@@ -654,6 +656,8 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
       ],
     });
 
+    const messages = snapshot.messages as Array<Record<string, unknown>>;
+
     return {
       thread_id: "thr_primary",
       run: {
@@ -669,8 +673,8 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
         created_at: "2026-05-15T09:00:55.000Z",
         updated_at: "2026-05-15T09:01:00.000Z",
       },
-      user_message: snapshot.messages.find((message) => (message as Record<string, unknown>).id === "msg_user_interview_unlock"),
-      assistant_message: snapshot.messages.find((message) => (message as Record<string, unknown>).id === "msg_assistant_interview_unlock"),
+      user_message: messages.find((message) => message.id === "msg_user_interview_unlock"),
+      assistant_message: messages.find((message) => message.id === "msg_assistant_interview_unlock"),
       snapshot,
     };
   });
@@ -727,11 +731,12 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
   await expect(page.getByText("I unlocked Sliding Window Interview Patterns and queued one application review card.")).toBeVisible();
   const quizCard = page.locator("section").filter({ hasText: "Application quiz ready" });
   await expect(quizCard.getByText("Reason: You just unlocked this interview-prep topic and one application card is due now.")).toBeVisible();
-  await quizCard.getByRole("button", { name: "Open Review" }).click();
+  await quizCard.getByRole("link", { name: "Open Review" }).click();
 
   await expect(page).toHaveURL(/\/review$/);
-  await expect(page.getByText("Sliding Window Interview Patterns")).toBeVisible();
-  await expect(page.locator(".april-review-study-topic").getByText("Ready to study", { exact: true })).toBeVisible();
+  const studyTopic = page.locator(".april-review-study-topic");
+  await expect(studyTopic.getByText("Sliding Window Interview Patterns", { exact: true })).toBeVisible();
+  await expect(studyTopic.getByText("Ready to study", { exact: true })).toBeVisible();
   await expect(page.getByText("Reason: You just unlocked this interview-prep topic and one application card is due now.")).toBeVisible();
   await expect(page.getByText("You need the longest subarray with at most two distinct values.")).toBeVisible();
   await expect(page.getByText("Maintain counts inside the current window")).toHaveCount(0);

@@ -1,0 +1,436 @@
+.threadShell {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.primitiveRoot,
+.viewport,
+.messageList {
+  min-width: 0;
+}
+
+.viewport {
+  display: grid;
+  gap: 14px;
+}
+
+.messageList {
+  display: grid;
+  gap: 14px;
+}
+
+.message {
+  display: grid;
+  gap: 8px;
+  max-width: 82%;
+  min-width: 0;
+}
+
+.message_user {
+  justify-self: end;
+}
+
+.message_assistant,
+.message_system {
+  justify-self: start;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(244, 241, 232, 0.52);
+  font-size: 12px;
+}
+
+.message_user .meta {
+  justify-content: flex-end;
+}
+
+.bubble {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(244, 241, 232, 0.88);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.22);
+}
+
+.message_user .bubble {
+  border-color: rgba(239, 205, 160, 0.28);
+  background: linear-gradient(135deg, rgba(239, 205, 160, 0.18), rgba(223, 157, 112, 0.1));
+}
+
+.supportSurfaces {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.supportSurface {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.supportSurface h3 {
+  margin: 0 0 5px;
+  color: #fbf7ee;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.supportSurface p {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.68);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.supportSurfaceActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.supportSurfaceActions a,
+.supportSurfaceActions button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #efcda0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.supportSurfaceActions button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+.textPart {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+
+.reviewCard,
+.dataCard,
+.toolCard,
+.cardPart {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(6, 12, 18, 0.58);
+}
+
+.reviewCard {
+  border-color: rgba(107, 196, 164, 0.34);
+  background:
+    linear-gradient(180deg, rgba(107, 196, 164, 0.13), rgba(8, 15, 20, 0.72)),
+    rgba(6, 12, 18, 0.68);
+}
+
+.partHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.partHeader span,
+.eyebrow {
+  color: rgba(244, 241, 232, 0.56);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.entityLink {
+  color: #efcda0;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.entityLink:hover {
+  text-decoration: underline;
+}
+
+.reviewPrompt {
+  display: grid;
+  gap: 8px;
+}
+
+.reviewPrompt h3,
+.dataCard h3,
+.cardPart h3,
+.toolCard h3 {
+  margin: 0;
+  color: #fbf7ee;
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.reviewPrompt p,
+.dataCard p,
+.cardPart p,
+.toolCard p,
+.reasonBox p {
+  margin: 0;
+  color: rgba(244, 241, 232, 0.76);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.gradeGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.gradeButton {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 64px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f1e8;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.gradeButton:hover,
+.gradeButtonSelected {
+  border-color: rgba(239, 205, 160, 0.5);
+  background: rgba(239, 205, 160, 0.14);
+}
+
+.gradeButton strong,
+.gradeButton small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gradeButton small {
+  color: rgba(244, 241, 232, 0.62);
+  font-size: 12px;
+}
+
+.reasonBox {
+  display: grid;
+  gap: 6px;
+  border-left: 2px solid rgba(107, 196, 164, 0.58);
+  padding-left: 12px;
+}
+
+.actions,
+.cardActions,
+.supportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primaryButton,
+.secondaryButton,
+.supportButton,
+.cardActions button,
+.cardActions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.primaryButton {
+  border: 0;
+  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  color: #15120d;
+}
+
+.secondaryButton,
+.supportButton,
+.cardActions button,
+.cardActions a {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  color: #f4f1e8;
+}
+
+.supportButton {
+  cursor: pointer;
+}
+
+.supportButtonSelected {
+  border-color: rgba(107, 196, 164, 0.52);
+  background: rgba(107, 196, 164, 0.14);
+  color: #fbf7ee;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.supportButton:disabled,
+.cardActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.badgeRow,
+.outputGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge,
+.outputGrid span {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(244, 241, 232, 0.68);
+  font-size: 12px;
+}
+
+.composer {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(24, 33, 44, 0.94), rgba(13, 20, 29, 0.96)),
+    rgba(10, 16, 24, 0.96);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+}
+
+.composerInput {
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  border-radius: 0;
+  min-height: 78px;
+  padding: 18px 64px 18px 48px;
+  background: transparent;
+  color: #f4f1e8;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.composerInput:disabled {
+  opacity: 0.56;
+}
+
+.composerChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  order: 3;
+  padding: 12px 16px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.composerChips button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 241, 232, 0.82);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.composerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 14px;
+  color: rgba(244, 241, 232, 0.64);
+  font-size: 13px;
+}
+
+.composerBar button {
+  border: 0;
+  border-radius: 8px;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  color: #15120d;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composerBar button:disabled,
+.composerChips button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 720px) {
+  .message {
+    max-width: 100%;
+  }
+
+  .gradeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .composerInput {
+    min-height: 70px;
+    padding: 16px;
+  }
+
+  .composerBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .composerBar button {
+    width: 100%;
+  }
+
+  .composerChips {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .composerChips button {
+    white-space: nowrap;
+  }
+}

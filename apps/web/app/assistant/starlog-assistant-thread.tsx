@@ -1,0 +1,896 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  ComposerPrimitive,
+  MessagePrimitive,
+  ThreadPrimitive,
+  useAssistantDataUI,
+  useAssistantToolUI,
+  useComposerRuntime,
+} from "@assistant-ui/react";
+import { createDynamicUiViewModel } from "@starlog/dynamic-ui";
+import type {
+  AssistantAmbientUpdate,
+  AssistantAttachment,
+  AssistantCard,
+  AssistantCardAction,
+  AssistantEntityRef,
+  AssistantInterrupt,
+  AssistantInterruptField,
+  AssistantThreadSnapshot,
+  AssistantToolResult,
+} from "@starlog/contracts";
+
+import {
+  MainRoomThread,
+  type AssistantTodaySummary,
+  type AssistantWeeklySummary,
+} from "../components/main-room-thread";
+import { DynamicPanelRenderer } from "../components/dynamic-panel-renderer";
+import { getConversationCardRegistryEntry } from "../components/conversation-card-registry";
+import { summarizeSupportSurfaces, supportSurfaceActionLabel } from "./support-surfaces";
+import styles from "./starlog-assistant-thread.module.css";
+
+type TodayItem = {
+  label: string;
+  href?: string;
+};
+
+export type ComposerDraftSeed = {
+  id: number;
+  text: string;
+};
+
+type StarlogAssistantThreadProps = {
+  snapshot: AssistantThreadSnapshot | null;
+  loading: boolean;
+  busy: boolean;
+  todaySummary?: AssistantTodaySummary | null;
+  weeklySummary?: AssistantWeeklySummary | null;
+  todayOpenLoops?: TodayItem[];
+  todayContextItems?: TodayItem[];
+  onQuickStart: (prompt: string) => void;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+  onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
+  onInterruptDismiss: (interruptId: string) => Promise<void> | void;
+};
+
+type StarlogAssistantComposerProps = {
+  draft: ComposerDraftSeed | null;
+  disabled: boolean;
+  busy: boolean;
+  error: string | null;
+  onShortcut: (prompt: string) => void;
+};
+
+type DataPartProps<T> = {
+  data: T;
+};
+
+type ToolPartProps = {
+  toolName: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  isError?: boolean;
+};
+
+const REVIEW_GRADES = [
+  { value: "1", label: "Again", hint: "Review soon" },
+  { value: "3", label: "Hard", hint: "Keep it close" },
+  { value: "4", label: "Good", hint: "Move forward" },
+  { value: "5", label: "Easy", hint: "Stretch interval" },
+];
+
+const SHORTCUTS = [
+  { label: "Capture", prompt: "Capture " },
+  { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
+  { label: "Process latest capture", prompt: "Process my latest Library captures and route anything actionable." },
+  { label: "Start review", prompt: "Start my due review queue." },
+  { label: "Create task", prompt: "Create task " },
+];
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function firstText(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function productLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const mapped: Record<string, string> = {
+    complete: "Complete",
+    completed: "Complete",
+    dismissed: "Dismissed",
+    error: "Needs attention",
+    failed: "Needs attention",
+    locked: "Locked",
+    ok: "Ready",
+    pending: "Waiting",
+    queued: "Queued",
+    requires_action: "Needs a decision",
+    retry: "Retrying",
+    running: "Working",
+    skipped: "Dismissed",
+    submitted: "Saved",
+    unlocked: "Ready for review",
+  };
+  if (mapped[normalized]) {
+    return mapped[normalized];
+  }
+  return normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function booleanValue(value: unknown): boolean {
+  return value === true;
+}
+
+function cardMetadataBadges(card: AssistantCard): string[] {
+  const metadata = metadataRecord(card.metadata);
+  const badges: string[] = [];
+
+  if (card.kind === "review_queue") {
+    const dueCount = numberValue(metadata.due_count);
+    if (dueCount && dueCount > 0) {
+      badges.push(`${dueCount} due now`);
+    }
+  }
+
+  if (card.kind === "knowledge_note" || card.kind === "memory_suggestion") {
+    const version = numberValue(metadata.version);
+    if (version && version > 1) {
+      badges.push(`v${version}`);
+    }
+    if (booleanValue(metadata.search_result)) {
+      badges.push("Search match");
+    }
+  }
+
+  if (card.kind === "briefing") {
+    if (metadata.audio_ref) {
+      badges.push("Audio cached");
+    } else if (metadata.briefing_id) {
+      badges.push("Thread prompt ready");
+    }
+    const date = firstText(metadata.date);
+    if (date) {
+      badges.push(date);
+    }
+  }
+
+  if (card.kind === "task_list") {
+    const taskCount = numberValue(metadata.task_count);
+    if (taskCount !== null) {
+      badges.push(`${taskCount} task${taskCount === 1 ? "" : "s"}`);
+    }
+  }
+
+  if (card.kind === "capture_item") {
+    const sourceType = firstText(metadata.source_type);
+    if (sourceType) {
+      badges.push(productLabel(sourceType));
+    }
+  }
+
+  return badges.slice(0, 3);
+}
+
+function fieldOptions(field: AssistantInterruptField | undefined): Array<{ label: string; value: string }> {
+  if (field?.options?.length) {
+    return field.options;
+  }
+  return REVIEW_GRADES.map((grade) => ({ label: grade.label, value: grade.value }));
+}
+
+function fieldValue(field: AssistantInterruptField | undefined, interrupt: AssistantInterrupt): string {
+  if (!field) {
+    return "4";
+  }
+  if (typeof field.value === "string" || typeof field.value === "number") {
+    return String(field.value);
+  }
+  const recommended = interrupt.recommended_defaults?.[field.id];
+  if (typeof recommended === "string" || typeof recommended === "number") {
+    return String(recommended);
+  }
+  return "4";
+}
+
+function isSupportField(field: AssistantInterruptField): boolean {
+  return field.id === "support_action" || /support|help|mode/i.test(field.id);
+}
+
+function isInterviewReviewInterrupt(interrupt: AssistantInterrupt): boolean {
+  const viewModel = createDynamicUiViewModel("interrupt", interrupt);
+  return (
+    viewModel.rendererKey === "interview.review_grade" ||
+    viewModel.rendererKey === "grade_review_recall" ||
+    interrupt.tool_name === "grade_review_recall" ||
+    /(?:interview|review).*(?:grade|recall|quiz)|(?:grade|recall|quiz).*(?:interview|review)/i.test(interrupt.tool_name)
+  );
+}
+
+function roleLabel(role: string): string {
+  if (role === "user") {
+    return "You";
+  }
+  if (role === "assistant") {
+    return "Starlog Assistant";
+  }
+  return "Update";
+}
+
+function toolLabel(toolName: string): string {
+  if (toolName === "grade_review_recall") {
+    return "Review grading";
+  }
+  if (toolName === "resolve_planner_conflict") {
+    return "Planner conflict";
+  }
+  if (toolName === "triage_capture") {
+    return "Capture triage";
+  }
+  if (toolName === "request_due_date") {
+    return "Task details";
+  }
+  return "Assistant check";
+}
+
+function EntityLink({ entityRef }: { entityRef?: AssistantEntityRef | null }) {
+  if (!entityRef?.href) {
+    return null;
+  }
+  return (
+    <a className={styles.entityLink} href={entityRef.href}>
+      {supportSurfaceActionLabel(entityRef)}
+    </a>
+  );
+}
+
+function CardDataPart({
+  data,
+  busy,
+  inlineBusyActionIds,
+  onCardAction,
+}: DataPartProps<AssistantCard> & {
+  busy: boolean;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  const registry = getConversationCardRegistryEntry(data.kind, data.title);
+  const badges = cardMetadataBadges(data);
+
+  return (
+    <section className={styles.cardPart}>
+      <div className={styles.partHeader}>
+        <span>{registry.label}</span>
+        <EntityLink entityRef={data.entity_ref} />
+      </div>
+      {data.title ? <h3>{data.title}</h3> : null}
+      {data.body ? <p>{data.body}</p> : null}
+      {badges.length > 0 ? (
+        <div className={styles.badgeRow}>
+          {badges.map((badge) => (
+            <span key={badge} className={styles.badge}>
+              {badge}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {data.actions.length > 0 ? (
+        <div className={styles.cardActions}>
+          {data.actions.map((action) => {
+            const actionBusy = inlineBusyActionIds.includes(action.id);
+            if (action.kind === "navigate" && typeof action.payload?.href === "string") {
+              return (
+                <a key={action.id} href={action.payload.href}>
+                  {action.label}
+                </a>
+              );
+            }
+            return (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => void onCardAction(action)}
+                disabled={busy || actionBusy}
+              >
+                {actionBusy ? `Running ${action.label}` : action.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AmbientDataPart({
+  data,
+  busy,
+  inlineBusyActionIds,
+  onCardAction,
+}: DataPartProps<AssistantAmbientUpdate> & {
+  busy: boolean;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  return (
+    <section className={styles.dataCard}>
+      <div className={styles.partHeader}>
+        <span>Surface update</span>
+        <EntityLink entityRef={data.entity_ref} />
+      </div>
+      <h3>{data.label}</h3>
+      {data.body ? <p>{data.body}</p> : null}
+      {data.actions?.length ? (
+        <div className={styles.cardActions}>
+          {data.actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              disabled={busy || inlineBusyActionIds.includes(action.id)}
+              onClick={() => void onCardAction(action)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ToolResultDataPart({ data }: DataPartProps<AssistantToolResult>) {
+  const metadata = metadataRecord(data.metadata);
+  const toolName = firstText(metadata.tool_name) || "assistant_check";
+  return (
+    <section className={styles.toolCard}>
+      <div className={styles.partHeader}>
+        <span>{toolLabel(toolName)}</span>
+        <EntityLink entityRef={data.entity_ref} />
+      </div>
+      <h3>{data.status === "error" ? "Check failed" : "Check complete"}</h3>
+      {data.card ? <CardDataPart data={data.card} busy={false} inlineBusyActionIds={[]} onCardAction={() => undefined} /> : null}
+    </section>
+  );
+}
+
+function AttachmentDataPart({ data }: DataPartProps<AssistantAttachment>) {
+  const actionLabel =
+    data.kind === "audio"
+      ? "Open audio"
+      : data.kind === "image"
+        ? "Open image"
+        : data.kind === "citation"
+          ? "Open source"
+          : "Open attachment";
+  return (
+    <section className={styles.dataCard}>
+      <div className={styles.partHeader}>
+        <span>Attachment</span>
+        {data.url ? (
+          <a className={styles.entityLink} href={data.url}>
+            {actionLabel}
+          </a>
+        ) : null}
+      </div>
+      <h3>{data.label}</h3>
+      <div className={styles.badgeRow}>
+        <span className={styles.badge}>{data.kind}</span>
+        {data.mime_type ? <span className={styles.badge}>{data.mime_type}</span> : null}
+      </div>
+    </section>
+  );
+}
+
+function StatusDataPart({ data }: DataPartProps<{ status?: string; label?: string }>) {
+  const status = data.label || (data.status ? productLabel(data.status) : "Working");
+  return (
+    <section className={styles.dataCard}>
+      <div className={styles.partHeader}>
+        <span>Status</span>
+      </div>
+      <p>{status}</p>
+    </section>
+  );
+}
+
+function ResolutionDataPart({ data }: DataPartProps<{ action?: string; values?: Record<string, unknown> }>) {
+  const resolution = firstText(data.values?.resolution, data.action) || "Saved";
+  return (
+    <section className={styles.dataCard}>
+      <div className={styles.partHeader}>
+        <span>Resolved</span>
+      </div>
+      <p>{productLabel(resolution)}</p>
+    </section>
+  );
+}
+
+function UnknownDataPart({ name, data }: { name?: string; data?: unknown }) {
+  const label = name === "starlog-interrupt-request" ? "Assistant decision" : "Assistant detail";
+  const hasData = Object.keys(metadataRecord(data)).length > 0;
+  return (
+    <section className={styles.dataCard}>
+      <div className={styles.partHeader}>
+        <span>{label}</span>
+      </div>
+      {hasData ? <p>Diagnostic details are available in the fallback view.</p> : null}
+    </section>
+  );
+}
+
+function ReviewGradeDataPart({
+  interrupt,
+  busy,
+  onSubmit,
+  onDismiss,
+}: {
+  interrupt: AssistantInterrupt;
+  busy: boolean;
+  onSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
+  onDismiss: (interruptId: string) => Promise<void> | void;
+}) {
+  const viewModel = createDynamicUiViewModel("interrupt", interrupt);
+  const metadata = metadataRecord(interrupt.metadata);
+  const structuredContent = metadataRecord(viewModel.structuredContent);
+  const ratingField =
+    interrupt.fields.find((field) => (field.id === "rating" || field.id === "grade") && !isSupportField(field)) ||
+    interrupt.fields.find((field) => (field.kind === "select" || field.kind === "priority") && !isSupportField(field));
+  const supportField = interrupt.fields.find(isSupportField);
+  const options = fieldOptions(ratingField);
+  const [selected, setSelected] = useState(() => fieldValue(ratingField, interrupt));
+  const [supportAction, setSupportAction] = useState(() => {
+    const value = supportField ? fieldValue(supportField, interrupt) : "";
+    return supportField?.options?.some((option) => option.value === value) ? value : "";
+  });
+  const prompt =
+    firstText(
+      metadata.prompt,
+      structuredContent.prompt,
+      structuredContent.question,
+      metadata.question,
+      metadata.review_prompt,
+      metadata.interview_question,
+      viewModel.title,
+      interrupt.entity_ref?.title,
+      interrupt.title,
+    ) || "Review this interview item";
+  const answer = firstText(structuredContent.answer, metadata.answer, metadata.expected_answer, metadata.model_answer, metadata.notes);
+  const reason =
+    firstText(
+      structuredContent.recommendation_reason,
+      structuredContent.reason,
+      metadata.recommendation_reason,
+      metadata.reason,
+      metadata.diagnosis,
+      metadata.feedback,
+      interrupt.consequence_preview,
+    ) || "This grade updates the next review interval and keeps the interview loop focused on weak recall.";
+
+  useEffect(() => {
+    setSelected(fieldValue(ratingField, interrupt));
+  }, [interrupt, ratingField]);
+
+  useEffect(() => {
+    if (!supportField) {
+      setSupportAction("");
+      return;
+    }
+    const value = fieldValue(supportField, interrupt);
+    setSupportAction(supportField.options?.some((option) => option.value === value) ? value : "");
+  }, [interrupt, supportField]);
+
+  const submit = () => {
+    const fieldId = ratingField?.id || "rating";
+    const values = interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
+      if (field.value !== undefined) {
+        accumulator[field.id] = field.value;
+      }
+      if (interrupt.recommended_defaults && Object.prototype.hasOwnProperty.call(interrupt.recommended_defaults, field.id)) {
+        accumulator[field.id] = interrupt.recommended_defaults[field.id];
+      }
+      return accumulator;
+    }, {});
+    values[fieldId] = selected;
+    if (supportField && supportAction) {
+      values[supportField.id] = supportAction;
+    }
+    void onSubmit(interrupt.id, values);
+  };
+
+  if (interrupt.status !== "pending") {
+    return (
+      <section className={styles.reviewCard}>
+        <div className={styles.partHeader}>
+          <span>Interview review</span>
+          <EntityLink entityRef={interrupt.entity_ref} />
+        </div>
+        <p>{interrupt.status === "submitted" ? "Grade saved." : "Review skipped."}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className={styles.reviewCard} data-testid="assistant-ui-review-grade" data-dynamic-ui-renderer={viewModel.rendererKey}>
+      <div className={styles.partHeader}>
+        <span>Interview review</span>
+        <EntityLink entityRef={interrupt.entity_ref} />
+      </div>
+      <div className={styles.reviewPrompt} aria-label="Interview review prompt">
+        <p className={styles.eyebrow}>Question</p>
+        <h3>{prompt}</h3>
+        {answer ? <p>{answer}</p> : null}
+      </div>
+      <div className={styles.gradeGrid} role="radiogroup" aria-label={ratingField?.label || "Recall quality"}>
+        {options.map((option) => {
+          const grade = REVIEW_GRADES.find((candidate) => candidate.value === option.value);
+          const selectedOption = selected === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selectedOption}
+              aria-label={grade?.label || option.label}
+              className={`${styles.gradeButton} ${selectedOption ? styles.gradeButtonSelected : ""}`}
+              onClick={() => setSelected(option.value)}
+            >
+              <strong>{grade?.label || option.label}</strong>
+              <small>{grade?.hint || "Update the next interval"}</small>
+            </button>
+          );
+        })}
+      </div>
+      <div className={styles.reasonBox}>
+        <span className={styles.eyebrow}>Recommendation reason</span>
+        <p>{reason}</p>
+      </div>
+      {supportField?.options?.length ? (
+        <div className={styles.supportActions} aria-label={supportField.label || "Review support"}>
+          {supportField.options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`${styles.supportButton} ${supportAction === option.value ? styles.supportButtonSelected : ""}`}
+              aria-pressed={supportAction === option.value}
+              onClick={() => setSupportAction((current) => (current === option.value ? "" : option.value))}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className={styles.actions}>
+        <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void onDismiss(interrupt.id)}>
+          {interrupt.secondary_label || interrupt.defer_label || "Not now"}
+        </button>
+        <button type="button" className={styles.primaryButton} disabled={busy} onClick={submit}>
+          {interrupt.primary_label || "Save grade"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ToolCallPart({ toolName, args, result, isError }: ToolPartProps) {
+  void args;
+  return (
+    <section className={styles.toolCard}>
+      <div className={styles.partHeader}>
+        <span>{toolLabel(toolName)}</span>
+      </div>
+      <h3>{isError ? "Check needs attention" : result ? "Check complete" : "Checking context"}</h3>
+    </section>
+  );
+}
+
+function ResolvedInterruptDataPart({ interrupt }: { interrupt: AssistantInterrupt }) {
+  return (
+    <section className={styles.dataCard}>
+      <div className={styles.partHeader}>
+        <span>Assistant decision</span>
+        <EntityLink entityRef={interrupt.entity_ref} />
+      </div>
+      <p>{interrupt.status === "submitted" ? "Saved." : "Dismissed."}</p>
+    </section>
+  );
+}
+
+function ReviewToolPart(props: ToolPartProps) {
+  const args = metadataRecord(props.args);
+  const result = metadataRecord(props.result);
+  const question = firstText(args.prompt, args.question, args.review_prompt, result.prompt, result.question) || "Interview review";
+  const reason =
+    firstText(args.recommendation_reason, result.recommendation_reason, result.reason) ||
+    "Starlog is preparing the grade UI from the review context.";
+  return (
+    <section className={styles.reviewCard}>
+      <div className={styles.partHeader}>
+        <span>Interview review</span>
+      </div>
+      <div className={styles.reviewPrompt}>
+        <h3>{question}</h3>
+      </div>
+      <div className={styles.reasonBox}>
+        <span className={styles.eyebrow}>Recommendation reason</span>
+        <p>{reason}</p>
+      </div>
+    </section>
+  );
+}
+
+function useStarlogAssistantUiRegistration({
+  interruptById,
+  busy,
+  inlineBusyActionIds,
+  onCardAction,
+  onInterruptSubmit,
+  onInterruptDismiss,
+}: {
+  interruptById: Record<string, AssistantInterrupt>;
+  busy: boolean;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+  onInterruptSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
+  onInterruptDismiss: (interruptId: string) => Promise<void> | void;
+}) {
+  const InterruptRenderer = useMemo(
+    () =>
+      function InterruptRenderer({ data }: DataPartProps<AssistantInterrupt>) {
+        const liveInterrupt = interruptById[data.id] || data;
+        if (isInterviewReviewInterrupt(liveInterrupt)) {
+          return (
+            <ReviewGradeDataPart
+              interrupt={liveInterrupt}
+              busy={busy}
+              onSubmit={onInterruptSubmit}
+              onDismiss={onInterruptDismiss}
+            />
+          );
+        }
+        if (liveInterrupt.status !== "pending") {
+          return <ResolvedInterruptDataPart interrupt={liveInterrupt} />;
+        }
+        return (
+          <DynamicPanelRenderer
+            interrupt={liveInterrupt}
+            busy={busy}
+            onSubmit={onInterruptSubmit}
+            onDismiss={onInterruptDismiss}
+          />
+        );
+      },
+    [busy, interruptById, onInterruptDismiss, onInterruptSubmit],
+  );
+
+  const CardRenderer = useMemo(
+    () =>
+      function CardRenderer({ data }: DataPartProps<AssistantCard>) {
+        return (
+          <CardDataPart
+            data={data}
+            busy={busy}
+            inlineBusyActionIds={inlineBusyActionIds}
+            onCardAction={onCardAction}
+          />
+        );
+      },
+    [busy, inlineBusyActionIds, onCardAction],
+  );
+
+  const AmbientRenderer = useMemo(
+    () =>
+      function AmbientRenderer({ data }: DataPartProps<AssistantAmbientUpdate>) {
+        return (
+          <AmbientDataPart
+            data={data}
+            busy={busy}
+            inlineBusyActionIds={inlineBusyActionIds}
+            onCardAction={onCardAction}
+          />
+        );
+      },
+    [busy, inlineBusyActionIds, onCardAction],
+  );
+
+  useAssistantDataUI({ name: "starlog-interrupt-request", render: InterruptRenderer });
+  useAssistantDataUI({ name: "starlog-card", render: CardRenderer });
+  useAssistantDataUI({ name: "starlog-ambient-update", render: AmbientRenderer });
+  useAssistantDataUI({ name: "starlog-tool-result", render: ToolResultDataPart });
+  useAssistantDataUI({ name: "starlog-attachment", render: AttachmentDataPart });
+  useAssistantDataUI({ name: "starlog-status", render: StatusDataPart });
+  useAssistantDataUI({ name: "starlog-interrupt-resolution", render: ResolutionDataPart });
+  useAssistantToolUI({ toolName: "grade_review_recall", render: ReviewToolPart });
+}
+
+function SupportSurfaceSummary({
+  snapshot,
+  onQuickStart,
+}: {
+  snapshot: AssistantThreadSnapshot | null;
+  onQuickStart: (prompt: string) => void;
+}) {
+  const surfaces = useMemo(
+    () => summarizeSupportSurfaces(snapshot, null).filter((surface) => surface.active),
+    [snapshot],
+  );
+
+  if (surfaces.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className={styles.supportSurfaces} aria-label="Assistant support surfaces">
+      {surfaces.map((surface) => (
+        <article key={surface.key} className={styles.supportSurface}>
+          <div>
+            <h3>{surface.title}</h3>
+            <p>{surface.summary}</p>
+          </div>
+          <div className={styles.supportSurfaceActions}>
+            <a href={surface.href}>Open {surface.title}</a>
+            {surface.key === "review" ? (
+              <button type="button" onClick={() => onQuickStart("Start my due review queue.")}>
+                Start review
+              </button>
+            ) : null}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function StarlogTextPart({ text }: { text: string }) {
+  return <p className={styles.textPart}>{text}</p>;
+}
+
+function StarlogMessage({ message }: { message: { role: string; createdAt: Date } }) {
+  return (
+    <MessagePrimitive.Root className={`${styles.message} ${styles[`message_${message.role}`] || ""}`}>
+      <div className={styles.meta}>
+        <span>{roleLabel(message.role)}</span>
+        <span>{message.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+      </div>
+      <div className={styles.bubble}>
+        <MessagePrimitive.Content
+          components={{
+            Text: StarlogTextPart,
+            tools: { Fallback: ToolCallPart },
+            data: { Fallback: UnknownDataPart },
+          }}
+        />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+function ComposerDraftController({ draft }: { draft: ComposerDraftSeed | null }) {
+  const runtime = useComposerRuntime({ optional: true });
+
+  useEffect(() => {
+    if (!draft || !runtime) {
+      return;
+    }
+    runtime.setText(draft.text);
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLTextAreaElement>("[data-starlog-composer-input='true']")?.focus();
+    });
+  }, [draft, runtime]);
+
+  return null;
+}
+
+export function StarlogAssistantComposer({ draft, disabled, busy, error, onShortcut }: StarlogAssistantComposerProps) {
+  return (
+    <ComposerPrimitive.Root className={styles.composer}>
+      <ComposerDraftController draft={draft} />
+      <div className={styles.composerChips} aria-label="Assistant shortcuts">
+        {SHORTCUTS.map((shortcut) => (
+          <button
+            key={shortcut.label}
+            type="button"
+            onClick={() => onShortcut(shortcut.prompt)}
+            disabled={disabled || busy}
+          >
+            {shortcut.label}
+          </button>
+        ))}
+      </div>
+      <ComposerPrimitive.Input
+        className={styles.composerInput}
+        data-starlog-composer-input="true"
+        placeholder="Ask, capture, plan, review, or move something forward..."
+        rows={4}
+        disabled={disabled || busy}
+      />
+      <div className={styles.composerBar}>
+        <span>{error || (busy ? "Starlog is working..." : "Voice, capture, planning, and review all land in this thread.")}</span>
+        <ComposerPrimitive.Send disabled={disabled || busy}>Send</ComposerPrimitive.Send>
+      </div>
+    </ComposerPrimitive.Root>
+  );
+}
+
+export function StarlogAssistantThread({
+  snapshot,
+  loading,
+  busy,
+  todaySummary,
+  weeklySummary,
+  todayOpenLoops,
+  todayContextItems,
+  onQuickStart,
+  inlineBusyActionIds,
+  onCardAction,
+  onInterruptSubmit,
+  onInterruptDismiss,
+}: StarlogAssistantThreadProps) {
+  const interruptById = useMemo(
+    () => Object.fromEntries((snapshot?.interrupts || []).map((interrupt) => [interrupt.id, interrupt])),
+    [snapshot?.interrupts],
+  );
+
+  useStarlogAssistantUiRegistration({
+    interruptById,
+    busy,
+    inlineBusyActionIds,
+    onCardAction,
+    onInterruptSubmit,
+    onInterruptDismiss,
+  });
+
+  if (loading && !snapshot) {
+    return <section className={styles.threadShell}>Loading assistant thread...</section>;
+  }
+
+  if (!snapshot || snapshot.messages.length === 0) {
+    return (
+      <MainRoomThread
+        snapshot={snapshot}
+        loading={loading}
+        busy={busy}
+        todaySummary={todaySummary}
+        weeklySummary={weeklySummary}
+        todayOpenLoops={todayOpenLoops}
+        todayContextItems={todayContextItems}
+        onQuickStart={onQuickStart}
+        inlineBusyActionIds={inlineBusyActionIds}
+        onCardAction={onCardAction}
+        onInterruptSubmit={onInterruptSubmit}
+        onInterruptDismiss={onInterruptDismiss}
+      />
+    );
+  }
+
+  return (
+    <section className={styles.threadShell}>
+      <SupportSurfaceSummary snapshot={snapshot} onQuickStart={onQuickStart} />
+      <ThreadPrimitive.Root className={styles.primitiveRoot}>
+        <ThreadPrimitive.Viewport className={styles.viewport}>
+          <ThreadPrimitive.Messages>
+            {({ message }) => <StarlogMessage message={{ role: message.role, createdAt: message.createdAt }} />}
+          </ThreadPrimitive.Messages>
+        </ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </section>
+  );
+}
