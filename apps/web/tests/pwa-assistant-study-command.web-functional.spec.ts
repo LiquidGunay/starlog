@@ -731,7 +731,7 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
 
   await expect(page).toHaveURL(/\/review$/);
   await expect(page.getByText("Sliding Window Interview Patterns")).toBeVisible();
-  await expect(page.locator(".april-review-study-topic").getByText("unlocked", { exact: true })).toBeVisible();
+  await expect(page.locator(".april-review-study-topic").getByText("Ready to study", { exact: true })).toBeVisible();
   await expect(page.getByText("Reason: You just unlocked this interview-prep topic and one application card is due now.")).toBeVisible();
   await expect(page.getByText("You need the longest subarray with at most two distinct values.")).toBeVisible();
   await expect(page.getByText("Maintain counts inside the current window")).toHaveCount(0);

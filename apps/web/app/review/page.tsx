@@ -237,6 +237,23 @@ function studyQuestionModeArticle(mode: "recall" | "application"): string {
   return mode === "application" ? "an" : "a";
 }
 
+function studyTopicStatusLabel(status: StudyTopic["status"]): string {
+  if (status === "locked") {
+    return "Locked";
+  }
+  if (status === "unlocked") {
+    return "Ready to study";
+  }
+  if (status === "read") {
+    return "Read";
+  }
+  return status
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
+}
+
 function summaryDeckBuckets(summary: ReviewSurfaceSummary | null, decks: Deck[]): CountBucket[] {
   if (summary?.deck_buckets.length) {
     return summary.deck_buckets;
@@ -586,7 +603,7 @@ export default function ReviewPage() {
             <span className="april-rail-section-label">Study Progress</span>
             <div className="april-review-rail-health">
               <div><strong>{studyProgress?.read_topic_count ?? 0}</strong><span>Read</span></div>
-              <div><strong>{studyProgress?.unlocked_topic_count ?? 0}</strong><span>Unlocked</span></div>
+              <div><strong>{studyProgress?.unlocked_topic_count ?? 0}</strong><span>Ready</span></div>
               <div><strong>{studyProgress?.locked_topic_count ?? 0}</strong><span>Locked</span></div>
             </div>
           </div>
@@ -772,7 +789,7 @@ export default function ReviewPage() {
                 <div className="april-review-study-topic">
                   <div className="april-review-drill-head">
                     <strong>{activeStudyTopic.title}</strong>
-                    <span>{activeStudyTopic.status}</span>
+                    <span>{studyTopicStatusLabel(activeStudyTopic.status)}</span>
                   </div>
                   {activeStudyTopic.summary ? <p>{activeStudyTopic.summary}</p> : <p>Use this topic to unlock review cards and request one focused question.</p>}
                   <div className="april-review-side-actions">
@@ -823,7 +840,7 @@ export default function ReviewPage() {
                 <div className="april-review-health-list">
                   <div><span>Sources</span><strong>{studyProgress.source_count}</strong></div>
                   <div><span>Topics</span><strong>{studyProgress.topic_count}</strong></div>
-                  <div><span>Due unlocked</span><strong>{studyProgress.due_unlocked_card_count}</strong></div>
+                  <div><span>Ready due</span><strong>{studyProgress.due_unlocked_card_count}</strong></div>
                 </div>
               ) : null}
             </AprilPanel>
