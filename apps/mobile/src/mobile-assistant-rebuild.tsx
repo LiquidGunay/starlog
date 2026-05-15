@@ -66,6 +66,7 @@ import {
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
+import { MobileAssistantUiThread } from "./mobile-assistant-aui-thread";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 const ASSISTANT_TEXT_PROPS = { maxFontSizeMultiplier: 1.08 } as const;
@@ -207,10 +208,6 @@ function isDiagnosticConversationCard(card: ConversationCard): boolean {
   return DIAGNOSTIC_CARD_KINDS.has(card.kind);
 }
 
-function textParts(message: AssistantThreadMessage) {
-  return message.parts.filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "text" }> => part.type === "text");
-}
-
 function cardParts(message: AssistantThreadMessage) {
   return message.parts.filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "card" }> => part.type === "card");
 }
@@ -239,10 +236,6 @@ function toolResultParts(message: AssistantThreadMessage) {
   );
 }
 
-function statusParts(message: AssistantThreadMessage) {
-  return message.parts.filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "status" }> => part.type === "status");
-}
-
 function interruptRequestParts(message: AssistantThreadMessage) {
   return message.parts.filter(
     (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_request" }> => part.type === "interrupt_request",
@@ -254,14 +247,6 @@ function interruptResolutionParts(message: AssistantThreadMessage) {
     (part): part is Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_resolution" }> =>
       part.type === "interrupt_resolution",
   );
-}
-
-function assistantMessageText(message: AssistantThreadMessage): string {
-  return textParts(message)
-    .map((part) => part.text.trim())
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
 }
 
 function previewSuggestions(messages: AssistantThreadMessage[], interrupts: AssistantInterrupt[]): string[] {
@@ -1992,7 +1977,6 @@ export function MobileAssistantRebuild({
             const attachments = attachmentParts(message).map((part) => part.attachment);
             const toolCalls = toolCallParts(message).map((part) => part.tool_call);
             const toolResults = toolResultParts(message).map((part) => part.tool_result);
-            const statusLabels = statusParts(message).map((part) => part.label || part.status);
             const interruptRequests = interruptRequestParts(message).map((part) => liveInterruptById[part.interrupt.id] || part.interrupt);
             const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
             const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
@@ -2000,7 +1984,6 @@ export function MobileAssistantRebuild({
             const showMarker =
               (message.role === "assistant" || message.role === "tool" || message.role === "system") && previousRole !== message.role;
             const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
-            const content = assistantMessageText(message);
 
             return (
               <View
@@ -2044,35 +2027,7 @@ export function MobileAssistantRebuild({
                   </View>
                 ) : null}
 
-                {content || isUser || statusLabels.length > 0 ? (
-                  <View
-                    style={{
-                      alignSelf: isUser ? "flex-end" : "stretch",
-                      maxWidth: isUser ? "85%" : "100%",
-                      paddingHorizontal: isUser ? 15 : 2,
-                      paddingVertical: isUser ? 11 : 0,
-                      borderRadius: 24,
-                      borderBottomRightRadius: isUser ? 8 : 24,
-                      borderWidth: isUser ? 1 : 0,
-                      borderColor: "rgba(255,255,255,0.05)",
-                      backgroundColor: isUser ? "rgba(255,255,255,0.055)" : "transparent",
-                      gap: 6,
-                    }}
-                  >
-                    {content ? (
-                      <Text style={{ color: palette.text, fontSize: isUser ? 15.5 : 18, lineHeight: isUser ? 23 : 31 }}>
-                        {content}
-                      </Text>
-                    ) : (
-                      <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>
-                        {statusLabels[0] || "Assistant reply in progress..."}
-                      </Text>
-                    )}
-                    {!content && !isUser && statusLabels.length > 1 ? (
-                      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>{statusLabels.slice(1).join(" · ")}</Text>
-                    ) : null}
-                  </View>
-                ) : null}
+                <MobileAssistantUiThread messages={[message]} palette={palette} />
 
                 {ambientUpdates.length > 0 ? (
                   <View style={{ gap: 8, paddingLeft: 10 }}>

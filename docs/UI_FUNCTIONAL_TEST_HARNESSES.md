@@ -7,7 +7,11 @@ fast layout and protocol checks, but they do not replace installed Android valid
 share capture, briefing cache/playback, alarms, or local runtime work. Treat the mobile PWA as a
 fallback surface, not the main phone implementation target.
 
-This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and assistant protocol snapshots so the UI can be validated deterministically.
+This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and
+assistant protocol snapshots so the UI can be validated deterministically. The desktop web
+Assistant has partial assistant-ui adapter/runtime coverage with compatibility fallbacks; these
+harnesses validate the supported structured protocol path and fallback-hidden user experience, not
+full assistant-ui parity.
 
 ## Commands
 
@@ -67,6 +71,10 @@ Covered:
 - `AssistantInterrupt` fields render for text, date/time-like choices, priority, toggles, selects, review grades, defer choices, and entity search/project picker.
 - User actions submit expected values to mocked interrupt endpoints.
 - Resolved panels leave the UI in a settled state.
+- Supported desktop web assistant-ui paths can render structured protocol parts while unsupported
+  shapes remain covered by Starlog compatibility/fallback rendering.
+- React Native view-model tests cover mobile dynamic-panel shaping while the native assistant-ui-style
+  path remains in progress.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:
@@ -91,9 +99,9 @@ User command
 
 This should be added with a mocked model/bridge first so CI does not require Codex credentials.
 
-This missing test remains independent of the assistant-ui decision: the strategic web runtime is
-assistant-ui, but the proof gap is whether a command can produce the right Starlog protocol parts and
-complete the workflow end to end.
+This missing test is separate from the current partial assistant-ui adapter coverage: assistant-ui is
+the strategic web runtime, but the proof gap is whether a command can produce the right Starlog
+protocol parts and complete the workflow end to end across web and native mobile.
 
 ## 2026-04-29 Run Notes
 

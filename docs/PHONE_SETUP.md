@@ -53,11 +53,23 @@ Use the non-empty IP (example: `192.168.1.42`).
    - `http://<LAN_IP>:3000`
 3. In Starlog session controls, set:
    - API base: `http://<LAN_IP>:8000`
-4. Bootstrap/login from the web console and keep token in session controls.
-5. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
-6. Open `/assistant` if you want to test typed commands such as `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
-7. In `/assistant`, you can also use `Queue Codex Plan` / `Queue Codex Execute` for queued LLM-assisted command planning, or browser voice recording (`Start Voice Command` -> `Execute Voice`) to queue a Whisper-backed command without installing the native app.
-8. Open `/ai-jobs` if you want to inspect queued local Codex/Whisper/TTS work, retry failed jobs, or cancel work that should not keep running.
+4. On a new local instance, choose `Set Up Starlog` and create a Starlog passphrase.
+5. On an existing instance, choose `Sign In` and enter the Starlog passphrase.
+6. Keep only Starlog session data in the browser session controls. Do not paste OpenAI, Codex,
+   Railway, or local worker credentials into the phone browser.
+7. If you need to configure the native app from this login, copy only the Starlog bearer token
+   produced by the PWA/session controls into the native app's `Bearer token` field.
+8. Use `/sync-center` if you want to inspect or manually replay queued PWA mutations after reconnecting, and compare them with recent server-side sync history.
+9. Open `/assistant` if you want to test typed commands such as `summarize latest artifact` or `create task Review notes due tomorrow priority 4`.
+10. In `/assistant`, you can also use `Queue Codex Plan` / `Queue Codex Execute` for queued LLM-assisted command planning, or browser voice recording (`Start Voice Command` -> `Execute Voice`) to queue a Whisper-backed command without installing the native app.
+11. Open `/ai-jobs` if you want to inspect queued local Codex/Whisper/TTS work, retry failed jobs, or cancel work that should not keep running.
+
+Hosted PWA access follows the same pattern. Open
+`https://starlog-web-production.up.railway.app/login`, confirm the API base is
+`https://starlog-api-production.up.railway.app`, sign in with the hosted Starlog passphrase, and
+copy only the Starlog bearer token to phone settings when required. If the hosted passphrase is
+lost, use the operator reset runbook linked in the Railway production section instead of
+documenting or sharing secrets.
 
 ## 4) Install PWA to home screen
 
@@ -110,7 +122,7 @@ pnpm --filter mobile start
 4. If you queued a voice note, confirm the laptop worker is running so the transcript can complete.
 5. If you queued a voice command or Codex command, tap `Refresh Jobs` in the assistant panel to inspect the transcript/executed command result after the worker finishes.
 6. If you installed a native dev build, share text, a URL, an image/file, or an audio file into Starlog from another app and confirm the companion app prefills quick capture (or the voice upload slot for shared audio).
-7. For iOS share-extension validation, run the iOS dev build from Xcode/`expo run:ios`, then use the iOS Share sheet into Starlog and confirm the same quick-capture draft behavior as Android.
+7. For optional iOS share-extension validation, run the iOS dev build from Xcode/`expo run:ios`, then use the iOS Share sheet into Starlog and confirm the same quick-capture draft behavior as Android. This is not a v1 release blocker.
 8. If you have `adb` access to the Android device/emulator, you can also run `pnpm test:android:smoke` from repo root to install the current debug APK and trigger both a deep-link capture and a plain-text Android share intent automatically.
 9. On this host, if WSL `adb shell` is flaky but Windows `adb.exe` can still see the Android phone, use the Windows-host fallback instead:
 

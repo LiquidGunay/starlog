@@ -85,9 +85,23 @@ direction.
 
 ## Current Evidence Boundary
 
-This decision is architectural direction, not proof that the assistant-ui migration has
-shipped. Current working evidence is tracked in
-[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md). Current UI
-harnesses prove Starlog can render and submit structured assistant protocol parts in
-the existing web/native clients; they do not prove the assistant-ui runtime adapter is
-complete.
+This decision is architectural direction plus a migration boundary, not a claim that
+assistant-ui parity has shipped everywhere. Current working evidence is tracked in
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
+
+Current status:
+
+- Desktop web assistant-ui coverage is partial. It can adapt/render supported Starlog
+  assistant protocol snapshots and dynamic panel parts, while unsupported or
+  not-yet-migrated tool/message shapes continue through Starlog compatibility
+  projections and existing fallback render paths.
+- Native mobile must converge on the same Starlog assistant protocol. The React Native
+  assistant-ui-style implementation is in progress, with view-model and panel-state
+  coverage ahead of full installed-device dynamic-panel proof.
+- The mobile PWA remains a fallback phone surface and a useful browser/viewport test
+  target. It is not the primary mobile UX redesign target.
+
+Current UI harnesses prove Starlog can render and submit structured assistant protocol
+parts under mocked snapshots and interrupt APIs. They do not yet prove a live
+LLM/Codex run can drive every dynamic panel or that native mobile has reached web
+assistant-ui parity.

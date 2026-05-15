@@ -29,6 +29,22 @@ Module._load = function mockMobileSurfaceDependencies(request: string, parent: u
   if (request === "@expo/vector-icons") {
     return { MaterialCommunityIcons: "MaterialCommunityIcons" };
   }
+  if (request === "@assistant-ui/react-native") {
+    return {
+      AssistantRuntimeProvider: () => null,
+      MessagePrimitive: {
+        Content: () => null,
+        Root: () => null,
+      },
+      ThreadPrimitive: {
+        Messages: () => null,
+        Root: () => null,
+      },
+      useAuiState: (selector: (state: { message: { role: string } }) => unknown) =>
+        selector({ message: { role: "assistant" } }),
+      useLocalRuntime: () => ({}),
+    };
+  }
   if (request === "@starlog/contracts") {
     return {
       productCopy: {

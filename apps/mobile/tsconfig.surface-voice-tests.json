@@ -8,6 +8,7 @@
     "noEmit": false
   },
   "include": [
+    "tests/assistant-ui-react-native.d.ts",
     "src/mobile-assistant-rebuild.tsx",
     "tests/mobile-surfaces-voice-ui.test.ts"
   ]

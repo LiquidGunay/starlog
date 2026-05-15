@@ -25,6 +25,24 @@ For phone testing on the same network:
 5. Sign in with the same passphrase.
 6. Open `/assistant`.
 
+## PWA Access And Login
+
+The desktop web app is the primary browser client. For local laptop use, open
+`http://localhost:3000`. For phone browser fallback on the same network, start the stack with
+`./scripts/dev_stack.sh --lan`, then open `http://<LAN_IP>:3000`.
+
+On a new local instance, choose `Set Up Starlog` and create a Starlog passphrase. On an existing
+instance, choose `Sign In` and enter that same passphrase. The PWA should only receive the Starlog
+API base and Starlog session/token information from the login/session controls. Do not put
+OpenAI, Codex, Railway, or local worker credentials into the PWA or native mobile app.
+
+For the current hosted deployment, open
+`https://starlog-web-production.up.railway.app/login`. The expected API base is
+`https://starlog-api-production.up.railway.app`. Sign in with the hosted Starlog passphrase, then
+copy only the resulting Starlog bearer token into native phone settings when a token field is
+required. If the hosted passphrase is lost, use the operator reset runbook instead of committing or
+sharing secrets in docs.
+
 ## Daily Use
 
 Start in `Assistant`.
