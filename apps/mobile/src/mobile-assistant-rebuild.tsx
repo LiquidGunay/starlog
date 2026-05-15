@@ -25,7 +25,6 @@ import {
   toolResultBadges,
   toolStatusSummary,
 } from "./assistant-mobile-ui";
-import { MobileAssistantUiThread } from "./mobile-assistant-aui-thread";
 import {
   activePendingInterruptId,
   defaultPanelValues,
@@ -1983,20 +1982,6 @@ export function MobileAssistantRebuild({
               (message.role === "assistant" || message.role === "tool" || message.role === "system") && previousRole !== message.role;
             const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
             const content = assistantMessageText(message);
-            const assistantUiCompatibleMessage =
-              Boolean(content) &&
-              primaryCards.length === 0 &&
-              diagnosticCards.length === 0 &&
-              ambientUpdates.length === 0 &&
-              attachments.length === 0 &&
-              toolCalls.length === 0 &&
-              toolResults.length === 0 &&
-              interruptRequests.length === 0 &&
-              resolutions.length === 0;
-
-            if (assistantUiCompatibleMessage) {
-              return <MobileAssistantUiThread key={message.id} messages={[message]} palette={palette} />;
-            }
 
             return (
               <View

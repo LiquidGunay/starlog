@@ -26,12 +26,14 @@
     "test:assistant-aui": "./node_modules/.bin/tsc -p tsconfig.assistant-aui-tests.json && node ../../.tmp/mobile-assistant-aui-tests/apps/mobile/tests/mobile-assistant-aui-adapter.test.js"
   },
   "dependencies": {
+    "@assistant-ui/core": "0.2.2",
     "@assistant-ui/react-native": "0.1.16",
     "@babel/runtime": "^7.28.6",
     "@expo/vector-icons": "^14.0.2",
     "@react-native/assets-registry": "0.74.87",
     "@react-native/gradle-plugin": "0.74.87",
     "@starlog/contracts": "workspace:*",
+    "assistant-cloud": "0.1.27",
     "expo": "~51.0.0",
     "expo-asset": "~10.0.10",
     "expo-av": "~14.0.7",

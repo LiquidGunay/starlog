@@ -51,6 +51,19 @@ export function starlogMessagesToAssistantUiMessages(messages: AssistantThreadMe
     .filter((message): message is ThreadMessageLike => message !== null);
 }
 
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function messageContentFingerprint(message: ThreadMessageLike): string {
+  return hashString(JSON.stringify({ content: message.content, role: message.role, status: message.status ?? null }));
+}
+
 export function assistantUiThreadFingerprint(messages: ThreadMessageLike[]): string {
-  return messages.map((message) => `${message.id || message.role}:${typeof message.content === "string" ? message.content.length : message.content.length}`).join("|");
+  return messages.map((message) => `${message.id || message.role}:${messageContentFingerprint(message)}`).join("|");
 }

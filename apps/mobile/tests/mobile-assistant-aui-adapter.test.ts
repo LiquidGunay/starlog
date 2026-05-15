@@ -69,6 +69,16 @@ assert.equal(converted[0].content, "I found two Library captures to process.\n\n
 assert.equal(converted[1].role, "assistant");
 assert.equal(converted[1].content, "Assistant action updated the thread.");
 assert.deepEqual(converted[0].metadata?.custom, { starlogMessageId: "message-1" });
-assert.equal(assistantUiThreadFingerprint(converted), "message-1:71|message-2:36");
+
+const originalFingerprint = assistantUiThreadFingerprint(converted);
+const sameLengthEditedContent = "I found two Library captures to process.\n\nAssistant action is complete.";
+assert.equal(sameLengthEditedContent.length, String(converted[0].content).length);
+const sameLengthEditFingerprint = assistantUiThreadFingerprint([
+  { ...converted[0], content: sameLengthEditedContent },
+  converted[1],
+]);
+assert.equal(originalFingerprint.startsWith("message-1:"), true);
+assert.equal(originalFingerprint.includes("|message-2:"), true);
+assert.equal(sameLengthEditFingerprint === originalFingerprint, false);
 
 console.log("mobile assistant-ui adapter tests passed");

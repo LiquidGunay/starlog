@@ -17,9 +17,12 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@assistant-ui/core':
+        specifier: 0.2.2
+        version: 0.2.2(@assistant-ui/store@0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0))(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(assistant-cloud@0.1.27)(react@18.2.0)(zustand@5.0.13(@types/react@18.2.79)(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0)))
       '@assistant-ui/react-native':
         specifier: 0.1.16
-        version: 0.1.16(@types/react@18.2.79)(react-native@0.74.5(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0))
+        version: 0.1.16(@types/react@18.2.79)(assistant-cloud@0.1.27)(react-native@0.74.5(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0))
       '@babel/runtime':
         specifier: ^7.28.6
         version: 7.28.6
@@ -35,6 +38,9 @@ importers:
       '@starlog/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      assistant-cloud:
+        specifier: 0.1.27
+        version: 0.1.27
       expo:
         specifier: ~51.0.0
         version: 51.0.39(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(react-native@0.74.5(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
@@ -2837,6 +2843,9 @@ packages:
 
   assistant-cloud@0.1.26:
     resolution: {integrity: sha512-cuR0H3YweBeMucffz3r+y0FNpR7h0Q4Q0cmSX2l/uikh5ZBuuYoa1CU0JN8S0gAm6Tkf/qThSiy4T6dXT8W5Cw==}
+
+  assistant-cloud@0.1.27:
+    resolution: {integrity: sha512-BGfVnx7YFN5xtB/kbrgGxRI0TfSWq4yxB3MwYn6RDPlv4JvdtPupvDC1Y6An0EhAe42Z0AYtSmDSsR6p6eeBng==}
 
   assistant-stream@0.3.11:
     resolution: {integrity: sha512-ufnCsZOSXqSbwmJ1w4NaUJojyyqjmX0zh4q6DzdA+n7FVR8p9EvXuhB2HRzBL400eeGfleMsolfijDo90HTTTQ==}
@@ -6412,15 +6421,18 @@ snapshots:
     dependencies:
       '@assistant-ui/store': 0.2.7(@assistant-ui/tap@0.5.8(@types/react@18.3.9)(react@18.3.1))(@types/react@18.3.9)(react@18.3.1)
       '@assistant-ui/tap': 0.5.8(@types/react@18.3.9)(react@18.3.1)
-      assistant-stream: 0.3.11
+      assistant-stream: 0.3.14
       nanoid: 5.1.9
     optionalDependencies:
       '@types/react': 18.3.9
       assistant-cloud: 0.1.26
       react: 18.3.1
       zustand: 5.0.12(@types/react@18.3.9)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
+    transitivePeerDependencies:
+      - ioredis
+      - redis
 
-  '@assistant-ui/core@0.2.2(@assistant-ui/store@0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0))(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0)(zustand@5.0.13(@types/react@18.2.79)(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0)))':
+  '@assistant-ui/core@0.2.2(@assistant-ui/store@0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0))(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(assistant-cloud@0.1.27)(react@18.2.0)(zustand@5.0.13(@types/react@18.2.79)(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0)))':
     dependencies:
       '@assistant-ui/store': 0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0)
       '@assistant-ui/tap': 0.5.11(@types/react@18.2.79)(react@18.2.0)
@@ -6428,15 +6440,16 @@ snapshots:
       nanoid: 5.1.11
     optionalDependencies:
       '@types/react': 18.2.79
+      assistant-cloud: 0.1.27
       react: 18.2.0
       zustand: 5.0.13(@types/react@18.2.79)(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0))
     transitivePeerDependencies:
       - ioredis
       - redis
 
-  '@assistant-ui/react-native@0.1.16(@types/react@18.2.79)(react-native@0.74.5(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0))':
+  '@assistant-ui/react-native@0.1.16(@types/react@18.2.79)(assistant-cloud@0.1.27)(react-native@0.74.5(@babel/core@7.29.0)(@babel/preset-env@7.29.0(@babel/core@7.29.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0))':
     dependencies:
-      '@assistant-ui/core': 0.2.2(@assistant-ui/store@0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0))(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0)(zustand@5.0.13(@types/react@18.2.79)(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0)))
+      '@assistant-ui/core': 0.2.2(@assistant-ui/store@0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0))(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(assistant-cloud@0.1.27)(react@18.2.0)(zustand@5.0.13(@types/react@18.2.79)(react@18.2.0)(use-sync-external-store@1.6.0(react@18.2.0)))
       '@assistant-ui/store': 0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0)
       '@assistant-ui/tap': 0.5.11(@types/react@18.2.79)(react@18.2.0)
       assistant-stream: 0.3.14
@@ -6477,6 +6490,8 @@ snapshots:
       '@types/react-dom': 18.3.0
     transitivePeerDependencies:
       - immer
+      - ioredis
+      - redis
       - use-sync-external-store
 
   '@assistant-ui/store@0.2.10(@assistant-ui/tap@0.5.11(@types/react@18.2.79)(react@18.2.0))(@types/react@18.2.79)(react@18.2.0)':
@@ -9758,7 +9773,17 @@ snapshots:
 
   assistant-cloud@0.1.26:
     dependencies:
-      assistant-stream: 0.3.11
+      assistant-stream: 0.3.14
+    transitivePeerDependencies:
+      - ioredis
+      - redis
+
+  assistant-cloud@0.1.27:
+    dependencies:
+      assistant-stream: 0.3.14
+    transitivePeerDependencies:
+      - ioredis
+      - redis
 
   assistant-stream@0.3.11:
     dependencies:
