@@ -1,4 +1,5 @@
 import type { AssistantEntityRef } from "./assistant-card";
+import type { AssistantDynamicUiPayload } from "./assistant-dynamic-ui";
 
 export const ASSISTANT_INTERRUPT_FIELD_KINDS = [
   "text",
@@ -31,10 +32,11 @@ export type AssistantInterruptType = "choice" | "form" | "confirm";
 export type AssistantInterruptStatus = "pending" | "submitted" | "dismissed" | "expired";
 export type AssistantInterruptDisplayMode = "inline" | "composer" | "sidecar" | "bottom_sheet";
 
-export type AssistantInterrupt = {
+export type AssistantInterrupt = AssistantDynamicUiPayload & {
   id: string;
   thread_id: string;
   run_id: string;
+  tool_call_id?: string | null;
   status: AssistantInterruptStatus;
   interrupt_type: AssistantInterruptType;
   tool_name: string;
