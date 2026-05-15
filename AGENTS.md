@@ -69,6 +69,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `starlog_assistant_ui_repo_execution_checklist.md` — canonical execution-ordered migration checklist for the assistant reset.
 - `README.md` — top-level user-facing product README for install, sign-in handoff, release status, and operator entrypoints; keep developer internals and secrets out of it.
 - `docs/CURRENT_STATE.md` — concise current-state summary for what works today, what remains unproven, and where the evidence lives.
+- `docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md` — assistant runtime option decision record: assistant-ui as strategic web runtime, Starlog protocol as source of truth, MCP Apps as pattern not dependency, and rejected/deferred alternatives.
 - `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local UI reference for the assistant reset.
 - `artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md` — active PWA UI concept reference; use with sibling PNG mockups.
 - `artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md` — active mobile UI concept reference; use with sibling PNG mockups.

@@ -65,7 +65,9 @@ Gaps against the concept:
 
 Implementation direction:
 
-- Keep the current contracts and renderer path.
+- Keep the current protocol-backed renderer usable during migration, but do not treat the old custom
+  renderer as the target. The strategic runtime direction is assistant-ui over Starlog-owned assistant
+  protocol contracts.
 - Continue reducing always-visible explanatory copy. The concept markdown explains intent; the shipped UI should show decisions, concise reasoning, and actions.
 - Make the first viewport answer one question: "What should I do now?"
 

@@ -63,7 +63,7 @@ The current tests prove that Starlog can render and operate dynamic UI when the 
 
 Covered:
 
-- `AssistantThreadSnapshot` with `interrupt_request` parts renders in chat.
+- `AssistantThreadSnapshot` with `interrupt_request` parts renders in the Assistant thread.
 - `AssistantInterrupt` fields render for text, date/time-like choices, priority, toggles, selects, review grades, defer choices, and entity search/project picker.
 - User actions submit expected values to mocked interrupt endpoints.
 - Resolved panels leave the UI in a settled state.
@@ -90,6 +90,10 @@ User command
 ```
 
 This should be added with a mocked model/bridge first so CI does not require Codex credentials.
+
+This missing test remains independent of the assistant-ui decision: the strategic web runtime is
+assistant-ui, but the proof gap is whether a command can produce the right Starlog protocol parts and
+complete the workflow end to end.
 
 ## 2026-04-29 Run Notes
 

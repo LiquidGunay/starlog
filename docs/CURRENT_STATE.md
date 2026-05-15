@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-14
+Last updated: 2026-05-15
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -30,6 +30,10 @@ where Starlog is going. Use this page for current implementation confidence.
   [README.md](/home/ubuntu/starlog/README.md) and [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md).
 - **Assistant-first product shape:** the current surface model is `Assistant`, `Library`, `Planner`,
   and `Review`, with the Assistant as the primary thread and the other surfaces as support views.
+- **Assistant protocol direction:** Starlog's architecture decision is to use assistant-ui as the
+  strategic web Assistant runtime while keeping the Starlog assistant protocol as the source of truth.
+  This is documented in
+  [docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md](/home/ubuntu/starlog/docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md).
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -143,6 +147,10 @@ Known outcome for `Inference Engineering.pdf`:
   hosted smoke, and release gate checks before relying on hosted deployment state.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
+- **assistant-ui runtime migration:** assistant-ui is the strategic web runtime direction, but current
+  evidence only proves structured assistant protocol rendering/submission in the existing clients. The
+  assistant-ui runtime adapter itself still needs implementation evidence before it can be listed as
+  working today.
 
 ## Evidence Map
 

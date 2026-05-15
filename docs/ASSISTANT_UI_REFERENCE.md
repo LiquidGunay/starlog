@@ -12,6 +12,7 @@ Primary architecture sources:
 - [starlog_assistant_ui_backend_migration_design.md](/home/ubuntu/starlog/starlog_assistant_ui_backend_migration_design.md)
 - [starlog_assistant_ui_contracts_and_api_blueprint.md](/home/ubuntu/starlog/starlog_assistant_ui_contracts_and_api_blueprint.md)
 - [starlog_assistant_ui_repo_execution_checklist.md](/home/ubuntu/starlog/starlog_assistant_ui_repo_execution_checklist.md)
+- [docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md](/home/ubuntu/starlog/docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md)
 
 ## What This Reference Must Optimize For
 
@@ -19,6 +20,8 @@ Primary architecture sources:
 - The assistant knows about support-surface activity through structured events.
 - Dynamic panels are anchored, small, and consequential.
 - Cards are summaries and follow-up affordances, not the main interaction primitive.
+- assistant-ui is the strategic web Assistant runtime, while the Starlog assistant
+  protocol remains the source of truth.
 - The UI must feel like one continuous operational surface rather than stacked chat bubbles.
 
 ## Core Layout Model
