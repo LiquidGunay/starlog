@@ -346,6 +346,106 @@ if counts["study_sources"] < 1 or counts["study_topics"] < 1 or counts["card_top
 PY
 }
 
+seed_native_interview_loop_review_queue() {
+  log "Preparing locked Sliding Window review queue for native Study Core validation"
+  STARLOG_DB_PATH="$RUNTIME_DIR/starlog.db" \
+  STARLOG_MEDIA_DIR="$RUNTIME_DIR/media" \
+  PYTHONPATH="$ROOT_DIR/services/api" \
+  "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" "$BUILD_DIR/native-interview-loop-seed.json" <<'PY'
+import json
+import sqlite3
+import sys
+from datetime import timedelta
+from pathlib import Path
+
+from app.core.time import utc_now
+from app.services import study_service
+
+db_path = Path(sys.argv[1])
+summary_path = Path(sys.argv[2])
+
+with sqlite3.connect(str(db_path)) as conn:
+    conn.row_factory = sqlite3.Row
+    topic = conn.execute(
+        "SELECT id, source_id, title FROM study_topics WHERE title = ? LIMIT 1",
+        ("Sliding Window",),
+    ).fetchone()
+    if topic is None:
+        raise SystemExit("Sliding Window topic is missing after NeetCode import")
+
+    topic_id = str(topic["id"])
+    card_rows = conn.execute(
+        """
+        SELECT DISTINCT c.id
+        FROM cards c
+        JOIN card_topic_links ctl ON ctl.card_id = c.id
+        WHERE ctl.topic_id = ?
+          AND ctl.gate_required = 1
+        ORDER BY c.id
+        """,
+        (topic_id,),
+    ).fetchall()
+    card_ids = [str(row["id"]) for row in card_rows]
+    if not card_ids:
+        raise SystemExit("Sliding Window topic has no gated review cards")
+
+    placeholders = ",".join("?" for _ in card_ids)
+    prereq_rows = conn.execute(
+        f"""
+        SELECT DISTINCT t.id, t.title
+        FROM card_topic_links ctl
+        JOIN study_topics t ON t.id = ctl.topic_id
+        WHERE ctl.card_id IN ({placeholders})
+          AND ctl.gate_required = 1
+          AND ctl.topic_id != ?
+        ORDER BY t.display_order
+        """,
+        (*card_ids, topic_id),
+    ).fetchall()
+    prerequisites = []
+    for row in prereq_rows:
+        progress = study_service.mark_topic_read(conn, str(row["id"]))
+        prerequisites.append({"id": str(row["id"]), "title": str(row["title"]), "status": progress["status"]})
+
+    due_at = (utc_now() - timedelta(minutes=5)).isoformat()
+    conn.executemany(
+        "UPDATE cards SET due_at = ?, updated_at = ? WHERE id = ?",
+        [(due_at, due_at, card_id) for card_id in card_ids],
+    )
+    conn.commit()
+
+    locked_due_count = conn.execute(
+        f"""
+        SELECT COUNT(*) AS count
+        FROM cards c
+        WHERE c.id IN ({placeholders})
+          AND c.suspended = 0
+          AND c.due_at <= ?
+          AND EXISTS (
+            SELECT 1
+            FROM card_topic_links ctl
+            LEFT JOIN study_topic_progress stp ON stp.topic_id = ctl.topic_id
+            WHERE ctl.card_id = c.id
+              AND ctl.gate_required = 1
+              AND COALESCE(stp.read_at, '') = ''
+              AND COALESCE(stp.status, '') != 'read'
+          )
+        """,
+        (*card_ids, utc_now().isoformat()),
+    ).fetchone()["count"]
+
+summary = {
+    "topic": {"id": topic_id, "title": str(topic["title"])},
+    "card_count": len(card_ids),
+    "prerequisites_marked_read": prerequisites,
+    "locked_due_count": int(locked_due_count),
+}
+if summary["locked_due_count"] <= 0:
+    raise SystemExit(f"Expected locked due cards before native read action: {summary}")
+summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
 verify_local_review_queue() {
   local token
   local login_body="$BUILD_DIR/auth-login.json"
@@ -373,12 +473,13 @@ PY
 
   curl -fsS "$API_BASE/v1/cards/decks" -H "Authorization: Bearer $token" >"$BUILD_DIR/review-decks.json"
   curl -fsS "$API_BASE/v1/cards/due?limit=20" -H "Authorization: Bearer $token" >"$BUILD_DIR/due-cards.json"
-  python3 - "$BUILD_DIR/due-cards.json" <<'PY'
+  python3 - "$BUILD_DIR/due-cards.json" "$BUILD_DIR/native-interview-loop-seed.json" <<'PY'
 from pathlib import Path
 import json
 import sys
 
 path = Path(sys.argv[1])
+seed_path = Path(sys.argv[2])
 payload = json.loads(path.read_text())
 if isinstance(payload, dict):
     cards = payload.get("cards") or []
@@ -387,8 +488,12 @@ elif isinstance(payload, list):
 else:
     cards = []
 
-if not cards:
-    raise SystemExit("Fresh local review queue is empty after deck import")
+if cards:
+    raise SystemExit("Fresh local review queue leaked gated cards before native topic read")
+
+seed = json.loads(seed_path.read_text())
+if int(seed.get("locked_due_count") or 0) <= 0:
+    raise SystemExit(f"Seed did not prepare locked due cards: {seed}")
 PY
 }
 
@@ -2840,6 +2945,7 @@ start_local_api
 bootstrap_local_station
 import_local_srs_deck
 import_local_neetcode_study_core
+seed_native_interview_loop_review_queue
 verify_local_review_queue
 if [[ "$SKIP_BUILD" == "1" ]]; then
   stage_existing_apk

@@ -164,7 +164,7 @@ async function sendAssistantMessage(
 }
 
 function latestCommandMessage(page: Page, expected: string | RegExp): Locator {
-  return page.locator("main article").filter({ hasText: expected }).last();
+  return page.locator("main").getByText(expected).last();
 }
 
 function escapedRegExp(value: string): RegExp {
