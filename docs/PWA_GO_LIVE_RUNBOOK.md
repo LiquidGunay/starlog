@@ -53,7 +53,7 @@ Rollback immediately if any of the following occur post-deploy:
    - `/v1/health` status and `env`.
    - 5xx error rate for notes/tasks/calendar/capture/backup routes.
 2. Web:
-   - runtime errors on `/notes`, `/tasks`, `/calendar`, `/artifacts`, `/sync-center`.
+   - runtime errors on `/library`, `/tasks`, `/calendar`, `/sync-center`, and legacy `/notes` or `/artifacts` redirects if still served.
 3. Queue and media:
    - voice capture uploads landing in media storage.
    - queued jobs progressing from pending/running to completed.

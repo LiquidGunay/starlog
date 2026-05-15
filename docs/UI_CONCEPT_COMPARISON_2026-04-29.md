@@ -77,7 +77,8 @@ What matches:
 
 - The core panel anatomy exists: title, reason/body, fields, recommended defaults, consequence preview, primary action, and dismiss/defer path.
 - Current coverage includes morning focus, schedule conflict, task detail, capture triage, review grade, clarification, defer, and project picker variants.
-- The renderer hides raw protocol labels from the user and keeps diagnostic language out of normal flow.
+- The renderer harness checks that raw protocol labels stay hidden from normal flow, but older custom
+  renderer paths remain a cleanup risk until the assistant-ui migration lands.
 
 Gaps:
 

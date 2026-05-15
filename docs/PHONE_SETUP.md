@@ -199,12 +199,14 @@ Native Android build details: `docs/ANDROID_DEV_BUILD.md`
 ## 5b) Test PWA offline queue and cache
 
 1. Open the PWA.
-2. While online, open `/notes`, `/tasks`, `/calendar`, or `/artifacts` and load real data.
-3. For notes/tasks, select one item so the editor can be restored from the cached entity record after a reload.
-4. For artifacts, open one item so the linked graph and version history are fetched into the local cache too.
+2. While online, open `/library`, `/tasks`, or `/calendar` and load real data.
+3. In `/library`, select a note or artifact so the detail/editor state can be restored from the
+   cached entity record after a reload.
+4. For artifacts in `/library`, open one item so the linked graph and version history are fetched
+   into the local cache too.
 5. If you refresh `/tasks` under a filtered status, switch back to `All` once before going offline so you can confirm the canonical task cache still contains the broader list.
 6. Disconnect from the network or point the API base at an unreachable host.
-7. Reload the same workspace and confirm the recent notes/tasks/calendar items or artifact detail panel still render from cache.
+7. Reload the same workspace and confirm the recent Library/tasks/calendar items or artifact detail panel still render from cache.
 8. In `/tasks`, switch between `All` and a filtered status while offline to confirm the local cache, not only the last filtered response, drives the list.
 9. Open `/search`, run a query that should match cached note/task text or an artifact summary, and confirm cached results appear even while offline.
 10. Create a clip, submit a review, or create a calendar event while offline to confirm the mutation enters the outbox.
@@ -264,7 +266,7 @@ This works best on Android/Chromium where installed PWAs support the Web Share T
 2. From Chrome (or another app that supports web sharing), choose Share on a page or selected text.
 3. Pick the installed Starlog app from the share sheet.
 4. Starlog opens `/share-target` with the shared title/text/url prefilled.
-5. Tap `Capture to Inbox`, then open `/artifacts` to confirm the new artifact exists.
+5. Tap `Capture to Inbox`, then open `/library` to confirm the new artifact exists.
 
 If your browser does not show Starlog in the share sheet, open `/share-target` directly and paste the
 content manually; iOS browser support for PWA share targets is still limited.

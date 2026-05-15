@@ -151,6 +151,9 @@ Known outcome for `Inference Engineering.pdf`:
   evidence only proves structured assistant protocol rendering/submission in the existing clients. The
   assistant-ui runtime adapter itself still needs implementation evidence before it can be listed as
   working today.
+- **Raw protocol label cleanup:** current UI harnesses check that labels such as `tool_call`,
+  `tool_result`, protocol, runtime, and diagnostics stay out of default user-facing flows, but this
+  remains a cleanup risk across older custom renderer paths until the assistant-ui migration lands.
 
 ## Evidence Map
 
