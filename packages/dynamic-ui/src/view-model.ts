@@ -7,6 +7,7 @@ import type {
 } from "@starlog/contracts";
 import {
   DEFAULT_DYNAMIC_UI_REGISTRY,
+  FALLBACK_RENDERER_DEFINITION,
   resolveDynamicUiRenderer,
   type DynamicUiFallbackRendererDefinition,
   type DynamicUiRegistry,
@@ -26,6 +27,8 @@ export type DynamicUiViewModel = {
   rendererKey: string;
   requestedRendererKey: string | null;
   rendererVersion: number;
+  requestedRendererVersion: number | null;
+  supportedRendererVersion: number | null;
   placement: AssistantDynamicUiPlacement;
   title: string | null;
   body: string | null;
@@ -35,33 +38,106 @@ export type DynamicUiViewModel = {
   uiMeta: Record<string, unknown>;
   renderer: DynamicUiRendererDefinition | DynamicUiFallbackRendererDefinition;
   fallback: boolean;
+  fallbackReason: DynamicUiFallbackReason | null;
+};
+
+export type DynamicUiFallbackReason = "unknown_renderer" | "unsupported_source" | "unsupported_renderer_version";
+
+export type DynamicUiViewModelOptions = {
+  preserveFallbackPlacement?: boolean;
 };
 
 export function createDynamicUiViewModel<Source extends DynamicUiSource>(
   source: Source,
   input: DynamicUiInputBySource[Source],
   registry: DynamicUiRegistry = DEFAULT_DYNAMIC_UI_REGISTRY,
+  options: DynamicUiViewModelOptions = {},
 ): DynamicUiViewModel {
   const requestedRendererKey = rendererKeyForSource(source, input);
   const resolved = resolveDynamicUiRenderer(requestedRendererKey, registry);
-  const rendererVersion = numberOrDefault(input.renderer_version, resolved.definition.version);
+  const requestedRendererVersion = numberOrNull(input.renderer_version);
+  const validation = validateResolvedRenderer(source, requestedRendererVersion, resolved);
+  const rendererVersion = validation.definition.version;
 
   return {
     id: idForSource(source, input),
     source,
-    rendererKey: resolved.definition.key,
+    rendererKey: validation.definition.key,
     requestedRendererKey: resolved.requestedKey,
+    requestedRendererVersion,
+    supportedRendererVersion: validation.supportedRendererVersion,
     rendererVersion,
-    placement: input.placement ?? resolved.definition.defaultPlacement,
+    placement: placementForInput(input, validation.definition, validation.fallback, options),
     title: titleForSource(source, input),
     body: bodyForSource(source, input),
     status: statusForSource(source, input),
     entityRef: input.entity_ref ?? null,
     structuredContent: input.structured_content ?? structuredContentForSource(source, input),
     uiMeta: input.ui_meta ?? input.metadata ?? {},
-    renderer: resolved.definition,
-    fallback: resolved.fallback,
+    renderer: validation.definition,
+    fallback: validation.fallback,
+    fallbackReason: validation.fallbackReason,
   };
+}
+
+type DynamicUiRendererValidation = {
+  definition: DynamicUiRendererDefinition | DynamicUiFallbackRendererDefinition;
+  fallback: boolean;
+  fallbackReason: DynamicUiFallbackReason | null;
+  supportedRendererVersion: number | null;
+};
+
+function validateResolvedRenderer(
+  source: DynamicUiSource,
+  requestedRendererVersion: number | null,
+  resolved: ReturnType<typeof resolveDynamicUiRenderer>,
+): DynamicUiRendererValidation {
+  if (resolved.fallback) {
+    return {
+      definition: resolved.definition,
+      fallback: true,
+      fallbackReason: "unknown_renderer",
+      supportedRendererVersion: null,
+    };
+  }
+
+  if (!resolved.definition.sources.includes(source)) {
+    return {
+      definition: FALLBACK_RENDERER_DEFINITION,
+      fallback: true,
+      fallbackReason: "unsupported_source",
+      supportedRendererVersion: resolved.definition.version,
+    };
+  }
+
+  if (requestedRendererVersion !== null && requestedRendererVersion !== resolved.definition.version) {
+    return {
+      definition: FALLBACK_RENDERER_DEFINITION,
+      fallback: true,
+      fallbackReason: "unsupported_renderer_version",
+      supportedRendererVersion: resolved.definition.version,
+    };
+  }
+
+  return {
+    definition: resolved.definition,
+    fallback: false,
+    fallbackReason: null,
+    supportedRendererVersion: resolved.definition.version,
+  };
+}
+
+function placementForInput<Source extends DynamicUiSource>(
+  input: DynamicUiInputBySource[Source],
+  definition: DynamicUiRendererDefinition | DynamicUiFallbackRendererDefinition,
+  fallback: boolean,
+  options: DynamicUiViewModelOptions,
+): AssistantDynamicUiPlacement {
+  if (fallback && !options.preserveFallbackPlacement) {
+    return definition.defaultPlacement;
+  }
+
+  return input.placement ?? definition.defaultPlacement;
 }
 
 function rendererKeyForSource<Source extends DynamicUiSource>(
@@ -150,6 +226,6 @@ function statusForSource<Source extends DynamicUiSource>(
   return (input as AssistantInterrupt | AssistantToolResult).status;
 }
 
-function numberOrDefault(value: number | null | undefined, defaultValue: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : defaultValue;
+function numberOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
