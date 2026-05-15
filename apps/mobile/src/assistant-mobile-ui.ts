@@ -47,6 +47,9 @@ export function mobileTabForAssistantHref(href: string): MobileTab | null {
   if (normalized === "/planner" || normalized.startsWith("/planner")) {
     return "planner";
   }
+  if (normalized === "/library" || normalized.startsWith("/library?") || normalized.startsWith("/library/")) {
+    return "library";
+  }
   if (normalized === "/notes" || normalized.startsWith("/notes?") || normalized.startsWith("/notes/")) {
     return "library";
   }
@@ -80,12 +83,32 @@ export function toolStatusSummary(toolCall: AssistantToolCall): string {
     return "Queued to run";
   }
   if (toolCall.status === "error") {
-    return "Tool execution failed";
+    return "Action failed";
   }
   if (toolCall.status === "cancelled") {
-    return "Tool execution cancelled";
+    return "Action cancelled";
   }
   return "Completed";
+}
+
+export function assistantToolDisplayLabel(toolName: string, title?: string | null): string {
+  const explicitTitle = typeof title === "string" ? title.trim() : "";
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+  if (/briefing|schedule|calendar|plan/i.test(toolName)) {
+    return "Planner update";
+  }
+  if (/capture|artifact|library|note|memory|summar/i.test(toolName)) {
+    return "Library update";
+  }
+  if (/review|card|recall|grade/i.test(toolName)) {
+    return "Review update";
+  }
+  if (/focus|clarif|defer|interrupt|decision/i.test(toolName)) {
+    return "Thread decision";
+  }
+  return "Assistant action";
 }
 
 export function summarizeOutput(output: Record<string, unknown>): Array<[string, string]> {
@@ -112,5 +135,13 @@ export function summarizeOutput(output: Record<string, unknown>): Array<[string,
 
 export function toolResultBadges(result: AssistantToolResult): string[] {
   const outputCount = Object.keys(result.output || {}).length;
-  return [result.status.replace(/_/g, " "), `${outputCount} field${outputCount === 1 ? "" : "s"}`];
+  const statusLabel =
+    result.status === "complete"
+      ? "Ready"
+      : result.status === "error"
+        ? "Needs attention"
+        : result.status === "cancelled"
+          ? "Cancelled"
+          : "Updated";
+  return [statusLabel, `${outputCount} detail${outputCount === 1 ? "" : "s"}`];
 }

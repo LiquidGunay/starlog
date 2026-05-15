@@ -125,6 +125,25 @@ async function runTests() {
 
     await handleAssistantCardActionOnMobile(
       action({
+        id: "open-library",
+        label: "Open Library",
+        kind: "navigate",
+        payload: { href: "/library?artifact=artifact-123" },
+      }),
+      card({ kind: "knowledge_note" }),
+      harness.options,
+    );
+
+    assert.deepEqual(harness.activated, ["library"]);
+    assert.deepEqual(harness.webPaths, []);
+    assert.deepEqual(harness.statuses, []);
+  }
+
+  {
+    const harness = createHarness();
+
+    await handleAssistantCardActionOnMobile(
+      action({
         id: "ask-briefing",
         label: "Ask Assistant",
         kind: "composer",

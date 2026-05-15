@@ -7,6 +7,7 @@ import {
   mobileAssistantPromptChips,
   mobileCaptureTriagePreview,
   mobileClarificationPreview,
+  mobileDynamicPanelPlacement,
   mobileDynamicPanelStates,
   mobileEntityPickerPreview,
   mobilePanelSecondaryAction,
@@ -98,10 +99,20 @@ const states = mobileDynamicPanelStates([first, second], {
 
 assert.equal(states.length, 2);
 assert.equal(states[0].renderState, "active");
+assert.equal(states[0].placement, "inline");
 assert.equal(states[0].displayModeLabel, "inline");
 assert.deepEqual(states[0].values, { focus: "friction" });
 assert.equal(states[1].renderState, "queued");
+assert.equal(states[1].placement, "inline");
 assert.equal(states[1].displayModeLabel, "inline on mobile");
+const sheet = interrupt({ id: "sheet-panel", display_mode: "bottom_sheet" });
+assert.equal(mobileDynamicPanelPlacement(sheet), "native_sheet");
+assert.equal(mobileDynamicPanelStates([sheet], {})[0].placement, "native_sheet");
+assert.equal(mobileDynamicPanelStates([sheet], {})[0].displayModeLabel, "sheet");
+const contractSheet = interrupt({ id: "contract-sheet-panel", placement: "bottom_sheet", display_mode: "inline" });
+assert.equal(mobileDynamicPanelPlacement(contractSheet), "native_sheet");
+const unknownPlacement = interrupt({ id: "unknown-placement-panel", placement: "floating_overlay", display_mode: "bottom_sheet" });
+assert.equal(mobileDynamicPanelPlacement(unknownPlacement), "inline");
 
 assert.deepEqual(defaultPanelValues(first), { focus: "project" });
 
