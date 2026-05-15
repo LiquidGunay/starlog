@@ -204,6 +204,7 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
 
     from app.core.config import get_settings
     from app.db.storage import get_connection
+    from app.services import srs_service, study_service
 
     get_settings.cache_clear()
     try:
@@ -212,6 +213,11 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
         assert first["deck_name"] == "ML Interviews Part II"
         assert first["inserted_cards"] == 1
         assert first["updated_cards"] == 0
+        assert first["source"]["created"] == 1
+        assert first["topics"]["created"] == 1
+        assert first["source_chunks"]["created"] == 1
+        assert first["card_topic_links"]["created"] == 1
+        assert first["card_topic_links"]["section_links"] == 1
 
         with get_connection() as conn:
             card = conn.execute("SELECT id FROM cards").fetchone()
@@ -235,29 +241,44 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
         assert second["inserted_cards"] == 0
         assert second["updated_cards"] == 0
         assert second["unchanged_cards"] == 1
+        assert second["source_id"] == first["source_id"]
+        assert second["source"]["unchanged"] == 1
+        assert second["topics"]["unchanged"] == 1
+        assert second["source_chunks"]["unchanged"] == 1
+        assert second["card_topic_links"]["created"] == 0
+        assert second["card_topic_links"]["unchanged"] == 1
+        assert second["card_topic_links"]["deleted"] == 0
 
         with get_connection() as conn:
             counts = {
                 table: conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"]
                 for table in (
+                    "study_sources",
+                    "study_topics",
+                    "source_chunks",
                     "artifacts",
                     "card_set_versions",
                     "notes",
                     "cards",
                     "note_blocks",
+                    "card_topic_links",
                 )
             }
             assert counts == {
+                "study_sources": 1,
+                "study_topics": 1,
+                "source_chunks": 1,
                 "artifacts": 1,
                 "card_set_versions": 1,
                 "notes": 1,
                 "cards": 1,
                 "note_blocks": 1,
+                "card_topic_links": 1,
             }
             deck = conn.execute("SELECT name FROM card_decks WHERE id = ?", (first["deck_id"],)).fetchone()
             assert deck["name"] == "ML Interviews Part II"
             card = conn.execute(
-                "SELECT deck_id, tags_json, due_at, interval_days, repetitions, ease_factor FROM cards"
+                "SELECT id, deck_id, tags_json, due_at, interval_days, repetitions, ease_factor FROM cards"
             ).fetchone()
             assert card["deck_id"] == first["deck_id"]
             assert json.loads(card["tags_json"]) == [
@@ -273,5 +294,42 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
             note_block = conn.execute("SELECT content FROM note_blocks").fetchone()
             assert "Source Path: contents/sample.md" in note_block["content"]
             assert '"answer_source": "heuristic"' in note_block["content"]
+            source = conn.execute("SELECT title, source_type, artifact_id, metadata_json FROM study_sources").fetchone()
+            assert source["title"] == "ML Interviews Part II"
+            assert source["source_type"] == "interview_prep"
+            assert source["artifact_id"] == first["artifact_id"]
+            source_metadata = json.loads(source["metadata_json"])
+            assert source_metadata["import_key"] == "ml-interviews-part-ii"
+            assert source_metadata["section_counts"] == {"Sample Section": 1}
+            topic = study_service.resolve_topic_reference(conn, "ML Interviews Part II Sample Section")
+            assert topic["source_id"] == first["source_id"]
+            assert topic["title"] == "Sample Section"
+            chunk = conn.execute(
+                "SELECT topic_id, artifact_id, content, metadata_json FROM source_chunks"
+            ).fetchone()
+            assert chunk["topic_id"] == topic["id"]
+            assert chunk["artifact_id"] == first["artifact_id"]
+            assert "0001: What is X?" in chunk["content"]
+            assert json.loads(chunk["metadata_json"])["question_indexes"] == ["0001"]
+            link = conn.execute(
+                "SELECT topic_id, gate_required FROM card_topic_links WHERE card_id = ?",
+                (card["id"],),
+            ).fetchone()
+            assert link["topic_id"] == topic["id"]
+            assert link["gate_required"] == 1
+
+            conn.execute("UPDATE cards SET due_at = ? WHERE id = ?", ("2026-01-01T00:00:00+00:00", card["id"]))
+            conn.commit()
+            assert card["id"] not in {row["id"] for row in srs_service.due_cards(conn, 50)}
+
+            unlocked = study_service.unlock_topic(conn, topic["id"])
+            assert unlocked["manually_unlocked"] is True
+            assert unlocked["read_at"] is None
+            assert card["id"] not in {row["id"] for row in srs_service.due_cards(conn, 50)}
+
+            read = study_service.mark_topic_read(conn, topic["id"])
+            assert read["status"] == "read"
+            assert read["read_at"] is not None
+            assert card["id"] in {row["id"] for row in srs_service.due_cards(conn, 50)}
     finally:
         get_settings.cache_clear()
