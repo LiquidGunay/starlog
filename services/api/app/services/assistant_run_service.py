@@ -283,9 +283,28 @@ def _create_interrupt(
     secondary_label: str | None,
     metadata: dict[str, Any] | None = None,
     entity_ref: dict[str, Any] | None = None,
+    tool_call_id: str | None = None,
+    renderer_key: str | None = None,
+    renderer_version: int | None = None,
+    placement: str | None = None,
+    structured_content: dict[str, Any] | None = None,
+    ui_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = utc_now().isoformat()
     interrupt_id = new_id("interrupt")
+    interrupt_metadata = dict(metadata or {})
+    if tool_call_id:
+        interrupt_metadata["tool_call_id"] = tool_call_id
+    if renderer_key:
+        interrupt_metadata["renderer_key"] = renderer_key
+    if renderer_version is not None:
+        interrupt_metadata["renderer_version"] = renderer_version
+    if placement:
+        interrupt_metadata["placement"] = placement
+    if structured_content is not None:
+        interrupt_metadata["structured_content"] = structured_content
+    if ui_meta is not None:
+        interrupt_metadata["ui_meta"] = ui_meta
     conn.execute(
         """
         INSERT INTO conversation_interrupts (
@@ -308,7 +327,7 @@ def _create_interrupt(
             json.dumps(fields, sort_keys=True),
             primary_label,
             secondary_label,
-            json.dumps(metadata or {}, sort_keys=True),
+            json.dumps(interrupt_metadata, sort_keys=True),
             json.dumps({}, sort_keys=True),
             now,
             None,
@@ -323,11 +342,17 @@ def _create_interrupt(
         "id": row["id"],
         "thread_id": row["thread_id"],
         "run_id": row["run_id"],
+        "tool_call_id": presentation.get("tool_call_id"),
         "status": row["status"],
         "interrupt_type": row["interrupt_type"],
         "tool_name": row["tool_name"],
         "title": row["title"],
         "body": row.get("body"),
+        "renderer_key": presentation.get("renderer_key"),
+        "renderer_version": presentation.get("renderer_version"),
+        "placement": presentation.get("placement"),
+        "structured_content": presentation.get("structured_content") if isinstance(presentation.get("structured_content"), dict) else None,
+        "ui_meta": presentation.get("ui_meta") if isinstance(presentation.get("ui_meta"), dict) else None,
         "entity_ref": row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else None,
         "fields": row.get("fields_json") if isinstance(row.get("fields_json"), list) else [],
         "primary_label": row["primary_label"],
@@ -647,7 +672,8 @@ def _assistant_message_from_command_response(
                 tool_call_id=tool_call_id,
                 status=tool_status,
                 output=step.result if isinstance(step.result, dict) else {"value": step.result},
-                metadata={"message": step.message or ""},
+                metadata={"message": step.message or "", "tool_name": step.tool_name},
+                **_study_tool_dynamic_ui_payload(step.tool_name, step.result),
             )
         )
     for card in cards:
@@ -716,6 +742,57 @@ def _assistant_message_from_command_response(
     )
     _update_run(conn, run_id=run_id, status="completed" if response.status != "failed" else "failed", summary=response.summary)
     return assistant_message
+
+
+def _study_tool_dynamic_ui_payload(tool_name: str, result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {}
+
+    if tool_name in {"mark_study_topic_read", "unlock_study_topic"}:
+        topic = result.get("topic") if isinstance(result.get("topic"), dict) else {}
+        topic_id = str(topic.get("id") or "").strip()
+        topic_title = str(topic.get("title") or "").strip()
+        action_label = "read" if tool_name == "mark_study_topic_read" else "unlocked"
+        return {
+            "renderer_key": "interview.topic_unlock",
+            "renderer_version": 1,
+            "placement": "thread",
+            "structured_content": {
+                "topic": topic,
+                "topic_id": topic_id,
+                "topic_title": topic_title,
+                "unlock_reason": f"Marked {action_label} by Assistant command.",
+            },
+            "ui_meta": {
+                "tone": "study",
+                "action": tool_name,
+                "status": action_label,
+                "source_id": str(topic.get("source_id") or "").strip(),
+            },
+        }
+
+    if tool_name == "create_study_question_request":
+        request = result.get("request") if isinstance(result.get("request"), dict) else {}
+        response = request.get("response") if isinstance(request.get("response"), dict) else {}
+        return {
+            "renderer_key": "interview.question_request",
+            "renderer_version": 1,
+            "placement": "thread",
+            "structured_content": {
+                "request": request,
+                "source_id": str(request.get("source_id") or "").strip(),
+                "topic_id": str(request.get("topic_id") or "").strip(),
+                "question_type": str(request.get("question_type") or "").strip(),
+                "prompt": str(request.get("prompt") or request.get("question") or "").strip(),
+            },
+            "ui_meta": {
+                "tone": "study",
+                "request_id": str(request.get("id") or "").strip(),
+                "question_preference": str(response.get("question_preference") or "").strip(),
+            },
+        }
+
+    return {}
 
 
 def _assistant_message_from_runtime_turn(
@@ -1524,6 +1601,26 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 parts=[
                     assistant_projection_service.text_part(
                         f"Recorded {rating_label} for {review_mode_label} review: {prompt_text}. Next due: {next_due_label}."
+                    ),
+                    assistant_projection_service.tool_result_part(
+                        tool_call_id=str(metadata.get("tool_call_id") or new_id("toolcall")),
+                        status="complete",
+                        output=reviewed,
+                        metadata={"message": "Review grade recorded", "tool_name": "grade_review_recall"},
+                        renderer_key="interview.review_grade",
+                        renderer_version=1,
+                        placement="thread",
+                        structured_content={
+                            "card_id": card_id,
+                            "grade": str(rating),
+                            "next_due_at": reviewed.get("next_due_at"),
+                        },
+                        ui_meta={
+                            "tone": "review",
+                            "rating_label": rating_label,
+                            "review_mode": review_mode,
+                            "card_type": card_type,
+                        },
                     ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],

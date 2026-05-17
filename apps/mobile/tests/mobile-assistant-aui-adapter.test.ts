@@ -1,109 +1,71 @@
-import type { AssistantThreadMessage } from "@starlog/contracts";
+import type { AssistantThreadMessage, AssistantThreadSnapshot } from "@starlog/contracts";
 import {
   assistantUiThreadFingerprint,
-  starlogSnapshotToAssistantUiThread,
+  mobileDynamicUiBadge,
   starlogMessagesToAssistantUiMessages,
+  starlogRichPartsForMessage,
+  starlogSnapshotToAssistantUiThread,
 } from "../src/mobile-assistant-aui-adapter";
 
 declare const require: (moduleName: string) => {
   equal: (...args: unknown[]) => void;
   deepEqual: (...args: unknown[]) => void;
+  ok: (...args: unknown[]) => void;
+  notEqual: (...args: unknown[]) => void;
 };
 
 const assert = require("node:assert/strict");
 
-const messages: AssistantThreadMessage[] = [
-  {
-    id: "message-1",
-    thread_id: "primary",
-    role: "assistant",
-    status: "running",
-    created_at: "2026-05-01T10:00:00Z",
-    parts: [
-      { type: "text", id: "text-1", text: "I found two Library captures to process." },
-      {
-        type: "tool_call",
-        id: "part-tool-1",
-        tool_call: {
-          id: "tool-1",
-          tool_name: "summarize_artifact",
-          tool_kind: "domain_tool",
-          title: null,
-          status: "running",
-          arguments: {},
-          metadata: {},
-        },
-      },
-    ],
-    metadata: {},
-  },
-  {
-    id: "message-2",
-    thread_id: "primary",
-    role: "tool",
-    status: "complete",
-    created_at: "2026-05-01T10:01:00Z",
-    parts: [
-      {
-        type: "tool_result",
-        id: "part-result-1",
-        tool_result: {
-          id: "result-1",
-          tool_call_id: "tool-1",
-          status: "complete",
-          output: { artifact_id: "artifact-1" },
-          card: null,
-          entity_ref: null,
-          metadata: {},
-        },
-      },
-    ],
-    metadata: {},
-  },
-  {
-    id: "message-3",
-    thread_id: "primary",
+const createdAt = "2026-05-16T12:00:00.000Z";
+
+function reviewGradeMessage(): AssistantThreadMessage {
+  return {
+    id: "msg_review_interrupt",
+    thread_id: "thread_primary",
+    run_id: "run_review",
     role: "assistant",
     status: "requires_action",
-    created_at: "2026-05-01T10:02:00Z",
+    created_at: createdAt,
+    updated_at: createdAt,
+    metadata: {},
     parts: [
-      { type: "text", id: "text-2", text: "I can turn this into an application review card." },
       {
-        type: "card",
-        id: "part-card-1",
-        card: {
-          kind: "learning_drill",
-          version: 1,
-          title: "Sliding window interview prompt",
-          body: "Explain when to shrink the current window.",
-          renderer_key: "interview.question_request",
-          renderer_version: 1,
-          placement: "thread",
-          structured_content: { topic: "Sliding Window" },
-          ui_meta: {},
-          entity_ref: null,
-          actions: [],
-          metadata: {},
-        },
+        type: "text",
+        id: "part_text",
+        text: "You revealed the answer in Review. Grade the recall and I will update the card schedule.",
       },
       {
         type: "interrupt_request",
-        id: "part-interrupt-1",
+        id: "part_interrupt",
         interrupt: {
-          id: "interrupt-1",
-          thread_id: "primary",
-          run_id: "run-1",
-          tool_call_id: "tool-2",
+          id: "interrupt_review_grade_1",
+          thread_id: "thread_primary",
+          run_id: "run_review",
+          tool_call_id: "toolcall_review_grade_1",
           status: "pending",
-          interrupt_type: "form",
+          interrupt_type: "choice",
           tool_name: "grade_review_recall",
-          title: "Grade this recall",
-          body: "Choose the grade that matches your answer.",
+          title: "Grade Recall",
+          body: "How well did you remember this card?",
+          renderer_key: "interview.review_grade",
+          renderer_version: 1,
+          placement: "inline",
+          structured_content: {
+            card_id: "card_ml_vectors",
+            grade: null,
+            next_due_at: null,
+          },
+          ui_meta: {
+            tone: "review",
+            review_mode: "recall",
+            card_type: "interview",
+          },
           fields: [
             {
-              id: "rating",
+              id: "grade",
               kind: "select",
-              label: "Rating",
+              label: "Recall quality",
+              required: true,
               options: [
                 { label: "Again", value: "again" },
                 { label: "Good", value: "good" },
@@ -111,93 +73,161 @@ const messages: AssistantThreadMessage[] = [
             },
           ],
           primary_label: "Save grade",
-          secondary_label: "Skip",
+          secondary_label: "Keep in Review",
           display_mode: "inline",
-          renderer_key: "interview.review_grade",
-          renderer_version: 1,
-          placement: "inline",
-          structured_content: { card_id: "card-1" },
-          ui_meta: {},
-          metadata: {},
-          created_at: "2026-05-01T10:02:00Z",
+          metadata: {
+            card_id: "card_ml_vectors",
+            review_mode: "recall",
+          },
+          created_at: createdAt,
         },
       },
     ],
-    metadata: {},
-  },
-];
-
-const converted = starlogMessagesToAssistantUiMessages(messages);
-const pendingInterruptPart = messages[2].parts.find((part) => part.type === "interrupt_request");
-if (!pendingInterruptPart || pendingInterruptPart.type !== "interrupt_request") {
-  throw new Error("expected test snapshot to include an interrupt request");
+  };
 }
 
-assert.equal(converted.length, 2);
-assert.equal(converted[0].role, "assistant");
-assert.equal(converted[0].content, "I found two Library captures to process.");
-assert.equal(converted[1].role, "assistant");
-assert.equal(converted[1].content, "I can turn this into an application review card.");
-assert.deepEqual(
+function snapshot(messages: AssistantThreadMessage[]): AssistantThreadSnapshot {
+  return {
+    id: "thread_primary",
+    slug: "primary",
+    title: "Primary Assistant",
+    mode: "default",
+    created_at: createdAt,
+    updated_at: createdAt,
+    last_message_at: createdAt,
+    last_preview_text: "Review grade",
+    messages,
+    runs: [],
+    interrupts: [],
+    context_cards: [],
+    next_cursor: null,
+  };
+}
+
+function runTests() {
   {
-    starlogMessageId: converted[0].metadata.custom.starlogMessageId,
-    starlogThreadId: converted[0].metadata.custom.starlogThreadId,
-    richPartCount: converted[0].metadata.custom.richPartCount,
-  },
-  { starlogMessageId: "message-1", starlogThreadId: "primary", richPartCount: 1 },
-);
-assert.equal(converted[1].metadata.custom.richPartCount, 2);
-assert.deepEqual(
-  converted[1].metadata.custom.richParts.map((part) => ({
-    type: part.type,
-    label: part.label,
-    rendererKey: part.rendererKey,
-  })),
-  [
-    {
-      type: "card",
-      label: "Sliding window interview prompt",
-      rendererKey: "interview.question_request",
-    },
-    {
-      type: "interrupt_request",
-      label: "Grade this recall",
-      rendererKey: "interview.review_grade",
-    },
-  ],
-);
-assert.equal(converted[1].content.includes("interview.question_request"), false);
-assert.equal(converted[1].content.includes("interview.review_grade"), false);
-assert.equal(converted[1].content.includes("interrupt_request"), false);
-assert.equal(converted[1].content.includes("grade_review_recall"), false);
+    assert.equal(mobileDynamicUiBadge({ rendererKey: "interview.review_grade", placement: "inline" }), "Review grade · Inline panel");
+    assert.equal(mobileDynamicUiBadge({ rendererKey: "grade_review_recall", placement: "inline" }), "Grade review recall · Inline panel");
+    assert.equal(mobileDynamicUiBadge({ rendererKey: "interview.review_grade" }), "Review grade · Inline panel");
+    assert.equal(mobileDynamicUiBadge({ rendererKey: "unknown.renderer", placement: "inline" }), null);
+    assert.equal(mobileDynamicUiBadge({ rendererKey: null }), null);
+  }
 
-const snapshotThread = starlogSnapshotToAssistantUiThread({
-  id: "primary",
-  slug: "primary",
-  title: "Primary assistant thread",
-  mode: "assistant",
-  created_at: "2026-05-01T09:00:00Z",
-  updated_at: "2026-05-01T10:02:00Z",
-  messages,
-  runs: [],
-  interrupts: [pendingInterruptPart.interrupt],
-});
+  {
+    const message: AssistantThreadMessage = {
+      id: "msg_unknown_renderer",
+      thread_id: "thread_primary",
+      run_id: "run_review",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "card",
+          id: "part_unknown_card",
+          card: {
+            kind: "assistant_summary",
+            version: 1,
+            title: null,
+            body: "Summary for fallback card.",
+            renderer_key: "legacy.review_grade",
+            renderer_version: 3,
+            placement: "thread",
+            structured_content: { mode: "legacy", reason: "compat" },
+            ui_meta: { source: "legacy" },
+            metadata: {},
+            entity_ref: null,
+            actions: [],
+          },
+        },
+      ],
+    };
+    const richParts = starlogRichPartsForMessage(message);
+    assert.equal(richParts.length, 1);
+    const [part] = richParts;
+    assert.equal(part.type, "card");
+    assert.equal(part.label, "Assistant Summary");
+    assert.equal(part.rendererLabel, undefined);
+    assert.equal(part.requestedRendererKey, "legacy.review_grade");
+    assert.equal(part.resolvedRendererKey, null);
+    assert.equal(part.rendererVersion, 3);
+    assert.equal(part.placement, "thread");
+    assert.equal(part.placementLabel, "Thread panel");
+    assert.equal(part.fallback, true);
+    assert.equal(part.fallbackReason, "No registered mobile renderer; using generic card rendering.");
+    assert.deepEqual(part.structuredContent, { mode: "legacy", reason: "compat" });
+    assert.deepEqual(part.uiMeta, { source: "legacy" });
+  }
 
-assert.equal(snapshotThread.threadId, "primary");
-assert.equal(snapshotThread.messages.length, 2);
-assert.equal(snapshotThread.messages[0].metadata.custom.richParts[0].label, "Library update");
-assert.deepEqual(snapshotThread.pendingInterruptIds, ["interrupt-1"]);
-assert.equal(snapshotThread.richPartsByMessageId["message-3"].length, 2);
+  {
+    const message = reviewGradeMessage();
+    const richParts = starlogRichPartsForMessage(message);
+    assert.equal(richParts.length, 1);
+    const [part] = richParts;
+    assert.equal(part.type, "interrupt_request");
+    assert.equal(part.label, "Grade Recall");
+    assert.equal(part.rendererLabel, "Review grade");
+    assert.equal(part.requestedRendererKey, "interview.review_grade");
+    assert.equal(part.resolvedRendererKey, "interview.review_grade");
+    assert.equal(part.rendererVersion, 1);
+    assert.equal(part.placement, "inline");
+    assert.equal(part.placementLabel, "Inline panel");
+    assert.equal(part.fallback, false);
+    assert.deepEqual(part.structuredContent, {
+      card_id: "card_ml_vectors",
+      grade: null,
+      next_due_at: null,
+    });
+    assert.deepEqual(part.uiMeta, {
+      tone: "review",
+      review_mode: "recall",
+      card_type: "interview",
+    });
+    assert.ok(!String(part.rendererLabel).includes("interview.review_grade"));
+    assert.ok(!String(part.rendererLabel).includes("grade_review_recall"));
+  }
 
-const originalFingerprint = assistantUiThreadFingerprint(converted);
-const sameLengthEditedContent = "I found two Library captures to process!";
-assert.equal(sameLengthEditedContent.length, String(converted[0].content).length);
-const sameLengthEditFingerprint = assistantUiThreadFingerprint([
-  { ...converted[0], content: sameLengthEditedContent },
-  converted[1],
-]);
-assert.equal(originalFingerprint.startsWith("message-1:"), true);
-assert.equal(originalFingerprint.includes("|message-3:"), true);
-assert.equal(sameLengthEditFingerprint === originalFingerprint, false);
+  {
+    const [converted] = starlogMessagesToAssistantUiMessages([reviewGradeMessage()]);
+    assert.ok(converted);
+    assert.equal(converted.role, "assistant");
+    assert.equal(converted.content.includes("Grade the recall"), true);
+    assert.equal(converted.metadata.custom.starlogStatus, "requires_action");
+    assert.equal(converted.metadata.custom.richPartCount, 1);
+    assert.equal(converted.metadata.custom.richParts[0]?.rendererLabel, "Review grade");
+  }
 
-console.log("mobile assistant-ui adapter tests passed");
+  {
+    const thread = starlogSnapshotToAssistantUiThread(snapshot([reviewGradeMessage()]));
+    assert.equal(thread.id, "thread_primary");
+    assert.equal(thread.messages.length, 1);
+    assert.equal(thread.metadata.custom.starlogSlug, "primary");
+    assert.equal(typeof assistantUiThreadFingerprint(thread.messages), "string");
+    assert.equal(thread.messages[0]?.content, "You revealed the answer in Review. Grade the recall and I will update the card schedule.");
+  }
+
+  {
+    const baseline = reviewGradeMessage();
+    const sameLengthEdit = reviewGradeMessage();
+    const baselineText = (baseline.parts[0] as { text: string }).text;
+    (sameLengthEdit.parts[0] as { text: string }).text = `${baselineText.slice(0, -1)}?`;
+    const [baselineUiMessage] = starlogMessagesToAssistantUiMessages([baseline]);
+    const [sameLengthEditUiMessage] = starlogMessagesToAssistantUiMessages([sameLengthEdit]);
+    if (!baselineUiMessage || !sameLengthEditUiMessage) {
+      throw new Error("Expected assistant UI messages to convert.");
+    }
+
+    const baselineFingerprint = assistantUiThreadFingerprint([baselineUiMessage]);
+    const editedFingerprint = assistantUiThreadFingerprint([sameLengthEditUiMessage]);
+
+    assert.notEqual(baselineFingerprint, editedFingerprint);
+    assert.equal(
+      baselineText.length,
+      (sameLengthEdit.parts[0] as { text: string }).text.length,
+    );
+  }
+}
+
+runTests();

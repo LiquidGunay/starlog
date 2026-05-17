@@ -11,6 +11,7 @@ import {
   mobileDynamicPanelStates,
   mobileEntityPickerPreview,
   mobilePanelSecondaryAction,
+  shouldHostPanelInNativeSheet,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   mobileReviewGradePreview,
@@ -114,6 +115,13 @@ const contractSheet = interrupt({ id: "contract-sheet-panel", placement: "bottom
 assert.equal(mobileDynamicPanelPlacement(contractSheet), "native_sheet");
 const unknownPlacement = interrupt({ id: "unknown-placement-panel", placement: "floating_overlay", display_mode: "bottom_sheet" });
 assert.equal(mobileDynamicPanelPlacement(unknownPlacement), "inline");
+const resolvedSheet = mobileDynamicPanelStates([interrupt({ id: "resolved-sheet", status: "submitted", placement: "bottom_sheet" })], {})[0];
+assert.equal(mobileDynamicPanelPlacement(resolvedSheet.interrupt), "inline");
+assert.equal(shouldHostPanelInNativeSheet({ ...resolvedSheet, interrupt: { ...resolvedSheet.interrupt, status: "submitted" } }), false);
+const activeSheet = mobileDynamicPanelStates([sheet], {})[0];
+assert.equal(shouldHostPanelInNativeSheet(activeSheet), true);
+const queuedSheet = mobileDynamicPanelStates([sheet, interrupt({ id: "queued-sheet", placement: "bottom_sheet" })], {})[1];
+assert.equal(shouldHostPanelInNativeSheet(queuedSheet), false);
 assert.deepEqual(
   nextMobileSheetLifecycleState("sheet-panel", { openSheetInterruptId: null, dismissedSheetInterruptId: null }),
   { openSheetInterruptId: "sheet-panel", dismissedSheetInterruptId: null },

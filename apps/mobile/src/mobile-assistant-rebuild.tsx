@@ -40,6 +40,7 @@ import {
   mobileEntityPickerPreview,
   mobilePanelSecondaryAction,
   mobilePlannerConflictPreview,
+  shouldHostPanelInNativeSheet,
   mobilePanelOptionViewModels,
   mobileReviewGradePreview,
   mobileTaskDetailPreview,
@@ -66,6 +67,7 @@ import {
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
+import { mobileDynamicUiBadge } from "./mobile-assistant-aui-adapter";
 import { MobileAssistantUiThread } from "./mobile-assistant-aui-thread";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
@@ -1261,6 +1263,10 @@ function DynamicPanelRenderer({
   const dimensions = useWindowDimensions();
   const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
   const secondaryAction = mobilePanelSecondaryAction(interrupt);
+  const dynamicUiBadge = mobileDynamicUiBadge({
+    rendererKey: interrupt.renderer_key ?? interrupt.tool_name ?? null,
+    placement: interrupt.placement ?? interrupt.display_mode ?? null,
+  });
 
   return (
     <View
@@ -1291,6 +1297,27 @@ function DynamicPanelRenderer({
               {panelKicker(interrupt)}
             </Text>
           </View>
+          {dynamicUiBadge ? (
+            <View
+              style={{
+                flexShrink: 1,
+                borderRadius: 999,
+                paddingHorizontal: 9,
+                paddingVertical: 4,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
+                backgroundColor: "rgba(255,255,255,0.025)",
+              }}
+            >
+              <Text
+                {...ASSISTANT_TIGHT_TEXT_PROPS}
+                style={{ color: palette.muted, fontSize: 10, lineHeight: 13, fontWeight: "800" }}
+                numberOfLines={1}
+              >
+                {dynamicUiBadge}
+              </Text>
+            </View>
+          ) : null}
         </View>
         <Text style={{ color: palette.text, fontSize: 17, lineHeight: 23, fontWeight: "800" }}>{interrupt.title}</Text>
         {interrupt.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interrupt.body}</Text> : null}
@@ -1309,7 +1336,6 @@ function DynamicPanelRenderer({
       />
       <ClarificationMiniPreview interrupt={interrupt} palette={palette} />
       <EntityPickerMiniPreview interrupt={interrupt} values={values} palette={palette} accent={accent} />
-
       {pending ? (
         <>
           {selectedLabel ? (
@@ -1559,7 +1585,7 @@ export function MobileAssistantRebuild({
   const showFallbackFocusChooser = todayViewModel.isFallbackMorningFocus;
   const selectedFallbackFocusOption =
     MORNING_FOCUS_OPTIONS.find((option) => option.key === selectedFallbackFocus) || MORNING_FOCUS_OPTIONS[0];
-  const activeSheetPanelState = panelStates.find((state) => state.renderState === "active" && state.placement === "native_sheet") || null;
+  const activeSheetPanelState = panelStates.find(shouldHostPanelInNativeSheet) || null;
   const activeSheetInterruptId = activeSheetPanelState?.interrupt.id ?? null;
   const visibleSheetPanelState =
     activeSheetPanelState && openSheetInterruptId === activeSheetPanelState.interrupt.id ? activeSheetPanelState : null;
@@ -1967,439 +1993,490 @@ export function MobileAssistantRebuild({
             </View>
           )
         ) : (
-          visibleThreadMessages.map((message, index) => {
-            const previousRole = visibleThreadMessages[index - 1]?.role;
-            const isUser = message.role === "user";
-            const cards = cardParts(message).map((part) => part.card);
-            const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
-            const diagnosticCards = cards.filter(isDiagnosticConversationCard);
-            const ambientUpdates = ambientParts(message).map((part) => part.update);
-            const attachments = attachmentParts(message).map((part) => part.attachment);
-            const toolCalls = toolCallParts(message).map((part) => part.tool_call);
-            const toolResults = toolResultParts(message).map((part) => part.tool_result);
-            const interruptRequests = interruptRequestParts(message).map((part) => liveInterruptById[part.interrupt.id] || part.interrupt);
-            const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
-            const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
-            const activeAttachment = primaryCards[activeAttachmentIndex] ?? null;
-            const showMarker =
-              (message.role === "assistant" || message.role === "tool" || message.role === "system") && previousRole !== message.role;
-            const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
+          <>
+            {(() => {
+              const renderedThreadBlocks: React.ReactNode[] = [];
+              let pendingAssistantUiMessages: AssistantThreadMessage[] = [];
 
-            return (
-              <View
-                key={message.id}
-                style={{
-                  gap: 8,
-                  alignItems: isUser ? "flex-end" : "stretch",
-                  ...(message.role === "assistant"
-                    ? {
-                        borderRadius: 22,
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.08)",
-                        backgroundColor: "rgba(11, 22, 36, 0.74)",
-                        paddingHorizontal: 12,
-                        paddingVertical: 12,
-                      }
-                    : null),
-                }}
-              >
-                {showMarker ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 2 }}>
-                    <View
-                      style={{
-                        width: message.role === "assistant" ? 34 : 8,
-                        height: message.role === "assistant" ? 34 : 8,
-                        borderRadius: 999,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: message.role === "assistant" ? "rgba(243, 178, 66, 0.11)" : palette.accent,
-                        borderWidth: message.role === "assistant" ? 1 : 0,
-                        borderColor: "rgba(243, 178, 66, 0.28)",
-                      }}
-                    >
-                      {message.role === "assistant" ? (
-                        <MaterialCommunityIcons name={"star-four-points" as never} size={18} color={palette.accent} />
-                      ) : null}
-                    </View>
-                    <Text style={{ color: message.role === "assistant" ? palette.accent : palette.muted, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
-                      {message.role === "assistant" ? "Starlog Assistant" : "System"} {timestampLabel(message.created_at) ? `  ${timestampLabel(message.created_at)}` : ""}
-                    </Text>
-                  </View>
-                ) : null}
+              visibleThreadMessages.forEach((message, index) => {
+                const cards = cardParts(message).map((part) => part.card);
+                const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
+                const diagnosticCards = cards.filter(isDiagnosticConversationCard);
+                const ambientUpdates = ambientParts(message).map((part) => part.update);
+                const attachments = attachmentParts(message).map((part) => part.attachment);
+                const toolCalls = toolCallParts(message).map((part) => part.tool_call);
+                const toolResults = toolResultParts(message).map((part) => part.tool_result);
+                const interruptRequests = interruptRequestParts(message).map(
+                  (part) => liveInterruptById[part.interrupt.id] || part.interrupt,
+                );
+                const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
+                const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
+                const activeAttachment = primaryCards[activeAttachmentIndex] ?? null;
+                const previousRole = visibleThreadMessages[index - 1]?.role;
+                const isUser = message.role === "user";
+                const showMarker =
+                  (message.role === "assistant" || message.role === "tool" || message.role === "system") && previousRole !== message.role;
+                const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
+                const hasRichMessageContent =
+                  primaryCards.length > 0 ||
+                  diagnosticCards.length > 0 ||
+                  ambientUpdates.length > 0 ||
+                  attachments.length > 0 ||
+                  toolCalls.length > 0 ||
+                  toolResults.length > 0 ||
+                  interruptRequests.length > 0 ||
+                  resolutions.length > 0;
 
-                <MobileAssistantUiThread messages={[message]} palette={palette} />
+                if (!hasRichMessageContent) {
+                  pendingAssistantUiMessages.push(message);
+                  return;
+                }
 
-                {ambientUpdates.length > 0 ? (
-                  <View style={{ gap: 8, paddingLeft: 10 }}>
-                    {ambientUpdates.map((update: AssistantAmbientUpdate) => (
-                      <View
-                        key={update.id}
-                        style={{
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.05)",
-                          backgroundColor: "rgba(255,255,255,0.018)",
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          gap: 4,
-                        }}
-                      >
-                        <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-                          {update.label}
-                        </Text>
-                        {update.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{update.body}</Text> : null}
-                        <EntityActionChip entityRef={update.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
-                        {update.actions && update.actions.length > 0 ? (
-                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-                            {update.actions.map((action) => (
-                              <TouchableOpacity
-                                key={`${update.id}-${action.id}`}
-                                style={{
-                                  borderRadius: 999,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 6,
-                                  backgroundColor: action.style === "primary" ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.03)",
-                                  borderWidth: 1,
-                                  borderColor: action.style === "primary" ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
-                                }}
-                                onPress={() =>
-                                  onCardAction(action, {
-                                    kind: "assistant_summary",
-                                    version: 1,
-                                    title: update.label,
-                                    body: update.body || null,
-                                    entity_ref: update.entity_ref || null,
-                                    actions: update.actions || [],
-                                    metadata: update.metadata || {},
-                                  })
-                                }
-                              >
-                                <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                  {action.label}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </ScrollView>
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                if (pendingAssistantUiMessages.length > 0) {
+                  const firstId = pendingAssistantUiMessages[0].id;
+                  const lastId = pendingAssistantUiMessages[pendingAssistantUiMessages.length - 1].id;
+                  renderedThreadBlocks.push(
+                    <MobileAssistantUiThread
+                      key={`aui-chunk-${firstId}-${lastId}`}
+                      messages={pendingAssistantUiMessages}
+                      palette={palette}
+                    />,
+                  );
+                  pendingAssistantUiMessages = [];
+                }
 
-                {primaryCards.length > 0 ? (
-                  <View style={{ gap: 8, paddingLeft: 10 }}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-                      {primaryCards.map((card, cardIndex) => {
-                        const active = activeAttachmentIndex === cardIndex;
-                        const tone = cardTone(card.kind, palette);
-                        return (
-                          <TouchableOpacity
-                            key={`${message.id}-${card.kind}-${cardIndex}`}
-                            style={{
-                              borderRadius: 999,
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
-                              borderWidth: 1,
-                              borderColor: active ? tone.border : "rgba(255,255,255,0.05)",
-                              backgroundColor: active ? tone.accentBg : "rgba(255,255,255,0.018)",
-                            }}
-                            onPress={() => setActiveAttachmentByMessage((previous) => ({ ...previous, [message.id]: cardIndex }))}
-                          >
-                            <Text style={{ color: active ? tone.accent : palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-                              {mobileConversationCardLabel(card.kind, card.title)}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
+                renderedThreadBlocks.push(<MobileAssistantUiThread key={`aui-${message.id}`} messages={[message]} palette={palette} />);
 
-                    {activeAttachment ? (() => {
-                      const tone = cardTone(activeAttachment.kind, palette);
-                      const cardKey = `${message.id}-${activeAttachmentIndex}-${activeAttachment.kind}`;
-                      const reviewAnswer = typeof activeAttachment.metadata?.answer === "string" ? activeAttachment.metadata.answer.trim() : "";
-                      const revealActive = !!revealedReviewCards[cardKey];
-                      const reusableText = activeAttachment.body?.trim() || activeAttachment.title?.trim() || "";
-                      const meta = compactMeta(formatCardMeta(activeAttachment));
-                      return (
+                renderedThreadBlocks.push(
+                  <View
+                    key={message.id}
+                    style={{
+                      gap: 8,
+                      alignItems: isUser ? "flex-end" : "stretch",
+                      ...(message.role === "assistant"
+                        ? {
+                            borderRadius: 22,
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.08)",
+                            backgroundColor: "rgba(11, 22, 36, 0.74)",
+                            paddingHorizontal: 12,
+                            paddingVertical: 12,
+                          }
+                        : null),
+                    }}
+                  >
+                    {showMarker ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 2 }}>
                         <View
                           style={{
-                            borderRadius: 14,
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.035)",
-                            backgroundColor: "rgba(255,255,255,0.012)",
-                            paddingHorizontal: 11,
-                            paddingVertical: 9,
-                            gap: 7,
+                            width: message.role === "assistant" ? 34 : 8,
+                            height: message.role === "assistant" ? 34 : 8,
+                            borderRadius: 999,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: message.role === "assistant" ? "rgba(243, 178, 66, 0.11)" : palette.accent,
+                            borderWidth: message.role === "assistant" ? 1 : 0,
+                            borderColor: "rgba(243, 178, 66, 0.28)",
                           }}
                         >
-                          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                            <View style={{ flex: 1, gap: 3 }}>
-                              <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                {mobileConversationCardLabel(activeAttachment.kind, activeAttachment.title)}
-                              </Text>
-                              <Text style={{ color: palette.text, fontSize: 14, lineHeight: 19, fontWeight: "800" }}>
-                                {activeAttachment.title || mobileConversationCardLabel(activeAttachment.kind, activeAttachment.title)}
-                              </Text>
-                              {meta ? (
-                                <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
-                                  {meta}
-                                </Text>
-                              ) : null}
-                            </View>
-                            <MaterialCommunityIcons
-                              name={(activeAttachment.actions.some((action) => action.kind === "navigate") ? "arrow-top-right" : "sparkles") as never}
-                              size={16}
-                              color={tone.accent}
-                            />
-                          </View>
-
-                          <EntityActionChip entityRef={activeAttachment.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
-
-                          <View
-                            style={{
-                              borderLeftWidth: 2,
-                              borderLeftColor: tone.border,
-                              paddingLeft: 10,
-                            }}
-                          >
-                            {attachmentPreview(activeAttachment, palette, revealActive)}
-                          </View>
-
-                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-                            {activeAttachment.kind === "review_queue" && reviewAnswer ? (
-                              <TouchableOpacity
-                                style={{
-                                  borderRadius: 999,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 6,
-                                  backgroundColor: tone.accentBg,
-                                  borderWidth: 1,
-                                  borderColor: tone.border,
-                                }}
-                                onPress={() => setRevealedReviewCards((previous) => ({ ...previous, [cardKey]: !previous[cardKey] }))}
-                              >
-                                <Text style={{ color: tone.accent, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                  {revealActive ? "Hide answer" : "Reveal"}
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
-
-                            {activeAttachment.actions.map((action) => (
-                              <TouchableOpacity
-                                key={`${cardKey}-${action.id}`}
-                                style={{
-                                  borderRadius: 999,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 6,
-                                  backgroundColor: action.style === "primary" ? tone.accentBg : "rgba(255,255,255,0.03)",
-                                  borderWidth: 1,
-                                  borderColor: action.style === "primary" ? tone.border : "rgba(255,255,255,0.05)",
-                                }}
-                                onPress={() => onCardAction(action, activeAttachment)}
-                              >
-                                <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                  {action.label}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-
-                            {activeAttachment.actions.length === 0 && reusableText ? (
-                              <TouchableOpacity
-                                style={{
-                                  borderRadius: 999,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 6,
-                                  backgroundColor: "rgba(255,255,255,0.03)",
-                                  borderWidth: 1,
-                                  borderColor: "rgba(255,255,255,0.05)",
-                                }}
-                                onPress={() => reuseCardText(reusableText)}
-                              >
-                                <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                                  Use in chat
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
-                          </ScrollView>
+                          {message.role === "assistant" ? (
+                            <MaterialCommunityIcons name={"star-four-points" as never} size={18} color={palette.accent} />
+                          ) : null}
                         </View>
-                      );
-                    })() : null}
-                  </View>
-                ) : null}
+                        <Text style={{ color: message.role === "assistant" ? palette.accent : palette.muted, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
+                          {message.role === "assistant" ? "Starlog Assistant" : "System"}{" "}
+                          {timestampLabel(message.created_at) ? `  ${timestampLabel(message.created_at)}` : ""}
+                        </Text>
+                      </View>
+                    ) : null}
 
-                {attachments.length > 0 ? (
-                  <View style={{ gap: 8, paddingLeft: 10 }}>
-                    {attachments.map((attachment) => (
-                      <AttachmentRow
-                        key={attachment.id}
-                        attachment={attachment}
-                        palette={palette}
-                        onOpenAttachment={onOpenAttachment}
-                      />
-                    ))}
-                  </View>
-                ) : null}
-
-                {toolCalls.length > 0 ? (
-                  <View style={{ gap: 8, paddingLeft: 10 }}>
-                    {toolCalls.map((toolCall) => (
-                      <ToolCallRow key={toolCall.id} toolCall={toolCall} palette={palette} />
-                    ))}
-                  </View>
-                ) : null}
-
-                {toolResults.length > 0 ? (
-                  <View style={{ gap: 8, paddingLeft: 10 }}>
-                    {toolResults.map((toolResult) => (
-                      <ToolResultRow
-                        key={toolResult.id}
-                        toolResult={toolResult}
-                        palette={palette}
-                        formatCardMeta={formatCardMeta}
-                        onCardAction={onCardAction}
-                        onOpenEntityRef={onOpenEntityRef}
-                      />
-                    ))}
-                  </View>
-                ) : null}
-
-                {interruptRequests.length > 0 ? (
-                  <View style={{ gap: 10, paddingLeft: 10 }}>
-                    {interruptRequests.map((interrupt) => {
-                      const panelState = panelStates.find((state) => state.interrupt.id === interrupt.id);
-                      const values = panelState?.values || defaultPanelValues(interrupt);
-                      if (panelState?.renderState === "queued") {
-                        return (
+                    {ambientUpdates.length > 0 ? (
+                      <View style={{ gap: 8, paddingLeft: 10 }}>
+                        {ambientUpdates.map((update: AssistantAmbientUpdate) => (
                           <View
-                            key={interrupt.id}
+                            key={update.id}
                             style={{
                               borderRadius: 14,
-                              paddingHorizontal: 11,
-                              paddingVertical: 9,
                               borderWidth: 1,
                               borderColor: "rgba(255,255,255,0.05)",
-                              backgroundColor: "rgba(255,255,255,0.014)",
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 8,
-                            }}
-                          >
-                            <MaterialCommunityIcons name={"clock-outline" as never} size={14} color={palette.muted} />
-                            <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                              {panelKicker(interrupt)} is waiting behind the active decision.
-                            </Text>
-                          </View>
-                        );
-                      }
-                      if (panelState?.placement === "native_sheet") {
-                        return (
-                          <TouchableOpacity
-                            key={interrupt.id}
-                            style={{
-                              borderRadius: 14,
-                              paddingHorizontal: 11,
+                              backgroundColor: "rgba(255,255,255,0.018)",
+                              paddingHorizontal: 12,
                               paddingVertical: 10,
-                              borderWidth: 1,
-                              borderColor: "rgba(255,255,255,0.05)",
-                              backgroundColor: "rgba(255,255,255,0.014)",
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 8,
-                            }}
-                            onPress={() => reopenSheetForInterrupt(interrupt.id)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Open ${panelKicker(interrupt)} sheet`}
-                          >
-                            <MaterialCommunityIcons name={"dock-bottom" as never} size={15} color={palette.accent} />
-                            <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                              {panelKicker(interrupt)} is open in a sheet.
-                            </Text>
-                            <MaterialCommunityIcons name={"chevron-up" as never} size={17} color={palette.muted} />
-                          </TouchableOpacity>
-                        );
-                      }
-                      return renderDynamicPanel(interrupt, values);
-                    })}
-                  </View>
-                ) : null}
-
-                {(diagnosticCards.length > 0 || resolutions.length > 0) ? (
-                  <View style={{ paddingLeft: 10, gap: 6 }}>
-                    <TouchableOpacity
-                      style={{
-                        alignSelf: "flex-start",
-                        borderRadius: 999,
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        backgroundColor: "rgba(255,255,255,0.014)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.04)",
-                      }}
-                      onPress={() => setExpandedDiagnostics((previous) => ({ ...previous, [message.id]: !previous[message.id] }))}
-                    >
-                      <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                        {showDiagnostics ? "Details open" : `Details ${diagnosticCards.length + resolutions.length}`}
-                      </Text>
-                    </TouchableOpacity>
-                    {showDiagnostics ? (
-                      <View
-                        style={{
-                          borderRadius: 16,
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.04)",
-                          backgroundColor: "rgba(255,255,255,0.018)",
-                          gap: 8,
-                        }}
-                      >
-                        {resolutions.map((resolution) => (
-                          <View
-                            key={resolution.id}
-                            style={{
-                              borderRadius: 14,
-                              paddingHorizontal: 10,
-                              paddingVertical: 9,
-                              borderWidth: 1,
-                              borderColor: "rgba(255,255,255,0.04)",
-                              backgroundColor: "rgba(255,255,255,0.02)",
                               gap: 4,
                             }}
                           >
-                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
-                              Panel saved
+                            <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                              {update.label}
                             </Text>
-                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{resolution.action}</Text>
-                          </View>
-                        ))}
-                        {diagnosticCards.map((card, cardIndex) => (
-                          <View
-                            key={`${message.id}-diagnostic-${card.kind}-${cardIndex}`}
-                            style={{
-                              borderRadius: 14,
-                              paddingHorizontal: 10,
-                              paddingVertical: 9,
-                              borderWidth: 1,
-                              borderColor: "rgba(255,255,255,0.04)",
-                              backgroundColor: "rgba(255,255,255,0.02)",
-                              gap: 4,
-                            }}
-                          >
-                            <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
-                              {mobileConversationCardLabel(card.kind, card.title)}
-                            </Text>
-                            <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                              {card.title || card.body || "Diagnostic detail available."}
-                            </Text>
+                            {update.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{update.body}</Text> : null}
+                            <EntityActionChip entityRef={update.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+                            {update.actions && update.actions.length > 0 ? (
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+                                {update.actions.map((action) => (
+                                  <TouchableOpacity
+                                    key={`${update.id}-${action.id}`}
+                                    style={{
+                                      borderRadius: 999,
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 6,
+                                      backgroundColor: action.style === "primary" ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.03)",
+                                      borderWidth: 1,
+                                      borderColor: action.style === "primary" ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                                    }}
+                                    onPress={() =>
+                                      onCardAction(action, {
+                                        kind: "assistant_summary",
+                                        version: 1,
+                                        title: update.label,
+                                        body: update.body || null,
+                                        entity_ref: update.entity_ref || null,
+                                        actions: update.actions || [],
+                                        metadata: update.metadata || {},
+                                      })
+                                    }
+                                  >
+                                    <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                      {action.label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </ScrollView>
+                            ) : null}
                           </View>
                         ))}
                       </View>
                     ) : null}
+
+                    {primaryCards.length > 0 ? (
+                      <View style={{ gap: 8, paddingLeft: 10 }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+                          {primaryCards.map((card, cardIndex) => {
+                            const active = activeAttachmentIndex === cardIndex;
+                            const tone = cardTone(card.kind, palette);
+                            return (
+                              <TouchableOpacity
+                                key={`${message.id}-${card.kind}-${cardIndex}`}
+                                style={{
+                                  borderRadius: 999,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 6,
+                                  borderWidth: 1,
+                                  borderColor: active ? tone.border : "rgba(255,255,255,0.05)",
+                                  backgroundColor: active ? tone.accentBg : "rgba(255,255,255,0.018)",
+                                }}
+                                onPress={() => setActiveAttachmentByMessage((previous) => ({ ...previous, [message.id]: cardIndex }))}
+                              >
+                                <Text style={{ color: active ? tone.accent : palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                                  {mobileConversationCardLabel(card.kind, card.title)}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+
+                        {activeAttachment ? (() => {
+                          const tone = cardTone(activeAttachment.kind, palette);
+                          const cardKey = `${message.id}-${activeAttachmentIndex}-${activeAttachment.kind}`;
+                          const reviewAnswer = typeof activeAttachment.metadata?.answer === "string" ? activeAttachment.metadata.answer.trim() : "";
+                          const revealActive = !!revealedReviewCards[cardKey];
+                          const reusableText = activeAttachment.body?.trim() || activeAttachment.title?.trim() || "";
+                          const meta = compactMeta(formatCardMeta(activeAttachment));
+                          return (
+                            <View
+                              style={{
+                                borderRadius: 14,
+                                borderWidth: 1,
+                                borderColor: "rgba(255,255,255,0.035)",
+                                backgroundColor: "rgba(255,255,255,0.012)",
+                                paddingHorizontal: 11,
+                                paddingVertical: 9,
+                                gap: 7,
+                              }}
+                            >
+                              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                                <View style={{ flex: 1, gap: 3 }}>
+                                  <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    {mobileConversationCardLabel(activeAttachment.kind, activeAttachment.title)}
+                                  </Text>
+                                  <Text style={{ color: palette.text, fontSize: 14, lineHeight: 19, fontWeight: "800" }}>
+                                    {activeAttachment.title || mobileConversationCardLabel(activeAttachment.kind, activeAttachment.title)}
+                                  </Text>
+                                  {meta ? (
+                                    <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                                      {meta}
+                                    </Text>
+                                  ) : null}
+                                </View>
+                                <MaterialCommunityIcons
+                                  name={(activeAttachment.actions.some((action) => action.kind === "navigate") ? "arrow-top-right" : "sparkles") as never}
+                                  size={16}
+                                  color={tone.accent}
+                                />
+                              </View>
+
+                              <EntityActionChip entityRef={activeAttachment.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+
+                              <View
+                                style={{
+                                  borderLeftWidth: 2,
+                                  borderLeftColor: tone.border,
+                                  paddingLeft: 10,
+                                }}
+                              >
+                                {attachmentPreview(activeAttachment, palette, revealActive)}
+                              </View>
+
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+                                {activeAttachment.kind === "review_queue" && reviewAnswer ? (
+                                  <TouchableOpacity
+                                    style={{
+                                      borderRadius: 999,
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 6,
+                                      backgroundColor: tone.accentBg,
+                                      borderWidth: 1,
+                                      borderColor: tone.border,
+                                    }}
+                                    onPress={() => setRevealedReviewCards((previous) => ({ ...previous, [cardKey]: !previous[cardKey] }))}
+                                  >
+                                    <Text style={{ color: tone.accent, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                      {revealActive ? "Hide answer" : "Reveal"}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+
+                                {activeAttachment.actions.map((action) => (
+                                  <TouchableOpacity
+                                    key={`${cardKey}-${action.id}`}
+                                    style={{
+                                      borderRadius: 999,
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 6,
+                                      backgroundColor: action.style === "primary" ? tone.accentBg : "rgba(255,255,255,0.03)",
+                                      borderWidth: 1,
+                                      borderColor: action.style === "primary" ? tone.border : "rgba(255,255,255,0.05)",
+                                    }}
+                                    onPress={() => onCardAction(action, activeAttachment)}
+                                  >
+                                    <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                      {action.label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+
+                                {activeAttachment.actions.length === 0 && reusableText ? (
+                                  <TouchableOpacity
+                                    style={{
+                                      borderRadius: 999,
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 6,
+                                      backgroundColor: "rgba(255,255,255,0.03)",
+                                      borderWidth: 1,
+                                      borderColor: "rgba(255,255,255,0.05)",
+                                    }}
+                                    onPress={() => reuseCardText(reusableText)}
+                                  >
+                                    <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                      Use in chat
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </ScrollView>
+                            </View>
+                          );
+                        })() : null}
+                      </View>
+                    ) : null}
+
+                    {attachments.length > 0 ? (
+                      <View style={{ gap: 8, paddingLeft: 10 }}>
+                        {attachments.map((attachment) => (
+                          <AttachmentRow
+                            key={attachment.id}
+                            attachment={attachment}
+                            palette={palette}
+                            onOpenAttachment={onOpenAttachment}
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {toolCalls.length > 0 ? (
+                      <View style={{ gap: 8, paddingLeft: 10 }}>
+                        {toolCalls.map((toolCall) => (
+                          <ToolCallRow key={toolCall.id} toolCall={toolCall} palette={palette} />
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {toolResults.length > 0 ? (
+                      <View style={{ gap: 8, paddingLeft: 10 }}>
+                        {toolResults.map((toolResult) => (
+                          <ToolResultRow
+                            key={toolResult.id}
+                            toolResult={toolResult}
+                            palette={palette}
+                            formatCardMeta={formatCardMeta}
+                            onCardAction={onCardAction}
+                            onOpenEntityRef={onOpenEntityRef}
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {interruptRequests.length > 0 ? (
+                      <View style={{ gap: 10, paddingLeft: 10 }}>
+                        {interruptRequests.map((interrupt) => {
+                          const panelState = panelStates.find((state) => state.interrupt.id === interrupt.id);
+                          const values = panelState?.values || defaultPanelValues(interrupt);
+                          if (panelState?.renderState === "queued") {
+                            return (
+                              <View
+                                key={interrupt.id}
+                                style={{
+                                  borderRadius: 14,
+                                  paddingHorizontal: 11,
+                                  paddingVertical: 9,
+                                  borderWidth: 1,
+                                  borderColor: "rgba(255,255,255,0.05)",
+                                  backgroundColor: "rgba(255,255,255,0.014)",
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <MaterialCommunityIcons name={"clock-outline" as never} size={14} color={palette.muted} />
+                                <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                                  {panelKicker(interrupt)} is waiting behind the active decision.
+                                </Text>
+                              </View>
+                            );
+                          }
+                          if (panelState && shouldHostPanelInNativeSheet(panelState)) {
+                            return (
+                              <TouchableOpacity
+                                key={interrupt.id}
+                                style={{
+                                  borderRadius: 14,
+                                  paddingHorizontal: 11,
+                                  paddingVertical: 10,
+                                  borderWidth: 1,
+                                  borderColor: "rgba(255,255,255,0.05)",
+                                  backgroundColor: "rgba(255,255,255,0.014)",
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                                onPress={() => reopenSheetForInterrupt(interrupt.id)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Open ${panelKicker(interrupt)} sheet`}
+                              >
+                                <MaterialCommunityIcons name={"dock-bottom" as never} size={15} color={palette.accent} />
+                                <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                                  {panelKicker(interrupt)} is open in a sheet.
+                                </Text>
+                                <MaterialCommunityIcons name={"chevron-up" as never} size={17} color={palette.muted} />
+                              </TouchableOpacity>
+                            );
+                          }
+                          return renderDynamicPanel(interrupt, values);
+                        })}
+                      </View>
+                    ) : null}
+
+                    {(diagnosticCards.length > 0 || resolutions.length > 0) ? (
+                      <View style={{ paddingLeft: 10, gap: 6 }}>
+                        <TouchableOpacity
+                          style={{
+                            alignSelf: "flex-start",
+                            borderRadius: 999,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            backgroundColor: "rgba(255,255,255,0.014)",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.04)",
+                          }}
+                          onPress={() => setExpandedDiagnostics((previous) => ({ ...previous, [message.id]: !previous[message.id] }))}
+                        >
+                          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                            {showDiagnostics ? "Details open" : `Details ${diagnosticCards.length + resolutions.length}`}
+                          </Text>
+                        </TouchableOpacity>
+                        {showDiagnostics ? (
+                          <View
+                            style={{
+                              borderRadius: 16,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.04)",
+                              backgroundColor: "rgba(255,255,255,0.018)",
+                              gap: 8,
+                            }}
+                          >
+                            {resolutions.map((resolution) => (
+                              <View
+                                key={resolution.id}
+                                style={{
+                                  borderRadius: 14,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 9,
+                                  borderWidth: 1,
+                                  borderColor: "rgba(255,255,255,0.04)",
+                                  backgroundColor: "rgba(255,255,255,0.02)",
+                                  gap: 4,
+                                }}
+                              >
+                                <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                                  Panel saved
+                                </Text>
+                                <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{resolution.action}</Text>
+                              </View>
+                            ))}
+                            {diagnosticCards.map((card, cardIndex) => (
+                              <View
+                                key={`${message.id}-diagnostic-${card.kind}-${cardIndex}`}
+                                style={{
+                                  borderRadius: 14,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 9,
+                                  borderWidth: 1,
+                                  borderColor: "rgba(255,255,255,0.04)",
+                                  backgroundColor: "rgba(255,255,255,0.02)",
+                                  gap: 4,
+                                }}
+                              >
+                                <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                                  {mobileConversationCardLabel(card.kind, card.title)}
+                                </Text>
+                                <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                                  {card.title || card.body || "Diagnostic detail available."}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
-              </View>
-            );
-          })
+                );
+              });
+
+              if (pendingAssistantUiMessages.length > 0) {
+                const firstId = pendingAssistantUiMessages[0].id;
+                const lastId = pendingAssistantUiMessages[pendingAssistantUiMessages.length - 1].id;
+                renderedThreadBlocks.push(
+                  <MobileAssistantUiThread
+                    key={`aui-chunk-${firstId}-${lastId}`}
+                    messages={pendingAssistantUiMessages}
+                    palette={palette}
+                  />,
+                );
+              }
+
+              return renderedThreadBlocks;
+            })()}
+          </>
         )}
       </View>
 
