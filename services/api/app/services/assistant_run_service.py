@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, time, timezone
 from sqlite3 import Connection
 from types import SimpleNamespace
@@ -31,14 +32,88 @@ from app.services.common import execute_fetchall, execute_fetchone, new_id
 
 def _ui_capability_manifest() -> dict[str, Any]:
     return {
+        "version": "starlog.dynamic_ui_capabilities.v1",
         "ui_tools": [
-            {"tool_name": "request_due_date", "kind": "form"},
-            {"tool_name": "resolve_planner_conflict", "kind": "choice"},
-            {"tool_name": "triage_capture", "kind": "form"},
-            {"tool_name": "grade_review_recall", "kind": "choice"},
-            {"tool_name": "choose_morning_focus", "kind": "choice"},
+            {
+                "tool_name": "list_dynamic_ui_capabilities",
+                "kind": "protocol",
+                "description": "Return the backend-approved dynamic UI renderer/action registry.",
+                "action_examples": ["show me what UI actions you can take"],
+            },
+            {
+                "tool_name": "mark_study_topic_read",
+                "kind": "domain_tool",
+                "description": "Mark an interview-prep topic read and emit the topic unlock/read renderer payload.",
+                "renderer_key": "interview.topic_unlock",
+                "renderer_version": 1,
+                "action_examples": ["read Sliding Window", "unlock/read Sliding Window"],
+            },
+            {
+                "tool_name": "unlock_study_topic",
+                "kind": "domain_tool",
+                "description": "Unlock an interview-prep topic and emit the topic unlock renderer payload.",
+                "renderer_key": "interview.topic_unlock",
+                "renderer_version": 1,
+                "action_examples": ["unlock Sliding Window"],
+            },
+            {
+                "tool_name": "create_study_question_request",
+                "kind": "domain_tool",
+                "description": "Request interview-prep questions and emit the question request renderer payload.",
+                "renderer_key": "interview.question_request",
+                "renderer_version": 1,
+                "action_examples": ["quiz me with application questions", "quiz me on application questions for Sliding Window"],
+            },
+            {
+                "tool_name": "grade_review_recall",
+                "kind": "choice",
+                "description": "Record a review grade and emit the review grade renderer payload.",
+                "renderer_key": "interview.review_grade",
+                "renderer_version": 1,
+                "action_examples": ["grade the revealed review card"],
+            },
+            {"tool_name": "request_due_date", "kind": "form", "description": "Ask for missing task due-date fields."},
+            {"tool_name": "resolve_planner_conflict", "kind": "choice", "description": "Ask the user to resolve a planner conflict."},
+            {"tool_name": "triage_capture", "kind": "form", "description": "Ask how to process a captured artifact."},
+            {"tool_name": "choose_morning_focus", "kind": "choice", "description": "Ask which focus should drive a morning briefing."},
+        ],
+        "renderers": [
+            {
+                "renderer_key": "interview.topic_unlock",
+                "renderer_version": 1,
+                "placements": ["thread"],
+                "tool_names": ["mark_study_topic_read", "unlock_study_topic"],
+                "structured_content_fields": ["topic", "topic_id", "topic_title", "unlock_reason"],
+                "ui_meta_fields": ["tone", "action", "status", "source_id"],
+                "description": "Show an interview-prep topic unlock/read state from backend tool output.",
+            },
+            {
+                "renderer_key": "interview.question_request",
+                "renderer_version": 1,
+                "placements": ["thread"],
+                "tool_names": ["create_study_question_request"],
+                "structured_content_fields": ["request", "source_id", "topic_id", "question_type", "prompt"],
+                "ui_meta_fields": ["tone", "request_id", "question_preference"],
+                "description": "Show a backend-created interview-prep question request.",
+            },
+            {
+                "renderer_key": "interview.review_grade",
+                "renderer_version": 1,
+                "placements": ["inline", "thread"],
+                "tool_names": ["grade_review_recall"],
+                "structured_content_fields": ["card_id", "grade", "next_due_at"],
+                "ui_meta_fields": ["tone", "rating_label", "review_mode", "card_type"],
+                "description": "Show review grading choices/results backed by SRS scheduling updates.",
+            },
         ],
         "surfaces": ["assistant", "library", "planner", "review", "desktop_helper"],
+        "command_examples": [
+            "show me what UI actions you can take",
+            "unlock/read Sliding Window",
+            "read Sliding Window",
+            "quiz me with application questions",
+            "quiz me on application questions for Sliding Window",
+        ],
     }
 
 
@@ -175,6 +250,8 @@ def _record_run_failure(
 def _create_run(conn: Connection, *, thread_id: str, origin_message_id: str | None, orchestrator: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     now = utc_now().isoformat()
     run_id = new_id("run")
+    run_metadata = dict(metadata or {})
+    run_metadata.setdefault("ui_capabilities", _ui_capability_manifest())
     conn.execute(
         """
         INSERT INTO conversation_runs (id, thread_id, origin_message_id, orchestrator, status, summary, metadata_json, created_at, updated_at)
@@ -187,7 +264,7 @@ def _create_run(conn: Connection, *, thread_id: str, origin_message_id: str | No
             orchestrator,
             "running",
             None,
-            json.dumps(metadata or {}, sort_keys=True),
+            json.dumps(run_metadata, sort_keys=True),
             now,
             now,
         ),
@@ -739,6 +816,7 @@ def _assistant_message_from_command_response(
         planner=response.planner,
         status=response.status,
         tool_names=[step.tool_name for step in response.steps],
+        extra=_study_session_state_extra(response),
     )
     _update_run(conn, run_id=run_id, status="completed" if response.status != "failed" else "failed", summary=response.summary)
     return assistant_message
@@ -793,6 +871,179 @@ def _study_tool_dynamic_ui_payload(tool_name: str, result: Any) -> dict[str, Any
         }
 
     return {}
+
+
+def _study_session_state_extra(response: AgentCommandResponse) -> dict[str, Any]:
+    for step in response.steps:
+        result = step.result if isinstance(step.result, dict) else {}
+        topic = result.get("topic") if isinstance(result.get("topic"), dict) else {}
+        if topic:
+            return {
+                "last_study_topic_id": str(topic.get("id") or "").strip(),
+                "last_study_topic_title": str(topic.get("title") or "").strip(),
+                "last_study_source_id": str(topic.get("source_id") or "").strip(),
+            }
+        request = result.get("request") if isinstance(result.get("request"), dict) else {}
+        if request:
+            return {
+                "last_study_topic_id": str(request.get("topic_id") or "").strip(),
+                "last_study_source_id": str(request.get("source_id") or "").strip(),
+            }
+    return {}
+
+
+def _latest_study_topic_title_from_session(conn: Connection, *, thread_id: str) -> str:
+    row = execute_fetchone(
+        conn,
+        "SELECT state_json FROM conversation_session_state WHERE thread_id = ?",
+        (thread_id,),
+    )
+    state = row.get("state_json") if row and isinstance(row.get("state_json"), dict) else {}
+    return str(state.get("last_study_topic_title") or "").strip()
+
+
+def _is_dynamic_ui_capability_request(content: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", content.lower()).strip()
+    if not normalized:
+        return False
+    return any(
+        phrase in normalized
+        for phrase in {
+            "show me what ui actions you can take",
+            "what ui actions can you take",
+            "show ui actions",
+            "show dynamic ui capabilities",
+            "list dynamic ui capabilities",
+            "what dynamic ui capabilities do you have",
+        }
+    )
+
+
+def _normalize_dynamic_ui_command(conn: Connection, *, thread_id: str, content: str) -> str:
+    text = content.strip()
+    match = re.match(r"^(?:unlock/read|unlock\s+(?:and|then)\s+read)\s+(.+)$", text, re.IGNORECASE)
+    if match:
+        return f"read {match.group(1).strip()}"
+    quiz_match = re.match(r"^quiz\s+me\s+with\s+(.+?)\s+questions?$", text, re.IGNORECASE)
+    if quiz_match:
+        topic_title = _latest_study_topic_title_from_session(conn, thread_id=thread_id)
+        if topic_title:
+            return f"quiz me on {quiz_match.group(1).strip()} questions for {topic_title}"
+    return text
+
+
+def _assistant_message_from_dynamic_ui_capability_request(
+    conn: Connection,
+    *,
+    thread_id: str,
+    run_id: str,
+    command: str,
+    input_mode: str,
+    device_target: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    manifest = _ui_capability_manifest()
+    tool_call_id = new_id("toolcall")
+    summary = (
+        "I can request Starlog dynamic UI for topic unlock/read, interview question requests, "
+        "and review grading. The backend capability manifest is attached as structured tool output."
+    )
+    parts = [
+        assistant_projection_service.text_part(summary),
+        {
+            "type": "tool_call",
+            "id": new_id("part"),
+            "tool_call": {
+                "id": tool_call_id,
+                "tool_name": "list_dynamic_ui_capabilities",
+                "tool_kind": "protocol_tool",
+                "status": "complete",
+                "arguments": {},
+                "title": "List dynamic UI capabilities",
+                "metadata": {"capability_manifest_version": manifest["version"]},
+            },
+        },
+        assistant_projection_service.tool_result_part(
+            tool_call_id=tool_call_id,
+            status="complete",
+            output=manifest,
+            metadata={
+                "message": "Dynamic UI capabilities listed",
+                "tool_name": "list_dynamic_ui_capabilities",
+                "capability_manifest_version": manifest["version"],
+            },
+            structured_content={"capabilities": manifest},
+            ui_meta={"tone": "system", "source": "backend_capability_registry"},
+        ),
+        assistant_projection_service.status_part("complete", "Dynamic UI capabilities listed"),
+    ]
+    assistant_message = assistant_thread_service.append_message(
+        conn,
+        thread_id=thread_id,
+        role="assistant",
+        status="complete",
+        run_id=run_id,
+        metadata={
+            "assistant_command": {
+                "command": command,
+                "planner": "deterministic",
+                "matched_intent": "list_dynamic_ui_capabilities",
+                "status": "executed",
+                "summary": summary,
+                "steps": [
+                    {
+                        "tool_name": "list_dynamic_ui_capabilities",
+                        "arguments": {},
+                        "status": "ok",
+                        "message": "Dynamic UI capabilities listed",
+                        "result": manifest,
+                    }
+                ],
+            },
+            "matched_intent": "list_dynamic_ui_capabilities",
+            "planner": "deterministic",
+            "status": "executed",
+            "input_mode": input_mode,
+            "device_target": device_target,
+            "request_metadata": metadata,
+        },
+        parts=parts,
+    )
+    _record_step(
+        conn,
+        run_id=run_id,
+        thread_id=thread_id,
+        step_index=0,
+        title="List dynamic UI capabilities",
+        tool_name="list_dynamic_ui_capabilities",
+        tool_kind="protocol_tool",
+        status="completed",
+        arguments={},
+        result={"ui_capabilities": manifest},
+        message_id=assistant_message["id"],
+        metadata={"capability_manifest_version": manifest["version"]},
+    )
+    _record_trace(
+        conn,
+        thread_id=thread_id,
+        assistant_message_id=assistant_message["id"],
+        tool_name="list_dynamic_ui_capabilities",
+        arguments={},
+        status="ok",
+        result={"ui_capabilities": manifest},
+        metadata={"planner": "deterministic", "kind": "protocol_tool", "capability_manifest_version": manifest["version"]},
+    )
+    _merge_session_state(
+        conn,
+        command=command,
+        response_text=summary,
+        matched_intent="list_dynamic_ui_capabilities",
+        planner="deterministic",
+        status="executed",
+        tool_names=["list_dynamic_ui_capabilities"],
+    )
+    _update_run(conn, run_id=run_id, status="completed", summary=summary)
+    return assistant_message
 
 
 def _assistant_message_from_runtime_turn(
@@ -951,69 +1202,81 @@ def start_run(
     )
 
     try:
-        try:
-            matched_intent, summary, planned_calls = agent_command_service.plan_command(
-                conn,
-                content,
-                device_target=device_target,
-            )
-        except ValueError:
-            matched_intent = ""
-            summary = ""
-            planned_calls = []
-
-        if planned_calls:
-            first_call = planned_calls[0]
-            if first_call.tool_name == "create_task" and "due_at" not in first_call.arguments:
-                _request_due_date_interrupt(
-                    conn,
-                    thread_id=thread["id"],
-                    run_id=run["id"],
-                    content=content,
-                    title=str(first_call.arguments.get("title") or "New task"),
-                    arguments=first_call.arguments,
-                    input_mode=input_mode,
-                    device_target=device_target,
-                    metadata=request_metadata,
-                )
-            else:
-                response = agent_command_service.execute_planned_command(
-                    conn,
-                    command=content,
-                    planner="deterministic",
-                    matched_intent=matched_intent,
-                    summary=summary,
-                    execute=True,
-                    planned_calls=planned_calls,
-                )
-                _assistant_message_from_command_response(
-                    conn,
-                    thread_id=thread["id"],
-                    run_id=run["id"],
-                    command=content,
-                    response=response,
-                    input_mode=input_mode,
-                    device_target=device_target,
-                    metadata=request_metadata,
-                )
-        else:
-            runtime_request = _build_runtime_request(
-                conn,
-                thread_id=thread["id"],
-                content=content,
-                metadata=request_metadata,
-            )
-            turn = ai_service.execute_chat_turn(runtime_request)
-            _assistant_message_from_runtime_turn(
+        command_for_planning = _normalize_dynamic_ui_command(conn, thread_id=thread["id"], content=content)
+        if _is_dynamic_ui_capability_request(content):
+            _assistant_message_from_dynamic_ui_capability_request(
                 conn,
                 thread_id=thread["id"],
                 run_id=run["id"],
-                content=content,
-                turn=turn,
+                command=content,
                 input_mode=input_mode,
                 device_target=device_target,
                 metadata=request_metadata,
             )
+        else:
+            try:
+                matched_intent, summary, planned_calls = agent_command_service.plan_command(
+                    conn,
+                    command_for_planning,
+                    device_target=device_target,
+                )
+            except ValueError:
+                matched_intent = ""
+                summary = ""
+                planned_calls = []
+
+            if planned_calls:
+                first_call = planned_calls[0]
+                if first_call.tool_name == "create_task" and "due_at" not in first_call.arguments:
+                    _request_due_date_interrupt(
+                        conn,
+                        thread_id=thread["id"],
+                        run_id=run["id"],
+                        content=content,
+                        title=str(first_call.arguments.get("title") or "New task"),
+                        arguments=first_call.arguments,
+                        input_mode=input_mode,
+                        device_target=device_target,
+                        metadata=request_metadata,
+                    )
+                else:
+                    response = agent_command_service.execute_planned_command(
+                        conn,
+                        command=command_for_planning,
+                        planner="deterministic",
+                        matched_intent=matched_intent,
+                        summary=summary,
+                        execute=True,
+                        planned_calls=planned_calls,
+                    )
+                    _assistant_message_from_command_response(
+                        conn,
+                        thread_id=thread["id"],
+                        run_id=run["id"],
+                        command=content,
+                        response=response,
+                        input_mode=input_mode,
+                        device_target=device_target,
+                        metadata=request_metadata,
+                    )
+            else:
+                runtime_request = _build_runtime_request(
+                    conn,
+                    thread_id=thread["id"],
+                    metadata=request_metadata,
+                    content=content,
+                )
+                turn = ai_service.execute_chat_turn(runtime_request)
+                _assistant_message_from_runtime_turn(
+                    conn,
+                    thread_id=thread["id"],
+                    run_id=run["id"],
+                    content=content,
+                    turn=turn,
+                    input_mode=input_mode,
+                    device_target=device_target,
+                    metadata=request_metadata,
+                )
     except Exception as exc:
         _record_run_failure(
             conn,
