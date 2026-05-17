@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCALDATA_ROOT="${LOCALDATA_ROOT:-$ROOT_DIR/.localdata/android-local-validation}"
@@ -29,6 +29,7 @@ CLEAN_BUILD="${CLEAN_BUILD:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 EXISTING_APK_PATH="${EXISTING_APK_PATH:-}"
 ASSISTANT_COMMAND_TEXT="${ASSISTANT_COMMAND_TEXT:-Ask, capture, plan, review, or move something forward...}"
+ASSISTANT_CAPABILITY_COMMAND="${ASSISTANT_CAPABILITY_COMMAND:-show me what UI actions you can take}"
 ASSISTANT_COMMAND="${ASSISTANT_COMMAND:-summarize latest artifact}"
 ADB_INSTALL_TIMEOUT_SEC="${ADB_INSTALL_TIMEOUT_SEC:-900}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -50,6 +51,8 @@ API_PID=""
 PRESERVED_EXISTING_APK=""
 PLANNER_ALARM_CONTROL_DIAGNOSTICS=""
 STARLOG_LOCAL_ACCESS_TOKEN=""
+VALIDATION_PASSED=0
+FAILURE_METADATA_WRITTEN=0
 
 usage() {
   cat <<EOF
@@ -92,8 +95,48 @@ log() {
 
 fail() {
   printf '[android-local-srs] %s\n' "$1" >&2
+  write_failure_metadata_once "$1"
   exit 1
 }
+
+write_failure_metadata_once() {
+  local reason="${1:-validation failed}"
+  if [[ "${FAILURE_METADATA_WRITTEN:-0}" == "1" || "${VALIDATION_PASSED:-0}" == "1" ]]; then
+    return 0
+  fi
+  if [[ ! -d "${BUILD_DIR:-}" ]]; then
+    return 0
+  fi
+  if ! declare -F write_metadata >/dev/null 2>&1; then
+    return 0
+  fi
+
+  FAILURE_METADATA_WRITTEN=1
+  local previous_errexit=0
+  case $- in
+    *e*) previous_errexit=1 ;;
+  esac
+  set +e
+  STARLOG_FAILURE_REASON="$reason" write_metadata failed >/dev/null 2>&1
+  local metadata_rc=$?
+  if [[ "$previous_errexit" == "1" ]]; then
+    set -e
+  fi
+  if [[ "$metadata_rc" != "0" ]]; then
+    printf '[android-local-srs] Failed to write failed validation metadata\n' >&2
+  fi
+}
+
+on_unexpected_error() {
+  local exit_code="$1"
+  local line_number="$2"
+  if [[ "$exit_code" == "0" || "${VALIDATION_PASSED:-0}" == "1" ]]; then
+    return 0
+  fi
+  write_failure_metadata_once "Unexpected command failure at line ${line_number} (exit ${exit_code})"
+}
+
+trap 'on_unexpected_error "$?" "$LINENO"' ERR
 
 resolve_app_component() {
   if [[ "$APP_ACTIVITY" == */* ]]; then
@@ -1202,6 +1245,136 @@ raise SystemExit(1)
 PY
 }
 
+assert_assistant_surface_contract() {
+  if ! ui_has_class "android.widget.EditText" || ! (
+    ui_has_text "Starlog Assistant" \
+    || ui_has_text "Send assistant message" \
+    || ui_has_text "$ASSISTANT_COMMAND_TEXT"
+  ); then
+    capture_screen "$SCREENSHOT_DIR/assistant-surface-contract-missing.png"
+    snapshot_phone_state "assistant-surface-contract-missing"
+    fail "Assistant surface contract missing assistant-ui shell/composer markers; refusing diagnostic-only Assistant evidence"
+  fi
+
+  if ui_has_text "Starlog Review" \
+    || ui_has_text "Focused Review" \
+    || ui_has_text "Knowledge Health" \
+    || ui_has_text "Study loop" \
+    || ui_has_exact_text "Load due cards" \
+    || ui_has_exact_text "Reveal answer" \
+    || ui_has_exact_text "Hide answer"; then
+    capture_screen "$SCREENSHOT_DIR/assistant-surface-review-controls.png"
+    snapshot_phone_state "assistant-surface-review-controls"
+    fail "Assistant validation found Review-surface controls; refusing to accept Review evidence as Assistant evidence"
+  fi
+
+  if ui_has_exact_text "Show Diagnostics" || ui_has_exact_text "Hide Diagnostics"; then
+    capture_screen "$SCREENSHOT_DIR/assistant-surface-diagnostic-only.png"
+    snapshot_phone_state "assistant-surface-diagnostic-only"
+    fail "Assistant validation found diagnostic-only support controls instead of the Assistant shell"
+  fi
+}
+
+assert_assistant_ui_shell_and_transcript() {
+  local expected_command="$1"
+  local screenshot_prefix="${2:-assistant-ui}"
+  local deadline=$((SECONDS + 45))
+  local found_shell=0
+  local found_composer=0
+  local found_transcript=0
+  local attempt=0
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+
+    assert_assistant_surface_contract
+
+    if ui_has_text "Starlog Assistant"; then
+      found_shell=1
+    fi
+    if ui_has_text "Send assistant message" || ui_has_text "$ASSISTANT_COMMAND_TEXT"; then
+      found_composer=1
+    fi
+    if ui_has_text "$expected_command"; then
+      found_transcript=1
+    fi
+
+    if (( found_shell == 1 && found_composer == 1 && found_transcript == 1 )); then
+      capture_screen "$SCREENSHOT_DIR/${screenshot_prefix}-shell-thread-composer.png"
+      snapshot_phone_state "${screenshot_prefix}-shell-thread-composer"
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      scroll_review_controls_reverse
+    else
+      scroll_review_controls
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/${screenshot_prefix}-shell-thread-composer-missing.png"
+  snapshot_phone_state "${screenshot_prefix}-shell-thread-composer-missing"
+  fail "Assistant-ui shell/thread/composer proof missing (shell=${found_shell}, composer=${found_composer}, transcript=${found_transcript})"
+}
+
+assert_assistant_dynamic_ui_capability_prompt() {
+  local deadline=$((SECONDS + 45))
+  local found_summary=0
+  local found_domain_controls=0
+  local attempt=0
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+
+    assert_assistant_surface_contract
+
+    if ui_has_text "list_dynamic_ui_capabilities" || ui_has_text "renderer_key"; then
+      capture_screen "$SCREENSHOT_DIR/assistant-dynamic-ui-capability-raw-label.png"
+      snapshot_phone_state "assistant-dynamic-ui-capability-raw-label"
+      fail "Assistant capability prompt exposed raw dynamic UI protocol labels"
+    fi
+
+    if ui_has_text "Starlog dynamic UI" || ui_has_text "dynamic UI"; then
+      found_summary=1
+    fi
+    if ui_has_text "topic unlock" || ui_has_text "interview question" || ui_has_text "review grading"; then
+      found_domain_controls=1
+    fi
+
+    if (( found_summary == 1 && found_domain_controls == 1 )); then
+      capture_screen "$SCREENSHOT_DIR/assistant-dynamic-ui-capability-prompt.png"
+      snapshot_phone_state "assistant-dynamic-ui-capability-prompt"
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      scroll_review_controls_reverse
+    else
+      scroll_review_controls
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/assistant-dynamic-ui-capability-prompt-missing.png"
+  snapshot_phone_state "assistant-dynamic-ui-capability-prompt-missing"
+  fail "Assistant dynamic UI capability prompt was not visible (summary=${found_summary}, domain_controls=${found_domain_controls})"
+}
+
 tap_bottom_nav_tab() {
   local tab="$1"
   dump_ui
@@ -1221,14 +1394,10 @@ wait_for_assistant_surface() {
       continue
     fi
 
-    if ui_has_class "android.widget.EditText"; then
-      if ui_has_text "Starlog Assistant" \
-        || ui_has_text "Session active" \
-        || ui_has_text "$ASSISTANT_COMMAND_TEXT" \
-        || ui_has_text "Send assistant message"; then
-        return 0
-      fi
-
+    if ui_has_class "android.widget.EditText" \
+      && (ui_has_text "Starlog Assistant" || ui_has_text "$ASSISTANT_COMMAND_TEXT" || ui_has_text "Send assistant message"); then
+      assert_assistant_surface_contract
+      return 0
     fi
 
     sleep 1
@@ -2306,18 +2475,23 @@ assert_assistant_review_grade_dynamic_ui() {
   local found_save_grade=0
   local found_keep_review=0
   local found_grade_option=0
+  local found_dynamic_prompt=0
   while (( SECONDS < deadline )); do
     if ! dump_ui; then
       sleep 1
       continue
     fi
+    assert_assistant_surface_contract
 
-    if ui_has_text "interview.review_grade" || ui_has_text "grade_review_recall"; then
+    if ui_has_text "interview.review_grade" || ui_has_text "grade_review_recall" || ui_has_text "renderer_key"; then
       capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui-raw-label.png"
       snapshot_phone_state "assistant-review-grade-dynamic-ui-raw-label"
       fail "Assistant review-grade panel exposed raw renderer/tool labels instead of human dynamic UI labels"
     fi
 
+    if ui_has_text "Review grade" || ui_has_text "Grade Recall" || ui_has_text "Grade interview recall" || ui_has_text "Interview review"; then
+      found_dynamic_prompt=1
+    fi
     if ui_has_text "RECALL QUALITY"; then
       found_recall_quality=1
     fi
@@ -2331,7 +2505,7 @@ assert_assistant_review_grade_dynamic_ui() {
       found_grade_option=1
     fi
 
-    if (( found_recall_quality == 1 && found_save_grade == 1 && found_keep_review == 1 && found_grade_option == 1 )); then
+    if (( found_dynamic_prompt == 1 && found_recall_quality == 1 && found_save_grade == 1 && found_keep_review == 1 && found_grade_option == 1 )); then
       break
     fi
 
@@ -2339,12 +2513,14 @@ assert_assistant_review_grade_dynamic_ui() {
     sleep 1
   done
 
-  if (( found_recall_quality != 1 || found_save_grade != 1 || found_keep_review != 1 || found_grade_option != 1 )); then
+  if (( found_dynamic_prompt != 1 || found_recall_quality != 1 || found_save_grade != 1 || found_keep_review != 1 || found_grade_option != 1 )); then
     capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui-missing.png"
     snapshot_phone_state "assistant-review-grade-dynamic-ui-missing"
-    fail "Assistant review-grade dynamic UI did not expose required controls (RECALL QUALITY, Save grade, Keep in Review, grade option)"
+    fail "Assistant review-grade dynamic UI did not expose required prompt and controls (review prompt, RECALL QUALITY, Save grade, Keep in Review, grade option)"
   fi
 
+  capture_screen "$SCREENSHOT_DIR/assistant-review-grade-controls.png"
+  snapshot_phone_state "assistant-review-grade-controls"
   capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui.png"
   snapshot_phone_state "assistant-review-grade-dynamic-ui"
 }
@@ -2787,6 +2963,29 @@ launch_and_validate_review() {
   capture_screen "$SCREENSHOT_DIR/assistant-open.png"
   snapshot_phone_state "assistant-open"
 
+  local assistant_capability_api_log_line_before
+  assistant_capability_api_log_line_before="$(wc -l < "$API_LOG")"
+
+  if tap_if_present "$ASSISTANT_COMMAND_TEXT"; then
+    clear_focused_text_field
+  else
+    tap_nth_edit_text 0 || fail "Assistant input field not detected; cannot validate assistant capability prompt."
+    clear_focused_text_field
+  fi
+
+  adb_cmd shell input text "${ASSISTANT_CAPABILITY_COMMAND// /%s}" >/dev/null
+  adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+  sleep 3
+  if ! tap_send_after_first_edit_text "$ASSISTANT_CAPABILITY_COMMAND" "$assistant_capability_api_log_line_before" 300; then
+    fail "Assistant capability prompt command still present after send tap; see $SCREENSHOT_DIR/assistant-send-verify-fail.png"
+  fi
+  sleep 2
+  capture_screen "$SCREENSHOT_DIR/assistant-capability-command.png"
+  snapshot_phone_state "assistant-capability-command"
+  assert_assistant_turn_recorded "$assistant_capability_api_log_line_before"
+  assert_assistant_ui_shell_and_transcript "$ASSISTANT_CAPABILITY_COMMAND" "assistant-capability"
+  assert_assistant_dynamic_ui_capability_prompt
+
   local assistant_api_log_line_before
   assistant_api_log_line_before="$(wc -l < "$API_LOG")"
 
@@ -2816,6 +3015,7 @@ launch_and_validate_review() {
   capture_screen "$SCREENSHOT_DIR/assistant-command.png"
   snapshot_phone_state "assistant-command"
   assert_assistant_turn_recorded "$assistant_api_log_line_before"
+  assert_assistant_ui_shell_and_transcript "$ASSISTANT_COMMAND" "assistant-command"
 
   ensure_review_surface
   capture_screen "$SCREENSHOT_DIR/review-entry.png"
@@ -2888,6 +3088,8 @@ launch_and_validate_review() {
     capture_screen "$SCREENSHOT_DIR/planner-alarm-cache-ready.png"
     snapshot_phone_state "planner-alarm-cache-ready"
     assert_latest_briefing_has_recommendation_hints "$briefing_marker_before"
+    capture_screen "$SCREENSHOT_DIR/planner-briefing-path.png"
+    snapshot_phone_state "planner-briefing-path"
     planner_alarm_state="$(ui_planner_alarm_state)"
   fi
 
@@ -2915,6 +3117,8 @@ launch_and_validate_review() {
   sleep 1
   capture_screen "$SCREENSHOT_DIR/planner-alarm.png"
   snapshot_phone_state "planner-alarm"
+  capture_screen "$SCREENSHOT_DIR/planner-alarm-briefing-path.png"
+  snapshot_phone_state "planner-alarm-briefing-path"
 }
 
 write_metadata() {
@@ -2936,6 +3140,7 @@ write_metadata() {
   INCLUDE_LOCAL_METADATA_ENV="${STARLOG_INCLUDE_LOCAL_METADATA:-0}" \
   SCREENSHOT_DIR_ENV="$SCREENSHOT_DIR" \
   METADATA_STAGE_ENV="$metadata_stage" \
+  FAILURE_REASON_ENV="${STARLOG_FAILURE_REASON:-}" \
   python3 - <<'PY'
 from pathlib import Path
 import json
@@ -2945,18 +3150,25 @@ path = Path(os.environ["METADATA_PATH_ENV"])
 screenshot_dir = os.environ["SCREENSHOT_DIR_ENV"]
 metadata_stage = os.environ["METADATA_STAGE_ENV"]
 include_local_metadata = os.environ["INCLUDE_LOCAL_METADATA_ENV"].lower() in {"1", "true", "yes"}
+failure_reason = os.environ.get("FAILURE_REASON_ENV") or None
 
 validated_flows = [
+    "assistant_ui_shell_thread_composer_verified",
+    "assistant_dynamic_ui_capability_prompt_verified",
     "assistant_command_submitted",
     "native_study_topic_unlocked",
     "native_study_topic_marked_read",
     "native_study_question_request_created",
     "review_answer_revealed",
     "review_good_grade_submitted",
+    "assistant_review_grade_controls_verified",
     "assistant_review_grade_dynamic_ui_verified",
+    "review_progress_update_verified",
     "planner_briefing_cache_generated",
     "planner_briefing_recommendation_hints_validated",
+    "planner_briefing_path_verified",
     "planner_alarm_scheduled",
+    "planner_alarm_briefing_path_verified",
 ]
 
 def existing_file_map(values):
@@ -2976,12 +3188,19 @@ screenshot_candidates = {
     "native_study_before": f"{screenshot_dir}/native-study-before.png",
     "native_study_after": f"{screenshot_dir}/native-study-after.png",
     "assistant_open": f"{screenshot_dir}/assistant-open.png",
+    "assistant_capability_command": f"{screenshot_dir}/assistant-capability-command.png",
+    "assistant_capability_shell_thread_composer": f"{screenshot_dir}/assistant-capability-shell-thread-composer.png",
+    "assistant_dynamic_ui_capability_prompt": f"{screenshot_dir}/assistant-dynamic-ui-capability-prompt.png",
     "assistant_command": f"{screenshot_dir}/assistant-command.png",
+    "assistant_command_shell_thread_composer": f"{screenshot_dir}/assistant-command-shell-thread-composer.png",
+    "assistant_review_grade_controls": f"{screenshot_dir}/assistant-review-grade-controls.png",
     "assistant_review_grade_dynamic_ui": f"{screenshot_dir}/assistant-review-grade-dynamic-ui.png",
     "planner_open": f"{screenshot_dir}/planner-open.png",
     "planner_alarm_cache_triggered": f"{screenshot_dir}/planner-alarm-cache-triggered.png",
     "planner_alarm_cache_ready": f"{screenshot_dir}/planner-alarm-cache-ready.png",
+    "planner_briefing_path": f"{screenshot_dir}/planner-briefing-path.png",
     "planner_alarm": f"{screenshot_dir}/planner-alarm.png",
+    "planner_alarm_briefing_path": f"{screenshot_dir}/planner-alarm-briefing-path.png",
 }
 
 evidence_candidates = {
@@ -2991,8 +3210,14 @@ evidence_candidates = {
     "review_after_native_study_controls_xml": f"{path.parent}/review-after-native-study-controls.xml",
     "review_answer_xml": f"{path.parent}/review-answer.xml",
     "review_rated_xml": f"{path.parent}/review-rated.xml",
+    "assistant_capability_shell_thread_composer_xml": f"{path.parent}/assistant-capability-shell-thread-composer.xml",
+    "assistant_dynamic_ui_capability_prompt_xml": f"{path.parent}/assistant-dynamic-ui-capability-prompt.xml",
+    "assistant_command_shell_thread_composer_xml": f"{path.parent}/assistant-command-shell-thread-composer.xml",
+    "assistant_review_grade_controls_xml": f"{path.parent}/assistant-review-grade-controls.xml",
     "assistant_review_grade_dynamic_ui_xml": f"{path.parent}/assistant-review-grade-dynamic-ui.xml",
+    "planner_briefing_path_xml": f"{path.parent}/planner-briefing-path.xml",
     "planner_alarm_xml": f"{path.parent}/planner-alarm.xml",
+    "planner_alarm_briefing_path_xml": f"{path.parent}/planner-alarm-briefing-path.xml",
     "latest_briefing_json": f"{path.parent}/briefing-latest.json",
 }
 
@@ -3008,6 +3233,8 @@ payload = {
     "validation_stage": metadata_stage,
     "validation_passed": metadata_stage == "final",
 }
+if failure_reason and metadata_stage != "final":
+    payload["failure_reason"] = failure_reason
 if include_local_metadata:
     payload["local_paths"] = {
         "apk_path": os.environ["STAGED_APK_ENV"],
@@ -3052,6 +3279,7 @@ ensure_phone_ready
 install_apk
 launch_and_validate_review
 write_metadata final
+VALIDATION_PASSED=1
 
 log "Fresh local SRS validation completed"
 log "Build metadata: $METADATA_PATH"
