@@ -49,7 +49,42 @@ def tool_call_part(*, tool_name: str, tool_kind: str, status: str, arguments: di
     }
 
 
-def tool_result_part(*, tool_call_id: str, status: str, output: dict[str, Any], metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+def _dynamic_ui_fields(
+    *,
+    renderer_key: str | None = None,
+    renderer_version: int | None = None,
+    placement: str | None = None,
+    structured_content: dict[str, Any] | None = None,
+    ui_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    if renderer_key:
+        fields["renderer_key"] = renderer_key
+    if renderer_version is not None:
+        fields["renderer_version"] = renderer_version
+    if placement:
+        fields["placement"] = placement
+    if structured_content is not None:
+        fields["structured_content"] = structured_content
+    if ui_meta is not None:
+        fields["ui_meta"] = ui_meta
+    return fields
+
+
+def tool_result_part(
+    *,
+    tool_call_id: str,
+    status: str,
+    output: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+    renderer_key: str | None = None,
+    renderer_version: int | None = None,
+    placement: str | None = None,
+    structured_content: dict[str, Any] | None = None,
+    ui_meta: dict[str, Any] | None = None,
+    card: dict[str, Any] | None = None,
+    entity_ref: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "type": "tool_result",
         "id": new_id("part"),
@@ -58,6 +93,15 @@ def tool_result_part(*, tool_call_id: str, status: str, output: dict[str, Any], 
             "tool_call_id": tool_call_id,
             "status": status,
             "output": output,
+            **_dynamic_ui_fields(
+                renderer_key=renderer_key,
+                renderer_version=renderer_version,
+                placement=placement,
+                structured_content=structured_content,
+                ui_meta=ui_meta,
+            ),
+            "card": conversation_card_service.normalize_card(card) if isinstance(card, dict) else None,
+            "entity_ref": entity_ref if isinstance(entity_ref, dict) else None,
             "metadata": metadata or {},
         },
     }
@@ -208,6 +252,21 @@ def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str
                             "tool_call_id": str(tool_result.get("tool_call_id") or new_id("tool")),
                             "status": normalize_part_status(tool_result.get("status"), default="complete"),
                             "output": tool_result.get("output") if isinstance(tool_result.get("output"), dict) else {},
+                            **_dynamic_ui_fields(
+                                renderer_key=str(tool_result.get("renderer_key")).strip()
+                                if tool_result.get("renderer_key") is not None
+                                else None,
+                                renderer_version=tool_result.get("renderer_version")
+                                if isinstance(tool_result.get("renderer_version"), int)
+                                else None,
+                                placement=str(tool_result.get("placement")).strip()
+                                if tool_result.get("placement") is not None
+                                else None,
+                                structured_content=tool_result.get("structured_content")
+                                if isinstance(tool_result.get("structured_content"), dict)
+                                else None,
+                                ui_meta=tool_result.get("ui_meta") if isinstance(tool_result.get("ui_meta"), dict) else None,
+                            ),
                             "card": conversation_card_service.normalize_card(card) if isinstance(card, dict) else None,
                             "entity_ref": tool_result.get("entity_ref") if isinstance(tool_result.get("entity_ref"), dict) else None,
                             "metadata": tool_result.get("metadata") if isinstance(tool_result.get("metadata"), dict) else {},

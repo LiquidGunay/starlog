@@ -662,6 +662,11 @@ def test_assistant_primary_study_read_command_unblocks_gated_due_card(
     assert tool_call["arguments"]["topic_id"] == topic["id"]
     tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
     assert tool_result["status"] == "complete"
+    assert tool_result["renderer_key"] == "interview.topic_unlock"
+    assert tool_result["renderer_version"] == 1
+    assert tool_result["placement"] == "thread"
+    assert tool_result["structured_content"]["topic"]["id"] == topic["id"]
+    assert tool_result["ui_meta"]["source_id"] == topic["source_id"]
     assert tool_result["output"]["topic"]["id"] == topic["id"]
     assert tool_result["output"]["topic"]["status"] == "read"
 
@@ -698,6 +703,10 @@ def test_assistant_primary_study_unlock_command_is_visible_and_executes(
     assert tool_call["status"] == "complete"
     assert tool_call["arguments"]["topic_id"] == topic["id"]
     tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    assert tool_result["renderer_key"] == "interview.topic_unlock"
+    assert tool_result["renderer_version"] == 1
+    assert tool_result["placement"] == "thread"
+    assert tool_result["structured_content"]["topic"]["id"] == topic["id"]
     assert tool_result["output"]["topic"]["status"] == "unlocked"
     assert tool_result["output"]["topic"]["manually_unlocked"] is True
 
@@ -729,7 +738,12 @@ def test_assistant_primary_study_quiz_command_is_visible_and_creates_request(
     tool_call = _assistant_tool_call(payload, "create_study_question_request")
     assert tool_call["status"] == "complete"
     tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    assert tool_result["renderer_key"] == "interview.question_request"
+    assert tool_result["renderer_version"] == 1
+    assert tool_result["placement"] == "thread"
     request = tool_result["output"]["request"]
+    assert tool_result["structured_content"]["request"]["id"] == request["id"]
+    assert tool_result["ui_meta"]["question_preference"] == "application"
     assert request["source_id"] == source["id"]
     assert request["question"] == "Quiz me on application questions for Embeddings"
     assert request["response"]["question_preference"] == "application"
@@ -1182,8 +1196,25 @@ def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_revie
     payload = response.json()
     interrupt = next(item for item in payload["interrupts"] if item["tool_name"] == "grade_review_recall")
     assert interrupt["title"] == "Grade Recall"
+    assert interrupt["tool_call_id"]
+    assert interrupt["renderer_key"] == "interview.review_grade"
+    assert interrupt["renderer_version"] == 1
+    assert interrupt["placement"] == "inline"
+    assert interrupt["structured_content"]["card_id"] == card["id"]
+    assert interrupt["structured_content"]["grade"] is None
+    assert interrupt["ui_meta"]["review_mode"] == "recall"
     assert interrupt["metadata"]["card_type"] == "qa"
     assert interrupt["metadata"]["review_mode"] == "recall"
+
+    reloaded_before_submit = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert reloaded_before_submit.status_code == 200
+    reloaded_interrupt = next(
+        item for item in reloaded_before_submit.json()["interrupts"] if item["id"] == interrupt["id"]
+    )
+    assert reloaded_interrupt["tool_call_id"] == interrupt["tool_call_id"]
+    assert reloaded_interrupt["renderer_key"] == "interview.review_grade"
+    assert reloaded_interrupt["structured_content"]["card_id"] == card["id"]
+    assert reloaded_interrupt["ui_meta"]["review_mode"] == "recall"
 
     submit = client.post(
         f"/v1/assistant/interrupts/{interrupt['id']}/submit",
@@ -1201,6 +1232,33 @@ def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_revie
         for part in message["parts"]
         if part["type"] == "text"
     )
+    review_grade_results = [
+        part["tool_result"]
+        for message in snapshot["messages"]
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"].get("renderer_key") == "interview.review_grade"
+    ]
+    assert review_grade_results
+    assert review_grade_results[-1]["tool_call_id"] == interrupt["tool_call_id"]
+    assert review_grade_results[-1]["renderer_version"] == 1
+    assert review_grade_results[-1]["placement"] == "thread"
+    assert review_grade_results[-1]["structured_content"]["card_id"] == card["id"]
+    assert review_grade_results[-1]["structured_content"]["grade"] == "4"
+    assert review_grade_results[-1]["ui_meta"]["review_mode"] == "recall"
+
+    reloaded_after_submit = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert reloaded_after_submit.status_code == 200
+    reloaded_review_grade_results = [
+        part["tool_result"]
+        for message in reloaded_after_submit.json()["messages"]
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"].get("renderer_key") == "interview.review_grade"
+    ]
+    assert reloaded_review_grade_results
+    assert reloaded_review_grade_results[-1]["tool_call_id"] == interrupt["tool_call_id"]
+    assert reloaded_review_grade_results[-1]["structured_content"]["card_id"] == card["id"]
+    assert reloaded_review_grade_results[-1]["structured_content"]["grade"] == "4"
+    assert reloaded_review_grade_results[-1]["ui_meta"]["review_mode"] == "recall"
 
     cards = client.get("/v1/cards", headers=auth_headers)
     assert cards.status_code == 200

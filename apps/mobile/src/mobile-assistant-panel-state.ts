@@ -223,6 +223,10 @@ export function mobileDynamicPanelPlacement(interrupt: AssistantInterrupt): Mobi
   return "inline";
 }
 
+export function shouldHostPanelInNativeSheet(state: MobileDynamicPanelState): boolean {
+  return state.renderState === "active" && state.placement === "native_sheet";
+}
+
 export function mobileDynamicPanelStates(
   interrupts: AssistantInterrupt[],
   valuesByInterruptId: Record<string, Record<string, unknown>>,

@@ -1137,6 +1137,20 @@ def create_surface_event(
                 "defer_label": "Keep in Review",
             },
             entity_ref=entity_ref,
+            tool_call_id=new_id("toolcall"),
+            renderer_key="interview.review_grade",
+            renderer_version=1,
+            placement="inline",
+            structured_content={
+                "card_id": card_id,
+                "grade": None,
+                "next_due_at": None,
+            },
+            ui_meta={
+                "tone": "review",
+                "card_type": card_type,
+                "review_mode": review_mode,
+            },
         )
         assistant_thread_service.append_message(
             conn,

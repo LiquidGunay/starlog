@@ -8,7 +8,9 @@ share capture, briefing cache/playback, alarms, or local runtime work. Treat the
 fallback surface, not the main phone implementation target.
 
 This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and
-assistant protocol snapshots so the UI can be validated deterministically. The desktop web
+assistant protocol snapshots so the UI can be validated deterministically. For hosted-path discovery,
+`https://starlog-web-production.up.railway.app/login` is the user entry URL (followed by assistant
+flows under `/assistant`). The desktop web
 Assistant has partial assistant-ui adapter/runtime coverage with compatibility fallbacks; these
 harnesses validate the supported structured protocol path and fallback-hidden user experience, not
 full assistant-ui parity.
@@ -75,8 +77,8 @@ Covered:
 - Supported desktop web assistant-ui paths can render structured protocol parts while unsupported
   shapes remain covered by Starlog compatibility/fallback rendering.
 - React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
-  path has installed-device proof for the transcript slice, while full dynamic-panel parity remains
-  in progress.
+  path has installed-device proof for the transcript slice, while native dynamic-panel parity remains
+  partial until dedicated on-device command-to-host evidence confirms full dynamic-panel flow.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:

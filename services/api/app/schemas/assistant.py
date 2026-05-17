@@ -7,6 +7,7 @@ AssistantRole = Literal["system", "user", "assistant", "tool"]
 AssistantMessageStatus = Literal["pending", "running", "requires_action", "complete", "error"]
 AssistantRunStatus = Literal["queued", "running", "interrupted", "completed", "failed", "cancelled"]
 AssistantInterruptStatus = Literal["pending", "submitted", "dismissed", "expired"]
+AssistantDynamicUiPlacement = str
 
 
 class AssistantEntityRef(BaseModel):
@@ -30,6 +31,11 @@ class AssistantCard(BaseModel):
     version: int = Field(default=1, ge=1)
     title: str | None = None
     body: str | None = None
+    renderer_key: str | None = None
+    renderer_version: int | None = None
+    placement: AssistantDynamicUiPlacement | None = None
+    structured_content: dict[str, Any] | None = None
+    ui_meta: dict[str, Any] | None = None
     entity_ref: AssistantEntityRef | None = None
     actions: list[AssistantCardAction] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -52,11 +58,17 @@ class AssistantInterrupt(BaseModel):
     id: str
     thread_id: str
     run_id: str
+    tool_call_id: str | None = None
     status: AssistantInterruptStatus
     interrupt_type: Literal["choice", "form", "confirm"]
     tool_name: str
     title: str
     body: str | None = None
+    renderer_key: str | None = None
+    renderer_version: int | None = None
+    placement: AssistantDynamicUiPlacement | None = None
+    structured_content: dict[str, Any] | None = None
+    ui_meta: dict[str, Any] | None = None
     entity_ref: AssistantEntityRef | None = None
     fields: list[AssistantInterruptField] = Field(default_factory=list)
     primary_label: str

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-15
+Last updated: 2026-05-17
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -38,11 +38,12 @@ where Starlog is going. Use this page for current implementation confidence.
   coverage for supported Starlog assistant protocol snapshots and dynamic panel parts. Unsupported or
   not-yet-migrated message/tool shapes still use Starlog compatibility projections and existing
   fallback render paths, so this is partial coverage rather than full assistant-ui parity.
-- **Mobile Assistant dynamic UI:** the React Native assistant-ui-style path is in progress. Mobile
-  view-model and panel-state tests cover Assistant, Library, Planner, Review, and dynamic-panel shaping.
-  PR #223 adds the first installed-device assistant-ui RN transcript slice proof for the native
-  interview-prep loop; richer dynamic panels still use compatibility renderers until native
-  assistant-ui parity is complete.
+- **Mobile Assistant dynamic UI:** React Native assistant-ui-style view-model coverage is in place for
+  Assistant, Library, Planner, Review, and dynamic panel shaping. Installed-device proof covers the
+  transcript slice and interview-prep loop, and Android fresh-local validation now includes an explicit
+  check that the review-grade panel presents human controls (`RECALL QUALITY`, `Save grade`, and
+  `Keep in Review`) instead of raw renderer keys. This is partial evidence; host-level dynamic-panel
+  parity is still conditional on dedicated device-host behavior proof.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -92,9 +93,10 @@ where Starlog is going. Use this page for current implementation confidence.
   commands for `Sliding Window`, verifies due-card gating, reveals and grades a Review card, generates
   a recommendation-backed briefing, and creates an alarm.
 - **Hosted PWA reachability and login:** `https://starlog-web-production.up.railway.app/login`
-  currently serves the login page, `https://starlog-api-production.up.railway.app/v1/health`
-  returns an OK production health payload, and hosted passphrase login returned HTTP 200 on
-  2026-05-15. This proves access/login, not full hosted workflow freshness.
+  (hosted entry point) currently serves the login page, and `/assistant` can be reached after passphrase
+  flow completion. `https://starlog-api-production.up.railway.app/v1/health` returns an OK production
+  health payload; hosted passphrase login returned HTTP 200 on 2026-05-15. This proves access/login, not
+  full hosted workflow freshness.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
@@ -163,22 +165,25 @@ Known outcome for `Inference Engineering.pdf`:
   provider polish and fallback behavior still need focused validation.
 - **Full assistant-ui runtime parity:** web assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Native mobile React Native
-  assistant-ui parity remains in progress; installed-device proof now covers the transcript slice
-  and interview loop, but host-level native dynamic-panel parity is still pending.
-- **Raw protocol label cleanup:** current UI harnesses check that labels such as `tool_call`,
-  `tool_result`, protocol, runtime, and diagnostics stay out of default user-facing flows, but this
-  remains a cleanup risk across older fallback renderer paths until assistant-ui coverage is complete.
+  assistant-ui parity remains partial. Installed-device proof now covers the transcript slice and interview
+  loop, but native dynamic-panel host behavior is still unproven until dedicated on-device command-to-host
+  evidence confirms full dynamic-panel flow.
+- **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
+  Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
+  `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
 
 ## Evidence Map
 
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
-- Fresh Android native functional proof: `/tmp/starlog-functional-master/.localdata/android-local-validation/builds/20260515T183923Z/`
-  contains indexed screenshots in `latest.json` plus API evidence in `local-api.log` for Assistant
+- Fresh Android native functional proof is written by
+  `scripts/android_fresh_local_srs_validation.sh` and indexed in
+  `.localdata/android-local-validation/builds/latest.json` (and companion artifact files listed there),
+  including `assistant-review-grade-dynamic-ui.png` and `assistant-review-grade-dynamic-ui.xml`.
+  The run evidence includes Assistant
   command submission, native Study Core unlock/read/question writes, Review reveal and `Good` grade
-  submission, briefing cache generation, notification permission, and Planner alarm scheduling on
-  the connected Android device. This pass also proves the first native assistant-ui RN transcript
-  slice boots in the installed app with the Hermes Web Streams polyfill.
+  submission, review-grade dynamic-control verification, briefing recommendation-hints validation,
+  and Planner alarm scheduling on the connected Android device.
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
   `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
   clean Python 3.12 `uv` environment and prove that marking `Sliding Window` read releases a linked
@@ -187,9 +192,9 @@ Known outcome for `Inference Engineering.pdf`:
   `corepack pnpm --filter mobile test:study-mutations` passed, and the focused Playwright PWA
   Assistant study-command test passed against a local production web server with mocked API routes.
 - Assistant-ui/dynamic UI status evidence is still bounded: desktop web assistant-ui rendering is
-  partial with compatibility fallbacks, and mobile React Native dynamic panel shaping is in progress.
-  Native device automation now proves the assistant-ui RN transcript slice in the interview loop,
-  not full native dynamic-panel parity.
+  partial with compatibility fallbacks, and mobile React Native dynamic panel shaping is partial.
+  Native device automation now proves the assistant-ui RN transcript slice in the interview loop, but full
+  native dynamic-panel host behavior is still pending on-device command-to-host evidence.
 - Fresh PDF deck-script validation proves `strings` cannot pass preflight/final-card generation,
   trusted LiteParse/local OCR extraction can produce final review-card JSONL, and noisy scanned
   extraction records blocked segments instead of weak cards. Temp DB validation of

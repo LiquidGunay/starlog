@@ -1221,11 +1221,16 @@ wait_for_assistant_surface() {
       continue
     fi
 
-    if ! ui_has_review_controls \
-      && ui_has_class "android.widget.EditText" \
-      && (ui_has_text "Starlog Assistant" || ui_has_text "Session active" || ui_has_text "$ASSISTANT_COMMAND_TEXT" || ! ui_has_text "RECALL QUALITY"); then
-      return 0
+    if ui_has_class "android.widget.EditText"; then
+      if ui_has_text "Starlog Assistant" \
+        || ui_has_text "Session active" \
+        || ui_has_text "$ASSISTANT_COMMAND_TEXT" \
+        || ui_has_text "Send assistant message"; then
+        return 0
+      fi
+
     fi
+
     sleep 1
   done
 
@@ -2287,6 +2292,63 @@ assert_review_grade_recorded() {
   fail "Did not observe a successful /v1/reviews write or due-card state progress after tapping Good (last status: ${status:-none}, due-before: ${due_count_before:-unknown}, due-after: ${due_count_after:-unknown})"
 }
 
+assert_assistant_review_grade_dynamic_ui() {
+  log "Opening Assistant to verify review-grade dynamic UI contract rendering"
+  if tap_bottom_nav_tab "assistant"; then
+    wait_for_assistant_surface
+  else
+    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=assistant" -n "$APP_COMPONENT" >/dev/null || true
+    wait_for_assistant_surface
+  fi
+
+  local deadline=$((SECONDS + 45))
+  local found_recall_quality=0
+  local found_save_grade=0
+  local found_keep_review=0
+  local found_grade_option=0
+  while (( SECONDS < deadline )); do
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+
+    if ui_has_text "interview.review_grade" || ui_has_text "grade_review_recall"; then
+      capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui-raw-label.png"
+      snapshot_phone_state "assistant-review-grade-dynamic-ui-raw-label"
+      fail "Assistant review-grade panel exposed raw renderer/tool labels instead of human dynamic UI labels"
+    fi
+
+    if ui_has_text "RECALL QUALITY"; then
+      found_recall_quality=1
+    fi
+    if ui_has_text "Save grade"; then
+      found_save_grade=1
+    fi
+    if ui_has_text "Keep in Review"; then
+      found_keep_review=1
+    fi
+    if ui_has_text "Good"; then
+      found_grade_option=1
+    fi
+
+    if (( found_recall_quality == 1 && found_save_grade == 1 && found_keep_review == 1 && found_grade_option == 1 )); then
+      break
+    fi
+
+    scroll_review_controls
+    sleep 1
+  done
+
+  if (( found_recall_quality != 1 || found_save_grade != 1 || found_keep_review != 1 || found_grade_option != 1 )); then
+    capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui-missing.png"
+    snapshot_phone_state "assistant-review-grade-dynamic-ui-missing"
+    fail "Assistant review-grade dynamic UI did not expose required controls (RECALL QUALITY, Save grade, Keep in Review, grade option)"
+  fi
+
+  capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui.png"
+  snapshot_phone_state "assistant-review-grade-dynamic-ui"
+}
+
 study_mutation_statuses_after_line() {
   local start_line="$1"
   python3 - "$API_LOG" "$start_line" <<'PY'
@@ -2794,6 +2856,7 @@ launch_and_validate_review() {
   capture_screen "$SCREENSHOT_DIR/review-rated.png"
   snapshot_phone_state "review-rated"
   assert_review_grade_recorded "$review_api_log_line_before" "$review_due_count_before"
+  assert_assistant_review_grade_dynamic_ui
 
   log "Opening Planner tab and toggling alarm schedule control"
   if tap_bottom_nav_tab "planner"; then
@@ -2855,6 +2918,12 @@ launch_and_validate_review() {
 }
 
 write_metadata() {
+  local metadata_stage="${1:-final}"
+  local publish_latest=1
+  if [[ "$metadata_stage" == "pre" ]]; then
+    publish_latest=0
+  fi
+
   METADATA_PATH_ENV="$METADATA_PATH" \
   STAMP_ENV="$STAMP" \
   VERSION_NAME_ENV="$STARLOG_VERSION_NAME" \
@@ -2866,6 +2935,7 @@ write_metadata() {
   PASSPHRASE_FILE_ENV="$PASSPHRASE_FILE" \
   INCLUDE_LOCAL_METADATA_ENV="${STARLOG_INCLUDE_LOCAL_METADATA:-0}" \
   SCREENSHOT_DIR_ENV="$SCREENSHOT_DIR" \
+  METADATA_STAGE_ENV="$metadata_stage" \
   python3 - <<'PY'
 from pathlib import Path
 import json
@@ -2873,50 +2943,70 @@ import os
 
 path = Path(os.environ["METADATA_PATH_ENV"])
 screenshot_dir = os.environ["SCREENSHOT_DIR_ENV"]
+metadata_stage = os.environ["METADATA_STAGE_ENV"]
 include_local_metadata = os.environ["INCLUDE_LOCAL_METADATA_ENV"].lower() in {"1", "true", "yes"}
+
+validated_flows = [
+    "assistant_command_submitted",
+    "native_study_topic_unlocked",
+    "native_study_topic_marked_read",
+    "native_study_question_request_created",
+    "review_answer_revealed",
+    "review_good_grade_submitted",
+    "assistant_review_grade_dynamic_ui_verified",
+    "planner_briefing_cache_generated",
+    "planner_briefing_recommendation_hints_validated",
+    "planner_alarm_scheduled",
+]
+
+def existing_file_map(values):
+    return {
+        key: value
+        for key, value in values.items()
+        if Path(value).is_file()
+    }
+
+screenshot_candidates = {
+    "login": f"{screenshot_dir}/login.png",
+    "review_entry": f"{screenshot_dir}/review-entry.png",
+    "review_loaded": f"{screenshot_dir}/review-loaded.png",
+    "review_after_native_study_controls": f"{screenshot_dir}/review-after-native-study-controls.png",
+    "review_answer": f"{screenshot_dir}/review-answer.png",
+    "review_rated": f"{screenshot_dir}/review-rated.png",
+    "native_study_before": f"{screenshot_dir}/native-study-before.png",
+    "native_study_after": f"{screenshot_dir}/native-study-after.png",
+    "assistant_open": f"{screenshot_dir}/assistant-open.png",
+    "assistant_command": f"{screenshot_dir}/assistant-command.png",
+    "assistant_review_grade_dynamic_ui": f"{screenshot_dir}/assistant-review-grade-dynamic-ui.png",
+    "planner_open": f"{screenshot_dir}/planner-open.png",
+    "planner_alarm_cache_triggered": f"{screenshot_dir}/planner-alarm-cache-triggered.png",
+    "planner_alarm_cache_ready": f"{screenshot_dir}/planner-alarm-cache-ready.png",
+    "planner_alarm": f"{screenshot_dir}/planner-alarm.png",
+}
+
+evidence_candidates = {
+    "api_log": f"{path.parent}/local-api.log",
+    "native_study_before_xml": f"{path.parent}/native-study-before.xml",
+    "native_study_after_xml": f"{path.parent}/native-study-after.xml",
+    "review_after_native_study_controls_xml": f"{path.parent}/review-after-native-study-controls.xml",
+    "review_answer_xml": f"{path.parent}/review-answer.xml",
+    "review_rated_xml": f"{path.parent}/review-rated.xml",
+    "assistant_review_grade_dynamic_ui_xml": f"{path.parent}/assistant-review-grade-dynamic-ui.xml",
+    "planner_alarm_xml": f"{path.parent}/planner-alarm.xml",
+    "latest_briefing_json": f"{path.parent}/briefing-latest.json",
+}
+
 payload = {
     "stamp": os.environ["STAMP_ENV"],
     "version_name": os.environ["VERSION_NAME_ENV"],
     "version_code": os.environ["VERSION_CODE_ENV"],
     "apk_name": Path(os.environ["STAGED_APK_ENV"]).name,
     "api_base_kind": "local" if os.environ["API_BASE_ENV"].startswith("http://127.0.0.1:") else "configured",
-    "screenshots": {
-        "login": f"{screenshot_dir}/login.png",
-        "review_entry": f"{screenshot_dir}/review-entry.png",
-        "review_loaded": f"{screenshot_dir}/review-loaded.png",
-        "review_after_native_study_controls": f"{screenshot_dir}/review-after-native-study-controls.png",
-        "review_answer": f"{screenshot_dir}/review-answer.png",
-        "review_rated": f"{screenshot_dir}/review-rated.png",
-        "native_study_before": f"{screenshot_dir}/native-study-before.png",
-        "native_study_after": f"{screenshot_dir}/native-study-after.png",
-        "assistant_open": f"{screenshot_dir}/assistant-open.png",
-        "assistant_command": f"{screenshot_dir}/assistant-command.png",
-        "planner_open": f"{screenshot_dir}/planner-open.png",
-        "planner_alarm_cache_triggered": f"{screenshot_dir}/planner-alarm-cache-triggered.png",
-        "planner_alarm_cache_ready": f"{screenshot_dir}/planner-alarm-cache-ready.png",
-        "planner_alarm": f"{screenshot_dir}/planner-alarm.png",
-    },
-    "evidence_files": {
-        "api_log": f"{path.parent}/local-api.log",
-        "native_study_before_xml": f"{path.parent}/native-study-before.xml",
-        "native_study_after_xml": f"{path.parent}/native-study-after.xml",
-        "review_after_native_study_controls_xml": f"{path.parent}/review-after-native-study-controls.xml",
-        "review_answer_xml": f"{path.parent}/review-answer.xml",
-        "review_rated_xml": f"{path.parent}/review-rated.xml",
-        "planner_alarm_xml": f"{path.parent}/planner-alarm.xml",
-        "latest_briefing_json": f"{path.parent}/briefing-latest.json",
-    },
-    "validated_flows": [
-        "assistant_command_submitted",
-        "native_study_topic_unlocked",
-        "native_study_topic_marked_read",
-        "native_study_question_request_created",
-        "review_answer_revealed",
-        "review_good_grade_submitted",
-        "planner_briefing_cache_generated",
-        "planner_briefing_recommendation_hints_validated",
-        "planner_alarm_scheduled",
-    ],
+    "screenshots": existing_file_map(screenshot_candidates),
+    "evidence_files": existing_file_map(evidence_candidates),
+    "validated_flows": validated_flows if metadata_stage == "final" else [],
+    "validation_stage": metadata_stage,
+    "validation_passed": metadata_stage == "final",
 }
 if include_local_metadata:
     payload["local_paths"] = {
@@ -2928,7 +3018,10 @@ if include_local_metadata:
     }
 path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
-  cp "$METADATA_PATH" "$LATEST_METADATA_PATH"
+
+  if [[ "$publish_latest" -eq 1 ]]; then
+    cp "$METADATA_PATH" "$LATEST_METADATA_PATH"
+  fi
 }
 
 if [[ "${1:-}" == "--help" ]]; then
@@ -2953,12 +3046,12 @@ else
   build_apk
 fi
 verify_built_apk
-write_metadata
+write_metadata pre
 remove_phone_builds
 ensure_phone_ready
 install_apk
 launch_and_validate_review
-write_metadata
+write_metadata final
 
 log "Fresh local SRS validation completed"
 log "Build metadata: $METADATA_PATH"
