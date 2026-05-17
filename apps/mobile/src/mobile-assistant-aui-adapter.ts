@@ -12,6 +12,13 @@ import { attachmentActionLabel, toolStatusSummary } from "./assistant-mobile-ui"
 
 type MobileAssistantUiRole = "system" | "user" | "assistant";
 
+export const MOBILE_ASSISTANT_UI_TEST_MARKERS = {
+  shell: "assistant-ui shell",
+  thread: "assistant-ui thread",
+  composer: "assistant-ui composer",
+  composerInput: "assistant-ui composer input",
+} as const;
+
 type DynamicRendererDescriptor = {
   label: string;
   defaultPlacement: AssistantDynamicUiPlacement;
@@ -33,6 +40,7 @@ export type MobileAssistantUiRichPart = {
   id: string;
   type: Exclude<AssistantMessagePart["type"], "text" | "status">;
   label: string;
+  diagnostic?: boolean;
   rendererLabel?: string;
   rendererKey?: string | null;
   requestedRendererKey?: string | null;
@@ -90,6 +98,7 @@ const DYNAMIC_RENDERER_LABELS: Record<string, DynamicRendererDescriptor> = {
 };
 
 const DYNAMIC_RENDERER_KEYS = new Set<string>(Object.keys(DYNAMIC_RENDERER_LABELS));
+const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 
 const PLACEMENT_LABELS: Record<string, string> = {
   thread: "Thread panel",
@@ -266,14 +275,20 @@ function messageTranscriptText(message: AssistantThreadMessage): string {
 }
 
 function richFallbackTranscriptText(richParts: MobileAssistantUiRichPart[]): string {
-  if (richParts.length === 0) {
+  const primaryRichParts = richParts.filter((part) => !part.diagnostic);
+  if (primaryRichParts.length === 0) {
+    if (richParts.length > 0) {
+      return "Assistant details updated.";
+    }
     return "";
   }
-  if (richParts.length === 1) {
-    return richParts[0].rendererLabel || richParts[0].label;
+  if (primaryRichParts.length === 1) {
+    return primaryRichParts[0].rendererLabel || primaryRichParts[0].label;
   }
-  const firstDynamicLabel = richParts.find((part) => part.rendererLabel)?.rendererLabel;
-  return firstDynamicLabel ? `${firstDynamicLabel} and ${richParts.length - 1} more update${richParts.length === 2 ? "" : "s"}` : `${richParts.length} assistant updates`;
+  const firstDynamicLabel = primaryRichParts.find((part) => part.rendererLabel)?.rendererLabel;
+  return firstDynamicLabel
+    ? `${firstDynamicLabel} and ${primaryRichParts.length - 1} more update${primaryRichParts.length === 2 ? "" : "s"}`
+    : `${primaryRichParts.length} assistant updates`;
 }
 
 export function starlogRichPartsForMessage(message: AssistantThreadMessage): MobileAssistantUiRichPart[] {
@@ -288,10 +303,12 @@ export function starlogRichPartsForMessage(message: AssistantThreadMessage): Mob
       const descriptor = rendererDescriptor(resolvedRendererKey || requestedRendererKey);
       const placement = dynamicMetadata?.placement || descriptor?.defaultPlacement || null;
       const rendererLabel = rendererLabelFromKey(resolvedRendererKey || requestedRendererKey);
+      const diagnostic = part.type === "card" && DIAGNOSTIC_CARD_KINDS.has(part.card.kind);
       return {
         id: part.id,
         type: part.type,
         label: richPartLabel(part),
+        diagnostic,
         rendererLabel,
         rendererKey: dynamicMetadata?.rendererKey,
         requestedRendererKey: dynamicMetadata?.requestedRendererKey,
