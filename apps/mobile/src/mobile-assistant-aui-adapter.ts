@@ -5,6 +5,7 @@ import type {
   AssistantMessagePart,
   AssistantThreadMessage,
   AssistantThreadSnapshot,
+  AssistantToolCall,
   AssistantToolResult,
 } from "@starlog/contracts";
 
@@ -99,6 +100,7 @@ const DYNAMIC_RENDERER_LABELS: Record<string, DynamicRendererDescriptor> = {
 
 const DYNAMIC_RENDERER_KEYS = new Set<string>(Object.keys(DYNAMIC_RENDERER_LABELS));
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
+const DIAGNOSTIC_TOOL_NAMES = new Set(["list_dynamic_ui_capabilities"]);
 
 const PLACEMENT_LABELS: Record<string, string> = {
   thread: "Thread panel",
@@ -113,6 +115,10 @@ const PLACEMENT_LABELS: Record<string, string> = {
 
 function hasRecordValue(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function booleanMetadataFlag(metadata: Record<string, unknown>, keys: string[]): boolean {
+  return keys.some((key) => metadata[key] === true);
 }
 
 function isRegisteredDynamicRendererKey(rendererKey: string | null | undefined): rendererKey is string {
@@ -161,6 +167,43 @@ function rendererLabelFromKey(rendererKey: string | null | undefined): string | 
     return descriptor.label;
   }
   return undefined;
+}
+
+function metadataToolName(metadata: Record<string, unknown> | null | undefined): string | null {
+  const value = metadata?.tool_name;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isDiagnosticToolName(toolName: string | null | undefined): boolean {
+  return Boolean(toolName && DIAGNOSTIC_TOOL_NAMES.has(toolName));
+}
+
+function toolResultHasUserFacingDynamicUi(result: AssistantToolResult): boolean {
+  if (result.renderer_key || result.card?.renderer_key) {
+    return true;
+  }
+  if (result.card && !DIAGNOSTIC_CARD_KINDS.has(result.card.kind)) {
+    return true;
+  }
+  const toolName = metadataToolName(result.metadata);
+  return isRegisteredDynamicRendererKey(toolName);
+}
+
+export function isDiagnosticAssistantToolCall(toolCall: AssistantToolCall): boolean {
+  if (booleanMetadataFlag(toolCall.metadata || {}, ["user_visible", "transcript_visible"])) {
+    return false;
+  }
+  return true;
+}
+
+export function isDiagnosticAssistantToolResult(toolResult: AssistantToolResult): boolean {
+  if (booleanMetadataFlag(toolResult.metadata || {}, ["user_visible", "transcript_visible"])) {
+    return false;
+  }
+  if (isDiagnosticToolName(metadataToolName(toolResult.metadata))) {
+    return true;
+  }
+  return !toolResultHasUserFacingDynamicUi(toolResult);
 }
 
 export function mobileDynamicUiBadge(options: {
@@ -303,7 +346,10 @@ export function starlogRichPartsForMessage(message: AssistantThreadMessage): Mob
       const descriptor = rendererDescriptor(resolvedRendererKey || requestedRendererKey);
       const placement = dynamicMetadata?.placement || descriptor?.defaultPlacement || null;
       const rendererLabel = rendererLabelFromKey(resolvedRendererKey || requestedRendererKey);
-      const diagnostic = part.type === "card" && DIAGNOSTIC_CARD_KINDS.has(part.card.kind);
+      const diagnostic =
+        (part.type === "card" && DIAGNOSTIC_CARD_KINDS.has(part.card.kind)) ||
+        (part.type === "tool_call" && isDiagnosticAssistantToolCall(part.tool_call)) ||
+        (part.type === "tool_result" && isDiagnosticAssistantToolResult(part.tool_result));
       return {
         id: part.id,
         type: part.type,
