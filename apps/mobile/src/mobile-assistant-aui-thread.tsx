@@ -1,18 +1,21 @@
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
 import type { AssistantThreadMessage } from "@starlog/contracts";
 import {
   AssistantRuntimeProvider,
+  ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAui,
   useAuiState,
   useLocalRuntime,
   type ChatModelAdapter,
   type ThreadMessageLike,
 } from "@assistant-ui/react-native";
-import { Text, View } from "react-native";
+import { Text, TextInput as RNTextInput, View } from "react-native";
 
 import {
   assistantUiThreadFingerprint,
+  MOBILE_ASSISTANT_UI_TEST_MARKERS,
   type MobileAssistantUiRichPart,
   type MobileAssistantUiThreadMessage,
   starlogMessagesToAssistantUiMessages,
@@ -25,6 +28,16 @@ type MobileAssistantUiThreadProps = {
 
 type MobileAssistantUiShellProps = MobileAssistantUiThreadProps & {
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
+};
+
+type MobileAssistantUiComposerBridgeProps = {
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  placeholderTextColor: string;
+  disabled: boolean;
+  inputStyle: ComponentProps<typeof RNTextInput>["style"];
 };
 
 const readOnlyAdapter: ChatModelAdapter = {
@@ -56,6 +69,18 @@ function formatMessageTime(value: Date | string | undefined): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function AssistantUiAccessibilityMarker({ label, testID }: { label: string; testID: string }) {
+  return (
+    <View
+      testID={testID}
+      accessibilityLabel={label}
+      accessible
+      pointerEvents="none"
+      style={{ position: "absolute", width: 1, height: 1, opacity: 0.01 }}
+    />
+  );
+}
+
 function AssistantUiMessage({
   palette,
   sourceMessagesById,
@@ -70,7 +95,10 @@ function AssistantUiMessage({
   const isUser = role === "user";
   const isSystem = role === "system";
   const richParts = message.metadata?.custom?.richParts ?? [];
-  const dynamicBadges = richParts.map(dynamicUiBadgeText).filter((label): label is string => Boolean(label));
+  const dynamicBadges = richParts
+    .filter((part) => !part.diagnostic)
+    .map(dynamicUiBadgeText)
+    .filter((label): label is string => Boolean(label));
   const sourceMessage = sourceMessagesById.get(message.metadata.custom.starlogMessageId);
   const compatibilityContent = sourceMessage && renderCompatibilityForMessage ? renderCompatibilityForMessage(sourceMessage) : null;
   const isFallbackTranscript = message.metadata.custom.transcriptKind === "rich_fallback";
@@ -230,21 +258,101 @@ function AssistantUiRuntimeShell({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ThreadPrimitive.Root
-        style={{
-          borderRadius: 24,
-          paddingHorizontal: 2,
-          paddingVertical: 2,
-          gap: 14,
-        }}
+      <View
+        testID="assistant-ui-shell"
+        style={{ alignSelf: "stretch" }}
       >
-        <ThreadPrimitive.Messages
-          components={components}
-          scrollEnabled={false}
-          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-          contentContainerStyle={{ paddingBottom: 2 }}
-        />
-      </ThreadPrimitive.Root>
+        <AssistantUiAccessibilityMarker label={MOBILE_ASSISTANT_UI_TEST_MARKERS.shell} testID="assistant-ui-shell-marker" />
+        <ThreadPrimitive.Root
+          testID="assistant-ui-thread"
+          style={{
+            borderRadius: 24,
+            paddingHorizontal: 2,
+            paddingVertical: 2,
+            gap: 14,
+          }}
+        >
+          <AssistantUiAccessibilityMarker label={MOBILE_ASSISTANT_UI_TEST_MARKERS.thread} testID="assistant-ui-thread-marker" />
+          <ThreadPrimitive.Messages
+            components={components}
+            scrollEnabled={false}
+            ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+            contentContainerStyle={{ paddingBottom: 2 }}
+          />
+        </ThreadPrimitive.Root>
+      </View>
+    </AssistantRuntimeProvider>
+  );
+}
+
+function MobileAssistantUiComposerBridgeContent({
+  draft,
+  onDraftChange,
+  onSubmit,
+  placeholder,
+  placeholderTextColor,
+  disabled,
+  inputStyle,
+}: MobileAssistantUiComposerBridgeProps) {
+  const aui = useAui();
+
+  useEffect(() => {
+    const composer = aui.composer();
+    if (composer.getState().text !== draft) {
+      composer.setText(draft);
+    }
+  }, [aui, draft]);
+
+  const handleDraftChange = useCallback(
+    (value: string) => {
+      aui.composer().setText(value);
+      onDraftChange(value);
+    },
+    [aui, onDraftChange],
+  );
+
+  const handleSubmit = useCallback(() => {
+    aui.composer().setText(draft);
+    onSubmit();
+  }, [aui, draft, onSubmit]);
+
+  return (
+    <ComposerPrimitive.Root
+      testID="assistant-ui-composer"
+      style={{ flex: 1 }}
+    >
+      <AssistantUiAccessibilityMarker label={MOBILE_ASSISTANT_UI_TEST_MARKERS.composer} testID="assistant-ui-composer-marker" />
+      {/*
+        ComposerPrimitive.Input owns internal assistant-ui text without exposing
+        the onChange bridge Starlog needs before runAssistantTurn reads the
+        draft. Keep the backend draft authoritative for now while the visible
+        composer is hosted under ComposerPrimitive.Root.
+      */}
+      <RNTextInput
+        maxFontSizeMultiplier={1}
+        value={draft}
+        onChangeText={handleDraftChange}
+        placeholder={placeholder}
+        placeholderTextColor={placeholderTextColor}
+        multiline
+        returnKeyType="send"
+        blurOnSubmit
+        onSubmitEditing={handleSubmit}
+        editable={!disabled}
+        accessibilityLabel={MOBILE_ASSISTANT_UI_TEST_MARKERS.composerInput}
+        testID="assistant-ui-composer-input"
+        style={inputStyle}
+      />
+    </ComposerPrimitive.Root>
+  );
+}
+
+export function MobileAssistantUiComposerBridge(props: MobileAssistantUiComposerBridgeProps) {
+  const runtime = useLocalRuntime(readOnlyAdapter, { initialMessages: [] });
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <MobileAssistantUiComposerBridgeContent {...props} />
     </AssistantRuntimeProvider>
   );
 }

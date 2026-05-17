@@ -1,6 +1,7 @@
 import type { AssistantThreadMessage, AssistantThreadSnapshot } from "@starlog/contracts";
 import {
   assistantUiThreadFingerprint,
+  MOBILE_ASSISTANT_UI_TEST_MARKERS,
   mobileDynamicUiBadge,
   starlogMessagesToAssistantUiMessages,
   starlogRichPartsForMessage,
@@ -105,6 +106,15 @@ function snapshot(messages: AssistantThreadMessage[]): AssistantThreadSnapshot {
 }
 
 function runTests() {
+  {
+    assert.deepEqual(MOBILE_ASSISTANT_UI_TEST_MARKERS, {
+      shell: "assistant-ui shell",
+      thread: "assistant-ui thread",
+      composer: "assistant-ui composer",
+      composerInput: "assistant-ui composer input",
+    });
+  }
+
   {
     assert.equal(mobileDynamicUiBadge({ rendererKey: "interview.review_grade", placement: "inline" }), "Review grade · Inline panel");
     assert.equal(mobileDynamicUiBadge({ rendererKey: "grade_review_recall", placement: "inline" }), "Grade review recall · Inline panel");
@@ -227,6 +237,46 @@ function runTests() {
     assert.equal(thread.metadata.custom.starlogSlug, "primary");
     assert.equal(typeof assistantUiThreadFingerprint(thread.messages), "string");
     assert.equal(thread.messages[0]?.content, "You revealed the answer in Review. Grade the recall and I will update the card schedule.");
+  }
+
+  {
+    const diagnosticOnlyMessage: AssistantThreadMessage = {
+      id: "msg_diagnostic_only",
+      thread_id: "thread_primary",
+      run_id: "run_protocol",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "card",
+          id: "part_tool_step",
+          card: {
+            kind: "tool_step",
+            version: 1,
+            title: "ASSISTANT STEP",
+            body: "PROVIDER HINT: route this through the default model.",
+            renderer_key: null,
+            renderer_version: null,
+            placement: "thread",
+            structured_content: null,
+            ui_meta: null,
+            metadata: {},
+            entity_ref: null,
+            actions: [],
+          },
+        },
+      ],
+    };
+    const [converted] = starlogMessagesToAssistantUiMessages([diagnosticOnlyMessage]);
+    assert.ok(converted);
+    assert.equal(converted.content, "Assistant details updated.");
+    assert.equal(converted.metadata.custom.transcriptKind, "rich_fallback");
+    assert.equal(converted.metadata.custom.richParts[0]?.diagnostic, true);
+    assert.equal(converted.content.includes("ASSISTANT STEP"), false);
+    assert.equal(converted.content.includes("PROVIDER HINT"), false);
   }
 
   {
