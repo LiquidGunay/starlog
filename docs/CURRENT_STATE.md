@@ -42,8 +42,8 @@ where Starlog is going. Use this page for current implementation confidence.
   Assistant, Library, Planner, Review, and dynamic panel shaping. The Android fresh-local harness now
   requires assistant-ui shell/thread/composer markers, an Assistant dynamic UI capability prompt, and
   Assistant-hosted review-grade controls (`RECALL QUALITY`, `Save grade`, and `Keep in Review`) instead
-  of accepting old diagnostic or Review-tab-only screens. This is stronger functional evidence, but
-  still depends on the next physical-device supervisor run.
+  of accepting old diagnostic or Review-tab-only screens. The latest physical-device pass is
+  `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -164,13 +164,10 @@ Known outcome for `Inference Engineering.pdf`:
   full hosted deployment state.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
-- **Fresh Android assistant-ui functional proof:** the harness now requires Assistant shell/composer,
-  capability prompt, dynamic review-grade controls, Review reveal evidence, recommendation-backed
-  briefing, and alarm evidence, but the updated script has not yet been run on the physical device.
 - **Full assistant-ui runtime parity:** web assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Native mobile React Native
-  assistant-ui parity remains partial until the updated Android fresh-local validation produces a
-  passing device manifest for the complete Assistant dynamic UI loop.
+  assistant-ui parity is proven for the validated interview-prep capability/review-grade path, but
+  broader dynamic-panel host behavior still needs dedicated device proof.
 - **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
   Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
   `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
@@ -183,8 +180,9 @@ Known outcome for `Inference Engineering.pdf`:
   `scripts/android_fresh_local_srs_validation.sh` and indexed in
   `.localdata/android-local-validation/builds/latest.json` (and companion artifact files listed there).
   A passing run must include `validation_passed: true` plus Assistant evidence files for
-  `assistant-capability-shell-thread-composer`, `assistant-dynamic-ui-capability-prompt`,
-  `assistant-command-shell-thread-composer`, `assistant-review-grade-controls`, and
+  `assistant-capability-shell-thread`, `assistant-capability-composer`,
+  `assistant-dynamic-ui-capability-prompt`, `assistant-command-shell-thread`,
+  `assistant-command-composer`, `assistant-review-grade-controls`, and
   `assistant-review-grade-dynamic-ui`. Failed runs publish `validation_passed: false` with partial
   screenshots/XML and a failure reason instead of leaving an older passed-looking final manifest.
   The required run evidence includes Assistant command submission, native Study Core unlock/read/question
@@ -201,8 +199,8 @@ Known outcome for `Inference Engineering.pdf`:
 - Assistant-ui/dynamic UI status evidence is still bounded: desktop web assistant-ui rendering is
   partial with compatibility fallbacks, and mobile React Native dynamic panel shaping is partial.
   The functional harnesses now require the actual Assistant surface for capability and review-grade
-  dynamic UI proof; the native side still needs the supervisor's full Android validation run before this
-  can be counted as fresh device evidence.
+  dynamic UI proof, with a fresh Android device pass recorded at
+  `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
 - Fresh PDF deck-script validation proves `strings` cannot pass preflight/final-card generation,
   trusted LiteParse/local OCR extraction can produce final review-card JSONL, and noisy scanned
   extraction records blocked segments instead of weak cards. Temp DB validation of

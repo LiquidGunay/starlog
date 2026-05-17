@@ -144,9 +144,10 @@ The browser viewport harness is not native Android/iOS automation. The current E
 For native Android product-flow proof, use `scripts/android_fresh_local_srs_validation.sh`. A passing
 run writes its final manifest to
 `.localdata/android-local-validation/builds/latest.json` with `validation_passed: true` and includes
-Assistant evidence such as `assistant-capability-shell-thread-composer.png`,
-`assistant-dynamic-ui-capability-prompt.png`, `assistant-command-shell-thread-composer.png`,
-`assistant-review-grade-controls.png`, and `assistant-review-grade-dynamic-ui.png`. Failed runs write
+Assistant evidence such as `assistant-capability-shell-thread.png`, `assistant-capability-composer.png`,
+`assistant-dynamic-ui-capability-prompt.png`, `assistant-command-shell-thread.png`,
+`assistant-command-composer.png`, `assistant-review-grade-controls.png`, and
+`assistant-review-grade-dynamic-ui.png`. Failed runs write
 their own build-local `latest.json` and publish `.localdata/android-local-validation/builds/latest.json`
 with `validation_passed: false`, `validation_stage: failed`, and any partial screenshots/XML for debugging;
 they do not publish a passed final manifest.
