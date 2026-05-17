@@ -80,9 +80,18 @@ type ReviewRevealPayload = {
   };
 };
 
-type ReviewGradePayload = {
-  card_id: string;
-  rating: number;
+type AssistantThreadSnapshotPayload = {
+  interrupts?: Array<{
+    tool_name?: string;
+    status?: string;
+    structured_content?: {
+      card_id?: string;
+    };
+  }>;
+};
+
+type AssistantInterruptSubmitPayload = {
+  values?: Record<string, unknown>;
 };
 
 function isAssistantThreadMessageUrl(url: string): boolean {
@@ -97,8 +106,8 @@ function isReviewRevealRequest(url: string): boolean {
   return url.endsWith("/v1/assistant/threads/primary/events");
 }
 
-function isReviewGradingRequest(url: string): boolean {
-  return url.endsWith("/v1/reviews");
+function isAssistantInterruptSubmitRequest(url: string): boolean {
+  return /\/v1\/assistant\/interrupts\/[\w-]+\/submit$/.test(url);
 }
 
 function isBriefingGenerateRequest(url: string): boolean {
@@ -191,12 +200,25 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const composer = page.getByPlaceholder("Ask, capture, plan, review, or move something forward...");
   await expect(composer).toBeEnabled();
 
+  const capabilityPrompt = "show me what UI actions you can take";
+  const capabilityResponse = await sendAssistantMessage(page, composer, capabilityPrompt);
+  expect(capabilityResponse.assistant_message.metadata?.assistant_command).toMatchObject({
+    matched_intent: "list_dynamic_ui_capabilities",
+    status: "executed",
+  });
+  await expect(latestCommandMessage(page, capabilityPrompt)).toBeVisible();
+  await expect(page.getByText(/Starlog dynamic UI/i)).toBeVisible();
+  await expect(page.getByText(/topic unlock\/read/i)).toBeVisible();
+  await expect(page.getByText(/review grading/i)).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/list_dynamic_ui_capabilities|renderer_key|structured_content|tool_name/i);
+  await screenshot(page, testInfo, "02-assistant-capability-prompt");
+
   const assistantSmokeResponse = await sendAssistantMessage(page, composer, assistantSmokeText);
   expect(assistantSmokeResponse.user_message.role).toBe("user");
   expect(assistantSmokeResponse.assistant_message.role).toBe("assistant");
   await expect(composer).toHaveValue("");
   await expect(latestCommandMessage(page, /live functional smoke checks interview-prep study loop/i)).toBeVisible();
-  await screenshot(page, testInfo, "02-assistant-opened");
+  await screenshot(page, testInfo, "03-assistant-opened");
 
   const session = await getAuthenticatedSession(page);
   const studyTopics = await apiGetJson<StudyTopic[]>(page, session, "/v1/study/topics?limit=120");
@@ -233,7 +255,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
-  await screenshot(page, testInfo, "03-study-commands");
+  await screenshot(page, testInfo, "04-study-commands");
 
   const dueCards = await apiGetJson<DueCard[]>(page, session, "/v1/cards/due?limit=20");
   expect(dueCards.length).toBeGreaterThan(0);
@@ -245,8 +267,16 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const reviewRevealRequest = page.waitForRequest((request) =>
     request.method() === "POST" && isReviewRevealRequest(request.url()),
   );
-  await page.getByRole("button", { name: "Reveal Answer" }).click();
-  const revealPayload = (await reviewRevealRequest).postDataJSON() as ReviewRevealPayload;
+  const reviewRevealResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" && isReviewRevealRequest(response.url()) && response.status() >= 200
+      && response.status() < 300,
+  );
+  const [revealRequest, revealResponse] = await Promise.all([
+    reviewRevealRequest,
+    reviewRevealResponse,
+    page.getByRole("button", { name: "Reveal Answer" }).click(),
+  ]);
+  const revealPayload = revealRequest.postDataJSON() as ReviewRevealPayload;
   expect(revealPayload).toMatchObject({
     source_surface: "review",
     kind: "review.answer.revealed",
@@ -256,56 +286,97 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const dueCardIds = new Set(dueCards.map((card) => card.id));
   expect(revealedCardId).toBeTruthy();
   expect(dueCardIds.has(revealedCardId || "")).toBe(true);
-  const expectedRevealedCard = dueCards.find((card) => card.id === revealedCardId) ?? expectedDueCard;
+  const expectedRevealedCardId = revealedCardId || "";
+  const expectedRevealedCard = dueCards.find((card) => card.id === expectedRevealedCardId) ?? expectedDueCard;
+  const revealSnapshot = (await revealResponse.json()) as AssistantThreadSnapshotPayload;
+  expect(
+    revealSnapshot.interrupts?.some((interrupt) =>
+      interrupt.tool_name === "grade_review_recall"
+      && interrupt.status === "pending"
+      && interrupt.structured_content?.card_id === expectedRevealedCardId,
+    ),
+  ).toBe(true);
   await expect(page.getByText(expectedRevealedCard.answer.split("\n")[0], { exact: false }).first()).toBeVisible();
-  await screenshot(page, testInfo, "04-review-reveal");
+  await screenshot(page, testInfo, "05-review-reveal");
 
-  const reviewGradeRequest = page.waitForRequest((request) =>
-    request.method() === "POST" && isReviewGradingRequest(request.url()),
+  await page.goto("/assistant");
+  await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
+  await expect(composer).toBeEnabled();
+  await expect(page.getByTestId("assistant-ui-review-grade")).toBeVisible();
+  await expect(page.getByText("Interview review")).toBeVisible();
+  await expect(page.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
+  await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/grade_review_recall|renderer_key|structured_content|tool_name/i);
+  await screenshot(page, testInfo, "06-assistant-review-grade-controls");
+
+  const assistantGradeRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && isAssistantInterruptSubmitRequest(request.url()),
   );
-  const reviewGradeResponse = page.waitForResponse((response) =>
-    response.request().method() === "POST" && isReviewGradingRequest(response.url()) && response.status() === 201,
+  const assistantGradeResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" && isAssistantInterruptSubmitRequest(response.url()) && response.status() >= 200
+      && response.status() < 300,
   );
+  await page.getByRole("radio", { name: "Good" }).click();
   await Promise.all([
-    page.getByRole("button", { name: "Good" }).click(),
-    reviewGradeRequest,
-    reviewGradeResponse,
+    assistantGradeRequest,
+    assistantGradeResponse,
+    page.getByRole("button", { name: "Save grade" }).click(),
   ]);
 
-  const reviewRequestPayload = (await reviewGradeRequest).postDataJSON() as ReviewGradePayload;
-  expect(reviewRequestPayload).toMatchObject({
-    card_id: expect.any(String),
-    rating: 4,
+  const assistantGradePayload = (await assistantGradeRequest).postDataJSON() as AssistantInterruptSubmitPayload;
+  expect(assistantGradePayload.values).toMatchObject({
+    rating: "4",
   });
-  if (revealedCardId) {
-    expect(reviewRequestPayload.card_id).toBe(revealedCardId);
-  }
 
-  const reviewResponse = await reviewGradeResponse;
+  const reviewResponse = await assistantGradeResponse;
   await expectJsonWith<{
-    card_id: string;
-    card_type: string | null;
-    review_mode: string;
-    next_due_at: string;
-    interval_days: number;
-    repetitions: number;
-    ease_factor: number;
+    messages: Array<{
+      parts: Array<{
+        type: string;
+        text?: string;
+        tool_result?: {
+          renderer_key?: string;
+          structured_content?: {
+            card_id?: string;
+            grade?: string;
+            next_due_at?: string;
+          };
+          ui_meta?: {
+            rating_label?: string;
+            review_mode?: string;
+          };
+        };
+      }>;
+    }>;
   }>(
     reviewResponse,
     (payload) => {
-      expect(payload.card_id).toBe(reviewRequestPayload.card_id);
-      expect(payload).toHaveProperty("card_type");
-      expect(payload.card_type === null || typeof payload.card_type === "string").toBe(true);
-      expect(payload.review_mode).toBeTruthy();
-      expect(payload.next_due_at).toEqual(expect.any(String));
-      expect(payload.interval_days).toBeGreaterThanOrEqual(1);
-      expect(payload.repetitions).toBeGreaterThan(0);
-      expect(payload.ease_factor).toBeGreaterThan(1.2);
-      expect(Number.isNaN(Date.parse(payload.next_due_at))).toBe(false);
+      const textParts = payload.messages.flatMap((message) => message.parts.filter((part) => part.type === "text"));
+      expect(textParts.some((part) => /Recorded Good for .+ review/i.test(part.text || ""))).toBe(true);
+      const reviewToolResults = payload.messages.flatMap((message) =>
+        message.parts
+          .map((part) => part.tool_result)
+          .filter((part): part is NonNullable<typeof part> => Boolean(part) && part.renderer_key === "interview.review_grade"),
+      );
+      expect(reviewToolResults.length).toBeGreaterThan(0);
+      const latestReviewToolResult = reviewToolResults[reviewToolResults.length - 1];
+      expect(latestReviewToolResult).toBeTruthy();
+      expect(latestReviewToolResult?.structured_content).toMatchObject({
+        card_id: expectedRevealedCardId,
+        grade: "4",
+        next_due_at: expect.any(String),
+      });
+      expect(Number.isNaN(Date.parse(String(latestReviewToolResult?.structured_content?.next_due_at || "")))).toBe(false);
+      expect(latestReviewToolResult?.ui_meta).toMatchObject({
+        rating_label: "Good",
+        review_mode: expect.any(String),
+      });
     },
   );
-  await expect(page.getByText(/Recorded Good/i)).toBeVisible();
-  await screenshot(page, testInfo, "05-review-graded");
+  await expect(page.getByText(/Recorded Good for .+ review/i)).toBeVisible();
+  await screenshot(page, testInfo, "07-assistant-review-graded");
 
   await page.goto("/planner");
   await expect(page.getByRole("heading", { name: /Execution plan for/ })).toBeVisible();
@@ -324,7 +395,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
       ["briefing_review", "briefing_study", "assistant_review", "briefing_focus", "briefing_schedule"].includes(hint.signal_type),
     ),
   ).toBeTruthy();
-  await screenshot(page, testInfo, "06-briefing-generated");
+  await screenshot(page, testInfo, "08-briefing-generated");
   await expect(page.getByText(/Briefing prepared for/)).toBeVisible();
 
   const createAlarmRequest = page.waitForRequest((request) =>
@@ -352,5 +423,5 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
 
   await expect(page.getByText(/Alarm scheduled/i)).toBeVisible();
   await expect(page.locator("article", { hasText: /pwa/i })).toBeVisible();
-  await screenshot(page, testInfo, "07-alarm-scheduled");
+  await screenshot(page, testInfo, "09-alarm-scheduled");
 });
