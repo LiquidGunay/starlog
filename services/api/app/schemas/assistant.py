@@ -1,13 +1,40 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 AssistantRole = Literal["system", "user", "assistant", "tool"]
 AssistantMessageStatus = Literal["pending", "running", "requires_action", "complete", "error"]
 AssistantRunStatus = Literal["queued", "running", "interrupted", "completed", "failed", "cancelled"]
 AssistantInterruptStatus = Literal["pending", "submitted", "dismissed", "expired"]
 AssistantDynamicUiPlacement = str
+
+
+class AssistantDynamicUiToolDescriptor(BaseModel):
+    tool_name: str = Field(..., min_length=1)
+    kind: str = Field(..., min_length=1)
+    description: str | None = None
+    renderer_key: str | None = None
+    renderer_version: int | None = Field(default=None, ge=1)
+    action_examples: list[str] = Field(default_factory=list)
+
+
+class AssistantDynamicUiRendererDescriptor(BaseModel):
+    renderer_key: str = Field(..., min_length=1)
+    renderer_version: int = Field(default=1, ge=1)
+    placements: list[AssistantDynamicUiPlacement] = Field(default_factory=list)
+    tool_names: list[str] = Field(default_factory=list)
+    structured_content_fields: list[str] = Field(default_factory=list)
+    ui_meta_fields: list[str] = Field(default_factory=list)
+    description: str | None = None
+
+
+class AssistantDynamicUiCapabilityManifest(BaseModel):
+    version: str = Field(..., min_length=1)
+    surfaces: list[str] = Field(default_factory=list)
+    ui_tools: list[AssistantDynamicUiToolDescriptor] = Field(default_factory=list)
+    renderers: list[AssistantDynamicUiRendererDescriptor] = Field(default_factory=list)
+    command_examples: list[str] = Field(default_factory=list)
 
 
 class AssistantEntityRef(BaseModel):
@@ -109,10 +136,20 @@ class AssistantRun(BaseModel):
     status: AssistantRunStatus
     summary: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    dynamic_ui_capabilities: AssistantDynamicUiCapabilityManifest | None = None
     steps: list[AssistantRunStep] = Field(default_factory=list)
     current_interrupt: AssistantInterrupt | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def populate_dynamic_ui_capabilities(self) -> "AssistantRun":
+        if self.dynamic_ui_capabilities is not None:
+            return self
+        raw_capabilities = self.metadata.get("ui_capabilities") if isinstance(self.metadata, dict) else None
+        if isinstance(raw_capabilities, dict):
+            self.dynamic_ui_capabilities = AssistantDynamicUiCapabilityManifest.model_validate(raw_capabilities)
+        return self
 
 
 class AssistantThreadMessage(BaseModel):

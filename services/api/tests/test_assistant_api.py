@@ -412,6 +412,49 @@ def test_assistant_runtime_request_includes_recommendation_hints(
     )
 
 
+def test_assistant_dynamic_ui_capabilities_are_structured_and_survive_reload(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+
+    payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="show me what UI actions you can take",
+    )
+
+    assert payload["run"]["status"] == "completed"
+    assert payload["run"]["dynamic_ui_capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    assert payload["run"]["metadata"]["ui_capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    renderer_keys = {
+        renderer["renderer_key"]
+        for renderer in payload["run"]["dynamic_ui_capabilities"]["renderers"]
+    }
+    assert {"interview.topic_unlock", "interview.question_request", "interview.review_grade"} <= renderer_keys
+    tool_call = _assistant_tool_call(payload, "list_dynamic_ui_capabilities")
+    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    assert tool_result["output"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    assert tool_result["structured_content"]["capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    assert tool_result["ui_meta"] == {"tone": "system", "source": "backend_capability_registry"}
+    assert "renderer_key" not in tool_result
+
+    reloaded = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert reloaded.status_code == 200
+    snapshot = reloaded.json()
+    reloaded_run = next(run for run in snapshot["runs"] if run["id"] == payload["run"]["id"])
+    assert reloaded_run["dynamic_ui_capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    reloaded_result = next(
+        part["tool_result"]
+        for message in snapshot["messages"]
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"]["tool_call_id"] == tool_call["id"]
+    )
+    assert reloaded_result["output"]["renderers"] == tool_result["output"]["renderers"]
+
+
 def test_assistant_handoff_token_is_resolved_into_trusted_context(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -757,6 +800,75 @@ def test_assistant_primary_study_quiz_command_is_visible_and_creates_request(
     assert row["source_id"] == source["id"]
     assert row["question"] == "Quiz me on application questions for Embeddings"
     assert json.loads(row["response_json"])["question_preference"] == "application"
+
+
+def test_assistant_interview_prep_dynamic_ui_loop_accepts_natural_phrases_and_reloads(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    source, topic = _create_assistant_study_source_and_topic(
+        client,
+        auth_headers,
+        source_title="Neetcode",
+        topic_title="Sliding Window",
+    )
+
+    read_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="unlock/read Sliding Window",
+    )
+
+    assert read_payload["run"]["status"] == "completed"
+    read_command = read_payload["assistant_message"]["metadata"]["assistant_command"]
+    assert read_command["matched_intent"] == "mark_study_topic_read"
+    read_tool_call = _assistant_tool_call(read_payload, "mark_study_topic_read")
+    read_tool_result = _assistant_tool_result_for_call(read_payload, read_tool_call["id"])
+    assert read_tool_result["renderer_key"] == "interview.topic_unlock"
+    assert read_tool_result["structured_content"]["topic_id"] == topic["id"]
+    assert read_tool_result["output"]["topic"]["status"] == "read"
+
+    quiz_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="quiz me with application questions",
+    )
+
+    assert quiz_payload["run"]["status"] == "completed"
+    quiz_command = quiz_payload["assistant_message"]["metadata"]["assistant_command"]
+    assert quiz_command["matched_intent"] == "create_study_question_request"
+    quiz_tool_call = _assistant_tool_call(quiz_payload, "create_study_question_request")
+    quiz_tool_result = _assistant_tool_result_for_call(quiz_payload, quiz_tool_call["id"])
+    request = quiz_tool_result["output"]["request"]
+    assert quiz_tool_result["renderer_key"] == "interview.question_request"
+    assert quiz_tool_result["structured_content"]["topic_id"] == topic["id"]
+    assert quiz_tool_result["structured_content"]["source_id"] == source["id"]
+    assert quiz_tool_result["ui_meta"]["question_preference"] == "application"
+    assert request["question"] == "Quiz me on application questions for Sliding Window"
+
+    reloaded = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert reloaded.status_code == 200
+    snapshot = reloaded.json()
+    reloaded_read_result = next(
+        part["tool_result"]
+        for message in snapshot["messages"]
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"]["tool_call_id"] == read_tool_call["id"]
+    )
+    assert reloaded_read_result["renderer_key"] == "interview.topic_unlock"
+    assert reloaded_read_result["structured_content"]["topic_id"] == topic["id"]
+    reloaded_quiz_result = next(
+        part["tool_result"]
+        for message in snapshot["messages"]
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"]["tool_call_id"] == quiz_tool_call["id"]
+    )
+    assert reloaded_quiz_result["renderer_key"] == "interview.question_request"
+    assert reloaded_quiz_result["structured_content"]["topic_id"] == topic["id"]
+    assert reloaded_quiz_result["ui_meta"]["question_preference"] == "application"
 
 
 def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
