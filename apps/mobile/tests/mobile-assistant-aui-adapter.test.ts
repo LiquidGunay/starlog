@@ -195,8 +195,29 @@ function runTests() {
     assert.equal(converted.role, "assistant");
     assert.equal(converted.content.includes("Grade the recall"), true);
     assert.equal(converted.metadata.custom.starlogStatus, "requires_action");
+    assert.equal(converted.metadata.custom.transcriptKind, "text");
     assert.equal(converted.metadata.custom.richPartCount, 1);
     assert.equal(converted.metadata.custom.richParts[0]?.rendererLabel, "Review grade");
+  }
+
+  {
+    const richOnlyMessage: AssistantThreadMessage = {
+      id: "msg_review_interrupt_only",
+      thread_id: "thread_primary",
+      run_id: "run_review",
+      role: "assistant",
+      status: "requires_action",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: reviewGradeMessage().parts.filter((part) => part.type === "interrupt_request"),
+    };
+    const [converted] = starlogMessagesToAssistantUiMessages([richOnlyMessage]);
+    assert.ok(converted);
+    assert.equal(converted.content, "Review grade");
+    assert.equal(converted.metadata.custom.transcriptKind, "rich_fallback");
+    assert.equal(converted.metadata.custom.richPartCount, 1);
+    assert.equal(converted.metadata.custom.richParts[0]?.placementLabel, "Inline panel");
   }
 
   {
