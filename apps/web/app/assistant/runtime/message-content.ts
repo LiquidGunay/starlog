@@ -1,5 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { AssistantThreadMessage } from "@starlog/contracts";
+import { createDynamicUiViewModel, isStarlogKnownRendererKey } from "@starlog/dynamic-ui";
 
 type RuntimeContentPart = Exclude<ThreadMessageLike["content"], string>[number];
 
@@ -8,6 +9,25 @@ function dataPart(name: string, data: unknown) {
     type: `data-${name}` as const,
     data,
   };
+}
+
+function dynamicUiPart<Source extends "card" | "interrupt" | "tool_result">(
+  source: Source,
+  input: Source extends "card"
+    ? Extract<AssistantThreadMessage["parts"][number], { type: "card" }>["card"]
+    : Source extends "interrupt"
+      ? Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_request" }>["interrupt"]
+      : Extract<AssistantThreadMessage["parts"][number], { type: "tool_result" }>["tool_result"],
+) {
+  const viewModel = createDynamicUiViewModel(source, input as never);
+  if (!isStarlogKnownRendererKey(viewModel.rendererKey)) {
+    return null;
+  }
+  if (!viewModel.rendererKey.startsWith("interview.")) {
+    return null;
+  }
+
+  return dataPart(viewModel.rendererKey, { source, input });
 }
 
 function jsonClone<T>(value: T): T {
@@ -84,7 +104,7 @@ export function convertAssistantMessage(message: AssistantThreadMessage): Thread
       continue;
     }
     if (part.type === "card") {
-      content.push(dataPart("starlog-card", part.card));
+      content.push(dynamicUiPart("card", part.card) || dataPart("starlog-card", part.card));
       continue;
     }
     if (part.type === "ambient_update") {
@@ -92,7 +112,7 @@ export function convertAssistantMessage(message: AssistantThreadMessage): Thread
       continue;
     }
     if (part.type === "interrupt_request") {
-      content.push(dataPart("starlog-interrupt-request", part.interrupt));
+      content.push(dynamicUiPart("interrupt", part.interrupt) || dataPart("starlog-interrupt-request", part.interrupt));
       continue;
     }
     if (part.type === "interrupt_resolution") {
@@ -108,7 +128,7 @@ export function convertAssistantMessage(message: AssistantThreadMessage): Thread
       continue;
     }
     if (part.type === "tool_result") {
-      content.push(dataPart("starlog-tool-result", part.tool_result));
+      content.push(dynamicUiPart("tool_result", part.tool_result) || dataPart("starlog-tool-result", part.tool_result));
     }
   }
 

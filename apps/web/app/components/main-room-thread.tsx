@@ -35,6 +35,17 @@ type MainRoomThreadProps = {
   onInterruptDismiss: (interruptId: string) => Promise<void> | void;
 };
 
+type MainRoomTodayStateProps = {
+  snapshot: AssistantThreadSnapshot | null;
+  loading: boolean;
+  busy: boolean;
+  todaySummary?: AssistantTodaySummary | null;
+  weeklySummary?: AssistantWeeklySummary | null;
+  todayOpenLoops?: TodayItem[];
+  todayContextItems?: TodayItem[];
+  onQuickStart: (prompt: string) => void;
+};
+
 type TodayItem = {
   label: string;
   href?: string;
@@ -1803,6 +1814,42 @@ function MessagePart({
   );
 }
 
+export function MainRoomTodayState({
+  snapshot,
+  loading,
+  busy,
+  todaySummary,
+  weeklySummary,
+  todayOpenLoops,
+  todayContextItems,
+  onQuickStart,
+}: MainRoomTodayStateProps) {
+  if (loading && !snapshot) {
+    return <section className={styles.threadShell}>Loading assistant thread…</section>;
+  }
+
+  if (!snapshot) {
+    return <section className={styles.threadShell}>Assistant thread unavailable.</section>;
+  }
+
+  const openLoops = collectTodayOpenLoops(snapshot, todayOpenLoops);
+  const contextItems = collectTodayContext(snapshot, todayContextItems);
+
+  return (
+    <section className={styles.threadShell}>
+      <TodayPanel
+        snapshot={snapshot}
+        todaySummary={todaySummary}
+        weeklySummary={weeklySummary}
+        openLoops={openLoops}
+        contextItems={contextItems}
+        busy={busy}
+        onQuickStart={onQuickStart}
+      />
+    </section>
+  );
+}
+
 export function MainRoomThread({
   snapshot,
   loading,
@@ -1826,19 +1873,18 @@ export function MainRoomThread({
   }
 
   const interruptById = Object.fromEntries(snapshot.interrupts.map((interrupt) => [interrupt.id, interrupt]));
-  const openLoops = collectTodayOpenLoops(snapshot, todayOpenLoops);
-  const contextItems = collectTodayContext(snapshot, todayContextItems);
 
   return (
     <section className={styles.threadShell}>
       {snapshot.messages.length === 0 ? (
-        <TodayPanel
+        <MainRoomTodayState
           snapshot={snapshot}
+          loading={loading}
+          busy={busy}
           todaySummary={todaySummary}
           weeklySummary={weeklySummary}
-          openLoops={openLoops}
-          contextItems={contextItems}
-          busy={busy}
+          todayOpenLoops={todayOpenLoops}
+          todayContextItems={todayContextItems}
           onQuickStart={onQuickStart}
         />
       ) : (
