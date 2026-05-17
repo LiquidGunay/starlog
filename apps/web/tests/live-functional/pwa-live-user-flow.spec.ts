@@ -80,6 +80,16 @@ type ReviewRevealPayload = {
   };
 };
 
+type AssistantThreadSnapshotPayload = {
+  interrupts?: Array<{
+    tool_name?: string;
+    status?: string;
+    structured_content?: {
+      card_id?: string;
+    };
+  }>;
+};
+
 type AssistantInterruptSubmitPayload = {
   values?: Record<string, unknown>;
 };
@@ -257,8 +267,16 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const reviewRevealRequest = page.waitForRequest((request) =>
     request.method() === "POST" && isReviewRevealRequest(request.url()),
   );
-  await page.getByRole("button", { name: "Reveal Answer" }).click();
-  const revealPayload = (await reviewRevealRequest).postDataJSON() as ReviewRevealPayload;
+  const reviewRevealResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" && isReviewRevealRequest(response.url()) && response.status() >= 200
+      && response.status() < 300,
+  );
+  const [revealRequest, revealResponse] = await Promise.all([
+    reviewRevealRequest,
+    reviewRevealResponse,
+    page.getByRole("button", { name: "Reveal Answer" }).click(),
+  ]);
+  const revealPayload = revealRequest.postDataJSON() as ReviewRevealPayload;
   expect(revealPayload).toMatchObject({
     source_surface: "review",
     kind: "review.answer.revealed",
@@ -270,6 +288,14 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   expect(dueCardIds.has(revealedCardId || "")).toBe(true);
   const expectedRevealedCardId = revealedCardId || "";
   const expectedRevealedCard = dueCards.find((card) => card.id === expectedRevealedCardId) ?? expectedDueCard;
+  const revealSnapshot = (await revealResponse.json()) as AssistantThreadSnapshotPayload;
+  expect(
+    revealSnapshot.interrupts?.some((interrupt) =>
+      interrupt.tool_name === "grade_review_recall"
+      && interrupt.status === "pending"
+      && interrupt.structured_content?.card_id === expectedRevealedCardId,
+    ),
+  ).toBe(true);
   await expect(page.getByText(expectedRevealedCard.answer.split("\n")[0], { exact: false }).first()).toBeVisible();
   await screenshot(page, testInfo, "05-review-reveal");
 

@@ -104,12 +104,6 @@ write_failure_metadata_once() {
   if [[ "${FAILURE_METADATA_WRITTEN:-0}" == "1" || "${VALIDATION_PASSED:-0}" == "1" ]]; then
     return 0
   fi
-  if [[ ! -d "${BUILD_DIR:-}" ]]; then
-    return 0
-  fi
-  if ! declare -F write_metadata >/dev/null 2>&1; then
-    return 0
-  fi
 
   FAILURE_METADATA_WRITTEN=1
   local previous_errexit=0
@@ -117,8 +111,63 @@ write_failure_metadata_once() {
     *e*) previous_errexit=1 ;;
   esac
   set +e
-  STARLOG_FAILURE_REASON="$reason" write_metadata failed >/dev/null 2>&1
+  mkdir -p "$BUILD_DIR" "$SCREENSHOT_DIR" "$BUILD_ROOT"
   local metadata_rc=$?
+  if [[ "$metadata_rc" == "0" ]] && declare -F write_metadata >/dev/null 2>&1; then
+    STARLOG_FAILURE_REASON="$reason" write_metadata failed >/dev/null 2>&1
+    metadata_rc=$?
+  elif [[ "$metadata_rc" == "0" ]]; then
+    METADATA_PATH_ENV="$METADATA_PATH" \
+    LATEST_METADATA_PATH_ENV="$LATEST_METADATA_PATH" \
+    STAMP_ENV="$STAMP" \
+    VERSION_NAME_ENV="$STARLOG_VERSION_NAME" \
+    VERSION_CODE_ENV="$STARLOG_ANDROID_VERSION_CODE" \
+    STAGED_APK_ENV="$STAGED_APK" \
+    WINDOWS_APK_PATH_ENV="$WINDOWS_APK_PATH" \
+    API_BASE_ENV="$API_BASE" \
+    RUNTIME_DIR_ENV="$RUNTIME_DIR" \
+    PASSPHRASE_FILE_ENV="$PASSPHRASE_FILE" \
+    INCLUDE_LOCAL_METADATA_ENV="${STARLOG_INCLUDE_LOCAL_METADATA:-0}" \
+    FAILURE_REASON_ENV="$reason" \
+    python3 - <<'PY'
+from pathlib import Path
+import json
+import os
+
+path = Path(os.environ["METADATA_PATH_ENV"])
+latest_path = Path(os.environ["LATEST_METADATA_PATH_ENV"])
+include_local_metadata = os.environ["INCLUDE_LOCAL_METADATA_ENV"].lower() in {"1", "true", "yes"}
+
+payload = {
+    "stamp": os.environ["STAMP_ENV"],
+    "version_name": os.environ["VERSION_NAME_ENV"],
+    "version_code": os.environ["VERSION_CODE_ENV"],
+    "apk_name": Path(os.environ["STAGED_APK_ENV"]).name,
+    "api_base_kind": "local" if os.environ["API_BASE_ENV"].startswith("http://127.0.0.1:") else "configured",
+    "screenshots": {},
+    "evidence_files": {},
+    "validated_flows": [],
+    "validation_stage": "failed",
+    "validation_passed": False,
+    "failure_reason": os.environ["FAILURE_REASON_ENV"],
+}
+if include_local_metadata:
+    payload["local_paths"] = {
+        "apk_path": os.environ["STAGED_APK_ENV"],
+        "windows_apk_path": os.environ["WINDOWS_APK_PATH_ENV"],
+        "api_base": os.environ["API_BASE_ENV"],
+        "runtime_dir": os.environ["RUNTIME_DIR_ENV"],
+        "passphrase_file": os.environ["PASSPHRASE_FILE_ENV"],
+    }
+
+path.parent.mkdir(parents=True, exist_ok=True)
+latest_path.parent.mkdir(parents=True, exist_ok=True)
+contents = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+path.write_text(contents, encoding="utf-8")
+latest_path.write_text(contents, encoding="utf-8")
+PY
+    metadata_rc=$?
+  fi
   if [[ "$previous_errexit" == "1" ]]; then
     set -e
   fi
