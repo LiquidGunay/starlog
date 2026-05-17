@@ -68,7 +68,7 @@ import {
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
 import { mobileDynamicUiBadge } from "./mobile-assistant-aui-adapter";
-import { MobileAssistantUiThread } from "./mobile-assistant-aui-thread";
+import { MobileAssistantUiShell } from "./mobile-assistant-aui-thread";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 const ASSISTANT_TEXT_PROPS = { maxFontSizeMultiplier: 1.08 } as const;
@@ -150,14 +150,6 @@ function bodyLines(body?: string | null): string[] {
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-function timestampLabel(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-  return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function dateInputValue(offsetDays = 0): string {
@@ -1994,11 +1986,10 @@ export function MobileAssistantRebuild({
           )
         ) : (
           <>
-            {(() => {
-              const renderedThreadBlocks: React.ReactNode[] = [];
-              let pendingAssistantUiMessages: AssistantThreadMessage[] = [];
-
-              visibleThreadMessages.forEach((message, index) => {
+            <MobileAssistantUiShell
+              messages={visibleThreadMessages}
+              palette={palette}
+              renderCompatibilityForMessage={(message) => {
                 const cards = cardParts(message).map((part) => part.card);
                 const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
                 const diagnosticCards = cards.filter(isDiagnosticConversationCard);
@@ -2012,10 +2003,6 @@ export function MobileAssistantRebuild({
                 const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
                 const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
                 const activeAttachment = primaryCards[activeAttachmentIndex] ?? null;
-                const previousRole = visibleThreadMessages[index - 1]?.role;
-                const isUser = message.role === "user";
-                const showMarker =
-                  (message.role === "assistant" || message.role === "tool" || message.role === "system") && previousRole !== message.role;
                 const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
                 const hasRichMessageContent =
                   primaryCards.length > 0 ||
@@ -2028,68 +2015,16 @@ export function MobileAssistantRebuild({
                   resolutions.length > 0;
 
                 if (!hasRichMessageContent) {
-                  pendingAssistantUiMessages.push(message);
-                  return;
+                  return null;
                 }
 
-                if (pendingAssistantUiMessages.length > 0) {
-                  const firstId = pendingAssistantUiMessages[0].id;
-                  const lastId = pendingAssistantUiMessages[pendingAssistantUiMessages.length - 1].id;
-                  renderedThreadBlocks.push(
-                    <MobileAssistantUiThread
-                      key={`aui-chunk-${firstId}-${lastId}`}
-                      messages={pendingAssistantUiMessages}
-                      palette={palette}
-                    />,
-                  );
-                  pendingAssistantUiMessages = [];
-                }
-
-                renderedThreadBlocks.push(<MobileAssistantUiThread key={`aui-${message.id}`} messages={[message]} palette={palette} />);
-
-                renderedThreadBlocks.push(
+                return (
                   <View
-                    key={message.id}
                     style={{
                       gap: 8,
-                      alignItems: isUser ? "flex-end" : "stretch",
-                      ...(message.role === "assistant"
-                        ? {
-                            borderRadius: 22,
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.08)",
-                            backgroundColor: "rgba(11, 22, 36, 0.74)",
-                            paddingHorizontal: 12,
-                            paddingVertical: 12,
-                          }
-                        : null),
+                      alignItems: "stretch",
                     }}
                   >
-                    {showMarker ? (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 2 }}>
-                        <View
-                          style={{
-                            width: message.role === "assistant" ? 34 : 8,
-                            height: message.role === "assistant" ? 34 : 8,
-                            borderRadius: 999,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: message.role === "assistant" ? "rgba(243, 178, 66, 0.11)" : palette.accent,
-                            borderWidth: message.role === "assistant" ? 1 : 0,
-                            borderColor: "rgba(243, 178, 66, 0.28)",
-                          }}
-                        >
-                          {message.role === "assistant" ? (
-                            <MaterialCommunityIcons name={"star-four-points" as never} size={18} color={palette.accent} />
-                          ) : null}
-                        </View>
-                        <Text style={{ color: message.role === "assistant" ? palette.accent : palette.muted, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
-                          {message.role === "assistant" ? "Starlog Assistant" : "System"}{" "}
-                          {timestampLabel(message.created_at) ? `  ${timestampLabel(message.created_at)}` : ""}
-                        </Text>
-                      </View>
-                    ) : null}
-
                     {ambientUpdates.length > 0 ? (
                       <View style={{ gap: 8, paddingLeft: 10 }}>
                         {ambientUpdates.map((update: AssistantAmbientUpdate) => (
@@ -2460,36 +2395,22 @@ export function MobileAssistantRebuild({
                     ) : null}
                   </View>
                 );
-              });
-
-              if (pendingAssistantUiMessages.length > 0) {
-                const firstId = pendingAssistantUiMessages[0].id;
-                const lastId = pendingAssistantUiMessages[pendingAssistantUiMessages.length - 1].id;
-                renderedThreadBlocks.push(
-                  <MobileAssistantUiThread
-                    key={`aui-chunk-${firstId}-${lastId}`}
-                    messages={pendingAssistantUiMessages}
-                    palette={palette}
-                  />,
-                );
-              }
-
-              return renderedThreadBlocks;
-            })()}
+              }}
+            />
           </>
         )}
       </View>
 
       <View
         style={{
-          borderRadius: 22,
-          paddingHorizontal: 6,
-          paddingTop: 6,
-          paddingBottom: 6,
+          borderRadius: 28,
+          paddingHorizontal: 8,
+          paddingTop: 8,
+          paddingBottom: 8,
           borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.04)",
-          backgroundColor: "rgba(18, 15, 19, 0.7)",
-          gap: 5,
+          borderColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.065)",
+          backgroundColor: "rgba(9, 13, 18, 0.92)",
+          gap: 7,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -2529,9 +2450,9 @@ export function MobileAssistantRebuild({
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
           <TouchableOpacity
             style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
+              width: 42,
+              height: 42,
+              borderRadius: 21,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor:
@@ -2577,14 +2498,14 @@ export function MobileAssistantRebuild({
           <View
             style={{
               flex: 1,
-              minHeight: 46,
-              borderRadius: 18,
-              paddingHorizontal: 12,
-              paddingTop: 3,
-              paddingBottom: 3,
-              backgroundColor: "rgba(255,255,255,0.022)",
+              minHeight: 50,
+              borderRadius: 21,
+              paddingHorizontal: 13,
+              paddingTop: 4,
+              paddingBottom: 4,
+              backgroundColor: "rgba(255,255,255,0.035)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.04)",
+              borderColor: "rgba(255,255,255,0.06)",
             }}
           >
             <TextInput
@@ -2611,9 +2532,9 @@ export function MobileAssistantRebuild({
 
           <TouchableOpacity
             style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: pendingConversationTurn ? "rgba(255,255,255,0.12)" : palette.accent,

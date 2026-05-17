@@ -56,6 +56,7 @@ export type MobileAssistantUiThreadMessage = {
       starlogMessageId: string;
       starlogThreadId: string;
       starlogStatus: AssistantThreadMessage["status"];
+      transcriptKind: "text" | "rich_fallback";
       richPartCount: number;
       richParts: MobileAssistantUiRichPart[];
     };
@@ -264,6 +265,17 @@ function messageTranscriptText(message: AssistantThreadMessage): string {
   return textParts.join("\n\n").trim();
 }
 
+function richFallbackTranscriptText(richParts: MobileAssistantUiRichPart[]): string {
+  if (richParts.length === 0) {
+    return "";
+  }
+  if (richParts.length === 1) {
+    return richParts[0].rendererLabel || richParts[0].label;
+  }
+  const firstDynamicLabel = richParts.find((part) => part.rendererLabel)?.rendererLabel;
+  return firstDynamicLabel ? `${firstDynamicLabel} and ${richParts.length - 1} more update${richParts.length === 2 ? "" : "s"}` : `${richParts.length} assistant updates`;
+}
+
 export function starlogRichPartsForMessage(message: AssistantThreadMessage): MobileAssistantUiRichPart[] {
   return message.parts
     .filter((part): part is Exclude<AssistantMessagePart, Extract<AssistantMessagePart, { type: "text" | "status" }>> =>
@@ -298,19 +310,21 @@ export function starlogRichPartsForMessage(message: AssistantThreadMessage): Mob
 export function starlogMessageToAssistantUiMessage(message: AssistantThreadMessage): MobileAssistantUiThreadMessage | null {
   const transcriptText = messageTranscriptText(message);
   const richParts = starlogRichPartsForMessage(message);
-  if (!transcriptText) {
+  const content = transcriptText || richFallbackTranscriptText(richParts);
+  if (!content) {
     return null;
   }
   return {
     id: message.id,
     role: normalizeRole(message.role),
-    content: transcriptText,
+    content,
     createdAt: new Date(message.created_at),
     metadata: {
       custom: {
         starlogMessageId: message.id,
         starlogThreadId: message.thread_id,
         starlogStatus: message.status,
+        transcriptKind: transcriptText ? "text" : "rich_fallback",
         richPartCount: richParts.length,
         richParts,
       },
