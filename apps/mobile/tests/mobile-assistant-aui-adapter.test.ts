@@ -1,6 +1,13 @@
-import type { AssistantThreadMessage, AssistantThreadSnapshot } from "@starlog/contracts";
+import type {
+  AssistantThreadMessage,
+  AssistantThreadSnapshot,
+  AssistantToolCall,
+  AssistantToolResult,
+} from "@starlog/contracts";
 import {
   assistantUiThreadFingerprint,
+  isDiagnosticAssistantToolCall,
+  isDiagnosticAssistantToolResult,
   MOBILE_ASSISTANT_UI_TEST_MARKERS,
   mobileDynamicUiBadge,
   starlogMessagesToAssistantUiMessages,
@@ -277,6 +284,140 @@ function runTests() {
     assert.equal(converted.metadata.custom.richParts[0]?.diagnostic, true);
     assert.equal(converted.content.includes("ASSISTANT STEP"), false);
     assert.equal(converted.content.includes("PROVIDER HINT"), false);
+  }
+
+  {
+    const diagnosticToolCall: AssistantToolCall = {
+      id: "tool_call_capabilities",
+      tool_name: "list_dynamic_ui_capabilities",
+      tool_kind: "system_tool",
+      status: "complete",
+      arguments: {},
+      title: "ASSISTANT STEP",
+      metadata: {
+        tool_name: "list_dynamic_ui_capabilities",
+      },
+    };
+    const diagnosticToolResult: AssistantToolResult = {
+      id: "tool_result_capabilities",
+      tool_call_id: "tool_call_capabilities",
+      status: "complete",
+      output: {
+        command_examples: ["I read vectors", "quiz me on embeddings"],
+        renderers: ["interview.topic_unlock", "interview.review_grade"],
+        surfaces: ["assistant", "review"],
+        ui_tools: ["topic unlock", "review grading"],
+      },
+      renderer_key: null,
+      renderer_version: null,
+      placement: null,
+      structured_content: null,
+      ui_meta: null,
+      card: null,
+      entity_ref: null,
+      metadata: {
+        tool_name: "list_dynamic_ui_capabilities",
+      },
+    };
+
+    assert.equal(isDiagnosticAssistantToolCall(diagnosticToolCall), true);
+    assert.equal(isDiagnosticAssistantToolResult(diagnosticToolResult), true);
+
+    const message: AssistantThreadMessage = {
+      id: "msg_capabilities_response",
+      thread_id: "thread_primary",
+      run_id: "run_protocol",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "text",
+          id: "part_capabilities_text",
+          text: "I can request Starlog dynamic UI for topic unlocks, question requests, and review grading.",
+        },
+        {
+          type: "tool_call",
+          id: "part_capabilities_call",
+          tool_call: diagnosticToolCall,
+        },
+        {
+          type: "tool_result",
+          id: "part_capabilities_result",
+          tool_result: diagnosticToolResult,
+        },
+      ],
+    };
+
+    const richParts = starlogRichPartsForMessage(message);
+    assert.equal(richParts.length, 2);
+    assert.equal(richParts.every((part) => part.diagnostic), true);
+
+    const [converted] = starlogMessagesToAssistantUiMessages([message]);
+    assert.ok(converted);
+    assert.equal(converted.content, "I can request Starlog dynamic UI for topic unlocks, question requests, and review grading.");
+    assert.equal(converted.content.includes("ASSISTANT STEP"), false);
+    assert.equal(converted.content.includes("COMMAND EXAMPLES"), false);
+    assert.equal(converted.content.includes("RENDERERS"), false);
+    assert.equal(converted.metadata.custom.richPartCount, 2);
+    assert.equal(converted.metadata.custom.richParts.every((part) => part.diagnostic), true);
+  }
+
+  {
+    const dynamicToolResult: AssistantToolResult = {
+      id: "tool_result_review_grade",
+      tool_call_id: "tool_call_review_grade",
+      status: "complete",
+      output: {
+        card_id: "card_ml_vectors",
+        grade: "good",
+      },
+      renderer_key: "interview.review_grade",
+      renderer_version: 1,
+      placement: "inline",
+      structured_content: {
+        card_id: "card_ml_vectors",
+        grade: "good",
+      },
+      ui_meta: {
+        tone: "review",
+      },
+      card: null,
+      entity_ref: null,
+      metadata: {},
+    };
+
+    assert.equal(isDiagnosticAssistantToolResult(dynamicToolResult), false);
+
+    const message: AssistantThreadMessage = {
+      id: "msg_review_result",
+      thread_id: "thread_primary",
+      run_id: "run_review",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "tool_result",
+          id: "part_review_result",
+          tool_result: dynamicToolResult,
+        },
+      ],
+    };
+
+    const [richPart] = starlogRichPartsForMessage(message);
+    assert.ok(richPart);
+    assert.equal(richPart.diagnostic, false);
+    assert.equal(richPart.rendererLabel, "Review grade");
+
+    const [converted] = starlogMessagesToAssistantUiMessages([message]);
+    assert.ok(converted);
+    assert.equal(converted.content, "Review grade");
+    assert.equal(converted.metadata.custom.transcriptKind, "rich_fallback");
   }
 
   {

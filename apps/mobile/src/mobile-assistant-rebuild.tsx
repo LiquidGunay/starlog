@@ -67,7 +67,7 @@ import {
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
-import { mobileDynamicUiBadge } from "./mobile-assistant-aui-adapter";
+import { isDiagnosticAssistantToolCall, isDiagnosticAssistantToolResult, mobileDynamicUiBadge } from "./mobile-assistant-aui-adapter";
 import { MobileAssistantUiComposerBridge, MobileAssistantUiShell } from "./mobile-assistant-aui-thread";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
@@ -2014,8 +2014,11 @@ export function MobileAssistantRebuild({
                 const diagnosticCards = cards.filter(isDiagnosticConversationCard);
                 const ambientUpdates = ambientParts(message).map((part) => part.update);
                 const attachments = attachmentParts(message).map((part) => part.attachment);
-                const toolCalls = toolCallParts(message).map((part) => part.tool_call);
-                const toolResults = toolResultParts(message).map((part) => part.tool_result);
+                const allToolCalls = toolCallParts(message).map((part) => part.tool_call);
+                const allToolResults = toolResultParts(message).map((part) => part.tool_result);
+                const toolCalls = allToolCalls.filter((toolCall) => !isDiagnosticAssistantToolCall(toolCall));
+                const toolResults = allToolResults.filter((toolResult) => !isDiagnosticAssistantToolResult(toolResult));
+                const diagnosticToolCount = allToolCalls.length - toolCalls.length + allToolResults.length - toolResults.length;
                 const interruptRequests = interruptRequestParts(message).map(
                   (part) => liveInterruptById[part.interrupt.id] || part.interrupt,
                 );
@@ -2338,7 +2341,7 @@ export function MobileAssistantRebuild({
                       </View>
                     ) : null}
 
-                    {(diagnosticCards.length > 0 || resolutions.length > 0) ? (
+                    {(diagnosticCards.length > 0 || diagnosticToolCount > 0 || resolutions.length > 0) ? (
                       <View style={{ paddingLeft: 10, gap: 6 }}>
                         <TouchableOpacity
                           style={{
@@ -2353,7 +2356,7 @@ export function MobileAssistantRebuild({
                           onPress={() => setExpandedDiagnostics((previous) => ({ ...previous, [message.id]: !previous[message.id] }))}
                         >
                           <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                            {showDiagnostics ? "Details open" : `Details ${diagnosticCards.length + resolutions.length}`}
+                            {showDiagnostics ? "Details open" : `Details ${diagnosticCards.length + diagnosticToolCount + resolutions.length}`}
                           </Text>
                         </TouchableOpacity>
                         {showDiagnostics ? (
@@ -2387,6 +2390,28 @@ export function MobileAssistantRebuild({
                                 <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{resolution.action}</Text>
                               </View>
                             ))}
+                            {diagnosticToolCount > 0 ? (
+                              <View
+                                style={{
+                                  borderRadius: 14,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 9,
+                                  borderWidth: 1,
+                                  borderColor: "rgba(255,255,255,0.04)",
+                                  backgroundColor: "rgba(255,255,255,0.02)",
+                                  gap: 4,
+                                }}
+                              >
+                                <Text style={{ color: palette.text, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.75 }}>
+                                  Protocol diagnostics hidden from transcript
+                                </Text>
+                                <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
+                                  {diagnosticToolCount} protocol call/result
+                                  {diagnosticToolCount === 1 ? "" : "s"}
+                                  {" hidden from transcript."}
+                                </Text>
+                              </View>
+                            ) : null}
                             {diagnosticCards.map((card, cardIndex) => {
                               const diagnosticSummary = diagnosticConversationCardSummary(card);
                               return (
