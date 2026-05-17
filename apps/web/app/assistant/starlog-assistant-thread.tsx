@@ -23,7 +23,7 @@ import type {
 } from "@starlog/contracts";
 
 import {
-  MainRoomThread,
+  MainRoomTodayState,
   type AssistantTodaySummary,
   type AssistantWeeklySummary,
 } from "../components/main-room-thread";
@@ -75,6 +75,11 @@ type ToolPartProps = {
   result?: unknown;
   isError?: boolean;
 };
+
+type DynamicUiAdapterData =
+  | { source: "interrupt"; input: AssistantInterrupt }
+  | { source: "card"; input: AssistantCard }
+  | { source: "tool_result"; input: AssistantToolResult };
 
 const REVIEW_GRADES = [
   { value: "1", label: "Again", hint: "Review soon" },
@@ -139,6 +144,25 @@ function numberValue(value: unknown): number | null {
 
 function booleanValue(value: unknown): boolean {
   return value === true;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function percentageValue(value: unknown): string | null {
+  const number = numberValue(value);
+  if (number === null) {
+    return null;
+  }
+  const normalized = number <= 1 ? number * 100 : number;
+  return `${Math.round(normalized)}% confidence`;
 }
 
 function cardMetadataBadges(card: AssistantCard): string[] {
@@ -224,6 +248,30 @@ function isInterviewReviewInterrupt(interrupt: AssistantInterrupt): boolean {
     interrupt.tool_name === "grade_review_recall" ||
     /(?:interview|review).*(?:grade|recall|quiz)|(?:grade|recall|quiz).*(?:interview|review)/i.test(interrupt.tool_name)
   );
+}
+
+function dynamicUiViewModel(data: DynamicUiAdapterData) {
+  if (data.source === "interrupt") {
+    return createDynamicUiViewModel("interrupt", data.input);
+  }
+  if (data.source === "tool_result") {
+    return createDynamicUiViewModel("tool_result", data.input);
+  }
+  return createDynamicUiViewModel("card", data.input);
+}
+
+function dynamicUiInput(data: DynamicUiAdapterData): AssistantInterrupt | AssistantCard | AssistantToolResult {
+  return data.input;
+}
+
+function dynamicUiCard(data: DynamicUiAdapterData): AssistantCard | null {
+  if (data.source === "card") {
+    return data.input;
+  }
+  if (data.source === "tool_result") {
+    return data.input.card || null;
+  }
+  return null;
 }
 
 function roleLabel(role: string): string {
@@ -425,16 +473,9 @@ function ResolutionDataPart({ data }: DataPartProps<{ action?: string; values?: 
 }
 
 function UnknownDataPart({ name, data }: { name?: string; data?: unknown }) {
-  const label = name === "starlog-interrupt-request" ? "Assistant decision" : "Assistant detail";
-  const hasData = Object.keys(metadataRecord(data)).length > 0;
-  return (
-    <section className={styles.dataCard}>
-      <div className={styles.partHeader}>
-        <span>{label}</span>
-      </div>
-      {hasData ? <p>Diagnostic details are available in the fallback view.</p> : null}
-    </section>
-  );
+  void name;
+  void data;
+  return null;
 }
 
 function ReviewGradeDataPart({
@@ -637,6 +678,211 @@ function ReviewToolPart(props: ToolPartProps) {
   );
 }
 
+function DynamicUiActionRow({
+  card,
+  busy,
+  inlineBusyActionIds,
+  onCardAction,
+}: {
+  card: AssistantCard | null;
+  busy: boolean;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  if (!card?.actions.length) {
+    return null;
+  }
+
+  return (
+    <div className={styles.cardActions}>
+      {card.actions.map((action) => {
+        const actionBusy = inlineBusyActionIds.includes(action.id);
+        if (action.kind === "navigate" && typeof action.payload?.href === "string") {
+          return (
+            <a key={action.id} href={action.payload.href}>
+              {action.label}
+            </a>
+          );
+        }
+        return (
+          <button
+            key={action.id}
+            type="button"
+            disabled={busy || actionBusy}
+            onClick={() => void onCardAction(action)}
+          >
+            {actionBusy ? `Running ${action.label}` : action.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function InterviewTopicUnlockDataPart({
+  data,
+  busy,
+  inlineBusyActionIds,
+  onCardAction,
+}: DataPartProps<DynamicUiAdapterData> & {
+  busy: boolean;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  const viewModel = dynamicUiViewModel(data);
+  const input = dynamicUiInput(data);
+  const structuredContent = metadataRecord(viewModel.structuredContent);
+  const card = dynamicUiCard(data);
+  const topicTitle =
+    firstText(structuredContent.topic_title, input.entity_ref?.title, viewModel.title, card?.title) || "Topic unlocked";
+  const reason =
+    firstText(structuredContent.unlock_reason, structuredContent.reason, viewModel.body, card?.body) ||
+    "Starlog unlocked this topic from your current learning context.";
+
+  return (
+    <section className={styles.dataCard} data-testid="assistant-ui-topic-unlock" data-dynamic-ui-renderer={viewModel.rendererKey}>
+      <div className={styles.partHeader}>
+        <span>Topic unlock</span>
+        <EntityLink entityRef={viewModel.entityRef} />
+      </div>
+      <h3>{topicTitle}</h3>
+      <p>{reason}</p>
+      <DynamicUiActionRow card={card} busy={busy} inlineBusyActionIds={inlineBusyActionIds} onCardAction={onCardAction} />
+    </section>
+  );
+}
+
+function InterviewQuestionRequestDataPart({
+  data,
+  busy,
+  onSubmit,
+  onDismiss,
+}: DataPartProps<DynamicUiAdapterData> & {
+  busy: boolean;
+  onSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
+  onDismiss: (interruptId: string) => Promise<void> | void;
+}) {
+  if (data.source === "interrupt" && data.input.status === "pending") {
+    return <DynamicPanelRenderer interrupt={data.input} busy={busy} onSubmit={onSubmit} onDismiss={onDismiss} />;
+  }
+
+  const viewModel = dynamicUiViewModel(data);
+  const input = dynamicUiInput(data);
+  const structuredContent = metadataRecord(viewModel.structuredContent);
+  const prompt =
+    firstText(structuredContent.prompt, structuredContent.question, viewModel.body, input.entity_ref?.title, viewModel.title) ||
+    "Question ready";
+  const topic = firstText(structuredContent.topic_title, input.entity_ref?.title);
+  const questionType = firstText(structuredContent.question_type, structuredContent.mode);
+
+  return (
+    <section className={styles.dataCard} data-testid="assistant-ui-question-request" data-dynamic-ui-renderer={viewModel.rendererKey}>
+      <div className={styles.partHeader}>
+        <span>Question request</span>
+        <EntityLink entityRef={viewModel.entityRef} />
+      </div>
+      <h3>{prompt}</h3>
+      {topic || questionType ? (
+        <div className={styles.badgeRow}>
+          {topic ? <span className={styles.badge}>{topic}</span> : null}
+          {questionType ? <span className={styles.badge}>{productLabel(questionType)}</span> : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function InterviewReviewGradeDataPart({
+  data,
+  busy,
+  onSubmit,
+  onDismiss,
+}: DataPartProps<DynamicUiAdapterData> & {
+  busy: boolean;
+  onSubmit: (interruptId: string, values: Record<string, unknown>) => Promise<void> | void;
+  onDismiss: (interruptId: string) => Promise<void> | void;
+}) {
+  if (data.source === "interrupt") {
+    return <ReviewGradeDataPart interrupt={data.input} busy={busy} onSubmit={onSubmit} onDismiss={onDismiss} />;
+  }
+
+  const viewModel = dynamicUiViewModel(data);
+  const structuredContent = metadataRecord(viewModel.structuredContent);
+  const grade = firstText(structuredContent.grade, structuredContent.rating, viewModel.status);
+  const nextDue = firstText(structuredContent.next_due_at, structuredContent.next_due_label);
+
+  return (
+    <section className={styles.reviewCard} data-testid="assistant-ui-review-grade" data-dynamic-ui-renderer={viewModel.rendererKey}>
+      <div className={styles.partHeader}>
+        <span>Interview review</span>
+        <EntityLink entityRef={viewModel.entityRef} />
+      </div>
+      <div className={styles.reviewPrompt}>
+        <h3>{viewModel.title || "Review grade saved"}</h3>
+        {viewModel.body ? <p>{viewModel.body}</p> : null}
+      </div>
+      {grade || nextDue ? (
+        <div className={styles.badgeRow}>
+          {grade ? <span className={styles.badge}>{productLabel(grade)}</span> : null}
+          {nextDue ? <span className={styles.badge}>{nextDue}</span> : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function InterviewRecommendationReasonDataPart({
+  data,
+  busy,
+  inlineBusyActionIds,
+  onCardAction,
+}: DataPartProps<DynamicUiAdapterData> & {
+  busy: boolean;
+  inlineBusyActionIds: string[];
+  onCardAction: (action: AssistantCardAction) => Promise<void> | void;
+}) {
+  const viewModel = dynamicUiViewModel(data);
+  const input = dynamicUiInput(data);
+  const structuredContent = metadataRecord(viewModel.structuredContent);
+  const card = dynamicUiCard(data);
+  const reason =
+    firstText(
+      structuredContent.reason,
+      structuredContent.recommendation_reason,
+      viewModel.body,
+      card?.metadata.recommendation_reason,
+      input.metadata.recommendation_reason,
+    ) || "Starlog has enough signal to recommend this next review move.";
+  const evidence = stringList(structuredContent.evidence);
+  const confidence = percentageValue(structuredContent.confidence);
+
+  return (
+    <section
+      className={styles.dataCard}
+      data-testid="assistant-ui-recommendation-reason"
+      data-dynamic-ui-renderer={viewModel.rendererKey}
+    >
+      <div className={styles.partHeader}>
+        <span>Recommendation reason</span>
+        <EntityLink entityRef={viewModel.entityRef} />
+      </div>
+      <h3>{viewModel.title || "Why this is next"}</h3>
+      <p>{reason}</p>
+      {evidence.length > 0 || confidence ? (
+        <div className={styles.badgeRow}>
+          {evidence.map((item) => (
+            <span key={item} className={styles.badge}>
+              {item}
+            </span>
+          ))}
+          {confidence ? <span className={styles.badge}>{confidence}</span> : null}
+        </div>
+      ) : null}
+      <DynamicUiActionRow card={card} busy={busy} inlineBusyActionIds={inlineBusyActionIds} onCardAction={onCardAction} />
+    </section>
+  );
+}
+
 function useStarlogAssistantUiRegistration({
   interruptById,
   busy,
@@ -711,6 +957,70 @@ function useStarlogAssistantUiRegistration({
     [busy, inlineBusyActionIds, onCardAction],
   );
 
+  const TopicUnlockRenderer = useMemo(
+    () =>
+      function TopicUnlockRenderer({ data }: DataPartProps<DynamicUiAdapterData>) {
+        return (
+          <InterviewTopicUnlockDataPart
+            data={data}
+            busy={busy}
+            inlineBusyActionIds={inlineBusyActionIds}
+            onCardAction={onCardAction}
+          />
+        );
+      },
+    [busy, inlineBusyActionIds, onCardAction],
+  );
+
+  const QuestionRequestRenderer = useMemo(
+    () =>
+      function QuestionRequestRenderer({ data }: DataPartProps<DynamicUiAdapterData>) {
+        return (
+          <InterviewQuestionRequestDataPart
+            data={data}
+            busy={busy}
+            onSubmit={onInterruptSubmit}
+            onDismiss={onInterruptDismiss}
+          />
+        );
+      },
+    [busy, onInterruptDismiss, onInterruptSubmit],
+  );
+
+  const ReviewGradeRenderer = useMemo(
+    () =>
+      function ReviewGradeRenderer({ data }: DataPartProps<DynamicUiAdapterData>) {
+        return (
+          <InterviewReviewGradeDataPart
+            data={data}
+            busy={busy}
+            onSubmit={onInterruptSubmit}
+            onDismiss={onInterruptDismiss}
+          />
+        );
+      },
+    [busy, onInterruptDismiss, onInterruptSubmit],
+  );
+
+  const RecommendationReasonRenderer = useMemo(
+    () =>
+      function RecommendationReasonRenderer({ data }: DataPartProps<DynamicUiAdapterData>) {
+        return (
+          <InterviewRecommendationReasonDataPart
+            data={data}
+            busy={busy}
+            inlineBusyActionIds={inlineBusyActionIds}
+            onCardAction={onCardAction}
+          />
+        );
+      },
+    [busy, inlineBusyActionIds, onCardAction],
+  );
+
+  useAssistantDataUI({ name: "interview.topic_unlock", render: TopicUnlockRenderer });
+  useAssistantDataUI({ name: "interview.question_request", render: QuestionRequestRenderer });
+  useAssistantDataUI({ name: "interview.review_grade", render: ReviewGradeRenderer });
+  useAssistantDataUI({ name: "interview.recommendation_reason", render: RecommendationReasonRenderer });
   useAssistantDataUI({ name: "starlog-interrupt-request", render: InterruptRenderer });
   useAssistantDataUI({ name: "starlog-card", render: CardRenderer });
   useAssistantDataUI({ name: "starlog-ambient-update", render: AmbientRenderer });
@@ -864,7 +1174,7 @@ export function StarlogAssistantThread({
 
   if (!snapshot || snapshot.messages.length === 0) {
     return (
-      <MainRoomThread
+      <MainRoomTodayState
         snapshot={snapshot}
         loading={loading}
         busy={busy}
@@ -873,10 +1183,6 @@ export function StarlogAssistantThread({
         todayOpenLoops={todayOpenLoops}
         todayContextItems={todayContextItems}
         onQuickStart={onQuickStart}
-        inlineBusyActionIds={inlineBusyActionIds}
-        onCardAction={onCardAction}
-        onInterruptSubmit={onInterruptSubmit}
-        onInterruptDismiss={onInterruptDismiss}
       />
     );
   }

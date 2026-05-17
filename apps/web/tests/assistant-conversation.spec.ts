@@ -1659,6 +1659,7 @@ test("assistant-ui interview review data UI submits a grade without raw protocol
   await page.goto("/assistant");
 
   await expect(page.getByText("Grade this interview recall so I can schedule the next pass.")).toBeVisible();
+  await expect(page.getByTestId("assistant-ui-review-grade")).toHaveAttribute("data-dynamic-ui-renderer", "interview.review_grade");
   await expect(page.getByText("Interview review")).toBeVisible();
   await expect(page.getByText("How would you explain the event loop to a product engineer?")).toBeVisible();
   await expect(page.getByText("Recent misses on async JavaScript make a short recall grade the highest-value next step.")).toBeVisible();
@@ -1668,5 +1669,144 @@ test("assistant-ui interview review data UI submits a grade without raw protocol
   expect(submissions).toHaveLength(1);
   expect(submissions[0].values).toEqual(expect.objectContaining({ rating: "4" }));
   await expect(page.getByText("Saved the interview review grade.")).toBeVisible();
-  await expect(page.locator("main")).not.toContainText(/grade_review_recall|renderer_key|structured_content|tool_name|card_interview_1|Raw|Diagnostics/i);
+  await expect(page.locator("main")).not.toContainText(/grade_review_recall|renderer_key|structured_content|tool_name|card_interview_1|Raw|Diagnostic/i);
+});
+
+test("assistant-ui interview dynamic UI adapters hide raw renderer keys", async ({ page }) => {
+  await seedSession(page);
+  await routeAssistantShell(
+    page,
+    threadSnapshot({
+      last_message_at: "2026-04-21T09:14:00.000Z",
+      last_preview_text: "Interview learning updates are ready.",
+      messages: [
+        {
+          id: "msg_interview_dynamic_ui_1",
+          thread_id: "thr_primary",
+          run_id: "run_interview_dynamic_ui_1",
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "tool_result",
+              id: "part_topic_unlock_result",
+              tool_result: {
+                id: "tool_result_topic_unlock",
+                tool_call_id: "tool_topic_unlock",
+                status: "complete",
+                renderer_key: "interview.topic_unlock",
+                renderer_version: 1,
+                placement: "thread",
+                structured_content: {
+                  topic_id: "topic-dp",
+                  topic_title: "Dynamic programming patterns",
+                  unlock_reason: "You cleared the prerequisite recursion cards.",
+                },
+                ui_meta: { tone: "study" },
+                output: {
+                  topic_id: "topic-dp",
+                  topic_title: "Dynamic programming patterns",
+                  unlock_reason: "You cleared the prerequisite recursion cards.",
+                },
+                entity_ref: {
+                  entity_type: "study_topic",
+                  entity_id: "topic-dp",
+                  href: "/review?topic=topic-dp",
+                  title: "Dynamic programming patterns",
+                },
+                metadata: {},
+              },
+            },
+            {
+              type: "card",
+              id: "part_question_request_card",
+              card: {
+                kind: "learning_drill",
+                version: 1,
+                renderer_key: "interview.question_request",
+                renderer_version: 1,
+                placement: "thread",
+                title: "Generate an interview prompt",
+                body: "Prepare one application question for the unlocked topic.",
+                structured_content: {
+                  topic_id: "topic-dp",
+                  topic_title: "Dynamic programming patterns",
+                  question_type: "application",
+                  prompt: "Ask me to derive a state transition for a bounded DP problem.",
+                },
+                ui_meta: { density: "compact" },
+                entity_ref: {
+                  entity_type: "study_topic",
+                  entity_id: "topic-dp",
+                  href: "/review?topic=topic-dp",
+                  title: "Dynamic programming patterns",
+                },
+                actions: [],
+                metadata: {},
+              },
+            },
+            {
+              type: "card",
+              id: "part_recommendation_reason_card",
+              card: {
+                kind: "learning_drill",
+                version: 1,
+                renderer_key: "interview.recommendation_reason",
+                renderer_version: 1,
+                placement: "thread",
+                title: "Application quiz ready",
+                body: "Reason: You just unlocked this topic and one application card is due now.",
+                structured_content: {
+                  reason: "You just unlocked this topic and one application card is due now.",
+                  evidence: ["Unlocked topic: Dynamic programming patterns", "Due application cards: 1"],
+                  confidence: 0.92,
+                },
+                ui_meta: { tone: "study" },
+                entity_ref: {
+                  entity_type: "study_topic",
+                  entity_id: "topic-dp",
+                  href: "/review?topic=topic-dp",
+                  title: "Dynamic programming patterns",
+                },
+                actions: [
+                  {
+                    id: "open_interview_review",
+                    label: "Open Review",
+                    kind: "navigate",
+                    payload: { href: "/review" },
+                    style: "primary",
+                  },
+                ],
+                metadata: {},
+              },
+            },
+          ],
+          metadata: {},
+          created_at: "2026-04-21T09:14:00.000Z",
+          updated_at: "2026-04-21T09:14:00.000Z",
+        },
+      ],
+    }),
+  );
+  await routeIdleAssistantStream(page);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByTestId("assistant-ui-topic-unlock")).toHaveAttribute("data-dynamic-ui-renderer", "interview.topic_unlock");
+  await expect(page.getByTestId("assistant-ui-topic-unlock")).toContainText("Dynamic programming patterns");
+  await expect(page.getByText("You cleared the prerequisite recursion cards.")).toBeVisible();
+  await expect(page.getByTestId("assistant-ui-question-request")).toHaveAttribute(
+    "data-dynamic-ui-renderer",
+    "interview.question_request",
+  );
+  await expect(page.getByText("Ask me to derive a state transition for a bounded DP problem.")).toBeVisible();
+  await expect(page.getByTestId("assistant-ui-recommendation-reason")).toHaveAttribute(
+    "data-dynamic-ui-renderer",
+    "interview.recommendation_reason",
+  );
+  await expect(page.getByText("Due application cards: 1")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Review" })).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(
+    /interview\.topic_unlock|interview\.question_request|interview\.recommendation_reason|renderer_key|structured_content|tool_result|Raw|Diagnostic/i,
+  );
 });
