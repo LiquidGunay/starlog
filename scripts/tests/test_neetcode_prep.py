@@ -55,6 +55,18 @@ def test_checked_in_source_validates_against_neetcode_taxonomy() -> None:
     assert source["items"][0]["notes"] == ""
 
 
+def test_neetcode_source_items_capture_user_annotation_fields() -> None:
+    source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
+
+    for item in source["items"]:
+        assert isinstance(item["title"], str)
+        assert item["title"].strip()
+        assert item["url"].startswith("https://leetcode.com/problems/")
+        assert item["difficulty"] in {"Easy", "Medium", "Hard"}
+        assert isinstance(item["prerequisites"], list)
+        assert isinstance(item["notes"], str)
+
+
 def test_build_review_inputs_are_practice_oriented_and_solution_free() -> None:
     source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
 
@@ -68,6 +80,17 @@ def test_build_review_inputs_are_practice_oriented_and_solution_free() -> None:
     assert "record approach, edge cases, complexity" in first["practice_prompt"]
     assert first["provenance"]["contains_solution_text"] is False
     assert "solution" not in first
+
+
+def test_review_card_spec_is_practice_only() -> None:
+    source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
+    review_input = neetcode.build_review_inputs(source)[22]
+
+    specs = neetcode._review_card_specs(review_input)
+
+    assert all(spec["prompt"].strip() for spec in specs)
+    assert all("```" not in spec["answer"] for spec in specs)
+    assert all(not spec["answer"].startswith("def ") for spec in specs)
 
 
 def test_review_card_specs_cover_interview_prep_axes_without_solution_text() -> None:
