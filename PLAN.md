@@ -20,8 +20,11 @@ basis for this plan:
   isolated apps.
 - The near-term product priority is execution support for known goals: capture-to-action,
   dependable planning, review loops, daily briefings, and follow-through.
-- The canonical assistant architecture is a server-owned thread/run/interrupt/message-part
-  protocol rendered through an assistant-ui web client with Starlog-specific tool UIs.
+- The canonical assistant architecture is a Starlog-owned source-of-truth
+  thread/run/interrupt/message-part protocol, with a shared dynamic UI registry and
+  assistant-ui as the long-term chat runtime across desktop web and native mobile.
+- Desktop web and native mobile are both primary assistant surfaces; mobile PWA remains
+  a fallback viewport for repeatable checks.
 - This is a system overhaul, not a reskin of the existing observatory-era interface.
 
 ## Product Model
@@ -85,6 +88,8 @@ basis for this plan:
   composer state.
 - On desktop they should appear as anchored popups or sidecars tied to the thread context.
 - On mobile they should appear as bottom sheets that preserve thread context.
+- Both surfaces should consume the same shared dynamic panel registry so panel behavior,
+  validation, and telemetry stay aligned across desktop and native clients.
 - Panels are for minimal missing structure, quick triage, conflict resolution, and compact
   decisions. They are not a hidden second full workspace.
 
@@ -141,7 +146,7 @@ basis for this plan:
   - surface-event ingestion
   - update feed and SSE stream
 - Keep `/v1/conversations/primary/chat` and related legacy endpoints only as compatibility
-  projections over the new assistant core while mobile and older clients transition.
+  projections over the new assistant core while non-primary clients transition.
 
 ## Migration Order
 
@@ -159,12 +164,13 @@ basis for this plan:
    - `resolve_planner_conflict`
    - `triage_capture`
    - ambient surface updates
-5. Web assistant overhaul
-   - Replace the current web Assistant page with an assistant-ui runtime adapter and
-     Starlog-specific tool UIs.
+5. Assistant runtime convergence
+   - Replace current Assistant entry surfaces with shared assistant-ui shells backed by the same
+     shared protocol + dynamic UI registry, then harden Starlog-specific tool UIs for both
+     desktop web and native mobile.
 6. Cross-surface convergence
-   - Move mobile and helper flows onto the shared event + interrupt protocol once the web
-     slices are stable.
+   - Keep desktop web and native mobile on the shared event + interrupt protocol and move
+     helper/browser-only paths to this registry-driven flow as adapters as they migrate.
 
 ## Initial Tool UI Scope
 
@@ -185,15 +191,16 @@ basis for this plan:
 - Storage/API tests for assistant thread snapshots, runs, interrupts, events, updates, and
   migration-safe additive storage.
 - Backend behavior tests showing deterministic command flows can interrupt and resume.
-- Web UI tests for runtime hydration, interrupt rendering, ambient updates, and no duplicate
+- Cross-surface UI tests for runtime hydration, interrupt rendering, ambient updates, and no duplicate
   transcript state.
 - Cross-surface evidence for planner, review, helper, and Library events feeding the thread.
 
 ## Defaults and Constraints
 
 - One visible persistent user thread remains the canonical UX.
-- Web ships first on the new assistant protocol; mobile continues on the legacy adapter until
-  the new assistant slices are stable.
+- Desktop web and native mobile are both primary recipients for the new assistant protocol.
+- Mobile PWA remains fallback-only and is validated via viewport smoke checks.
+- The first end-to-end acceptance path is interview-prep with native dynamic-panel mutation and grade persistence.
 - The April pack and the old chat moodboard are historical references only.
 - Support surfaces remain necessary for deep editing; Starlog is assistant-first, not
   assistant-only.
