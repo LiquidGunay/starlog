@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -22,6 +22,14 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Merged #206 (live interview-prep validation):** deterministic `Sliding Window` interview-prep seeding
   now drives the live PWA functional harness and the Android fresh-local validation loop, including Assistant
   study commands, Review reveal/grade, briefing recommendation hints, and alarm scheduling evidence.
+- **Merged #231 (mobile dynamic panel host):** native Assistant dynamic-panel placement now uses a shared panel
+  host path with `assistant-ui` metadata, while unsupported panel shapes still use fallback renderers.
+- **Merged #233 (assistant runtime docs alignment):** current docs now treat assistant-ui as the cross-surface
+  chat runtime and remove stale web-only wording in Assistant/docs alignment artifacts.
+- **Merged #234 (objective evidence workflow):** added `scripts/agent_objective_evidence.py` and documented
+  evidence-first supervisor flow in `docs/PARALLEL_AGENT_WORKFLOW.md` and `AGENTS.md`.
+- **Merged #235 (PDF ingestion manifest evidence):** PDF preflight now emits `ingestion_manifest.json` with
+  segment/page labels and `ocr_needed`, and import evidence writes `ocr_needed` into chunk/source metadata.
 
 ## Works Today
 
@@ -31,12 +39,13 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Assistant-first product shape:** the current surface model is `Assistant`, `Library`, `Planner`,
   and `Review`, with the Assistant as the primary thread and the other surfaces as support views.
 - **Assistant protocol direction:** Starlog's architecture decision is to use assistant-ui as the
-  strategic web Assistant runtime while keeping the Starlog assistant protocol as the source of truth.
+  long-term chat runtime for desktop web and native mobile while keeping the Starlog assistant protocol
+  as the source of truth.
   This is documented in
   [docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md](/home/ubuntu/starlog/docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md).
-- **Web assistant-ui migration:** desktop web Assistant is partially migrated for supported Starlog assistant
-  protocol snapshots and dynamic panel parts; unsupported or not-yet-migrated message/tool shapes still use
-  Starlog compatibility projections and fallback render paths.
+- **Web + native assistant-ui migration:** assistant-ui is partially migrated for supported Starlog
+  assistant protocol snapshots and dynamic panel parts across desktop web and native mobile; unsupported or
+  not-yet-migrated message/tool shapes still use Starlog compatibility projections and fallback render paths.
 - **Mobile Assistant dynamic UI:** React Native assistant-ui-style view-model coverage is partially
   migrated and currently validated through interview-prep (read/unlock/question/review-grade). The Android
   fresh-local harness now requires assistant-ui shell/thread/composer markers, an Assistant dynamic UI
@@ -163,7 +172,7 @@ Known outcome for `Inference Engineering.pdf`:
   full hosted deployment state.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
-- **Dynamic-panel parity status:** web assistant-ui coverage is partial and intentionally keeps
+- **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Native mobile assistant-ui is also
   partially migrated: interview-prep capability and review-grade dynamic UI are proven, while broader
   dynamic-panel host behavior is still in dedicated device validation.
@@ -202,6 +211,9 @@ Known outcome for `Inference Engineering.pdf`:
   The functional harnesses now require the actual Assistant surface for capability and review-grade
   dynamic UI proof, with a fresh Android device pass recorded at
   `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
+- The PDF pipeline now uses manifest-driven preflight evidence:
+  `ingestion_manifest.json`, `candidate_cards.jsonl`, and blocked segment entries in the preflight report/
+  manifest are the first pass for trusted extraction before final card import.
 - Fresh PDF deck-script validation proves `strings` cannot pass preflight/final-card generation,
   trusted LiteParse/local OCR extraction can produce final review-card JSONL, and noisy scanned
   extraction records blocked segments instead of weak cards. Temp DB validation of

@@ -40,6 +40,16 @@ same source of truth.
   5. On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
   6. Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
 
+## Reusable worker lanes
+
+When multiple workers are active, define lanes by task scope and keep one reusable worker role per lane.
+
+- Suggested reusable roles: `IMPLEMENT`, `VALIDATE`, `REVIEW`, and `CLEANUP`.
+- A lane is bounded by `{workitem_id, worktree, branch, PR target}`.
+- A worker should stay in the same lane for its scoped lifecycle (instead of being reassigned across lanes).
+- Record lane intent in the workitem `title` and in the `owner` metadata carried by `workitems.json` so `agent_objective_evidence.py` output is auditable.
+- Reuse a worker within the same lane if a handoff stays within that scope; only rotate roles when scope changes.
+
 ## Supervisor polling evidence
 
 Do not rely on a worker's time-based status promises as the primary progress signal. Poll workers
@@ -60,7 +70,7 @@ entries. Treat these flags as supervisor action triggers:
   instead of a shared worktree before accepting validation or pushing.
 - `dirty_worktree` or `ahead_of_upstream`: there is objective work to inspect, test, or turn into a PR.
 - `stale_lock`: use `wait_agent` first; if no completion arrives, send one concrete status nudge,
-  then close or replace only after another poll shows no useful agent response or repo progress.
+  then close or replace only after another evidence poll shows no useful agent response or repo progress.
 
 ## Branch and worktree hygiene
 
