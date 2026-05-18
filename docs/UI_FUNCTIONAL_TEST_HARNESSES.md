@@ -1,5 +1,9 @@
 # UI Functional Test Harnesses
 
+This document is a dated runbook and evidence snapshot (not evergreen product status). Use it as
+validation history, with the latest run status checked in newer dated artifacts before treating anything
+as current behavior.
+
 Starlog has repeatable Playwright smoke coverage for the new assistant-first UI concept through `playwright.ui-functional.config.ts`. The harness starts the Next dev server so it remains fast enough for feature-branch iteration; release packaging checks still use the existing PWA release-gate scripts.
 
 The native app is the primary phone client. These browser/mobile-viewport harnesses are still useful for

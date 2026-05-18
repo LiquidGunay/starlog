@@ -1,6 +1,8 @@
 # UI Concept Comparison - 2026-04-29
 
-This comparison is based on current `master` after PR #178 (`9f439c5bebf50de808579bfd0a2e3da30b34c68c`), the concept pack in `artifacts/ui-concept/`, and screenshots captured with the existing Playwright UI functional harness where possible.
+This is dated evidence from the 2026-04-29 comparison pass and should be treated as historical proof, not current status.
+
+The comparison is based on `master` after PR #178 (`9f439c5bebf50de808579bfd0a2e3da30b34c68c`), the concept pack in `artifacts/ui-concept/`, and screenshots captured with the existing Playwright UI functional harness where possible.
 
 Current screenshots are stored in:
 
