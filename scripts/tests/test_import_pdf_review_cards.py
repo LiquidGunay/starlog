@@ -172,6 +172,7 @@ def test_import_source_report_records_unproven_segments_without_cards(monkeypatc
         assert metadata["status"] == "blocked"
         assert metadata["page_label"] == "scan-unknown"
         assert metadata["page_status"] == "unproven"
+        assert metadata["ocr_needed"] is False
         assert metadata["content_sha256"] == "blocked-chunk-sha"
         assert metadata["evidence_status"] == "unproven"
     finally:

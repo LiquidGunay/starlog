@@ -35,6 +35,7 @@ PADDLEOCR_SERVER_MODULES = (
 DEFAULT_CHUNK_WORDS = 160
 DEFAULT_CHUNK_OVERLAP = 30
 DEFAULT_MAX_CANDIDATE_CHUNKS = 14
+UNKNOWN_PAGE_LABEL = "scan-unknown"
 
 
 def parse_args() -> argparse.Namespace:
@@ -270,6 +271,8 @@ def _build_blocked_segments(
     run_id: str,
     reason: str,
     *,
+    page_status: str = "unproven",
+    ocr_needed: bool = False,
     chunk_words: int = DEFAULT_CHUNK_WORDS,
     overlap_words: int = DEFAULT_CHUNK_OVERLAP,
     max_segments: int = DEFAULT_MAX_CANDIDATE_CHUNKS,
@@ -286,10 +289,16 @@ def _build_blocked_segments(
                 "segment_id": f"source-block-{run_id[:6]}",
                 "reason": reason,
                 "status": "blocked",
+                "chunk_index": 0,
                 "word_start": 0,
                 "word_end": 0,
                 "word_count": 0,
                 "content_sha256": "",
+                "page_status": page_status,
+                "ocr_needed": ocr_needed,
+                "page_label": UNKNOWN_PAGE_LABEL,
+                "page_start": None,
+                "page_end": None,
             }
         ]
 
@@ -305,9 +314,95 @@ def _build_blocked_segments(
                 "word_end": end_word,
                 "word_count": max(0, end_word - start_word),
                 "content_sha256": _sha256_text(chunk_text),
+                "character_count": len(chunk_text),
+                "page_status": page_status,
+                "ocr_needed": ocr_needed,
+                "page_label": UNKNOWN_PAGE_LABEL,
+                "page_start": None,
+                "page_end": None,
             }
         )
     return blocked
+
+
+def _build_ingestion_manifest(
+    run_id: str,
+    text: str,
+    *,
+    candidate_cards: list[dict[str, object]] | None = None,
+    blocked_segments: list[dict[str, object]] | None = None,
+    default_page_status: str = "unproven",
+    default_ocr_needed: bool = False,
+    reason: str | None = None,
+) -> dict[str, object]:
+    segments: list[dict[str, object]] = []
+    if candidate_cards:
+        for card in candidate_cards:
+            chunk = card.get("provenance", {})
+            chunk = chunk.get("chunk") if isinstance(chunk, dict) else {}
+            chunk_index = int(chunk.get("index") or 0)
+            segments.append(
+                {
+                    "segment_id": str(card.get("candidate_id") or f"candidate-{run_id[:6]}-{chunk_index:02d}"),
+                    "status": str(card.get("status") or "candidate"),
+                    "chunk_index": chunk_index,
+                    "word_start": int(chunk.get("word_start") or 0),
+                    "word_end": int(chunk.get("word_end") or 0),
+                    "word_count": int(chunk.get("word_count") or 0),
+                    "content_sha256": str(chunk.get("content_sha256") or ""),
+                    "character_count": int(chunk.get("character_count") or 0),
+                    "reason": "Trusted local extraction candidate.",
+                    "page_status": "ready",
+                    "ocr_needed": False,
+                    "page_label": UNKNOWN_PAGE_LABEL,
+                    "page_start": None,
+                    "page_end": None,
+                }
+            )
+    elif blocked_segments:
+        for segment in blocked_segments:
+            if not isinstance(segment, dict):
+                continue
+            segment_record = dict(segment)
+            segment_record.setdefault("status", "blocked")
+            segment_record.setdefault("reason", reason or "Blocked by preflight extraction policy.")
+            segment_record.setdefault("page_status", default_page_status)
+            segment_record.setdefault("ocr_needed", default_ocr_needed)
+            segment_record.setdefault("page_label", UNKNOWN_PAGE_LABEL)
+            segment_record.setdefault("page_start", None)
+            segment_record.setdefault("page_end", None)
+            segment_record.setdefault("character_count", 0)
+            segment_record.setdefault("chunk_index", 0)
+            segments.append(segment_record)
+    else:
+        segments.append(
+            {
+                "segment_id": f"manifest-{run_id[:6]}",
+                "status": "blocked",
+                "chunk_index": 0,
+                "word_start": 0,
+                "word_end": 0,
+                "word_count": 0,
+                "content_sha256": "",
+                "character_count": len(text.strip()),
+                "reason": reason or "No extractable text available for page/chunk manifest.",
+                "page_status": default_page_status,
+                "ocr_needed": default_ocr_needed,
+                "page_label": UNKNOWN_PAGE_LABEL,
+                "page_start": None,
+                "page_end": None,
+            }
+        )
+    return {
+        "run_id": run_id,
+        "status": "ready",
+        "page_labeling": {
+            "default_label": UNKNOWN_PAGE_LABEL,
+            "page_tracking": "not-available-in-local-extraction-hook",
+            "ocr_needed_flag": bool(default_ocr_needed),
+        },
+        "segments": segments,
+    }
 
 
 def runtime_status(server_env: dict[str, dict[str, str | bool]] | None = None) -> dict[str, object]:
@@ -360,6 +455,18 @@ def _status_label(usable: bool, readable: bool, rejected_as_noise: bool, provide
     if provider == "none":
         return "unproven", "blocked_extraction_unavailable"
     return "unproven", "blocked_extraction_not_readable"
+
+
+def _manifest_status(provider: str, deck_generation: str) -> tuple[str, bool]:
+    if deck_generation == "blocked_string_fallback" or provider == "strings":
+        return "ocr_needed", True
+    if deck_generation == "blocked_extraction_unavailable":
+        return "unavailable", False
+    if deck_generation in {"blocked_extraction_not_readable", "blocked_unreadable_extraction"}:
+        return "unproven", False
+    if deck_generation == "preflight_passed":
+        return "ready", False
+    return "unproven", False
 
 
 def _next_local_steps(report: dict[str, object]) -> list[str]:
@@ -480,8 +587,10 @@ def build_report(
 
     candidate_count = 0
     blocked_chunks: list[dict[str, object]] = []
+    ingestion_manifest_path = ""
     candidate_cards_path = ""
     candidate_cards: list[dict[str, object]] = []
+    manifest_page_status, manifest_ocr_needed = _manifest_status(provider, deck_generation)
     if evidence_status == "proven_local_text" and provider != "strings":
         candidate_cards = _build_candidate_cards(
             pdf_path,
@@ -507,7 +616,25 @@ def build_report(
             text,
             run_id,
             f"Card candidates blocked: {deck_generation}",
+            page_status=manifest_page_status,
+            ocr_needed=manifest_ocr_needed,
         )
+    ingestion_manifest = _build_ingestion_manifest(
+        run_id,
+        text,
+        candidate_cards=candidate_cards if candidate_cards else None,
+        blocked_segments=blocked_chunks if blocked_chunks else None,
+        default_page_status=manifest_page_status,
+        default_ocr_needed=manifest_ocr_needed,
+        reason=f"Preflight {deck_generation}",
+    )
+    if not candidate_cards and not blocked_chunks and evidence_status == "proven_local_text":
+        ingestion_manifest["status"] = "manifest-empty"
+    ingestion_manifest_path = str((run_dir / "ingestion_manifest.json"))
+    (run_dir / "ingestion_manifest.json").write_text(
+        json.dumps(ingestion_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     report: dict[str, object] = {
         "run_id": run_id,
@@ -540,6 +667,7 @@ def build_report(
         "cards_generated": 0,
         "candidate_cards_path": candidate_cards_path,
         "candidate_count": candidate_count,
+        "ingestion_manifest_path": ingestion_manifest_path,
         "candidate_window": {
             "chunk_words": DEFAULT_CHUNK_WORDS,
             "chunk_overlap": DEFAULT_CHUNK_OVERLAP,
@@ -583,6 +711,7 @@ def _markdown_report(report: dict[str, object]) -> str:
         f"- Cards generated: `{report['cards_generated']}`",
         f"- Candidate cards generated: `{report['candidate_count']}`",
         f"- Candidate file: `{report.get('candidate_cards_path')}`",
+        f"- Ingestion manifest: `{report.get('ingestion_manifest_path')}`",
         "",
     ]
     lines.extend(_markdown_runtime(runtime))
@@ -660,6 +789,7 @@ def main() -> int:
                 "cards_generated": report["cards_generated"],
                 "candidate_count": report["candidate_count"],  # type: ignore[index]
                 "candidate_cards_path": report["candidate_cards_path"],  # type: ignore[index]
+                "ingestion_manifest_path": report["ingestion_manifest_path"],  # type: ignore[index]
             },
             sort_keys=True,
         )

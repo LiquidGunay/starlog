@@ -696,6 +696,7 @@ def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
                 item = dict(segment)
                 item.setdefault("status", "blocked")
                 item.setdefault("page_status", "unproven")
+                item.setdefault("ocr_needed", False)
                 segments.append(item)
     candidate_cards_path = str(report.get("candidate_cards_path") or "").strip()
     if candidate_cards_path:
@@ -717,7 +718,11 @@ def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
                         "word_end": chunk.get("word_end"),
                         "word_count": chunk.get("word_count"),
                         "content_sha256": chunk.get("content_sha256"),
-                        "page_status": "unproven",
+                        "page_status": "ready",
+                        "ocr_needed": False,
+                        "page_label": "scan-unknown",
+                        "page_start": None,
+                        "page_end": None,
                         "reason": "Trusted local extraction candidate; cards require explicit final import.",
                     }
                 )
@@ -727,6 +732,7 @@ def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
                 "chunk_index": 0,
                 "content_sha256": "",
                 "page_status": "unproven",
+                "ocr_needed": False,
                 "reason": report.get("deck_generation") or "Local PDF extraction was unavailable or unproven.",
                 "status": "blocked",
                 "word_count": 0,
@@ -767,6 +773,7 @@ def _upsert_report_chunk(
         "page_label": segment.get("page_label"),
         "page_start": segment.get("page_start"),
         "page_status": segment.get("page_status") or "unproven",
+        "ocr_needed": bool(segment.get("ocr_needed")),
         "pdf_sha256": pdf_sha,
         "reason": reason,
         "report_path": str(report_path),
