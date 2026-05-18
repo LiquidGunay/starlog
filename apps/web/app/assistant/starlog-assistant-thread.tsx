@@ -242,12 +242,11 @@ function isSupportField(field: AssistantInterruptField): boolean {
 
 function isInterviewReviewInterrupt(interrupt: AssistantInterrupt): boolean {
   const viewModel = createDynamicUiViewModel("interrupt", interrupt);
-  return (
-    viewModel.rendererKey === "interview.review_grade" ||
-    viewModel.rendererKey === "grade_review_recall" ||
-    interrupt.tool_name === "grade_review_recall" ||
-    /(?:interview|review).*(?:grade|recall|quiz)|(?:grade|recall|quiz).*(?:interview|review)/i.test(interrupt.tool_name)
-  );
+  if (viewModel.rendererKey === "interview.review_grade" || viewModel.rendererKey === "grade_review_recall") {
+    return true;
+  }
+
+  return interrupt.tool_name === "grade_review_recall";
 }
 
 function dynamicUiViewModel(data: DynamicUiAdapterData) {
