@@ -85,10 +85,10 @@ class AssistantInterrupt(BaseModel):
     id: str
     thread_id: str
     run_id: str
-    tool_call_id: str | None = None
     status: AssistantInterruptStatus
     interrupt_type: Literal["choice", "form", "confirm"]
     tool_name: str
+    tool_call_id: str | None = None
     title: str
     body: str | None = None
     renderer_key: str | None = None

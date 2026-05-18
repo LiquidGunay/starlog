@@ -38,6 +38,20 @@ export const STARLOG_DYNAMIC_UI_RENDERER_CONTRACTS = [
     uiMeta: [{ path: "tone", kind: "string", required: false, label: "Tone" }],
   },
   {
+    key: "interview.topic_read",
+    version: 1,
+    sources: ["tool_result", "card", "interrupt"],
+    defaultPlacement: "thread",
+    label: "Topic read",
+    description: "Confirms or acknowledges a study topic as read and why it was tracked.",
+    structuredContent: [
+      { path: "topic_id", kind: "string", required: true, label: "Topic ID" },
+      { path: "topic_title", kind: "string", required: false, label: "Topic title" },
+      { path: "read_reason", kind: "string", required: false, label: "Read reason" },
+    ],
+    uiMeta: [{ path: "confidence", kind: "number", required: false, label: "Confidence" }],
+  },
+  {
     key: "interview.question_request",
     version: 1,
     sources: ["interrupt", "tool_result", "card"],
@@ -68,7 +82,7 @@ export const STARLOG_DYNAMIC_UI_RENDERER_CONTRACTS = [
   {
     key: "interview.recommendation_reason",
     version: 1,
-    sources: ["tool_result", "card"],
+    sources: ["tool_result", "card", "interrupt"],
     defaultPlacement: "thread",
     label: "Recommendation reason",
     description: "Explains why the assistant is recommending a review, topic, task, or focus.",
@@ -78,6 +92,20 @@ export const STARLOG_DYNAMIC_UI_RENDERER_CONTRACTS = [
       { path: "confidence", kind: "number", required: false, label: "Confidence" },
     ],
     uiMeta: [{ path: "tone", kind: "string", required: false, label: "Tone" }],
+  },
+  {
+    key: "interview.why_this_now",
+    version: 1,
+    sources: ["interrupt", "tool_result", "card"],
+    defaultPlacement: "thread",
+    label: "Why this now",
+    description: "Shows prioritized rationale for a time-sensitive recommendation.",
+    structuredContent: [
+      { path: "reason", kind: "string", required: true, label: "Reason" },
+      { path: "impact", kind: "string", required: false, label: "Impact" },
+      { path: "time_window", kind: "string", required: false, label: "Time window" },
+    ],
+    uiMeta: [{ path: "urgency", kind: "string", required: false, label: "Urgency" }],
   },
   {
     key: "request_due_date",
