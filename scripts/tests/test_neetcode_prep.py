@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -45,6 +46,25 @@ class MemoryReviewInputAdapter:
         }
 
 
+CODEBLOCK_PATTERN = re.compile(r"`{3,}")
+CODE_LINE_START_PATTERN = re.compile(
+    r"(?m)^\s*(?:def|class|if|for|while|elif|else|try|except|with|return|raise|from|import)\b"
+)
+
+
+def _expected_practice_prompt(item: dict[str, Any]) -> str:
+    return (
+        f"Solve {item['title']} as a {item['difficulty']} {item['pattern']} practice problem. "
+        "After attempting it, record approach, edge cases, complexity, mistakes, and next review notes."
+    )
+
+
+def _assert_no_solution_looking_text(value: str) -> None:
+    assert value == value.strip()
+    assert CODEBLOCK_PATTERN.search(value) is None
+    assert CODE_LINE_START_PATTERN.search(value) is None
+
+
 def test_checked_in_source_validates_against_neetcode_taxonomy() -> None:
     source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
 
@@ -55,19 +75,57 @@ def test_checked_in_source_validates_against_neetcode_taxonomy() -> None:
     assert source["items"][0]["notes"] == ""
 
 
+def test_neetcode_source_items_capture_user_annotation_fields() -> None:
+    source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
+
+    for item in source["items"]:
+        assert isinstance(item["title"], str)
+        assert item["title"].strip()
+        assert item["url"].startswith("https://leetcode.com/problems/")
+        assert item["difficulty"] in {"Easy", "Medium", "Hard"}
+        assert isinstance(item["prerequisites"], list)
+        assert isinstance(item["notes"], str)
+
+
 def test_build_review_inputs_are_practice_oriented_and_solution_free() -> None:
     source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
 
     review_inputs = neetcode.build_review_inputs(source)
 
     assert len(review_inputs) == 150
-    first = review_inputs[0]
-    assert first["external_id"] == "neetcode-150-001"
-    assert first["kind"] == "coding_problem_practice"
-    assert first["source_url"] == "https://leetcode.com/problems/contains-duplicate/"
-    assert "record approach, edge cases, complexity" in first["practice_prompt"]
-    assert first["provenance"]["contains_solution_text"] is False
-    assert "solution" not in first
+    assert review_inputs[0]["source_url"] == "https://leetcode.com/problems/contains-duplicate/"
+    for position, review_input in enumerate(review_inputs, start=1):
+        assert review_input["external_id"] == f"neetcode-150-{position:03}"
+        assert review_input["kind"] == "coding_problem_practice"
+        assert review_input["provenance"]["contains_solution_text"] is False
+        assert "solution" not in review_input
+        assert review_input["practice_prompt"] == _expected_practice_prompt(review_input)
+        assert "record approach, edge cases, complexity" in review_input["practice_prompt"]
+        _assert_no_solution_looking_text(review_input["practice_prompt"])
+
+
+def test_review_card_spec_is_practice_only() -> None:
+    source = neetcode.load_source(REPO_ROOT / "data/neetcode_150.json")
+    review_inputs = neetcode.build_review_inputs(source)
+
+    assert len(review_inputs) == 150
+    for review_input in review_inputs:
+        specs = neetcode._review_card_specs(review_input)
+
+        assert [spec["axis_id"] for spec in specs] == [
+            "pattern_recognition",
+            "edge_cases",
+            "complexity",
+            "implementation_traps",
+        ]
+        assert len({spec["card_id"] for spec in specs}) == 4
+        for spec in specs:
+            assert spec["prompt"].strip()
+            assert spec["answer"].strip()
+            assert review_input["source_url"] in spec["answer"]
+            assert "This card contains no copied problem statement or solution text." in spec["answer"]
+            _assert_no_solution_looking_text(spec["prompt"])
+            _assert_no_solution_looking_text(spec["answer"])
 
 
 def test_review_card_specs_cover_interview_prep_axes_without_solution_text() -> None:
