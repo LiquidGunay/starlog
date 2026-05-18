@@ -176,6 +176,11 @@ def _create_pending_ui_interrupt(
     fields: list[dict],
     primary_label: str = "Confirm",
     secondary_label: str | None = "Not now",
+    renderer_key: str | None = None,
+    renderer_version: int | None = None,
+    placement: str | None = None,
+    structured_content: dict | None = None,
+    ui_meta: dict | None = None,
     metadata: dict | None = None,
     entity_ref: dict | None = None,
 ) -> dict:
@@ -200,6 +205,11 @@ def _create_pending_ui_interrupt(
             fields=fields,
             primary_label=primary_label,
             secondary_label=secondary_label,
+            renderer_key=renderer_key,
+            renderer_version=renderer_version,
+            placement=placement,
+            structured_content=structured_content,
+            ui_meta=ui_meta,
             metadata=metadata or {},
             entity_ref=entity_ref,
         )
@@ -1021,6 +1031,33 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
     assert legacy.status_code == 200
     legacy_payload = legacy.json()
     assert any(message["content"] == "create task Review the diffusion notes" for message in legacy_payload["messages"])
+
+
+def test_create_interrupt_enriches_dynamic_ui_contract_fields(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    interrupt = _create_pending_ui_interrupt(
+        tool_name="grade_review_recall",
+        title="Grade review",
+        fields=[{"id": "rating", "kind": "select", "label": "Grade", "options": [{"label": "Again", "value": "1"}]}],
+        renderer_key="interview.review_grade",
+        renderer_version=1,
+        placement="sidecar",
+        structured_content={"card_id": "card-1", "grade": "again"},
+        ui_meta={"tone": "compact"},
+        metadata={"display_mode": "inline", "consequence_preview": "Tracks recall feedback."},
+    )
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    persisted_interrupt = next(item for item in payload["interrupts"] if item["id"] == interrupt["id"])
+    assert persisted_interrupt["renderer_key"] == "interview.review_grade"
+    assert persisted_interrupt["renderer_version"] == 1
+    assert persisted_interrupt["placement"] == "sidecar"
+    assert persisted_interrupt["structured_content"]["card_id"] == "card-1"
+    assert persisted_interrupt["ui_meta"]["tone"] == "compact"
+    assert str(persisted_interrupt["tool_call_id"]).startswith("toolcall_")
 
 
 def test_due_date_interrupt_failure_leaves_interrupt_pending_for_retry(

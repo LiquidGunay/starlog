@@ -1,8 +1,10 @@
 export const STARLOG_DYNAMIC_RENDERER_KEYS = [
   "interview.topic_unlock",
+  "interview.topic_read",
   "interview.question_request",
   "interview.review_grade",
   "interview.recommendation_reason",
+  "interview.why_this_now",
 ] as const;
 
 export const STARLOG_COMPATIBILITY_RENDERER_KEYS = [

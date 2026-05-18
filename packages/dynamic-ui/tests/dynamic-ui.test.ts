@@ -21,6 +21,8 @@ const registry = createDynamicUiRegistry();
 equal(registry.size, STARLOG_DYNAMIC_RENDERER_KEYS.length + STARLOG_COMPATIBILITY_RENDERER_KEYS.length);
 equal(registry.size, STARLOG_DYNAMIC_UI_RENDERER_CONTRACTS.length);
 equal(isStarlogKnownRendererKey("interview.question_request"), true);
+equal(isStarlogKnownRendererKey("interview.topic_read"), true);
+equal(isStarlogKnownRendererKey("interview.why_this_now"), true);
 equal(isStarlogKnownRendererKey("custom.unknown"), false);
 
 const topicUnlock = createDynamicUiViewModel("tool_result", topicUnlockResult, registry);

@@ -358,14 +358,14 @@ def _create_interrupt(
     fields: list[dict[str, Any]],
     primary_label: str,
     secondary_label: str | None,
-    metadata: dict[str, Any] | None = None,
-    entity_ref: dict[str, Any] | None = None,
-    tool_call_id: str | None = None,
     renderer_key: str | None = None,
     renderer_version: int | None = None,
     placement: str | None = None,
     structured_content: dict[str, Any] | None = None,
     ui_meta: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+    entity_ref: dict[str, Any] | None = None,
+    tool_call_id: str | None = None,
 ) -> dict[str, Any]:
     now = utc_now().isoformat()
     interrupt_id = new_id("interrupt")
@@ -382,6 +382,7 @@ def _create_interrupt(
         interrupt_metadata["structured_content"] = structured_content
     if ui_meta is not None:
         interrupt_metadata["ui_meta"] = ui_meta
+    interrupt_metadata.setdefault("tool_call_id", new_id("toolcall"))
     conn.execute(
         """
         INSERT INTO conversation_interrupts (
@@ -415,19 +416,32 @@ def _create_interrupt(
     if row is None:
         raise RuntimeError("Failed to create assistant interrupt")
     presentation = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
+    tool_call_id = (
+        str(presentation.get("tool_call_id"))
+        if isinstance(presentation.get("tool_call_id"), str)
+        else str(row["id"])
+    )
     return {
         "id": row["id"],
         "thread_id": row["thread_id"],
         "run_id": row["run_id"],
-        "tool_call_id": presentation.get("tool_call_id"),
+        "tool_call_id": tool_call_id,
         "status": row["status"],
         "interrupt_type": row["interrupt_type"],
         "tool_name": row["tool_name"],
         "title": row["title"],
         "body": row.get("body"),
-        "renderer_key": presentation.get("renderer_key"),
-        "renderer_version": presentation.get("renderer_version"),
-        "placement": presentation.get("placement"),
+        "renderer_key": presentation.get("renderer_key") if isinstance(presentation.get("renderer_key"), str) else None,
+        "renderer_version": (
+            int(presentation.get("renderer_version")) if isinstance(presentation.get("renderer_version"), int) else None
+        ),
+        "placement": (
+            str(presentation.get("placement"))
+            if isinstance(presentation.get("placement"), str)
+            else str(presentation.get("display_mode"))
+            if isinstance(presentation.get("display_mode"), str)
+            else None
+        ),
         "structured_content": presentation.get("structured_content") if isinstance(presentation.get("structured_content"), dict) else None,
         "ui_meta": presentation.get("ui_meta") if isinstance(presentation.get("ui_meta"), dict) else None,
         "entity_ref": row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else None,
@@ -722,7 +736,14 @@ def _assistant_message_from_command_response(
     cards = conversation_card_service.project_agent_response_cards(conn, response)
     parts: list[dict[str, Any]] = [assistant_projection_service.text_part(response.summary)]
     for step in response.steps:
-        tool_call_id = new_id("toolcall")
+        step_result = step.result if isinstance(step.result, dict) else {}
+        dynamic_result_fields = assistant_projection_service._pick_dynamic_ui_fields(step_result)
+        tool_call_id = (
+            str(dynamic_result_fields.get("tool_call_id"))
+            if isinstance(dynamic_result_fields.get("tool_call_id"), str)
+            else new_id("toolcall")
+        )
+        dynamic_result_fields.pop("tool_call_id", None)
         tool_status = "complete" if step.status in {"ok", "completed", "dry_run"} else "error"
         if step.status == "confirmation_required":
             tool_status = "requires_action"
@@ -749,8 +770,9 @@ def _assistant_message_from_command_response(
                 tool_call_id=tool_call_id,
                 status=tool_status,
                 output=step.result if isinstance(step.result, dict) else {"value": step.result},
-                metadata={"message": step.message or "", "tool_name": step.tool_name},
+                **dynamic_result_fields,
                 **_study_tool_dynamic_ui_payload(step.tool_name, step.result),
+                metadata={"message": step.message or "", "tool_name": step.tool_name},
             )
         )
     for card in cards:

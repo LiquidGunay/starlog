@@ -89,6 +89,12 @@ class AssistantInterrupt(BaseModel):
     status: AssistantInterruptStatus
     interrupt_type: Literal["choice", "form", "confirm"]
     tool_name: str
+    renderer_key: str | None = None
+    renderer_version: int | None = None
+    placement: str | None = None
+    structured_content: dict[str, Any] | None = None
+    ui_meta: dict[str, Any] | None = None
+    tool_call_id: str | None = None
     title: str
     body: str | None = None
     renderer_key: str | None = None

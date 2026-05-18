@@ -173,6 +173,18 @@ def _message_payload(row: dict[str, Any], parts_by_message: dict[str, list[dict[
 
 def _interrupt_payload(row: dict[str, Any]) -> dict[str, Any]:
     metadata = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
+    tool_call_id = (
+        str(metadata.get("tool_call_id"))
+        if isinstance(metadata.get("tool_call_id"), str)
+        else str(row.get("id") or "")
+    )
+    placement = (
+        metadata.get("placement")
+        if isinstance(metadata.get("placement"), str)
+        else metadata.get("display_mode")
+        if isinstance(metadata.get("display_mode"), str)
+        else None
+    )
     return {
         "id": row["id"],
         "thread_id": row["thread_id"],
@@ -192,6 +204,14 @@ def _interrupt_payload(row: dict[str, Any]) -> dict[str, Any]:
         "fields": row.get("fields_json") if isinstance(row.get("fields_json"), list) else [],
         "primary_label": row["primary_label"],
         "secondary_label": row.get("secondary_label"),
+        "renderer_key": metadata.get("renderer_key") if isinstance(metadata.get("renderer_key"), str) else None,
+        "renderer_version": (
+            int(metadata.get("renderer_version")) if isinstance(metadata.get("renderer_version"), int) else None
+        ),
+        "placement": str(placement) if placement is not None else None,
+        "structured_content": metadata.get("structured_content") if isinstance(metadata.get("structured_content"), dict) else None,
+        "ui_meta": metadata.get("ui_meta") if isinstance(metadata.get("ui_meta"), dict) else None,
+        "tool_call_id": tool_call_id,
         "display_mode": metadata.get("display_mode"),
         "consequence_preview": metadata.get("consequence_preview"),
         "defer_label": metadata.get("defer_label"),

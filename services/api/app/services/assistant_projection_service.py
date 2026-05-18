@@ -6,6 +6,29 @@ from app.services import conversation_card_service
 from app.services.common import new_id
 
 
+def _pick_dynamic_ui_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    renderer_key = raw.get("renderer_key")
+    if isinstance(renderer_key, str):
+        payload["renderer_key"] = renderer_key
+    renderer_version = raw.get("renderer_version")
+    if isinstance(renderer_version, int):
+        payload["renderer_version"] = renderer_version
+    placement = raw.get("placement")
+    if isinstance(placement, str):
+        payload["placement"] = placement
+    structured_content = raw.get("structured_content")
+    if isinstance(structured_content, dict):
+        payload["structured_content"] = structured_content
+    ui_meta = raw.get("ui_meta")
+    if isinstance(ui_meta, dict):
+        payload["ui_meta"] = ui_meta
+    tool_call_id = raw.get("tool_call_id")
+    if isinstance(tool_call_id, str):
+        payload["tool_call_id"] = tool_call_id
+    return payload
+
+
 def normalize_part_status(status: str | None, *, default: str = "complete") -> str:
     normalized = str(status or "").strip().lower()
     if not normalized:
@@ -69,7 +92,6 @@ def _dynamic_ui_fields(
     if ui_meta is not None:
         fields["ui_meta"] = ui_meta
     return fields
-
 
 def tool_result_part(
     *,
@@ -243,6 +265,7 @@ def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str
             tool_result = raw_part.get("tool_result")
             if isinstance(tool_result, dict):
                 card = tool_result.get("card")
+                explicit_dynamic_fields = _pick_dynamic_ui_fields(tool_result)
                 normalized.append(
                     {
                         "type": "tool_result",
@@ -270,6 +293,7 @@ def normalize_runtime_parts(parts: list[dict[str, Any]] | None) -> list[dict[str
                             "card": conversation_card_service.normalize_card(card) if isinstance(card, dict) else None,
                             "entity_ref": tool_result.get("entity_ref") if isinstance(tool_result.get("entity_ref"), dict) else None,
                             "metadata": tool_result.get("metadata") if isinstance(tool_result.get("metadata"), dict) else {},
+                            **explicit_dynamic_fields,
                         },
                     }
                 )
