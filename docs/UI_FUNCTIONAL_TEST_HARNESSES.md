@@ -14,10 +14,10 @@ fallback surface, not the main phone implementation target.
 This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and
 assistant protocol snapshots so the UI can be validated deterministically. For hosted-path discovery,
 `https://starlog-web-production.up.railway.app/login` is the user entry URL (followed by assistant
-flows under `/assistant`). The desktop web
-Assistant has partial assistant-ui adapter/runtime coverage with compatibility fallbacks; these
-harnesses validate the supported structured protocol path and fallback-hidden user experience, not
-full assistant-ui parity.
+flows under `/assistant`). Desktop web and native mobile chat surfaces have partial assistant-ui
+adapter/runtime coverage with compatibility fallbacks; these browser/viewport harnesses validate the
+supported structured protocol path and fallback-hidden user experience, not full installed-device
+assistant-ui parity.
 
 ## Commands
 
@@ -53,7 +53,8 @@ dynamic UI before the grade is submitted.
 ## Coverage
 
 - `test:ui:pwa-functional` runs the desktop PWA assistant concept smoke against the real Next `/assistant` route with mocked AssistantThreadSnapshot and AssistantInterrupt API responses.
-- `test:ui:mobile-functional` runs the same route under a Pixel 7 Playwright device profile to validate the mobile viewport assistant equivalent for inline dynamic-panel grammar.
+- `test:ui:mobile-functional` runs the same route under a Pixel 7 Playwright device profile to validate the
+  mobile viewport assistant equivalent for inline dynamic-panel grammar (browser-only viewport coverage).
 - Both tests submit the dynamic panel to mocked assistant interrupt endpoints and assert the posted values plus the resolved UI state.
 
 Current functional areas:
@@ -84,11 +85,12 @@ Covered:
 - The live PWA harness sends `show me what UI actions you can take`, requires the Assistant capability
   prompt to describe dynamic UI actions without raw protocol labels, reveals a card from Review, then
   returns to Assistant to submit the generated review-grade dynamic panel.
-- Supported desktop web assistant-ui paths can render structured protocol parts while unsupported
+- Supported web and native chat paths can render structured protocol parts while unsupported
   shapes remain covered by Starlog compatibility/fallback rendering.
 - React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
   path is validated by the Android fresh-local harness through assistant-ui shell/composer markers,
-  the dynamic UI capability prompt, and the Assistant-hosted review-grade panel controls.
+  shared dynamic contract metadata, the dynamic UI capability prompt, and the
+  Assistant-hosted review-grade panel controls.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:
@@ -114,8 +116,8 @@ User command
 This should be added with a mocked model/bridge first so CI does not require Codex credentials.
 
 This missing test is separate from the current partial assistant-ui adapter coverage: assistant-ui is
-the strategic web runtime, but the proof gap is whether a command can produce the right Starlog
-protocol parts and complete the workflow end to end across web and native mobile.
+the long-term web and native runtime, but the proof gap is whether a command can produce the right
+Starlog protocol parts and complete the workflow end to end across web and native mobile.
 
 ## 2026-04-29 Run Notes
 

@@ -5,8 +5,8 @@ Workitem: WI-CHAT-OPTIONS-RECORD
 
 ## Decision
 
-Starlog will adopt **assistant-ui** as the strategic web Assistant runtime/rendering
-layer, while keeping the **Starlog assistant protocol** as the source of truth.
+Starlog will adopt **assistant-ui** as the strategic web+native chat runtime,
+while keeping the **Starlog assistant protocol** as the source of truth.
 
 The canonical protocol remains Starlog-owned:
 
@@ -16,9 +16,9 @@ The canonical protocol remains Starlog-owned:
 - Starlog-specific tool names and typed payloads
 - Starlog API persistence and orchestration as the system of record
 
-assistant-ui is the preferred frontend runtime for the desktop web Assistant because it
-matches a server-owned external-store model and gives Starlog a mature thread/tool UI
-foundation without making the frontend the owner of assistant state.
+assistant-ui is the preferred frontend runtime for the web and native mobile Assistant
+because it matches a server-owned external-store model and gives Starlog a mature
+thread/tool UI foundation without making the frontend the owner of assistant state.
 
 ## Consequences
 
@@ -91,7 +91,7 @@ assistant-ui parity has shipped everywhere. Current working evidence is tracked 
 
 Current status:
 
-- Desktop web assistant-ui coverage is partial. It can adapt/render supported Starlog
+- Web and native assistant-ui coverage is partial. It can adapt/render supported Starlog
   assistant protocol snapshots and dynamic panel parts, while unsupported or
   not-yet-migrated tool/message shapes continue through Starlog compatibility
   projections and existing fallback render paths.
@@ -104,5 +104,5 @@ Current status:
 
 Current UI harnesses prove Starlog can render and submit structured assistant protocol
 parts under mocked snapshots and interrupt APIs. They do not yet prove a live
-LLM/Codex run can drive every dynamic panel or that native mobile has reached web
+LLM/Codex run can drive every dynamic panel or that native mobile has reached full
 assistant-ui parity.
