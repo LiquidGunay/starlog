@@ -34,16 +34,15 @@ where Starlog is going. Use this page for current implementation confidence.
   strategic web Assistant runtime while keeping the Starlog assistant protocol as the source of truth.
   This is documented in
   [docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md](/home/ubuntu/starlog/docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md).
-- **Web assistant-ui migration:** the desktop web Assistant now has partial assistant-ui adapter/runtime
-  coverage for supported Starlog assistant protocol snapshots and dynamic panel parts. Unsupported or
-  not-yet-migrated message/tool shapes still use Starlog compatibility projections and existing
-  fallback render paths, so this is partial coverage rather than full assistant-ui parity.
-- **Mobile Assistant dynamic UI:** React Native assistant-ui-style view-model coverage is in place for
-  Assistant, Library, Planner, Review, and dynamic panel shaping. The Android fresh-local harness now
-  requires assistant-ui shell/thread/composer markers, an Assistant dynamic UI capability prompt, and
-  Assistant-hosted review-grade controls (`RECALL QUALITY`, `Save grade`, and `Keep in Review`) instead
-  of accepting old diagnostic or Review-tab-only screens. The latest physical-device pass is
-  `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
+- **Web assistant-ui migration:** desktop web Assistant is partially migrated for supported Starlog assistant
+  protocol snapshots and dynamic panel parts; unsupported or not-yet-migrated message/tool shapes still use
+  Starlog compatibility projections and fallback render paths.
+- **Mobile Assistant dynamic UI:** React Native assistant-ui-style view-model coverage is partially
+  migrated and currently validated through interview-prep (read/unlock/question/review-grade). The Android
+  fresh-local harness now requires assistant-ui shell/thread/composer markers, an Assistant dynamic UI
+  capability prompt, and Assistant-hosted review-grade controls (`RECALL QUALITY`, `Save grade`,
+  `Keep in Review`) instead of accepting old diagnostic or Review-tab-only screens. The latest
+  physical-device pass is `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -164,10 +163,10 @@ Known outcome for `Inference Engineering.pdf`:
   full hosted deployment state.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
-- **Full assistant-ui runtime parity:** web assistant-ui coverage is partial and intentionally keeps
-  compatibility fallbacks for unsupported Starlog protocol parts. Native mobile React Native
-  assistant-ui parity is proven for the validated interview-prep capability/review-grade path, but
-  broader dynamic-panel host behavior still needs dedicated device proof.
+- **Dynamic-panel parity status:** web assistant-ui coverage is partial and intentionally keeps
+  compatibility fallbacks for unsupported Starlog protocol parts. Native mobile assistant-ui is also
+  partially migrated: interview-prep capability and review-grade dynamic UI are proven, while broader
+  dynamic-panel host behavior is still in dedicated device validation.
 - **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
   Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
   `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
@@ -179,6 +178,8 @@ Known outcome for `Inference Engineering.pdf`:
 - Fresh Android native functional proof is written by
   `scripts/android_fresh_local_srs_validation.sh` and indexed in
   `.localdata/android-local-validation/builds/latest.json` (and companion artifact files listed there).
+  Phone-level migration claims are based on this Android functional harness evidence, not on isolated manual
+  confidence alone.
   A passing run must include `validation_passed: true` plus Assistant evidence files for
   `assistant-capability-shell-thread`, `assistant-capability-composer`,
   `assistant-dynamic-ui-capability-prompt`, `assistant-command-shell-thread`,

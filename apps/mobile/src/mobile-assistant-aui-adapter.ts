@@ -8,6 +8,12 @@ import type {
   AssistantToolCall,
   AssistantToolResult,
 } from "@starlog/contracts";
+import {
+  createDynamicUiViewModel,
+  DEFAULT_DYNAMIC_UI_REGISTRY,
+  isStarlogKnownRendererKey,
+  resolveDynamicUiRenderer,
+} from "../../../packages/dynamic-ui/src";
 
 import { attachmentActionLabel, toolStatusSummary } from "./assistant-mobile-ui";
 
@@ -86,19 +92,6 @@ export type MobileAssistantUiThread = {
   };
 };
 
-const DYNAMIC_RENDERER_LABELS: Record<string, DynamicRendererDescriptor> = {
-  "interview.topic_unlock": { label: "Topic unlock", defaultPlacement: "thread" },
-  "interview.question_request": { label: "Question request", defaultPlacement: "thread" },
-  "interview.review_grade": { label: "Review grade", defaultPlacement: "inline" },
-  "interview.recommendation_reason": { label: "Recommendation reason", defaultPlacement: "thread" },
-  request_due_date: { label: "Request due date", defaultPlacement: "composer" },
-  triage_capture: { label: "Triage capture", defaultPlacement: "sidecar" },
-  resolve_planner_conflict: { label: "Resolve planner conflict", defaultPlacement: "sidecar" },
-  grade_review_recall: { label: "Grade review recall", defaultPlacement: "inline" },
-  choose_morning_focus: { label: "Choose morning focus", defaultPlacement: "composer" },
-};
-
-const DYNAMIC_RENDERER_KEYS = new Set<string>(Object.keys(DYNAMIC_RENDERER_LABELS));
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 const DIAGNOSTIC_TOOL_NAMES = new Set(["list_dynamic_ui_capabilities"]);
 
@@ -106,7 +99,7 @@ const PLACEMENT_LABELS: Record<string, string> = {
   thread: "Thread panel",
   inline: "Inline panel",
   composer: "Composer panel",
-  sidecar: "Side panel",
+  sidecar: "Inline on mobile",
   bottom_sheet: "Bottom sheet",
   full_screen: "Full screen",
   support_panel: "Support panel",
@@ -122,7 +115,7 @@ function booleanMetadataFlag(metadata: Record<string, unknown>, keys: string[]):
 }
 
 function isRegisteredDynamicRendererKey(rendererKey: string | null | undefined): rendererKey is string {
-  return typeof rendererKey === "string" && DYNAMIC_RENDERER_KEYS.has(rendererKey);
+  return isStarlogKnownRendererKey(rendererKey);
 }
 
 function normalizeRole(role: AssistantThreadMessage["role"]): MobileAssistantUiRole {
@@ -158,7 +151,14 @@ function rendererDescriptor(rendererKey: string | null | undefined): DynamicRend
   if (!rendererKey) {
     return null;
   }
-  return DYNAMIC_RENDERER_LABELS[rendererKey] || null;
+  const resolved = resolveDynamicUiRenderer(rendererKey, DEFAULT_DYNAMIC_UI_REGISTRY);
+  if (resolved.fallback) {
+    return null;
+  }
+  return {
+    label: resolved.definition.label,
+    defaultPlacement: resolved.definition.defaultPlacement,
+  };
 }
 
 function rendererLabelFromKey(rendererKey: string | null | undefined): string | undefined {
@@ -222,15 +222,35 @@ export function mobileDynamicUiBadge(options: {
 
 function cardDynamicMetadata(card: AssistantCard): DynamicPartMetadata {
   const requestedRendererKey = card.renderer_key || null;
-  const descriptor = rendererDescriptor(requestedRendererKey);
-  const resolvedRendererKey = descriptor ? requestedRendererKey : null;
-  const fallback = Boolean(requestedRendererKey && !descriptor);
+  if (!requestedRendererKey) {
+    return {
+      rendererKey: null,
+      requestedRendererKey,
+      resolvedRendererKey: null,
+      rendererVersion: card.renderer_version ?? null,
+      placement: card.placement || null,
+      structuredContent: card.structured_content || null,
+      uiMeta: card.ui_meta || (hasRecordValue(card.metadata) ? card.metadata : null),
+      fallback: false,
+      fallbackReason: undefined,
+    };
+  }
+  const normalizedCard = {
+    ...card,
+    renderer_key: requestedRendererKey,
+    placement: card.placement || null,
+  };
+  const viewModel = createDynamicUiViewModel("card", normalizedCard as AssistantCard, DEFAULT_DYNAMIC_UI_REGISTRY, {
+    preserveFallbackPlacement: true,
+  });
+  const resolvedRendererKey = viewModel.fallback ? null : viewModel.rendererKey;
+  const fallback = Boolean(requestedRendererKey && !resolvedRendererKey);
   return {
     rendererKey: resolvedRendererKey || requestedRendererKey,
     requestedRendererKey,
     resolvedRendererKey,
     rendererVersion: card.renderer_version ?? null,
-    placement: card.placement || descriptor?.defaultPlacement || null,
+    placement: viewModel.placement || null,
     structuredContent: card.structured_content || null,
     uiMeta: card.ui_meta || (hasRecordValue(card.metadata) ? card.metadata : null),
     fallback,
@@ -240,15 +260,35 @@ function cardDynamicMetadata(card: AssistantCard): DynamicPartMetadata {
 
 function toolResultDynamicMetadata(result: AssistantToolResult): DynamicPartMetadata {
   const requestedRendererKey = result.renderer_key || result.card?.renderer_key || null;
-  const descriptor = rendererDescriptor(requestedRendererKey);
-  const resolvedRendererKey = descriptor ? requestedRendererKey : null;
-  const fallback = Boolean(requestedRendererKey && !descriptor);
+  if (!requestedRendererKey) {
+    return {
+      rendererKey: null,
+      requestedRendererKey,
+      resolvedRendererKey: null,
+      rendererVersion: result.renderer_version ?? result.card?.renderer_version ?? null,
+      placement: result.placement || result.card?.placement || null,
+      structuredContent: result.structured_content || result.card?.structured_content || result.output || null,
+      uiMeta: result.ui_meta || result.card?.ui_meta || (hasRecordValue(result.metadata) ? result.metadata : null),
+      fallback: false,
+      fallbackReason: undefined,
+    };
+  }
+  const normalizedResult = {
+    ...result,
+    placement: result.placement || result.card?.placement || null,
+    renderer_key: requestedRendererKey,
+  };
+  const viewModel = createDynamicUiViewModel("tool_result", normalizedResult as AssistantToolResult, DEFAULT_DYNAMIC_UI_REGISTRY, {
+    preserveFallbackPlacement: true,
+  });
+  const resolvedRendererKey = viewModel.fallback ? null : viewModel.rendererKey;
+  const fallback = Boolean(requestedRendererKey && !resolvedRendererKey);
   return {
     rendererKey: resolvedRendererKey || requestedRendererKey,
     requestedRendererKey,
     resolvedRendererKey,
     rendererVersion: result.renderer_version ?? result.card?.renderer_version ?? null,
-    placement: result.placement || result.card?.placement || descriptor?.defaultPlacement || null,
+    placement: viewModel.placement || null,
     structuredContent: result.structured_content || result.card?.structured_content || result.output || null,
     uiMeta: result.ui_meta || result.card?.ui_meta || (hasRecordValue(result.metadata) ? result.metadata : null),
     fallback,
@@ -258,15 +298,38 @@ function toolResultDynamicMetadata(result: AssistantToolResult): DynamicPartMeta
 
 function interruptDynamicMetadata(interrupt: AssistantInterrupt): DynamicPartMetadata {
   const requestedRendererKey = interrupt.renderer_key || (isRegisteredDynamicRendererKey(interrupt.tool_name) ? interrupt.tool_name : null);
-  const descriptor = rendererDescriptor(requestedRendererKey);
-  const resolvedRendererKey = descriptor ? requestedRendererKey : null;
-  const fallback = Boolean(requestedRendererKey && !descriptor);
+  if (!requestedRendererKey) {
+    return {
+      rendererKey: null,
+      requestedRendererKey,
+      resolvedRendererKey: null,
+      rendererVersion: interrupt.renderer_version ?? null,
+      placement: interrupt.placement || interrupt.display_mode || null,
+      structuredContent: interrupt.structured_content || null,
+      uiMeta: interrupt.ui_meta || (hasRecordValue(interrupt.metadata) ? interrupt.metadata : null),
+      fallback: false,
+      fallbackReason: undefined,
+    };
+  }
+  const normalizedInterrupt = {
+    ...interrupt,
+    renderer_key: requestedRendererKey,
+    placement: interrupt.placement || interrupt.display_mode || null,
+  };
+  const viewModel = createDynamicUiViewModel(
+    "interrupt",
+    normalizedInterrupt as AssistantInterrupt,
+    DEFAULT_DYNAMIC_UI_REGISTRY,
+    { preserveFallbackPlacement: true },
+  );
+  const resolvedRendererKey = viewModel.fallback ? null : viewModel.rendererKey;
+  const fallback = Boolean(requestedRendererKey && !resolvedRendererKey);
   return {
     rendererKey: resolvedRendererKey || requestedRendererKey,
     requestedRendererKey,
     resolvedRendererKey,
     rendererVersion: interrupt.renderer_version ?? null,
-    placement: interrupt.placement || interrupt.display_mode || descriptor?.defaultPlacement || null,
+    placement: viewModel.placement || null,
     structuredContent: interrupt.structured_content || null,
     uiMeta: interrupt.ui_meta || (hasRecordValue(interrupt.metadata) ? interrupt.metadata : null),
     fallback,

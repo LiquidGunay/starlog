@@ -125,7 +125,7 @@ function runTests() {
   {
     assert.equal(mobileDynamicUiBadge({ rendererKey: "interview.review_grade", placement: "inline" }), "Review grade · Inline panel");
     assert.equal(mobileDynamicUiBadge({ rendererKey: "grade_review_recall", placement: "inline" }), "Grade review recall · Inline panel");
-    assert.equal(mobileDynamicUiBadge({ rendererKey: "interview.review_grade" }), "Review grade · Inline panel");
+    assert.equal(mobileDynamicUiBadge({ rendererKey: "interview.review_grade" }), "Review grade · Inline on mobile");
     assert.equal(mobileDynamicUiBadge({ rendererKey: "unknown.renderer", placement: "inline" }), null);
     assert.equal(mobileDynamicUiBadge({ rendererKey: null }), null);
   }
@@ -151,7 +151,7 @@ function runTests() {
             body: "Summary for fallback card.",
             renderer_key: "legacy.review_grade",
             renderer_version: 3,
-            placement: "thread",
+            placement: "bottom_sheet",
             structured_content: { mode: "legacy", reason: "compat" },
             ui_meta: { source: "legacy" },
             metadata: {},
@@ -170,12 +170,88 @@ function runTests() {
     assert.equal(part.requestedRendererKey, "legacy.review_grade");
     assert.equal(part.resolvedRendererKey, null);
     assert.equal(part.rendererVersion, 3);
-    assert.equal(part.placement, "thread");
-    assert.equal(part.placementLabel, "Thread panel");
+    assert.equal(part.placement, "bottom_sheet");
+    assert.equal(part.placementLabel, "Bottom sheet");
     assert.equal(part.fallback, true);
     assert.equal(part.fallbackReason, "No registered mobile renderer; using generic card rendering.");
     assert.deepEqual(part.structuredContent, { mode: "legacy", reason: "compat" });
     assert.deepEqual(part.uiMeta, { source: "legacy" });
+  }
+
+  {
+    const message: AssistantThreadMessage = {
+      id: "msg_unknown_interrupt_renderer",
+      thread_id: "thread_primary",
+      run_id: "run_review",
+      role: "assistant",
+      status: "requires_action",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "interrupt_request",
+          id: "part_unknown_interrupt",
+          interrupt: {
+            id: "interrupt_legacy_1",
+            thread_id: "thread_primary",
+            run_id: "run_review",
+            status: "pending",
+            interrupt_type: "choice",
+            tool_name: "grade_review_recall",
+            title: "Legacy review panel",
+            body: "Legacy review details.",
+            renderer_key: "legacy.review_grade",
+            renderer_version: 2,
+            placement: "bottom_sheet",
+            structured_content: {
+              card_id: "card_ml_vectors",
+              reason: "legacy protocol bridge",
+            },
+            ui_meta: {
+              source: "legacy",
+              tone: "review",
+            },
+            fields: [
+              {
+                id: "grade",
+                kind: "select",
+                label: "Quality",
+                required: true,
+                options: [
+                  { label: "Good", value: "good" },
+                  { label: "Great", value: "great" },
+                ],
+              },
+            ],
+            primary_label: "Save grade",
+            secondary_label: "Later",
+            display_mode: "inline",
+            metadata: {},
+            created_at: createdAt,
+          },
+        },
+      ],
+    };
+
+    const richParts = starlogRichPartsForMessage(message);
+    assert.equal(richParts.length, 1);
+    const [part] = richParts;
+    assert.equal(part.type, "interrupt_request");
+    assert.equal(part.requestedRendererKey, "legacy.review_grade");
+    assert.equal(part.resolvedRendererKey, null);
+    assert.equal(part.fallback, true);
+    assert.equal(part.fallbackReason, "No registered mobile renderer; using generic interrupt panel rendering.");
+    assert.equal(part.placement, "bottom_sheet");
+    assert.equal(part.placementLabel, "Bottom sheet");
+    assert.deepEqual(part.structuredContent, {
+      card_id: "card_ml_vectors",
+      reason: "legacy protocol bridge",
+    });
+    assert.deepEqual(part.uiMeta, {
+      source: "legacy",
+      tone: "review",
+    });
   }
 
   {
@@ -418,6 +494,68 @@ function runTests() {
     assert.ok(converted);
     assert.equal(converted.content, "Review grade");
     assert.equal(converted.metadata.custom.transcriptKind, "rich_fallback");
+  }
+
+  {
+    const legacyToolResult: AssistantToolResult = {
+      id: "tool_result_legacy_grade",
+      tool_call_id: "tool_call_legacy_review",
+      status: "complete",
+      output: {
+        card_id: "card_ml_vectors",
+        grade: "great",
+      },
+      renderer_key: "legacy.review_grade",
+      renderer_version: 2,
+      placement: "bottom_sheet",
+      structured_content: {
+        card_id: "card_ml_vectors",
+        grade: "great",
+      },
+      ui_meta: {
+        source: "legacy",
+      },
+      card: null,
+      entity_ref: null,
+      metadata: {},
+    };
+
+    assert.equal(isDiagnosticAssistantToolResult(legacyToolResult), false);
+
+    const message: AssistantThreadMessage = {
+      id: "msg_legacy_result",
+      thread_id: "thread_primary",
+      run_id: "run_review",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "tool_result",
+          id: "part_legacy_tool_result",
+          tool_result: legacyToolResult,
+        },
+      ],
+    };
+
+    const [richPart] = starlogRichPartsForMessage(message);
+    assert.ok(richPart);
+    assert.equal(richPart.type, "tool_result");
+    assert.equal(richPart.requestedRendererKey, "legacy.review_grade");
+    assert.equal(richPart.resolvedRendererKey, null);
+    assert.equal(richPart.fallback, true);
+    assert.equal(richPart.fallbackReason, "No registered mobile renderer; using generic tool result rendering.");
+    assert.equal(richPart.placement, "bottom_sheet");
+    assert.equal(richPart.placementLabel, "Bottom sheet");
+    assert.deepEqual(richPart.structuredContent, {
+      card_id: "card_ml_vectors",
+      grade: "great",
+    });
+    assert.deepEqual(richPart.uiMeta, {
+      source: "legacy",
+    });
   }
 
   {
