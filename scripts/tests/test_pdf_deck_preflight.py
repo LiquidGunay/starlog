@@ -120,10 +120,19 @@ def test_preflight_marks_unreadable_extraction_unproven(monkeypatch, tmp_path: P
     assert report["cards_generated"] == 0
     assert report["candidate_count"] == 0
     assert report["candidate_cards_path"] == ""
+    assert report["ingestion_manifest_path"], report["ingestion_manifest_path"]
+    manifest_path = Path(str(report["ingestion_manifest_path"]))
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["page_labeling"]["default_label"] == "scan-unknown"
+    assert manifest["segments"][0]["page_status"] == "ocr_needed"
+    assert manifest["segments"][0]["ocr_needed"] is True
     blocked_chunks = report["blocked_chunks"]
     assert isinstance(blocked_chunks, list)
     assert blocked_chunks
     assert blocked_chunks[0]["reason"] == "Card candidates blocked: blocked_string_fallback"
+    assert blocked_chunks[0]["page_status"] == "ocr_needed"
+    assert blocked_chunks[0]["ocr_needed"] is True
     assert str(report["markdown_path"]).endswith(".md")
     assert "Do not generate cards from this run" in " ".join(
         str(step) for step in report["next_local_steps"]
@@ -162,6 +171,10 @@ def test_preflight_blocks_strings_even_when_readable(monkeypatch, tmp_path: Path
     assert report["deck_generation"] == "blocked_string_fallback"
     assert report["candidate_count"] == 0
     assert report["candidate_cards_path"] == ""
+    assert report["ingestion_manifest_path"], report["ingestion_manifest_path"]
+    manifest = json.loads(Path(str(report["ingestion_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["segments"][0]["page_status"] == "ocr_needed"
+    assert manifest["segments"][0]["ocr_needed"] is True
     assert report["unproven_note"]
     assert "Do not use `strings` output for card prep" in " ".join(
         str(step) for step in report["next_local_steps"]
@@ -196,6 +209,11 @@ def test_preflight_produces_candidate_cards_from_proven_local_text(monkeypatch, 
     assert report["cards_generated"] == 0
     assert report["candidate_count"] >= 1
     assert isinstance(report["candidate_cards_path"], str)
+    manifest = json.loads(Path(str(report["ingestion_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["segments"], manifest["segments"]
+    first_segment = manifest["segments"][0]
+    assert first_segment["status"] == "candidate"
+    assert first_segment["page_status"] == "ready"
     candidate_cards_path = Path(str(report["candidate_cards_path"]))
     assert candidate_cards_path.exists()
     candidate_cards = [
@@ -239,6 +257,9 @@ def test_preflight_records_unproven_chunks(monkeypatch, tmp_path: Path) -> None:
     assert report["evidence_status"] == "unproven"
     assert report["deck_generation"] == "blocked_unreadable_extraction"
     assert report["candidate_count"] == 0
+    manifest = json.loads(Path(str(report["ingestion_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["segments"][0]["page_status"] == "unproven"
+    assert manifest["segments"][0]["ocr_needed"] is False
     blocked_chunks = report["blocked_chunks"]
     assert isinstance(blocked_chunks, list)
     assert blocked_chunks

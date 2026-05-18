@@ -172,8 +172,37 @@ def test_import_source_report_records_unproven_segments_without_cards(monkeypatc
         assert metadata["status"] == "blocked"
         assert metadata["page_label"] == "scan-unknown"
         assert metadata["page_status"] == "unproven"
+        assert metadata["ocr_needed"] is False
         assert metadata["content_sha256"] == "blocked-chunk-sha"
         assert metadata["evidence_status"] == "unproven"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_import_source_report_parses_string_ocr_needed_as_false(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "starlog.db"
+    media_dir = tmp_path / "media"
+    report_path = tmp_path / "report.json"
+    _write_report(report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["blocked_segments"][0]["ocr_needed"] = "false"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setenv("STARLOG_DB_PATH", str(db_path))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(media_dir))
+
+    from app.core.config import get_settings  # noqa: E402
+    from app.db.storage import get_connection  # noqa: E402
+
+    get_settings.cache_clear()
+    try:
+        importer.import_source_report(report_path)
+
+        with get_connection() as conn:
+            chunk = conn.execute("SELECT metadata_json FROM source_chunks").fetchone()
+
+        assert chunk is not None
+        metadata = json.loads(chunk["metadata_json"])
+        assert metadata["ocr_needed"] is False
     finally:
         get_settings.cache_clear()
 

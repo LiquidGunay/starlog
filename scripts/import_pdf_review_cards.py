@@ -680,6 +680,21 @@ def _segment_int(segment: dict[str, Any], key: str, default: int = 0) -> int:
     return max(0, value)
 
 
+def _segment_bool(segment: dict[str, Any], key: str, default: bool = False) -> bool:
+    value = segment.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off", ""}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
 def _report_chunk_index(segment: dict[str, Any]) -> tuple[int, int]:
     source_chunk_index = _segment_int(segment, "chunk_index", len(str(segment.get("segment_id") or "")))
     return source_chunk_index, REPORT_EVIDENCE_CHUNK_INDEX_OFFSET + source_chunk_index
@@ -696,6 +711,7 @@ def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
                 item = dict(segment)
                 item.setdefault("status", "blocked")
                 item.setdefault("page_status", "unproven")
+                item.setdefault("ocr_needed", False)
                 segments.append(item)
     candidate_cards_path = str(report.get("candidate_cards_path") or "").strip()
     if candidate_cards_path:
@@ -717,7 +733,11 @@ def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
                         "word_end": chunk.get("word_end"),
                         "word_count": chunk.get("word_count"),
                         "content_sha256": chunk.get("content_sha256"),
-                        "page_status": "unproven",
+                        "page_status": "ready",
+                        "ocr_needed": False,
+                        "page_label": "scan-unknown",
+                        "page_start": None,
+                        "page_end": None,
                         "reason": "Trusted local extraction candidate; cards require explicit final import.",
                     }
                 )
@@ -727,6 +747,7 @@ def _report_segments(report: dict[str, Any]) -> list[dict[str, Any]]:
                 "chunk_index": 0,
                 "content_sha256": "",
                 "page_status": "unproven",
+                "ocr_needed": False,
                 "reason": report.get("deck_generation") or "Local PDF extraction was unavailable or unproven.",
                 "status": "blocked",
                 "word_count": 0,
@@ -767,6 +788,7 @@ def _upsert_report_chunk(
         "page_label": segment.get("page_label"),
         "page_start": segment.get("page_start"),
         "page_status": segment.get("page_status") or "unproven",
+        "ocr_needed": _segment_bool(segment, "ocr_needed"),
         "pdf_sha256": pdf_sha,
         "reason": reason,
         "report_path": str(report_path),
