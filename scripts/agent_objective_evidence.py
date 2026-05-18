@@ -18,6 +18,16 @@ from pathlib import Path
 from typing import Any
 
 
+STRICT_FAILURE_FLAGS = {
+    "stale_lock",
+    "missing_worktree",
+    "not_git_worktree",
+    "branch_mismatch",
+    "dirty_worktree",
+    "status_error",
+}
+
+
 @dataclass
 class CommandResult:
     ok: bool
@@ -178,6 +188,7 @@ def inspect_worktree(
             evidence["flags"].append("dirty_worktree")
     elif not ok:
         evidence["status_error"] = err
+        evidence["flags"].append("status_error")
 
     ok, diff_stat, _err = git_lines(["git", "diff", "--stat"], cwd=worktree)
     if ok:
@@ -211,7 +222,10 @@ def render_text(payload: dict[str, Any]) -> str:
     ]
     workers = payload["workers"]
     if not workers:
-        lines.append("No active workitem locks.")
+        if payload.get("missing_workitem_id"):
+            lines.append(f"No active lock found for workitem {payload['missing_workitem_id']}.")
+        else:
+            lines.append("No active workitem locks.")
         return "\n".join(lines)
 
     for worker in workers:
@@ -220,9 +234,9 @@ def render_text(payload: dict[str, Any]) -> str:
             [
                 f"## {worker.get('workitem_id')} / {worker.get('agent_id')}",
                 f"worktree: {worker.get('worktree')}",
-        f"branch: expected={worker.get('expected_branch')} actual={worker.get('actual_branch')} match={worker.get('branch_matches')}",
-        f"git_common_dir: {worker.get('git_common_dir')} shared={worker.get('shares_expected_common_dir')}",
-        f"head_sha: {worker.get('head_sha')}",
+                f"branch: expected={worker.get('expected_branch')} actual={worker.get('actual_branch')} match={worker.get('branch_matches')}",
+                f"git_common_dir: {worker.get('git_common_dir')} shared={worker.get('shares_expected_common_dir')}",
+                f"head_sha: {worker.get('head_sha')}",
                 f"heartbeat_age_seconds: {worker.get('heartbeat_age_seconds')} stale={worker.get('stale_lock')}",
                 f"status: {worker.get('status_branch')}",
                 f"dirty_file_count: {worker.get('dirty_file_count')} ahead_count: {worker.get('ahead_count')} tracking: {worker.get('tracking_ref')}",
@@ -254,7 +268,7 @@ def main() -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Exit non-zero when stale, missing, mismatched, or dirty worktrees are found.",
+        help="Exit non-zero when stale, missing, mismatched, dirty, or unreadable worktrees are found.",
     )
     args = parser.parse_args()
 
@@ -279,12 +293,16 @@ def main() -> int:
         "stale_minutes": args.stale_minutes,
         "workers": workers,
     }
+    if args.workitem_id and not locks:
+        payload["missing_workitem_id"] = args.workitem_id
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(render_text(payload))
 
-    if args.strict and any(worker["flags"] for worker in workers):
+    if args.workitem_id and not locks:
+        return 2
+    if args.strict and any(STRICT_FAILURE_FLAGS.intersection(worker["flags"]) for worker in workers):
         return 1
     return 0
 
