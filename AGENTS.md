@@ -143,4 +143,10 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - Avoid duplicate planning docs. Keep `PLAN.md`, `VISION.md`, assistant reset docs, and the active UI concept/comparison docs authoritative, and remove stale plans when they no longer match direction.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.
-- For subagent supervision, do not treat a missing final response after a short wait as a hang. Define reusable roles by task lane (`IMPLEMENT`, `VALIDATE`, `REVIEW`, `CLEANUP`) and keep a worker on one `{worktree, branch, PR target}` lane until handoff. Supervisors should use `wait_agent`, then objective evidence (`python3 scripts/agent_objective_evidence.py`) before nudging. Close/restart only on explicit completion or evidence-based staleness (and preferably after one status nudge plus an additional objective evidence poll showing no useful progress).
+- For subagent supervision, do not treat a missing final response after a short wait as a hang. Define reusable
+  roles by task lane (`IMPLEMENT`, `VALIDATE`, `REVIEW`, `CLEANUP`) and keep a worker on one
+  `{workitem_id, worktree, branch}` lane until handoff; include role/lane intent in the workitem title and
+  lock metadata because `agent_objective_evidence.py` reports branch/worktree context, not explicit lane/PR target
+  fields. Supervisors should use `wait_agent`, then objective evidence (`python3 scripts/agent_objective_evidence.py`)
+  before nudging. Close/restart only on explicit completion or evidence-based staleness (and preferably after one
+  status nudge plus an additional objective evidence poll showing no useful progress).

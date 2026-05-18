@@ -15,8 +15,9 @@ This is functional UI coverage, not a live-agent evaluation. Most tests mock API
 assistant protocol snapshots so the UI can be validated deterministically. For hosted-path discovery,
 `https://starlog-web-production.up.railway.app/login` is the user entry URL (followed by assistant
 flows under `/assistant`). Desktop web and native mobile chat surfaces have partial assistant-ui
-adapter/runtime coverage with compatibility fallbacks; these harnesses validate the supported
-structured protocol path and fallback-hidden user experience, not full assistant-ui parity.
+adapter/runtime coverage with compatibility fallbacks; these browser/viewport harnesses validate the
+supported structured protocol path and fallback-hidden user experience, not full installed-device
+assistant-ui parity.
 
 ## Commands
 
@@ -52,7 +53,8 @@ dynamic UI before the grade is submitted.
 ## Coverage
 
 - `test:ui:pwa-functional` runs the desktop PWA assistant concept smoke against the real Next `/assistant` route with mocked AssistantThreadSnapshot and AssistantInterrupt API responses.
-- `test:ui:mobile-functional` runs the same route under a Pixel 7 Playwright device profile to validate the mobile viewport assistant equivalent for inline dynamic-panel grammar.
+- `test:ui:mobile-functional` runs the same route under a Pixel 7 Playwright device profile to validate the
+  mobile viewport assistant equivalent for inline dynamic-panel grammar (browser-only viewport coverage).
 - Both tests submit the dynamic panel to mocked assistant interrupt endpoints and assert the posted values plus the resolved UI state.
 
 Current functional areas:

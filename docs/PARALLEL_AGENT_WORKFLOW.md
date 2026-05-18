@@ -45,9 +45,9 @@ same source of truth.
 When multiple workers are active, define lanes by task scope and keep one reusable worker role per lane.
 
 - Suggested reusable roles: `IMPLEMENT`, `VALIDATE`, `REVIEW`, and `CLEANUP`.
-- A lane is bounded by `{workitem_id, worktree, branch, PR target}`.
+- A lane is bounded by `{workitem_id, worktree, branch}` and one reusable role.
 - A worker should stay in the same lane for its scoped lifecycle (instead of being reassigned across lanes).
-- Record lane intent in the workitem `title` and in the `owner` metadata carried by `workitems.json` so `agent_objective_evidence.py` output is auditable.
+- Record lane intent in the workitem `title` and `owner` metadata carried by `workitems.json` so `agent_objective_evidence.py` output is auditable.
 - Reuse a worker within the same lane if a handoff stays within that scope; only rotate roles when scope changes.
 
 ## Supervisor polling evidence
