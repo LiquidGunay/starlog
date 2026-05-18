@@ -31,6 +31,7 @@ same source of truth.
   - Heartbeat: `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent>`
   - Release: `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
   - Inspect status: `python3 scripts/workitem_lock.py status [--workitem-id <id>]`
+  - Inspect objective evidence: `python3 scripts/agent_objective_evidence.py --repo-root /home/ubuntu/starlog`
 - Required usage flow:
   1. Identify the `workitem_id` in `workitems.json`, then acquire `.registry.lock` before reading/updating lock state.
   2. On claim, verify `locks/<workitem_id>.lock` is absent or stale (`last_heartbeat_at` older than 10 minutes). If active and not stale, do not proceed.
@@ -38,6 +39,28 @@ same source of truth.
   4. While working, refresh `last_heartbeat_at` at least every 2 minutes under `.registry.lock`, and keep `workitems.json` ownership/status aligned.
   5. On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
   6. Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
+
+## Supervisor polling evidence
+
+Do not rely on a worker's time-based status promises as the primary progress signal. Poll workers
+with `wait_agent`, then inspect objective repo evidence before nudging or closing a worker.
+
+Use:
+
+```bash
+python3 scripts/agent_objective_evidence.py --repo-root /home/ubuntu/starlog
+```
+
+The script is read-only. It reports active locks, heartbeat age, expected vs actual branch, whether
+the claimed path shares the repo's common git directory, dirty files, ahead commits, and recent log
+entries. Treat these flags as supervisor action triggers:
+
+- `branch_mismatch`, `missing_worktree`, or `not_git_worktree`: interrupt the worker and stop edits.
+- `foreign_git_common_dir`: verify whether the worker accidentally created a standalone clone/copy
+  instead of a shared worktree before accepting validation or pushing.
+- `dirty_worktree` or `ahead_of_upstream`: there is objective work to inspect, test, or turn into a PR.
+- `stale_lock`: use `wait_agent` first; if no completion arrives, send one concrete status nudge,
+  then close or replace only after another poll shows no useful agent response or repo progress.
 
 ## Branch and worktree hygiene
 
