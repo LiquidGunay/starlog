@@ -15,16 +15,29 @@ import {
   starlogSnapshotToAssistantUiThread,
 } from "../src/mobile-assistant-aui-adapter";
 
-declare const require: (moduleName: string) => {
+declare function require(moduleName: "node:assert/strict"): {
   equal: (...args: unknown[]) => void;
   deepEqual: (...args: unknown[]) => void;
   ok: (...args: unknown[]) => void;
   notEqual: (...args: unknown[]) => void;
 };
+declare function require(moduleName: "node:fs"): {
+  readFileSync: (path: string, encoding: "utf8") => string;
+};
+declare function require(moduleName: "node:path"): {
+  resolve: (...segments: string[]) => string;
+};
+declare const __dirname: string;
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const createdAt = "2026-05-16T12:00:00.000Z";
+
+function readMobileSource(relativePath: string): string {
+  return fs.readFileSync(path.resolve(__dirname, "../../../../../apps/mobile", relativePath), "utf8");
+}
 
 function reviewGradeMessage(): AssistantThreadMessage {
   return {
@@ -120,6 +133,27 @@ function runTests() {
       composer: "assistant-ui composer",
       composerInput: "assistant-ui composer input",
     });
+  }
+
+  {
+    const shellSource = readMobileSource("src/mobile-assistant-aui-thread.tsx");
+    assert.ok(shellSource.includes("<ThreadPrimitive.Root"));
+    assert.ok(shellSource.includes("<ThreadPrimitive.Messages"));
+    assert.ok(shellSource.includes("<MessagePrimitive.Root"));
+    assert.ok(shellSource.includes("<MessagePrimitive.Content"));
+    assert.ok(shellSource.includes("<ComposerPrimitive.Root"));
+    assert.ok(shellSource.includes('testID="assistant-ui-shell"'));
+    assert.ok(shellSource.includes('testID="assistant-ui-thread"'));
+    assert.ok(shellSource.includes('testID="assistant-ui-composer"'));
+    assert.ok(shellSource.includes("MOBILE_ASSISTANT_UI_TEST_MARKERS.composerInput"));
+  }
+
+  {
+    const panelHostSource = readMobileSource("src/mobile-dynamic-panel-host.tsx");
+    assert.ok(panelHostSource.includes('testID="mobile-dynamic-panel-host"'));
+    assert.ok(panelHostSource.includes('testID="mobile-dynamic-panel-queued"'));
+    assert.ok(panelHostSource.includes('testID="mobile-dynamic-panel-sheet-row"'));
+    assert.ok(panelHostSource.includes('testID="mobile-dynamic-panel-sheet"'));
   }
 
   {
