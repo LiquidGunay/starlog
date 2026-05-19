@@ -1,8 +1,14 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { AssistantThreadMessage } from "@starlog/contracts";
-import { createDynamicUiViewModel, isStarlogKnownRendererKey } from "@starlog/dynamic-ui";
+import {
+  createDynamicUiAssistantUiMetadata,
+  createDynamicUiViewModel,
+  isStarlogKnownRendererKey,
+  type DynamicUiAssistantUiDescriptor,
+} from "@starlog/dynamic-ui";
 
 type RuntimeContentPart = Exclude<ThreadMessageLike["content"], string>[number];
+type RuntimeMetadataCustom = NonNullable<ThreadMessageLike["metadata"]>["custom"];
 
 function dataPart(name: string, data: unknown) {
   return {
@@ -28,6 +34,26 @@ function dynamicUiPart<Source extends "card" | "interrupt" | "tool_result">(
   }
 
   return dataPart(viewModel.rendererKey, { source, input });
+}
+
+function reviewGradeAssistantUiMetadata(message: AssistantThreadMessage): DynamicUiAssistantUiDescriptor | null {
+  for (const part of message.parts) {
+    if (part.type === "interrupt_request") {
+      const metadata = createDynamicUiAssistantUiMetadata("interrupt", part.interrupt).custom.starlog_dynamic_ui;
+      if (metadata.resolved_renderer_key === "interview.review_grade") {
+        return metadata;
+      }
+      continue;
+    }
+    if (part.type === "tool_result") {
+      const metadata = createDynamicUiAssistantUiMetadata("tool_result", part.tool_result).custom.starlog_dynamic_ui;
+      if (metadata.resolved_renderer_key === "interview.review_grade") {
+        return metadata;
+      }
+    }
+  }
+
+  return null;
 }
 
 function jsonClone<T>(value: T): T {
@@ -59,6 +85,13 @@ export function normalizeAssistantStatus(message: AssistantThreadMessage): Threa
 }
 
 export function convertAssistantMessage(message: AssistantThreadMessage): ThreadMessageLike {
+  const dynamicUiMetadata = reviewGradeAssistantUiMetadata(message);
+  const metadataCustom: RuntimeMetadataCustom = {
+    ...message.metadata,
+    ...(dynamicUiMetadata ? { starlog_dynamic_ui: dynamicUiMetadata } : {}),
+    run_id: message.run_id,
+    starlog_parts: message.parts,
+  };
   const toolResults = new Map(
     message.parts
       .filter((part): part is Extract<AssistantThreadMessage["parts"][number], { type: "tool_result" }> => part.type === "tool_result")
@@ -139,11 +172,7 @@ export function convertAssistantMessage(message: AssistantThreadMessage): Thread
     createdAt: new Date(message.created_at),
     status: normalizeAssistantStatus(message),
     metadata: {
-      custom: {
-        ...message.metadata,
-        run_id: message.run_id,
-        starlog_parts: message.parts,
-      },
+      custom: metadataCustom,
     },
   };
 }
