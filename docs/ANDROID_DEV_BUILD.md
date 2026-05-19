@@ -221,6 +221,8 @@ What this loop does:
   - `ANDROID_HOME=$HOME/.local/android`
   - `ANDROID_SDK_ROOT=$HOME/.local/android`
 - wipes prior local validation runtime/build state under `.localdata/android-local-validation/`
+- runs an explicit ADB preflight before API/bootstrap/build work: `adb devices -l`, target
+  `ADB_SERIAL` selection, `shell getprop sys.boot_completed`, and a best-effort keep-awake setup
 - generates or reuses a non-repo test passphrase from `/home/ubuntu/.config/starlog/android-local-srs-passphrase.txt`
 - starts a fresh local API on `127.0.0.1:8000`
 - bootstraps/imports the ML Interviews SRS deck into that fresh local DB
@@ -245,6 +247,18 @@ Examples:
 cd /home/ubuntu/starlog
 ADB_SERIAL=<SERIAL> bash ./scripts/android_fresh_local_srs_validation.sh
 ```
+
+```bash
+cd /home/ubuntu/starlog
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+  bash ./scripts/android_fresh_local_srs_validation.sh --adb-preflight-only
+```
+
+Use `--adb-preflight-only` before a long validation window when USB/WSL bridge state is suspect.
+If the Windows ADB bridge is returning errors such as `UtilAcceptVsock: accept4 failed 110`, the
+script fails before Gradle/API work and records the reason in
+`.localdata/android-local-validation/builds/latest.json`. Only set `SKIP_ADB_PREFLIGHT=1` when you
+intentionally want to bypass this guardrail.
 
 ```bash
 cd /home/ubuntu/starlog
