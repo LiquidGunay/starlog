@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCRIPT_PATH="$REPO_ROOT/android_interview_functional_capture.sh"
 FIXTURE_PATH="$SCRIPT_DIR/fixtures/android-review-due-card-ui.xml"
+FIXTURE_NONCLICKABLE_PATH="$SCRIPT_DIR/fixtures/android-review-due-card-ui-nonclickable.xml"
 
 if [[ ! -x "$SCRIPT_PATH" ]]; then
   echo "[test] missing executable: $SCRIPT_PATH" >&2
@@ -48,6 +49,7 @@ run_capture() {
     cd "$REPO_ROOT/.."
     STAMP="$label" \
     RUN_DIR="$run_dir" \
+    ADB="/bin/echo" \
     STARLOG_API_BASE="https://api.example.test" \
     STARLOG_ACCESS_TOKEN="top-secret-token" \
     WAIT_SECONDS="0" \
@@ -90,5 +92,20 @@ assert_contains "$auto_run_log" "Automated Review reveal + Good flow completed" 
 assert_contains "$auto_run_log" "due-cards-before-grade.json" "pre-grade due-card snapshot"
 assert_contains "$auto_run_log" "due-cards-after-grade.json" "post-grade due-card snapshot"
 assert_not_contains "$auto_run_log" "Automation skipped" "automation was not skipped"
+
+echo "[test] auto-review-grade fallback when controls are not clickable"
+AUTO_REVIEW_UI_XML="$FIXTURE_NONCLICKABLE_PATH"
+fallback_run_log="$(run_capture no-clickable "$SCRIPT_PATH" --auto-review-grade --dry-run)"
+AUTO_REVIEW_UI_XML=""
+assert_not_contains "$fallback_run_log" "Automated Review reveal + Good flow completed" "automation did not claim success"
+assert_contains "$fallback_run_log" "Automated review flow failed; using operator-assisted checkpoint." "automation failed then manual checkpoint used"
+assert_not_contains "$fallback_run_log" "Tapped Reveal answer" "non-clickable control was not tapped"
+
+echo "[test] auto-review-grade fallback on missing UI XML"
+AUTO_REVIEW_UI_XML="/tmp/does-not-exist-android-review-ui.xml"
+missing_xml_log="$(run_capture missing-ui "$SCRIPT_PATH" --auto-review-grade --dry-run)"
+AUTO_REVIEW_UI_XML=""
+assert_not_contains "$missing_xml_log" "Automated Review reveal + Good flow completed" "missing UI xml did not claim automation success"
+assert_contains "$missing_xml_log" "Automated review flow failed; using operator-assisted checkpoint." "missing UI xml falls back to manual checkpoint"
 
 echo "[test] shell harness script tests passed"

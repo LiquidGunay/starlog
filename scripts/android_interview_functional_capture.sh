@@ -39,6 +39,7 @@ STARLOG_INTERVIEW_SEED_TOPIC_TITLE="${STARLOG_INTERVIEW_SEED_TOPIC_TITLE:-Androi
 STARLOG_INTERVIEW_SEED_MARK_READ="${STARLOG_INTERVIEW_SEED_MARK_READ:-1}"
 AUTO_REVIEW_GRADE="${AUTO_REVIEW_GRADE:-0}"
 AUTO_REVIEW_UI_XML="${AUTO_REVIEW_UI_XML:-}"
+AUTO_REVIEW_DRY_RUN_UI_STAGE="${AUTO_REVIEW_DRY_RUN_UI_STAGE:-0}"
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 DRY_RUN=0
 NO_DEVICE=0
@@ -89,6 +90,8 @@ Environment overrides:
                          Set to 0 to leave the seeded topic unread.
   AUTO_REVIEW_GRADE      Set to 1 to attempt Review reveal + Good automation (default: 0).
   AUTO_REVIEW_UI_XML     Optional local uiautomator XML used by dry-run automation.
+  AUTO_REVIEW_DRY_RUN_UI_STAGE
+                        Internal dry-run reveal/grade progression stage (default: 0).
   NONINTERACTIVE         Set to 1 to skip pause prompts after printing checkpoints.
 
 Options:
@@ -355,10 +358,15 @@ refresh_review_ui() {
   if [[ "$DRY_RUN" == "1" ]]; then
     if [[ -n "$AUTO_REVIEW_UI_XML" ]]; then
       if [[ -f "$AUTO_REVIEW_UI_XML" ]]; then
-        cp "$AUTO_REVIEW_UI_XML" "$local_xml"
+        if [[ "$AUTO_REVIEW_DRY_RUN_UI_STAGE" == "0" || -z "$AUTO_REVIEW_DRY_RUN_UI_STAGE" ]]; then
+          cp "$AUTO_REVIEW_UI_XML" "$local_xml"
+        else
+          dry_run_reveal_grade_xml "$AUTO_REVIEW_UI_XML" "$local_xml" "$AUTO_REVIEW_DRY_RUN_UI_STAGE" || return 1
+        fi
         return 0
       fi
-      fail "AUTO_REVIEW_UI_XML set but not found: $AUTO_REVIEW_UI_XML"
+      log "AUTO_REVIEW_UI_XML set but not found: $AUTO_REVIEW_UI_XML"
+      return 1
     fi
     return 1
   fi
@@ -368,14 +376,91 @@ refresh_review_ui() {
   return 0
 }
 
+dry_run_reveal_grade_xml() {
+  local source_xml="$1"
+  local dest_xml="$2"
+  local stage="$3"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  python3 - "$source_xml" "$dest_xml" "$stage" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+
+source_xml, dest_xml = sys.argv[1], sys.argv[2]
+try:
+  stage = int(sys.argv[3])
+except (TypeError, ValueError):
+  stage = 0
+
+
+def normalize(value: str) -> str:
+  return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def find_parent(root, target):
+  for parent in root.iter():
+    for node in list(parent):
+      if node is target:
+        return parent
+  return None
+
+
+def remove_node_if_present(root, should_remove):
+  removed = []
+  for node in list(root.iter("node")):
+    if should_remove(node):
+      removed.append(node)
+  for node in removed:
+    parent = find_parent(root, node)
+    if parent is not None:
+      parent.remove(node)
+
+
+root = ET.parse(source_xml).getroot()
+has_load_control = any(
+  "load_due_cards_button" in normalize(node.attrib.get("resource-id", "")) for node in root.iter("node")
+)
+
+if stage >= 1:
+  if has_load_control:
+    remove_node_if_present(root, lambda node: "load_due_cards_button" in normalize(node.attrib.get("resource-id", "")))
+  elif stage == 1:
+    for node in root.iter("node"):
+      if normalize(node.attrib.get("text", "")) == "reveal answer":
+        node.attrib["text"] = "Hide answer"
+
+if stage >= 2:
+  remove_node_if_present(root, lambda node: "load_due_cards_button" in normalize(node.attrib.get("resource-id", "")))
+  for node in root.iter("node"):
+    if normalize(node.attrib.get("text", "")) == "reveal answer":
+      node.attrib["text"] = "Hide answer"
+
+if stage >= 3:
+  for node in root.iter("node"):
+    if normalize(node.attrib.get("text", "")) == "good":
+      if "checked" in node.attrib:
+        node.attrib["checked"] = "true"
+      if "clickable" in node.attrib:
+        node.attrib["clickable"] = "false"
+
+ET.ElementTree(root).write(dest_xml, encoding="UTF-8", xml_declaration=True)
+PY
+}
+
 ui_parse_center() {
   local xml_file="$1"
   local pattern="$2"
   local mode="$3"
+  local require_interactable="${4:-1}"
   if ! command -v python3 >/dev/null 2>&1; then
     return 1
   fi
-  python3 - "$xml_file" "$pattern" <<'PY'
+  python3 - "$xml_file" "$pattern" "$mode" "$require_interactable" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -383,7 +468,8 @@ import xml.etree.ElementTree as ET
 xml_file, pattern = sys.argv[1], (sys.argv[2] or "").strip().lower()
 mode = "exact"
 if len(sys.argv) > 3:
-    mode = (sys.argv[3] or "exact").strip().lower()
+  mode = (sys.argv[3] or "exact").strip().lower()
+require_interactable = len(sys.argv) <= 4 or str(sys.argv[4]).strip().lower() not in {"", "0", "false", "False", "FALSE", "no", "off"}
 
 
 def normalize(value: str) -> str:
@@ -419,12 +505,17 @@ def node_matches(node):
 
 root = ET.parse(xml_file).getroot()
 for node in root.iter("node"):
-  if node_matches(node):
-    clickable = (node.attrib.get("clickable") or "").lower() == "true"
-    coords = bounds_of(node)
-    if coords is not None:
-      print(center(coords))
-      raise SystemExit(0)
+  if not node_matches(node):
+    continue
+  if require_interactable:
+    if (node.attrib.get("clickable") or "").lower() != "true":
+      continue
+    if (node.attrib.get("enabled") or "").lower() != "true":
+      continue
+  coords = bounds_of(node)
+  if coords is not None:
+    print(center(coords))
+    raise SystemExit(0)
 raise SystemExit(1)
 PY
 }
@@ -441,10 +532,10 @@ tap_review_ui_control() {
     coords="$(ui_parse_center "$xml_file" "$resource_hints_csv" resource 2>/dev/null || true)"
   fi
   if [[ -z "$coords" ]] && [[ -n "$exact_label" ]]; then
-    coords="$(ui_parse_center "$xml_file" "$exact_label" exact 2>/dev/null || true)"
+    coords="$(ui_parse_center "$xml_file" "$exact_label" exact 1 2>/dev/null || true)"
   fi
   if [[ -z "$coords" ]] && [[ -n "$contains_label" ]]; then
-    coords="$(ui_parse_center "$xml_file" "$contains_label" contains 2>/dev/null || true)"
+    coords="$(ui_parse_center "$xml_file" "$contains_label" contains 1 2>/dev/null || true)"
   fi
   if [[ -z "$coords" ]]; then
     return 1
@@ -452,17 +543,35 @@ tap_review_ui_control() {
 
   adb_cmd shell input tap $coords
   log "Tapped $label at $coords"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    AUTO_REVIEW_DRY_RUN_UI_STAGE=$((AUTO_REVIEW_DRY_RUN_UI_STAGE + 1))
+  fi
   return 0
 }
 
 ui_controls_revealed() {
   local xml_file="$1"
-  python3 - "$xml_file" "$2" <<'PY'
+  local needle="$2"
+  local mode="${3:-exact}"
+  python3 - "$xml_file" "$needle" "$mode" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
 
-path, needle = sys.argv[1], (sys.argv[2] or "").strip().lower()
+path, needle, mode = sys.argv[1], (sys.argv[2] or "").strip().lower(), (sys.argv[3] or "exact").strip().lower()
+
+
+def node_matches(node):
+  if mode == "resource":
+    resource_id = normalize(node.attrib.get("resource-id") or "")
+    for candidate in [p.strip() for p in needle.split(",") if p.strip()]:
+      if candidate in resource_id:
+        return True
+    return False
+  if mode == "contains":
+    text = normalize(node.attrib.get("text") or "")
+    desc = normalize(node.attrib.get("content-desc") or "")
+    return bool(needle and (needle in text or needle in desc))
 
 
 def normalize(value: str) -> str:
@@ -470,9 +579,52 @@ def normalize(value: str) -> str:
 
 root = ET.parse(path).getroot()
 for node in root.iter("node"):
+  if node_matches(node):
+    raise SystemExit(0)
   text = normalize(node.attrib.get("text") or "")
   desc = normalize(node.attrib.get("content-desc") or "")
   if text == needle or desc == needle or desc == f"[{needle}]":
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+ui_control_checked() {
+  local xml_file="$1"
+  local pattern="$2"
+  local mode="${3:-exact}"
+  python3 - "$xml_file" "$pattern" "$mode" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, pattern = sys.argv[1], (sys.argv[2] or "").strip().lower()
+mode = (sys.argv[3] or "exact").strip().lower()
+
+
+def normalize(value: str) -> str:
+  return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def node_matches(node):
+  if mode == "resource":
+    resource_id = normalize(node.attrib.get("resource-id") or "")
+    for candidate in [p.strip() for p in pattern.split(",") if p.strip()]:
+      if candidate in resource_id:
+        return True
+    return False
+  text = normalize(node.attrib.get("text") or "")
+  desc = normalize(node.attrib.get("content-desc") or "")
+  return text == pattern or desc == pattern or desc == f"[{pattern}]"
+
+
+def is_checked(node):
+  return (node.attrib.get("checked") or "").lower() == "true"
+
+
+root = ET.parse(path).getroot()
+for node in root.iter("node"):
+  if node_matches(node) and is_checked(node):
     raise SystemExit(0)
 raise SystemExit(1)
 PY
@@ -522,6 +674,10 @@ automate_review_reveal_and_grade() {
     fi
     sleep "$WAIT_SECONDS"
     refresh_review_ui || return 1
+    if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Reveal answer"; then
+      log "Automated Reveal action did not change Review state."
+      return 1
+    fi
   else
     if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Hide answer"; then
       log "Reveal already open; skipping Reveal action."
@@ -535,6 +691,13 @@ automate_review_reveal_and_grade() {
     return 1
   fi
   sleep "$WAIT_SECONDS"
+  refresh_review_ui || return 1
+  if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Good" exact; then
+    if ! ui_control_checked "$RUN_DIR/review-ui.xml" "Good" exact; then
+      log "Automated Good action did not change Review state."
+      return 1
+    fi
+  fi
   return 0
 }
 
