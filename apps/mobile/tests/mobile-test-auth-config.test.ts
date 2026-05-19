@@ -15,6 +15,8 @@ const assert = require("node:assert/strict");
 
 assert.equal(isMobileTestAuthConfigEnabled({ dev: true, appVariant: "development", flag: "1" }), true);
 assert.equal(isMobileTestAuthConfigEnabled({ dev: false, appVariant: "preview", flag: "true" }), true);
+assert.equal(isMobileTestAuthConfigEnabled({ dev: false, appVariant: "preview", flag: "yes" }), true);
+assert.equal(isMobileTestAuthConfigEnabled({ dev: false, appVariant: "preview", flag: "on" }), true);
 assert.equal(isMobileTestAuthConfigEnabled({ dev: false, appVariant: "internal", flag: "1" }), true);
 assert.equal(isMobileTestAuthConfigEnabled({ dev: true, appVariant: "development", flag: "false" }), false);
 assert.equal(isMobileTestAuthConfigEnabled({ dev: false, appVariant: "production", flag: "1" }), false);
@@ -23,6 +25,14 @@ assertSafeMobileTestAuthBuildConfig({ dev: false, appVariant: "preview", flag: "
 assertSafeMobileTestAuthBuildConfig({ dev: false, appVariant: "internal", flag: "1" });
 assert.throws(
   () => assertSafeMobileTestAuthBuildConfig({ dev: false, appVariant: "production", flag: "1" }),
+  /production builds/,
+);
+assert.throws(
+  () => assertSafeMobileTestAuthBuildConfig({ dev: false, appVariant: "production", flag: "yes" }),
+  /production builds/,
+);
+assert.throws(
+  () => assertSafeMobileTestAuthBuildConfig({ dev: false, appVariant: "production", flag: "on" }),
   /production builds/,
 );
 
@@ -76,6 +86,14 @@ assert.deepEqual(JSON.parse(internalAppConfig.output), {
 const productionAppConfig = runAppConfig("production", "1");
 assert.equal(productionAppConfig.status, 1);
 assert.equal(productionAppConfig.output.includes("production package builds"), true);
+
+const productionYesAppConfig = runAppConfig("production", "yes");
+assert.equal(productionYesAppConfig.status, 1);
+assert.equal(productionYesAppConfig.output.includes("production package builds"), true);
+
+const productionOnAppConfig = runAppConfig("production", "on");
+assert.equal(productionOnAppConfig.status, 1);
+assert.equal(productionOnAppConfig.output.includes("production package builds"), true);
 
 const parsed = parseMobileTestAuthConfig(
   {
