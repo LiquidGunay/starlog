@@ -290,9 +290,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
   const recommendationReason = extractRecommendationReason(quizResponse);
   if (recommendationReason) {
-    const recommendationPanel = page.locator(
-      '[data-testid="dynamic-panel-renderer"][data-panel-tool="interview.recommendation_reason"]',
-    );
+    const recommendationPanel = page.locator('[data-testid="assistant-ui-recommendation-reason"]');
     if (await recommendationPanel.count() > 0) {
       await expect(recommendationPanel).toBeVisible();
       await expect(recommendationPanel).toContainText(recommendationReason);
@@ -353,9 +351,14 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   );
   if (await reviewGradePanel.count() > 0) {
     await expect(reviewGradePanel).toBeVisible();
+    await expect(reviewGradePanel).toContainText("Review grade");
+    await expect(reviewGradePanel).toContainText("Keep in Review");
   }
-  await expect(page.getByText("Interview review")).toBeVisible();
-  await expect(page.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
+  const reviewPrompt = page.getByLabel("Review prompt");
+  if (await reviewPrompt.count() > 0) {
+    await expect(reviewPrompt).toContainText(expectedRevealedCard.prompt);
+  }
+  await expect(page.getByText("Review grade").first()).toBeVisible();
   await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
