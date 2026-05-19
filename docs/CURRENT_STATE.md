@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -8,6 +8,24 @@ functional evidence.
 
 Use [PLAN.md](/home/ubuntu/starlog/PLAN.md) and [VISION.md](/home/ubuntu/starlog/VISION.md) for
 where Starlog is going. Use this page for current implementation confidence.
+
+## Access + Interview-Loop Snapshot
+
+- **PWA access paths:** laptop primary path is `http://localhost:3000`; phone browser fallback is
+  `http://<LAN_IP>:3000` after `./scripts/dev_stack.sh --lan`. Hosted fallback remains
+  `https://starlog-web-production.up.railway.app/login` with expected API base
+  `https://starlog-api-production.up.railway.app`.
+- **Login status known:** local passphrase setup/sign-in is the standard entry path for local use; hosted
+  `/login` plus `/assistant` reachability were last validated on 2026-05-15. That validates access and
+  hosted login response, not broad hosted release freshness.
+- **Native vs PWA priority:** native mobile is the primary phone surface; PWA is fallback-only on phone and
+  remains supported for browser checks or when the app is unavailable.
+- **assistant-ui migration status:** desktop web has partial assistant-ui migration for supported protocol
+  snapshots. Native assistant now uses the assistant-ui shared dynamic-panel host path with
+  `assistant-ui` metadata and uses fallback renderers only for unsupported/non-migrated protocol shapes.
+- **Interview-loop proven/unproven:** native Android interview loop is proven for interview-prep command flow
+  (`read` / `unlock` / `question` / review-grade dynamic UI on real device and local fresh-local harness);
+  broader dynamic panel behavior and non-interview flow parity are still in dedicated validation.
 
 ## Post-Merge PR Status
 
