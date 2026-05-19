@@ -101,7 +101,11 @@ import {
 } from "./src/mobile-study-mutations";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
-import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
+import {
+  shouldAutoLoadReviewDueCardsOnEntry,
+  type MobileReviewLearningInsight,
+  type MobileReviewRecommendedDrill,
+} from "./src/mobile-review-view-model";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 import {
   assistantVoiceActionHint,
@@ -4426,11 +4430,33 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated || !token || activeTab !== "review") {
       return;
     }
-    loadDueCards().catch(() => undefined);
+    if (shouldAutoLoadReviewDueCardsOnEntry({
+      hasActiveCard: Boolean(reviewCard),
+      showAnswer,
+      reviewedCount: reviewStats.reviewed,
+      dueCount: dueCards.length,
+      decks: reviewDecks,
+      studyProgress,
+      status,
+    })) {
+      loadDueCards().catch(() => undefined);
+    }
     loadReviewSummary("auto").catch(() => undefined);
     loadStudyProgress("auto").catch(() => undefined);
     loadStudyTopics("auto").catch(() => undefined);
-  }, [hydrated, token, apiBase, activeTab]);
+  }, [
+    hydrated,
+    token,
+    apiBase,
+    activeTab,
+    dueCards.length,
+    reviewCard,
+    reviewDecks,
+    reviewStats.reviewed,
+    showAnswer,
+    status,
+    studyProgress,
+  ]);
 
   useEffect(() => {
     if (!hydrated || !token) {

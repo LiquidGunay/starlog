@@ -105,6 +105,16 @@ export type MobileReviewQueueState = {
   knownDueCount: number;
 };
 
+export type MobileReviewAutoLoadDecisionInput = {
+  hasActiveCard: boolean;
+  showAnswer: boolean;
+  reviewedCount: number;
+  dueCount: number;
+  decks: MobileReviewDeckSummary[];
+  studyProgress?: MobileReviewStudyProgress | null;
+  status?: string;
+};
+
 export type MobileReviewViewModel = {
   syncedLabel: string;
   activeStage: MobileReviewStage;
@@ -284,6 +294,29 @@ export function parseAnswerChoices(prompt: string, answer: string): MobileReview
     }
   });
   return Array.from(unique.values()).slice(0, 4);
+}
+
+export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadDecisionInput): boolean {
+  if (input.hasActiveCard || input.showAnswer || input.reviewedCount > 0) {
+    return false;
+  }
+
+  const status = input.status?.trim() ?? "";
+  if (/add api token|add api credentials|loading|fetching|refreshing/i.test(status)) {
+    return false;
+  }
+
+  const knownDueCount = Math.max(
+    0,
+    input.dueCount,
+    input.studyProgress?.due_unlocked_card_count ?? 0,
+    ...input.decks.map((deck) => Math.max(0, deck.due_count)),
+  );
+  if (knownDueCount > 0) {
+    return true;
+  }
+
+  return !/loaded\s+\d+\s+due card/i.test(status);
 }
 
 function stageDueCount(

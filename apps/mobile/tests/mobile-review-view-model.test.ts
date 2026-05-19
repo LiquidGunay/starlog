@@ -2,6 +2,7 @@ import {
   deriveMobileReviewViewModel,
   deriveReviewStage,
   parseAnswerChoices,
+  shouldAutoLoadReviewDueCardsOnEntry,
 } from "../src/mobile-review-view-model";
 
 declare const require: (moduleName: string) => {
@@ -420,6 +421,86 @@ assert.equal(idle.health.detail, "No due cards are currently eligible.");
 assert.equal(idle.session.detail, "No due cards are currently eligible.");
 assert.equal(idle.gradeOptions.every((option) => !option.enabled), true);
 assert.equal(idle.learningSignal, null);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: null,
+  status: "Ready",
+}), true);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Ready",
+}), true);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: true,
+  showAnswer: true,
+  reviewedCount: 0,
+  dueCount: 1,
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  studyProgress: null,
+  status: "Loaded 1 due card",
+}), false);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 1,
+  dueCount: 0,
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Recorded rating 4. 0 due card(s) left",
+}), false);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: null,
+  status: "Loaded 0 due card(s)",
+}), false);
 
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");
