@@ -140,6 +140,14 @@ adb_cmd() {
   "$ADB" "$@"
 }
 
+adb_cmd_quiet() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    adb_cmd "$@"
+    return
+  fi
+  adb_cmd "$@" >/dev/null
+}
+
 require_command_or_file() {
   local value="$1"
   local label="$2"
@@ -224,6 +232,12 @@ wait_for_device() {
 
 keep_awake() {
   log "Keeping phone awake"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    adb_cmd shell input keyevent KEYCODE_WAKEUP
+    adb_cmd shell svc power stayon true
+    adb_cmd shell svc power stayon usb
+    return
+  fi
   adb_cmd shell input keyevent KEYCODE_WAKEUP >/dev/null || true
   adb_cmd shell svc power stayon true >/dev/null 2>&1 || adb_cmd shell svc power stayon usb >/dev/null 2>&1 || true
 }
@@ -242,13 +256,13 @@ maybe_reverse_ports() {
       continue
     fi
     log "Reversing tcp:$port"
-    adb_cmd reverse "tcp:$port" "tcp:$port" >/dev/null
+    adb_cmd_quiet reverse "tcp:$port" "tcp:$port"
   done
 }
 
 launch_component() {
   log "Launching native app component"
-  adb_cmd shell am start -W -n "$APP_COMPONENT" >/dev/null
+  adb_cmd_quiet shell am start -W -n "$APP_COMPONENT"
   sleep "$WAIT_SECONDS"
 }
 
@@ -256,7 +270,7 @@ launch_deeplink() {
   local label="$1"
   local deeplink="$2"
   log "Launching $label: $deeplink"
-  adb_cmd shell am start -W -a android.intent.action.VIEW -d "$deeplink" -n "$APP_COMPONENT" >/dev/null
+  adb_cmd_quiet shell am start -W -a android.intent.action.VIEW -d "$deeplink" -n "$APP_COMPONENT"
   sleep "$WAIT_SECONDS"
 }
 
