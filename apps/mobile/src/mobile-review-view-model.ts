@@ -306,9 +306,15 @@ export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadD
     return false;
   }
 
+  const loadedDueCount = parseLoadedDue(status);
+  if (loadedDueCount === 0) {
+    return false;
+  }
+
   const knownDueCount = Math.max(
     0,
     input.dueCount,
+    loadedDueCount ?? 0,
     input.studyProgress?.due_unlocked_card_count ?? 0,
     ...input.decks.map((deck) => Math.max(0, deck.due_count)),
   );

@@ -1649,6 +1649,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return `${hh}:${mm}`;
   }, [alarmHour, alarmMinute, countdownTick]);
   const reviewCard = dueCards[0];
+  const hasActiveReviewCard = Boolean(reviewCard);
   const reviewCardTypeLabel = reviewCard ? reviewCard.card_type.replace(/_/g, " ").toUpperCase() : "QUEUE IDLE";
   const reviewMetaLabel = reviewCard
     ? `Due ${new Date(reviewCard.due_at).toLocaleString()}`
@@ -1656,6 +1657,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const reviewRetentionLabel = reviewStats.reviewed > 0
     ? `${Math.round(((reviewStats.good + reviewStats.easy) / reviewStats.reviewed) * 100)}%`
     : "0%";
+  const reviewDeckDueCount = reviewDecks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0);
+  const studyDueUnlockedCardCount = studyProgress?.due_unlocked_card_count ?? 0;
   const activeStudyTopic = useMemo(() => {
     return studyTopics.find((topic) => topic.status === "unlocked")
       ?? studyTopics.find((topic) => topic.status === "locked")
@@ -4430,32 +4433,53 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated || !token || activeTab !== "review") {
       return;
     }
-    if (shouldAutoLoadReviewDueCardsOnEntry({
-      hasActiveCard: Boolean(reviewCard),
-      showAnswer,
-      reviewedCount: reviewStats.reviewed,
-      dueCount: dueCards.length,
-      decks: reviewDecks,
-      studyProgress,
-      status,
-    })) {
-      loadDueCards().catch(() => undefined);
-    }
     loadReviewSummary("auto").catch(() => undefined);
     loadStudyProgress("auto").catch(() => undefined);
     loadStudyTopics("auto").catch(() => undefined);
+  }, [hydrated, token, apiBase, activeTab]);
+
+  useEffect(() => {
+    if (!hydrated || !token || activeTab !== "review") {
+      return;
+    }
+    if (!shouldAutoLoadReviewDueCardsOnEntry({
+      hasActiveCard: hasActiveReviewCard,
+      showAnswer,
+      reviewedCount: reviewStats.reviewed,
+      dueCount: dueCards.length,
+      decks: reviewDeckDueCount > 0
+        ? [{
+          id: "loaded-review-decks",
+          name: "Loaded Review decks",
+          due_count: reviewDeckDueCount,
+          card_count: reviewDeckDueCount,
+        }]
+        : [],
+      studyProgress: {
+        source_count: 0,
+        topic_count: 0,
+        read_topic_count: 0,
+        unlocked_topic_count: 0,
+        locked_topic_count: 0,
+        due_unlocked_card_count: studyDueUnlockedCardCount,
+      },
+      status,
+    })) {
+      return;
+    }
+    loadDueCards().catch(() => undefined);
   }, [
     hydrated,
     token,
     apiBase,
     activeTab,
     dueCards.length,
-    reviewCard,
-    reviewDecks,
+    hasActiveReviewCard,
+    reviewDeckDueCount,
     reviewStats.reviewed,
     showAnswer,
     status,
-    studyProgress,
+    studyDueUnlockedCardCount,
   ]);
 
   useEffect(() => {

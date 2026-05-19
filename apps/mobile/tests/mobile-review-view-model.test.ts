@@ -502,6 +502,23 @@ assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
   status: "Loaded 0 due card(s)",
 }), false);
 
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Loaded 0 due card(s)",
+}), false);
+
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");
 assert.deepEqual(parseAnswerChoices("No choices here", "Short answer"), []);
