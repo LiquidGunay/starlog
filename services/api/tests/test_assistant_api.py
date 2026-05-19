@@ -146,6 +146,25 @@ def test_assistant_stream_collector_is_bounded() -> None:
         asyncio.run(_collect_stream_output(_keep_alive_stream(), max_chunks=2))
 
 
+def test_assistant_today_route_alias_matches_surface_summary(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    alias_response = client.get("/v1/assistant/today?date=2026-05-19", headers=auth_headers)
+    canonical_response = client.get("/v1/surfaces/assistant/today?date=2026-05-19", headers=auth_headers)
+
+    assert alias_response.status_code == 200
+    assert canonical_response.status_code == 200
+
+    alias_payload = alias_response.json()
+    canonical_payload = canonical_response.json()
+    alias_payload.pop("generated_at")
+    canonical_payload.pop("generated_at")
+
+    assert alias_payload == canonical_payload
+    assert alias_payload["recommended_next_move"]["key"] == "plan_today"
+
+
 def _secondary_auth_headers() -> dict[str, str]:
     token = create_session_token()
     now = utc_now()
