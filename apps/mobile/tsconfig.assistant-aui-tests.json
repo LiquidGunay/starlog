@@ -12,6 +12,7 @@
     "src/mobile-assistant-aui-thread.tsx",
     "tests/assistant-ui-react-native.d.ts",
     "tests/mobile-react-render-harness.d.ts",
-    "tests/mobile-assistant-aui-adapter.test.ts"
+    "tests/mobile-assistant-aui-adapter.test.ts",
+    "tests/mobile-assistant-aui-runtime.test.ts"
   ]
 }

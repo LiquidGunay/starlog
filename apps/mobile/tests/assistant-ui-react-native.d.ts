@@ -13,6 +13,8 @@ declare module "@assistant-ui/react-native" {
     run: (...args: unknown[]) => AsyncGenerator<unknown, void, unknown>;
   };
 
+  export type AssistantRuntime = unknown;
+
   export function useLocalRuntime(
     adapter: ChatModelAdapter,
     options?: { initialMessages?: ThreadMessageLike[] },
