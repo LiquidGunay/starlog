@@ -71,6 +71,7 @@ Current functional areas:
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Learning ladder, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
 | Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing recommendation hints, notification permission, and Planner alarm scheduling. |
+| Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
 ## Dynamic UI Coverage Boundary
 
@@ -159,3 +160,56 @@ with `validation_passed: false`, `validation_stage: failed`, and any partial scr
 they do not publish a passed final manifest.
 
 Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. A fresh active-device pass on 2026-04-29 captured native Assistant, Library, Planner, and Review screenshots under `artifacts/phone-current/2026-04-29/`. On this device, `adb shell svc power stayon true` exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture.
+
+## Native Android Interview Functional Capture
+
+Use this path when the goal is repeatable evidence for the installed native Android interview-prep
+loop without rebuilding the app or rewriting mobile UI. It is an operator-assisted harness: the
+script handles device launch, surface deeplinks, screenshots, UI hierarchy dumps, optional API
+snapshots, and checkpoint prompts; the tester performs the actual topic unlock/read and Review
+grading actions on the phone.
+
+```bash
+cd /home/ubuntu/starlog
+ADB_SERIAL=<SERIAL> bash scripts/android_interview_functional_capture.sh
+```
+
+Useful no-device and planning modes:
+
+```bash
+bash scripts/android_interview_functional_capture.sh --help
+bash scripts/android_interview_functional_capture.sh --no-device
+bash scripts/android_interview_functional_capture.sh --dry-run
+```
+
+Common overrides:
+
+```bash
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+ADB_SERIAL=<SERIAL> \
+APP_VARIANT=preview \
+STARLOG_API_BASE=http://127.0.0.1:8000 \
+STARLOG_ACCESS_TOKEN=<redacted> \
+ADB_REVERSE_PORTS=8000 \
+bash scripts/android_interview_functional_capture.sh
+```
+
+The script defaults to Windows `adb.exe` when present, wakes the phone at the start, and writes
+evidence under:
+
+```text
+.localdata/android-interview-functional/artifacts/<UTC timestamp>/
+```
+
+That root is ignored by `.gitignore`, so generated screenshots, XML dumps, API snapshots, and
+operator metadata are not accidentally committed. Do not paste real access tokens into docs or
+commit them in run artifacts.
+
+Manual checkpoints captured by the harness:
+
+- Assistant topic unlock/read: open Assistant, unlock the active interview-prep topic, mark it read,
+  and verify the visible topic controls remain user-facing.
+- Review reveal/grade: open Review, load due cards if needed, reveal the interview card answer, and
+  submit a grade such as `Good`.
+- Progress/recommendation verification: confirm Review progress changed and Assistant or Planner
+  shows recommendation/progress context for the next study move.
