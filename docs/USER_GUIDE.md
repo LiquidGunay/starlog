@@ -21,7 +21,10 @@ For phone testing on the same network:
 3. Set the API base if the app asks for it:
    - local laptop: `http://localhost:8000`
    - phone over LAN: `http://<LAN_IP>:8000`
-4. Open `http://localhost:3000/assistant` in a browser for local/PWA paths.
+4. Open a browser path for your surface:
+   - Laptop browser: `http://localhost:3000/assistant`
+   - Phone browser on LAN: `http://<LAN_IP>:3000/assistant`
+   - Hosted fallback: `https://starlog-web-production.up.railway.app/login`
 5. For browser access, choose `Set Up Starlog` on a new instance and create a passphrase.
 6. Sign in with the same passphrase and return to `/assistant`.
 
