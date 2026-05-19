@@ -22,6 +22,7 @@ from app.schemas.assistant import (
     AssistantThreadSnapshot,
     AssistantThreadSummary,
 )
+from app.schemas.surfaces import AssistantTodaySummary
 from app.services import (
     assistant_event_service,
     assistant_handoff_service,
@@ -30,6 +31,7 @@ from app.services import (
     assistant_thread_service,
     auth_service,
     media_service,
+    surface_summary_service,
 )
 
 router = APIRouter(prefix="/assistant")
@@ -65,6 +67,17 @@ async def _stream_delta_events(
             current_cursor = delta_list.get("cursor") or current_cursor
             yield ": keep-alive\n\n"
         await asyncio.sleep(poll_interval_seconds)
+
+
+@router.get("/today", response_model=AssistantTodaySummary)
+def today_summary(
+    date: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    user_id: str = Depends(require_user_id),
+    db: Connection = Depends(get_db),
+) -> AssistantTodaySummary:
+    return AssistantTodaySummary.model_validate(
+        surface_summary_service.assistant_today_summary(db, user_id=user_id, day_value=date)
+    )
 
 
 @router.get("/threads", response_model=list[AssistantThreadSummary])
