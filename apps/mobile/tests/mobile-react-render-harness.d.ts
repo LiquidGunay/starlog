@@ -11,8 +11,8 @@ declare namespace JSX {
 }
 
 declare module "react" {
-  export type ReactNode = unknown;
-  export type ComponentProps<T> = T extends (props: infer P) => unknown ? P : Record<string, unknown>;
+  export type ReactNode = any;
+  export type ComponentProps<T> = T extends (props: infer P) => any ? P : Record<string, unknown>;
 
   export function useCallback<T extends (...args: any[]) => unknown>(callback: T, deps?: unknown[]): T;
   export function useEffect(effect: () => void | (() => void), deps?: unknown[]): void;
@@ -22,19 +22,19 @@ declare module "react" {
 
 declare module "react/jsx-runtime" {
   export const Fragment: symbol;
-  export function jsx(type: unknown, props: Record<string, unknown> | null, key?: unknown): unknown;
-  export function jsxs(type: unknown, props: Record<string, unknown> | null, key?: unknown): unknown;
+  export function jsx(type: unknown, props: Record<string, unknown> | null, key?: unknown): any;
+  export function jsxs(type: unknown, props: Record<string, unknown> | null, key?: unknown): any;
 }
 
 declare module "react-native" {
-  export const Modal: (props: Record<string, unknown>) => unknown;
-  export const ScrollView: (props: Record<string, unknown>) => unknown;
-  export const Text: (props: Record<string, unknown>) => unknown;
-  export const TextInput: (props: Record<string, unknown>) => unknown;
-  export const TouchableOpacity: (props: Record<string, unknown>) => unknown;
-  export const View: (props: Record<string, unknown>) => unknown;
+  export const Modal: (props: Record<string, unknown>) => any;
+  export const ScrollView: (props: Record<string, unknown>) => any;
+  export const Text: (props: Record<string, unknown>) => any;
+  export const TextInput: (props: Record<string, unknown>) => any;
+  export const TouchableOpacity: (props: Record<string, unknown>) => any;
+  export const View: (props: Record<string, unknown>) => any;
 }
 
 declare module "@expo/vector-icons" {
-  export const MaterialCommunityIcons: (props: Record<string, unknown>) => unknown;
+  export const MaterialCommunityIcons: (props: Record<string, unknown>) => any;
 }

@@ -43,13 +43,26 @@ type MobileAssistantUiComposerBridgeProps = {
   inputStyle: ComponentProps<typeof RNTextInput>["style"];
 };
 
-const readOnlyAdapter: ChatModelAdapter = {
+export const MOBILE_STARLOG_ASSISTANT_RUNTIME_MODE = "server-owned-local-read-only" as const;
+
+export const mobileStarlogAssistantReadOnlyAdapter: ChatModelAdapter = {
   async *run() {
     yield {
       content: "Starlog is syncing the native assistant thread.",
     };
   },
 };
+
+export type MobileStarlogAssistantRuntimeProps = {
+  assistantUiMessages: ThreadMessageLike[];
+  children: ReactNode;
+};
+
+export function MobileStarlogAssistantRuntime({ assistantUiMessages, children }: MobileStarlogAssistantRuntimeProps) {
+  const runtime = useLocalRuntime(mobileStarlogAssistantReadOnlyAdapter, { initialMessages: assistantUiMessages });
+
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+}
 
 function dynamicUiBadgeText(part: MobileAssistantUiRichPart): string | null {
   if (!part.rendererLabel || part.fallback) {
@@ -248,21 +261,20 @@ function AssistantUiMessage({
 }
 
 function AssistantUiRuntimeShell({
-  initialMessages,
+  assistantUiMessages,
   sourceMessagesById,
   palette,
   renderCompatibilityForMessage,
   renderDynamicPanelHostForMessage,
   liveInterrupts,
 }: {
-  initialMessages: ThreadMessageLike[];
+  assistantUiMessages: ThreadMessageLike[];
   sourceMessagesById: Map<string, AssistantThreadMessage>;
   palette: Record<string, string>;
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
   renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
   liveInterrupts?: AssistantInterrupt[];
 }) {
-  const runtime = useLocalRuntime(readOnlyAdapter, { initialMessages });
   const components = useMemo(
     () => ({
       Message: () => (
@@ -278,8 +290,8 @@ function AssistantUiRuntimeShell({
     [liveInterrupts, palette, renderCompatibilityForMessage, renderDynamicPanelHostForMessage, sourceMessagesById],
   );
 
-    return (
-    <AssistantRuntimeProvider runtime={runtime}>
+  return (
+    <MobileStarlogAssistantRuntime assistantUiMessages={assistantUiMessages}>
       <View
         testID="assistant-ui-shell"
         accessibilityRole="summary"
@@ -307,7 +319,7 @@ function AssistantUiRuntimeShell({
           />
         </ThreadPrimitive.Root>
       </View>
-    </AssistantRuntimeProvider>
+    </MobileStarlogAssistantRuntime>
   );
 }
 
@@ -376,12 +388,10 @@ function MobileAssistantUiComposerBridgeContent({
 }
 
 export function MobileAssistantUiComposerBridge(props: MobileAssistantUiComposerBridgeProps) {
-  const runtime = useLocalRuntime(readOnlyAdapter, { initialMessages: [] });
-
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <MobileStarlogAssistantRuntime assistantUiMessages={[]}>
       <MobileAssistantUiComposerBridgeContent {...props} />
-    </AssistantRuntimeProvider>
+    </MobileStarlogAssistantRuntime>
   );
 }
 
@@ -403,7 +413,7 @@ export function MobileAssistantUiShell({
   return (
     <AssistantUiRuntimeShell
       key={fingerprint}
-      initialMessages={assistantUiMessages}
+      assistantUiMessages={assistantUiMessages}
       sourceMessagesById={sourceMessagesById}
       palette={palette}
       renderCompatibilityForMessage={renderCompatibilityForMessage}
