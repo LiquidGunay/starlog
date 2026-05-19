@@ -31,7 +31,7 @@ STARLOG_API_BASE="${STARLOG_API_BASE:-${API_BASE:-}}"
 STARLOG_WEB_ORIGIN="${STARLOG_WEB_ORIGIN:-${WEB_ORIGIN:-}}"
 STARLOG_ACCESS_TOKEN="${STARLOG_ACCESS_TOKEN:-${STARLOG_TOKEN:-}}"
 STARLOG_MOBILE_CONFIGURE_AUTH="${STARLOG_MOBILE_CONFIGURE_AUTH:-auto}"
-STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME="${STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME:-starlog}"
+STARLOG_MOBILE_AUTH_VERIFY_TIMEOUT="${STARLOG_MOBILE_AUTH_VERIFY_TIMEOUT:-20}"
 STARLOG_TEST_USER="${STARLOG_TEST_USER:-}"
 STARLOG_INTERVIEW_SEED="${STARLOG_INTERVIEW_SEED:-auto}"
 STARLOG_INTERVIEW_SEED_ID="${STARLOG_INTERVIEW_SEED_ID:-android-interview-functional-v1}"
@@ -70,10 +70,12 @@ Environment overrides:
   STARLOG_WEB_ORIGIN     Optional web origin recorded in run metadata.
   STARLOG_ACCESS_TOKEN   Optional bearer token for API snapshots; never printed.
   STARLOG_MOBILE_CONFIGURE_AUTH
-                         auto | 1 | 0. When API base + token are supplied, launch a
-                         hidden dev/test auth deeplink before surface captures.
-  STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME
-                         Scheme for the dev/test auth deeplink (default: starlog).
+                         auto | 1 | 0. When API base + token are supplied, write a
+                         one-shot test auth config into the app sandbox via run-as.
+                         The installed app must be an internal/dev build with
+                         EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG=1.
+  STARLOG_MOBILE_AUTH_VERIFY_TIMEOUT
+                         Seconds to wait for the app to write redacted auth ack.
   STARLOG_TEST_USER      Optional label recorded in deterministic seed metadata.
   STARLOG_INTERVIEW_SEED auto | off. auto writes api/interview-prep-seed.json and
                          seeds through the API when API base + token are supplied.
@@ -169,6 +171,23 @@ adb_cmd_quiet() {
   adb_cmd "$@" >/dev/null
 }
 
+adb_cmd_with_stdin() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    if [[ -n "$ADB_SERIAL" ]]; then
+      quote_words "$ADB" -s "$ADB_SERIAL" "$@"
+    else
+      quote_words "$ADB" "$@"
+    fi
+    return 0
+  fi
+
+  if [[ -n "$ADB_SERIAL" ]]; then
+    "$ADB" -s "$ADB_SERIAL" "$@"
+    return
+  fi
+  "$ADB" "$@"
+}
+
 require_command_or_file() {
   local value="$1"
   local label="$2"
@@ -193,7 +212,7 @@ write_run_metadata() {
     printf 'starlog_api_base=%s\n' "${STARLOG_API_BASE:-unset}"
     printf 'starlog_web_origin=%s\n' "${STARLOG_WEB_ORIGIN:-unset}"
     printf 'starlog_mobile_configure_auth=%s\n' "$STARLOG_MOBILE_CONFIGURE_AUTH"
-    printf 'starlog_mobile_auth_deeplink_scheme=%s\n' "$STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME"
+    printf 'starlog_mobile_auth_verify_timeout=%s\n' "$STARLOG_MOBILE_AUTH_VERIFY_TIMEOUT"
     printf 'starlog_test_user=%s\n' "${STARLOG_TEST_USER:-unset}"
     printf 'starlog_interview_seed=%s\n' "$STARLOG_INTERVIEW_SEED"
     printf 'starlog_interview_seed_id=%s\n' "$STARLOG_INTERVIEW_SEED_ID"
@@ -339,11 +358,11 @@ launch_deeplink() {
   sleep "$WAIT_SECONDS"
 }
 
-url_encode() {
+json_escape() {
   if ! command -v python3 >/dev/null 2>&1; then
-    fail "python3 is required to build the mobile test-auth deeplink"
+    fail "python3 is required to prepare mobile test auth config"
   fi
-  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+  python3 -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$1"
 }
 
 mobile_auth_config_enabled() {
@@ -364,7 +383,25 @@ mobile_auth_config_enabled() {
   esac
 }
 
-launch_mobile_auth_config() {
+write_mobile_auth_config_json() {
+  python3 -c '
+import json
+import os
+import sys
+
+payload = {
+    "apiBase": os.environ.get("STARLOG_API_BASE", ""),
+    "token": os.environ.get("STARLOG_ACCESS_TOKEN", ""),
+    "tab": "assistant",
+}
+pwa_base = os.environ.get("STARLOG_WEB_ORIGIN", "")
+if pwa_base:
+    payload["pwaBase"] = pwa_base
+sys.stdout.write(json.dumps(payload, separators=(",", ":")))
+'
+}
+
+write_mobile_auth_config() {
   if ! mobile_auth_config_enabled; then
     log "Mobile test auth config skipped"
     return
@@ -373,29 +410,81 @@ launch_mobile_auth_config() {
     fail "STARLOG_API_BASE and STARLOG_ACCESS_TOKEN are required when STARLOG_MOBILE_CONFIGURE_AUTH is enabled"
   fi
 
-  local api_param token_param pwa_param auth_deeplink redacted_deeplink
-  api_param="$(url_encode "$STARLOG_API_BASE")"
-  token_param="$(url_encode "$STARLOG_ACCESS_TOKEN")"
-  auth_deeplink="${STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME}://test-auth?api_base=${api_param}&token=${token_param}&tab=assistant"
-  redacted_deeplink="${STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME}://test-auth?api_base=${api_param}&token=%3Credacted%3E&tab=assistant"
+  local redacted_json
+  redacted_json="{\"apiBase\":$(json_escape "$STARLOG_API_BASE"),\"token\":\"<redacted>\",\"tab\":\"assistant\""
   if [[ -n "$STARLOG_WEB_ORIGIN" ]]; then
-    pwa_param="$(url_encode "$STARLOG_WEB_ORIGIN")"
-    auth_deeplink="${auth_deeplink}&pwa_base=${pwa_param}"
-    redacted_deeplink="${redacted_deeplink}&pwa_base=${pwa_param}"
+    redacted_json="${redacted_json},\"pwaBase\":$(json_escape "$STARLOG_WEB_ORIGIN")"
   fi
+  redacted_json="${redacted_json}}"
 
-  log "Launching mobile test auth config: $redacted_deeplink"
+  log "Writing mobile test auth config via run-as: $redacted_json"
   if [[ "$DRY_RUN" == "1" ]]; then
     if [[ -n "$ADB_SERIAL" ]]; then
-      quote_words "$ADB" -s "$ADB_SERIAL" shell am start -W -a android.intent.action.VIEW -d "$redacted_deeplink" -n "$APP_COMPONENT"
+      quote_words "$ADB" -s "$ADB_SERIAL" shell run-as "$APP_PACKAGE" sh -c "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json"
     else
-      quote_words "$ADB" shell am start -W -a android.intent.action.VIEW -d "$redacted_deeplink" -n "$APP_COMPONENT"
+      quote_words "$ADB" shell run-as "$APP_PACKAGE" sh -c "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json"
     fi
     return
   fi
 
-  adb_cmd_quiet shell am start -W -a android.intent.action.VIEW -d "$auth_deeplink" -n "$APP_COMPONENT"
-  sleep "$WAIT_SECONDS"
+  write_mobile_auth_config_json \
+    | adb_cmd_with_stdin shell run-as "$APP_PACKAGE" sh -c "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json" \
+    >/dev/null
+}
+
+verify_mobile_auth_config() {
+  if ! mobile_auth_config_enabled; then
+    return
+  fi
+
+  mkdir -p "$RUN_DIR/api"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "Verifying mobile test auth ack via run-as"
+    if [[ -n "$ADB_SERIAL" ]]; then
+      quote_words "$ADB" -s "$ADB_SERIAL" shell run-as "$APP_PACKAGE" cat files/starlog-test-auth-ack.json
+    else
+      quote_words "$ADB" shell run-as "$APP_PACKAGE" cat files/starlog-test-auth-ack.json
+    fi
+    local ack_json
+    ack_json="{\"status\":\"accepted\",\"apiBase\":$(json_escape "$STARLOG_API_BASE"),\"hasToken\":true"
+    if [[ -n "$STARLOG_WEB_ORIGIN" ]]; then
+      ack_json="${ack_json},\"pwaBase\":$(json_escape "$STARLOG_WEB_ORIGIN")"
+    fi
+    ack_json="${ack_json}}"
+    printf '%s\n' "$ack_json" > "$RUN_DIR/api/mobile-test-auth-ack.json"
+    return
+  fi
+
+  local deadline ack
+  deadline=$((SECONDS + STARLOG_MOBILE_AUTH_VERIFY_TIMEOUT))
+  while [[ "$SECONDS" -le "$deadline" ]]; do
+    ack="$(adb_cmd shell run-as "$APP_PACKAGE" cat files/starlog-test-auth-ack.json 2>/dev/null || true)"
+    if [[ -n "$ack" ]]; then
+      if ACK_JSON="$ack" python3 - "$STARLOG_API_BASE" "$STARLOG_WEB_ORIGIN" <<'PY'; then
+import json
+import os
+import sys
+
+ack = json.loads(os.environ["ACK_JSON"])
+expected_api = sys.argv[1].rstrip("/")
+expected_pwa = sys.argv[2].rstrip("/")
+if ack.get("status") != "accepted":
+    raise SystemExit(1)
+if str(ack.get("apiBase", "")).rstrip("/") != expected_api:
+    raise SystemExit(1)
+if expected_pwa and str(ack.get("pwaBase", "")).rstrip("/") != expected_pwa:
+    raise SystemExit(1)
+if ack.get("hasToken") is not True:
+    raise SystemExit(1)
+PY
+        printf '%s\n' "$ack" > "$RUN_DIR/api/mobile-test-auth-ack.json"
+        log "Mobile test auth config accepted"
+        return
+      fi
+    fi
+    sleep 1
+  done
+  fail "Mobile app did not acknowledge test auth config. Confirm the installed internal/dev build was built with EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG=1."
 }
 
 capture_state() {
@@ -499,8 +588,9 @@ fi
 
 keep_awake
 maybe_reverse_ports
+write_mobile_auth_config
 launch_component
-launch_mobile_auth_config
+verify_mobile_auth_config
 capture_state "00-launch"
 
 launch_deeplink "Assistant" "$ASSISTANT_DEEPLINK"

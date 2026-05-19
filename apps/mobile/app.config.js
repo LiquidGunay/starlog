@@ -1,4 +1,12 @@
 const variant = process.env.APP_VARIANT || "production";
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const testAuthConfigEnabled = TRUE_VALUES.has(
+  String(process.env.EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG || "").trim().toLowerCase(),
+);
+if (variant === "production" && testAuthConfigEnabled) {
+  throw new Error("EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG must not be enabled for production builds.");
+}
+process.env.EXPO_PUBLIC_STARLOG_APP_VARIANT = variant;
 const DEFAULT_VERSION_NAME =
   process.env.STARLOG_VERSION_NAME || process.env.STARLOG_ANDROID_VERSION_NAME || "0.1.0";
 const DEFAULT_ANDROID_VERSION_CODE = parsePositiveInt(process.env.STARLOG_ANDROID_VERSION_CODE, 1);

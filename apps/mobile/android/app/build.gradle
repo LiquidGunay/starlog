@@ -46,6 +46,10 @@ def getRNVersion() {
 }
 def rnVersion = getRNVersion()
 def appVariant = readBuildValue(project, "APP_VARIANT", "development")
+def testAuthConfigEnabled = readBuildValue(project, "EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG", "false").toBoolean()
+if (appVariant == "production" && testAuthConfigEnabled) {
+    throw new GradleException("EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG must not be enabled for production Android builds.")
+}
 def appDisplayName = appVariant == "production" ? "Starlog" : appVariant == "preview" ? "Starlog Preview" : "Starlog Dev"
 def appIdSuffix = appVariant == "production" ? "" : appVariant == "preview" ? ".preview" : ".dev"
 def resolvedApplicationId = "com.starlog.app${appIdSuffix}"

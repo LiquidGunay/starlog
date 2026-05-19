@@ -3,12 +3,12 @@
   "compilerOptions": {
     "module": "commonjs",
     "moduleResolution": "node",
-    "outDir": "/tmp/mobile-test-auth-link-tests",
+    "outDir": "/tmp/mobile-test-auth-config-tests",
     "rootDir": "../..",
     "noEmit": false
   },
   "include": [
-    "src/mobile-test-auth-link.ts",
-    "tests/mobile-test-auth-link.test.ts"
+    "src/mobile-test-auth-config.ts",
+    "tests/mobile-test-auth-config.test.ts"
   ]
 }
