@@ -2705,6 +2705,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("Add API token first");
         return;
       }
+      setStatus("Loading due cards...");
       const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/cards/due?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -4425,6 +4426,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated || !token || activeTab !== "review") {
       return;
     }
+    loadDueCards().catch(() => undefined);
     loadReviewSummary("auto").catch(() => undefined);
     loadStudyProgress("auto").catch(() => undefined);
     loadStudyTopics("auto").catch(() => undefined);

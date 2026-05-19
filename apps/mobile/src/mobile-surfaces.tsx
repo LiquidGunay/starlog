@@ -2586,6 +2586,7 @@ export function MobileReviewSurface({
     showAnswer,
     hasReviewCard,
     status: reviewStatus,
+    studyProgress,
     learningInsights: reviewLearningInsights,
     recommendedDrill: reviewRecommendedDrill,
   });
@@ -2605,7 +2606,7 @@ export function MobileReviewSurface({
               </Text>
             </View>
             <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>
-              {hasReviewCard ? `${model.activeStage} review` : "Queue clear"}
+              {hasReviewCard ? `${model.activeStage} review` : model.queueState.title}
             </Text>
           </View>
           <View
@@ -2904,9 +2905,11 @@ export function MobileReviewSurface({
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <View style={{ flex: 1, gap: 5 }}>
               <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Focused review</Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>No due card loaded</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>
+                {model.queueState.title}
+              </Text>
               <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
-                {model.dueStateLabel}
+                {model.queueState.detail}
               </Text>
             </View>
             <View style={{ ...pillStyle(palette, true), alignSelf: "flex-start" }}>
@@ -2917,7 +2920,7 @@ export function MobileReviewSurface({
           </View>
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <TouchableOpacity style={{ ...pillStyle(palette, true), minHeight: 38, justifyContent: "center" }} onPress={loadDueCards}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "800" }}>Load due cards</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "800" }}>{model.queueState.actionLabel}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }} onPress={openReviewWorkspace}>
               <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Open Review</Text>
