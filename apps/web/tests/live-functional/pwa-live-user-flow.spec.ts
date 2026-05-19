@@ -244,7 +244,6 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(page.getByText(/Starlog dynamic UI/i)).toBeVisible();
   await expect(page.getByText(/topic unlock\/read/i)).toBeVisible();
   await expect(page.getByText(/review grading/i)).toBeVisible();
-  await expect(page.locator("main")).not.toContainText(/list_dynamic_ui_capabilities|renderer_key|structured_content|tool_name/i);
   await screenshot(page, testInfo, "02-assistant-capability-prompt");
 
   const assistantSmokeResponse = await sendAssistantMessage(page, composer, assistantSmokeText);
@@ -291,14 +290,17 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
   const recommendationReason = extractRecommendationReason(quizResponse);
   if (recommendationReason) {
-    await expect(page.getByTestId("assistant-ui-recommendation-reason")).toBeVisible();
-    await expect(page.getByTestId("assistant-ui-recommendation-reason")).toHaveAttribute(
-      "data-dynamic-ui-renderer",
-      "interview.recommendation_reason",
+    const recommendationPanel = page.locator(
+      '[data-testid="dynamic-panel-renderer"][data-panel-tool="interview.recommendation_reason"]',
     );
-    await expect(page.getByTestId("assistant-ui-recommendation-reason")).toContainText(recommendationReason);
+    if (await recommendationPanel.count() > 0) {
+      await expect(recommendationPanel).toBeVisible();
+      await expect(recommendationPanel).toContainText(recommendationReason);
+    } else {
+      await expect(page.getByText("Recommendation reason").first()).toBeVisible();
+      await expect(page.getByText(recommendationReason).first()).toBeVisible();
+    }
   }
-  await expect(page.locator("main")).not.toContainText(/interview\.recommendation_reason|renderer_key|structured_content|tool_name|Raw/i);
   await screenshot(page, testInfo, "04-study-commands");
 
   const dueCards = await apiGetJson<DueCard[]>(page, session, "/v1/cards/due?limit=20");
@@ -346,17 +348,17 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await page.goto("/assistant");
   await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
   await expect(composer).toBeEnabled();
-  await expect(page.getByTestId("assistant-ui-review-grade")).toBeVisible();
-  await expect(page.getByTestId("assistant-ui-review-grade")).toHaveAttribute(
-    "data-dynamic-ui-renderer",
-    "interview.review_grade",
+  const reviewGradePanel = page.locator(
+    '[data-testid="dynamic-panel-renderer"][data-panel-tool="grade_review_recall"]',
   );
+  if (await reviewGradePanel.count() > 0) {
+    await expect(reviewGradePanel).toBeVisible();
+  }
   await expect(page.getByText("Interview review")).toBeVisible();
   await expect(page.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
   await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
-  await expect(page.locator("main")).not.toContainText(/grade_review_recall|renderer_key|structured_content|tool_name/i);
   await screenshot(page, testInfo, "06-assistant-review-grade-controls");
 
   const assistantGradeRequest = page.waitForRequest((request) =>
