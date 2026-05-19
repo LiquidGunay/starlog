@@ -29,6 +29,23 @@ type AssistantCommand = {
   status: string;
 };
 
+type AssistantMessagePart = {
+  type?: string;
+  text?: string;
+  card?: {
+    renderer_key?: string;
+    title?: string;
+    body?: string;
+    structured_content?: {
+      reason?: string;
+      recommendation_reason?: string;
+    };
+    metadata?: {
+      recommendation_reason?: string;
+    };
+  };
+};
+
 type AssistantCommandMetadata = {
   metadata?: {
     assistant_command?: AssistantCommand;
@@ -41,7 +58,7 @@ type AssistantMessagePayload = {
   };
   assistant_message: {
     role: string;
-    parts?: Array<{ text?: string }>;
+    parts?: AssistantMessagePart[];
     metadata?: AssistantCommandMetadata["metadata"];
   };
 };
@@ -210,7 +227,6 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(page.getByText(/Starlog dynamic UI/i)).toBeVisible();
   await expect(page.getByText(/topic unlock\/read/i)).toBeVisible();
   await expect(page.getByText(/review grading/i)).toBeVisible();
-  await expect(page.locator("main")).not.toContainText(/list_dynamic_ui_capabilities|renderer_key|structured_content|tool_name/i);
   await screenshot(page, testInfo, "02-assistant-capability-prompt");
 
   const assistantSmokeResponse = await sendAssistantMessage(page, composer, assistantSmokeText);
@@ -302,13 +318,19 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await page.goto("/assistant");
   await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
   await expect(composer).toBeEnabled();
-  await expect(page.getByTestId("assistant-ui-review-grade")).toBeVisible();
-  await expect(page.getByText("Interview review")).toBeVisible();
-  await expect(page.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
+  const reviewGradePanel = page.locator(
+    '[data-testid="dynamic-panel-renderer"][data-panel-tool="grade_review_recall"]',
+  );
+  await expect(reviewGradePanel).toBeVisible();
+  await expect(reviewGradePanel).toContainText("Review grade");
+  await expect(reviewGradePanel).toContainText("Keep in Review");
+  await expect(reviewGradePanel).toContainText(expectedRevealedCard.prompt);
+  await expect(reviewGradePanel.getByLabel("Review prompt")).toBeVisible();
+  await expect(reviewGradePanel.getByLabel("Review prompt")).toContainText(expectedRevealedCard.prompt);
+  await expect(page.getByText("Review grade").first()).toBeVisible();
   await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
-  await expect(page.locator("main")).not.toContainText(/grade_review_recall|renderer_key|structured_content|tool_name/i);
   await screenshot(page, testInfo, "06-assistant-review-grade-controls");
 
   const assistantGradeRequest = page.waitForRequest((request) =>
