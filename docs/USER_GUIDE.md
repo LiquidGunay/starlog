@@ -35,9 +35,12 @@ The desktop web app is the primary browser client. For local laptop use, open
 `./scripts/dev_stack.sh --lan`, then open `http://<LAN_IP>:3000`.
 
 On a new local instance, choose `Set Up Starlog` and create a Starlog passphrase. On an existing
-instance, choose `Sign In` and enter that same passphrase. The PWA should only receive the Starlog
-API base and Starlog session/token information from the login/session controls. Do not put
-OpenAI, Codex, Railway, or local worker credentials into the PWA or native mobile app.
+instance, choose `Sign In` and enter that same passphrase. Keep the passphrase and bearer token out
+of docs, commits, screenshots, and chat transcripts.
+
+The PWA should only receive the Starlog API base and Starlog session/token information from the
+login/session controls. Do not put OpenAI, Codex, Railway, or local worker credentials into the PWA
+or native mobile app.
 
 Hosted access currently uses:
 
@@ -46,8 +49,11 @@ Hosted access currently uses:
 
 Current access status:
 
-- Hosted login /assistant entry was reachable on 2026-05-15 (known-good for sign-in reachability and passphrase flow),
-  but hosted full-flow smoke is still a re-prove item.
+- Public hosted `/login`, `/assistant`, and API health reachability were checked on 2026-05-19.
+- Authenticated hosted passphrase login was last proven on 2026-05-15. The current docs do not include
+  the hosted passphrase or bearer token.
+- Hosted full-flow smoke and release-gate checks are still re-prove items before treating Railway as
+  release-ready.
 - Native app remains primary on phone; the browser PWA path is fallback-only.
 
 ## Daily Use
@@ -96,6 +102,9 @@ Interview-loop note:
 
 - Native `Assistant` uses the new RN assistant-ui dynamic UI path for interview-prep flow (`read` → `unlock` →
   `question` → review grade). Unsupported Starlog panel shapes still use compatibility fallback screens.
+- Current native Android proof is local/physical-device evidence from the fresh-local SRS validation
+  harness. It proves the interview-prep loop and Assistant-hosted review-grade dynamic UI, not broad
+  production-hosted Android parity.
 
 ## Codex And Local AI
 
