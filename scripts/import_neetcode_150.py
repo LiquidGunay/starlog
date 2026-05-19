@@ -58,6 +58,12 @@ REQUIRED_ITEM_FIELDS = {
 }
 QUALITY_SPEC = interview_prep_quality.load_quality_spec()
 REVIEW_CARD_AXES = interview_prep_quality.question_styles(QUALITY_SPEC)
+LEGACY_REVIEW_CARD_AXIS_MIGRATIONS = (
+    ("pattern_recognition", "conceptual_recall"),
+    ("edge_cases", "debugging_edge_cases"),
+    ("complexity", "complexity_implementation_traps"),
+    ("implementation_traps", "complexity_implementation_traps"),
+)
 
 
 class ReviewInputAdapter(Protocol):
@@ -847,6 +853,10 @@ def _legacy_card_link_id_prefix(external_id: str) -> str:
     return f"{_db_id('card_topic', external_id)}_"
 
 
+def _legacy_axis_card_link_id_prefix(external_id: str, axis_id: str) -> str:
+    return f"{_db_id('card_topic', external_id, axis_id)}_"
+
+
 def _legacy_note_block_importer_owned(row: Any, *, artifact_id: str) -> bool:
     if row["artifact_id"] == artifact_id:
         return True
@@ -856,6 +866,175 @@ def _legacy_note_block_importer_owned(row: Any, *, artifact_id: str) -> bool:
 
 def _fresh_axis_card(row: Any) -> bool:
     return int(row["repetitions"]) == 0
+
+
+def _axis_card_is_initial(row: Any, *, initial_interval_days: int, initial_ease_factor: float) -> bool:
+    return (
+        int(row["interval_days"]) == initial_interval_days
+        and float(row["ease_factor"]) == initial_ease_factor
+    )
+
+
+def _review_event_count(conn: Any, card_id: str) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
+            (card_id,),
+        ).fetchone()["count"]
+    )
+
+
+def _legacy_axis_migration_rank(entry: dict[str, Any]) -> tuple[int, int, float, int]:
+    card = entry["card"]
+    return (
+        int(card["repetitions"]),
+        int(card["interval_days"]),
+        float(card["ease_factor"]),
+        -int(entry["mapping_order"]),
+    )
+
+
+def _migrate_axis_card_state(
+    conn: Any,
+    *,
+    legacy_card: Any,
+    target_card_id: str,
+    initial_interval_days: int,
+    initial_ease_factor: float,
+    now_iso: str,
+) -> bool:
+    target_card = conn.execute("SELECT * FROM cards WHERE id = ?", (target_card_id,)).fetchone()
+    if target_card is None or not _fresh_axis_card(target_card):
+        return False
+    if _review_event_count(conn, target_card_id) > 0:
+        return False
+    if not _axis_card_is_initial(
+        target_card,
+        initial_interval_days=initial_interval_days,
+        initial_ease_factor=initial_ease_factor,
+    ):
+        return False
+    conn.execute(
+        """
+        UPDATE cards
+        SET suspended = ?, due_at = ?, interval_days = ?, repetitions = ?,
+            ease_factor = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            int(legacy_card["suspended"]),
+            legacy_card["due_at"],
+            int(legacy_card["interval_days"]),
+            int(legacy_card["repetitions"]),
+            float(legacy_card["ease_factor"]),
+            now_iso,
+            target_card_id,
+        ),
+    )
+    return True
+
+
+def _retire_legacy_axis_cards(
+    conn: Any,
+    *,
+    artifact_id: str,
+    review_inputs: list[dict[str, Any]],
+    schedule: dict[str, Any],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {
+        "axis_cards_deleted": 0,
+        "axis_cards_suspended": 0,
+        "axis_links_deleted": 0,
+        "axis_note_blocks_deleted": 0,
+        "axis_state_migrated": 0,
+    }
+    initial_interval_days = int(schedule.get("initial_interval_days", 1))
+    initial_ease_factor = float(schedule.get("initial_ease_factor", 2.5))
+    new_axis_ids = {str(axis["id"]) for axis in REVIEW_CARD_AXES}
+    for review_input in review_inputs:
+        external_id = str(review_input["external_id"])
+        migration_candidates: dict[str, list[dict[str, Any]]] = {}
+        legacy_entries: list[dict[str, Any]] = []
+        for mapping_order, (legacy_axis_id, target_axis_id) in enumerate(LEGACY_REVIEW_CARD_AXIS_MIGRATIONS):
+            if target_axis_id not in new_axis_ids:
+                continue
+            legacy_card_id = _db_id("crd", external_id, legacy_axis_id)
+            legacy_note_block_id = _db_id("blk", external_id, legacy_axis_id)
+            legacy_card = conn.execute("SELECT * FROM cards WHERE id = ?", (legacy_card_id,)).fetchone()
+            legacy_card_owned = legacy_card is not None and _legacy_card_importer_owned(
+                legacy_card,
+                artifact_id=artifact_id,
+                legacy_note_block_id=legacy_note_block_id,
+            )
+            if legacy_card_owned:
+                entry = {
+                    "card": legacy_card,
+                    "legacy_axis_id": legacy_axis_id,
+                    "legacy_card_id": legacy_card_id,
+                    "legacy_note_block_id": legacy_note_block_id,
+                    "target_axis_id": target_axis_id,
+                    "target_card_id": _db_id("crd", external_id, target_axis_id),
+                    "mapping_order": mapping_order,
+                }
+                legacy_entries.append(entry)
+                migration_candidates.setdefault(target_axis_id, []).append(entry)
+                continue
+
+            if legacy_card is None:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM card_topic_links
+                    WHERE card_id = ?
+                      AND id GLOB ?
+                    """,
+                    (legacy_card_id, f"{_legacy_axis_card_link_id_prefix(external_id, legacy_axis_id)}*"),
+                )
+                status["axis_links_deleted"] += max(cursor.rowcount, 0)
+
+        for target_axis_id, candidates in migration_candidates.items():
+            target_card_id = _db_id("crd", external_id, target_axis_id)
+            for entry in sorted(candidates, key=_legacy_axis_migration_rank, reverse=True):
+                if _migrate_axis_card_state(
+                    conn,
+                    legacy_card=entry["card"],
+                    target_card_id=target_card_id,
+                    initial_interval_days=initial_interval_days,
+                    initial_ease_factor=initial_ease_factor,
+                    now_iso=now_iso,
+                ):
+                    status["axis_state_migrated"] += 1
+                    break
+
+        for entry in legacy_entries:
+            legacy_card = entry["card"]
+            legacy_card_id = entry["legacy_card_id"]
+            legacy_note_block_id = entry["legacy_note_block_id"]
+            cursor = conn.execute("DELETE FROM card_topic_links WHERE card_id = ?", (legacy_card_id,))
+            status["axis_links_deleted"] += max(cursor.rowcount, 0)
+            if _review_event_count(conn, legacy_card_id) == 0:
+                cursor = conn.execute("DELETE FROM cards WHERE id = ?", (legacy_card_id,))
+                status["axis_cards_deleted"] += max(cursor.rowcount, 0)
+            elif int(legacy_card["suspended"]) == 0:
+                conn.execute(
+                    "UPDATE cards SET suspended = 1, updated_at = ? WHERE id = ?",
+                    (now_iso, legacy_card_id),
+                )
+                status["axis_cards_suspended"] += 1
+
+            note_block_refs = conn.execute(
+                "SELECT COUNT(*) AS count FROM cards WHERE note_block_id = ?",
+                (legacy_note_block_id,),
+            ).fetchone()["count"]
+            note_block = conn.execute("SELECT * FROM note_blocks WHERE id = ?", (legacy_note_block_id,)).fetchone()
+            if (
+                int(note_block_refs) == 0
+                and note_block is not None
+                and _legacy_note_block_importer_owned(note_block, artifact_id=artifact_id)
+            ):
+                cursor = conn.execute("DELETE FROM note_blocks WHERE id = ?", (legacy_note_block_id,))
+                status["axis_note_blocks_deleted"] += max(cursor.rowcount, 0)
+    return status
 
 
 def _retire_legacy_problem_cards(
@@ -872,9 +1051,23 @@ def _retire_legacy_problem_cards(
         "links_deleted": 0,
         "note_blocks_deleted": 0,
         "state_migrated": 0,
+        "axis_cards_deleted": 0,
+        "axis_cards_suspended": 0,
+        "axis_links_deleted": 0,
+        "axis_note_blocks_deleted": 0,
+        "axis_state_migrated": 0,
     }
     initial_interval_days = int(schedule.get("initial_interval_days", 1))
     initial_ease_factor = float(schedule.get("initial_ease_factor", 2.5))
+    axis_status = _retire_legacy_axis_cards(
+        conn,
+        artifact_id=artifact_id,
+        review_inputs=review_inputs,
+        schedule=schedule,
+        now_iso=now_iso,
+    )
+    for key, value in axis_status.items():
+        status[key] = status.get(key, 0) + int(value)
     for review_input in review_inputs:
         external_id = str(review_input["external_id"])
         legacy_card_id = _db_id("crd", external_id)
@@ -891,17 +1084,13 @@ def _retire_legacy_problem_cards(
                 axis_card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_spec["card_id"],)).fetchone()
                 if axis_card is None or not _fresh_axis_card(axis_card):
                     continue
-                axis_review_events = conn.execute(
-                    "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
-                    (card_spec["card_id"],),
-                ).fetchone()["count"]
-                if int(axis_review_events) > 0:
+                if _review_event_count(conn, card_spec["card_id"]) > 0:
                     continue
-                axis_is_initial = (
-                    int(axis_card["interval_days"]) == initial_interval_days
-                    and float(axis_card["ease_factor"]) == initial_ease_factor
-                )
-                if not axis_is_initial:
+                if not _axis_card_is_initial(
+                    axis_card,
+                    initial_interval_days=initial_interval_days,
+                    initial_ease_factor=initial_ease_factor,
+                ):
                     continue
                 conn.execute(
                     """
