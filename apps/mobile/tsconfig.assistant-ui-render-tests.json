@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "/tmp/mobile-assistant-ui-render-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-assistant-panel-state.ts",
+    "src/mobile-dynamic-panel-host.tsx",
+    "tests/mobile-react-render-harness.d.ts",
+    "tests/mobile-assistant-ui-render-harness.test.ts"
+  ]
+}
