@@ -115,6 +115,12 @@ export type MobileReviewAutoLoadDecisionInput = {
   status?: string;
 };
 
+export type MobileReviewAutoLoadEffectDecision = {
+  shouldLoad: boolean;
+  suppressionKey: string | null;
+  shouldClearSuppression: boolean;
+};
+
 export type MobileReviewViewModel = {
   syncedLabel: string;
   activeStage: MobileReviewStage;
@@ -172,10 +178,10 @@ export function deriveMobileReviewViewModel(input: {
   const progressDue = Math.max(0, input.studyProgress?.due_unlocked_card_count ?? 0);
   const recordedRemaining = parseRecordedRemainingDue(input.status ?? "");
   const loadedDueCount = parseLoadedDue(input.status ?? "");
-  const authoritativeDueCount = recordedRemaining ?? loadedDueCount;
-  const knownDueCount = authoritativeDueCount === null
-    ? Math.max(dueCount, totalDue, progressDue)
-    : Math.max(dueCount, authoritativeDueCount);
+  const hintDueCount = Math.max(dueCount, totalDue, progressDue);
+  const knownDueCount = recordedRemaining === null
+    ? Math.max(hintDueCount, loadedDueCount ?? 0)
+    : Math.max(dueCount, recordedRemaining);
   const reviewed = Math.max(0, input.stats.reviewed);
   const mastered = Math.max(0, input.stats.good + input.stats.easy);
   const answerChoices = parseAnswerChoices(input.prompt, input.answer);
@@ -307,10 +313,6 @@ export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadD
   }
 
   const loadedDueCount = parseLoadedDue(status);
-  if (loadedDueCount === 0) {
-    return false;
-  }
-
   const knownDueCount = Math.max(
     0,
     input.dueCount,
@@ -322,7 +324,46 @@ export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadD
     return true;
   }
 
+  if (loadedDueCount === 0) {
+    return false;
+  }
+
   return !/loaded\s+\d+\s+due card/i.test(status);
+}
+
+export function deriveMobileReviewAutoLoadEffectDecision(
+  input: MobileReviewAutoLoadDecisionInput & {
+    suppressedEmptyLoadKey?: string | null;
+  },
+): MobileReviewAutoLoadEffectDecision {
+  const suppressionKey = mobileReviewAutoLoadSuppressionKey(input);
+  if (!suppressionKey) {
+    return {
+      shouldLoad: shouldAutoLoadReviewDueCardsOnEntry(input),
+      suppressionKey: null,
+      shouldClearSuppression: Boolean(input.suppressedEmptyLoadKey),
+    };
+  }
+
+  if (suppressionKey && input.suppressedEmptyLoadKey === suppressionKey) {
+    return { shouldLoad: false, suppressionKey, shouldClearSuppression: false };
+  }
+
+  return {
+    shouldLoad: shouldAutoLoadReviewDueCardsOnEntry(input),
+    suppressionKey,
+    shouldClearSuppression: false,
+  };
+}
+
+export function mobileReviewAutoLoadSuppressionKey(input: MobileReviewAutoLoadDecisionInput): string | null {
+  const deckDueCount = input.decks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0);
+  const studyDueCount = Math.max(0, input.studyProgress?.due_unlocked_card_count ?? 0);
+  const dueHintCount = Math.max(0, input.dueCount, deckDueCount, studyDueCount);
+  if (dueHintCount <= 0) {
+    return null;
+  }
+  return `due:${dueHintCount}|deck:${deckDueCount}|study:${studyDueCount}`;
 }
 
 function stageDueCount(

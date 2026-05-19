@@ -1,6 +1,8 @@
 import {
+  deriveMobileReviewAutoLoadEffectDecision,
   deriveMobileReviewViewModel,
   deriveReviewStage,
+  mobileReviewAutoLoadSuppressionKey,
   parseAnswerChoices,
   shouldAutoLoadReviewDueCardsOnEntry,
 } from "../src/mobile-review-view-model";
@@ -295,6 +297,28 @@ assert.equal(interviewLoopDueButNotLoaded.statusChips[0].value, "1");
 assert.equal(interviewLoopDueButNotLoaded.cardProgressLabel, "1 waiting");
 assert.equal(interviewLoopDueButNotLoaded.session.detail, "Read interview topics have due cards. Load due cards to stage the next prompt.");
 
+const interviewLoopStaleLoadedZeroWithDueProgress = deriveMobileReviewViewModel({
+  ...interviewLoopInputBase(),
+  dueCount: 0,
+  decks: [],
+  showAnswer: false,
+  hasReviewCard: false,
+  status: "Loaded 0 due card(s)",
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+});
+
+assert.equal(interviewLoopStaleLoadedZeroWithDueProgress.queueState.kind, "due_available");
+assert.equal(interviewLoopStaleLoadedZeroWithDueProgress.queueState.title, "1 due card ready");
+assert.equal(interviewLoopStaleLoadedZeroWithDueProgress.dueStateLabel, "Read interview topics have due cards. Load due cards to stage the next prompt.");
+assert.equal(interviewLoopStaleLoadedZeroWithDueProgress.cardProgressLabel, "1 waiting");
+
 const interviewLoopRevealed = deriveMobileReviewViewModel({
   ...interviewLoopInputBase(),
   showAnswer: true,
@@ -517,7 +541,95 @@ assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
     due_unlocked_card_count: 1,
   },
   status: "Loaded 0 due card(s)",
-}), false);
+}), true);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  studyProgress: null,
+  status: "Loaded 0 due card(s)",
+}), true);
+
+const staleZeroCallerInput = {
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [] as [],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Loaded 0 due card(s)",
+};
+const firstAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  suppressedEmptyLoadKey: null,
+});
+
+assert.equal(firstAutoLoadDecision.shouldLoad, true);
+assert.equal(firstAutoLoadDecision.suppressionKey, mobileReviewAutoLoadSuppressionKey(staleZeroCallerInput));
+
+const suppressedAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  suppressedEmptyLoadKey: firstAutoLoadDecision.suppressionKey,
+});
+
+assert.equal(suppressedAutoLoadDecision.shouldLoad, false);
+assert.equal(suppressedAutoLoadDecision.suppressionKey, firstAutoLoadDecision.suppressionKey);
+assert.equal(suppressedAutoLoadDecision.shouldClearSuppression, false);
+
+const changedHintAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  studyProgress: {
+    ...staleZeroCallerInput.studyProgress,
+    due_unlocked_card_count: 2,
+  },
+  suppressedEmptyLoadKey: firstAutoLoadDecision.suppressionKey,
+});
+
+assert.equal(changedHintAutoLoadDecision.shouldLoad, true);
+assert.equal(changedHintAutoLoadDecision.suppressionKey === firstAutoLoadDecision.suppressionKey, false);
+
+let callerSuppressionKey = firstAutoLoadDecision.suppressionKey;
+const absentHintDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  studyProgress: {
+    ...staleZeroCallerInput.studyProgress,
+    due_unlocked_card_count: 0,
+  },
+  suppressedEmptyLoadKey: callerSuppressionKey,
+});
+
+assert.equal(absentHintDecision.shouldLoad, false);
+assert.equal(absentHintDecision.suppressionKey, null);
+assert.equal(absentHintDecision.shouldClearSuppression, true);
+if (absentHintDecision.shouldClearSuppression) {
+  callerSuppressionKey = null;
+}
+
+const reappearedSameCountDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  suppressedEmptyLoadKey: callerSuppressionKey,
+});
+
+assert.equal(reappearedSameCountDecision.shouldLoad, true);
+assert.equal(reappearedSameCountDecision.suppressionKey, firstAutoLoadDecision.suppressionKey);
 
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");
