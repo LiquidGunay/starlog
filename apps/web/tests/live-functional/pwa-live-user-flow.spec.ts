@@ -29,6 +29,23 @@ type AssistantCommand = {
   status: string;
 };
 
+type AssistantMessagePart = {
+  type?: string;
+  text?: string;
+  card?: {
+    renderer_key?: string;
+    title?: string;
+    body?: string;
+    structured_content?: {
+      reason?: string;
+      recommendation_reason?: string;
+    };
+    metadata?: {
+      recommendation_reason?: string;
+    };
+  };
+};
+
 type AssistantCommandMetadata = {
   metadata?: {
     assistant_command?: AssistantCommand;
@@ -41,7 +58,7 @@ type AssistantMessagePayload = {
   };
   assistant_message: {
     role: string;
-    parts?: Array<{ text?: string }>;
+    parts?: AssistantMessagePart[];
     metadata?: AssistantCommandMetadata["metadata"];
   };
 };
@@ -180,6 +197,23 @@ function escapedRegExp(value: string): RegExp {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
 
+function firstText(values: Array<string | undefined>): string | undefined {
+  return values.find((value) => value && value.trim().length > 0);
+}
+
+function extractRecommendationReason(payload: AssistantMessagePayload): string | undefined {
+  const parts = payload.assistant_message.parts || [];
+  return firstText(
+    parts.flatMap((part) => [
+      part.card?.metadata?.recommendation_reason,
+      part.card?.structured_content?.recommendation_reason,
+      part.card?.structured_content?.reason,
+      part.card?.body,
+      part.text,
+    ]),
+  );
+}
+
 test("live PWA user flow covers study loop + review + briefing hints and alarm", async ({ page }, testInfo) => {
   const studyTag = `run:${TEST_RUN_ID}-w${testInfo.workerIndex}-r${testInfo.retry}`;
   const assistantSmokeText = `Live functional smoke checks interview-prep study loop validation (${studyTag})`;
@@ -255,6 +289,16 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
+  const recommendationReason = extractRecommendationReason(quizResponse);
+  if (recommendationReason) {
+    await expect(page.getByTestId("assistant-ui-recommendation-reason")).toBeVisible();
+    await expect(page.getByTestId("assistant-ui-recommendation-reason")).toHaveAttribute(
+      "data-dynamic-ui-renderer",
+      "interview.recommendation_reason",
+    );
+    await expect(page.getByTestId("assistant-ui-recommendation-reason")).toContainText(recommendationReason);
+  }
+  await expect(page.locator("main")).not.toContainText(/interview\.recommendation_reason|renderer_key|structured_content|tool_name|Raw/i);
   await screenshot(page, testInfo, "04-study-commands");
 
   const dueCards = await apiGetJson<DueCard[]>(page, session, "/v1/cards/due?limit=20");
@@ -303,6 +347,10 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect(page.getByTestId("assistant-ui-review-grade")).toBeVisible();
+  await expect(page.getByTestId("assistant-ui-review-grade")).toHaveAttribute(
+    "data-dynamic-ui-renderer",
+    "interview.review_grade",
+  );
   await expect(page.getByText("Interview review")).toBeVisible();
   await expect(page.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
   await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
