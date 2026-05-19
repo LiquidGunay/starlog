@@ -29,6 +29,77 @@ export const topicUnlockResult: AssistantToolResult = {
   metadata: {},
 };
 
+export const questionRequestInterrupt: AssistantInterrupt = {
+  id: "interrupt-question-request",
+  thread_id: "primary",
+  run_id: "run-question-request",
+  tool_call_id: "tool-call-question-request",
+  status: "pending",
+  interrupt_type: "form",
+  tool_name: "create_study_question_request",
+  title: "Request a question",
+  body: "Choose the next prompt shape.",
+  fields: [
+    {
+      id: "question_type",
+      kind: "select",
+      label: "Question type",
+      required: true,
+      options: [
+        { label: "Recall", value: "recall" },
+        { label: "Application", value: "application" },
+      ],
+    },
+  ],
+  primary_label: "Create",
+  display_mode: "sidecar",
+  recommended_defaults: { question_type: "recall" },
+  metadata: {
+    source: "fixture",
+  },
+  created_at: "2026-05-15T00:00:00Z",
+  renderer_key: "interview.question_request",
+  renderer_version: 1,
+  placement: "sidecar",
+  structured_content: {
+    topic_id: "topic-1",
+    topic_title: "Spaced repetition setup",
+    question_type: "recall",
+    prompt: "Explain why spaced repetition works.",
+  },
+  ui_meta: {
+    density: "compact",
+  },
+};
+
+export const reviewGradeResult: AssistantToolResult = {
+  id: "tool-result-review-grade",
+  tool_call_id: "tool-call-review-grade",
+  status: "requires_action",
+  renderer_key: "interview.review_grade",
+  renderer_version: 1,
+  placement: "sidecar",
+  structured_content: {
+    card_id: "card-1",
+    grade: "again",
+    next_due_at: "2026-05-16T09:00:00Z",
+  },
+  ui_meta: {
+    tone: "review",
+  },
+  output: {
+    card_id: "card-1",
+    submitted: false,
+  },
+  card: null,
+  entity_ref: {
+    entity_type: "review_card",
+    entity_id: "card-1",
+    title: "Spacing effect",
+  },
+  metadata: {},
+};
+
 export const legacyMorningFocusInterrupt: AssistantInterrupt = {
   id: "interrupt-morning-focus",
   thread_id: "primary",

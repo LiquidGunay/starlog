@@ -1,3 +1,4 @@
+export * from "./assistant-ui-bridge";
 export * from "./renderer-contracts";
 export * from "./registry";
 export * from "./renderer-keys";
