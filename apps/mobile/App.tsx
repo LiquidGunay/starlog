@@ -4486,6 +4486,9 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       status,
       suppressedEmptyLoadKey: reviewEmptyAutoLoadSuppressionKeyRef.current,
     });
+    if (decision.shouldClearSuppression) {
+      reviewEmptyAutoLoadSuppressionKeyRef.current = null;
+    }
     if (!decision.shouldLoad) {
       return;
     }

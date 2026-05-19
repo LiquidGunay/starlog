@@ -592,6 +592,7 @@ const suppressedAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
 
 assert.equal(suppressedAutoLoadDecision.shouldLoad, false);
 assert.equal(suppressedAutoLoadDecision.suppressionKey, firstAutoLoadDecision.suppressionKey);
+assert.equal(suppressedAutoLoadDecision.shouldClearSuppression, false);
 
 const changedHintAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
   ...staleZeroCallerInput,
@@ -604,6 +605,31 @@ const changedHintAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
 
 assert.equal(changedHintAutoLoadDecision.shouldLoad, true);
 assert.equal(changedHintAutoLoadDecision.suppressionKey === firstAutoLoadDecision.suppressionKey, false);
+
+let callerSuppressionKey = firstAutoLoadDecision.suppressionKey;
+const absentHintDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  studyProgress: {
+    ...staleZeroCallerInput.studyProgress,
+    due_unlocked_card_count: 0,
+  },
+  suppressedEmptyLoadKey: callerSuppressionKey,
+});
+
+assert.equal(absentHintDecision.shouldLoad, false);
+assert.equal(absentHintDecision.suppressionKey, null);
+assert.equal(absentHintDecision.shouldClearSuppression, true);
+if (absentHintDecision.shouldClearSuppression) {
+  callerSuppressionKey = null;
+}
+
+const reappearedSameCountDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  suppressedEmptyLoadKey: callerSuppressionKey,
+});
+
+assert.equal(reappearedSameCountDecision.shouldLoad, true);
+assert.equal(reappearedSameCountDecision.suppressionKey, firstAutoLoadDecision.suppressionKey);
 
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");

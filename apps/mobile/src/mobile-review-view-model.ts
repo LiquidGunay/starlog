@@ -118,6 +118,7 @@ export type MobileReviewAutoLoadDecisionInput = {
 export type MobileReviewAutoLoadEffectDecision = {
   shouldLoad: boolean;
   suppressionKey: string | null;
+  shouldClearSuppression: boolean;
 };
 
 export type MobileReviewViewModel = {
@@ -336,13 +337,22 @@ export function deriveMobileReviewAutoLoadEffectDecision(
   },
 ): MobileReviewAutoLoadEffectDecision {
   const suppressionKey = mobileReviewAutoLoadSuppressionKey(input);
+  if (!suppressionKey) {
+    return {
+      shouldLoad: shouldAutoLoadReviewDueCardsOnEntry(input),
+      suppressionKey: null,
+      shouldClearSuppression: Boolean(input.suppressedEmptyLoadKey),
+    };
+  }
+
   if (suppressionKey && input.suppressedEmptyLoadKey === suppressionKey) {
-    return { shouldLoad: false, suppressionKey };
+    return { shouldLoad: false, suppressionKey, shouldClearSuppression: false };
   }
 
   return {
     shouldLoad: shouldAutoLoadReviewDueCardsOnEntry(input),
     suppressionKey,
+    shouldClearSuppression: false,
   };
 }
 
