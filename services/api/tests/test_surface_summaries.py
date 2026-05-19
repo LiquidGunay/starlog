@@ -797,9 +797,14 @@ def test_assistant_today_recommends_study_loop_for_signal_boosted_due_reviews(
     assert payload["reason_stack"] == ["1 study-loop review card due"]
 
 
+@pytest.mark.parametrize(
+    "signal_type",
+    ["question_request", "practice_miss", "low_review"],
+)
 def test_read_gated_study_signals_boost_due_review_and_assistant_today(
     client: TestClient,
     auth_headers: dict[str, str],
+    signal_type: str,
 ) -> None:
     now = utc_now()
     with get_connection() as conn:
@@ -824,32 +829,37 @@ def test_read_gated_study_signals_boost_due_review_and_assistant_today(
             """,
             (topic_id, "unlocked", 1, _iso(now), None, _iso(now), _iso(now)),
         )
-        conn.execute(
-            """
-            INSERT INTO study_question_requests (
-              id, source_id, topic_id, question, status, response_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                new_id("study_question"),
-                None,
-                topic_id,
-                "Give me another sliding window interview question.",
-                "requested",
-                "{}",
-                _iso(now),
-                _iso(now),
-            ),
-        )
-        conn.execute(
-            """
-            INSERT INTO practice_attempts (
-              id, practice_item_id, topic_id, rating, response_text, correct, latency_ms, metadata_json, attempted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (new_id("practice_attempt"), None, topic_id, 1, "missed shrink condition", 0, 1200, "{}", _iso(now)),
-        )
-        _insert_review_event(conn, card_id=gated_card_id, rating=1, reviewed_at=now - timedelta(hours=1))
+        if signal_type == "question_request":
+            conn.execute(
+                """
+                INSERT INTO study_question_requests (
+                  id, source_id, topic_id, question, status, response_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_id("study_question"),
+                    None,
+                    topic_id,
+                    "Give me another sliding window interview question.",
+                    "requested",
+                    "{}",
+                    _iso(now),
+                    _iso(now),
+                ),
+            )
+        elif signal_type == "practice_miss":
+            conn.execute(
+                """
+                INSERT INTO practice_attempts (
+                  id, practice_item_id, topic_id, rating, response_text, correct, latency_ms, metadata_json, attempted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (new_id("practice_attempt"), None, topic_id, 1, "missed shrink condition", 0, 1200, "{}", _iso(now)),
+            )
+        elif signal_type == "low_review":
+            _insert_review_event(conn, card_id=gated_card_id, rating=1, reviewed_at=now - timedelta(hours=1))
+        else:
+            raise AssertionError(f"Unhandled signal type: {signal_type}")
         conn.commit()
 
     due_before_read = client.get("/v1/cards/due?limit=5", headers=auth_headers)
@@ -863,11 +873,15 @@ def test_read_gated_study_signals_boost_due_review_and_assistant_today(
     review_before_payload = review_before_read.json()
     assert review_before_payload["queue_health"]["due_count"] == 1
     assert _bucket(review_before_payload, "ladder_counts", "application") == 0
+    assert _bucket(review_before_payload, "total_ladder_counts", "application") == 0
+    assert not any(item["key"] == "deeper_review_due" for item in review_before_payload["learning_insights"])
 
     today_before_read = client.get("/v1/surfaces/assistant/today", headers=auth_headers)
     assert today_before_read.status_code == 200
     today_before_payload = today_before_read.json()
     assert today_before_payload["recommended_next_move"]["key"] == "start_due_review"
+    assert _open_loop(today_before_payload, "due_reviews") == 1
+    assert _at_a_glance(today_before_payload, "review") == 1
     assert today_before_payload["reason_stack"] == ["1 review card due"]
 
     read = client.post(f"/v1/study/topics/{topic_id}/read", headers=auth_headers)
