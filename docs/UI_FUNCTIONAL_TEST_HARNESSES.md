@@ -166,8 +166,8 @@ Physical phone screenshot proof also requires the attached Android device to be 
 Use this path when the goal is repeatable evidence for the installed native Android interview-prep
 loop without rebuilding the app or rewriting mobile UI. It is an operator-assisted harness: the
 script handles device launch, surface deeplinks, screenshots, UI hierarchy dumps, optional API
-snapshots, and checkpoint prompts; the tester performs the actual topic unlock/read and Review
-grading actions on the phone.
+snapshots, deterministic interview-prep due-card seeding, and checkpoint prompts; the tester
+performs the actual Review grading actions on the phone.
 
 ```bash
 cd /home/ubuntu/starlog
@@ -182,6 +182,24 @@ bash scripts/android_interview_functional_capture.sh --no-device
 bash scripts/android_interview_functional_capture.sh --dry-run
 ```
 
+When `STARLOG_API_BASE` and `STARLOG_ACCESS_TOKEN` are set, the harness runs
+`scripts/interview_prep_api_seed.py` before device capture and writes
+`api/interview-prep-seed.json`. The seed path uses only public Starlog API calls: it reuses or
+creates one tagged interview-prep source/topic/deck/card, links the card behind the topic-read gate,
+marks the seeded topic read by default, refreshes the card due date, and verifies the card appears in
+`/v1/cards/due`. Without credentials, the seed summary is written with `status: skipped`; in
+`--dry-run`, it records planned API requests without network access.
+
+Seed-only checks:
+
+```bash
+python3 scripts/interview_prep_api_seed.py --dry-run
+STARLOG_API_BASE=http://127.0.0.1:8000 \
+STARLOG_ACCESS_TOKEN=<redacted> \
+STARLOG_TEST_USER=phone-functional \
+python3 scripts/interview_prep_api_seed.py --summary-path /tmp/interview-prep-seed.json
+```
+
 Common overrides:
 
 ```bash
@@ -190,6 +208,7 @@ ADB_SERIAL=<SERIAL> \
 APP_VARIANT=preview \
 STARLOG_API_BASE=http://127.0.0.1:8000 \
 STARLOG_ACCESS_TOKEN=<redacted> \
+STARLOG_TEST_USER=phone-functional \
 ADB_REVERSE_PORTS=8000 \
 bash scripts/android_interview_functional_capture.sh
 ```
@@ -201,14 +220,24 @@ evidence under:
 .localdata/android-interview-functional/artifacts/<UTC timestamp>/
 ```
 
-That root is ignored by `.gitignore`, so generated screenshots, XML dumps, API snapshots, and
-operator metadata are not accidentally committed. Do not paste real access tokens into docs or
-commit them in run artifacts.
+That root is ignored by `.gitignore`, so generated screenshots, XML dumps, API snapshots, seed
+summaries, and operator metadata are not accidentally committed. Do not paste real access tokens
+into docs or commit them in run artifacts; run metadata only records whether a token was provided.
+
+Useful seed controls:
+
+- `STARLOG_INTERVIEW_SEED=off` skips API seeding and writes a skipped seed summary.
+- `STARLOG_INTERVIEW_SEED_ID=<stable-id>` changes the idempotence tag (`seed:<stable-id>`).
+- `STARLOG_INTERVIEW_SEED_TOPIC_TITLE=<title>` changes the seeded topic title.
+- `STARLOG_INTERVIEW_SEED_MARK_READ=0` leaves the seeded topic unread. This proves setup and
+  link creation, but Review will not show the seeded card until the topic is marked read through
+  Assistant or the study API.
 
 Manual checkpoints captured by the harness:
 
-- Assistant topic unlock/read: open Assistant, unlock the active interview-prep topic, mark it read,
-  and verify the visible topic controls remain user-facing.
+- Assistant topic/read context: open Assistant, verify the interview-prep topic/read history and
+  controls remain user-facing. If `STARLOG_INTERVIEW_SEED_MARK_READ=0`, mark the seeded topic read
+  before continuing.
 - Review reveal/grade: open Review, load due cards if needed, reveal the interview card answer, and
   submit a grade such as `Good`.
 - Progress/recommendation verification: confirm Review progress changed and Assistant or Planner

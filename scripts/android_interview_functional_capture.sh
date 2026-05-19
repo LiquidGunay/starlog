@@ -30,6 +30,11 @@ ADB_REVERSE_PORTS="${ADB_REVERSE_PORTS:-}"
 STARLOG_API_BASE="${STARLOG_API_BASE:-${API_BASE:-}}"
 STARLOG_WEB_ORIGIN="${STARLOG_WEB_ORIGIN:-${WEB_ORIGIN:-}}"
 STARLOG_ACCESS_TOKEN="${STARLOG_ACCESS_TOKEN:-${STARLOG_TOKEN:-}}"
+STARLOG_TEST_USER="${STARLOG_TEST_USER:-}"
+STARLOG_INTERVIEW_SEED="${STARLOG_INTERVIEW_SEED:-auto}"
+STARLOG_INTERVIEW_SEED_ID="${STARLOG_INTERVIEW_SEED_ID:-android-interview-functional-v1}"
+STARLOG_INTERVIEW_SEED_TOPIC_TITLE="${STARLOG_INTERVIEW_SEED_TOPIC_TITLE:-Android Functional Interview Seed}"
+STARLOG_INTERVIEW_SEED_MARK_READ="${STARLOG_INTERVIEW_SEED_MARK_READ:-1}"
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 DRY_RUN=0
 NO_DEVICE=0
@@ -62,6 +67,15 @@ Environment overrides:
   STARLOG_API_BASE       Optional API origin for state snapshots.
   STARLOG_WEB_ORIGIN     Optional web origin recorded in run metadata.
   STARLOG_ACCESS_TOKEN   Optional bearer token for API snapshots; never printed.
+  STARLOG_TEST_USER      Optional label recorded in deterministic seed metadata.
+  STARLOG_INTERVIEW_SEED auto | off. auto writes api/interview-prep-seed.json and
+                         seeds through the API when API base + token are supplied.
+  STARLOG_INTERVIEW_SEED_ID
+                         Stable seed id/tag for idempotent due-card reuse.
+  STARLOG_INTERVIEW_SEED_TOPIC_TITLE
+                         Seeded interview-prep topic title.
+  STARLOG_INTERVIEW_SEED_MARK_READ
+                         Set to 0 to leave the seeded topic unread.
   NONINTERACTIVE         Set to 1 to skip pause prompts after printing checkpoints.
 
 Options:
@@ -171,6 +185,11 @@ write_run_metadata() {
     printf 'planner_deeplink=%s\n' "$PLANNER_DEEPLINK"
     printf 'starlog_api_base=%s\n' "${STARLOG_API_BASE:-unset}"
     printf 'starlog_web_origin=%s\n' "${STARLOG_WEB_ORIGIN:-unset}"
+    printf 'starlog_test_user=%s\n' "${STARLOG_TEST_USER:-unset}"
+    printf 'starlog_interview_seed=%s\n' "$STARLOG_INTERVIEW_SEED"
+    printf 'starlog_interview_seed_id=%s\n' "$STARLOG_INTERVIEW_SEED_ID"
+    printf 'starlog_interview_seed_topic_title=%s\n' "$STARLOG_INTERVIEW_SEED_TOPIC_TITLE"
+    printf 'starlog_interview_seed_mark_read=%s\n' "$STARLOG_INTERVIEW_SEED_MARK_READ"
     if [[ -n "$STARLOG_ACCESS_TOKEN" ]]; then
       printf 'starlog_access_token=provided-redacted\n'
     else
@@ -185,11 +204,11 @@ write_manual_checklist() {
 
 Run directory: \`$RUN_DIR\`
 
-## 1. Assistant topic unlock/read
+## 1. Assistant topic/read context
 
 - Confirm the phone is awake and unlocked.
-- On Assistant, use the interview-prep loop to unlock the active topic.
-- Mark the topic read.
+- On Assistant, verify the interview-prep topic/read context is visible.
+- If \`STARLOG_INTERVIEW_SEED_MARK_READ=0\`, mark the seeded topic read before continuing.
 - Confirm the screen exposes the active interview topic and no raw protocol labels.
 - Press Enter in the terminal to capture \`assistant-after-topic\`.
 
@@ -219,6 +238,43 @@ Expected evidence:
 - \`progress-recommendation.png\` / \`progress-recommendation.xml\`
 - Optional API snapshots under \`api/\` when \`STARLOG_API_BASE\` and \`STARLOG_ACCESS_TOKEN\` are set.
 EOF
+}
+
+run_interview_seed() {
+  case "$STARLOG_INTERVIEW_SEED" in
+    0|false|False|FALSE|off|OFF|no|NO)
+      mkdir -p "$RUN_DIR/api"
+      printf '{"status":"skipped","reason":"STARLOG_INTERVIEW_SEED disabled"}\n' \
+        > "$RUN_DIR/api/interview-prep-seed.json"
+      log "Interview-prep API seed disabled"
+      return
+      ;;
+  esac
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "python3 not found; skipping interview-prep API seed"
+    mkdir -p "$RUN_DIR/api"
+    printf '{"status":"skipped","reason":"python3 not found"}\n' \
+      > "$RUN_DIR/api/interview-prep-seed.json"
+    return
+  fi
+
+  mkdir -p "$RUN_DIR/api"
+  local args=(
+    "$ROOT_DIR/scripts/interview_prep_api_seed.py"
+    "--seed-id" "$STARLOG_INTERVIEW_SEED_ID"
+    "--topic-title" "$STARLOG_INTERVIEW_SEED_TOPIC_TITLE"
+    "--summary-path" "$RUN_DIR/api/interview-prep-seed.json"
+  )
+  if [[ "$STARLOG_INTERVIEW_SEED_MARK_READ" == "0" || "$STARLOG_INTERVIEW_SEED_MARK_READ" == "false" || "$STARLOG_INTERVIEW_SEED_MARK_READ" == "False" ]]; then
+    args+=("--no-mark-read")
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    args+=("--dry-run")
+  fi
+
+  log "Preparing deterministic interview-prep due-card seed"
+  python3 "${args[@]}" > "$RUN_DIR/api/interview-prep-seed.stdout.json"
 }
 
 wait_for_device() {
@@ -357,6 +413,7 @@ resolve_variant_defaults
 APP_COMPONENT="$(resolve_app_component)"
 write_run_metadata
 write_manual_checklist
+run_interview_seed
 
 log "Evidence directory: $RUN_DIR"
 
@@ -379,8 +436,8 @@ capture_state "00-launch"
 launch_deeplink "Assistant" "$ASSISTANT_DEEPLINK"
 capture_state "assistant-entry"
 manual_checkpoint \
-  "Checkpoint 1: Assistant topic unlock/read" \
-  "Unlock the active interview-prep topic, mark it read, and verify the topic/controls are visible."
+  "Checkpoint 1: Assistant topic/read context" \
+  "Verify the interview-prep topic/read context and user-facing controls. If STARLOG_INTERVIEW_SEED_MARK_READ=0, mark the seeded topic read before continuing."
 capture_state "assistant-after-topic"
 curl_api_snapshot "assistant-today-after-topic" "/v1/assistant/today"
 curl_api_snapshot "due-cards-after-topic" "/v1/cards/due?limit=20"
