@@ -9,10 +9,11 @@ import type {
   AssistantToolResult,
 } from "@starlog/contracts";
 import {
-  createDynamicUiViewModel,
+  createDynamicUiAssistantUiMetadata,
   DEFAULT_DYNAMIC_UI_REGISTRY,
   isStarlogKnownRendererKey,
   resolveDynamicUiRenderer,
+  type DynamicUiAssistantUiDescriptor,
 } from "../../../packages/dynamic-ui/src";
 
 import { attachmentActionLabel, toolStatusSummary } from "./assistant-mobile-ui";
@@ -41,6 +42,7 @@ type DynamicPartMetadata = {
   uiMeta: Record<string, unknown> | null;
   fallback: boolean;
   fallbackReason?: string;
+  assistantUiMetadata?: DynamicUiAssistantUiDescriptor;
 };
 
 export type MobileAssistantUiRichPart = {
@@ -59,6 +61,11 @@ export type MobileAssistantUiRichPart = {
   fallbackReason?: string;
   structuredContent?: Record<string, unknown> | null;
   uiMeta?: Record<string, unknown> | null;
+  metadata?: {
+    custom: {
+      starlog_dynamic_ui: DynamicUiAssistantUiDescriptor;
+    };
+  };
 };
 
 export type MobileAssistantUiThreadMessage = {
@@ -74,6 +81,7 @@ export type MobileAssistantUiThreadMessage = {
       transcriptKind: "text" | "rich_fallback";
       richPartCount: number;
       richParts: MobileAssistantUiRichPart[];
+      starlog_dynamic_ui?: DynamicUiAssistantUiDescriptor;
     };
   };
 };
@@ -220,6 +228,26 @@ export function mobileDynamicUiBadge(options: {
   return label ? `${rendererLabel} · ${label}` : rendererLabel;
 }
 
+function dynamicPartMetadataFromAssistantUiDescriptor(options: {
+  descriptor: DynamicUiAssistantUiDescriptor;
+  fallbackReason: string;
+}): DynamicPartMetadata {
+  const { descriptor, fallbackReason } = options;
+  const fallback = descriptor.fallback;
+  return {
+    rendererKey: fallback ? descriptor.requested_renderer_key : descriptor.resolved_renderer_key,
+    requestedRendererKey: descriptor.requested_renderer_key,
+    resolvedRendererKey: fallback ? null : descriptor.resolved_renderer_key,
+    rendererVersion: descriptor.renderer_version,
+    placement: descriptor.placement,
+    structuredContent: descriptor.structured_content,
+    uiMeta: descriptor.ui_meta,
+    fallback,
+    fallbackReason: fallback ? fallbackReason : undefined,
+    assistantUiMetadata: descriptor,
+  };
+}
+
 function cardDynamicMetadata(card: AssistantCard): DynamicPartMetadata {
   const requestedRendererKey = card.renderer_key || null;
   if (!requestedRendererKey) {
@@ -240,22 +268,13 @@ function cardDynamicMetadata(card: AssistantCard): DynamicPartMetadata {
     renderer_key: requestedRendererKey,
     placement: card.placement || null,
   };
-  const viewModel = createDynamicUiViewModel("card", normalizedCard as AssistantCard, DEFAULT_DYNAMIC_UI_REGISTRY, {
+  const descriptor = createDynamicUiAssistantUiMetadata("card", normalizedCard as AssistantCard, DEFAULT_DYNAMIC_UI_REGISTRY, {
     preserveFallbackPlacement: true,
+  }).custom.starlog_dynamic_ui;
+  return dynamicPartMetadataFromAssistantUiDescriptor({
+    descriptor,
+    fallbackReason: "No registered mobile renderer; using generic card rendering.",
   });
-  const resolvedRendererKey = viewModel.fallback ? null : viewModel.rendererKey;
-  const fallback = Boolean(requestedRendererKey && !resolvedRendererKey);
-  return {
-    rendererKey: resolvedRendererKey || requestedRendererKey,
-    requestedRendererKey,
-    resolvedRendererKey,
-    rendererVersion: card.renderer_version ?? null,
-    placement: viewModel.placement || null,
-    structuredContent: card.structured_content || null,
-    uiMeta: card.ui_meta || (hasRecordValue(card.metadata) ? card.metadata : null),
-    fallback,
-    fallbackReason: fallback ? "No registered mobile renderer; using generic card rendering." : undefined,
-  };
 }
 
 function toolResultDynamicMetadata(result: AssistantToolResult): DynamicPartMetadata {
@@ -277,23 +296,21 @@ function toolResultDynamicMetadata(result: AssistantToolResult): DynamicPartMeta
     ...result,
     placement: result.placement || result.card?.placement || null,
     renderer_key: requestedRendererKey,
+    structured_content: result.structured_content || result.card?.structured_content || result.output || null,
+    ui_meta: result.ui_meta || result.card?.ui_meta || (hasRecordValue(result.metadata) ? result.metadata : null),
   };
-  const viewModel = createDynamicUiViewModel("tool_result", normalizedResult as AssistantToolResult, DEFAULT_DYNAMIC_UI_REGISTRY, {
-    preserveFallbackPlacement: true,
+  const descriptor = createDynamicUiAssistantUiMetadata(
+    "tool_result",
+    normalizedResult as AssistantToolResult,
+    DEFAULT_DYNAMIC_UI_REGISTRY,
+    {
+      preserveFallbackPlacement: true,
+    },
+  ).custom.starlog_dynamic_ui;
+  return dynamicPartMetadataFromAssistantUiDescriptor({
+    descriptor,
+    fallbackReason: "No registered mobile renderer; using generic tool result rendering.",
   });
-  const resolvedRendererKey = viewModel.fallback ? null : viewModel.rendererKey;
-  const fallback = Boolean(requestedRendererKey && !resolvedRendererKey);
-  return {
-    rendererKey: resolvedRendererKey || requestedRendererKey,
-    requestedRendererKey,
-    resolvedRendererKey,
-    rendererVersion: result.renderer_version ?? result.card?.renderer_version ?? null,
-    placement: viewModel.placement || null,
-    structuredContent: result.structured_content || result.card?.structured_content || result.output || null,
-    uiMeta: result.ui_meta || result.card?.ui_meta || (hasRecordValue(result.metadata) ? result.metadata : null),
-    fallback,
-    fallbackReason: fallback ? "No registered mobile renderer; using generic tool result rendering." : undefined,
-  };
 }
 
 function interruptDynamicMetadata(interrupt: AssistantInterrupt): DynamicPartMetadata {
@@ -316,25 +333,16 @@ function interruptDynamicMetadata(interrupt: AssistantInterrupt): DynamicPartMet
     renderer_key: requestedRendererKey,
     placement: interrupt.placement || interrupt.display_mode || null,
   };
-  const viewModel = createDynamicUiViewModel(
+  const descriptor = createDynamicUiAssistantUiMetadata(
     "interrupt",
     normalizedInterrupt as AssistantInterrupt,
     DEFAULT_DYNAMIC_UI_REGISTRY,
     { preserveFallbackPlacement: true },
-  );
-  const resolvedRendererKey = viewModel.fallback ? null : viewModel.rendererKey;
-  const fallback = Boolean(requestedRendererKey && !resolvedRendererKey);
-  return {
-    rendererKey: resolvedRendererKey || requestedRendererKey,
-    requestedRendererKey,
-    resolvedRendererKey,
-    rendererVersion: interrupt.renderer_version ?? null,
-    placement: viewModel.placement || null,
-    structuredContent: interrupt.structured_content || null,
-    uiMeta: interrupt.ui_meta || (hasRecordValue(interrupt.metadata) ? interrupt.metadata : null),
-    fallback,
-    fallbackReason: fallback ? "No registered mobile renderer; using generic interrupt panel rendering." : undefined,
-  };
+  ).custom.starlog_dynamic_ui;
+  return dynamicPartMetadataFromAssistantUiDescriptor({
+    descriptor,
+    fallbackReason: "No registered mobile renderer; using generic interrupt panel rendering.",
+  });
 }
 
 function dynamicPartMetadata(part: AssistantMessagePart): DynamicPartMetadata | null {
@@ -429,6 +437,13 @@ export function starlogRichPartsForMessage(message: AssistantThreadMessage): Mob
         fallbackReason: dynamicMetadata?.fallbackReason,
         structuredContent: dynamicMetadata?.structuredContent,
         uiMeta: dynamicMetadata?.uiMeta,
+        metadata: dynamicMetadata?.assistantUiMetadata
+          ? {
+              custom: {
+                starlog_dynamic_ui: dynamicMetadata.assistantUiMetadata,
+              },
+            }
+          : undefined,
       };
     });
 }
@@ -440,6 +455,7 @@ export function starlogMessageToAssistantUiMessage(message: AssistantThreadMessa
   if (!content) {
     return null;
   }
+  const dynamicUiMetadata = richParts.find((part) => part.metadata?.custom.starlog_dynamic_ui)?.metadata?.custom.starlog_dynamic_ui;
   return {
     id: message.id,
     role: normalizeRole(message.role),
@@ -453,6 +469,7 @@ export function starlogMessageToAssistantUiMessage(message: AssistantThreadMessa
         transcriptKind: transcriptText ? "text" : "rich_fallback",
         richPartCount: richParts.length,
         richParts,
+        ...(dynamicUiMetadata ? { starlog_dynamic_ui: dynamicUiMetadata } : {}),
       },
     },
   };
