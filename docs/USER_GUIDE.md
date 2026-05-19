@@ -21,9 +21,9 @@ For phone testing on the same network:
 3. Set the API base if the app asks for it:
    - local laptop: `http://localhost:8000`
    - phone over LAN: `http://<LAN_IP>:8000`
-4. Choose `Set Up Starlog` on a new instance and create a passphrase.
-5. Sign in with the same passphrase.
-6. Open `/assistant`.
+4. Open `http://localhost:3000/assistant` in a browser for local/PWA paths.
+5. For browser access, choose `Set Up Starlog` on a new instance and create a passphrase.
+6. Sign in with the same passphrase and return to `/assistant`.
 
 ## PWA Access And Login
 
@@ -36,12 +36,16 @@ instance, choose `Sign In` and enter that same passphrase. The PWA should only r
 API base and Starlog session/token information from the login/session controls. Do not put
 OpenAI, Codex, Railway, or local worker credentials into the PWA or native mobile app.
 
-For the current hosted deployment, open
-`https://starlog-web-production.up.railway.app/login`. The expected API base is
-`https://starlog-api-production.up.railway.app`. Sign in with the hosted Starlog passphrase, then
-copy only the resulting Starlog bearer token into native phone settings when a token field is
-required. If the hosted passphrase is lost, use the operator reset runbook instead of committing or
-sharing secrets in docs.
+Hosted access currently uses:
+
+- `https://starlog-web-production.up.railway.app/login`
+- API base `https://starlog-api-production.up.railway.app`
+
+Current access status:
+
+- Hosted login /assistant entry was reachable on 2026-05-15 (known-good for sign-in reachability and passphrase flow),
+  but hosted full-flow smoke is still a re-prove item.
+- Native app remains primary on phone; the browser PWA path is fallback-only.
 
 ## Daily Use
 
@@ -84,6 +88,11 @@ Use the native app for:
 - morning alarm setup
 
 For local phone setup, use [PHONE_SETUP.md](/home/ubuntu/starlog/docs/PHONE_SETUP.md).
+
+Interview-loop note:
+
+- Native `Assistant` uses the new RN assistant-ui dynamic UI path for interview-prep flow (`read` → `unlock` →
+  `question` → review grade). Unsupported Starlog panel shapes still use compatibility fallback screens.
 
 ## Codex And Local AI
 
