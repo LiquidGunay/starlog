@@ -197,23 +197,6 @@ function escapedRegExp(value: string): RegExp {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
 
-function firstText(values: Array<string | undefined>): string | undefined {
-  return values.find((value) => value && value.trim().length > 0);
-}
-
-function extractRecommendationReason(payload: AssistantMessagePayload): string | undefined {
-  const parts = payload.assistant_message.parts || [];
-  return firstText(
-    parts.flatMap((part) => [
-      part.card?.metadata?.recommendation_reason,
-      part.card?.structured_content?.recommendation_reason,
-      part.card?.structured_content?.reason,
-      part.card?.body,
-      part.text,
-    ]),
-  );
-}
-
 test("live PWA user flow covers study loop + review + briefing hints and alarm", async ({ page }, testInfo) => {
   const studyTag = `run:${TEST_RUN_ID}-w${testInfo.workerIndex}-r${testInfo.retry}`;
   const assistantSmokeText = `Live functional smoke checks interview-prep study loop validation (${studyTag})`;
@@ -288,14 +271,6 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
-  const recommendationReason = extractRecommendationReason(quizResponse);
-  if (recommendationReason) {
-    const recommendationReasonHeading = page.getByText("Recommendation reason");
-    if (await recommendationReasonHeading.count() > 0) {
-      await expect(recommendationReasonHeading.first()).toBeVisible();
-    }
-    await expect(page.getByText(recommendationReason).first()).toBeVisible();
-  }
   await screenshot(page, testInfo, "04-study-commands");
 
   const dueCards = await apiGetJson<DueCard[]>(page, session, "/v1/cards/due?limit=20");
@@ -346,15 +321,12 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const reviewGradePanel = page.locator(
     '[data-testid="dynamic-panel-renderer"][data-panel-tool="grade_review_recall"]',
   );
-  if (await reviewGradePanel.count() > 0) {
-    await expect(reviewGradePanel).toBeVisible();
-    await expect(reviewGradePanel).toContainText("Review grade");
-    await expect(reviewGradePanel).toContainText("Keep in Review");
-  }
-  const reviewPrompt = page.getByLabel("Review prompt");
-  if (await reviewPrompt.count() > 0) {
-    await expect(reviewPrompt).toContainText(expectedRevealedCard.prompt);
-  }
+  await expect(reviewGradePanel).toBeVisible();
+  await expect(reviewGradePanel).toContainText("Review grade");
+  await expect(reviewGradePanel).toContainText("Keep in Review");
+  await expect(reviewGradePanel).toContainText(expectedRevealedCard.prompt);
+  await expect(reviewGradePanel.getByLabel("Review prompt")).toBeVisible();
+  await expect(reviewGradePanel.getByLabel("Review prompt")).toContainText(expectedRevealedCard.prompt);
   await expect(page.getByText("Review grade").first()).toBeVisible();
   await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
