@@ -47,6 +47,14 @@ Hosted access currently uses:
 - `https://starlog-web-production.up.railway.app/login`
 - API base `https://starlog-api-production.up.railway.app`
 
+Hosted login flow for verification smoke and operator checks:
+
+- Open the hosted login URL.
+- On first use for a device/user, choose `Set Up Starlog` and set the passphrase.
+- On return visits, choose `Sign In` and enter the same passphrase.
+- After sign-in, copy the session token from the in-app login/session controls only when required for
+  scripted checks, then clear it from temporary notes/screenshots after use.
+
 Current access status:
 
 - Public hosted `/login`, `/assistant`, and API health reachability were checked on 2026-05-19.

@@ -52,9 +52,9 @@ MCP client availability, or a specific Apps SDK integration.
 
 ## Rejected Or Deferred Options
 
-### Keep the custom chat renderer as the target
+### Keep the old custom chat renderer as a compatibility bridge only
 
-Rejected. The current renderer can bridge the migration, but keeping it as the target
+Rejected. The current renderer can bridge the migration, but keeping it as the primary runtime
 would preserve the same architectural weakness: UI-bearing state would stay scattered
 across message strings, cards, traces, and metadata instead of becoming a durable run
 and message-part protocol.
