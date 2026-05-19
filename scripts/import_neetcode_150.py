@@ -23,6 +23,7 @@ DECK_NAME = "NeetCode 150"
 DECK_DESCRIPTION = "Coding interview practice cards generated from the local NeetCode 150 source list."
 ARTIFACT_TITLE = "NeetCode 150 Study Core import"
 NOTE_TITLE = "NeetCode 150 Study Core import"
+import interview_prep_quality  # noqa: E402
 
 EXPECTED_PATTERN_COUNTS = {
     "Arrays & Hashing": 9,
@@ -55,65 +56,8 @@ REQUIRED_ITEM_FIELDS = {
     "prerequisites",
     "notes",
 }
-REVIEW_CARD_AXES = (
-    {
-        "id": "pattern_recognition",
-        "label": "Pattern recognition",
-        "card_type": "scenario",
-        "tag": "pattern-recognition",
-        "prompt": (
-            "Before opening {title}, identify the observable cues that should make you reach for "
-            "{pattern}. What input shape, constraint, or operation hints would you look for?"
-        ),
-        "answer": (
-            "Use this as a self-check for recognizing the pattern, not for recalling a solution. "
-            "Name the cues you observed, compare them with the listed pattern, then record any "
-            "competing patterns you considered."
-        ),
-    },
-    {
-        "id": "edge_cases",
-        "label": "Edge cases",
-        "card_type": "judgment",
-        "tag": "edge-cases",
-        "prompt": (
-            "For {title}, list the boundary cases you would test before submitting. Include empty, "
-            "minimal, duplicate, ordering, and constraint-boundary cases when they apply."
-        ),
-        "answer": (
-            "After attempting the problem, compare your tests against the failure modes you actually "
-            "hit. Keep concrete examples in your editable notes; no source solution text is imported."
-        ),
-    },
-    {
-        "id": "complexity",
-        "label": "Complexity",
-        "card_type": "understanding",
-        "tag": "complexity",
-        "prompt": (
-            "State the expected time and space complexity for your {pattern} approach to {title}. "
-            "Which operation dominates, and what data structure choice controls the bound?"
-        ),
-        "answer": (
-            "Self-grade by explaining the dominant loop, recursion, heap, map, graph traversal, or DP "
-            "state count in your own words. Update the note after solving if your first estimate was wrong."
-        ),
-    },
-    {
-        "id": "implementation_traps",
-        "label": "Implementation traps",
-        "card_type": "critique",
-        "tag": "implementation-traps",
-        "prompt": (
-            "Name the implementation traps for {title}: off-by-one risks, state invariants, mutation "
-            "hazards, duplicate handling, and language-specific pitfalls."
-        ),
-        "answer": (
-            "Check the traps against your submitted code or scratch solution. Record the bugs you found, "
-            "the invariant that prevents them, and what you will watch for next time."
-        ),
-    },
-)
+QUALITY_SPEC = interview_prep_quality.load_quality_spec()
+REVIEW_CARD_AXES = interview_prep_quality.question_styles(QUALITY_SPEC)
 
 
 class ReviewInputAdapter(Protocol):
@@ -277,6 +221,7 @@ def _source_metadata(collection_id: str, review_inputs: list[dict[str, Any]]) ->
     return {
         "import_key": collection_id,
         "external_id": collection_id,
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
         "source_checked_at": review_inputs[0].get("provenance", {}).get("source_checked_at")
         if isinstance(review_inputs[0].get("provenance"), dict)
         else None,
@@ -430,6 +375,7 @@ def _artifact_payload(collection_id: str, review_inputs: list[dict[str, Any]]) -
         "metadata": {
             "import_key": collection_id,
             "deck_name": DECK_NAME,
+            "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
             "source_url": _source_list_url(review_inputs),
             "review_input_count": len(review_inputs),
             "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
@@ -590,6 +536,8 @@ def _practice_item_metadata(review_input: dict[str, Any]) -> dict[str, Any]:
     return {
         "import_key": review_input["external_id"],
         "external_id": review_input["external_id"],
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
+        "progression_gating": QUALITY_SPEC["progression_gating"],
         "source_sequence": review_input["source_sequence"],
         "difficulty": review_input["difficulty"],
         "pattern": review_input["pattern"],
@@ -606,16 +554,18 @@ def _review_card_specs(review_input: dict[str, Any]) -> list[dict[str, Any]]:
         axis_id = str(axis["id"])
         title = str(review_input["title"])
         pattern = str(review_input["pattern"])
-        prompt = str(axis["prompt"]).format(title=title, pattern=pattern, difficulty=review_input["difficulty"])
+        prompt = str(axis["prompt_template"]).format(title=title, pattern=pattern, difficulty=review_input["difficulty"])
         answer = (
             f"Open: {review_input['source_url']}\n\n"
-            f"{axis['label']} review. {axis['answer']} "
+            f"{axis['label']} review. {axis['answer_guidance']} "
             "This card contains no copied problem statement or solution text."
         )
+        question_quality = interview_prep_quality.style_metadata(axis)
         specs.append(
             {
                 "axis_id": axis_id,
                 "axis_label": axis["label"],
+                "question_quality": question_quality,
                 "card_id": _db_id("crd", review_input["external_id"], axis_id),
                 "note_block_id": _db_id("blk", review_input["external_id"], axis_id),
                 "card_type": axis["card_type"],
@@ -626,6 +576,7 @@ def _review_card_specs(review_input: dict[str, Any]) -> list[dict[str, Any]]:
                     {
                         "external_id": review_input["external_id"],
                         "axis_id": axis_id,
+                        "question_quality": question_quality,
                         "prompt": prompt,
                         "answer": answer,
                         "tags": _card_tags(review_input, str(axis["tag"])),
@@ -717,10 +668,13 @@ def _note_block_content(review_input: dict[str, Any], card_spec: dict[str, Any])
         [
             f"Import Key: {review_input['external_id']}",
             f"Review Axis: {card_spec['axis_label']}",
+            f"Question Style: {card_spec['question_quality']['question_style_id']}",
+            f"Progression Stage: {card_spec['question_quality']['progression_stage']}",
             f"Source URL: {review_input['source_url']}",
             f"Pattern: {review_input['pattern']}",
             f"Difficulty: {review_input['difficulty']}",
             f"Prerequisites: {', '.join(review_input['prerequisites']) or 'none'}",
+            f"Progression Gate: {QUALITY_SPEC['progression_gating']['gate_kind']}",
             f"Content Hash: {review_input['content_hash']}",
             f"Card Hash: {card_spec['content_hash']}",
             "",
@@ -1189,6 +1143,8 @@ def build_review_inputs(source: dict[str, Any]) -> list[dict[str, Any]]:
                 "source_checked_at": source.get("source_checked_at"),
                 "contains_solution_text": False,
             },
+            "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
+            "progression_gating": QUALITY_SPEC["progression_gating"],
         }
         review_input["content_hash"] = _stable_hash(review_input)
         review_inputs.append(review_input)
@@ -1212,6 +1168,7 @@ def summarize(source_path: Path, source: dict[str, Any], review_inputs: list[dic
         "review_input_count": len(review_inputs),
         "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
         "review_card_count": len(review_inputs) * len(REVIEW_CARD_AXES),
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
         "pattern_counts": dict(Counter(item["pattern"] for item in items)),
         "difficulty_counts": dict(Counter(item["difficulty"] for item in items)),
         "adapter": adapter_summary,

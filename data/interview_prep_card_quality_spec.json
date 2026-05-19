@@ -1,0 +1,88 @@
+{
+  "spec_id": "interview-prep-card-quality-v1",
+  "spec_version": 1,
+  "title": "Interview prep card quality spec",
+  "target_roles": [
+    "Research Engineer",
+    "Machine Learning Engineer",
+    "AI Engineer"
+  ],
+  "source_policy": {
+    "allow_solution_text_import": false,
+    "allow_unproven_pdf_ocr_cards": false,
+    "pdf_rule": "Only import PDF cards from trusted local extraction evidence; otherwise store blocked or unproven segment metadata without generated cards."
+  },
+  "progression_gating": {
+    "requires_topic_read": true,
+    "gate_kind": "topic_read",
+    "gate_tags": [
+      "interview-prep",
+      "topic-gated"
+    ],
+    "stage_order": [
+      "conceptual_recall",
+      "application_scenario",
+      "debugging_edge_cases",
+      "complexity_implementation_traps"
+    ],
+    "readiness_signal": "topic_read_before_due_card_release"
+  },
+  "question_styles": [
+    {
+      "id": "conceptual_recall",
+      "label": "Conceptual recall",
+      "card_type": "understanding",
+      "tag": "conceptual-recall",
+      "progression_stage": 1,
+      "review_focus": [
+        "definition",
+        "invariant",
+        "signal"
+      ],
+      "prompt_template": "Before opening {title}, explain the core idea behind {pattern}. What invariant, decision rule, or observable cue tells you this concept is relevant?",
+      "answer_guidance": "Use this as a self-check for recalling the concept, not a source solution. Name the invariant, the cue that activates it, and one competing idea you would rule out."
+    },
+    {
+      "id": "application_scenario",
+      "label": "Application scenario",
+      "card_type": "scenario",
+      "tag": "application-scenario",
+      "progression_stage": 2,
+      "review_focus": [
+        "transfer",
+        "constraints",
+        "system fit"
+      ],
+      "prompt_template": "Turn {title} into a realistic {difficulty} interview scenario. How would you apply {pattern} when constraints, data shape, or production tradeoffs change?",
+      "answer_guidance": "Self-grade by explaining the adapted approach, the assumption that matters most, and what would change if input size, latency, memory, or data quality were different."
+    },
+    {
+      "id": "debugging_edge_cases",
+      "label": "Debugging and edge cases",
+      "card_type": "judgment",
+      "tag": "debugging-edge-cases",
+      "progression_stage": 3,
+      "review_focus": [
+        "boundary cases",
+        "failure modes",
+        "test design"
+      ],
+      "prompt_template": "For {title}, list the boundary cases and likely failure modes before submitting. Include empty, minimal, duplicate, ordering, and constraint-boundary cases when they apply.",
+      "answer_guidance": "Compare your tests against the bugs you actually hit. Record concrete examples in your editable notes; no copied problem statement or solution text is imported."
+    },
+    {
+      "id": "complexity_implementation_traps",
+      "label": "Complexity and implementation traps",
+      "card_type": "critique",
+      "tag": "complexity-implementation-traps",
+      "progression_stage": 4,
+      "review_focus": [
+        "time complexity",
+        "space complexity",
+        "implementation traps"
+      ],
+      "prompt_template": "State the time and space complexity for your {pattern} approach to {title}, then name the implementation traps: off-by-one risks, state invariants, mutation hazards, duplicate handling, and language-specific pitfalls.",
+      "answer_guidance": "Self-grade by naming the dominant operation or state count, the data structure choice controlling the bound, and the invariant that prevents the most likely bug."
+    }
+  ]
+}
