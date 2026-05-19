@@ -37,6 +37,7 @@ class LocalASGITestClient:
         return asyncio.run(self._request(method, url, **kwargs))
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        # ASGITransport exercises routes only; FastAPI lifespan coverage lives in test_health.py.
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=True)
         async with httpx.AsyncClient(
             transport=transport,
