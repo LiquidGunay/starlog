@@ -146,6 +146,20 @@ quote_words() {
   printf '\n'
 }
 
+remote_shell_quote() {
+  local value="$1"
+  value="${value//\'/\'\\\'\'}"
+  printf "'%s'" "$value"
+}
+
+run_as_shell_command() {
+  local shell_script="$1"
+  printf 'run-as '
+  remote_shell_quote "$APP_PACKAGE"
+  printf ' sh -c '
+  remote_shell_quote "$shell_script"
+}
+
 adb_cmd() {
   if [[ "$DRY_RUN" == "1" ]]; then
     if [[ -n "$ADB_SERIAL" ]]; then
@@ -418,17 +432,15 @@ write_mobile_auth_config() {
   redacted_json="${redacted_json}}"
 
   log "Writing mobile test auth config via run-as: $redacted_json"
+  local remote_command
+  remote_command="$(run_as_shell_command "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json")"
   if [[ "$DRY_RUN" == "1" ]]; then
-    if [[ -n "$ADB_SERIAL" ]]; then
-      quote_words "$ADB" -s "$ADB_SERIAL" shell run-as "$APP_PACKAGE" sh -c "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json"
-    else
-      quote_words "$ADB" shell run-as "$APP_PACKAGE" sh -c "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json"
-    fi
+    adb_cmd_with_stdin shell "$remote_command"
     return
   fi
 
   write_mobile_auth_config_json \
-    | adb_cmd_with_stdin shell run-as "$APP_PACKAGE" sh -c "mkdir -p files && rm -f files/starlog-test-auth-ack.json && cat > files/starlog-test-auth-config.json" \
+    | adb_cmd_with_stdin shell "$remote_command" \
     >/dev/null
 }
 
