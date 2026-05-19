@@ -386,6 +386,90 @@ try {
     assert.equal(findByTestId(tree, "metadata-panel-tool_result_topic_unlock").length, 1);
     assert.equal(findByTestId(tree, "metadata-panel-interrupt_question_request").length, 1);
   }
+
+  {
+    resetHooks();
+    const activeLive = interrupt({
+      id: "active-live-panel",
+      tool_name: "choose_morning_focus",
+      title: "Choose morning focus",
+      fields: [],
+      recommended_defaults: {},
+    });
+    const staleMessageInterrupt = interrupt({
+      id: "interrupt_question_request",
+      thread_id: "primary",
+      run_id: "run-learning",
+      tool_name: "create_study_question_request",
+      title: "Stale request title",
+      renderer_key: "interview.question_request",
+      renderer_version: 1,
+      placement: "sidecar",
+      display_mode: "sidecar",
+      structured_content: {
+        topic_title: "Stale topic title",
+        question_type: "application",
+      },
+      fields: [],
+      recommended_defaults: {},
+    });
+    const liveQueued = {
+      ...staleMessageInterrupt,
+      title: "Live question request",
+      tool_name: "interview.question_request",
+      fields: [
+        {
+          id: "question_type",
+          kind: "select",
+          label: "Question type",
+          required: true,
+          value: "recall",
+          options: [{ label: "Recall", value: "recall" }],
+        },
+      ],
+      recommended_defaults: { question_type: "recall" },
+    } as AssistantInterrupt;
+    const message: AssistantThreadMessage = {
+      id: "msg_live_overlay",
+      thread_id: "primary",
+      run_id: "run-learning",
+      role: "assistant",
+      status: "requires_action",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        {
+          type: "interrupt_request",
+          id: "part_question_request",
+          interrupt: staleMessageInterrupt,
+        },
+      ],
+    };
+    const liveInterrupts = [activeLive, liveQueued];
+    const interrupts: AssistantInterrupt[] = mobileDynamicPanelInterruptsFromStarlogMessage(message, { liveInterrupts });
+    const renderCalls: Array<{ id: string; title: string }> = [];
+    const tree = renderWithHooks(() =>
+      MobileDynamicPanelHost({
+        interrupts,
+        panelStates: mobileDynamicPanelStates(liveInterrupts, {}),
+        palette,
+        renderPanel: (panel: AssistantInterrupt) => {
+          renderCalls.push({ id: panel.id, title: panel.title });
+          return createElement("RenderedPanel", {
+            testID: `metadata-panel-${panel.id}`,
+            children: panel.title,
+          });
+        },
+      }),
+    );
+
+    assert.equal(interrupts[0], liveQueued);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-queued").length, 1);
+    assert.equal(findByTestId(tree, "metadata-panel-interrupt_question_request").length, 0);
+    assert.deepEqual(renderCalls, []);
+    assert.match(textContent(tree), /Question request is waiting behind the active decision\./);
+  }
 } finally {
   Module._load = originalLoad;
 }

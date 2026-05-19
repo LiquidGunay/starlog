@@ -79,6 +79,7 @@ export type MobileAssistantUiThreadMessage = {
     custom: {
       starlogMessageId: string;
       starlogThreadId: string;
+      starlogRunId?: string | null;
       starlogStatus: AssistantThreadMessage["status"];
       transcriptKind: "text" | "rich_fallback";
       richPartCount: number;
@@ -274,6 +275,22 @@ function displayModeForDynamicPlacement(placement: AssistantDynamicUiPlacement |
   return "inline";
 }
 
+function nativeDynamicPanelRendererKey(part: MobileAssistantUiRichPart): string | null {
+  const descriptor = part.metadata?.custom.starlog_dynamic_ui;
+  const rendererKey = descriptor?.resolved_renderer_key || descriptor?.requested_renderer_key || descriptor?.renderer_key || null;
+  if (
+    part.diagnostic ||
+    part.fallback ||
+    !descriptor ||
+    descriptor.fallback ||
+    !rendererKey ||
+    !MOBILE_NATIVE_DYNAMIC_PANEL_RENDERERS.has(rendererKey)
+  ) {
+    return null;
+  }
+  return rendererKey;
+}
+
 function titleForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): string {
   if (rendererKey === "interview.topic_unlock") {
     return firstRecordString(content, "topic_title", "title") || "Topic unlocked";
@@ -403,19 +420,16 @@ function primaryLabelForAssistantUiPanel(rendererKey: string): string {
   return "Acknowledge";
 }
 
-export function mobileDynamicPanelInterruptsFromAssistantUiMessage(message: MobileAssistantUiThreadMessage): AssistantInterrupt[] {
+export function mobileDynamicPanelInterruptsFromAssistantUiMessage(
+  message: MobileAssistantUiThreadMessage,
+  options: { liveInterrupts?: AssistantInterrupt[] } = {},
+): AssistantInterrupt[] {
+  const liveInterruptById = new Map((options.liveInterrupts || []).map((interrupt) => [interrupt.id, interrupt]));
   return message.metadata.custom.richParts
     .map((part, index): AssistantInterrupt | null => {
       const descriptor = part.metadata?.custom.starlog_dynamic_ui;
-      const rendererKey = descriptor?.resolved_renderer_key || descriptor?.requested_renderer_key || descriptor?.renderer_key || null;
-      if (
-        part.diagnostic ||
-        part.fallback ||
-        !descriptor ||
-        descriptor.fallback ||
-        !rendererKey ||
-        !MOBILE_NATIVE_DYNAMIC_PANEL_RENDERERS.has(rendererKey)
-      ) {
+      const rendererKey = nativeDynamicPanelRendererKey(part);
+      if (!descriptor || !rendererKey) {
         return null;
       }
 
@@ -423,11 +437,16 @@ export function mobileDynamicPanelInterruptsFromAssistantUiMessage(message: Mobi
       const uiMeta = descriptor.ui_meta || {};
       const status = statusForAssistantUiPanel(message, descriptor);
       const { fields, recommendedDefaults } = fieldsForAssistantUiPanel(rendererKey, structuredContent);
+      const runId = message.metadata.custom.starlogRunId;
+      const interruptId = descriptor.id || `${message.id}:${part.id || index}:dynamic-panel`;
+      const liveInterrupt = liveInterruptById.get(interruptId);
+      if (liveInterrupt) {
+        return liveInterrupt;
+      }
 
-      return {
-        id: descriptor.id || `${message.id}:${part.id || index}:dynamic-panel`,
+      const interrupt = {
+        id: interruptId,
         thread_id: message.metadata.custom.starlogThreadId,
-        run_id: message.metadata.custom.starlogMessageId,
         tool_call_id: descriptor.tool_call_id,
         status,
         interrupt_type: fields.length > 0 ? "choice" : "confirm",
@@ -451,14 +470,25 @@ export function mobileDynamicPanelInterruptsFromAssistantUiMessage(message: Mobi
         structured_content: structuredContent,
         ui_meta: uiMeta,
         created_at: message.createdAt.toISOString(),
-      };
+        ...(runId ? { run_id: runId } : {}),
+      } as Omit<AssistantInterrupt, "run_id"> & Partial<Pick<AssistantInterrupt, "run_id">>;
+      return interrupt as AssistantInterrupt;
     })
     .filter((interrupt): interrupt is AssistantInterrupt => Boolean(interrupt));
 }
 
-export function mobileDynamicPanelInterruptsFromStarlogMessage(message: AssistantThreadMessage): AssistantInterrupt[] {
+export function mobileDynamicPanelInterruptsFromStarlogMessage(
+  message: AssistantThreadMessage,
+  options: { liveInterrupts?: AssistantInterrupt[] } = {},
+): AssistantInterrupt[] {
   const assistantUiMessage = starlogMessageToAssistantUiMessage(message);
-  return assistantUiMessage ? mobileDynamicPanelInterruptsFromAssistantUiMessage(assistantUiMessage) : [];
+  return assistantUiMessage ? mobileDynamicPanelInterruptsFromAssistantUiMessage(assistantUiMessage, options) : [];
+}
+
+export function mobileNativeDynamicPanelPartIdsFromStarlogMessage(message: AssistantThreadMessage): string[] {
+  return starlogRichPartsForMessage(message)
+    .filter((part) => Boolean(nativeDynamicPanelRendererKey(part)))
+    .map((part) => part.id);
 }
 
 function dynamicPartMetadataFromAssistantUiDescriptor(options: {
@@ -698,6 +728,7 @@ export function starlogMessageToAssistantUiMessage(message: AssistantThreadMessa
       custom: {
         starlogMessageId: message.id,
         starlogThreadId: message.thread_id,
+        starlogRunId: message.run_id ?? null,
         starlogStatus: message.status,
         transcriptKind: transcriptText ? "text" : "rich_fallback",
         richPartCount: richParts.length,

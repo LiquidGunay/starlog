@@ -72,11 +72,12 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
     <View style={{ gap: 10, paddingLeft: 10 }} testID="mobile-dynamic-panel-host">
       {interrupts.map((interrupt) => {
         const panelState = panelStateById.get(interrupt.id);
-        const values = panelState?.values || defaultPanelValues(interrupt);
+        const effectiveInterrupt = panelState?.interrupt || interrupt;
+        const values = panelState?.values || defaultPanelValues(effectiveInterrupt);
         if (panelState?.renderState === "queued") {
           return (
             <View
-              key={interrupt.id}
+              key={effectiveInterrupt.id}
               testID="mobile-dynamic-panel-queued"
               style={{
                 borderRadius: 14,
@@ -92,7 +93,7 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
             >
               <MaterialCommunityIcons name={"clock-outline" as never} size={14} color={palette.muted} />
               <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                {panelKicker(interrupt)} is waiting behind the active decision.
+                {panelKicker(effectiveInterrupt)} is waiting behind the active decision.
               </Text>
             </View>
           );
@@ -100,7 +101,7 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
         if (panelState && shouldHostPanelInNativeSheet(panelState)) {
           return (
             <TouchableOpacity
-              key={interrupt.id}
+              key={effectiveInterrupt.id}
               testID="mobile-dynamic-panel-sheet-row"
               style={{
                 borderRadius: 14,
@@ -113,19 +114,23 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
                 alignItems: "center",
                 gap: 8,
               }}
-              onPress={() => reopenSheetForInterrupt(interrupt.id)}
+              onPress={() => reopenSheetForInterrupt(effectiveInterrupt.id)}
               accessibilityRole="button"
-              accessibilityLabel={`Open ${panelKicker(interrupt)} sheet`}
+              accessibilityLabel={`Open ${panelKicker(effectiveInterrupt)} sheet`}
             >
               <MaterialCommunityIcons name={"dock-bottom" as never} size={15} color={palette.accent} />
               <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
-                {panelKicker(interrupt)} is open in a sheet.
+                {panelKicker(effectiveInterrupt)} is open in a sheet.
               </Text>
               <MaterialCommunityIcons name={"chevron-up" as never} size={17} color={palette.muted} />
             </TouchableOpacity>
           );
         }
-        return <View key={interrupt.id}>{renderPanel(interrupt, values, () => closeSheetForInterrupt(interrupt.id))}</View>;
+        return (
+          <View key={effectiveInterrupt.id}>
+            {renderPanel(effectiveInterrupt, values, () => closeSheetForInterrupt(effectiveInterrupt.id))}
+          </View>
+        );
       })}
 
       <Modal visible={Boolean(visibleSheetPanelState)} transparent animationType="slide" onRequestClose={closeSheetForActiveInterrupt}>

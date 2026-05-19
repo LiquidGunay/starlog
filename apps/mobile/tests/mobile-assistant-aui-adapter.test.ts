@@ -13,6 +13,7 @@ import {
   mobileDynamicPanelInterruptsFromAssistantUiMessage,
   mobileDynamicPanelInterruptsFromStarlogMessage,
   mobileDynamicUiBadge,
+  mobileNativeDynamicPanelPartIdsFromStarlogMessage,
   starlogMessagesToAssistantUiMessages,
   starlogRichPartsForMessage,
   starlogSnapshotToAssistantUiThread,
@@ -364,6 +365,7 @@ function runTests() {
     const [panelInterrupt] = mobileDynamicPanelInterruptsFromAssistantUiMessage(converted);
     assert.ok(panelInterrupt);
     assert.equal(panelInterrupt.id, "interrupt_review_grade_1");
+    assert.equal(panelInterrupt.run_id, "run_review");
     assert.equal(panelInterrupt.status, "pending");
     assert.equal(panelInterrupt.tool_name, "grade_review_recall");
     assert.equal(panelInterrupt.renderer_key, "interview.review_grade");
@@ -372,6 +374,37 @@ function runTests() {
     assert.equal(panelInterrupt.fields[0]?.id, "rating");
     assert.equal(panelInterrupt.fields[0]?.value, "good");
     assert.deepEqual(panelInterrupt.recommended_defaults, { rating: "good" });
+  }
+
+  {
+    const message = reviewGradeMessage();
+    message.run_id = null;
+    const [panelInterrupt] = mobileDynamicPanelInterruptsFromStarlogMessage(message);
+    assert.ok(panelInterrupt);
+    assert.equal(Object.prototype.hasOwnProperty.call(panelInterrupt, "run_id"), false);
+  }
+
+  {
+    const message = reviewGradeMessage();
+    const liveInterrupt = {
+      ...(message.parts[1] as Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_request" }>).interrupt,
+      status: "submitted" as const,
+      title: "Live Grade Recall",
+      resolved_at: "2026-05-16T12:03:00.000Z",
+      resolution: {
+        id: "resolution_review_grade_1",
+        interrupt_id: "interrupt_review_grade_1",
+        action: "submit" as const,
+        values: { rating: "easy" },
+        metadata: {},
+        created_at: "2026-05-16T12:03:00.000Z",
+      },
+    };
+    const [panelInterrupt] = mobileDynamicPanelInterruptsFromStarlogMessage(message, { liveInterrupts: [liveInterrupt] });
+    assert.equal(panelInterrupt, liveInterrupt);
+    assert.equal(panelInterrupt?.status, "submitted");
+    assert.equal(panelInterrupt?.title, "Live Grade Recall");
+    assert.deepEqual(panelInterrupt?.resolution, liveInterrupt.resolution);
   }
 
   {
@@ -639,6 +672,8 @@ function runTests() {
       "You just unlocked this topic and one application card is due. Practice now while the source is fresh.",
     );
     assert.equal(panelInterrupts[1].metadata.ui_meta && (panelInterrupts[1].metadata.ui_meta as Record<string, unknown>).urgency, "medium");
+
+    assert.deepEqual(mobileNativeDynamicPanelPartIdsFromStarlogMessage(message), ["part_topic_read", "part_why_now"]);
   }
 
   {

@@ -24,6 +24,7 @@ import {
 
 type MobileAssistantUiThreadProps = {
   messages: AssistantThreadMessage[];
+  liveInterrupts?: AssistantInterrupt[];
   palette: Record<string, string>;
 };
 
@@ -88,11 +89,13 @@ function AssistantUiMessage({
   sourceMessagesById,
   renderCompatibilityForMessage,
   renderDynamicPanelHostForMessage,
+  liveInterrupts,
 }: {
   palette: Record<string, string>;
   sourceMessagesById: Map<string, AssistantThreadMessage>;
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
   renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
+  liveInterrupts?: AssistantInterrupt[];
 }) {
   const message = useAuiState((state) => state.message) as unknown as MobileAssistantUiThreadMessage;
   const role = message.role;
@@ -105,7 +108,9 @@ function AssistantUiMessage({
     .filter((label): label is string => Boolean(label));
   const sourceMessage = sourceMessagesById.get(message.metadata.custom.starlogMessageId);
   const compatibilityContent = sourceMessage && renderCompatibilityForMessage ? renderCompatibilityForMessage(sourceMessage) : null;
-  const dynamicPanelInterrupts = renderDynamicPanelHostForMessage ? mobileDynamicPanelInterruptsFromAssistantUiMessage(message) : [];
+  const dynamicPanelInterrupts = renderDynamicPanelHostForMessage
+    ? mobileDynamicPanelInterruptsFromAssistantUiMessage(message, { liveInterrupts })
+    : [];
   const dynamicPanelContent =
     dynamicPanelInterrupts.length > 0 && renderDynamicPanelHostForMessage
       ? renderDynamicPanelHostForMessage(dynamicPanelInterrupts, message)
@@ -248,12 +253,14 @@ function AssistantUiRuntimeShell({
   palette,
   renderCompatibilityForMessage,
   renderDynamicPanelHostForMessage,
+  liveInterrupts,
 }: {
   initialMessages: ThreadMessageLike[];
   sourceMessagesById: Map<string, AssistantThreadMessage>;
   palette: Record<string, string>;
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
   renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
+  liveInterrupts?: AssistantInterrupt[];
 }) {
   const runtime = useLocalRuntime(readOnlyAdapter, { initialMessages });
   const components = useMemo(
@@ -264,10 +271,11 @@ function AssistantUiRuntimeShell({
           sourceMessagesById={sourceMessagesById}
           renderCompatibilityForMessage={renderCompatibilityForMessage}
           renderDynamicPanelHostForMessage={renderDynamicPanelHostForMessage}
+          liveInterrupts={liveInterrupts}
         />
       ),
     }),
-    [palette, renderCompatibilityForMessage, renderDynamicPanelHostForMessage, sourceMessagesById],
+    [liveInterrupts, palette, renderCompatibilityForMessage, renderDynamicPanelHostForMessage, sourceMessagesById],
   );
 
   return (
@@ -373,6 +381,7 @@ export function MobileAssistantUiComposerBridge(props: MobileAssistantUiComposer
 
 export function MobileAssistantUiShell({
   messages,
+  liveInterrupts,
   palette,
   renderCompatibilityForMessage,
   renderDynamicPanelHostForMessage,
@@ -393,10 +402,11 @@ export function MobileAssistantUiShell({
       palette={palette}
       renderCompatibilityForMessage={renderCompatibilityForMessage}
       renderDynamicPanelHostForMessage={renderDynamicPanelHostForMessage}
+      liveInterrupts={liveInterrupts}
     />
   );
 }
 
-export function MobileAssistantUiThread({ messages, palette }: MobileAssistantUiThreadProps) {
-  return <MobileAssistantUiShell messages={messages} palette={palette} />;
+export function MobileAssistantUiThread({ messages, liveInterrupts, palette }: MobileAssistantUiThreadProps) {
+  return <MobileAssistantUiShell messages={messages} liveInterrupts={liveInterrupts} palette={palette} />;
 }
