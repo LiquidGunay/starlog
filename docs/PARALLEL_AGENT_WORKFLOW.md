@@ -21,24 +21,26 @@ same source of truth.
 - Lock protocol:
   - claim lock before implementation starts
   - every lock record must include owner identity through a stable, human-readable `agent_id`
-  - heartbeat every 2 minutes while actively working
-  - stale lock timeout is 10 minutes
-  - release lock on completion or handoff
-  - forced lock steal requires an explicit reason and must be appended to `audit.jsonl`
+  - heartbeat every 2 minutes while actively working; heartbeats are progress evidence, not a lease expiry
+  - locks do not expire or become stealable because time elapsed
+  - release lock manually on completion or handoff
+  - supervisor overrides require an explicit force flag, a human-readable reason, and a clear event in `audit.jsonl`
 - Preferred command helper:
   - Initialize registry: `python3 scripts/workitem_lock.py init`
-  - Claim: `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --title "<short title>" --force-steal --reason "<reason>"` (omit `--force-steal` for normal claim; `--title` is optional but preferred when claiming a new item)
+  - Claim: `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --title "<short title>"` (`--title` is optional but preferred when claiming a new item)
+  - Supervisor force-claim: `python3 scripts/workitem_lock.py claim --workitem-id <id> --agent-id <agent> --force-steal --reason "<supervisor reason>"`
   - Heartbeat: `python3 scripts/workitem_lock.py heartbeat --workitem-id <id> --agent-id <agent>`
   - Release: `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <agent> --status completed`
+  - Supervisor force-release: `python3 scripts/workitem_lock.py release --workitem-id <id> --agent-id <supervisor> --force --reason "<supervisor reason>"`
   - Inspect status: `python3 scripts/workitem_lock.py status [--workitem-id <id>]`
   - Inspect objective evidence: `python3 scripts/agent_objective_evidence.py --repo-root /home/ubuntu/starlog`
 - Required usage flow:
   1. Identify the `workitem_id` in `workitems.json`, then acquire `.registry.lock` before reading/updating lock state.
-  2. On claim, verify `locks/<workitem_id>.lock` is absent or stale (`last_heartbeat_at` older than 10 minutes). If active and not stale, do not proceed.
+  2. On claim, verify `locks/<workitem_id>.lock` is absent. If a lock file exists, do not proceed unless performing an explicit supervisor force-claim with `--force-steal --reason`.
   3. Write/update `locks/<workitem_id>.lock` with owner metadata (`agent_id`, `worktree`, `branch`, `claimed_at`, `last_heartbeat_at`), keep the workitem `title` current when known, set workitem status/owner in `workitems.json`, and append a `claim` event to `audit.jsonl`.
   4. While working, refresh `last_heartbeat_at` at least every 2 minutes under `.registry.lock`, and keep `workitems.json` ownership/status aligned.
   5. On completion or handoff, remove the lock file, update `workitems.json` status/owner/handoff fields, append a `release` event to `audit.jsonl`, then drop `.registry.lock`.
-  6. Forced steal is allowed only for stale locks; append a `force_steal` event with explicit reason and prior owner context in `audit.jsonl`.
+  6. Forced supervisor takeovers are not automatic stale-timeout behavior. Use them only after external supervision confirms the original worker should be replaced or closed; append a `force_steal` or `force_release` event with explicit reason and prior owner context in `audit.jsonl`.
 
 ## Reusable worker lanes
 
@@ -69,8 +71,10 @@ entries. Treat these flags as supervisor action triggers:
 - `foreign_git_common_dir`: verify whether the worker accidentally created a standalone clone/copy
   instead of a shared worktree before accepting validation or pushing.
 - `dirty_worktree` or `ahead_of_upstream`: there is objective work to inspect, test, or turn into a PR.
-- `stale_lock`: use `wait_agent` first; if no completion arrives, send one concrete status nudge,
-  then close or replace only after another evidence poll shows no useful agent response or repo progress.
+- `stale_lock`: this is a progress-investigation signal only, not permission to steal a lock
+  automatically. Use `wait_agent` first; if no completion arrives, send one concrete status nudge,
+  then close or replace only with an explicit supervisor force-release or force-claim reason after
+  another evidence poll shows no useful agent response or repo progress.
 
 ## Branch and worktree hygiene
 

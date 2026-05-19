@@ -14,7 +14,7 @@ import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import fcntl
@@ -26,13 +26,6 @@ def now_utc() -> datetime:
 
 def iso_utc(value: datetime) -> str:
     return value.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    normalized = value.replace("Z", "+00:00")
-    return datetime.fromisoformat(normalized)
 
 
 def git_common_dir(cwd: Path) -> Path:
@@ -159,15 +152,6 @@ def find_or_create_workitem(workitems: dict, workitem_id: str, title: str | None
     return item
 
 
-def is_stale(lock_payload: dict | None, ttl_minutes: int) -> bool:
-    if lock_payload is None:
-        return False
-    heartbeat = parse_iso(str(lock_payload.get("last_heartbeat_at") or lock_payload.get("claimed_at") or ""))
-    if heartbeat is None:
-        return True
-    return (now_utc() - heartbeat) > timedelta(minutes=ttl_minutes)
-
-
 def cmd_init(registry: Registry, _args: argparse.Namespace) -> int:
     with registry.locked():
         registry.ensure()
@@ -198,23 +182,16 @@ def cmd_status(registry: Registry, args: argparse.Namespace) -> int:
 
 def cmd_claim(registry: Registry, args: argparse.Namespace) -> int:
     now = iso_utc(now_utc())
-    ttl = max(1, int(args.stale_ttl_minutes))
     with registry.locked():
         workitems = registry.load_workitems()
         current_lock = registry.read_lock(args.workitem_id)
 
-        if current_lock is not None and not is_stale(current_lock, ttl):
+        if current_lock is not None and not args.force_steal:
             owner = current_lock.get("agent_id") or "unknown"
             print(f"lock is currently held by '{owner}'", file=sys.stderr)
             return 1
 
-        if current_lock is not None and is_stale(current_lock, ttl):
-            if not args.force_steal:
-                print(
-                    "stale lock exists; re-run claim with --force-steal and --reason",
-                    file=sys.stderr,
-                )
-                return 1
+        if current_lock is not None and args.force_steal:
             if not args.reason:
                 print("--reason is required when using --force-steal", file=sys.stderr)
                 return 1
@@ -306,6 +283,20 @@ def cmd_release(registry: Registry, args: argparse.Namespace) -> int:
         if lock_owner != args.agent_id and not args.force:
             print("lock owner mismatch; use --force to override", file=sys.stderr)
             return 1
+        if lock_owner != args.agent_id and args.force and not args.reason:
+            print("--reason is required when using --force", file=sys.stderr)
+            return 1
+
+        if lock_owner != args.agent_id and args.force:
+            registry.append_audit(
+                "force_release",
+                {
+                    "workitem_id": args.workitem_id,
+                    "agent_id": args.agent_id,
+                    "previous_lock": lock_payload,
+                    "reason": args.reason,
+                },
+            )
 
         registry.remove_lock(args.workitem_id)
 
@@ -328,6 +319,7 @@ def cmd_release(registry: Registry, args: argparse.Namespace) -> int:
                 "status": args.status,
                 "handoff_to": args.handoff_to,
                 "note": args.note,
+                "reason": args.reason,
                 "forced": bool(args.force and lock_owner != args.agent_id),
                 "previous_owner": lock_owner,
             },
@@ -366,7 +358,12 @@ def build_parser() -> argparse.ArgumentParser:
     claim_parser.add_argument("--branch", required=False)
     claim_parser.add_argument("--title")
     claim_parser.add_argument("--reason")
-    claim_parser.add_argument("--stale-ttl-minutes", type=int, default=10)
+    claim_parser.add_argument(
+        "--stale-ttl-minutes",
+        type=int,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
     claim_parser.add_argument("--force-steal", action="store_true")
 
     heartbeat_parser = subparsers.add_parser("heartbeat", help="Refresh a lock heartbeat.")
@@ -379,6 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     release_parser.add_argument("--status", choices=["completed", "handoff", "open"], default="completed")
     release_parser.add_argument("--handoff-to")
     release_parser.add_argument("--note")
+    release_parser.add_argument("--reason")
     release_parser.add_argument("--force", action="store_true")
 
     return parser

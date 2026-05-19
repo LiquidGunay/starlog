@@ -148,5 +148,6 @@ This section is the repo-local purpose map for markdown files so agents know whi
   `{workitem_id, worktree, branch}` lane until handoff; include role/lane intent in the workitem title and
   lock metadata because `agent_objective_evidence.py` reports branch/worktree context, not explicit lane/PR target
   fields. Supervisors should use `wait_agent`, then objective evidence (`python3 scripts/agent_objective_evidence.py`)
-  before nudging. Close/restart only on explicit completion or evidence-based staleness (and preferably after one
-  status nudge plus an additional objective evidence poll showing no useful progress).
+  before nudging. A stale heartbeat is progress evidence, not an automatic lease expiry. Close/restart only on
+  explicit completion or an explicit supervisor force-release/force-claim with a human-readable reason (preferably
+  after one status nudge plus an additional objective evidence poll showing no useful progress).
