@@ -37,13 +37,16 @@ STARLOG_INTERVIEW_SEED="${STARLOG_INTERVIEW_SEED:-auto}"
 STARLOG_INTERVIEW_SEED_ID="${STARLOG_INTERVIEW_SEED_ID:-android-interview-functional-v1}"
 STARLOG_INTERVIEW_SEED_TOPIC_TITLE="${STARLOG_INTERVIEW_SEED_TOPIC_TITLE:-Android Functional Interview Seed}"
 STARLOG_INTERVIEW_SEED_MARK_READ="${STARLOG_INTERVIEW_SEED_MARK_READ:-1}"
+AUTO_REVIEW_GRADE="${AUTO_REVIEW_GRADE:-0}"
+AUTO_REVIEW_UI_XML="${AUTO_REVIEW_UI_XML:-}"
+AUTO_REVIEW_DRY_RUN_UI_STAGE="${AUTO_REVIEW_DRY_RUN_UI_STAGE:-0}"
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
 DRY_RUN=0
 NO_DEVICE=0
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--dry-run] [--no-device] [--help]
+Usage: $(basename "$0") [--dry-run] [--no-device] [--auto-review-grade] [--help]
 
 Captures a repeatable native Android evidence bundle for the interview-prep loop.
 The harness launches Starlog Assistant/Review/Planner surfaces, keeps the phone
@@ -85,11 +88,16 @@ Environment overrides:
                          Seeded interview-prep topic title.
   STARLOG_INTERVIEW_SEED_MARK_READ
                          Set to 0 to leave the seeded topic unread.
+  AUTO_REVIEW_GRADE      Set to 1 to attempt Review reveal + Good automation (default: 0).
+  AUTO_REVIEW_UI_XML     Optional local uiautomator XML used by dry-run automation.
+  AUTO_REVIEW_DRY_RUN_UI_STAGE
+                        Internal dry-run reveal/grade progression stage (default: 0).
   NONINTERACTIVE         Set to 1 to skip pause prompts after printing checkpoints.
 
 Options:
   --dry-run              Print adb/curl commands without requiring a device.
   --no-device            Write the checklist and metadata only, then exit 0.
+  --auto-review-grade    Attempt Review reveal + Good grade automation before manual checkpoint.
   --help                 Show this help.
 EOF
 }
@@ -232,6 +240,7 @@ write_run_metadata() {
     printf 'starlog_interview_seed_id=%s\n' "$STARLOG_INTERVIEW_SEED_ID"
     printf 'starlog_interview_seed_topic_title=%s\n' "$STARLOG_INTERVIEW_SEED_TOPIC_TITLE"
     printf 'starlog_interview_seed_mark_read=%s\n' "$STARLOG_INTERVIEW_SEED_MARK_READ"
+    printf 'auto_review_grade=%s\n' "$AUTO_REVIEW_GRADE"
     if [[ -n "$STARLOG_ACCESS_TOKEN" ]]; then
       printf 'starlog_access_token=provided-redacted\n'
     else
@@ -264,6 +273,7 @@ Expected evidence:
 - Reveal the answer for the interview-prep card.
 - Submit a grade, preferably \`Good\` for the happy path.
 - Confirm the answer and grade controls are user-facing labels, not renderer/tool keys.
+- If \`AUTO_REVIEW_GRADE=1\` is set, the script attempts the reveal + \`Good\` automation first, then falls back to manual.
 - Press Enter in the terminal to capture \`review-after-grade\`.
 
 Expected evidence:
@@ -338,6 +348,357 @@ keep_awake() {
   fi
   adb_cmd shell input keyevent KEYCODE_WAKEUP >/dev/null || true
   adb_cmd shell svc power stayon true >/dev/null 2>&1 || adb_cmd shell svc power stayon usb >/dev/null 2>&1 || true
+}
+
+refresh_review_ui() {
+  local local_xml
+  local_xml="${RUN_DIR}/review-ui.xml"
+  mkdir -p "$RUN_DIR"
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    if [[ -n "$AUTO_REVIEW_UI_XML" ]]; then
+      if [[ -f "$AUTO_REVIEW_UI_XML" ]]; then
+        if [[ "$AUTO_REVIEW_DRY_RUN_UI_STAGE" == "0" || -z "$AUTO_REVIEW_DRY_RUN_UI_STAGE" ]]; then
+          cp "$AUTO_REVIEW_UI_XML" "$local_xml"
+        else
+          dry_run_reveal_grade_xml "$AUTO_REVIEW_UI_XML" "$local_xml" "$AUTO_REVIEW_DRY_RUN_UI_STAGE" || return 1
+        fi
+        return 0
+      fi
+      log "AUTO_REVIEW_UI_XML set but not found: $AUTO_REVIEW_UI_XML"
+      return 1
+    fi
+    return 1
+  fi
+
+  adb_cmd shell uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1 || return 1
+  adb_cmd exec-out cat /sdcard/window_dump.xml >"$local_xml" 2>/dev/null || return 1
+  return 0
+}
+
+dry_run_reveal_grade_xml() {
+  local source_xml="$1"
+  local dest_xml="$2"
+  local stage="$3"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  python3 - "$source_xml" "$dest_xml" "$stage" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+
+source_xml, dest_xml = sys.argv[1], sys.argv[2]
+try:
+  stage = int(sys.argv[3])
+except (TypeError, ValueError):
+  stage = 0
+
+
+def normalize(value: str) -> str:
+  return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def find_parent(root, target):
+  for parent in root.iter():
+    for node in list(parent):
+      if node is target:
+        return parent
+  return None
+
+
+def remove_node_if_present(root, should_remove):
+  removed = []
+  for node in list(root.iter("node")):
+    if should_remove(node):
+      removed.append(node)
+  for node in removed:
+    parent = find_parent(root, node)
+    if parent is not None:
+      parent.remove(node)
+
+
+root = ET.parse(source_xml).getroot()
+has_load_control = any(
+  "load_due_cards_button" in normalize(node.attrib.get("resource-id", "")) for node in root.iter("node")
+)
+
+if stage >= 1:
+  if has_load_control:
+    remove_node_if_present(root, lambda node: "load_due_cards_button" in normalize(node.attrib.get("resource-id", "")))
+  elif stage == 1:
+    for node in root.iter("node"):
+      if normalize(node.attrib.get("text", "")) == "reveal answer":
+        node.attrib["text"] = "Hide answer"
+
+if stage >= 2:
+  remove_node_if_present(root, lambda node: "load_due_cards_button" in normalize(node.attrib.get("resource-id", "")))
+  for node in root.iter("node"):
+    if normalize(node.attrib.get("text", "")) == "reveal answer":
+      node.attrib["text"] = "Hide answer"
+
+if stage >= 3:
+  for node in root.iter("node"):
+    if normalize(node.attrib.get("text", "")) == "good":
+      if "checked" in node.attrib:
+        node.attrib["checked"] = "true"
+      if "clickable" in node.attrib:
+        node.attrib["clickable"] = "false"
+
+ET.ElementTree(root).write(dest_xml, encoding="UTF-8", xml_declaration=True)
+PY
+}
+
+ui_parse_center() {
+  local xml_file="$1"
+  local pattern="$2"
+  local mode="$3"
+  local require_interactable="${4:-1}"
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+  python3 - "$xml_file" "$pattern" "$mode" "$require_interactable" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+xml_file, pattern = sys.argv[1], (sys.argv[2] or "").strip().lower()
+mode = "exact"
+if len(sys.argv) > 3:
+  mode = (sys.argv[3] or "exact").strip().lower()
+require_interactable = len(sys.argv) <= 4 or str(sys.argv[4]).strip().lower() not in {"", "0", "false", "False", "FALSE", "no", "off"}
+
+
+def normalize(value: str) -> str:
+  return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def bounds_of(node):
+  numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+  if len(numbers) != 4:
+    return None
+  return tuple(numbers)
+
+
+def center(bounds):
+  left, top, right, bottom = bounds
+  return f"{(left + right) // 2} {(top + bottom) // 2}"
+
+
+def node_matches(node):
+  if mode == "resource":
+    resource_id = (node.attrib.get("resource-id") or "").lower()
+    if any(pattern in resource_id for pattern in [p.strip() for p in pattern.split(",") if p.strip()]):
+      return True
+    return False
+  if mode == "contains":
+    text = normalize(node.attrib.get("text") or "")
+    desc = normalize(node.attrib.get("content-desc") or "")
+    return bool(pattern and (pattern in text or pattern in desc))
+  text = normalize(node.attrib.get("text") or "")
+  desc = normalize(node.attrib.get("content-desc") or "")
+  return text == pattern or desc == pattern or desc == f"[{pattern}]"
+
+
+root = ET.parse(xml_file).getroot()
+for node in root.iter("node"):
+  if not node_matches(node):
+    continue
+  if require_interactable:
+    if (node.attrib.get("clickable") or "").lower() != "true":
+      continue
+    if (node.attrib.get("enabled") or "").lower() != "true":
+      continue
+  coords = bounds_of(node)
+  if coords is not None:
+    print(center(coords))
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+tap_review_ui_control() {
+  local label="$1"
+  local xml_file="$2"
+  local resource_hints_csv="$3"
+  local exact_label="$4"
+  local contains_label="$5"
+  local coords=""
+
+  if [[ -n "$resource_hints_csv" ]]; then
+    coords="$(ui_parse_center "$xml_file" "$resource_hints_csv" resource 2>/dev/null || true)"
+  fi
+  if [[ -z "$coords" ]] && [[ -n "$exact_label" ]]; then
+    coords="$(ui_parse_center "$xml_file" "$exact_label" exact 1 2>/dev/null || true)"
+  fi
+  if [[ -z "$coords" ]] && [[ -n "$contains_label" ]]; then
+    coords="$(ui_parse_center "$xml_file" "$contains_label" contains 1 2>/dev/null || true)"
+  fi
+  if [[ -z "$coords" ]]; then
+    return 1
+  fi
+
+  adb_cmd shell input tap $coords
+  log "Tapped $label at $coords"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    AUTO_REVIEW_DRY_RUN_UI_STAGE=$((AUTO_REVIEW_DRY_RUN_UI_STAGE + 1))
+  fi
+  return 0
+}
+
+ui_controls_revealed() {
+  local xml_file="$1"
+  local needle="$2"
+  local mode="${3:-exact}"
+  python3 - "$xml_file" "$needle" "$mode" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, needle, mode = sys.argv[1], (sys.argv[2] or "").strip().lower(), (sys.argv[3] or "exact").strip().lower()
+
+
+def node_matches(node):
+  if mode == "resource":
+    resource_id = normalize(node.attrib.get("resource-id") or "")
+    for candidate in [p.strip() for p in needle.split(",") if p.strip()]:
+      if candidate in resource_id:
+        return True
+    return False
+  if mode == "contains":
+    text = normalize(node.attrib.get("text") or "")
+    desc = normalize(node.attrib.get("content-desc") or "")
+    return bool(needle and (needle in text or needle in desc))
+
+
+def normalize(value: str) -> str:
+  return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+root = ET.parse(path).getroot()
+for node in root.iter("node"):
+  if node_matches(node):
+    raise SystemExit(0)
+  text = normalize(node.attrib.get("text") or "")
+  desc = normalize(node.attrib.get("content-desc") or "")
+  if text == needle or desc == needle or desc == f"[{needle}]":
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+ui_control_checked() {
+  local xml_file="$1"
+  local pattern="$2"
+  local mode="${3:-exact}"
+  python3 - "$xml_file" "$pattern" "$mode" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, pattern = sys.argv[1], (sys.argv[2] or "").strip().lower()
+mode = (sys.argv[3] or "exact").strip().lower()
+
+
+def normalize(value: str) -> str:
+  return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def node_matches(node):
+  if mode == "resource":
+    resource_id = normalize(node.attrib.get("resource-id") or "")
+    for candidate in [p.strip() for p in pattern.split(",") if p.strip()]:
+      if candidate in resource_id:
+        return True
+    return False
+  text = normalize(node.attrib.get("text") or "")
+  desc = normalize(node.attrib.get("content-desc") or "")
+  return text == pattern or desc == pattern or desc == f"[{pattern}]"
+
+
+def is_checked(node):
+  return (node.attrib.get("checked") or "").lower() == "true"
+
+
+root = ET.parse(path).getroot()
+for node in root.iter("node"):
+  if node_matches(node) and is_checked(node):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+attempt_review_action() {
+  local label="$1"
+  local xml_file="$2"
+  local resource_hints="$3"
+  local exact_label="$4"
+  local contains_label="$5"
+
+  local max_tries=3
+  local attempt=1
+  while (( attempt <= max_tries )); do
+    if tap_review_ui_control "$label" "$xml_file" "$resource_hints" "$exact_label" "$contains_label"; then
+      return 0
+    fi
+    (( attempt++ )) || true
+    if (( attempt <= max_tries )); then
+      sleep 1
+      refresh_review_ui >/dev/null 2>&1 || true
+      xml_file="$RUN_DIR/review-ui.xml"
+    fi
+  done
+  return 1
+}
+
+automate_review_reveal_and_grade() {
+  log "Attempting automated Review reveal + Good grade flow"
+  if ! refresh_review_ui; then
+    log "Automation skipped: could not capture Review UI XML."
+    return 1
+  fi
+
+  if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Load due cards"; then
+    if ! attempt_review_action "Load due cards" "$RUN_DIR/review-ui.xml" "load_due_cards" "Load due cards" "Load"; then
+      return 1
+    fi
+    sleep "$WAIT_SECONDS"
+    refresh_review_ui || return 1
+  fi
+
+  if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Reveal answer"; then
+    if ! attempt_review_action "Reveal answer" "$RUN_DIR/review-ui.xml" "reveal,answer_show,show_answer" "Reveal answer" "Reveal"; then
+      return 1
+    fi
+    sleep "$WAIT_SECONDS"
+    refresh_review_ui || return 1
+    if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Reveal answer"; then
+      log "Automated Reveal action did not change Review state."
+      return 1
+    fi
+  else
+    if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Hide answer"; then
+      log "Reveal already open; skipping Reveal action."
+    else
+      log "Automation skipped: could not find Reveal answer control."
+      return 1
+    fi
+  fi
+
+  if ! attempt_review_action "Good grade" "$RUN_DIR/review-ui.xml" "good,keep_in_review,grade_good" "Good" "good"; then
+    return 1
+  fi
+  sleep "$WAIT_SECONDS"
+  refresh_review_ui || return 1
+  if ui_controls_revealed "$RUN_DIR/review-ui.xml" "Good" exact; then
+    if ! ui_control_checked "$RUN_DIR/review-ui.xml" "Good" exact; then
+      log "Automated Good action did not change Review state."
+      return 1
+    fi
+  fi
+  return 0
 }
 
 maybe_reverse_ports() {
@@ -565,6 +926,9 @@ parse_args() {
         NO_DEVICE=1
         NONINTERACTIVE=1
         ;;
+      --auto-review-grade)
+        AUTO_REVIEW_GRADE=1
+        ;;
       --help|-h)
         usage
         exit 0
@@ -616,9 +980,21 @@ curl_api_snapshot "due-cards-after-topic" "/v1/cards/due?limit=20"
 
 launch_deeplink "Review" "$REVIEW_DEEPLINK"
 capture_state "review-entry"
-manual_checkpoint \
-  "Checkpoint 2: Review reveal/grade" \
-  "Load due cards if needed, reveal the interview card answer, submit a grade, and verify grade controls are readable."
+curl_api_snapshot "due-cards-before-grade" "/v1/cards/due?limit=20"
+if [[ "$AUTO_REVIEW_GRADE" == "1" ]]; then
+  if automate_review_reveal_and_grade; then
+    log "Automated Review reveal + Good flow completed"
+  else
+    log "Automated review flow failed; using operator-assisted checkpoint."
+    manual_checkpoint \
+      "Checkpoint 2: Review reveal/grade" \
+      "Load due cards if needed, reveal the interview card answer, submit a grade, and verify grade controls are readable."
+  fi
+else
+  manual_checkpoint \
+    "Checkpoint 2: Review reveal/grade" \
+    "Load due cards if needed, reveal the interview card answer, submit a grade, and verify grade controls are readable."
+fi
 capture_state "review-after-grade"
 curl_api_snapshot "due-cards-after-grade" "/v1/cards/due?limit=20"
 
