@@ -4,6 +4,7 @@ import type {
   AssistantToolCall,
   AssistantToolResult,
 } from "@starlog/contracts";
+import { FALLBACK_RENDERER_KEY, type DynamicUiAssistantUiDescriptor } from "../../../packages/dynamic-ui/src";
 import {
   assistantUiThreadFingerprint,
   isDiagnosticAssistantToolCall,
@@ -25,6 +26,14 @@ declare const require: (moduleName: string) => {
 const assert = require("node:assert/strict");
 
 const createdAt = "2026-05-16T12:00:00.000Z";
+
+function starlogDynamicUiDescriptor(part: ReturnType<typeof starlogRichPartsForMessage>[number]): DynamicUiAssistantUiDescriptor {
+  const descriptor = part.metadata?.custom.starlog_dynamic_ui;
+  if (!descriptor) {
+    throw new Error("Expected mobile rich part to include metadata.custom.starlog_dynamic_ui.");
+  }
+  return descriptor;
+}
 
 function reviewGradeMessage(): AssistantThreadMessage {
   return {
@@ -176,6 +185,18 @@ function runTests() {
     assert.equal(part.fallbackReason, "No registered mobile renderer; using generic card rendering.");
     assert.deepEqual(part.structuredContent, { mode: "legacy", reason: "compat" });
     assert.deepEqual(part.uiMeta, { source: "legacy" });
+    const descriptor = starlogDynamicUiDescriptor(part);
+    assert.equal(descriptor.source, "card");
+    assert.equal(descriptor.renderer_key, "legacy.review_grade");
+    assert.equal(descriptor.requested_renderer_key, "legacy.review_grade");
+    assert.equal(descriptor.resolved_renderer_key, FALLBACK_RENDERER_KEY);
+    assert.equal(descriptor.fallback_renderer_key, FALLBACK_RENDERER_KEY);
+    assert.equal(descriptor.renderer_version, 3);
+    assert.equal(descriptor.placement, "bottom_sheet");
+    assert.deepEqual(descriptor.structured_content, { mode: "legacy", reason: "compat" });
+    assert.deepEqual(descriptor.ui_meta, { source: "legacy" });
+    assert.equal(descriptor.fallback, true);
+    assert.equal(descriptor.fallback_reason, "unknown_renderer");
   }
 
   {
@@ -252,6 +273,26 @@ function runTests() {
       source: "legacy",
       tone: "review",
     });
+    const descriptor = starlogDynamicUiDescriptor(part);
+    assert.equal(descriptor.source, "interrupt");
+    assert.equal(descriptor.id, "interrupt_legacy_1");
+    assert.equal(descriptor.tool_call_id, null);
+    assert.equal(descriptor.renderer_key, "legacy.review_grade");
+    assert.equal(descriptor.requested_renderer_key, "legacy.review_grade");
+    assert.equal(descriptor.resolved_renderer_key, FALLBACK_RENDERER_KEY);
+    assert.equal(descriptor.fallback_renderer_key, FALLBACK_RENDERER_KEY);
+    assert.equal(descriptor.renderer_version, 2);
+    assert.equal(descriptor.placement, "bottom_sheet");
+    assert.deepEqual(descriptor.structured_content, {
+      card_id: "card_ml_vectors",
+      reason: "legacy protocol bridge",
+    });
+    assert.deepEqual(descriptor.ui_meta, {
+      source: "legacy",
+      tone: "review",
+    });
+    assert.equal(descriptor.fallback, true);
+    assert.equal(descriptor.fallback_reason, "unknown_renderer");
   }
 
   {
@@ -278,6 +319,30 @@ function runTests() {
       review_mode: "recall",
       card_type: "interview",
     });
+    const descriptor = starlogDynamicUiDescriptor(part);
+    assert.equal(descriptor.source, "interrupt");
+    assert.equal(descriptor.id, "interrupt_review_grade_1");
+    assert.equal(descriptor.tool_call_id, "toolcall_review_grade_1");
+    assert.equal(descriptor.renderer_key, "interview.review_grade");
+    assert.equal(descriptor.requested_renderer_key, "interview.review_grade");
+    assert.equal(descriptor.resolved_renderer_key, "interview.review_grade");
+    assert.equal(descriptor.fallback_renderer_key, null);
+    assert.equal(descriptor.renderer_version, 1);
+    assert.equal(descriptor.requested_renderer_version, 1);
+    assert.equal(descriptor.supported_renderer_version, 1);
+    assert.equal(descriptor.placement, "inline");
+    assert.deepEqual(descriptor.structured_content, {
+      card_id: "card_ml_vectors",
+      grade: null,
+      next_due_at: null,
+    });
+    assert.deepEqual(descriptor.ui_meta, {
+      tone: "review",
+      review_mode: "recall",
+      card_type: "interview",
+    });
+    assert.equal(descriptor.fallback, false);
+    assert.equal(descriptor.fallback_reason, null);
     assert.ok(!String(part.rendererLabel).includes("interview.review_grade"));
     assert.ok(!String(part.rendererLabel).includes("grade_review_recall"));
   }
@@ -291,6 +356,179 @@ function runTests() {
     assert.equal(converted.metadata.custom.transcriptKind, "text");
     assert.equal(converted.metadata.custom.richPartCount, 1);
     assert.equal(converted.metadata.custom.richParts[0]?.rendererLabel, "Review grade");
+    assert.equal(converted.metadata.custom.starlog_dynamic_ui?.renderer_key, "interview.review_grade");
+    assert.equal(converted.metadata.custom.starlog_dynamic_ui?.resolved_renderer_key, "interview.review_grade");
+  }
+
+  {
+    const topicUnlockResult: AssistantToolResult = {
+      id: "tool_result_topic_unlock",
+      tool_call_id: "tool_call_topic_unlock",
+      status: "complete",
+      output: {
+        topic_id: "topic_spaced_repetition",
+        unlocked: true,
+      },
+      renderer_key: "interview.topic_unlock",
+      renderer_version: 1,
+      placement: "thread",
+      structured_content: {
+        topic_id: "topic_spaced_repetition",
+        topic_title: "Spaced repetition setup",
+        unlock_reason: "Enough source material is available.",
+      },
+      ui_meta: {
+        tone: "success",
+      },
+      card: null,
+      entity_ref: null,
+      metadata: {},
+    };
+    const message: AssistantThreadMessage = {
+      id: "msg_topic_unlock",
+      thread_id: "thread_primary",
+      run_id: "run_learning",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "tool_result",
+          id: "part_topic_unlock",
+          tool_result: topicUnlockResult,
+        },
+      ],
+    };
+
+    const [part] = starlogRichPartsForMessage(message);
+    assert.ok(part);
+    assert.equal(part.type, "tool_result");
+    assert.equal(part.rendererLabel, "Topic unlock");
+    assert.equal(part.requestedRendererKey, "interview.topic_unlock");
+    assert.equal(part.resolvedRendererKey, "interview.topic_unlock");
+    assert.equal(part.placement, "thread");
+    assert.equal(part.placementLabel, "Thread panel");
+    assert.equal(part.fallback, false);
+    const descriptor = starlogDynamicUiDescriptor(part);
+    assert.equal(descriptor.source, "tool_result");
+    assert.equal(descriptor.id, "tool_result_topic_unlock");
+    assert.equal(descriptor.tool_call_id, "tool_call_topic_unlock");
+    assert.equal(descriptor.renderer_key, "interview.topic_unlock");
+    assert.equal(descriptor.requested_renderer_key, "interview.topic_unlock");
+    assert.equal(descriptor.resolved_renderer_key, "interview.topic_unlock");
+    assert.equal(descriptor.fallback_renderer_key, null);
+    assert.equal(descriptor.renderer_version, 1);
+    assert.equal(descriptor.requested_renderer_version, 1);
+    assert.equal(descriptor.supported_renderer_version, 1);
+    assert.equal(descriptor.placement, "thread");
+    assert.deepEqual(descriptor.structured_content, {
+      topic_id: "topic_spaced_repetition",
+      topic_title: "Spaced repetition setup",
+      unlock_reason: "Enough source material is available.",
+    });
+    assert.deepEqual(descriptor.ui_meta, {
+      tone: "success",
+    });
+    assert.equal(descriptor.fallback, false);
+    assert.equal(descriptor.fallback_reason, null);
+
+    const [converted] = starlogMessagesToAssistantUiMessages([message]);
+    assert.ok(converted);
+    assert.equal(converted.content, "Topic unlock");
+    assert.equal(converted.metadata.custom.starlog_dynamic_ui?.renderer_key, "interview.topic_unlock");
+  }
+
+  {
+    const message: AssistantThreadMessage = {
+      id: "msg_question_request",
+      thread_id: "thread_primary",
+      run_id: "run_learning",
+      role: "assistant",
+      status: "requires_action",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "interrupt_request",
+          id: "part_question_request",
+          interrupt: {
+            id: "interrupt_question_request",
+            thread_id: "thread_primary",
+            run_id: "run_learning",
+            tool_call_id: "tool_call_question_request",
+            status: "pending",
+            interrupt_type: "form",
+            tool_name: "create_study_question_request",
+            title: "Request a question",
+            body: "Choose the next question shape.",
+            renderer_key: "interview.question_request",
+            renderer_version: 1,
+            placement: "sidecar",
+            structured_content: {
+              topic_id: "topic_spaced_repetition",
+              question_type: "recall",
+              prompt: "Explain why spaced repetition works.",
+            },
+            ui_meta: {
+              density: "compact",
+            },
+            fields: [
+              {
+                id: "question_type",
+                kind: "select",
+                label: "Question type",
+                required: true,
+                options: [
+                  { label: "Recall", value: "recall" },
+                  { label: "Application", value: "application" },
+                ],
+              },
+            ],
+            primary_label: "Create question",
+            secondary_label: "Later",
+            display_mode: "sidecar",
+            metadata: {},
+            created_at: createdAt,
+          },
+        },
+      ],
+    };
+
+    const [part] = starlogRichPartsForMessage(message);
+    assert.ok(part);
+    assert.equal(part.type, "interrupt_request");
+    assert.equal(part.label, "Request a question");
+    assert.equal(part.rendererLabel, "Question request");
+    assert.equal(part.requestedRendererKey, "interview.question_request");
+    assert.equal(part.resolvedRendererKey, "interview.question_request");
+    assert.equal(part.placement, "sidecar");
+    assert.equal(part.placementLabel, "Inline on mobile");
+    assert.equal(part.fallback, false);
+    const descriptor = starlogDynamicUiDescriptor(part);
+    assert.equal(descriptor.source, "interrupt");
+    assert.equal(descriptor.id, "interrupt_question_request");
+    assert.equal(descriptor.tool_call_id, "tool_call_question_request");
+    assert.equal(descriptor.renderer_key, "interview.question_request");
+    assert.equal(descriptor.requested_renderer_key, "interview.question_request");
+    assert.equal(descriptor.resolved_renderer_key, "interview.question_request");
+    assert.equal(descriptor.fallback_renderer_key, null);
+    assert.equal(descriptor.renderer_version, 1);
+    assert.equal(descriptor.requested_renderer_version, 1);
+    assert.equal(descriptor.supported_renderer_version, 1);
+    assert.equal(descriptor.placement, "sidecar");
+    assert.deepEqual(descriptor.structured_content, {
+      topic_id: "topic_spaced_repetition",
+      question_type: "recall",
+      prompt: "Explain why spaced repetition works.",
+    });
+    assert.deepEqual(descriptor.ui_meta, {
+      density: "compact",
+    });
+    assert.equal(descriptor.fallback, false);
+    assert.equal(descriptor.fallback_reason, null);
   }
 
   {
