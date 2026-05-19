@@ -13,8 +13,12 @@ fallback surface, not the main phone implementation target.
 
 This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and
 assistant protocol snapshots so the UI can be validated deterministically. For hosted-path discovery,
-`https://starlog-web-production.up.railway.app/login` is the user entry URL (followed by assistant
-flows under `/assistant`). Desktop web and native mobile chat surfaces have partial assistant-ui
+`https://starlog-web-production.up.railway.app/login` is the user entry URL, and the hosted API base is
+`https://starlog-api-production.up.railway.app`. Public unauthenticated checks on 2026-05-19 returned
+HTTP 200 for hosted `/login` and `/assistant`, and the hosted API health route returned an OK production
+payload. That proves public route reachability only; authenticated hosted login was last proven on
+2026-05-15 and requires the operator-held passphrase/token, which must not be pasted into docs or
+committed artifacts. Desktop web and native mobile chat surfaces have partial assistant-ui
 adapter/runtime coverage with compatibility fallbacks; these browser/viewport harnesses validate the
 supported structured protocol path and fallback-hidden user experience, not full installed-device
 assistant-ui parity.
@@ -49,6 +53,18 @@ That browser smoke should be paired with native Android proof for phone-owned fl
 The live PWA smoke now keeps Assistant-tab and Review-tab evidence distinct: Review only reveals the
 card, then `/assistant` must show the assistant-ui shell/composer plus the generated review-grade
 dynamic UI before the grade is submitted.
+
+Public hosted reachability can be checked without secrets:
+
+```bash
+curl -I -L --max-time 20 https://starlog-web-production.up.railway.app/login
+curl -I -L --max-time 20 https://starlog-web-production.up.railway.app/assistant
+curl -sS --max-time 20 https://starlog-api-production.up.railway.app/v1/health
+```
+
+Those commands are not a hosted authenticated smoke. For authenticated checks, use the hosted smoke
+or cross-surface proof runbooks with locally supplied environment variables, and keep tokens redacted
+from saved output.
 
 ## Coverage
 

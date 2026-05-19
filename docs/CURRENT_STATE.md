@@ -9,23 +9,28 @@ functional evidence.
 Use [PLAN.md](/home/ubuntu/starlog/PLAN.md) and [VISION.md](/home/ubuntu/starlog/VISION.md) for
 where Starlog is going. Use this page for current implementation confidence.
 
-## Access + Interview-Loop Snapshot
+## Access + Validation Snapshot
 
-- **PWA access paths:** laptop primary path is `http://localhost:3000`; phone browser fallback is
-  `http://<LAN_IP>:3000` after `./scripts/dev_stack.sh --lan`. Hosted fallback remains
-  `https://starlog-web-production.up.railway.app/login` with expected API base
+- **Local PWA access paths:** laptop primary path is `http://localhost:3000`; phone browser fallback is
+  `http://<LAN_IP>:3000` after `./scripts/dev_stack.sh --lan`.
+- **Hosted Railway access paths:** hosted browser entry is
+  `https://starlog-web-production.up.railway.app/login`; hosted API base is
   `https://starlog-api-production.up.railway.app`.
-- **Login status known:** local passphrase setup/sign-in is the standard entry path for local use; hosted
-  `/login` plus `/assistant` reachability were last validated on 2026-05-15. That validates access and
-  hosted login response, not broad hosted release freshness.
+- **Hosted reachability known on 2026-05-19:** public unauthenticated checks returned HTTP 200 for
+  `/login` and `/assistant`, and the API health endpoint returned an OK production health payload.
+  This proves the hosted web shell and API health route are reachable from the public internet.
+- **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15.
+  The 2026-05-19 check did not use or disclose the hosted passphrase or bearer token, so it does not
+  re-prove authenticated Starlog session behavior.
 - **Native vs PWA priority:** native mobile is the primary phone surface; PWA is fallback-only on phone and
   remains supported for browser checks or when the app is unavailable.
 - **assistant-ui migration status:** desktop web has partial assistant-ui migration for supported protocol
   snapshots. Native assistant now uses the assistant-ui shared dynamic-panel host path with
   `assistant-ui` metadata and uses fallback renderers only for unsupported/non-migrated protocol shapes.
-- **Interview-loop proven/unproven:** native Android interview loop is proven for interview-prep command flow
-  (`read` / `unlock` / `question` / review-grade dynamic UI on real device and local fresh-local harness);
-  broader dynamic panel behavior and non-interview flow parity are still in dedicated validation.
+- **Native Android evidence known:** the native Android interview loop is proven for the local
+  interview-prep command flow (`read` / `unlock` / `question` / review-grade dynamic UI) through the
+  fresh-local harness and physical-device evidence. Broader dynamic panel behavior, production-hosted
+  Android smoke, and non-interview flow parity are still in dedicated validation.
 
 ## Post-Merge PR Status
 
@@ -119,11 +124,12 @@ where Starlog is going. Use this page for current implementation confidence.
   commands for `Sliding Window`, verifies due-card gating, reveals a Review card, returns to the
   Assistant to grade the generated review-grade dynamic UI, generates a recommendation-backed briefing,
   and creates an alarm.
-- **Hosted PWA reachability and login:** `https://starlog-web-production.up.railway.app/login`
-  (hosted entry point) currently serves the login page, and `/assistant` can be reached after passphrase
-  flow completion. `https://starlog-api-production.up.railway.app/v1/health` returns an OK production
-  health payload; hosted passphrase login returned HTTP 200 on 2026-05-15. This proves access/login, not
-  full hosted workflow freshness.
+- **Hosted PWA/API reachability:** `https://starlog-web-production.up.railway.app/login` is the hosted
+  browser entry point and `https://starlog-api-production.up.railway.app` is the hosted API base. On
+  2026-05-19, public checks returned HTTP 200 for hosted `/login` and `/assistant`, and
+  `/v1/health` returned an OK production health payload. Authenticated hosted passphrase login was last
+  proven on 2026-05-15. Treat this as access/login evidence only; it is not proof of full hosted workflow
+  freshness or production release readiness.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
@@ -185,9 +191,9 @@ Known outcome for `Inference Engineering.pdf`:
 - **Production Android store readiness:** Android release-signing, signed production QA smoke, store
   packaging, and final screenshots still require
   [docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md](/home/ubuntu/starlog/docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md).
-- **Railway production freshness:** hosted page/API reachability and passphrase login were checked on
-  2026-05-15, but hosted smoke and release gate checks still need a fresh run before relying on
-  full hosted deployment state.
+- **Railway production freshness:** public hosted page/API reachability was checked on 2026-05-19, and
+  authenticated hosted passphrase login was last proven on 2026-05-15. Hosted smoke and release-gate
+  checks still need a fresh authenticated run before relying on full hosted deployment state.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
 - **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
@@ -200,6 +206,12 @@ Known outcome for `Inference Engineering.pdf`:
 
 ## Evidence Map
 
+- Hosted Railway access evidence:
+  public `curl` checks on 2026-05-19 returned HTTP 200 for
+  `https://starlog-web-production.up.railway.app/login` and
+  `https://starlog-web-production.up.railway.app/assistant`; the public API health check at
+  `https://starlog-api-production.up.railway.app/v1/health` returned an OK production payload. These
+  checks intentionally did not use or expose the hosted passphrase or bearer token.
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
 - Fresh Android native functional proof is written by
