@@ -172,10 +172,10 @@ export function deriveMobileReviewViewModel(input: {
   const progressDue = Math.max(0, input.studyProgress?.due_unlocked_card_count ?? 0);
   const recordedRemaining = parseRecordedRemainingDue(input.status ?? "");
   const loadedDueCount = parseLoadedDue(input.status ?? "");
-  const authoritativeDueCount = recordedRemaining ?? loadedDueCount;
-  const knownDueCount = authoritativeDueCount === null
-    ? Math.max(dueCount, totalDue, progressDue)
-    : Math.max(dueCount, authoritativeDueCount);
+  const hintDueCount = Math.max(dueCount, totalDue, progressDue);
+  const knownDueCount = recordedRemaining === null
+    ? Math.max(hintDueCount, loadedDueCount ?? 0)
+    : Math.max(dueCount, recordedRemaining);
   const reviewed = Math.max(0, input.stats.reviewed);
   const mastered = Math.max(0, input.stats.good + input.stats.easy);
   const answerChoices = parseAnswerChoices(input.prompt, input.answer);
@@ -307,10 +307,6 @@ export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadD
   }
 
   const loadedDueCount = parseLoadedDue(status);
-  if (loadedDueCount === 0) {
-    return false;
-  }
-
   const knownDueCount = Math.max(
     0,
     input.dueCount,
@@ -320,6 +316,10 @@ export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadD
   );
   if (knownDueCount > 0) {
     return true;
+  }
+
+  if (loadedDueCount === 0) {
+    return false;
   }
 
   return !/loaded\s+\d+\s+due card/i.test(status);
