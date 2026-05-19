@@ -1,6 +1,8 @@
 import {
+  deriveMobileReviewAutoLoadEffectDecision,
   deriveMobileReviewViewModel,
   deriveReviewStage,
+  mobileReviewAutoLoadSuppressionKey,
   parseAnswerChoices,
   shouldAutoLoadReviewDueCardsOnEntry,
 } from "../src/mobile-review-view-model";
@@ -558,6 +560,50 @@ assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
   studyProgress: null,
   status: "Loaded 0 due card(s)",
 }), true);
+
+const staleZeroCallerInput = {
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [] as [],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Loaded 0 due card(s)",
+};
+const firstAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  suppressedEmptyLoadKey: null,
+});
+
+assert.equal(firstAutoLoadDecision.shouldLoad, true);
+assert.equal(firstAutoLoadDecision.suppressionKey, mobileReviewAutoLoadSuppressionKey(staleZeroCallerInput));
+
+const suppressedAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  suppressedEmptyLoadKey: firstAutoLoadDecision.suppressionKey,
+});
+
+assert.equal(suppressedAutoLoadDecision.shouldLoad, false);
+assert.equal(suppressedAutoLoadDecision.suppressionKey, firstAutoLoadDecision.suppressionKey);
+
+const changedHintAutoLoadDecision = deriveMobileReviewAutoLoadEffectDecision({
+  ...staleZeroCallerInput,
+  studyProgress: {
+    ...staleZeroCallerInput.studyProgress,
+    due_unlocked_card_count: 2,
+  },
+  suppressedEmptyLoadKey: firstAutoLoadDecision.suppressionKey,
+});
+
+assert.equal(changedHintAutoLoadDecision.shouldLoad, true);
+assert.equal(changedHintAutoLoadDecision.suppressionKey === firstAutoLoadDecision.suppressionKey, false);
 
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");

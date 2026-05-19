@@ -102,7 +102,8 @@ import {
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
 import {
-  shouldAutoLoadReviewDueCardsOnEntry,
+  deriveMobileReviewAutoLoadEffectDecision,
+  mobileReviewAutoLoadSuppressionKey,
   type MobileReviewLearningInsight,
   type MobileReviewRecommendedDrill,
 } from "./src/mobile-review-view-model";
@@ -1507,6 +1508,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const reviewSummaryRequestRef = useRef<MobileReviewSummaryRequestToken>({ requestId: 0, token: "", apiBase: "" });
   const reviewSummarySessionRef = useRef({ token: "", apiBase: normalizeBaseUrl(DEFAULT_API_BASE) });
   const reviewRevealEventCardIdRef = useRef<string | null>(null);
+  const reviewEmptyAutoLoadSuppressionKeyRef = useRef<string | null>(null);
   const [selectedPlannerDate, setSelectedPlannerDate] = useState(todayDateString());
   const [plannerSummary, setPlannerSummary] = useState<MobilePlannerSummary | null>(null);
   const [reviewStats, setReviewStats] = useState<ReviewSessionStats>({ reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 });
@@ -1659,6 +1661,22 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     : "0%";
   const reviewDeckDueCount = reviewDecks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0);
   const studyDueUnlockedCardCount = studyProgress?.due_unlocked_card_count ?? 0;
+  const reviewAutoLoadDeckHints = reviewDeckDueCount > 0
+    ? [{
+      id: "loaded-review-decks",
+      name: "Loaded Review decks",
+      due_count: reviewDeckDueCount,
+      card_count: reviewDeckDueCount,
+    }]
+    : [];
+  const reviewAutoLoadStudyProgress = {
+    source_count: 0,
+    topic_count: 0,
+    read_topic_count: 0,
+    unlocked_topic_count: 0,
+    locked_topic_count: 0,
+    due_unlocked_card_count: studyDueUnlockedCardCount,
+  };
   const activeStudyTopic = useMemo(() => {
     return studyTopics.find((topic) => topic.status === "unlocked")
       ?? studyTopics.find((topic) => topic.status === "locked")
@@ -2706,7 +2724,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
   }
 
-  async function loadDueCards() {
+  async function loadDueCards(origin: "auto" | "manual" = "manual", emptyLoadSuppressionKey?: string | null) {
     try {
       if (!token) {
         setStatus("Add API token first");
@@ -2723,6 +2741,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         throw new Error(`Due cards fetch failed: ${response.status} ${errorBody}`);
       }
       const payload = (await response.json()) as DueCard[];
+      const suppressionKey = emptyLoadSuppressionKey ?? mobileReviewAutoLoadSuppressionKey({
+        hasActiveCard: false,
+        showAnswer: false,
+        reviewedCount: reviewStats.reviewed,
+        dueCount: dueCards.length,
+        decks: reviewAutoLoadDeckHints,
+        studyProgress: reviewAutoLoadStudyProgress,
+        status,
+      });
+      if (payload.length === 0 && suppressionKey) {
+        reviewEmptyAutoLoadSuppressionKeyRef.current = suppressionKey;
+      } else if (payload.length > 0 || origin === "manual") {
+        reviewEmptyAutoLoadSuppressionKeyRef.current = null;
+      }
       setDueCards(payload);
       void loadReviewDecks();
       void loadReviewSummary("auto");
@@ -4416,12 +4448,14 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   useEffect(() => {
     if (!hydrated || !token) {
+      reviewEmptyAutoLoadSuppressionKeyRef.current = null;
       setReviewDecks([]);
       setReviewSummary(null);
       setStudyProgress(null);
       setStudyTopics([]);
       return;
     }
+    reviewEmptyAutoLoadSuppressionKeyRef.current = null;
     setReviewSummary(null);
     loadReviewDecks().catch(() => undefined);
     loadReviewSummary("auto").catch(() => undefined);
@@ -4442,32 +4476,20 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     if (!hydrated || !token || activeTab !== "review") {
       return;
     }
-    if (!shouldAutoLoadReviewDueCardsOnEntry({
+    const decision = deriveMobileReviewAutoLoadEffectDecision({
       hasActiveCard: hasActiveReviewCard,
       showAnswer,
       reviewedCount: reviewStats.reviewed,
       dueCount: dueCards.length,
-      decks: reviewDeckDueCount > 0
-        ? [{
-          id: "loaded-review-decks",
-          name: "Loaded Review decks",
-          due_count: reviewDeckDueCount,
-          card_count: reviewDeckDueCount,
-        }]
-        : [],
-      studyProgress: {
-        source_count: 0,
-        topic_count: 0,
-        read_topic_count: 0,
-        unlocked_topic_count: 0,
-        locked_topic_count: 0,
-        due_unlocked_card_count: studyDueUnlockedCardCount,
-      },
+      decks: reviewAutoLoadDeckHints,
+      studyProgress: reviewAutoLoadStudyProgress,
       status,
-    })) {
+      suppressedEmptyLoadKey: reviewEmptyAutoLoadSuppressionKeyRef.current,
+    });
+    if (!decision.shouldLoad) {
       return;
     }
-    loadDueCards().catch(() => undefined);
+    loadDueCards("auto", decision.suppressionKey).catch(() => undefined);
   }, [
     hydrated,
     token,

@@ -115,6 +115,11 @@ export type MobileReviewAutoLoadDecisionInput = {
   status?: string;
 };
 
+export type MobileReviewAutoLoadEffectDecision = {
+  shouldLoad: boolean;
+  suppressionKey: string | null;
+};
+
 export type MobileReviewViewModel = {
   syncedLabel: string;
   activeStage: MobileReviewStage;
@@ -323,6 +328,32 @@ export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadD
   }
 
   return !/loaded\s+\d+\s+due card/i.test(status);
+}
+
+export function deriveMobileReviewAutoLoadEffectDecision(
+  input: MobileReviewAutoLoadDecisionInput & {
+    suppressedEmptyLoadKey?: string | null;
+  },
+): MobileReviewAutoLoadEffectDecision {
+  const suppressionKey = mobileReviewAutoLoadSuppressionKey(input);
+  if (suppressionKey && input.suppressedEmptyLoadKey === suppressionKey) {
+    return { shouldLoad: false, suppressionKey };
+  }
+
+  return {
+    shouldLoad: shouldAutoLoadReviewDueCardsOnEntry(input),
+    suppressionKey,
+  };
+}
+
+export function mobileReviewAutoLoadSuppressionKey(input: MobileReviewAutoLoadDecisionInput): string | null {
+  const deckDueCount = input.decks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0);
+  const studyDueCount = Math.max(0, input.studyProgress?.due_unlocked_card_count ?? 0);
+  const dueHintCount = Math.max(0, input.dueCount, deckDueCount, studyDueCount);
+  if (dueHintCount <= 0) {
+    return null;
+  }
+  return `due:${dueHintCount}|deck:${deckDueCount}|study:${studyDueCount}`;
 }
 
 function stageDueCount(
