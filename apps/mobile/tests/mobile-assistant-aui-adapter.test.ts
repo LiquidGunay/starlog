@@ -10,6 +10,8 @@ import {
   isDiagnosticAssistantToolCall,
   isDiagnosticAssistantToolResult,
   MOBILE_ASSISTANT_UI_TEST_MARKERS,
+  mobileDynamicPanelInterruptsFromAssistantUiMessage,
+  mobileDynamicPanelInterruptsFromStarlogMessage,
   mobileDynamicUiBadge,
   starlogMessagesToAssistantUiMessages,
   starlogRichPartsForMessage,
@@ -358,6 +360,18 @@ function runTests() {
     assert.equal(converted.metadata.custom.richParts[0]?.rendererLabel, "Review grade");
     assert.equal(converted.metadata.custom.starlog_dynamic_ui?.renderer_key, "interview.review_grade");
     assert.equal(converted.metadata.custom.starlog_dynamic_ui?.resolved_renderer_key, "interview.review_grade");
+
+    const [panelInterrupt] = mobileDynamicPanelInterruptsFromAssistantUiMessage(converted);
+    assert.ok(panelInterrupt);
+    assert.equal(panelInterrupt.id, "interrupt_review_grade_1");
+    assert.equal(panelInterrupt.status, "pending");
+    assert.equal(panelInterrupt.tool_name, "grade_review_recall");
+    assert.equal(panelInterrupt.renderer_key, "interview.review_grade");
+    assert.equal(panelInterrupt.display_mode, "inline");
+    assert.equal(panelInterrupt.title, "Grade review");
+    assert.equal(panelInterrupt.fields[0]?.id, "rating");
+    assert.equal(panelInterrupt.fields[0]?.value, "good");
+    assert.deepEqual(panelInterrupt.recommended_defaults, { rating: "good" });
   }
 
   {
@@ -438,6 +452,16 @@ function runTests() {
     assert.ok(converted);
     assert.equal(converted.content, "Topic unlock");
     assert.equal(converted.metadata.custom.starlog_dynamic_ui?.renderer_key, "interview.topic_unlock");
+
+    const [panelInterrupt] = mobileDynamicPanelInterruptsFromAssistantUiMessage(converted);
+    assert.ok(panelInterrupt);
+    assert.equal(panelInterrupt.id, "tool_result_topic_unlock");
+    assert.equal(panelInterrupt.status, "submitted");
+    assert.equal(panelInterrupt.tool_name, "interview.topic_unlock");
+    assert.equal(panelInterrupt.title, "Spaced repetition setup");
+    assert.equal(panelInterrupt.body, "Enough source material is available.");
+    assert.equal(panelInterrupt.primary_label, "Open topic");
+    assert.deepEqual(panelInterrupt.fields, []);
   }
 
   {
@@ -529,6 +553,92 @@ function runTests() {
     });
     assert.equal(descriptor.fallback, false);
     assert.equal(descriptor.fallback_reason, null);
+
+    const [converted] = starlogMessagesToAssistantUiMessages([message]);
+    assert.ok(converted);
+    const [panelInterrupt] = mobileDynamicPanelInterruptsFromAssistantUiMessage(converted);
+    assert.ok(panelInterrupt);
+    assert.equal(panelInterrupt.id, "interrupt_question_request");
+    assert.equal(panelInterrupt.status, "pending");
+    assert.equal(panelInterrupt.tool_name, "interview.question_request");
+    assert.equal(panelInterrupt.title, "Request a question");
+    assert.equal(panelInterrupt.body, "Explain why spaced repetition works.");
+    assert.equal(panelInterrupt.display_mode, "sidecar");
+    assert.equal(panelInterrupt.fields[0]?.id, "question_type");
+    assert.equal(panelInterrupt.fields[0]?.value, "recall");
+    assert.deepEqual(panelInterrupt.recommended_defaults, { question_type: "recall" });
+  }
+
+  {
+    const message: AssistantThreadMessage = {
+      id: "msg_topic_read_and_why_now",
+      thread_id: "thread_primary",
+      run_id: "run_learning",
+      role: "assistant",
+      status: "complete",
+      created_at: createdAt,
+      updated_at: createdAt,
+      metadata: {},
+      parts: [
+        {
+          type: "tool_result",
+          id: "part_topic_read",
+          tool_result: {
+            id: "tool_result_topic_read",
+            tool_call_id: "tool_call_topic_read",
+            status: "complete",
+            output: { topic_id: "topic_sliding_window", read: true },
+            renderer_key: "interview.topic_read",
+            renderer_version: 1,
+            placement: "thread",
+            structured_content: {
+              topic_id: "topic_sliding_window",
+              topic_title: "Sliding Window Interview Patterns",
+              read_reason: "Marked read after the source walkthrough.",
+            },
+            ui_meta: { confidence: 0.92 },
+            card: null,
+            entity_ref: null,
+            metadata: {},
+          },
+        },
+        {
+          type: "card",
+          id: "part_why_now",
+          card: {
+            kind: "assistant_summary",
+            version: 1,
+            title: "Why this now",
+            body: "One application card is due after the topic unlock.",
+            renderer_key: "interview.why_this_now",
+            renderer_version: 1,
+            placement: "thread",
+            structured_content: {
+              reason: "You just unlocked this topic and one application card is due.",
+              impact: "Practice now while the source is fresh.",
+              time_window: "today",
+            },
+            ui_meta: { urgency: "medium" },
+            metadata: {},
+            entity_ref: null,
+            actions: [],
+          },
+        },
+      ],
+    };
+
+    const panelInterrupts = mobileDynamicPanelInterruptsFromStarlogMessage(message);
+    assert.equal(panelInterrupts.length, 2);
+    assert.equal(panelInterrupts[0].tool_name, "interview.topic_read");
+    assert.equal(panelInterrupts[0].title, "Sliding Window Interview Patterns");
+    assert.equal(panelInterrupts[0].body, "Marked read after the source walkthrough.");
+    assert.equal(panelInterrupts[1].tool_name, "interview.why_this_now");
+    assert.equal(panelInterrupts[1].title, "Why this now");
+    assert.equal(
+      panelInterrupts[1].body,
+      "You just unlocked this topic and one application card is due. Practice now while the source is fresh.",
+    );
+    assert.equal(panelInterrupts[1].metadata.ui_meta && (panelInterrupts[1].metadata.ui_meta as Record<string, unknown>).urgency, "medium");
   }
 
   {

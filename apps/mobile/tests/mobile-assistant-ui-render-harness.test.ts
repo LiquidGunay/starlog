@@ -1,4 +1,4 @@
-import type { AssistantInterrupt } from "@starlog/contracts";
+import type { AssistantInterrupt, AssistantThreadMessage } from "@starlog/contracts";
 
 const assert = require("node:assert/strict");
 const Module = require("node:module");
@@ -219,6 +219,7 @@ function interrupt(overrides: Partial<AssistantInterrupt>): AssistantInterrupt {
 try {
   const { MobileDynamicPanelHost } = require("../src/mobile-dynamic-panel-host");
   const { mobileDynamicPanelStates } = require("../src/mobile-assistant-panel-state");
+  const { mobileDynamicPanelInterruptsFromStarlogMessage } = require("../src/mobile-assistant-aui-adapter");
 
   const palette = {
     accent: "#f3b242",
@@ -288,6 +289,102 @@ try {
     assert.equal(findByTestId(tree, "rendered-panel-sheet").length, 1);
     assert.equal(modals.length, 1);
     assert.equal(modals[0].props.visible, true);
+  }
+
+  {
+    resetHooks();
+    const message: AssistantThreadMessage = {
+      id: "msg_dynamic_metadata",
+      thread_id: "primary",
+      run_id: "run-learning",
+      role: "assistant",
+      status: "requires_action",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        {
+          type: "tool_result",
+          id: "part_topic_unlock",
+          tool_result: {
+            id: "tool_result_topic_unlock",
+            tool_call_id: "tool_call_topic_unlock",
+            status: "complete",
+            output: { topic_id: "topic-sliding-window" },
+            renderer_key: "interview.topic_unlock",
+            renderer_version: 1,
+            placement: "thread",
+            structured_content: {
+              topic_id: "topic-sliding-window",
+              topic_title: "Sliding Window Interview Patterns",
+              unlock_reason: "The source walkthrough is ready.",
+            },
+            ui_meta: { tone: "success" },
+            card: null,
+            entity_ref: null,
+            metadata: {},
+          },
+        },
+        {
+          type: "interrupt_request",
+          id: "part_question_request",
+          interrupt: {
+            id: "interrupt_question_request",
+            thread_id: "primary",
+            run_id: "run-learning",
+            tool_call_id: "tool_call_question",
+            status: "pending",
+            interrupt_type: "choice",
+            tool_name: "create_study_question_request",
+            title: "Request a question",
+            body: "Choose the next question shape.",
+            renderer_key: "interview.question_request",
+            renderer_version: 1,
+            placement: "sidecar",
+            structured_content: {
+              topic_id: "topic-sliding-window",
+              topic_title: "Sliding Window Interview Patterns",
+              question_type: "application",
+              prompt: "Give me one application question.",
+            },
+            ui_meta: { density: "compact" },
+            fields: [],
+            primary_label: "Create question",
+            secondary_label: "Later",
+            display_mode: "sidecar",
+            recommended_defaults: {},
+            metadata: {},
+            created_at: "2026-05-19T05:00:00Z",
+          },
+        },
+      ],
+    };
+    const interrupts: AssistantInterrupt[] = mobileDynamicPanelInterruptsFromStarlogMessage(message);
+    const renderCalls: Array<{ id: string; title: string; values: Record<string, unknown> }> = [];
+    const tree = renderWithHooks(() =>
+      MobileDynamicPanelHost({
+        interrupts,
+        panelStates: mobileDynamicPanelStates(interrupts, {}),
+        palette,
+        renderPanel: (panel: AssistantInterrupt, values: Record<string, unknown>) => {
+          renderCalls.push({ id: panel.id, title: panel.title, values });
+          return createElement("RenderedPanel", {
+            testID: `metadata-panel-${panel.id}`,
+            children: `${panel.title}:${String(values.question_type ?? "")}`,
+          });
+        },
+      }),
+    );
+
+    assert.deepEqual(
+      renderCalls.map((call) => [call.id, call.title, call.values]),
+      [
+        ["tool_result_topic_unlock", "Sliding Window Interview Patterns", {}],
+        ["interrupt_question_request", "Sliding Window Interview Patterns", { question_type: "application" }],
+      ],
+    );
+    assert.equal(findByTestId(tree, "metadata-panel-tool_result_topic_unlock").length, 1);
+    assert.equal(findByTestId(tree, "metadata-panel-interrupt_question_request").length, 1);
   }
 } finally {
   Module._load = originalLoad;

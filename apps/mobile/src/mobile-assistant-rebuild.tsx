@@ -66,7 +66,12 @@ import {
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
-import { isDiagnosticAssistantToolCall, isDiagnosticAssistantToolResult, mobileDynamicUiBadge } from "./mobile-assistant-aui-adapter";
+import {
+  isDiagnosticAssistantToolCall,
+  isDiagnosticAssistantToolResult,
+  mobileDynamicPanelInterruptsFromStarlogMessage,
+  mobileDynamicUiBadge,
+} from "./mobile-assistant-aui-adapter";
 import { MobileAssistantUiComposerBridge, MobileAssistantUiShell } from "./mobile-assistant-aui-thread";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
@@ -1979,7 +1984,16 @@ export function MobileAssistantRebuild({
             <MobileAssistantUiShell
               messages={visibleThreadMessages}
               palette={palette}
+              renderDynamicPanelHostForMessage={(interrupts) => (
+                <MobileDynamicPanelHost
+                  interrupts={interrupts}
+                  panelStates={mobileDynamicPanelStates(interrupts, interruptValuesById)}
+                  palette={palette}
+                  renderPanel={renderDynamicPanel}
+                />
+              )}
               renderCompatibilityForMessage={(message) => {
+                const nativeDynamicPanelIds = new Set(mobileDynamicPanelInterruptsFromStarlogMessage(message).map((interrupt) => interrupt.id));
                 const cards = cardParts(message).map((part) => part.card);
                 const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
                 const diagnosticCards = cards.filter(isDiagnosticConversationCard);
@@ -1988,11 +2002,14 @@ export function MobileAssistantRebuild({
                 const allToolCalls = toolCallParts(message).map((part) => part.tool_call);
                 const allToolResults = toolResultParts(message).map((part) => part.tool_result);
                 const toolCalls = allToolCalls.filter((toolCall) => !isDiagnosticAssistantToolCall(toolCall));
-                const toolResults = allToolResults.filter((toolResult) => !isDiagnosticAssistantToolResult(toolResult));
-                const diagnosticToolCount = allToolCalls.length - toolCalls.length + allToolResults.length - toolResults.length;
-                const interruptRequests = interruptRequestParts(message).map(
-                  (part) => liveInterruptById[part.interrupt.id] || part.interrupt,
+                const toolResults = allToolResults.filter(
+                  (toolResult) => !isDiagnosticAssistantToolResult(toolResult) && !nativeDynamicPanelIds.has(toolResult.id),
                 );
+                const diagnosticToolCount =
+                  allToolCalls.filter(isDiagnosticAssistantToolCall).length + allToolResults.filter(isDiagnosticAssistantToolResult).length;
+                const interruptRequests = interruptRequestParts(message)
+                  .map((part) => liveInterruptById[part.interrupt.id] || part.interrupt)
+                  .filter((interrupt) => !nativeDynamicPanelIds.has(interrupt.id));
                 const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
                 const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
                 const activeAttachment = primaryCards[activeAttachmentIndex] ?? null;
