@@ -106,6 +106,10 @@ import {
   type MobileReviewLearningInsight,
   type MobileReviewRecommendedDrill,
 } from "./src/mobile-review-view-model";
+import {
+  isMobileTestAuthLinkEnabled,
+  parseMobileTestAuthLink,
+} from "./src/mobile-test-auth-link";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 import {
   assistantVoiceActionHint,
@@ -483,6 +487,10 @@ const DEFAULT_API_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_API_BASE?.trim()
   || (__DEV__ ? "http://localhost:8000" : "https://starlog-api-production.up.railway.app");
 const DEFAULT_PWA_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_PWA_BASE?.trim()
   || (__DEV__ ? "http://localhost:3000" : "https://starlog-web-production.up.railway.app");
+const TEST_AUTH_LINK_ENABLED = isMobileTestAuthLinkEnabled({
+  dev: __DEV__,
+  flag: RUNTIME_ENV.EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_LINK,
+});
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
 const DEFAULT_HOME_DRAFT = "summarize latest artifact";
 const DEFAULT_NOTES_INSTRUCTION_DRAFT = "Save this and turn it into tonight's reading note.";
@@ -1710,6 +1718,24 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     let handled = false;
+    const parsedAppLink = parseAppDeepLink(normalizedUrl);
+    const testAuthConfig = parsedAppLink
+      ? parseMobileTestAuthLink(parsedAppLink.route, parsedAppLink.params, TEST_AUTH_LINK_ENABLED)
+      : null;
+    if (testAuthConfig) {
+      setApiBase(testAuthConfig.apiBase);
+      if (testAuthConfig.pwaBase) {
+        setPwaBase(testAuthConfig.pwaBase);
+      }
+      setToken(testAuthConfig.token);
+      const requestedTestAuthTab = testAuthConfig.tab ? mobileTabFromParam(testAuthConfig.tab) : null;
+      if (requestedTestAuthTab) {
+        setActiveTab(requestedTestAuthTab);
+      }
+      setStatus("Loaded test auth config");
+      handled = true;
+    }
+
     const requestedTab = parseSurfaceTabDeepLink(normalizedUrl);
     if (requestedTab) {
       setActiveTab(requestedTab);

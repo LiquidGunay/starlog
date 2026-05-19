@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "/tmp/mobile-test-auth-link-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-test-auth-link.ts",
+    "tests/mobile-test-auth-link.test.ts"
+  ]
+}

@@ -24,7 +24,8 @@
     "test:study-mutations": "./node_modules/.bin/tsc -p tsconfig.study-mutations-tests.json --outDir /tmp/mobile-study-mutations-tests && node /tmp/mobile-study-mutations-tests/apps/mobile/tests/mobile-study-mutations.test.js",
     "test:assistant-thread-actions": "./node_modules/.bin/tsc -p tsconfig.assistant-thread-actions-tests.json --outDir /tmp/mobile-assistant-thread-actions-tests && node /tmp/mobile-assistant-thread-actions-tests/apps/mobile/tests/assistant-mobile-thread-actions.test.js",
     "test:assistant-aui": "./node_modules/.bin/tsc -p tsconfig.assistant-aui-tests.json && node ../../.tmp/mobile-assistant-aui-tests/apps/mobile/tests/mobile-assistant-aui-adapter.test.js",
-    "test:assistant-ui-render": "if [ -f ./node_modules/typescript/bin/tsc ]; then ./node_modules/.bin/tsc -p tsconfig.assistant-ui-render-tests.json; else node ../../node_modules/.pnpm/typescript@5.3.3/node_modules/typescript/bin/tsc -p tsconfig.assistant-ui-render-tests.json; fi && node /tmp/mobile-assistant-ui-render-tests/apps/mobile/tests/mobile-assistant-ui-render-harness.test.js"
+    "test:assistant-ui-render": "if [ -f ./node_modules/typescript/bin/tsc ]; then ./node_modules/.bin/tsc -p tsconfig.assistant-ui-render-tests.json; else node ../../node_modules/.pnpm/typescript@5.3.3/node_modules/typescript/bin/tsc -p tsconfig.assistant-ui-render-tests.json; fi && node /tmp/mobile-assistant-ui-render-tests/apps/mobile/tests/mobile-assistant-ui-render-harness.test.js",
+    "test:test-auth-link": "./node_modules/.bin/tsc -p tsconfig.test-auth-link-tests.json && node /tmp/mobile-test-auth-link-tests/apps/mobile/tests/mobile-test-auth-link.test.js"
   },
   "dependencies": {
     "@assistant-ui/core": "0.2.2",

@@ -30,6 +30,8 @@ ADB_REVERSE_PORTS="${ADB_REVERSE_PORTS:-}"
 STARLOG_API_BASE="${STARLOG_API_BASE:-${API_BASE:-}}"
 STARLOG_WEB_ORIGIN="${STARLOG_WEB_ORIGIN:-${WEB_ORIGIN:-}}"
 STARLOG_ACCESS_TOKEN="${STARLOG_ACCESS_TOKEN:-${STARLOG_TOKEN:-}}"
+STARLOG_MOBILE_CONFIGURE_AUTH="${STARLOG_MOBILE_CONFIGURE_AUTH:-auto}"
+STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME="${STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME:-starlog}"
 STARLOG_TEST_USER="${STARLOG_TEST_USER:-}"
 STARLOG_INTERVIEW_SEED="${STARLOG_INTERVIEW_SEED:-auto}"
 STARLOG_INTERVIEW_SEED_ID="${STARLOG_INTERVIEW_SEED_ID:-android-interview-functional-v1}"
@@ -67,6 +69,11 @@ Environment overrides:
   STARLOG_API_BASE       Optional API origin for state snapshots.
   STARLOG_WEB_ORIGIN     Optional web origin recorded in run metadata.
   STARLOG_ACCESS_TOKEN   Optional bearer token for API snapshots; never printed.
+  STARLOG_MOBILE_CONFIGURE_AUTH
+                         auto | 1 | 0. When API base + token are supplied, launch a
+                         hidden dev/test auth deeplink before surface captures.
+  STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME
+                         Scheme for the dev/test auth deeplink (default: starlog).
   STARLOG_TEST_USER      Optional label recorded in deterministic seed metadata.
   STARLOG_INTERVIEW_SEED auto | off. auto writes api/interview-prep-seed.json and
                          seeds through the API when API base + token are supplied.
@@ -185,6 +192,8 @@ write_run_metadata() {
     printf 'planner_deeplink=%s\n' "$PLANNER_DEEPLINK"
     printf 'starlog_api_base=%s\n' "${STARLOG_API_BASE:-unset}"
     printf 'starlog_web_origin=%s\n' "${STARLOG_WEB_ORIGIN:-unset}"
+    printf 'starlog_mobile_configure_auth=%s\n' "$STARLOG_MOBILE_CONFIGURE_AUTH"
+    printf 'starlog_mobile_auth_deeplink_scheme=%s\n' "$STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME"
     printf 'starlog_test_user=%s\n' "${STARLOG_TEST_USER:-unset}"
     printf 'starlog_interview_seed=%s\n' "$STARLOG_INTERVIEW_SEED"
     printf 'starlog_interview_seed_id=%s\n' "$STARLOG_INTERVIEW_SEED_ID"
@@ -330,6 +339,65 @@ launch_deeplink() {
   sleep "$WAIT_SECONDS"
 }
 
+url_encode() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    fail "python3 is required to build the mobile test-auth deeplink"
+  fi
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+mobile_auth_config_enabled() {
+  case "$STARLOG_MOBILE_CONFIGURE_AUTH" in
+    0|false|False|FALSE|off|OFF|no|NO)
+      return 1
+      ;;
+    1|true|True|TRUE|on|ON|yes|YES)
+      return 0
+      ;;
+    auto|AUTO|"")
+      [[ -n "$STARLOG_API_BASE" && -n "$STARLOG_ACCESS_TOKEN" ]]
+      return
+      ;;
+    *)
+      fail "Unsupported STARLOG_MOBILE_CONFIGURE_AUTH: $STARLOG_MOBILE_CONFIGURE_AUTH"
+      ;;
+  esac
+}
+
+launch_mobile_auth_config() {
+  if ! mobile_auth_config_enabled; then
+    log "Mobile test auth config skipped"
+    return
+  fi
+  if [[ -z "$STARLOG_API_BASE" || -z "$STARLOG_ACCESS_TOKEN" ]]; then
+    fail "STARLOG_API_BASE and STARLOG_ACCESS_TOKEN are required when STARLOG_MOBILE_CONFIGURE_AUTH is enabled"
+  fi
+
+  local api_param token_param pwa_param auth_deeplink redacted_deeplink
+  api_param="$(url_encode "$STARLOG_API_BASE")"
+  token_param="$(url_encode "$STARLOG_ACCESS_TOKEN")"
+  auth_deeplink="${STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME}://test-auth?api_base=${api_param}&token=${token_param}&tab=assistant"
+  redacted_deeplink="${STARLOG_MOBILE_AUTH_DEEPLINK_SCHEME}://test-auth?api_base=${api_param}&token=%3Credacted%3E&tab=assistant"
+  if [[ -n "$STARLOG_WEB_ORIGIN" ]]; then
+    pwa_param="$(url_encode "$STARLOG_WEB_ORIGIN")"
+    auth_deeplink="${auth_deeplink}&pwa_base=${pwa_param}"
+    redacted_deeplink="${redacted_deeplink}&pwa_base=${pwa_param}"
+  fi
+
+  log "Launching mobile test auth config: $redacted_deeplink"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    if [[ -n "$ADB_SERIAL" ]]; then
+      quote_words "$ADB" -s "$ADB_SERIAL" shell am start -W -a android.intent.action.VIEW -d "$redacted_deeplink" -n "$APP_COMPONENT"
+    else
+      quote_words "$ADB" shell am start -W -a android.intent.action.VIEW -d "$redacted_deeplink" -n "$APP_COMPONENT"
+    fi
+    return
+  fi
+
+  adb_cmd_quiet shell am start -W -a android.intent.action.VIEW -d "$auth_deeplink" -n "$APP_COMPONENT"
+  sleep "$WAIT_SECONDS"
+}
+
 capture_state() {
   local label="$1"
   local remote_xml="/sdcard/starlog-${label}.xml"
@@ -432,6 +500,7 @@ fi
 keep_awake
 maybe_reverse_ports
 launch_component
+launch_mobile_auth_config
 capture_state "00-launch"
 
 launch_deeplink "Assistant" "$ASSISTANT_DEEPLINK"
