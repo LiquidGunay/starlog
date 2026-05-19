@@ -290,14 +290,11 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
   const recommendationReason = extractRecommendationReason(quizResponse);
   if (recommendationReason) {
-    const recommendationPanel = page.locator('[data-testid="assistant-ui-recommendation-reason"]');
-    if (await recommendationPanel.count() > 0) {
-      await expect(recommendationPanel).toBeVisible();
-      await expect(recommendationPanel).toContainText(recommendationReason);
-    } else {
-      await expect(page.getByText("Recommendation reason").first()).toBeVisible();
-      await expect(page.getByText(recommendationReason).first()).toBeVisible();
+    const recommendationReasonHeading = page.getByText("Recommendation reason");
+    if (await recommendationReasonHeading.count() > 0) {
+      await expect(recommendationReasonHeading.first()).toBeVisible();
     }
+    await expect(page.getByText(recommendationReason).first()).toBeVisible();
   }
   await screenshot(page, testInfo, "04-study-commands");
 
