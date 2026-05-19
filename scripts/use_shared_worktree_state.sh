@@ -95,10 +95,19 @@ link_one() {
     local target
     target="$(readlink -f "$dest")"
     if [[ "$target" == "$src" ]]; then
+      if ! validate_source_path "$rel" "$src"; then
+        echo "      existing link left in place: $dest -> $src"
+        echo "      remove that symlink before running the remediation command above"
+        return
+      fi
       echo "reuse $rel"
       return
     fi
     echo "skip  $rel (already linked elsewhere: $target)"
+    return
+  fi
+
+  if ! validate_source_path "$rel" "$src"; then
     return
   fi
 
@@ -110,6 +119,45 @@ link_one() {
   mkdir -p "$(dirname "$dest")"
   ln -s "$src" "$dest"
   echo "link  $rel -> $src"
+}
+
+validate_source_path() {
+  local rel="$1"
+  local src="$2"
+
+  if [[ "$rel" != "apps/mobile/node_modules" ]]; then
+    return 0
+  fi
+
+  local required=(
+    "react-native/package.json"
+    "expo/package.json"
+    "@react-native/gradle-plugin/package.json"
+  )
+  local missing=()
+  local package_path
+
+  for package_path in "${required[@]}"; do
+    if [[ ! -e "$src/$package_path" ]]; then
+      missing+=("$package_path")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "skip  $rel (source dependency tree is stale or incomplete)"
+  for package_path in "${missing[@]}"; do
+    echo "      missing $rel/$package_path"
+  done
+  cat <<'NOTE'
+      remediation: localize this worktree's mobile dependencies before native builds:
+        corepack pnpm install --filter mobile... --offline
+      If offline install cannot satisfy the lockfile, refresh the canonical checkout's
+      node_modules before linking shared state again.
+NOTE
+  return 1
 }
 
 paths=(
