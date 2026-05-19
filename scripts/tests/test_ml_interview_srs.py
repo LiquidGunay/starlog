@@ -127,13 +127,20 @@ def test_build_note_block_content_contains_provenance() -> None:
     content = bootstrap.build_note_block_content(card)
 
     assert "Import Key: ml-interviews-part-ii:0001" in content
+    assert "Question Style: conceptual_recall" in content
+    assert "Progression Stage: 1" in content
+    assert "Progression Gate: topic_read" in content
     assert "Source URL: https://example.test/source" in content
     assert "Source Path: unspecified" in content
     assert "Section: Sample Section" in content
     assert "Question Index: 0001" in content
     assert "Answer Source: heuristic" in content
-    assert "Tags: ml-interviews-part-ii, section-sample-section, difficulty-e, source-heuristic" in content
+    assert (
+        "Tags: ml-interviews-part-ii, interview-prep, topic-gated, style-conceptual-recall, "
+        "section-sample-section, difficulty-e, source-heuristic"
+    ) in content
     assert "X is the first quantity." in content
+    assert '"spec_id": "interview-prep-card-quality-v1"' in content
 
 
 def test_stable_card_tags_use_section_difficulty_and_source() -> None:
@@ -150,6 +157,9 @@ def test_stable_card_tags_use_section_difficulty_and_source() -> None:
 
     assert bootstrap.stable_card_tags(card) == [
         "ml-interviews-part-ii",
+        "interview-prep",
+        "topic-gated",
+        "style-conceptual-recall",
         "section-5-2-2-stats",
         "difficulty-h",
         "source-zafstojano-ml-interview-questions-and-answers",
@@ -310,6 +320,9 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
             assert card["deck_id"] == first["deck_id"]
             assert json.loads(card["tags_json"]) == [
                 "ml-interviews-part-ii",
+                "interview-prep",
+                "topic-gated",
+                "style-conceptual-recall",
                 "section-sample-section",
                 "difficulty-e",
                 "source-heuristic",
@@ -328,6 +341,9 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
             source_metadata = json.loads(source["metadata_json"])
             assert source_metadata["import_key"] == "ml-interviews-part-ii"
             assert source_metadata["section_counts"] == {"Sample Section": 1}
+            assert source_metadata["question_style_counts"] == {"conceptual_recall": 1}
+            assert source_metadata["quality_spec"]["spec_id"] == "interview-prep-card-quality-v1"
+            assert source_metadata["progression_gating"]["requires_topic_read"] is True
             topic = study_service.resolve_topic_reference(conn, "ML Interviews Part II Sample Section")
             assert topic["source_id"] == first["source_id"]
             assert topic["title"] == "Sample Section"

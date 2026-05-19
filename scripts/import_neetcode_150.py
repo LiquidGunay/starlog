@@ -23,6 +23,7 @@ DECK_NAME = "NeetCode 150"
 DECK_DESCRIPTION = "Coding interview practice cards generated from the local NeetCode 150 source list."
 ARTIFACT_TITLE = "NeetCode 150 Study Core import"
 NOTE_TITLE = "NeetCode 150 Study Core import"
+import interview_prep_quality  # noqa: E402
 
 EXPECTED_PATTERN_COUNTS = {
     "Arrays & Hashing": 9,
@@ -55,64 +56,13 @@ REQUIRED_ITEM_FIELDS = {
     "prerequisites",
     "notes",
 }
-REVIEW_CARD_AXES = (
-    {
-        "id": "pattern_recognition",
-        "label": "Pattern recognition",
-        "card_type": "scenario",
-        "tag": "pattern-recognition",
-        "prompt": (
-            "Before opening {title}, identify the observable cues that should make you reach for "
-            "{pattern}. What input shape, constraint, or operation hints would you look for?"
-        ),
-        "answer": (
-            "Use this as a self-check for recognizing the pattern, not for recalling a solution. "
-            "Name the cues you observed, compare them with the listed pattern, then record any "
-            "competing patterns you considered."
-        ),
-    },
-    {
-        "id": "edge_cases",
-        "label": "Edge cases",
-        "card_type": "judgment",
-        "tag": "edge-cases",
-        "prompt": (
-            "For {title}, list the boundary cases you would test before submitting. Include empty, "
-            "minimal, duplicate, ordering, and constraint-boundary cases when they apply."
-        ),
-        "answer": (
-            "After attempting the problem, compare your tests against the failure modes you actually "
-            "hit. Keep concrete examples in your editable notes; no source solution text is imported."
-        ),
-    },
-    {
-        "id": "complexity",
-        "label": "Complexity",
-        "card_type": "understanding",
-        "tag": "complexity",
-        "prompt": (
-            "State the expected time and space complexity for your {pattern} approach to {title}. "
-            "Which operation dominates, and what data structure choice controls the bound?"
-        ),
-        "answer": (
-            "Self-grade by explaining the dominant loop, recursion, heap, map, graph traversal, or DP "
-            "state count in your own words. Update the note after solving if your first estimate was wrong."
-        ),
-    },
-    {
-        "id": "implementation_traps",
-        "label": "Implementation traps",
-        "card_type": "critique",
-        "tag": "implementation-traps",
-        "prompt": (
-            "Name the implementation traps for {title}: off-by-one risks, state invariants, mutation "
-            "hazards, duplicate handling, and language-specific pitfalls."
-        ),
-        "answer": (
-            "Check the traps against your submitted code or scratch solution. Record the bugs you found, "
-            "the invariant that prevents them, and what you will watch for next time."
-        ),
-    },
+QUALITY_SPEC = interview_prep_quality.load_quality_spec()
+REVIEW_CARD_AXES = interview_prep_quality.question_styles(QUALITY_SPEC)
+LEGACY_REVIEW_CARD_AXIS_MIGRATIONS = (
+    ("pattern_recognition", "conceptual_recall"),
+    ("edge_cases", "debugging_edge_cases"),
+    ("complexity", "complexity_implementation_traps"),
+    ("implementation_traps", "complexity_implementation_traps"),
 )
 
 
@@ -277,6 +227,7 @@ def _source_metadata(collection_id: str, review_inputs: list[dict[str, Any]]) ->
     return {
         "import_key": collection_id,
         "external_id": collection_id,
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
         "source_checked_at": review_inputs[0].get("provenance", {}).get("source_checked_at")
         if isinstance(review_inputs[0].get("provenance"), dict)
         else None,
@@ -430,6 +381,7 @@ def _artifact_payload(collection_id: str, review_inputs: list[dict[str, Any]]) -
         "metadata": {
             "import_key": collection_id,
             "deck_name": DECK_NAME,
+            "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
             "source_url": _source_list_url(review_inputs),
             "review_input_count": len(review_inputs),
             "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
@@ -590,6 +542,8 @@ def _practice_item_metadata(review_input: dict[str, Any]) -> dict[str, Any]:
     return {
         "import_key": review_input["external_id"],
         "external_id": review_input["external_id"],
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
+        "progression_gating": QUALITY_SPEC["progression_gating"],
         "source_sequence": review_input["source_sequence"],
         "difficulty": review_input["difficulty"],
         "pattern": review_input["pattern"],
@@ -606,16 +560,18 @@ def _review_card_specs(review_input: dict[str, Any]) -> list[dict[str, Any]]:
         axis_id = str(axis["id"])
         title = str(review_input["title"])
         pattern = str(review_input["pattern"])
-        prompt = str(axis["prompt"]).format(title=title, pattern=pattern, difficulty=review_input["difficulty"])
+        prompt = str(axis["prompt_template"]).format(title=title, pattern=pattern, difficulty=review_input["difficulty"])
         answer = (
             f"Open: {review_input['source_url']}\n\n"
-            f"{axis['label']} review. {axis['answer']} "
+            f"{axis['label']} review. {axis['answer_guidance']} "
             "This card contains no copied problem statement or solution text."
         )
+        question_quality = interview_prep_quality.style_metadata(axis)
         specs.append(
             {
                 "axis_id": axis_id,
                 "axis_label": axis["label"],
+                "question_quality": question_quality,
                 "card_id": _db_id("crd", review_input["external_id"], axis_id),
                 "note_block_id": _db_id("blk", review_input["external_id"], axis_id),
                 "card_type": axis["card_type"],
@@ -626,6 +582,7 @@ def _review_card_specs(review_input: dict[str, Any]) -> list[dict[str, Any]]:
                     {
                         "external_id": review_input["external_id"],
                         "axis_id": axis_id,
+                        "question_quality": question_quality,
                         "prompt": prompt,
                         "answer": answer,
                         "tags": _card_tags(review_input, str(axis["tag"])),
@@ -717,10 +674,13 @@ def _note_block_content(review_input: dict[str, Any], card_spec: dict[str, Any])
         [
             f"Import Key: {review_input['external_id']}",
             f"Review Axis: {card_spec['axis_label']}",
+            f"Question Style: {card_spec['question_quality']['question_style_id']}",
+            f"Progression Stage: {card_spec['question_quality']['progression_stage']}",
             f"Source URL: {review_input['source_url']}",
             f"Pattern: {review_input['pattern']}",
             f"Difficulty: {review_input['difficulty']}",
             f"Prerequisites: {', '.join(review_input['prerequisites']) or 'none'}",
+            f"Progression Gate: {QUALITY_SPEC['progression_gating']['gate_kind']}",
             f"Content Hash: {review_input['content_hash']}",
             f"Card Hash: {card_spec['content_hash']}",
             "",
@@ -893,6 +853,10 @@ def _legacy_card_link_id_prefix(external_id: str) -> str:
     return f"{_db_id('card_topic', external_id)}_"
 
 
+def _legacy_axis_card_link_id_prefix(external_id: str, axis_id: str) -> str:
+    return f"{_db_id('card_topic', external_id, axis_id)}_"
+
+
 def _legacy_note_block_importer_owned(row: Any, *, artifact_id: str) -> bool:
     if row["artifact_id"] == artifact_id:
         return True
@@ -902,6 +866,175 @@ def _legacy_note_block_importer_owned(row: Any, *, artifact_id: str) -> bool:
 
 def _fresh_axis_card(row: Any) -> bool:
     return int(row["repetitions"]) == 0
+
+
+def _axis_card_is_initial(row: Any, *, initial_interval_days: int, initial_ease_factor: float) -> bool:
+    return (
+        int(row["interval_days"]) == initial_interval_days
+        and float(row["ease_factor"]) == initial_ease_factor
+    )
+
+
+def _review_event_count(conn: Any, card_id: str) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
+            (card_id,),
+        ).fetchone()["count"]
+    )
+
+
+def _legacy_axis_migration_rank(entry: dict[str, Any]) -> tuple[int, int, float, int]:
+    card = entry["card"]
+    return (
+        int(card["repetitions"]),
+        int(card["interval_days"]),
+        float(card["ease_factor"]),
+        -int(entry["mapping_order"]),
+    )
+
+
+def _migrate_axis_card_state(
+    conn: Any,
+    *,
+    legacy_card: Any,
+    target_card_id: str,
+    initial_interval_days: int,
+    initial_ease_factor: float,
+    now_iso: str,
+) -> bool:
+    target_card = conn.execute("SELECT * FROM cards WHERE id = ?", (target_card_id,)).fetchone()
+    if target_card is None or not _fresh_axis_card(target_card):
+        return False
+    if _review_event_count(conn, target_card_id) > 0:
+        return False
+    if not _axis_card_is_initial(
+        target_card,
+        initial_interval_days=initial_interval_days,
+        initial_ease_factor=initial_ease_factor,
+    ):
+        return False
+    conn.execute(
+        """
+        UPDATE cards
+        SET suspended = ?, due_at = ?, interval_days = ?, repetitions = ?,
+            ease_factor = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            int(legacy_card["suspended"]),
+            legacy_card["due_at"],
+            int(legacy_card["interval_days"]),
+            int(legacy_card["repetitions"]),
+            float(legacy_card["ease_factor"]),
+            now_iso,
+            target_card_id,
+        ),
+    )
+    return True
+
+
+def _retire_legacy_axis_cards(
+    conn: Any,
+    *,
+    artifact_id: str,
+    review_inputs: list[dict[str, Any]],
+    schedule: dict[str, Any],
+    now_iso: str,
+) -> dict[str, int]:
+    status = {
+        "axis_cards_deleted": 0,
+        "axis_cards_suspended": 0,
+        "axis_links_deleted": 0,
+        "axis_note_blocks_deleted": 0,
+        "axis_state_migrated": 0,
+    }
+    initial_interval_days = int(schedule.get("initial_interval_days", 1))
+    initial_ease_factor = float(schedule.get("initial_ease_factor", 2.5))
+    new_axis_ids = {str(axis["id"]) for axis in REVIEW_CARD_AXES}
+    for review_input in review_inputs:
+        external_id = str(review_input["external_id"])
+        migration_candidates: dict[str, list[dict[str, Any]]] = {}
+        legacy_entries: list[dict[str, Any]] = []
+        for mapping_order, (legacy_axis_id, target_axis_id) in enumerate(LEGACY_REVIEW_CARD_AXIS_MIGRATIONS):
+            if target_axis_id not in new_axis_ids:
+                continue
+            legacy_card_id = _db_id("crd", external_id, legacy_axis_id)
+            legacy_note_block_id = _db_id("blk", external_id, legacy_axis_id)
+            legacy_card = conn.execute("SELECT * FROM cards WHERE id = ?", (legacy_card_id,)).fetchone()
+            legacy_card_owned = legacy_card is not None and _legacy_card_importer_owned(
+                legacy_card,
+                artifact_id=artifact_id,
+                legacy_note_block_id=legacy_note_block_id,
+            )
+            if legacy_card_owned:
+                entry = {
+                    "card": legacy_card,
+                    "legacy_axis_id": legacy_axis_id,
+                    "legacy_card_id": legacy_card_id,
+                    "legacy_note_block_id": legacy_note_block_id,
+                    "target_axis_id": target_axis_id,
+                    "target_card_id": _db_id("crd", external_id, target_axis_id),
+                    "mapping_order": mapping_order,
+                }
+                legacy_entries.append(entry)
+                migration_candidates.setdefault(target_axis_id, []).append(entry)
+                continue
+
+            if legacy_card is None:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM card_topic_links
+                    WHERE card_id = ?
+                      AND id GLOB ?
+                    """,
+                    (legacy_card_id, f"{_legacy_axis_card_link_id_prefix(external_id, legacy_axis_id)}*"),
+                )
+                status["axis_links_deleted"] += max(cursor.rowcount, 0)
+
+        for target_axis_id, candidates in migration_candidates.items():
+            target_card_id = _db_id("crd", external_id, target_axis_id)
+            for entry in sorted(candidates, key=_legacy_axis_migration_rank, reverse=True):
+                if _migrate_axis_card_state(
+                    conn,
+                    legacy_card=entry["card"],
+                    target_card_id=target_card_id,
+                    initial_interval_days=initial_interval_days,
+                    initial_ease_factor=initial_ease_factor,
+                    now_iso=now_iso,
+                ):
+                    status["axis_state_migrated"] += 1
+                    break
+
+        for entry in legacy_entries:
+            legacy_card = entry["card"]
+            legacy_card_id = entry["legacy_card_id"]
+            legacy_note_block_id = entry["legacy_note_block_id"]
+            cursor = conn.execute("DELETE FROM card_topic_links WHERE card_id = ?", (legacy_card_id,))
+            status["axis_links_deleted"] += max(cursor.rowcount, 0)
+            if _review_event_count(conn, legacy_card_id) == 0:
+                cursor = conn.execute("DELETE FROM cards WHERE id = ?", (legacy_card_id,))
+                status["axis_cards_deleted"] += max(cursor.rowcount, 0)
+            elif int(legacy_card["suspended"]) == 0:
+                conn.execute(
+                    "UPDATE cards SET suspended = 1, updated_at = ? WHERE id = ?",
+                    (now_iso, legacy_card_id),
+                )
+                status["axis_cards_suspended"] += 1
+
+            note_block_refs = conn.execute(
+                "SELECT COUNT(*) AS count FROM cards WHERE note_block_id = ?",
+                (legacy_note_block_id,),
+            ).fetchone()["count"]
+            note_block = conn.execute("SELECT * FROM note_blocks WHERE id = ?", (legacy_note_block_id,)).fetchone()
+            if (
+                int(note_block_refs) == 0
+                and note_block is not None
+                and _legacy_note_block_importer_owned(note_block, artifact_id=artifact_id)
+            ):
+                cursor = conn.execute("DELETE FROM note_blocks WHERE id = ?", (legacy_note_block_id,))
+                status["axis_note_blocks_deleted"] += max(cursor.rowcount, 0)
+    return status
 
 
 def _retire_legacy_problem_cards(
@@ -918,9 +1051,23 @@ def _retire_legacy_problem_cards(
         "links_deleted": 0,
         "note_blocks_deleted": 0,
         "state_migrated": 0,
+        "axis_cards_deleted": 0,
+        "axis_cards_suspended": 0,
+        "axis_links_deleted": 0,
+        "axis_note_blocks_deleted": 0,
+        "axis_state_migrated": 0,
     }
     initial_interval_days = int(schedule.get("initial_interval_days", 1))
     initial_ease_factor = float(schedule.get("initial_ease_factor", 2.5))
+    axis_status = _retire_legacy_axis_cards(
+        conn,
+        artifact_id=artifact_id,
+        review_inputs=review_inputs,
+        schedule=schedule,
+        now_iso=now_iso,
+    )
+    for key, value in axis_status.items():
+        status[key] = status.get(key, 0) + int(value)
     for review_input in review_inputs:
         external_id = str(review_input["external_id"])
         legacy_card_id = _db_id("crd", external_id)
@@ -937,17 +1084,13 @@ def _retire_legacy_problem_cards(
                 axis_card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_spec["card_id"],)).fetchone()
                 if axis_card is None or not _fresh_axis_card(axis_card):
                     continue
-                axis_review_events = conn.execute(
-                    "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
-                    (card_spec["card_id"],),
-                ).fetchone()["count"]
-                if int(axis_review_events) > 0:
+                if _review_event_count(conn, card_spec["card_id"]) > 0:
                     continue
-                axis_is_initial = (
-                    int(axis_card["interval_days"]) == initial_interval_days
-                    and float(axis_card["ease_factor"]) == initial_ease_factor
-                )
-                if not axis_is_initial:
+                if not _axis_card_is_initial(
+                    axis_card,
+                    initial_interval_days=initial_interval_days,
+                    initial_ease_factor=initial_ease_factor,
+                ):
                     continue
                 conn.execute(
                     """
@@ -1189,6 +1332,8 @@ def build_review_inputs(source: dict[str, Any]) -> list[dict[str, Any]]:
                 "source_checked_at": source.get("source_checked_at"),
                 "contains_solution_text": False,
             },
+            "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
+            "progression_gating": QUALITY_SPEC["progression_gating"],
         }
         review_input["content_hash"] = _stable_hash(review_input)
         review_inputs.append(review_input)
@@ -1212,6 +1357,7 @@ def summarize(source_path: Path, source: dict[str, Any], review_inputs: list[dic
         "review_input_count": len(review_inputs),
         "review_card_axes": [str(axis["id"]) for axis in REVIEW_CARD_AXES],
         "review_card_count": len(review_inputs) * len(REVIEW_CARD_AXES),
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
         "pattern_counts": dict(Counter(item["pattern"] for item in items)),
         "difficulty_counts": dict(Counter(item["difficulty"] for item in items)),
         "adapter": adapter_summary,

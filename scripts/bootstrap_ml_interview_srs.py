@@ -15,6 +15,11 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 API_DIR = ROOT_DIR / "services/api"
 if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
+SCRIPTS_DIR = ROOT_DIR / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import interview_prep_quality  # noqa: E402
 
 DECK_NAME = "ML Interviews Part II"
 DECK_DESCRIPTION = "Machine learning interview study cards from ML Interviews Book Part II."
@@ -22,6 +27,7 @@ SOURCE_URL = "https://huyenchip.com/ml-interviews-book/contents/part-ii.-questio
 ARTIFACT_TITLE = "ML Interviews Part II SRS bootstrap"
 NOTE_TITLE = "ML Interviews Part II SRS deck"
 IMPORT_KEY_PREFIX = "ml-interviews-part-ii"
+QUALITY_SPEC = interview_prep_quality.load_quality_spec()
 
 
 def load_cards(path: Path) -> list[dict[str, Any]]:
@@ -109,12 +115,35 @@ def stable_card_tags(card: dict[str, Any]) -> list[str]:
     section = str(card.get("section") or metadata.get("section") or "unknown-section")
     difficulty = str(card.get("difficulty") or metadata.get("difficulty") or "unspecified")
     source = str(metadata.get("answer_source") or metadata.get("source_url") or card.get("source_url") or "unknown-source")
+    quality = card_quality_metadata(card)
     return [
         "ml-interviews-part-ii",
+        "interview-prep",
+        "topic-gated",
+        f"style-{slug_tag(str(quality['question_style_id']))}",
         f"section-{slug_tag(section)}",
         f"difficulty-{slug_tag(difficulty)}",
         f"source-{slug_tag(source)}",
     ]
+
+
+def _quality_style(style_id: str) -> dict[str, Any]:
+    for style in interview_prep_quality.question_styles(QUALITY_SPEC):
+        if style["id"] == style_id:
+            return style
+    raise ValueError(f"Unknown interview prep question style: {style_id}")
+
+
+def card_quality_metadata(card: dict[str, Any]) -> dict[str, Any]:
+    metadata = card.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    provided = metadata.get("question_quality")
+    if isinstance(provided, dict) and isinstance(provided.get("question_style_id"), str):
+        style = _quality_style(provided["question_style_id"])
+        quality = interview_prep_quality.style_metadata(style)
+        quality.update({key: value for key, value in provided.items() if key not in quality})
+        return quality
+    return interview_prep_quality.style_metadata(_quality_style("conceptual_recall"))
 
 
 def build_note_block_content(card: dict[str, Any]) -> str:
@@ -128,10 +157,14 @@ def build_note_block_content(card: dict[str, Any]) -> str:
     difficulty = str(card.get("difficulty") or metadata.get("difficulty") or "").strip()
     question = str(card.get("question") or card.get("prompt") or "").strip()
     answer = str(card.get("answer") or "").strip()
+    quality = card_quality_metadata(card)
     metadata_json = json.dumps(metadata, indent=2, sort_keys=True)
 
     lines = [
         f"Import Key: {stable_card_key(card)}",
+        f"Question Style: {quality['question_style_id']}",
+        f"Progression Stage: {quality['progression_stage']}",
+        f"Progression Gate: {QUALITY_SPEC['progression_gating']['gate_kind']}",
         f"Source URL: {source_url}",
         f"Source Path: {source_path or 'unspecified'}",
         f"Section: {section}",
@@ -148,6 +181,9 @@ def build_note_block_content(card: dict[str, Any]) -> str:
         "",
         "Metadata:",
         metadata_json,
+        "",
+        "Quality Spec:",
+        json.dumps(interview_prep_quality.quality_spec_summary(QUALITY_SPEC), indent=2, sort_keys=True),
     ]
     return "\n".join(lines).strip()
 
@@ -159,7 +195,7 @@ def build_deck_note_body(card_count: int) -> str:
         f"Deck: {DECK_NAME}\n\n"
         f"Cards: {card_count}\n\n"
         "Each card stores source URL, source path, section, difficulty, answer source, stable import key, "
-        "and full source metadata in its linked note block."
+        "question-style metadata, progression-gating metadata, and full source metadata in its linked note block."
     )
 
 
@@ -193,6 +229,7 @@ def _artifact_payload(deck_path: Path, cards: list[dict[str, Any]]) -> dict[str,
             "bootstrap": True,
             "import_key": IMPORT_KEY_PREFIX,
             "deck_name": DECK_NAME,
+            "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
             "deck_path": _relative_deck_path(deck_path),
             "source_url": SOURCE_URL,
             "card_count": len(cards),
@@ -241,6 +278,9 @@ def _source_metadata(deck_path: Path, cards: list[dict[str, Any]]) -> dict[str, 
         "section_count": len(set(sections)),
         "section_counts": dict(Counter(sections)),
         "difficulty_counts": dict(Counter(difficulties)),
+        "quality_spec": interview_prep_quality.quality_spec_summary(QUALITY_SPEC),
+        "question_style_counts": dict(Counter(str(card_quality_metadata(card)["question_style_id"]) for card in cards)),
+        "progression_gating": QUALITY_SPEC["progression_gating"],
         "content_hash": stable_hash(cards),
     }
 

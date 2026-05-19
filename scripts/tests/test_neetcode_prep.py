@@ -113,10 +113,10 @@ def test_review_card_spec_is_practice_only() -> None:
         specs = neetcode._review_card_specs(review_input)
 
         assert [spec["axis_id"] for spec in specs] == [
-            "pattern_recognition",
-            "edge_cases",
-            "complexity",
-            "implementation_traps",
+            "conceptual_recall",
+            "application_scenario",
+            "debugging_edge_cases",
+            "complexity_implementation_traps",
         ]
         assert len({spec["card_id"] for spec in specs}) == 4
         for spec in specs:
@@ -124,8 +124,26 @@ def test_review_card_spec_is_practice_only() -> None:
             assert spec["answer"].strip()
             assert review_input["source_url"] in spec["answer"]
             assert "This card contains no copied problem statement or solution text." in spec["answer"]
+            assert spec["question_quality"]["question_style_id"] == spec["axis_id"]
+            assert spec["question_quality"]["progression_stage"] in {1, 2, 3, 4}
             _assert_no_solution_looking_text(spec["prompt"])
             _assert_no_solution_looking_text(spec["answer"])
+
+
+def test_quality_spec_defines_progressive_interview_question_styles() -> None:
+    summary = neetcode.interview_prep_quality.quality_spec_summary(neetcode.QUALITY_SPEC)
+
+    assert summary["spec_id"] == "interview-prep-card-quality-v1"
+    assert summary["source_policy"]["allow_solution_text_import"] is False
+    assert summary["source_policy"]["allow_unproven_pdf_ocr_cards"] is False
+    assert summary["progression_gating"]["requires_topic_read"] is True
+    assert summary["progression_gating"]["stage_order"] == [
+        "conceptual_recall",
+        "application_scenario",
+        "debugging_edge_cases",
+        "complexity_implementation_traps",
+    ]
+    assert {"Research Engineer", "Machine Learning Engineer", "AI Engineer"} <= set(summary["target_roles"])
 
 
 def test_review_card_specs_cover_interview_prep_axes_without_solution_text() -> None:
@@ -135,14 +153,15 @@ def test_review_card_specs_cover_interview_prep_axes_without_solution_text() -> 
     specs = neetcode._review_card_specs(review_input)
 
     assert [spec["axis_id"] for spec in specs] == [
-        "pattern_recognition",
-        "edge_cases",
-        "complexity",
-        "implementation_traps",
+        "conceptual_recall",
+        "application_scenario",
+        "debugging_edge_cases",
+        "complexity_implementation_traps",
     ]
     assert len({spec["card_id"] for spec in specs}) == 4
     assert all("https://leetcode.com/problems/valid-palindrome/" in spec["answer"] for spec in specs)
-    assert any("observable cues" in spec["prompt"] for spec in specs)
+    assert any("core idea" in spec["prompt"] for spec in specs)
+    assert any("realistic Easy interview scenario" in spec["prompt"] for spec in specs)
     assert any("boundary cases" in spec["prompt"] for spec in specs)
     assert any("time and space complexity" in spec["prompt"] for spec in specs)
     assert any("off-by-one risks" in spec["prompt"] for spec in specs)
@@ -159,11 +178,12 @@ def test_import_source_dry_run_reports_counts() -> None:
     assert summary["review_input_count"] == 150
     assert summary["review_card_count"] == 600
     assert summary["review_card_axes"] == [
-        "pattern_recognition",
-        "edge_cases",
-        "complexity",
-        "implementation_traps",
+        "conceptual_recall",
+        "application_scenario",
+        "debugging_edge_cases",
+        "complexity_implementation_traps",
     ]
+    assert summary["quality_spec"]["progression_gating"]["requires_topic_read"] is True
     assert summary["pattern_counts"] == neetcode.EXPECTED_PATTERN_COUNTS
     assert summary["difficulty_counts"] == neetcode.EXPECTED_DIFFICULTY_COUNTS
     assert summary["adapter"]["adapter"] == "dry_run"
@@ -271,14 +291,14 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
                 FROM cards
                 WHERE id = ?
                 """,
-                (neetcode._db_id("crd", "neetcode-150-010", "implementation_traps"),),
+                (neetcode._db_id("crd", "neetcode-150-010", "complexity_implementation_traps"),),
             ).fetchone()
             assert json.loads(card["tags_json"]) == [
                 "neetcode-150",
                 "pattern-two-pointers",
                 "difficulty-easy",
                 "coding-practice",
-                "implementation-traps",
+                "complexity-implementation-traps",
             ]
             assert card["interval_days"] == 1
             assert card["repetitions"] == 0
@@ -304,7 +324,7 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
                     neetcode._db_id(
                         "card_topic",
                         "neetcode-150-010",
-                        "implementation_traps",
+                        "complexity_implementation_traps",
                         "prerequisite",
                         "Two Pointers",
                     ),
@@ -321,7 +341,7 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
                     neetcode._db_id(
                         "card_topic",
                         "neetcode-150-010",
-                        "implementation_traps",
+                        "complexity_implementation_traps",
                         "prerequisite",
                         "Stack",
                     ),
@@ -354,7 +374,7 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
         with get_connection() as conn:
             preserved = conn.execute(
                 "SELECT due_at, interval_days, repetitions, ease_factor FROM cards WHERE id = ?",
-                (neetcode._db_id("crd", "neetcode-150-010", "implementation_traps"),),
+                (neetcode._db_id("crd", "neetcode-150-010", "complexity_implementation_traps"),),
             ).fetchone()
             assert preserved["due_at"] == "2030-01-01T00:00:00+00:00"
             assert preserved["interval_days"] == 21
@@ -370,7 +390,7 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
                 WHERE card_id = ?
                 ORDER BY gate_required ASC, topic_id ASC
                 """,
-                (neetcode._db_id("crd", "neetcode-150-010", "implementation_traps"),),
+                (neetcode._db_id("crd", "neetcode-150-010", "complexity_implementation_traps"),),
             ).fetchall()
             assert {row["topic_id"]: row["gate_required"] for row in links} == {
                 primary_topic: 1,
@@ -379,17 +399,17 @@ def test_local_study_core_import_is_idempotent_and_links_prerequisites(
             }
             remaining_stale = conn.execute(
                 "SELECT id FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
-                (neetcode._db_id("crd", "neetcode-150-010", "implementation_traps"), stale_topic),
+                (neetcode._db_id("crd", "neetcode-150-010", "complexity_implementation_traps"), stale_topic),
             ).fetchone()
             assert remaining_stale is None
             primary_link = conn.execute(
                 "SELECT id FROM card_topic_links WHERE card_id = ? AND topic_id = ?",
-                (neetcode._db_id("crd", "neetcode-150-010", "implementation_traps"), primary_topic),
+                (neetcode._db_id("crd", "neetcode-150-010", "complexity_implementation_traps"), primary_topic),
             ).fetchone()
             assert primary_link["id"] == neetcode._db_id(
                 "card_topic",
                 "neetcode-150-010",
-                "implementation_traps",
+                "complexity_implementation_traps",
                 "primary",
                 "Two Pointers",
             )
@@ -501,12 +521,216 @@ def test_local_study_core_import_retires_legacy_generic_problem_card(
 
             migrated_axis_card = conn.execute(
                 "SELECT due_at, interval_days, repetitions, ease_factor FROM cards WHERE id = ?",
-                (neetcode._db_id("crd", legacy_external_id, "pattern_recognition"),),
+                (neetcode._db_id("crd", legacy_external_id, "conceptual_recall"),),
             ).fetchone()
             assert migrated_axis_card["due_at"] == due_at
             assert migrated_axis_card["interval_days"] == 9
             assert migrated_axis_card["repetitions"] == 3
             assert migrated_axis_card["ease_factor"] == 2.1
+    finally:
+        get_settings.cache_clear()
+
+
+def test_local_study_core_import_retires_legacy_axis_cards_after_style_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STARLOG_DB_PATH", str(tmp_path / "starlog.db"))
+    monkeypatch.setenv("STARLOG_MEDIA_DIR", str(tmp_path / "media"))
+
+    from app.core.config import get_settings
+    from app.core.time import utc_now
+    from app.db.storage import get_connection
+
+    get_settings.cache_clear()
+    try:
+        source_path = REPO_ROOT / "data/neetcode_150.json"
+        adapter = neetcode.StudyCoreLocalAdapter()
+        first = neetcode.import_neetcode_source(source_path, adapter)
+
+        external_id = "neetcode-150-003"
+        old_axes = {
+            "pattern_recognition": {
+                "target": "conceptual_recall",
+                "due_at": (utc_now() - timedelta(days=4)).isoformat(),
+                "interval_days": 12,
+                "repetitions": 4,
+                "ease_factor": 2.0,
+                "reviewed": False,
+            },
+            "edge_cases": {
+                "target": "debugging_edge_cases",
+                "due_at": (utc_now() - timedelta(days=3)).isoformat(),
+                "interval_days": 8,
+                "repetitions": 3,
+                "ease_factor": 2.2,
+                "reviewed": True,
+            },
+            "complexity": {
+                "target": "complexity_implementation_traps",
+                "due_at": (utc_now() - timedelta(days=2)).isoformat(),
+                "interval_days": 5,
+                "repetitions": 2,
+                "ease_factor": 2.4,
+                "reviewed": False,
+            },
+            "implementation_traps": {
+                "target": "complexity_implementation_traps",
+                "due_at": (utc_now() - timedelta(days=1)).isoformat(),
+                "interval_days": 21,
+                "repetitions": 7,
+                "ease_factor": 1.7,
+                "reviewed": False,
+            },
+        }
+
+        with get_connection() as conn:
+            topic = conn.execute(
+                "SELECT id FROM study_topics WHERE title = ?",
+                ("Arrays & Hashing",),
+            ).fetchone()
+            assert topic is not None
+            for old_axis, state in old_axes.items():
+                old_card_id = neetcode._db_id("crd", external_id, old_axis)
+                old_note_block_id = neetcode._db_id("blk", external_id, old_axis)
+                conn.execute(
+                    """
+                    INSERT INTO note_blocks (id, note_id, artifact_id, block_type, content, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        old_note_block_id,
+                        first["adapter"]["note_id"],
+                        first["adapter"]["artifact_id"],
+                        "coding_problem_review_card",
+                        f"Import Key: {external_id}\nReview Axis: {old_axis}",
+                        state["due_at"],
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO cards (
+                      id, card_set_version_id, artifact_id, note_block_id, deck_id, card_type, prompt, answer,
+                      tags_json, suspended, due_at, interval_days, repetitions, ease_factor, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        old_card_id,
+                        first["adapter"]["card_set_version_id"],
+                        first["adapter"]["artifact_id"],
+                        old_note_block_id,
+                        first["adapter"]["deck_id"],
+                        "understanding",
+                        f"Legacy {old_axis} prompt",
+                        f"Legacy {old_axis} answer",
+                        json.dumps(["neetcode-150", "coding-practice", old_axis]),
+                        0,
+                        state["due_at"],
+                        state["interval_days"],
+                        state["repetitions"],
+                        state["ease_factor"],
+                        state["due_at"],
+                        state["due_at"],
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO card_topic_links (id, card_id, topic_id, gate_required, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        neetcode._db_id("card_topic", external_id, old_axis, "primary", "Arrays & Hashing"),
+                        old_card_id,
+                        topic["id"],
+                        1,
+                        state["due_at"],
+                    ),
+                )
+                if state["reviewed"]:
+                    conn.execute(
+                        "INSERT INTO review_events (id, card_id, rating, latency_ms, reviewed_at) VALUES (?, ?, ?, ?, ?)",
+                        (f"rev_{old_axis}", old_card_id, 4, None, state["due_at"]),
+                    )
+            conn.commit()
+
+        second = neetcode.import_neetcode_source(source_path, adapter)
+        assert second["adapter"]["legacy_cards"]["axis_cards_deleted"] == 3
+        assert second["adapter"]["legacy_cards"]["axis_cards_suspended"] == 1
+        assert second["adapter"]["legacy_cards"]["axis_links_deleted"] == 4
+        assert second["adapter"]["legacy_cards"]["axis_note_blocks_deleted"] == 3
+        assert second["adapter"]["legacy_cards"]["axis_state_migrated"] == 3
+
+        with get_connection() as conn:
+            active_cards = {
+                row["id"]
+                for row in conn.execute(
+                    """
+                    SELECT id
+                    FROM cards
+                    WHERE id IN (?, ?, ?, ?, ?, ?, ?, ?)
+                      AND suspended = 0
+                    """,
+                    (
+                        *(neetcode._db_id("crd", external_id, old_axis) for old_axis in old_axes),
+                        neetcode._db_id("crd", external_id, "conceptual_recall"),
+                        neetcode._db_id("crd", external_id, "application_scenario"),
+                        neetcode._db_id("crd", external_id, "debugging_edge_cases"),
+                        neetcode._db_id("crd", external_id, "complexity_implementation_traps"),
+                    ),
+                ).fetchall()
+            }
+            assert active_cards == {
+                neetcode._db_id("crd", external_id, "conceptual_recall"),
+                neetcode._db_id("crd", external_id, "application_scenario"),
+                neetcode._db_id("crd", external_id, "debugging_edge_cases"),
+                neetcode._db_id("crd", external_id, "complexity_implementation_traps"),
+            }
+
+            suspended_old = conn.execute(
+                "SELECT suspended FROM cards WHERE id = ?",
+                (neetcode._db_id("crd", external_id, "edge_cases"),),
+            ).fetchone()
+            assert suspended_old["suspended"] == 1
+            assert (
+                conn.execute(
+                    """
+                    SELECT id
+                    FROM card_topic_links
+                    WHERE card_id IN (?, ?, ?, ?)
+                    """,
+                    tuple(neetcode._db_id("crd", external_id, old_axis) for old_axis in old_axes),
+                ).fetchone()
+                is None
+            )
+
+            migrated = {
+                row["id"]: row
+                for row in conn.execute(
+                    """
+                    SELECT id, due_at, interval_days, repetitions, ease_factor
+                    FROM cards
+                    WHERE id IN (?, ?, ?)
+                    """,
+                    (
+                        neetcode._db_id("crd", external_id, "conceptual_recall"),
+                        neetcode._db_id("crd", external_id, "debugging_edge_cases"),
+                        neetcode._db_id("crd", external_id, "complexity_implementation_traps"),
+                    ),
+                ).fetchall()
+            }
+            conceptual = migrated[neetcode._db_id("crd", external_id, "conceptual_recall")]
+            assert conceptual["due_at"] == old_axes["pattern_recognition"]["due_at"]
+            assert conceptual["interval_days"] == old_axes["pattern_recognition"]["interval_days"]
+            assert conceptual["repetitions"] == old_axes["pattern_recognition"]["repetitions"]
+
+            edge_cases = migrated[neetcode._db_id("crd", external_id, "debugging_edge_cases")]
+            assert edge_cases["due_at"] == old_axes["edge_cases"]["due_at"]
+            assert edge_cases["interval_days"] == old_axes["edge_cases"]["interval_days"]
+            assert edge_cases["repetitions"] == old_axes["edge_cases"]["repetitions"]
+
+            combined = migrated[neetcode._db_id("crd", external_id, "complexity_implementation_traps")]
+            assert combined["due_at"] == old_axes["implementation_traps"]["due_at"]
+            assert combined["interval_days"] == old_axes["implementation_traps"]["interval_days"]
+            assert combined["repetitions"] == old_axes["implementation_traps"]["repetitions"]
     finally:
         get_settings.cache_clear()
 
