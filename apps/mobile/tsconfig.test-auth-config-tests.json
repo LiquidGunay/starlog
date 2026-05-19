@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "/tmp/mobile-test-auth-config-tests",
+    "rootDir": "../..",
+    "noEmit": false
+  },
+  "include": [
+    "src/mobile-test-auth-config.ts",
+    "tests/mobile-test-auth-config.test.ts"
+  ]
+}

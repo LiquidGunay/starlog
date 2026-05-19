@@ -29,6 +29,10 @@ static def parsePositiveInt(def rawValue, int fallbackValue) {
   }
 }
 
+static def parseBuildFlag(def rawValue) {
+  return ["1", "true", "yes", "on"].contains(String.valueOf(rawValue ?: "").trim().toLowerCase())
+}
+
 def getRNVersion() {
   def version = providers.exec {
     workingDir(projectDir)
@@ -45,7 +49,12 @@ def getRNVersion() {
   )
 }
 def rnVersion = getRNVersion()
-def appVariant = readBuildValue(project, "APP_VARIANT", "development")
+def appVariant = readBuildValue(project, "APP_VARIANT", "development").trim().toLowerCase()
+def testAuthSafeVariants = ["development", "dev", "preview", "internal"] as Set
+def testAuthConfigEnabled = parseBuildFlag(readBuildValue(project, "EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG", "false"))
+if (testAuthConfigEnabled && !testAuthSafeVariants.contains(appVariant.trim().toLowerCase())) {
+    throw new GradleException("EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG must not be enabled for production Android package builds.")
+}
 def appDisplayName = appVariant == "production" ? "Starlog" : appVariant == "preview" ? "Starlog Preview" : "Starlog Dev"
 def appIdSuffix = appVariant == "production" ? "" : appVariant == "preview" ? ".preview" : ".dev"
 def resolvedApplicationId = "com.starlog.app${appIdSuffix}"

@@ -1,4 +1,13 @@
-const variant = process.env.APP_VARIANT || "production";
+const variant = String(process.env.APP_VARIANT || "production").trim().toLowerCase();
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const TEST_AUTH_SAFE_VARIANTS = new Set(["development", "dev", "preview", "internal"]);
+const testAuthConfigEnabled = TRUE_VALUES.has(
+  String(process.env.EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG || "").trim().toLowerCase(),
+);
+if (testAuthConfigEnabled && !TEST_AUTH_SAFE_VARIANTS.has(variant)) {
+  throw new Error("EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG must not be enabled for production package builds.");
+}
+process.env.EXPO_PUBLIC_STARLOG_APP_VARIANT = variant;
 const DEFAULT_VERSION_NAME =
   process.env.STARLOG_VERSION_NAME || process.env.STARLOG_ANDROID_VERSION_NAME || "0.1.0";
 const DEFAULT_ANDROID_VERSION_CODE = parsePositiveInt(process.env.STARLOG_ANDROID_VERSION_CODE, 1);
@@ -16,7 +25,7 @@ function parsePositiveInt(rawValue, fallbackValue) {
 }
 
 function variantName(currentVariant) {
-  if (currentVariant === "development") {
+  if (currentVariant === "development" || currentVariant === "dev" || currentVariant === "internal") {
     return "Starlog Dev";
   }
   if (currentVariant === "preview") {
@@ -26,7 +35,7 @@ function variantName(currentVariant) {
 }
 
 function variantSuffix(currentVariant) {
-  if (currentVariant === "development") {
+  if (currentVariant === "development" || currentVariant === "dev" || currentVariant === "internal") {
     return ".dev";
   }
   if (currentVariant === "preview") {

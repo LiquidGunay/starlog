@@ -107,6 +107,14 @@ import {
   type MobileReviewLearningInsight,
   type MobileReviewRecommendedDrill,
 } from "./src/mobile-review-view-model";
+import {
+  MOBILE_TEST_AUTH_ACK_FILE,
+  MOBILE_TEST_AUTH_CONFIG_FILE,
+  assertSafeMobileTestAuthBuildConfig,
+  isMobileTestAuthConfigEnabled,
+  parseMobileTestAuthConfig,
+  redactedMobileTestAuthAck,
+} from "./src/mobile-test-auth-config";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 import {
   assistantVoiceActionHint,
@@ -484,6 +492,17 @@ const DEFAULT_API_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_API_BASE?.trim()
   || (__DEV__ ? "http://localhost:8000" : "https://starlog-api-production.up.railway.app");
 const DEFAULT_PWA_BASE = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_PWA_BASE?.trim()
   || (__DEV__ ? "http://localhost:3000" : "https://starlog-web-production.up.railway.app");
+const APP_VARIANT = RUNTIME_ENV.EXPO_PUBLIC_STARLOG_APP_VARIANT?.trim() || (__DEV__ ? "development" : "production");
+assertSafeMobileTestAuthBuildConfig({
+  dev: __DEV__,
+  appVariant: APP_VARIANT,
+  flag: RUNTIME_ENV.EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG,
+});
+const TEST_AUTH_CONFIG_ENABLED = isMobileTestAuthConfigEnabled({
+  dev: __DEV__,
+  appVariant: APP_VARIANT,
+  flag: RUNTIME_ENV.EXPO_PUBLIC_STARLOG_ENABLE_TEST_AUTH_CONFIG,
+});
 const DEFAULT_CAPTURE_TITLE = "Mobile capture";
 const DEFAULT_HOME_DRAFT = "summarize latest artifact";
 const DEFAULT_NOTES_INSTRUCTION_DRAFT = "Save this and turn it into tonight's reading note.";
@@ -1713,6 +1732,47 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     setVoiceClipDurationMs(0);
     setCaptureOpsSection("queue");
     setStatus("Loaded capture from share deep link");
+  }
+
+  async function consumeMobileTestAuthConfig(): Promise<boolean> {
+    if (!TEST_AUTH_CONFIG_ENABLED) {
+      return false;
+    }
+    const configPath = `${writableDir()}${MOBILE_TEST_AUTH_CONFIG_FILE}`;
+    const info = await FileSystem.getInfoAsync(configPath);
+    if (!info.exists) {
+      return false;
+    }
+
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(await FileSystem.readAsStringAsync(configPath));
+    } catch {
+      setStatus("Ignored invalid test auth config");
+      return false;
+    } finally {
+      await FileSystem.deleteAsync(configPath, { idempotent: true }).catch(() => undefined);
+    }
+
+    const testAuthConfig = parseMobileTestAuthConfig(parsedPayload, TEST_AUTH_CONFIG_ENABLED);
+    if (!testAuthConfig) {
+      setStatus("Ignored invalid test auth config");
+      return false;
+    }
+
+    setApiBase(testAuthConfig.apiBase);
+    if (testAuthConfig.pwaBase) {
+      setPwaBase(testAuthConfig.pwaBase);
+    }
+    setToken(testAuthConfig.token);
+    const requestedTestAuthTab = testAuthConfig.tab ? mobileTabFromParam(testAuthConfig.tab) : null;
+    if (requestedTestAuthTab) {
+      setActiveTab(requestedTestAuthTab);
+    }
+    const ack = redactedMobileTestAuthAck(testAuthConfig, new Date().toISOString());
+    await FileSystem.writeAsStringAsync(`${writableDir()}${MOBILE_TEST_AUTH_ACK_FILE}`, JSON.stringify(ack));
+    setStatus("Loaded test auth config");
+    return true;
   }
 
   function handleAppLink(rawUrl: string): boolean {
@@ -4017,6 +4077,10 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setToken(recoveredToken);
       }
 
+      if (active) {
+        await consumeMobileTestAuthConfig();
+      }
+
       const initialUrl = await initialUrlPromise;
       if (active && initialUrl) {
         handleAppLink(initialUrl);
@@ -4106,6 +4170,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     const linkPollingInterval =
       Platform.OS === "android"
         ? setInterval(() => {
+            consumeMobileTestAuthConfig().catch(() => undefined);
             Linking.getInitialURL()
               .then(async (url) => {
                 const nextUrl = (await getCurrentIntentUrl()) ?? url;
@@ -4250,6 +4315,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     const appStateSubscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         refreshLocalSttAvailability("auto").catch(() => undefined);
+        consumeMobileTestAuthConfig().catch(() => undefined);
       }
       if (nextState === "active" && token) {
         if (pendingCaptures.length > 0) {
