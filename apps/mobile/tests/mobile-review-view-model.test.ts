@@ -2,6 +2,7 @@ import {
   deriveMobileReviewViewModel,
   deriveReviewStage,
   parseAnswerChoices,
+  shouldAutoLoadReviewDueCardsOnEntry,
 } from "../src/mobile-review-view-model";
 
 declare const require: (moduleName: string) => {
@@ -271,6 +272,29 @@ assert.equal(interviewLoopReady.gradeOptions.every((option) => !option.enabled),
 assert.equal(interviewLoopReady.learningSignal?.detail, "You just unlocked this interview-prep topic and one application card is due now.");
 assert.equal(interviewLoopReady.learningSignal?.action?.prompt, "Quiz me on application questions for Sliding Window Interview Patterns.");
 
+const interviewLoopDueButNotLoaded = deriveMobileReviewViewModel({
+  ...interviewLoopInputBase(),
+  dueCount: 0,
+  decks: [],
+  showAnswer: false,
+  hasReviewCard: false,
+  status: "Ready",
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+});
+
+assert.equal(interviewLoopDueButNotLoaded.queueState.kind, "due_available");
+assert.equal(interviewLoopDueButNotLoaded.queueState.title, "1 due card ready");
+assert.equal(interviewLoopDueButNotLoaded.statusChips[0].value, "1");
+assert.equal(interviewLoopDueButNotLoaded.cardProgressLabel, "1 waiting");
+assert.equal(interviewLoopDueButNotLoaded.session.detail, "Read interview topics have due cards. Load due cards to stage the next prompt.");
+
 const interviewLoopRevealed = deriveMobileReviewViewModel({
   ...interviewLoopInputBase(),
   showAnswer: true,
@@ -295,6 +319,7 @@ const interviewLoopGraded = deriveMobileReviewViewModel({
       card_count: 1,
     },
   ],
+  status: "Recorded rating 4. 0 due card(s) left",
   showAnswer: false,
   hasReviewCard: false,
 });
@@ -304,20 +329,195 @@ assert.equal(interviewLoopGraded.session.label, "1 reviewed");
 assert.equal(interviewLoopGraded.session.detail, "0 again / 0 hard / 1 good / 0 easy");
 assert.equal(interviewLoopGraded.health.detail, "1 reviewed this session; 1 landed as Good or Easy.");
 
+const interviewLoopLowRatingClearsStaleDueHints = deriveMobileReviewViewModel({
+  ...interviewLoopInputBase(),
+  dueCount: 0,
+  stats: { reviewed: 1, again: 1, hard: 0, good: 0, easy: 0 },
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  status: "Recorded rating 1. 0 due card(s) left",
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  showAnswer: false,
+  hasReviewCard: false,
+});
+
+assert.equal(interviewLoopLowRatingClearsStaleDueHints.statusChips[0].value, "Clear");
+assert.equal(interviewLoopLowRatingClearsStaleDueHints.queueState.kind, "empty");
+assert.equal(interviewLoopLowRatingClearsStaleDueHints.session.label, "1 reviewed");
+assert.equal(interviewLoopLowRatingClearsStaleDueHints.session.detail, "1 again / 0 hard / 0 good / 0 easy");
+assert.equal(interviewLoopLowRatingClearsStaleDueHints.health.detail, "1 reviewed this session; 0 landed as Good or Easy.");
+
+const reviewDataNotLoaded = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  dueCount: 0,
+  decks: [],
+  stats: { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 },
+  status: "Ready",
+  showAnswer: false,
+  hasReviewCard: false,
+});
+
+assert.equal(reviewDataNotLoaded.queueState.kind, "not_loaded");
+assert.equal(reviewDataNotLoaded.queueState.title, "Review data not loaded");
+assert.equal(reviewDataNotLoaded.session.detail, "Load due cards to check the native queue.");
+
+const reviewBlockedByUnreadTopics = deriveMobileReviewViewModel({
+  ...hiddenInputBase(),
+  dueCount: 0,
+  decks: [],
+  stats: { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 },
+  status: "Loaded 0 due card(s)",
+  showAnswer: false,
+  hasReviewCard: false,
+  studyProgress: {
+    source_count: 1,
+    topic_count: 3,
+    read_topic_count: 0,
+    unlocked_topic_count: 1,
+    locked_topic_count: 2,
+    due_unlocked_card_count: 0,
+  },
+});
+
+assert.equal(reviewBlockedByUnreadTopics.queueState.kind, "blocked_by_unread_topics");
+assert.equal(reviewBlockedByUnreadTopics.queueState.title, "No eligible read topics");
+assert.equal(reviewBlockedByUnreadTopics.dueStateLabel, "Marked-read topics release interview cards. Mark a topic read, then load due cards.");
+
 const idle = deriveMobileReviewViewModel({
   ...hiddenInputBase(),
   dueCount: 0,
   decks: [],
   stats: { reviewed: 0, again: 0, hard: 0, good: 0, easy: 0 },
+  status: "Loaded 0 due card(s)",
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 0,
+  },
   showAnswer: false,
   hasReviewCard: false,
 });
 
 assert.equal(idle.statusChips[0].value, "Clear");
-assert.equal(idle.health.detail, "No due cards loaded.");
-assert.equal(idle.session.detail, "No review session running.");
+assert.equal(idle.queueState.kind, "empty");
+assert.equal(idle.health.detail, "No due cards are currently eligible.");
+assert.equal(idle.session.detail, "No due cards are currently eligible.");
 assert.equal(idle.gradeOptions.every((option) => !option.enabled), true);
 assert.equal(idle.learningSignal, null);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: null,
+  status: "Ready",
+}), true);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Ready",
+}), true);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: true,
+  showAnswer: true,
+  reviewedCount: 0,
+  dueCount: 1,
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  studyProgress: null,
+  status: "Loaded 1 due card",
+}), false);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 1,
+  dueCount: 0,
+  decks: [
+    {
+      id: "deck-interview",
+      name: "Interview application",
+      description: "Application transfer for coding interviews",
+      due_count: 1,
+      card_count: 1,
+    },
+  ],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Recorded rating 4. 0 due card(s) left",
+}), false);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: null,
+  status: "Loaded 0 due card(s)",
+}), false);
+
+assert.equal(shouldAutoLoadReviewDueCardsOnEntry({
+  hasActiveCard: false,
+  showAnswer: false,
+  reviewedCount: 0,
+  dueCount: 0,
+  decks: [],
+  studyProgress: {
+    source_count: 1,
+    topic_count: 1,
+    read_topic_count: 1,
+    unlocked_topic_count: 1,
+    locked_topic_count: 0,
+    due_unlocked_card_count: 1,
+  },
+  status: "Loaded 0 due card(s)",
+}), false);
 
 assert.equal(deriveReviewStage("judgment_prompt", "Should this design trade off speed for accuracy?"), "Judgment");
 assert.equal(deriveReviewStage("basic", "Explain why retrieval practice works"), "Understanding");

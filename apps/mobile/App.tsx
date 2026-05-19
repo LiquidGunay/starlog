@@ -101,7 +101,11 @@ import {
 } from "./src/mobile-study-mutations";
 import { MOBILE_SUPPORT_PANEL_COPY } from "./src/mobile-support-panels";
 import type { MobilePlannerSummary } from "./src/mobile-planner-view-model";
-import type { MobileReviewLearningInsight, MobileReviewRecommendedDrill } from "./src/mobile-review-view-model";
+import {
+  shouldAutoLoadReviewDueCardsOnEntry,
+  type MobileReviewLearningInsight,
+  type MobileReviewRecommendedDrill,
+} from "./src/mobile-review-view-model";
 import { mobileTabLabel, mobileTabFromParam, type MobileTab } from "./src/navigation";
 import {
   assistantVoiceActionHint,
@@ -1645,6 +1649,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     return `${hh}:${mm}`;
   }, [alarmHour, alarmMinute, countdownTick]);
   const reviewCard = dueCards[0];
+  const hasActiveReviewCard = Boolean(reviewCard);
   const reviewCardTypeLabel = reviewCard ? reviewCard.card_type.replace(/_/g, " ").toUpperCase() : "QUEUE IDLE";
   const reviewMetaLabel = reviewCard
     ? `Due ${new Date(reviewCard.due_at).toLocaleString()}`
@@ -1652,6 +1657,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   const reviewRetentionLabel = reviewStats.reviewed > 0
     ? `${Math.round(((reviewStats.good + reviewStats.easy) / reviewStats.reviewed) * 100)}%`
     : "0%";
+  const reviewDeckDueCount = reviewDecks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0);
+  const studyDueUnlockedCardCount = studyProgress?.due_unlocked_card_count ?? 0;
   const activeStudyTopic = useMemo(() => {
     return studyTopics.find((topic) => topic.status === "unlocked")
       ?? studyTopics.find((topic) => topic.status === "locked")
@@ -2705,6 +2712,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
         setStatus("Add API token first");
         return;
       }
+      setStatus("Loading due cards...");
       const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/cards/due?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -4429,6 +4437,50 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     loadStudyProgress("auto").catch(() => undefined);
     loadStudyTopics("auto").catch(() => undefined);
   }, [hydrated, token, apiBase, activeTab]);
+
+  useEffect(() => {
+    if (!hydrated || !token || activeTab !== "review") {
+      return;
+    }
+    if (!shouldAutoLoadReviewDueCardsOnEntry({
+      hasActiveCard: hasActiveReviewCard,
+      showAnswer,
+      reviewedCount: reviewStats.reviewed,
+      dueCount: dueCards.length,
+      decks: reviewDeckDueCount > 0
+        ? [{
+          id: "loaded-review-decks",
+          name: "Loaded Review decks",
+          due_count: reviewDeckDueCount,
+          card_count: reviewDeckDueCount,
+        }]
+        : [],
+      studyProgress: {
+        source_count: 0,
+        topic_count: 0,
+        read_topic_count: 0,
+        unlocked_topic_count: 0,
+        locked_topic_count: 0,
+        due_unlocked_card_count: studyDueUnlockedCardCount,
+      },
+      status,
+    })) {
+      return;
+    }
+    loadDueCards().catch(() => undefined);
+  }, [
+    hydrated,
+    token,
+    apiBase,
+    activeTab,
+    dueCards.length,
+    hasActiveReviewCard,
+    reviewDeckDueCount,
+    reviewStats.reviewed,
+    showAnswer,
+    status,
+    studyDueUnlockedCardCount,
+  ]);
 
   useEffect(() => {
     if (!hydrated || !token) {

@@ -79,9 +79,46 @@ export type MobileReviewAnswerChoice = {
   label: string;
 };
 
+export type MobileReviewStudyProgress = {
+  source_count: number;
+  topic_count: number;
+  read_topic_count: number;
+  unlocked_topic_count: number;
+  locked_topic_count: number;
+  due_unlocked_card_count: number;
+};
+
+export type MobileReviewQueueStateKind =
+  | "loaded"
+  | "loading"
+  | "due_available"
+  | "not_loaded"
+  | "blocked_by_unread_topics"
+  | "empty"
+  | "auth_required";
+
+export type MobileReviewQueueState = {
+  kind: MobileReviewQueueStateKind;
+  title: string;
+  detail: string;
+  actionLabel: string;
+  knownDueCount: number;
+};
+
+export type MobileReviewAutoLoadDecisionInput = {
+  hasActiveCard: boolean;
+  showAnswer: boolean;
+  reviewedCount: number;
+  dueCount: number;
+  decks: MobileReviewDeckSummary[];
+  studyProgress?: MobileReviewStudyProgress | null;
+  status?: string;
+};
+
 export type MobileReviewViewModel = {
   syncedLabel: string;
   activeStage: MobileReviewStage;
+  queueState: MobileReviewQueueState;
   statusChips: MobileReviewStatusChip[];
   ladder: MobileReviewStageChip[];
   answerChoices: MobileReviewAnswerChoice[];
@@ -124,6 +161,7 @@ export function deriveMobileReviewViewModel(input: {
   showAnswer: boolean;
   hasReviewCard: boolean;
   status?: string;
+  studyProgress?: MobileReviewStudyProgress | null;
   learningInsights?: MobileReviewLearningInsight[];
   recommendedDrill?: MobileReviewRecommendedDrill | null;
 }): MobileReviewViewModel {
@@ -131,22 +169,41 @@ export function deriveMobileReviewViewModel(input: {
   const dueCount = Math.max(0, input.dueCount);
   const totalCards = input.decks.reduce((sum, deck) => sum + Math.max(0, deck.card_count), 0);
   const totalDue = input.decks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0);
+  const progressDue = Math.max(0, input.studyProgress?.due_unlocked_card_count ?? 0);
+  const recordedRemaining = parseRecordedRemainingDue(input.status ?? "");
+  const loadedDueCount = parseLoadedDue(input.status ?? "");
+  const authoritativeDueCount = recordedRemaining ?? loadedDueCount;
+  const knownDueCount = authoritativeDueCount === null
+    ? Math.max(dueCount, totalDue, progressDue)
+    : Math.max(dueCount, authoritativeDueCount);
   const reviewed = Math.max(0, input.stats.reviewed);
   const mastered = Math.max(0, input.stats.good + input.stats.easy);
   const answerChoices = parseAnswerChoices(input.prompt, input.answer);
+  const queueState = deriveQueueState({
+    hasReviewCard: input.hasReviewCard,
+    activeStage,
+    status: input.status ?? "",
+    meta: input.meta,
+    dueCount,
+    totalDue,
+    knownDueCount,
+    decks: input.decks,
+    studyProgress: input.studyProgress ?? null,
+  });
 
   return {
     syncedLabel: input.status?.trim() || "Ready",
     activeStage,
+    queueState,
     statusChips: [
-      { label: "Today", value: dueCount > 0 ? String(dueCount) : "Clear", active: true },
-      { label: "All due", value: String(totalDue || dueCount), active: false },
-      { label: "Upcoming", value: String(upcomingCount(input.decks, dueCount)), active: false },
+      { label: "Today", value: knownDueCount > 0 ? String(knownDueCount) : "Clear", active: true },
+      { label: "All due", value: String(Math.max(totalDue, knownDueCount)), active: false },
+      { label: "Upcoming", value: String(upcomingCount(input.decks, knownDueCount)), active: false },
       { label: "Mastered", value: reviewed > 0 ? String(mastered) : "0", active: false },
       { label: "Insights", value: input.retentionLabel || "0%", active: false },
     ],
     ladder: REVIEW_STAGES.map((stage) => {
-      const stageCount = stageDueCount(stage, input.decks, activeStage, dueCount);
+      const stageCount = stageDueCount(stage, input.decks, activeStage, knownDueCount);
       const active = stage === activeStage;
       return {
         label: stage,
@@ -163,30 +220,34 @@ export function deriveMobileReviewViewModel(input: {
       { label: "Easy", rating: 5, intervalLabel: "5d", enabled: input.hasReviewCard && input.showAnswer, tone: "easy" },
     ],
     cardProgressLabel: input.hasReviewCard
-      ? `${reviewed + 1} of ${reviewed + dueCount}`
-      : dueCount > 0
-        ? `${dueCount} waiting`
+      ? `${reviewed + 1} of ${reviewed + Math.max(1, dueCount)}`
+      : knownDueCount > 0
+        ? `${knownDueCount} waiting`
         : "No active item",
-    dueStateLabel: input.hasReviewCard ? input.meta : dueCount > 0 ? `${dueCount} due` : "Queue clear",
+    dueStateLabel: input.hasReviewCard ? input.meta : queueState.kind === "empty" ? "Queue clear" : queueState.detail,
     revealLabel: input.showAnswer ? "Explanation shown" : "Reveal answer",
     answerStateLabel: input.showAnswer ? "Answer open" : "Try retrieval first",
-    whyThisNow: buildWhyThisNow(input.prompt, input.meta, input.decks, dueCount),
+    whyThisNow: buildWhyThisNow(input.prompt, input.meta, input.decks, knownDueCount),
     correctExplanation: input.showAnswer
       ? compactAnswer(input.answer)
       : "Reveal the answer when you have committed to a retrieval attempt.",
     health: {
-      label: totalDue > 0 || dueCount > 0 ? "Needs attention" : "Stable",
+      label: knownDueCount > 0 ? "Needs attention" : "Stable",
       value: input.retentionLabel || "0%",
       detail: reviewed > 0
         ? `${reviewed} reviewed this session; ${mastered} landed as Good or Easy.`
-        : totalCards > 0
-          ? `${Math.max(totalDue, dueCount)} due across ${input.decks.length} active deck${input.decks.length === 1 ? "" : "s"}.`
-          : "No due cards loaded.",
+        : knownDueCount > 0
+          ? input.decks.length > 0
+            ? `${knownDueCount} due across ${input.decks.length} active deck${input.decks.length === 1 ? "" : "s"}.`
+            : `${knownDueCount} due interview card${knownDueCount === 1 ? "" : "s"} ready to load.`
+          : totalCards > 0
+            ? "No due cards are currently eligible."
+            : queueState.detail,
     },
     queueLadder: REVIEW_STAGES.map((stage) => ({
       label: stage,
-      value: stageDueCount(stage, input.decks, activeStage, dueCount) > 0
-        ? String(stageDueCount(stage, input.decks, activeStage, dueCount))
+      value: stageDueCount(stage, input.decks, activeStage, knownDueCount) > 0
+        ? String(stageDueCount(stage, input.decks, activeStage, knownDueCount))
         : stage === activeStage && input.hasReviewCard
           ? "1"
           : "0",
@@ -196,8 +257,8 @@ export function deriveMobileReviewViewModel(input: {
       label: reviewed > 0 ? `${reviewed} reviewed` : "Session not started",
       detail: reviewed > 0
         ? `${input.stats.again} again / ${input.stats.hard} hard / ${input.stats.good} good / ${input.stats.easy} easy`
-        : input.hasReviewCard ? "Reveal one item, then grade it." : "No review session running.",
-      progressRatio: Math.max(0, Math.min(1, reviewed / Math.max(1, reviewed + dueCount))),
+        : input.hasReviewCard ? "Reveal one item, then grade it." : queueState.detail,
+      progressRatio: Math.max(0, Math.min(1, reviewed / Math.max(1, reviewed + knownDueCount))),
     },
     learningSignal: deriveLearningSignal(input.recommendedDrill, input.learningInsights ?? []),
   };
@@ -235,6 +296,35 @@ export function parseAnswerChoices(prompt: string, answer: string): MobileReview
   return Array.from(unique.values()).slice(0, 4);
 }
 
+export function shouldAutoLoadReviewDueCardsOnEntry(input: MobileReviewAutoLoadDecisionInput): boolean {
+  if (input.hasActiveCard || input.showAnswer || input.reviewedCount > 0) {
+    return false;
+  }
+
+  const status = input.status?.trim() ?? "";
+  if (/add api token|add api credentials|loading|fetching|refreshing/i.test(status)) {
+    return false;
+  }
+
+  const loadedDueCount = parseLoadedDue(status);
+  if (loadedDueCount === 0) {
+    return false;
+  }
+
+  const knownDueCount = Math.max(
+    0,
+    input.dueCount,
+    loadedDueCount ?? 0,
+    input.studyProgress?.due_unlocked_card_count ?? 0,
+    ...input.decks.map((deck) => Math.max(0, deck.due_count)),
+  );
+  if (knownDueCount > 0) {
+    return true;
+  }
+
+  return !/loaded\s+\d+\s+due card/i.test(status);
+}
+
 function stageDueCount(
   stage: MobileReviewStage,
   decks: MobileReviewDeckSummary[],
@@ -259,6 +349,116 @@ function upcomingCount(decks: MobileReviewDeckSummary[], dueCount: number): numb
   const totalCards = decks.reduce((sum, deck) => sum + Math.max(0, deck.card_count), 0);
   const totalDue = decks.reduce((sum, deck) => sum + Math.max(0, deck.due_count), 0) || dueCount;
   return Math.max(0, totalCards - totalDue);
+}
+
+function parseRecordedRemainingDue(status: string): number | null {
+  const match = status.match(/Recorded rating\s+\d+\.\s+(\d+)\s+due card/i);
+  if (!match) {
+    return null;
+  }
+  return Math.max(0, Number.parseInt(match[1], 10));
+}
+
+function parseLoadedDue(status: string): number | null {
+  const match = status.match(/Loaded\s+(\d+)\s+due card/i);
+  if (!match) {
+    return null;
+  }
+  return Math.max(0, Number.parseInt(match[1], 10));
+}
+
+function deriveQueueState(input: {
+  hasReviewCard: boolean;
+  activeStage: MobileReviewStage;
+  status: string;
+  meta: string;
+  dueCount: number;
+  totalDue: number;
+  knownDueCount: number;
+  decks: MobileReviewDeckSummary[];
+  studyProgress: MobileReviewStudyProgress | null;
+}): MobileReviewQueueState {
+  if (input.hasReviewCard) {
+    return {
+      kind: "loaded",
+      title: `${input.activeStage} review`,
+      detail: input.meta.trim() || "Card loaded and ready for retrieval.",
+      actionLabel: "Reveal answer",
+      knownDueCount: input.knownDueCount,
+    };
+  }
+
+  if (/add api token|add api credentials/i.test(input.status)) {
+    return {
+      kind: "auth_required",
+      title: "Review data unavailable",
+      detail: "Add API credentials to load the native review queue.",
+      actionLabel: "Check queue",
+      knownDueCount: 0,
+    };
+  }
+
+  if (/\b(loading|fetching|refreshing)\b/i.test(input.status)) {
+    return {
+      kind: "loading",
+      title: "Loading review queue",
+      detail: "Checking native due cards and interview topic gates.",
+      actionLabel: "Refresh",
+      knownDueCount: input.knownDueCount,
+    };
+  }
+
+  if (input.knownDueCount > 0) {
+    return {
+      kind: "due_available",
+      title: `${input.knownDueCount} due card${input.knownDueCount === 1 ? "" : "s"} ready`,
+      detail: input.studyProgress?.due_unlocked_card_count
+        ? "Read interview topics have due cards. Load due cards to stage the next prompt."
+        : "Due cards are visible in Review metadata. Load due cards to stage the next prompt.",
+      actionLabel: "Load due cards",
+      knownDueCount: input.knownDueCount,
+    };
+  }
+
+  if (!input.studyProgress && input.decks.length === 0 && !/loaded 0 due card/i.test(input.status)) {
+    return {
+      kind: "not_loaded",
+      title: "Review data not loaded",
+      detail: "Load due cards to check the native queue.",
+      actionLabel: "Load due cards",
+      knownDueCount: 0,
+    };
+  }
+
+  if (input.studyProgress) {
+    const unreadTopicCount = Math.max(0, input.studyProgress.topic_count - input.studyProgress.read_topic_count);
+    if (input.studyProgress.topic_count > 0 && input.studyProgress.read_topic_count === 0) {
+      return {
+        kind: "blocked_by_unread_topics",
+        title: "No eligible read topics",
+        detail: "Marked-read topics release interview cards. Mark a topic read, then load due cards.",
+        actionLabel: "Refresh queue",
+        knownDueCount: 0,
+      };
+    }
+    if (unreadTopicCount > 0 && input.totalDue === 0) {
+      return {
+        kind: "blocked_by_unread_topics",
+        title: "Review blocked by unread topics",
+        detail: `${unreadTopicCount} unread topic${unreadTopicCount === 1 ? "" : "s"} can still release cards once marked read.`,
+        actionLabel: "Refresh queue",
+        knownDueCount: 0,
+      };
+    }
+  }
+
+  return {
+    kind: "empty",
+    title: "Review queue clear",
+    detail: "No due cards are currently eligible.",
+    actionLabel: "Refresh queue",
+    knownDueCount: 0,
+  };
 }
 
 function buildWhyThisNow(
