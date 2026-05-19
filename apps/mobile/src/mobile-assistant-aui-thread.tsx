@@ -278,15 +278,19 @@ function AssistantUiRuntimeShell({
     [liveInterrupts, palette, renderCompatibilityForMessage, renderDynamicPanelHostForMessage, sourceMessagesById],
   );
 
-  return (
+    return (
     <AssistantRuntimeProvider runtime={runtime}>
       <View
         testID="assistant-ui-shell"
+        accessibilityRole="summary"
+        accessibilityLabel={MOBILE_ASSISTANT_UI_TEST_MARKERS.shell}
         style={{ alignSelf: "stretch" }}
       >
         <AssistantUiAccessibilityMarker label={MOBILE_ASSISTANT_UI_TEST_MARKERS.shell} testID="assistant-ui-shell-marker" />
         <ThreadPrimitive.Root
           testID="assistant-ui-thread"
+          accessibilityRole="list"
+          accessibilityLabel={MOBILE_ASSISTANT_UI_TEST_MARKERS.thread}
           style={{
             borderRadius: 24,
             paddingHorizontal: 2,
@@ -341,6 +345,8 @@ function MobileAssistantUiComposerBridgeContent({
   return (
     <ComposerPrimitive.Root
       testID="assistant-ui-composer"
+      accessibilityRole="summary"
+      accessibilityLabel={MOBILE_ASSISTANT_UI_TEST_MARKERS.composer}
       style={{ flex: 1 }}
     >
       <AssistantUiAccessibilityMarker label={MOBILE_ASSISTANT_UI_TEST_MARKERS.composer} testID="assistant-ui-composer-marker" />

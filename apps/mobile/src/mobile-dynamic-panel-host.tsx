@@ -39,6 +39,12 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
   const activeSheetInterruptId = activeSheetPanelState?.interrupt.id ?? null;
   const visibleSheetPanelState =
     activeSheetPanelState && openSheetInterruptId === activeSheetPanelState.interrupt.id ? activeSheetPanelState : null;
+  const hostSheetState = {
+    hasSheetCandidate: activeSheetPanelState !== null,
+    isSheetOpen: visibleSheetPanelState !== null,
+    activeSheetInterruptId: activeSheetInterruptId || "",
+    queuedCount: hostPanelStates.filter((state) => state.renderState === "queued").length,
+  };
 
   useEffect(() => {
     const nextSheetState = nextMobileSheetLifecycleState(activeSheetInterruptId, {
@@ -70,16 +76,28 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
 
   return (
     <View style={{ gap: 10, paddingLeft: 10 }} testID="mobile-dynamic-panel-host">
+      <View
+        testID="mobile-dynamic-panel-host-state"
+        accessibilityRole="status"
+        accessibilityLabel="Mobile dynamic panel host state"
+        accessibilityValue={{ text: hostSheetState.isSheetOpen ? "sheet-open" : "sheet-closed" }}
+        accessibilityState={{ busy: hostSheetState.hasSheetCandidate }}
+        style={{ height: 1, width: 1, opacity: 0.01 }}
+        pointerEvents="none"
+      />
       {interrupts.map((interrupt) => {
         const panelState = panelStateById.get(interrupt.id);
         const effectiveInterrupt = panelState?.interrupt || interrupt;
         const values = panelState?.values || defaultPanelValues(effectiveInterrupt);
-        if (panelState?.renderState === "queued") {
-          return (
-            <View
-              key={effectiveInterrupt.id}
-              testID="mobile-dynamic-panel-queued"
-              style={{
+          if (panelState?.renderState === "queued") {
+            return (
+              <View
+                key={effectiveInterrupt.id}
+                testID={`mobile-dynamic-panel-queued-${effectiveInterrupt.id}`}
+                accessibilityRole="status"
+                accessibilityLabel={`Queued dynamic panel ${effectiveInterrupt.id}`}
+                accessibilityValue={{ text: "queued" }}
+                style={{
                 borderRadius: 14,
                 paddingHorizontal: 11,
                 paddingVertical: 9,
@@ -98,12 +116,12 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
             </View>
           );
         }
-        if (panelState && shouldHostPanelInNativeSheet(panelState)) {
-          return (
-            <TouchableOpacity
-              key={effectiveInterrupt.id}
-              testID="mobile-dynamic-panel-sheet-row"
-              style={{
+          if (panelState && shouldHostPanelInNativeSheet(panelState)) {
+            return (
+              <TouchableOpacity
+                key={effectiveInterrupt.id}
+                testID={`mobile-dynamic-panel-sheet-row-${effectiveInterrupt.id}`}
+                style={{
                 borderRadius: 14,
                 paddingHorizontal: 11,
                 paddingVertical: 10,
@@ -114,10 +132,11 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
                 alignItems: "center",
                 gap: 8,
               }}
-              onPress={() => reopenSheetForInterrupt(effectiveInterrupt.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${panelKicker(effectiveInterrupt)} sheet`}
-            >
+                onPress={() => reopenSheetForInterrupt(effectiveInterrupt.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${panelKicker(effectiveInterrupt)} sheet`}
+                accessibilityValue={{ text: `sheet:${effectiveInterrupt.id}` }}
+              >
               <MaterialCommunityIcons name={"dock-bottom" as never} size={15} color={palette.accent} />
               <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
                 {panelKicker(effectiveInterrupt)} is open in a sheet.
@@ -141,8 +160,13 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
             onPress={closeSheetForActiveInterrupt}
             accessibilityRole="button"
             accessibilityLabel="Close assistant sheet"
+            accessibilityValue={{ text: "close-sheet" }}
+            testID="mobile-dynamic-panel-sheet-backdrop"
           />
           <View
+            testID="mobile-dynamic-panel-sheet-content"
+            accessibilityRole="summary"
+            accessibilityState={{ expanded: visibleSheetPanelState !== null }}
             style={{
               maxHeight: "84%",
               borderTopLeftRadius: 24,
