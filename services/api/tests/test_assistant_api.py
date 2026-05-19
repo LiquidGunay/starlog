@@ -265,12 +265,14 @@ def _create_assistant_due_card(
     auth_headers: dict[str, str],
     *,
     prompt: str,
+    card_type: str = "qa",
 ) -> dict:
     response = client.post(
         "/v1/cards",
         json={
             "prompt": prompt,
             "answer": "A gated card for the interview prep loop.",
+            "card_type": card_type,
             "due_at": "2026-04-02T00:00:00+00:00",
         },
         headers=auth_headers,
@@ -428,7 +430,11 @@ def test_assistant_dynamic_ui_capabilities_are_structured_and_survive_reload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
-    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    monkeypatch.setattr(
+        ai_service,
+        "execute_chat_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")),
+    )
 
     payload = _post_assistant_study_command(
         client,
@@ -879,6 +885,171 @@ def test_assistant_interview_prep_dynamic_ui_loop_accepts_natural_phrases_and_re
     assert reloaded_quiz_result["renderer_key"] == "interview.question_request"
     assert reloaded_quiz_result["structured_content"]["topic_id"] == topic["id"]
     assert reloaded_quiz_result["ui_meta"]["question_preference"] == "application"
+
+
+def test_assistant_interview_loop_records_study_review_and_recommendation_signals(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    source, topic = _create_assistant_study_source_and_topic(
+        client,
+        auth_headers,
+        source_title="Interview Prep",
+        topic_title="Sliding Window",
+    )
+    card = _create_assistant_due_card(
+        client,
+        auth_headers,
+        prompt="When should a sliding window shrink?",
+        card_type="application",
+    )
+    link_response = client.post(
+        "/v1/study/card-topic-links",
+        json={"card_id": card["id"], "topic_id": topic["id"], "gate_required": True},
+        headers=auth_headers,
+    )
+    assert link_response.status_code == 201
+
+    due_before_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_before_read.status_code == 200
+    assert card["id"] not in {item["id"] for item in due_before_read.json()}
+
+    read_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="unlock/read Sliding Window",
+    )
+    read_command = read_payload["assistant_message"]["metadata"]["assistant_command"]
+    assert read_command["matched_intent"] == "mark_study_topic_read"
+    read_tool_call = _assistant_tool_call(read_payload, "mark_study_topic_read")
+    read_tool_result = _assistant_tool_result_for_call(read_payload, read_tool_call["id"])
+    assert read_tool_result["renderer_key"] == "interview.topic_unlock"
+    assert read_tool_result["structured_content"]["topic_id"] == topic["id"]
+    assert read_tool_result["output"]["topic"]["status"] == "read"
+
+    progress_after_read = client.get("/v1/study/progress", headers=auth_headers)
+    assert progress_after_read.status_code == 200
+    assert progress_after_read.json()["read_topic_count"] == 1
+    assert progress_after_read.json()["due_unlocked_card_count"] == 1
+    due_after_read = client.get("/v1/cards/due", headers=auth_headers)
+    assert due_after_read.status_code == 200
+    assert card["id"] in {item["id"] for item in due_after_read.json()}
+
+    quiz_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="quiz me with application questions",
+    )
+    quiz_command = quiz_payload["assistant_message"]["metadata"]["assistant_command"]
+    assert quiz_command["matched_intent"] == "create_study_question_request"
+    quiz_tool_call = _assistant_tool_call(quiz_payload, "create_study_question_request")
+    quiz_tool_result = _assistant_tool_result_for_call(quiz_payload, quiz_tool_call["id"])
+    request = quiz_tool_result["output"]["request"]
+    assert quiz_tool_result["renderer_key"] == "interview.question_request"
+    assert quiz_tool_result["structured_content"]["topic_id"] == topic["id"]
+    assert quiz_tool_result["ui_meta"]["question_preference"] == "application"
+    assert request["source_id"] == source["id"]
+    assert request["topic_id"] == topic["id"]
+    assert request["response"]["question_preference"] == "application"
+
+    briefing = client.post(
+        "/v1/briefings/generate",
+        json={"date": "2026-05-19", "provider": "template"},
+        headers=auth_headers,
+    )
+    assert briefing.status_code == 201
+    review_hints = [
+        hint
+        for hint in briefing.json()["recommendation_hints"]
+        if hint["signal_type"] == "briefing_review"
+    ]
+    assert any(hint["entity_type"] == "card" and hint["entity_id"] == card["id"] for hint in review_hints)
+
+    reveal = client.post(
+        "/v1/assistant/threads/primary/events",
+        json={
+            "source_surface": "review",
+            "kind": "review.answer.revealed",
+            "entity_ref": {
+                "entity_type": "card",
+                "entity_id": card["id"],
+                "href": "/review",
+                "title": card["prompt"],
+            },
+            "payload": {
+                "card_id": card["id"],
+                "prompt": card["prompt"],
+                "card_type": card["card_type"],
+            },
+            "visibility": "assistant_message",
+        },
+        headers=auth_headers,
+    )
+    assert reveal.status_code == 201
+    interrupt = next(item for item in reveal.json()["interrupts"] if item["tool_name"] == "grade_review_recall")
+    assert interrupt["renderer_key"] == "interview.review_grade"
+    assert interrupt["structured_content"]["card_id"] == card["id"]
+    assert interrupt["ui_meta"]["review_mode"] == "application"
+
+    submit = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"rating": "1", "latency_ms": "1500"}},
+        headers=auth_headers,
+    )
+    assert submit.status_code == 200
+    review_grade_results = [
+        part["tool_result"]
+        for message in submit.json()["messages"]
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"].get("renderer_key") == "interview.review_grade"
+    ]
+    assert review_grade_results[-1]["structured_content"]["card_id"] == card["id"]
+    assert review_grade_results[-1]["structured_content"]["grade"] == "1"
+    assert review_grade_results[-1]["ui_meta"]["review_mode"] == "application"
+
+    with get_connection() as conn:
+        persisted_request = conn.execute(
+            "SELECT topic_id, source_id, response_json FROM study_question_requests WHERE id = ?",
+            (request["id"],),
+        ).fetchone()
+        review_event = conn.execute(
+            "SELECT rating, latency_ms FROM review_events WHERE card_id = ?",
+            (card["id"],),
+        ).fetchone()
+        reviewed_event = conn.execute(
+            "SELECT payload_json FROM domain_events WHERE event_type = 'card.reviewed'",
+        ).fetchone()
+        recommendation_event = conn.execute(
+            """
+            SELECT signal_type, entity_type, entity_id
+            FROM recommendation_events
+            WHERE signal_type = 'briefing_review' AND entity_id = ?
+            """,
+            (card["id"],),
+        ).fetchone()
+
+    assert persisted_request is not None
+    assert persisted_request["topic_id"] == topic["id"]
+    assert persisted_request["source_id"] == source["id"]
+    assert json.loads(persisted_request["response_json"])["question_preference"] == "application"
+    assert review_event is not None
+    assert review_event["rating"] == 1
+    assert review_event["latency_ms"] == 1500
+    assert reviewed_event is not None
+    assert json.loads(reviewed_event["payload_json"])["review_mode"] == "application"
+    assert recommendation_event is not None
+    assert recommendation_event["entity_type"] == "card"
+
+    review_summary = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+    assert review_summary.status_code == 200
+    assert review_summary.json()["queue_health"]["reviewed_today_count"] == 1
+    assert review_summary.json()["queue_health"]["average_latency_ms"] == 1500
+    assistant_today = client.get("/v1/surfaces/assistant/today?date=2026-05-19", headers=auth_headers)
+    assert assistant_today.status_code == 200
+    assert "1 briefing review recommendation available" in assistant_today.json()["reason_stack"]
 
 
 def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
