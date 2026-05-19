@@ -147,6 +147,137 @@ test("known interrupt requests expose dynamic-ui assistant metadata and keep the
   );
 });
 
+test("review-grade tool result metadata wins over earlier non-review interrupt metadata", () => {
+  const message: AssistantThreadMessage = {
+    id: "msg_interrupt_before_review_grade",
+    thread_id: "thr_primary",
+    run_id: "run_mixed_dynamic_parts",
+    role: "assistant",
+    status: "requires_action",
+    parts: [
+      {
+        type: "interrupt_request",
+        id: "part_question_request_interrupt",
+        interrupt: {
+          id: "interrupt-question-request",
+          thread_id: "thr_primary",
+          run_id: "run_mixed_dynamic_parts",
+          tool_call_id: "tool-call-question-request",
+          status: "pending",
+          interrupt_type: "form",
+          tool_name: "create_study_question_request",
+          title: "Create a question",
+          fields: [],
+          primary_label: "Create",
+          metadata: {},
+          created_at: "2026-05-15T00:00:00.000Z",
+          renderer_key: "interview.question_request",
+          renderer_version: 1,
+          placement: "sidecar",
+          structured_content: {
+            topic_id: "topic-1",
+            prompt: "Explain why spaced repetition works.",
+          },
+        },
+      },
+      {
+        type: "tool_result",
+        id: "part_review_grade_result",
+        tool_result: {
+          id: "tool-result-review-grade",
+          tool_call_id: "tool-call-review-grade",
+          status: "complete",
+          renderer_key: "interview.review_grade",
+          renderer_version: 1,
+          placement: "sidecar",
+          structured_content: {
+            card_id: "card_interview_1",
+            grade: "4",
+          },
+          ui_meta: { tone: "review" },
+          output: { grade: "4" },
+          card: null,
+          entity_ref: null,
+          metadata: {},
+        },
+      },
+    ],
+    metadata: {},
+    created_at: "2026-05-15T09:13:00.000Z",
+    updated_at: "2026-05-15T09:13:00.000Z",
+  };
+
+  const converted = convertAssistantMessage(message);
+
+  expect(converted.metadata?.custom?.starlog_dynamic_ui).toMatchObject({
+    source: "tool_result",
+    id: "tool-result-review-grade",
+    tool_call_id: "tool-call-review-grade",
+    renderer_key: "interview.review_grade",
+    resolved_renderer_key: "interview.review_grade",
+    fallback: false,
+  });
+  expect(converted.content).toContainEqual(
+    expect.objectContaining({
+      type: "data-interview.question_request",
+      data: expect.objectContaining({ source: "interrupt" }),
+    }),
+  );
+  expect(converted.content).toContainEqual(
+    expect.objectContaining({
+      type: "data-interview.review_grade",
+      data: expect.objectContaining({ source: "tool_result" }),
+    }),
+  );
+});
+
+test("interrupt metadata preserves an existing tool call id", () => {
+  const message: AssistantThreadMessage = {
+    id: "msg_interrupt_existing_tool_call",
+    thread_id: "thr_primary",
+    run_id: "run_question_request",
+    role: "assistant",
+    status: "requires_action",
+    parts: [
+      {
+        type: "interrupt_request",
+        id: "part_question_request_interrupt",
+        interrupt: {
+          id: "interrupt-question-request",
+          thread_id: "thr_primary",
+          run_id: "run_question_request",
+          tool_call_id: "tool-call-question-request",
+          status: "pending",
+          interrupt_type: "form",
+          tool_name: "create_study_question_request",
+          title: "Create a question",
+          fields: [],
+          primary_label: "Create",
+          metadata: {},
+          created_at: "2026-05-15T00:00:00.000Z",
+          renderer_key: "interview.question_request",
+          renderer_version: 1,
+          placement: "sidecar",
+        },
+      },
+    ],
+    metadata: {},
+    created_at: "2026-05-15T09:13:00.000Z",
+    updated_at: "2026-05-15T09:13:00.000Z",
+  };
+
+  const converted = convertAssistantMessage(message);
+
+  expect(converted.metadata?.custom?.starlog_dynamic_ui).toMatchObject({
+    source: "interrupt",
+    id: "interrupt-question-request",
+    tool_call_id: "tool-call-question-request",
+    renderer_key: "interview.question_request",
+    resolved_renderer_key: "interview.question_request",
+    fallback: false,
+  });
+});
+
 test("unknown interrupt renderers expose fallback metadata and keep the generic interrupt data-part", () => {
   const message: AssistantThreadMessage = {
     id: "msg_unknown_interrupt",

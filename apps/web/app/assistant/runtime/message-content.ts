@@ -9,6 +9,12 @@ import {
 
 type RuntimeContentPart = Exclude<ThreadMessageLike["content"], string>[number];
 type RuntimeMetadataCustom = NonNullable<ThreadMessageLike["metadata"]>["custom"];
+type DynamicUiDescriptorSource = "card" | "interrupt" | "tool_result";
+type DynamicUiDescriptorCandidate = {
+  descriptor: DynamicUiAssistantUiDescriptor;
+  index: number;
+  priority: number;
+};
 
 function dataPart(name: string, data: unknown) {
   return {
@@ -47,19 +53,60 @@ function interruptAssistantUiMetadata(
 }
 
 function dynamicUiAssistantUiMetadata(message: AssistantThreadMessage): DynamicUiAssistantUiDescriptor | null {
-  for (const part of message.parts) {
+  const candidates: DynamicUiDescriptorCandidate[] = [];
+
+  message.parts.forEach((part, index) => {
+    let source: DynamicUiDescriptorSource | null = null;
+    let descriptor: DynamicUiAssistantUiDescriptor | null = null;
+
+    if (part.type === "card") {
+      source = "card";
+      descriptor = createDynamicUiAssistantUiMetadata("card", part.card).custom.starlog_dynamic_ui;
+    }
     if (part.type === "interrupt_request") {
-      return interruptAssistantUiMetadata(part.interrupt);
+      source = "interrupt";
+      descriptor = interruptAssistantUiMetadata(part.interrupt);
     }
     if (part.type === "tool_result") {
-      const metadata = createDynamicUiAssistantUiMetadata("tool_result", part.tool_result).custom.starlog_dynamic_ui;
-      if (metadata.resolved_renderer_key === "interview.review_grade") {
-        return metadata;
-      }
+      source = "tool_result";
+      descriptor = createDynamicUiAssistantUiMetadata("tool_result", part.tool_result).custom.starlog_dynamic_ui;
     }
+
+    if (source && descriptor) {
+      candidates.push({
+        descriptor,
+        index,
+        priority: dynamicUiDescriptorPriority(source, descriptor),
+      });
+    }
+  });
+
+  candidates.sort((left, right) => left.priority - right.priority || left.index - right.index);
+  return candidates[0]?.descriptor ?? null;
+}
+
+function dynamicUiDescriptorPriority(source: DynamicUiDescriptorSource, descriptor: DynamicUiAssistantUiDescriptor): number {
+  // metadata.custom.starlog_dynamic_ui is singular, so preserve actionable result descriptors before request panels.
+  if (source === "tool_result" && descriptor.resolved_renderer_key === "interview.review_grade") {
+    return 0;
+  }
+  if (source === "tool_result" && !descriptor.fallback) {
+    return 1;
+  }
+  if (source === "interrupt" && !descriptor.fallback) {
+    return 2;
+  }
+  if (source === "card" && !descriptor.fallback) {
+    return 3;
+  }
+  if (source === "tool_result") {
+    return 4;
+  }
+  if (source === "interrupt") {
+    return 5;
   }
 
-  return null;
+  return 6;
 }
 
 function jsonClone<T>(value: T): T {
