@@ -36,14 +36,20 @@ function dynamicUiPart<Source extends "card" | "interrupt" | "tool_result">(
   return dataPart(viewModel.rendererKey, { source, input });
 }
 
-function reviewGradeAssistantUiMetadata(message: AssistantThreadMessage): DynamicUiAssistantUiDescriptor | null {
+function interruptAssistantUiMetadata(
+  interrupt: Extract<AssistantThreadMessage["parts"][number], { type: "interrupt_request" }>["interrupt"],
+): DynamicUiAssistantUiDescriptor {
+  const metadata = createDynamicUiAssistantUiMetadata("interrupt", interrupt).custom.starlog_dynamic_ui;
+  return {
+    ...metadata,
+    tool_call_id: metadata.tool_call_id ?? interrupt.id,
+  };
+}
+
+function dynamicUiAssistantUiMetadata(message: AssistantThreadMessage): DynamicUiAssistantUiDescriptor | null {
   for (const part of message.parts) {
     if (part.type === "interrupt_request") {
-      const metadata = createDynamicUiAssistantUiMetadata("interrupt", part.interrupt).custom.starlog_dynamic_ui;
-      if (metadata.resolved_renderer_key === "interview.review_grade") {
-        return metadata;
-      }
-      continue;
+      return interruptAssistantUiMetadata(part.interrupt);
     }
     if (part.type === "tool_result") {
       const metadata = createDynamicUiAssistantUiMetadata("tool_result", part.tool_result).custom.starlog_dynamic_ui;
@@ -85,7 +91,7 @@ export function normalizeAssistantStatus(message: AssistantThreadMessage): Threa
 }
 
 export function convertAssistantMessage(message: AssistantThreadMessage): ThreadMessageLike {
-  const dynamicUiMetadata = reviewGradeAssistantUiMetadata(message);
+  const dynamicUiMetadata = dynamicUiAssistantUiMetadata(message);
   const metadataCustom: RuntimeMetadataCustom = {
     ...message.metadata,
     ...(dynamicUiMetadata ? { starlog_dynamic_ui: dynamicUiMetadata } : {}),
