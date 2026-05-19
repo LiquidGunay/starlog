@@ -18,6 +18,10 @@ type ElementNode = {
 };
 
 const Fragment = Symbol("Fragment");
+let hookCursor = 0;
+let hookValues: unknown[] = [];
+let pendingEffects: Array<() => void | (() => void)> = [];
+let hookStateChanged = false;
 
 function createElement(type: unknown, props: Record<string, unknown> | null, key?: unknown): RenderNode {
   return { type, key, props: props || {}, children: [] };
@@ -32,11 +36,26 @@ function nativeComponent(name: string) {
 Module._load = function mockMobileRenderHarnessDependencies(request: string, parent: unknown, isMain: boolean) {
   if (request === "react") {
     return {
-      useEffect: (effect: () => void) => {
-        effect();
+      useEffect: (effect: () => void | (() => void)) => {
+        pendingEffects.push(effect);
       },
       useMemo: (factory: () => unknown) => factory(),
-      useState: (initialValue: unknown) => [typeof initialValue === "function" ? initialValue() : initialValue, () => undefined],
+      useState: (initialValue: unknown) => {
+        const stateIndex = hookCursor;
+        hookCursor += 1;
+        if (hookValues.length <= stateIndex) {
+          hookValues[stateIndex] = typeof initialValue === "function" ? initialValue() : initialValue;
+        }
+        const setState = (nextValue: unknown) => {
+          const previousValue = hookValues[stateIndex];
+          const resolvedValue = typeof nextValue === "function" ? nextValue(previousValue) : nextValue;
+          if (!Object.is(previousValue, resolvedValue)) {
+            hookValues[stateIndex] = resolvedValue;
+            hookStateChanged = true;
+          }
+        };
+        return [hookValues[stateIndex], setState];
+      },
     };
   }
   if (request === "react/jsx-runtime") {
@@ -62,6 +81,33 @@ Module._load = function mockMobileRenderHarnessDependencies(request: string, par
   }
   return originalLoad.call(this, request, parent, isMain);
 };
+
+function resetHooks() {
+  hookCursor = 0;
+  hookValues = [];
+  pendingEffects = [];
+  hookStateChanged = false;
+}
+
+function renderWithHooks(render: () => RenderNode): RenderNode | RenderNode[] {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    hookCursor = 0;
+    pendingEffects = [];
+    hookStateChanged = false;
+
+    const tree = renderNode(render());
+    const effects = pendingEffects;
+    pendingEffects = [];
+    effects.forEach((effect) => {
+      effect();
+    });
+
+    if (!hookStateChanged) {
+      return tree;
+    }
+  }
+  throw new Error("Render harness exceeded hook rerender limit.");
+}
 
 function renderNode(node: RenderNode | RenderNode[]): RenderNode | RenderNode[] {
   if (Array.isArray(node)) {
@@ -181,6 +227,7 @@ try {
   };
 
   {
+    resetHooks();
     const active = interrupt({ id: "focus-panel", tool_name: "choose_morning_focus" });
     const queued = interrupt({
       id: "conflict-panel",
@@ -191,7 +238,7 @@ try {
       recommended_defaults: {},
     });
     const renderCalls: Array<{ id: string; values: Record<string, unknown>; hasResolve: boolean }> = [];
-    const tree = renderNode(
+    const tree = renderWithHooks(() =>
       MobileDynamicPanelHost({
         interrupts: [active, queued],
         panelStates: mobileDynamicPanelStates([active, queued], { "focus-panel": { focus: "friction" } }),
@@ -214,6 +261,7 @@ try {
   }
 
   {
+    resetHooks();
     const sheet = interrupt({
       id: "review-sheet",
       tool_name: "grade_review_recall",
@@ -223,7 +271,7 @@ try {
       fields: [],
       recommended_defaults: {},
     });
-    const tree = renderNode(
+    const tree = renderWithHooks(() =>
       MobileDynamicPanelHost({
         interrupts: [sheet],
         panelStates: mobileDynamicPanelStates([sheet], {}),
@@ -237,9 +285,9 @@ try {
     assert.equal(sheetRows.length, 1);
     assert.equal(sheetRows[0].props.accessibilityRole, "button");
     assert.equal(sheetRows[0].props.accessibilityLabel, "Open Review grade sheet");
-    assert.equal(findByTestId(tree, "rendered-panel-sheet").length, 0);
+    assert.equal(findByTestId(tree, "rendered-panel-sheet").length, 1);
     assert.equal(modals.length, 1);
-    assert.equal(modals[0].props.visible, false);
+    assert.equal(modals[0].props.visible, true);
   }
 } finally {
   Module._load = originalLoad;
