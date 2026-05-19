@@ -66,7 +66,13 @@ import {
   type MobileAssistantTodaySummary,
   type MobileAssistantWeeklySummary,
 } from "./mobile-assistant-today-view-model";
-import { isDiagnosticAssistantToolCall, isDiagnosticAssistantToolResult, mobileDynamicUiBadge } from "./mobile-assistant-aui-adapter";
+import {
+  isDiagnosticAssistantToolCall,
+  isDiagnosticAssistantToolResult,
+  mobileDynamicPanelInterruptsFromStarlogMessage,
+  mobileDynamicUiBadge,
+  mobileNativeDynamicPanelPartIdsFromStarlogMessage,
+} from "./mobile-assistant-aui-adapter";
 import { MobileAssistantUiComposerBridge, MobileAssistantUiShell } from "./mobile-assistant-aui-thread";
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
@@ -1564,6 +1570,18 @@ export function MobileAssistantRebuild({
     () => mobileDynamicPanelStates(liveInterrupts, interruptValuesById),
     [interruptValuesById, liveInterrupts],
   );
+  const livePanelStateById = useMemo(() => new Map(panelStates.map((state) => [state.interrupt.id, state])), [panelStates]);
+  const panelStatesForHostedInterrupts = (hostedInterrupts: AssistantInterrupt[]) => {
+    const fallbackStatesById = new Map(
+      mobileDynamicPanelStates(
+        hostedInterrupts.filter((interrupt) => !liveInterruptById[interrupt.id]),
+        interruptValuesById,
+      ).map((state) => [state.interrupt.id, state]),
+    );
+    return hostedInterrupts
+      .map((interrupt) => livePanelStateById.get(interrupt.id) || fallbackStatesById.get(interrupt.id))
+      .filter((state): state is ReturnType<typeof mobileDynamicPanelStates>[number] => Boolean(state));
+  };
 
   const voiceLabel =
     voiceActionState === "recording"
@@ -1978,9 +1996,24 @@ export function MobileAssistantRebuild({
           <>
             <MobileAssistantUiShell
               messages={visibleThreadMessages}
+              liveInterrupts={liveInterrupts}
               palette={palette}
+              renderDynamicPanelHostForMessage={(interrupts) => (
+                <MobileDynamicPanelHost
+                  interrupts={interrupts}
+                  panelStates={panelStatesForHostedInterrupts(interrupts)}
+                  palette={palette}
+                  renderPanel={renderDynamicPanel}
+                />
+              )}
               renderCompatibilityForMessage={(message) => {
-                const cards = cardParts(message).map((part) => part.card);
+                const nativeDynamicPanelIds = new Set(
+                  mobileDynamicPanelInterruptsFromStarlogMessage(message, { liveInterrupts }).map((interrupt) => interrupt.id),
+                );
+                const nativeDynamicPanelPartIds = new Set(mobileNativeDynamicPanelPartIdsFromStarlogMessage(message));
+                const cards = cardParts(message)
+                  .filter((part) => !nativeDynamicPanelPartIds.has(part.id))
+                  .map((part) => part.card);
                 const primaryCards = cards.filter((card) => !isDiagnosticConversationCard(card));
                 const diagnosticCards = cards.filter(isDiagnosticConversationCard);
                 const ambientUpdates = ambientParts(message).map((part) => part.update);
@@ -1988,11 +2021,14 @@ export function MobileAssistantRebuild({
                 const allToolCalls = toolCallParts(message).map((part) => part.tool_call);
                 const allToolResults = toolResultParts(message).map((part) => part.tool_result);
                 const toolCalls = allToolCalls.filter((toolCall) => !isDiagnosticAssistantToolCall(toolCall));
-                const toolResults = allToolResults.filter((toolResult) => !isDiagnosticAssistantToolResult(toolResult));
-                const diagnosticToolCount = allToolCalls.length - toolCalls.length + allToolResults.length - toolResults.length;
-                const interruptRequests = interruptRequestParts(message).map(
-                  (part) => liveInterruptById[part.interrupt.id] || part.interrupt,
+                const toolResults = allToolResults.filter(
+                  (toolResult) => !isDiagnosticAssistantToolResult(toolResult) && !nativeDynamicPanelIds.has(toolResult.id),
                 );
+                const diagnosticToolCount =
+                  allToolCalls.filter(isDiagnosticAssistantToolCall).length + allToolResults.filter(isDiagnosticAssistantToolResult).length;
+                const interruptRequests = interruptRequestParts(message)
+                  .map((part) => liveInterruptById[part.interrupt.id] || part.interrupt)
+                  .filter((interrupt) => !nativeDynamicPanelIds.has(interrupt.id));
                 const resolutions = interruptResolutionParts(message).map((part) => part.resolution);
                 const activeAttachmentIndex = activeAttachmentByMessage[message.id] ?? 0;
                 const activeAttachment = primaryCards[activeAttachmentIndex] ?? null;

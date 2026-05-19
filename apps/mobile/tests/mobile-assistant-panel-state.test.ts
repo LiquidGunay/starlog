@@ -18,6 +18,7 @@ import {
   mobileTaskDetailPreview,
   nextMobileSheetLifecycleState,
   panelDismissPayload,
+  panelKicker,
   panelTone,
   panelSubmitPayload,
   visibleContextChips,
@@ -429,6 +430,7 @@ const reviewGrade = interrupt({
   },
 });
 assert.equal(panelTone(reviewGrade), "review");
+assert.equal(panelKicker(reviewGrade), "Review grade");
 assert.deepEqual(mobileReviewGradePreview(reviewGrade, defaultPanelValues(reviewGrade)), {
   prompt: "What should you do when a feature flag causes production degradation?",
   insight: "You are missing application, not recall.",
@@ -455,6 +457,43 @@ assert.deepEqual(panelSubmitPayload(reviewGrade, { "review-grade": { rating: "4"
   interruptId: "review-grade",
   values: { rating: "4", support_action: "worked_example" },
 });
+
+const questionRequest = interrupt({
+  id: "question-request",
+  tool_name: "interview.question_request",
+  title: "Sliding Window Interview Patterns",
+  body: "Give me one application question.",
+  renderer_key: "interview.question_request",
+  placement: "sidecar",
+  fields: [
+    {
+      id: "question_type",
+      kind: "select",
+      label: "Question type",
+      value: "application",
+      options: [
+        { label: "Recall", value: "recall" },
+        { label: "Application", value: "application" },
+      ],
+    },
+  ],
+  recommended_defaults: { question_type: "application" },
+});
+assert.equal(panelTone(questionRequest), "review");
+assert.equal(panelKicker(questionRequest), "Question request");
+
+const whyThisNow = interrupt({
+  id: "why-now",
+  tool_name: "interview.why_this_now",
+  title: "Why this now",
+  body: "An application card is due while the source is fresh.",
+  renderer_key: "interview.why_this_now",
+  placement: "thread",
+  fields: [],
+  recommended_defaults: {},
+});
+assert.equal(panelTone(whyThisNow), "review");
+assert.equal(panelKicker(whyThisNow), "Why this now");
 
 const clarification = interrupt({
   id: "schedule-clarify",

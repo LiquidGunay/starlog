@@ -16,6 +16,11 @@ export const DYNAMIC_PANEL_TOOL_TONES: Record<string, PanelTone> = {
   pick_project: "entity",
   link_project: "entity",
   link_capture_project: "entity",
+  "interview.topic_unlock": "review",
+  "interview.topic_read": "review",
+  "interview.question_request": "review",
+  "interview.recommendation_reason": "review",
+  "interview.why_this_now": "review",
 };
 
 export type MobileDynamicPanelState = {
@@ -188,6 +193,18 @@ export function panelKicker(interrupt: AssistantInterrupt): string {
   }
   if (isReviewGradePanel(interrupt)) {
     return "Review grade";
+  }
+  if (interrupt.tool_name === "interview.topic_unlock") {
+    return "Topic unlock";
+  }
+  if (interrupt.tool_name === "interview.topic_read") {
+    return "Topic read";
+  }
+  if (interrupt.tool_name === "interview.question_request") {
+    return "Question request";
+  }
+  if (interrupt.tool_name === "interview.recommendation_reason" || interrupt.tool_name === "interview.why_this_now") {
+    return "Why this now";
   }
   if (isClarificationPanel(interrupt)) {
     return "Clarification";

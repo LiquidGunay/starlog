@@ -2,6 +2,8 @@ import type {
   AssistantCard,
   AssistantDynamicUiPlacement,
   AssistantInterrupt,
+  AssistantInterruptField,
+  AssistantInterruptStatus,
   AssistantMessagePart,
   AssistantThreadMessage,
   AssistantThreadSnapshot,
@@ -77,6 +79,7 @@ export type MobileAssistantUiThreadMessage = {
     custom: {
       starlogMessageId: string;
       starlogThreadId: string;
+      starlogRunId?: string | null;
       starlogStatus: AssistantThreadMessage["status"];
       transcriptKind: "text" | "rich_fallback";
       richPartCount: number;
@@ -102,6 +105,14 @@ export type MobileAssistantUiThread = {
 
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 const DIAGNOSTIC_TOOL_NAMES = new Set(["list_dynamic_ui_capabilities"]);
+const MOBILE_NATIVE_DYNAMIC_PANEL_RENDERERS = new Set([
+  "interview.topic_unlock",
+  "interview.topic_read",
+  "interview.question_request",
+  "interview.review_grade",
+  "interview.recommendation_reason",
+  "interview.why_this_now",
+]);
 
 const PLACEMENT_LABELS: Record<string, string> = {
   thread: "Thread panel",
@@ -226,6 +237,258 @@ export function mobileDynamicUiBadge(options: {
   const placement = (options.placement || descriptor?.defaultPlacement || null) as AssistantDynamicUiPlacement | null;
   const label = placementLabel(placement);
   return label ? `${rendererLabel} · ${label}` : rendererLabel;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function firstRecordString(record: Record<string, unknown>, ...keys: string[]): string | null {
+  return firstString(...keys.map((key) => record[key]));
+}
+
+function statusForAssistantUiPanel(
+  message: MobileAssistantUiThreadMessage,
+  descriptor: DynamicUiAssistantUiDescriptor,
+): AssistantInterruptStatus {
+  if (descriptor.source === "interrupt" && message.metadata.custom.starlogStatus === "requires_action") {
+    return "pending";
+  }
+  return "submitted";
+}
+
+function displayModeForDynamicPlacement(placement: AssistantDynamicUiPlacement | null): AssistantInterrupt["display_mode"] {
+  if (placement === "bottom_sheet") {
+    return "bottom_sheet";
+  }
+  if (placement === "sidecar") {
+    return "sidecar";
+  }
+  if (placement === "composer") {
+    return "composer";
+  }
+  return "inline";
+}
+
+function nativeDynamicPanelRendererKey(part: MobileAssistantUiRichPart): string | null {
+  const descriptor = part.metadata?.custom.starlog_dynamic_ui;
+  const rendererKey = descriptor?.resolved_renderer_key || descriptor?.requested_renderer_key || descriptor?.renderer_key || null;
+  if (
+    part.diagnostic ||
+    part.fallback ||
+    !descriptor ||
+    descriptor.fallback ||
+    !rendererKey ||
+    !MOBILE_NATIVE_DYNAMIC_PANEL_RENDERERS.has(rendererKey)
+  ) {
+    return null;
+  }
+  return rendererKey;
+}
+
+function titleForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): string {
+  if (rendererKey === "interview.topic_unlock") {
+    return firstRecordString(content, "topic_title", "title") || "Topic unlocked";
+  }
+  if (rendererKey === "interview.topic_read") {
+    return firstRecordString(content, "topic_title", "title") || "Topic marked read";
+  }
+  if (rendererKey === "interview.question_request") {
+    return firstRecordString(content, "topic_title", "title") || "Request a question";
+  }
+  if (rendererKey === "interview.review_grade") {
+    return firstRecordString(content, "prompt", "question", "card_title") || "Grade review";
+  }
+  if (rendererKey === "interview.recommendation_reason") {
+    return firstRecordString(content, "recommendation", "title") || "Recommendation";
+  }
+  return firstRecordString(content, "recommendation", "title") || "Why this now";
+}
+
+function bodyForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): string | null {
+  if (rendererKey === "interview.topic_unlock") {
+    return firstRecordString(content, "unlock_reason", "reason");
+  }
+  if (rendererKey === "interview.topic_read") {
+    return firstRecordString(content, "read_reason", "reason");
+  }
+  if (rendererKey === "interview.question_request") {
+    return firstRecordString(content, "prompt", "question", "reason");
+  }
+  if (rendererKey === "interview.review_grade") {
+    return firstRecordString(content, "insight", "feedback", "reason");
+  }
+  if (rendererKey === "interview.recommendation_reason") {
+    return firstRecordString(content, "reason", "recommendation");
+  }
+  const reason = firstRecordString(content, "reason");
+  const impact = firstRecordString(content, "impact");
+  return [reason, impact].filter(Boolean).join(" ") || null;
+}
+
+function questionRequestPanelFields(content: Record<string, unknown>): {
+  fields: AssistantInterruptField[];
+  recommendedDefaults: Record<string, unknown>;
+} {
+  const questionType = firstRecordString(content, "question_type") || "application";
+  return {
+    fields: [
+      {
+        id: "question_type",
+        kind: "select",
+        label: "Question type",
+        required: true,
+        value: questionType,
+        options: [
+          { label: "Recall", value: "recall" },
+          { label: "Understanding", value: "understanding" },
+          { label: "Application", value: "application" },
+        ],
+      },
+    ],
+    recommendedDefaults: { question_type: questionType },
+  };
+}
+
+function reviewGradePanelFields(content: Record<string, unknown>): {
+  fields: AssistantInterruptField[];
+  recommendedDefaults: Record<string, unknown>;
+} {
+  const rating = firstRecordString(content, "rating", "grade") || "good";
+  return {
+    fields: [
+      {
+        id: "rating",
+        kind: "select",
+        label: "Recall grade",
+        required: true,
+        value: rating,
+        options: [
+          { label: "Again", value: "again" },
+          { label: "Hard", value: "hard" },
+          { label: "Good", value: "good" },
+          { label: "Easy", value: "easy" },
+        ],
+      },
+      {
+        id: "support_action",
+        kind: "select",
+        label: "Support action",
+        required: false,
+        options: [
+          { label: "Show worked example", value: "worked_example" },
+          { label: "Switch to explanation", value: "explanation" },
+        ],
+      },
+    ],
+    recommendedDefaults: { rating },
+  };
+}
+
+function fieldsForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): {
+  fields: AssistantInterruptField[];
+  recommendedDefaults: Record<string, unknown>;
+} {
+  if (rendererKey === "interview.question_request") {
+    return questionRequestPanelFields(content);
+  }
+  if (rendererKey === "interview.review_grade") {
+    return reviewGradePanelFields(content);
+  }
+  return { fields: [], recommendedDefaults: {} };
+}
+
+function toolNameForAssistantUiPanel(rendererKey: string): string {
+  return rendererKey === "interview.review_grade" ? "grade_review_recall" : rendererKey;
+}
+
+function primaryLabelForAssistantUiPanel(rendererKey: string): string {
+  if (rendererKey === "interview.question_request") {
+    return "Create question";
+  }
+  if (rendererKey === "interview.review_grade") {
+    return "Save grade";
+  }
+  if (rendererKey === "interview.topic_unlock" || rendererKey === "interview.topic_read") {
+    return "Open topic";
+  }
+  return "Acknowledge";
+}
+
+export function mobileDynamicPanelInterruptsFromAssistantUiMessage(
+  message: MobileAssistantUiThreadMessage,
+  options: { liveInterrupts?: AssistantInterrupt[] } = {},
+): AssistantInterrupt[] {
+  const liveInterruptById = new Map((options.liveInterrupts || []).map((interrupt) => [interrupt.id, interrupt]));
+  return message.metadata.custom.richParts
+    .map((part, index): AssistantInterrupt | null => {
+      const descriptor = part.metadata?.custom.starlog_dynamic_ui;
+      const rendererKey = nativeDynamicPanelRendererKey(part);
+      if (!descriptor || !rendererKey) {
+        return null;
+      }
+
+      const structuredContent = descriptor.structured_content || {};
+      const uiMeta = descriptor.ui_meta || {};
+      const status = statusForAssistantUiPanel(message, descriptor);
+      const { fields, recommendedDefaults } = fieldsForAssistantUiPanel(rendererKey, structuredContent);
+      const runId = message.metadata.custom.starlogRunId;
+      const interruptId = descriptor.id || `${message.id}:${part.id || index}:dynamic-panel`;
+      const liveInterrupt = liveInterruptById.get(interruptId);
+      if (liveInterrupt) {
+        return liveInterrupt;
+      }
+
+      const interrupt = {
+        id: interruptId,
+        thread_id: message.metadata.custom.starlogThreadId,
+        tool_call_id: descriptor.tool_call_id,
+        status,
+        interrupt_type: fields.length > 0 ? "choice" : "confirm",
+        tool_name: toolNameForAssistantUiPanel(rendererKey),
+        title: titleForAssistantUiPanel(rendererKey, structuredContent),
+        body: bodyForAssistantUiPanel(rendererKey, structuredContent),
+        fields,
+        primary_label: primaryLabelForAssistantUiPanel(rendererKey),
+        secondary_label: status === "pending" ? "Later" : null,
+        display_mode: displayModeForDynamicPlacement(descriptor.placement),
+        recommended_defaults: recommendedDefaults,
+        metadata: {
+          ...structuredContent,
+          ui_meta: uiMeta,
+          assistant_ui_source: descriptor.source,
+          assistant_ui_renderer_key: rendererKey,
+        },
+        renderer_key: rendererKey,
+        renderer_version: descriptor.renderer_version,
+        placement: descriptor.placement,
+        structured_content: structuredContent,
+        ui_meta: uiMeta,
+        created_at: message.createdAt.toISOString(),
+        ...(runId ? { run_id: runId } : {}),
+      } as Omit<AssistantInterrupt, "run_id"> & Partial<Pick<AssistantInterrupt, "run_id">>;
+      return interrupt as AssistantInterrupt;
+    })
+    .filter((interrupt): interrupt is AssistantInterrupt => Boolean(interrupt));
+}
+
+export function mobileDynamicPanelInterruptsFromStarlogMessage(
+  message: AssistantThreadMessage,
+  options: { liveInterrupts?: AssistantInterrupt[] } = {},
+): AssistantInterrupt[] {
+  const assistantUiMessage = starlogMessageToAssistantUiMessage(message);
+  return assistantUiMessage ? mobileDynamicPanelInterruptsFromAssistantUiMessage(assistantUiMessage, options) : [];
+}
+
+export function mobileNativeDynamicPanelPartIdsFromStarlogMessage(message: AssistantThreadMessage): string[] {
+  return starlogRichPartsForMessage(message)
+    .filter((part) => Boolean(nativeDynamicPanelRendererKey(part)))
+    .map((part) => part.id);
 }
 
 function dynamicPartMetadataFromAssistantUiDescriptor(options: {
@@ -465,6 +728,7 @@ export function starlogMessageToAssistantUiMessage(message: AssistantThreadMessa
       custom: {
         starlogMessageId: message.id,
         starlogThreadId: message.thread_id,
+        starlogRunId: message.run_id ?? null,
         starlogStatus: message.status,
         transcriptKind: transcriptText ? "text" : "rich_fallback",
         richPartCount: richParts.length,

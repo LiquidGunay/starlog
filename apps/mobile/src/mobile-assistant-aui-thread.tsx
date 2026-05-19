@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
-import type { AssistantThreadMessage } from "@starlog/contracts";
+import type { AssistantInterrupt, AssistantThreadMessage } from "@starlog/contracts";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -16,6 +16,7 @@ import { Text, TextInput as RNTextInput, View } from "react-native";
 import {
   assistantUiThreadFingerprint,
   MOBILE_ASSISTANT_UI_TEST_MARKERS,
+  mobileDynamicPanelInterruptsFromAssistantUiMessage,
   type MobileAssistantUiRichPart,
   type MobileAssistantUiThreadMessage,
   starlogMessagesToAssistantUiMessages,
@@ -23,11 +24,13 @@ import {
 
 type MobileAssistantUiThreadProps = {
   messages: AssistantThreadMessage[];
+  liveInterrupts?: AssistantInterrupt[];
   palette: Record<string, string>;
 };
 
 type MobileAssistantUiShellProps = MobileAssistantUiThreadProps & {
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
+  renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
 };
 
 type MobileAssistantUiComposerBridgeProps = {
@@ -85,10 +88,14 @@ function AssistantUiMessage({
   palette,
   sourceMessagesById,
   renderCompatibilityForMessage,
+  renderDynamicPanelHostForMessage,
+  liveInterrupts,
 }: {
   palette: Record<string, string>;
   sourceMessagesById: Map<string, AssistantThreadMessage>;
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
+  renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
+  liveInterrupts?: AssistantInterrupt[];
 }) {
   const message = useAuiState((state) => state.message) as unknown as MobileAssistantUiThreadMessage;
   const role = message.role;
@@ -101,6 +108,13 @@ function AssistantUiMessage({
     .filter((label): label is string => Boolean(label));
   const sourceMessage = sourceMessagesById.get(message.metadata.custom.starlogMessageId);
   const compatibilityContent = sourceMessage && renderCompatibilityForMessage ? renderCompatibilityForMessage(sourceMessage) : null;
+  const dynamicPanelInterrupts = renderDynamicPanelHostForMessage
+    ? mobileDynamicPanelInterruptsFromAssistantUiMessage(message, { liveInterrupts })
+    : [];
+  const dynamicPanelContent =
+    dynamicPanelInterrupts.length > 0 && renderDynamicPanelHostForMessage
+      ? renderDynamicPanelHostForMessage(dynamicPanelInterrupts, message)
+      : null;
   const isFallbackTranscript = message.metadata.custom.transcriptKind === "rich_fallback";
   const messageTime = formatMessageTime(message.createdAt);
 
@@ -168,7 +182,7 @@ function AssistantUiMessage({
             }}
           >
             <MessagePrimitive.Content
-              renderText={({ part }) => (
+              renderText={({ part }: { part: { text: string } }) => (
                 <Text
                   maxFontSizeMultiplier={1.08}
                   style={{
@@ -210,6 +224,8 @@ function AssistantUiMessage({
             </View>
           ) : null}
 
+          {dynamicPanelContent}
+
           {compatibilityContent ? (
             <View
               style={{
@@ -236,11 +252,15 @@ function AssistantUiRuntimeShell({
   sourceMessagesById,
   palette,
   renderCompatibilityForMessage,
+  renderDynamicPanelHostForMessage,
+  liveInterrupts,
 }: {
   initialMessages: ThreadMessageLike[];
   sourceMessagesById: Map<string, AssistantThreadMessage>;
   palette: Record<string, string>;
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
+  renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
+  liveInterrupts?: AssistantInterrupt[];
 }) {
   const runtime = useLocalRuntime(readOnlyAdapter, { initialMessages });
   const components = useMemo(
@@ -250,10 +270,12 @@ function AssistantUiRuntimeShell({
           palette={palette}
           sourceMessagesById={sourceMessagesById}
           renderCompatibilityForMessage={renderCompatibilityForMessage}
+          renderDynamicPanelHostForMessage={renderDynamicPanelHostForMessage}
+          liveInterrupts={liveInterrupts}
         />
       ),
     }),
-    [palette, renderCompatibilityForMessage, sourceMessagesById],
+    [liveInterrupts, palette, renderCompatibilityForMessage, renderDynamicPanelHostForMessage, sourceMessagesById],
   );
 
   return (
@@ -357,7 +379,13 @@ export function MobileAssistantUiComposerBridge(props: MobileAssistantUiComposer
   );
 }
 
-export function MobileAssistantUiShell({ messages, palette, renderCompatibilityForMessage }: MobileAssistantUiShellProps) {
+export function MobileAssistantUiShell({
+  messages,
+  liveInterrupts,
+  palette,
+  renderCompatibilityForMessage,
+  renderDynamicPanelHostForMessage,
+}: MobileAssistantUiShellProps) {
   const assistantUiMessages = useMemo(() => starlogMessagesToAssistantUiMessages(messages), [messages]);
   const fingerprint = useMemo(() => assistantUiThreadFingerprint(assistantUiMessages), [assistantUiMessages]);
   const sourceMessagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
@@ -373,10 +401,12 @@ export function MobileAssistantUiShell({ messages, palette, renderCompatibilityF
       sourceMessagesById={sourceMessagesById}
       palette={palette}
       renderCompatibilityForMessage={renderCompatibilityForMessage}
+      renderDynamicPanelHostForMessage={renderDynamicPanelHostForMessage}
+      liveInterrupts={liveInterrupts}
     />
   );
 }
 
-export function MobileAssistantUiThread({ messages, palette }: MobileAssistantUiThreadProps) {
-  return <MobileAssistantUiShell messages={messages} palette={palette} />;
+export function MobileAssistantUiThread({ messages, liveInterrupts, palette }: MobileAssistantUiThreadProps) {
+  return <MobileAssistantUiShell messages={messages} liveInterrupts={liveInterrupts} palette={palette} />;
 }

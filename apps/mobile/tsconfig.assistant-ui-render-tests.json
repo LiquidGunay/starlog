@@ -8,6 +8,7 @@
     "noEmit": false
   },
   "include": [
+    "src/mobile-assistant-aui-adapter.ts",
     "src/mobile-assistant-panel-state.ts",
     "src/mobile-dynamic-panel-host.tsx",
     "tests/mobile-react-render-harness.d.ts",
