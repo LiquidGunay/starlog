@@ -413,7 +413,6 @@ resolve_variant_defaults
 APP_COMPONENT="$(resolve_app_component)"
 write_run_metadata
 write_manual_checklist
-run_interview_seed
 
 log "Evidence directory: $RUN_DIR"
 
@@ -421,6 +420,8 @@ if [[ "$NO_DEVICE" == "1" ]]; then
   log "No-device mode wrote metadata and manual checklist only"
   exit 0
 fi
+
+run_interview_seed
 
 require_command_or_file "$ADB" "adb"
 

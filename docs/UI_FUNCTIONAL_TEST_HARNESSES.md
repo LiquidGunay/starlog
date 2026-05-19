@@ -182,13 +182,19 @@ bash scripts/android_interview_functional_capture.sh --no-device
 bash scripts/android_interview_functional_capture.sh --dry-run
 ```
 
+`--no-device` is metadata-only: it writes `run.env` and `manual-checkpoints.md`, then exits before
+running the API seed path even when API credentials are present.
+
 When `STARLOG_API_BASE` and `STARLOG_ACCESS_TOKEN` are set, the harness runs
 `scripts/interview_prep_api_seed.py` before device capture and writes
 `api/interview-prep-seed.json`. The seed path uses only public Starlog API calls: it reuses or
 creates one tagged interview-prep source/topic/deck/card, links the card behind the topic-read gate,
 marks the seeded topic read by default, refreshes the card due date, and verifies the card appears in
-`/v1/cards/due`. Without credentials, the seed summary is written with `status: skipped`; in
-`--dry-run`, it records planned API requests without network access.
+the same first page the native phone Review path loads: `/v1/cards/due?limit=20`. If the seeded card
+is not already in that first page, the seed script uses public review APIs to add priority review
+signals for that card, forces it due again, and rechecks the first page. Without credentials, the seed
+summary is written with `status: skipped`; in `--dry-run`, it records planned API requests without
+network access.
 
 Seed-only checks:
 

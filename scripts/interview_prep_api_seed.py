@@ -9,7 +9,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,11 @@ DEFAULT_CARD_ANSWER = (
     "A topic-read event unlocks linked interview-prep review cards; the Review surface can then "
     "load, reveal, and grade the due card."
 )
+PHONE_DUE_LIMIT = 20
+PRIORITY_REVIEW_COUNT = 25
+PRIORITY_REVIEW_RATING = 1
+PRIORITY_REVIEW_LATENCY_MS = 1
+PRIORITY_DUE_AT = "2000-01-01T00:00:00Z"
 
 
 def _env(name: str, fallback: str | None = None) -> str:
@@ -31,10 +35,6 @@ def _env(name: str, fallback: str | None = None) -> str:
     if fallback:
         return _env(fallback)
     return ""
-
-
-def _utc_due_iso() -> str:
-    return (datetime.now(UTC) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
 
 
 def _redact(value: str) -> str:
@@ -122,7 +122,7 @@ def _planned_summary(config: SeedConfig, *, status: str, reason: str | None = No
     ]
     if config.mark_read:
         commands.append("POST /v1/study/topics/<topic_id>/read")
-    commands.append("GET /v1/cards/due?limit=50")
+    commands.append(f"GET /v1/cards/due?limit={PHONE_DUE_LIMIT}")
     return {
         "status": status,
         "reason": reason,
@@ -137,6 +137,9 @@ def _planned_summary(config: SeedConfig, *, status: str, reason: str | None = No
         "planned_requests": commands,
         "evidence": {
             "due_card_present": False,
+            "phone_due_card_present": False,
+            "phone_due_page_limit": PHONE_DUE_LIMIT,
+            "phone_due_page_position": None,
             "seeded_via_api": False,
         },
     }
@@ -172,6 +175,27 @@ def _seed_tags(config: SeedConfig) -> list[str]:
     return tags
 
 
+def _card_payload(config: SeedConfig, *, deck_id: str, due_at: str) -> dict[str, Any]:
+    return {
+        "prompt": config.card_prompt,
+        "answer": config.card_answer,
+        "deck_id": deck_id,
+        "tags": _seed_tags(config),
+        "due_at": due_at,
+        "interval_days": 1,
+        "repetitions": 0,
+        "ease_factor": 2.5,
+        "suspended": False,
+    }
+
+
+def _phone_page_position(due_cards: list[dict[str, Any]], card_id: str) -> int | None:
+    for index, due_card in enumerate(due_cards, start=1):
+        if str(due_card.get("id")) == card_id:
+            return index
+    return None
+
+
 def seed_interview_prep_api(config: SeedConfig) -> dict[str, Any]:
     if config.dry_run:
         return _planned_summary(config, status="dry_run")
@@ -181,7 +205,6 @@ def seed_interview_prep_api(config: SeedConfig) -> dict[str, Any]:
         return _planned_summary(config, status="skipped", reason="missing STARLOG_ACCESS_TOKEN")
 
     client = StarlogApiClient(config)
-    due_at = _utc_due_iso()
     metadata = _metadata(config)
 
     sources = client.get("/v1/study/sources?limit=500")
@@ -245,30 +268,14 @@ def seed_interview_prep_api(config: SeedConfig) -> dict[str, Any]:
                 "prompt": config.card_prompt,
                 "answer": config.card_answer,
                 "card_type": "qa",
-                "deck_id": deck_id,
-                "tags": _seed_tags(config),
-                "due_at": due_at,
-                "interval_days": 1,
-                "repetitions": 0,
-                "ease_factor": 2.5,
-                "suspended": False,
+                **_card_payload(config, deck_id=deck_id, due_at=PRIORITY_DUE_AT),
             },
         )
         card_created = True
     else:
         card = client.patch(
             f"/v1/cards/{card['id']}",
-            {
-                "prompt": config.card_prompt,
-                "answer": config.card_answer,
-                "deck_id": deck_id,
-                "tags": _seed_tags(config),
-                "due_at": due_at,
-                "interval_days": 1,
-                "repetitions": 0,
-                "ease_factor": 2.5,
-                "suspended": False,
-            },
+            _card_payload(config, deck_id=deck_id, due_at=PRIORITY_DUE_AT),
         )
 
     card_id = str(card["id"])
@@ -283,8 +290,28 @@ def seed_interview_prep_api(config: SeedConfig) -> dict[str, Any]:
     if config.mark_read:
         topic = client.post(f"/v1/study/topics/{topic_id}/read")
 
-    due_cards = client.get("/v1/cards/due?limit=50")
-    due_card_present = any(str(due_card.get("id")) == card_id for due_card in due_cards)
+    priority_reviews_added = 0
+    phone_due_cards = client.get(f"/v1/cards/due?limit={PHONE_DUE_LIMIT}")
+    phone_position = _phone_page_position(phone_due_cards, card_id)
+    if config.mark_read and phone_position is None:
+        for _index in range(PRIORITY_REVIEW_COUNT):
+            client.post(
+                "/v1/reviews",
+                {
+                    "card_id": card_id,
+                    "rating": PRIORITY_REVIEW_RATING,
+                    "latency_ms": PRIORITY_REVIEW_LATENCY_MS,
+                },
+            )
+            priority_reviews_added += 1
+        card = client.patch(
+            f"/v1/cards/{card_id}",
+            _card_payload(config, deck_id=deck_id, due_at=PRIORITY_DUE_AT),
+        )
+        phone_due_cards = client.get(f"/v1/cards/due?limit={PHONE_DUE_LIMIT}")
+        phone_position = _phone_page_position(phone_due_cards, card_id)
+
+    phone_due_card_present = phone_position is not None
     return {
         "status": "seeded",
         "api_base": config.api_base,
@@ -311,7 +338,7 @@ def seed_interview_prep_api(config: SeedConfig) -> dict[str, Any]:
         "card": {
             "id": card_id,
             "prompt": card.get("prompt", config.card_prompt),
-            "due_at": card.get("due_at", due_at),
+            "due_at": card.get("due_at", PRIORITY_DUE_AT),
             "created": card_created,
         },
         "link": {
@@ -319,8 +346,12 @@ def seed_interview_prep_api(config: SeedConfig) -> dict[str, Any]:
             "gate_required": link.get("gate_required"),
         },
         "evidence": {
-            "due_card_present": due_card_present,
-            "due_card_count": len(due_cards),
+            "due_card_present": phone_due_card_present,
+            "due_card_count": len(phone_due_cards),
+            "phone_due_card_present": phone_due_card_present,
+            "phone_due_page_limit": PHONE_DUE_LIMIT,
+            "phone_due_page_position": phone_position,
+            "priority_reviews_added": priority_reviews_added,
             "seeded_via_api": True,
         },
     }
