@@ -1765,6 +1765,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
       setPwaBase(testAuthConfig.pwaBase);
     }
     setToken(testAuthConfig.token);
+    await writeSecureToken(testAuthConfig.token);
     const requestedTestAuthTab = testAuthConfig.tab ? mobileTabFromParam(testAuthConfig.tab) : null;
     if (requestedTestAuthTab) {
       setActiveTab(requestedTestAuthTab);
