@@ -16,21 +16,24 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Hosted Railway access paths:** hosted browser entry is
   `https://starlog-web-production.up.railway.app/login`; hosted API base is
   `https://starlog-api-production.up.railway.app`.
-- **Hosted reachability known on 2026-05-19:** public unauthenticated checks returned HTTP 200 for
-  `/login` and `/assistant`, and the API health endpoint returned an OK production health payload.
-  This proves the hosted web shell and API health route are reachable from the public internet.
+- **Hosted reachability known on 2026-05-19:** evidence under
+  `/tmp/starlog-hosted-pwa-verify-20260519` recorded public unauthenticated HTTP 200 checks for
+  `/login` and `/assistant`, and an OK production health payload from the API health endpoint.
+  This proves the hosted web shell and API health route were reachable from the public internet.
 - **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15.
   The 2026-05-19 check did not use or disclose the hosted passphrase or bearer token, so it does not
   re-prove authenticated Starlog session behavior.
 - **Native vs PWA priority:** native mobile is the primary phone surface; PWA is fallback-only on phone and
   remains supported for browser checks or when the app is unavailable.
-- **assistant-ui migration status:** desktop web has partial assistant-ui migration for supported protocol
-  snapshots. Native assistant now uses the assistant-ui shared dynamic-panel host path with
-  `assistant-ui` metadata and uses fallback renderers only for unsupported/non-migrated protocol shapes.
-- **Native Android evidence known:** the native Android interview loop is proven for the local
-  interview-prep command flow (`read` / `unlock` / `question` / review-grade dynamic UI) through the
-  fresh-local harness and physical-device evidence. Broader dynamic panel behavior, production-hosted
-  Android smoke, and non-interview flow parity are still in dedicated validation.
+- **assistant-ui migration status:** desktop web and native assistant-ui migration are partial. Web has
+  assistant-ui coverage for supported protocol snapshots, while native currently has assistant-ui
+  shell/thread/composer markers and shared dynamic-panel host evidence with `assistant-ui` metadata.
+  Full server-owned runtime migration is still pending on both surfaces, and fallback renderers remain
+  compatibility paths for unsupported/non-migrated protocol shapes, not the target runtime.
+- **Native Android evidence known:** local physical-device evidence exists for the interview-prep command
+  flow (`read` / `unlock` / `question` / review-grade dynamic UI), including Assistant-hosted
+  review-grade controls. Broader dynamic-panel behavior, production-hosted Android smoke, non-interview
+  flow parity, and repeatable Android functional automation are still pending.
 
 ## Post-Merge PR Status
 
@@ -67,14 +70,20 @@ where Starlog is going. Use this page for current implementation confidence.
   This is documented in
   [docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md](/home/ubuntu/starlog/docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md).
 - **Web + native assistant-ui migration:** assistant-ui is partially migrated for supported Starlog
-  assistant protocol snapshots and dynamic panel parts across desktop web and native mobile; unsupported or
-  not-yet-migrated message/tool shapes still use Starlog compatibility projections and fallback render paths.
+  assistant protocol snapshots and dynamic panel parts across desktop web and native mobile. Native has
+  shell/thread/composer marker evidence and a shared dynamic-panel host path with assistant-ui metadata.
+  Unsupported or not-yet-migrated message/tool shapes still use Starlog compatibility projections and
+  fallback render paths. Those fallbacks are temporary compatibility coverage while full server-owned
+  assistant-ui runtime migration remains pending.
 - **Mobile Assistant dynamic UI:** React Native assistant-ui-style view-model coverage is partially
-  migrated and currently validated through interview-prep (read/unlock/question/review-grade). The Android
-  fresh-local harness now requires assistant-ui shell/thread/composer markers, an Assistant dynamic UI
-  capability prompt, and Assistant-hosted review-grade controls (`RECALL QUALITY`, `Save grade`,
-  `Keep in Review`) instead of accepting old diagnostic or Review-tab-only screens. The latest
-  physical-device pass is `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
+  migrated and currently evidenced through interview-prep (read/unlock/question/review-grade). Native
+  evidence includes assistant-ui shell/thread/composer markers, an Assistant dynamic UI capability prompt,
+  shared dynamic-panel host metadata, and Assistant-hosted review-grade controls (`RECALL QUALITY`,
+  `Save grade`, `Keep in Review`) instead of old diagnostic or Review-tab-only screens. Treat the
+  latest physical-device pass at
+  `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json` as bounded
+  evidence, not proof that repeatable Android functional automation or full native runtime migration is
+  complete.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -126,10 +135,12 @@ where Starlog is going. Use this page for current implementation confidence.
   and creates an alarm.
 - **Hosted PWA/API reachability:** `https://starlog-web-production.up.railway.app/login` is the hosted
   browser entry point and `https://starlog-api-production.up.railway.app` is the hosted API base. On
-  2026-05-19, public checks returned HTTP 200 for hosted `/login` and `/assistant`, and
-  `/v1/health` returned an OK production health payload. Authenticated hosted passphrase login was last
-  proven on 2026-05-15. Treat this as access/login evidence only; it is not proof of full hosted workflow
-  freshness or production release readiness.
+  2026-05-19, public evidence under `/tmp/starlog-hosted-pwa-verify-20260519` recorded HTTP 200 for
+  hosted `/login` and `/assistant`, and `/v1/health` returned an OK production health payload.
+  Authenticated hosted passphrase login was last proven on 2026-05-15. Treat this as access/login
+  evidence only; it is not proof of full hosted workflow freshness or production release readiness.
+  Do not copy passphrases, bearer tokens, or token-bearing command output from local verification
+  artifacts into docs.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
@@ -198,8 +209,10 @@ Known outcome for `Inference Engineering.pdf`:
   provider polish and fallback behavior still need focused validation.
 - **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Native mobile assistant-ui is also
-  partially migrated: interview-prep capability and review-grade dynamic UI are proven, while broader
-  dynamic-panel host behavior is still in dedicated device validation.
+  partially migrated: assistant-ui shell/thread/composer markers, shared dynamic-panel host metadata,
+  interview-prep capability, and review-grade dynamic UI have device evidence. Broader dynamic-panel host
+  behavior, full server-owned runtime migration, and repeatable Android functional automation are still
+  pending.
 - **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
   Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
   `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
@@ -207,19 +220,23 @@ Known outcome for `Inference Engineering.pdf`:
 ## Evidence Map
 
 - Hosted Railway access evidence:
-  public `curl` checks on 2026-05-19 returned HTTP 200 for
+  `/tmp/starlog-hosted-pwa-verify-20260519` contains the local verification output for public checks run
+  on 2026-05-19. Public `curl` checks returned HTTP 200 for
   `https://starlog-web-production.up.railway.app/login` and
   `https://starlog-web-production.up.railway.app/assistant`; the public API health check at
   `https://starlog-api-production.up.railway.app/v1/health` returned an OK production payload. These
-  checks intentionally did not use or expose the hosted passphrase or bearer token.
+  checks intentionally did not use or expose the hosted passphrase or bearer token, and token material
+  from local authenticated checks must not be copied into this document.
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
-- Fresh Android native functional proof is written by
+- Fresh Android native evidence is written by
   `scripts/android_fresh_local_srs_validation.sh` and indexed in
   `.localdata/android-local-validation/builds/latest.json` (and companion artifact files listed there).
-  Phone-level migration claims are based on this Android functional harness evidence, not on isolated manual
-  confidence alone.
-  A passing run must include `validation_passed: true` plus Assistant evidence files for
+  Phone-level migration claims should be based on Android functional harness evidence plus artifact review,
+  not isolated manual confidence alone. The current evidence proves selected assistant-ui markers and
+  flows; it does not yet prove repeatable Android functional automation for the full native assistant-ui
+  runtime.
+  A passing evidence run must include `validation_passed: true` plus Assistant evidence files for
   `assistant-capability-shell-thread`, `assistant-capability-composer`,
   `assistant-dynamic-ui-capability-prompt`, `assistant-command-shell-thread`,
   `assistant-command-composer`, `assistant-review-grade-controls`, and

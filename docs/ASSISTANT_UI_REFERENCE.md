@@ -20,9 +20,10 @@ Primary architecture sources:
 - The assistant knows about support-surface activity through structured events.
 - Dynamic panels are anchored, small, and consequential.
 - Cards are summaries and follow-up affordances, not the main interaction primitive.
-- assistant-ui is the long-term chat runtime for both desktop web and native mobile,
-  while the Starlog assistant
-  protocol remains the source of truth.
+- assistant-ui is the long-term chat runtime target for both desktop web and native mobile,
+  while the Starlog assistant protocol remains the source of truth. Current implementation is
+  partial and keeps compatibility fallbacks for unsupported protocol shapes until the full
+  server-owned runtime migration work lands.
 - The UI must feel like one continuous operational surface rather than stacked chat bubbles.
 
 - The same Starlog dynamic UI contract should drive panel intent across web and native

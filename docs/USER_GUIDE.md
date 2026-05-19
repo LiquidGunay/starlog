@@ -57,7 +57,8 @@ Hosted login flow for verification smoke and operator checks:
 
 Current access status:
 
-- Public hosted `/login`, `/assistant`, and API health reachability were checked on 2026-05-19.
+- Public hosted `/login`, `/assistant`, and API health reachability were checked on 2026-05-19, with
+  local evidence under `/tmp/starlog-hosted-pwa-verify-20260519`.
 - Authenticated hosted passphrase login was last proven on 2026-05-15. The current docs do not include
   the hosted passphrase or bearer token.
 - Hosted full-flow smoke and release-gate checks are still re-prove items before treating Railway as
@@ -108,11 +109,15 @@ For local phone setup, use [PHONE_SETUP.md](/home/ubuntu/starlog/docs/PHONE_SETU
 
 Interview-loop note:
 
-- Native `Assistant` uses the new RN assistant-ui dynamic UI path for interview-prep flow (`read` → `unlock` →
-  `question` → review grade). Unsupported Starlog panel shapes still use compatibility fallback screens.
-- Current native Android proof is local/physical-device evidence from the fresh-local SRS validation
-  harness. It proves the interview-prep loop and Assistant-hosted review-grade dynamic UI, not broad
-  production-hosted Android parity.
+- Native `Assistant` is partially migrated to the RN assistant-ui dynamic UI path for the interview-prep
+  flow (`read` -> `unlock` -> `question` -> review grade). Current evidence includes assistant-ui
+  shell/thread/composer markers, dynamic-panel host metadata, and Assistant-hosted review-grade controls.
+  Unsupported Starlog panel shapes still use compatibility fallback screens; those fallbacks are not the
+  target runtime.
+- Current native Android evidence is local/physical-device evidence from the fresh-local SRS validation
+  harness. It proves the bounded interview-prep loop and Assistant-hosted review-grade dynamic UI, not
+  broad production-hosted Android parity, full server-owned native runtime migration, or repeatable
+  Android functional automation.
 
 ## Codex And Local AI
 
