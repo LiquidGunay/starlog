@@ -174,16 +174,6 @@ function visit(node: RenderNode | RenderNode[], visitor: (node: RenderNode) => v
   }
 }
 
-function textContent(node: RenderNode | RenderNode[]): string {
-  const parts: string[] = [];
-  visit(node, (current) => {
-    if (typeof current === "string" || typeof current === "number") {
-      parts.push(String(current));
-    }
-  });
-  return parts.join("");
-}
-
 function interrupt(overrides: Partial<AssistantInterrupt>): AssistantInterrupt {
   return {
     id: "interrupt-1",
@@ -257,8 +247,10 @@ try {
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-host").length, 1);
     assert.deepEqual(renderCalls, [{ id: "focus-panel", values: { focus: "friction" }, hasResolve: true }]);
     assert.equal(findByTestId(tree, "rendered-panel-focus-panel").length, 1);
-    assert.equal(findByTestId(tree, "mobile-dynamic-panel-queued").length, 1);
-    assert.match(textContent(tree), /Planner conflict is waiting behind the active decision\./);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-queued-conflict-panel").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-host-state").length, 1);
+    assert.equal((findByTestId(tree, "mobile-dynamic-panel-host-state")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet-closed");
+    assert.equal((findByTestId(tree, "mobile-dynamic-panel-queued-conflict-panel")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "queued");
   }
 
   {
@@ -280,14 +272,18 @@ try {
         renderPanel: () => createElement("RenderedPanel", { testID: "rendered-panel-sheet" }),
       }),
     );
-    const sheetRows = findByTestId(tree, "mobile-dynamic-panel-sheet-row");
+    const sheetRows = findByTestId(tree, "mobile-dynamic-panel-sheet-row-review-sheet");
     const modals = findByType(tree, "Modal");
+    const hostState = findByTestId(tree, "mobile-dynamic-panel-host-state");
 
     assert.equal(sheetRows.length, 1);
     assert.equal(sheetRows[0].props.accessibilityRole, "button");
-    assert.equal(sheetRows[0].props.accessibilityLabel, "Open Review grade sheet");
-    assert.equal(findByTestId(tree, "rendered-panel-sheet").length, 1);
+    assert.equal((sheetRows[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet:review-sheet");
+    assert.equal((hostState[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet-open");
     assert.equal(modals.length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-sheet-backdrop").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-sheet-content").length, 1);
+    assert.equal(findByTestId(tree, "rendered-panel-sheet").length, 1);
     assert.equal(modals[0].props.visible, true);
   }
 
@@ -465,10 +461,9 @@ try {
     );
 
     assert.equal(interrupts[0], liveQueued);
-    assert.equal(findByTestId(tree, "mobile-dynamic-panel-queued").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-queued-interrupt_question_request").length, 1);
     assert.equal(findByTestId(tree, "metadata-panel-interrupt_question_request").length, 0);
     assert.deepEqual(renderCalls, []);
-    assert.match(textContent(tree), /Question request is waiting behind the active decision\./);
   }
 } finally {
   Module._load = originalLoad;
