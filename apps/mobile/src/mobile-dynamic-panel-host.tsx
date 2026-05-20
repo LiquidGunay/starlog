@@ -78,7 +78,8 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
     <View style={{ gap: 10, paddingLeft: 10 }} testID="mobile-dynamic-panel-host">
       <View
         testID="mobile-dynamic-panel-host-state"
-        accessibilityRole="status"
+        accessible
+        accessibilityLiveRegion="polite"
         accessibilityLabel="Mobile dynamic panel host state"
         accessibilityValue={{ text: hostSheetState.isSheetOpen ? "sheet-open" : "sheet-closed" }}
         accessibilityState={{ busy: hostSheetState.hasSheetCandidate }}
@@ -94,7 +95,8 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
               <View
                 key={effectiveInterrupt.id}
                 testID={`mobile-dynamic-panel-queued-${effectiveInterrupt.id}`}
-                accessibilityRole="status"
+                accessible
+                accessibilityLiveRegion="polite"
                 accessibilityLabel={`Queued dynamic panel ${effectiveInterrupt.id}`}
                 accessibilityValue={{ text: "queued" }}
                 style={{

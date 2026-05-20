@@ -269,6 +269,21 @@ function hasDescendantWithTestId(node: ElementNode, testID: string): boolean {
   return findByTestId(node.children, testID).length > 0;
 }
 
+function accessibilityRoles(node: RenderNode | RenderNode[]): string[] {
+  const roles: string[] = [];
+  visit(node, (current) => {
+    if (
+      current &&
+      typeof current === "object" &&
+      !Array.isArray(current) &&
+      typeof current.props.accessibilityRole === "string"
+    ) {
+      roles.push(current.props.accessibilityRole);
+    }
+  });
+  return roles;
+}
+
 function visit(node: RenderNode | RenderNode[], visitor: (node: RenderNode) => void) {
   if (Array.isArray(node)) {
     node.forEach((child) => visit(child, visitor));
@@ -440,6 +455,7 @@ try {
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-host-state").length, 1);
     assert.equal((findByTestId(tree, "mobile-dynamic-panel-host-state")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet-closed");
     assert.equal((findByTestId(tree, "mobile-dynamic-panel-queued-conflict-panel")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "queued");
+    assert.equal(accessibilityRoles(tree).includes("status"), false);
   }
 
   {
