@@ -396,6 +396,45 @@ function buildTodaySummaryOpenLoops(todaySummary: AssistantTodaySummary | null):
     }));
 }
 
+function countWeeklySignals(signals: AssistantWeeklySummary["progress"] | AssistantWeeklySummary["slippage"]): number {
+  if (!signals) {
+    return 0;
+  }
+  if (Array.isArray(signals)) {
+    return signals.length;
+  }
+  return Object.values(signals).filter((count) => Number(count) > 0).length;
+}
+
+function buildWeeklyContextItems(weeklySummary: AssistantWeeklySummary | null): RailItem[] {
+  if (!weeklySummary) {
+    return [];
+  }
+
+  const visibleOptions = (weeklySummary.adaptation_options || []).slice(0, 3);
+  const actionableOptionCount = visibleOptions.filter((option) => option.enabled !== false && Boolean(option.href || option.prompt)).length;
+  if (actionableOptionCount > 0) {
+    return [
+      {
+        label: `Weekly: ${actionableOptionCount} recovery option${actionableOptionCount === 1 ? "" : "s"}`,
+      },
+    ];
+  }
+
+  const slippageCount = countWeeklySignals(weeklySummary.slippage);
+  if (slippageCount > 0) {
+    return [{ label: `Weekly: ${slippageCount} slip signal${slippageCount === 1 ? "" : "s"}` }];
+  }
+
+  const attentionCount = weeklySummary.attention_items?.length || 0;
+  if (attentionCount > 0) {
+    return [{ label: `Weekly: ${attentionCount} attention item${attentionCount === 1 ? "" : "s"}` }];
+  }
+
+  const progressCount = countWeeklySignals(weeklySummary.progress);
+  return progressCount > 0 ? [{ label: `Weekly: ${progressCount} progress signal${progressCount === 1 ? "" : "s"}` }] : [];
+}
+
 function buildSuggestions(snapshot: AssistantThreadSnapshot | null): RailItem[] {
   const pendingTools = new Set((snapshot?.interrupts || []).filter((interrupt) => interrupt.status === "pending").map((interrupt) => interrupt.tool_name));
   const suggestions: RailItem[] = [];
@@ -1118,9 +1157,11 @@ function AssistantPageContent() {
   const summaryOpenLoopCount = (todaySummary?.open_loops || []).reduce((total, loop) => total + (Number(loop.count) || 0), 0);
   const openLoopCount = threadOpenLoopCount || summaryOpenLoopCount;
   const railOpenLoops = cockpitOpenLoops.length > 0 ? cockpitOpenLoops : openLoops;
+  const weeklyContextItems = buildWeeklyContextItems(weeklySummary);
   const contextItems = [
     ...collectRailCards(normalizedSnapshot),
     ...supportSurfaces.filter((surface) => surface.active).map((surface) => ({ label: surface.title, href: surface.href })),
+    ...weeklyContextItems,
   ].slice(0, 4);
   const recommendedMove = todaySummary?.recommended_next_move;
   const nowItems: RailItem[] = [

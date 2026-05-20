@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 import {
   API_BASE,
@@ -57,7 +57,11 @@ async function expectNoHorizontalOverflow(label: string, locator: Locator) {
   expect(report.overflowing, `${label} horizontal overflow: ${JSON.stringify(report, null, 2)}`).toEqual([]);
 }
 
-test("PWA assistant renders and submits a schema-driven dynamic panel", async ({ page }) => {
+async function captureProof(page: Page, testInfo: TestInfo, name: string) {
+  await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
+}
+
+test("PWA assistant renders and submits a schema-driven dynamic panel", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   const pendingInterrupt = morningFocusInterrupt();
@@ -183,10 +187,10 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
   );
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm focus" })).toHaveCount(0);
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-concept-thread-panel.png", fullPage: true });
+  await captureProof(page, testInfo, "pwa-assistant-concept-thread-panel");
 });
 
-test("PWA assistant empty state uses a clean centered thread with quiet context", async ({ page }) => {
+test("PWA assistant empty state uses a clean centered thread with quiet context", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   await routeAssistantThread(page, () => assistantThreadSnapshot());
@@ -224,6 +228,7 @@ test("PWA assistant empty state uses a clean centered thread with quiet context"
   await expect(page.getByLabel("Suggested next prompt")).toContainText("A 90 minute focus block can move launch polish forward.");
   await expect(page.getByLabel("Assistant context")).toContainText("Open tasks: 5");
   await expect(page.getByLabel("Assistant context")).toContainText("Reviews due: 4");
+  await expect(page.getByLabel("Assistant context")).toContainText("Weekly: 2 recovery options");
   await expect(page.locator("aside")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Recommended next move" })).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText(/cockpit|observatory|Diagnostics|protocol|runtime/i);
@@ -236,10 +241,10 @@ test("PWA assistant empty state uses a clean centered thread with quiet context"
   await expectNoHorizontalOverflow("desktop context strip", page.getByLabel("Assistant context"));
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(desktopOverflow).toBe(false);
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-clean-thread.png", fullPage: true });
+  await captureProof(page, testInfo, "pwa-assistant-clean-thread");
 });
 
-test("PWA assistant normal thread renders ambient updates as thin rows", async ({ page }) => {
+test("PWA assistant normal thread renders ambient updates as thin rows", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   await routeAssistantThread(page, () =>
@@ -324,10 +329,10 @@ test("PWA assistant normal thread renders ambient updates as thin rows", async (
   await expect(ambientRow).toBeVisible();
   await expect(ambientRow).toContainText("Update");
   await expect(page.locator("main")).not.toContainText(/Surface update|protocol|runtime|tool_call|tool_result|Diagnostics/i);
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-normal-thread-ambient-row.png", fullPage: true });
+  await captureProof(page, testInfo, "pwa-assistant-normal-thread-ambient-row");
 });
 
-test("PWA assistant clean thread stays readable on mobile", async ({ page }) => {
+test("PWA assistant clean thread stays readable on mobile", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const longRecommendationTitle =
@@ -361,6 +366,7 @@ test("PWA assistant clean thread stays readable on mobile", async ({ page }) => 
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByLabel("Suggested next prompt")).toContainText(longRecommendationTitle);
+  await expect(page.getByLabel("Assistant context")).toContainText("Weekly: 2 recovery options");
   await expectNoHorizontalOverflow("mobile clean assistant thread", page.getByLabel("Assistant thread start"));
   await expectNoHorizontalOverflow("mobile context strip", page.getByLabel("Assistant context"));
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
@@ -370,10 +376,10 @@ test("PWA assistant clean thread stays readable on mobile", async ({ page }) => 
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
     "Start a 90 minute focus block for launch packaging.",
   );
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-clean-thread-mobile.png", fullPage: true });
+  await captureProof(page, testInfo, "pwa-assistant-clean-thread-mobile");
 });
 
-test("PWA assistant renders compact tool activity without console-like labels", async ({ page }) => {
+test("PWA assistant renders compact tool activity without console-like labels", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   await routeAssistantThread(page, () => assistantThreadActivitySnapshot());
@@ -396,5 +402,5 @@ test("PWA assistant renders compact tool activity without console-like labels", 
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(horizontalOverflow).toBe(false);
 
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-tool-activity-strip.png", fullPage: true });
+  await captureProof(page, testInfo, "pwa-assistant-tool-activity-strip");
 });

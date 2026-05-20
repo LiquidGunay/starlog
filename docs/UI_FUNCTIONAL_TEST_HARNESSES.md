@@ -4,9 +4,12 @@ This document is a dated runbook and evidence snapshot (not evergreen product st
 validation history, with the latest run status checked in newer dated artifacts before treating anything
 as current behavior.
 
-Starlog has repeatable Playwright smoke coverage for the new assistant-first UI concept through
+Starlog has repeatable Playwright smoke coverage for the clean assistant-first PWA shell through
 `playwright.ui-functional.config.ts`. The harness starts the Next dev server so it remains fast enough
 for feature-branch iteration; release packaging checks still use the existing PWA release-gate scripts.
+The assistant concept proof now focuses on the centered conversation thread, quiet context strip,
+inline dynamic panels, ambient rows, cards, and compact tool activity instead of the older Today
+cockpit layout.
 
 The native app is the primary phone client. These browser/mobile-viewport harnesses are still useful for
 fast layout and protocol checks, but they do not replace installed Android validation for voice,
@@ -74,7 +77,7 @@ Starlog again, and keep tokens redacted from saved output.
 
 ## Coverage
 
-- `test:ui:pwa-functional` runs the desktop PWA assistant concept smoke against the real Next `/assistant` route with mocked AssistantThreadSnapshot and AssistantInterrupt API responses.
+- `test:ui:pwa-functional` runs the desktop PWA clean assistant concept smoke against the real Next `/assistant` route with mocked AssistantThreadSnapshot and AssistantInterrupt API responses. Screenshot proof from the assistant concept spec is written through Playwright `testInfo.outputPath()` under the ignored test output tree, not tracked `artifacts/ui-functional` paths.
 - `test:ui:mobile-functional` runs the same route under a Pixel 7 Playwright device profile to validate the
   mobile viewport assistant equivalent for inline dynamic-panel grammar (browser-only viewport coverage).
 - Both tests submit the dynamic panel to mocked assistant interrupt endpoints and assert the posted values plus the resolved UI state.
@@ -83,7 +86,7 @@ Current functional areas:
 
 | Area | Spec | What it proves |
 | --- | --- | --- |
-| PWA Assistant concept | `apps/web/tests/ui-functional/pwa-assistant-concept.functional.spec.ts` | Today cockpit, recommended next move, reason stack, ambient rows, cards, strategic context, weekly systems review, dynamic panel submission, and compact tool activity against mocked assistant snapshots. |
+| PWA Assistant concept | `apps/web/tests/ui-functional/pwa-assistant-concept.functional.spec.ts` | Clean centered Assistant thread, quiet context strip with useful today/weekly context, recommended starter prompt, ambient rows, cards, inline dynamic panel submission, compact tool activity, and hidden raw protocol labels against mocked assistant snapshots. |
 | Mobile Assistant concept | `apps/web/tests/ui-functional/mobile-assistant-concept.functional.spec.ts` | Phone-width Assistant thread behavior with one active inline panel, schedule-conflict decision, task details, capture triage, review grade, clarification, defer, project picker, compact activity, and no raw protocol labels. |
 | PWA dynamic panel renderer | `apps/web/tests/pwa-dynamic-panel-renderer.spec.ts` | Production-rendered dynamic panel field behavior, interrupt submit/dismiss APIs, field-id reuse, and hidden diagnostic labels. |
 | PWA Library | `apps/web/tests/ui-functional/pwa-library.functional.spec.ts` | Capture pipeline, conversion actions, offline queued actions, assistant event sync behavior, artifact detail, provenance, source layers, generated outputs, and timeline. |
