@@ -92,7 +92,7 @@ Current functional areas:
 | Mobile Planner viewport | `apps/web/tests/ui-functional/mobile-planner.functional.spec.ts` | Phone-width Planner Assistant handoff drafts and conflict review link behavior. |
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Learning ladder, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
-| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Intended physical-device evidence for login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing recommendation hints, notification permission, and Planner alarm scheduling. Current reruns are blocked by ADB bridge/device-control instability until preflight/phone control is fixed; older passes are historical context, not current release proof. |
+| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Intended physical-device evidence for login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing recommendation hints, notification permission, and Planner alarm scheduling. Current reruns are blocked until a physical phone is visible as a ready ADB `device`; the preflight now reports absent/unauthorized/offline phone gates clearly. Older passes are historical context, not current release proof. |
 | Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
 ## Dynamic UI Coverage Boundary
@@ -114,8 +114,8 @@ Covered:
 - React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
   path currently uses a read-only `LocalRuntime` host over server-owned Starlog messages. Historical
   Android fresh-local evidence exists for shell/thread/composer markers and selected dynamic-panel
-  controls, but fresh reruns are blocked by ADB bridge/device-control instability. Full server-owned
-  native runtime migration and repeatable Android functional automation are still pending.
+  controls, but fresh reruns are blocked until a physical phone is visible as a ready ADB `device`.
+  Full server-owned native runtime migration and repeatable Android functional automation are still pending.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:
@@ -163,8 +163,9 @@ The browser viewport harness is not native Android/iOS automation. The current E
 as an Expo web harness without adding `react-native-web` and `@expo/metro-runtime`, and this workitem does
 not add a native automation stack such as Maestro or Detox.
 
-For native Android product-flow evidence, use `scripts/android_fresh_local_srs_validation.sh` after the
-ADB bridge/device-control preflight is fixed. A passing run writes its final manifest to
+For native Android product-flow evidence, use `scripts/android_fresh_local_srs_validation.sh` once a
+physical phone is visible as a ready ADB `device`. The preflight now reports absent/unauthorized/offline
+phone gates clearly. A passing run writes its final manifest to
 `.localdata/android-local-validation/builds/latest.json` with `validation_passed: true` and includes
 Assistant evidence such as `assistant-capability-shell-thread.png`, `assistant-capability-composer.png`,
 `assistant-dynamic-ui-capability-prompt.png`, `assistant-command-shell-thread.png`,

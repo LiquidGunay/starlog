@@ -214,10 +214,12 @@ cd /home/ubuntu/starlog
 bash ./scripts/android_fresh_local_srs_validation.sh
 ```
 
-Current status: this remains the intended validation loop, but current reruns are blocked by ADB
-bridge/device-control instability until the preflight and phone-control path is fixed. Do not treat
-older `latest.json` manifests or screenshots as current release proof without a fresh
-`validation_passed: true` run from the corrected phone-control path.
+Current status: this remains the intended validation loop, but current reruns are blocked until a
+physical phone is visible as a ready ADB `device`. The preflight now reports Linux `adb`, Windows
+`adb.exe`, `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness explicitly, and
+marks absent/unauthorized/offline phone gates as `validation_stage: blocked`. Do not treat older
+`latest.json` manifests or screenshots as current release proof without a fresh
+`validation_passed: true` run from an attached, unlocked, authorized phone.
 
 What this loop does:
 
