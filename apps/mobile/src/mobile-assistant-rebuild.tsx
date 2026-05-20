@@ -22,7 +22,6 @@ import {
   attachmentActionLabel,
   summarizeOutput,
   supportSurfaceActionLabel,
-  toolResultBadges,
   toolStatusSummary,
 } from "./assistant-mobile-ui";
 import {
@@ -529,10 +528,15 @@ function ToolResultRow({
   onCardAction: (action: AssistantCardAction, card: ConversationCard) => void;
   onOpenEntityRef: (entityRef: AssistantEntityRef) => void;
 }) {
-  const outputRows = summarizeOutput(toolResult.output || {});
-  const badges = toolResultBadges(toolResult);
+  const card = toolResult.card;
+  if (!card) {
+    return null;
+  }
+  const tone = cardTone(card.kind, palette);
+  const meta = compactMeta(formatCardMeta(card));
   return (
     <View
+      testID={`mobile-tool-result-card-${toolResult.id}`}
       style={{
         borderRadius: 14,
         paddingHorizontal: 11,
@@ -543,83 +547,55 @@ function ToolResultRow({
         gap: 7,
       }}
     >
-      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-        Step update
-      </Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-        {badges.map((badge) => (
-          <View
-            key={`${toolResult.id}-${badge}`}
-            style={{
-              borderRadius: 999,
-              paddingHorizontal: 9,
-              paddingVertical: 5,
-              backgroundColor: "rgba(255,255,255,0.024)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-              {badge}
-            </Text>
-          </View>
-        ))}
-      </View>
-      {outputRows.map(([key, value]) => (
-        <View key={`${toolResult.id}-${key}`} style={{ gap: 2 }}>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-            {key.replace(/_/g, " ")}
-          </Text>
-          <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{value}</Text>
-        </View>
-      ))}
       <EntityActionChip entityRef={toolResult.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
-      {toolResult.card ? (
-        <View
-          style={{
-            borderRadius: 12,
-            paddingHorizontal: 10,
-            paddingVertical: 9,
-            backgroundColor: "rgba(255,255,255,0.02)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.05)",
-            gap: 6,
-          }}
-        >
-          <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
-            {toolResult.card.title || mobileConversationCardLabel(toolResult.card.kind, toolResult.card.title)}
+      <View
+        style={{
+          borderRadius: 12,
+          paddingHorizontal: 10,
+          paddingVertical: 9,
+          backgroundColor: "rgba(255,255,255,0.02)",
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.05)",
+          gap: 6,
+        }}
+      >
+        <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+          {mobileConversationCardLabel(card.kind, card.title)}
+        </Text>
+        <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
+          {card.title || mobileConversationCardLabel(card.kind, card.title)}
+        </Text>
+        {card.body ? <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{card.body}</Text> : null}
+        {meta ? (
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
+            {meta}
           </Text>
-          {toolResult.card.body ? <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolResult.card.body}</Text> : null}
-          {formatCardMeta(toolResult.card) ? (
-            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
-              {compactMeta(formatCardMeta(toolResult.card))}
-            </Text>
-          ) : null}
-          <EntityActionChip entityRef={toolResult.card.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
-          {toolResult.card.actions.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-              {toolResult.card.actions.map((action) => (
-                <TouchableOpacity
-                  key={`${toolResult.card?.kind}-${action.id}`}
-                  style={{
-                    borderRadius: 999,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    backgroundColor: action.style === "primary" ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.03)",
-                    borderWidth: 1,
-                    borderColor: action.style === "primary" ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
-                  }}
-                  onPress={() => onCardAction(action, toolResult.card!)}
-                >
-                  <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-      ) : null}
+        ) : null}
+        <EntityActionChip entityRef={card.entity_ref} palette={palette} onOpenEntityRef={onOpenEntityRef} />
+        {card.actions.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+            {card.actions.map((action) => (
+              <TouchableOpacity
+                key={`${toolResult.id}-${action.id}`}
+                testID={`mobile-tool-result-card-action-${toolResult.id}-${action.id}`}
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: action.style === "primary" ? tone.accentBg : "rgba(255,255,255,0.03)",
+                  borderWidth: 1,
+                  borderColor: action.style === "primary" ? tone.border : "rgba(255,255,255,0.05)",
+                }}
+                onPress={() => onCardAction(action, card)}
+              >
+                <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -1820,6 +1796,7 @@ export function MobileAssistantRebuild({
                 const showDiagnostics = Boolean(expandedDiagnostics[message.id]);
                 const hasRichMessageContent =
                   primaryCards.length > 0 ||
+                  toolResults.some((toolResult) => toolResult.card) ||
                   ambientUpdates.length > 0 ||
                   attachments.length > 0 ||
                   interruptRequests.length > 0;
@@ -2041,6 +2018,21 @@ export function MobileAssistantRebuild({
                             attachment={attachment}
                             palette={palette}
                             onOpenAttachment={onOpenAttachment}
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {toolResults.some((toolResult) => toolResult.card) ? (
+                      <View style={{ gap: 8, paddingLeft: 10 }}>
+                        {toolResults.map((toolResult) => (
+                          <ToolResultRow
+                            key={toolResult.id}
+                            toolResult={toolResult}
+                            palette={palette}
+                            formatCardMeta={formatCardMeta}
+                            onCardAction={onCardAction}
+                            onOpenEntityRef={onOpenEntityRef}
                           />
                         ))}
                       </View>

@@ -95,6 +95,7 @@ Module._load = function mockMobileRenderHarnessDependencies(request: string, par
   }
   if (request === "@starlog/contracts") {
     return {
+      productCardLabel: (kind: string) => kind.replace(/_/g, " "),
       productCopy: {
         assistant: {
           emptyTitle: "Ask Starlog",
@@ -433,6 +434,119 @@ try {
     assert.equal(findText(tree, "Synced just now"), false);
     assert.equal(textIncludes(tree, "Inline panel"), false);
     assert.equal(textIncludes(tree, "interview."), false);
+  }
+
+  {
+    resetHooks();
+    currentAssistantUiMessages = [];
+    assistantUiComposerText = "";
+    const actionCalls: Array<{ actionId: string; cardTitle: string | null | undefined }> = [];
+    const assistantMessage: AssistantThreadMessage = {
+      id: "assistant-tool-result-card-message",
+      thread_id: "primary",
+      run_id: "run-tool-card",
+      role: "assistant",
+      status: "complete",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        {
+          type: "text",
+          id: "part-text-tool-card",
+          text: "I found the next review queue.",
+        },
+        {
+          type: "tool_result",
+          id: "part-tool-result-review-queue",
+          tool_result: {
+            id: "tool_result_review_queue",
+            tool_call_id: "tool_call_review_queue",
+            status: "complete",
+            output: { queue_size: 2 },
+            card: {
+              kind: "review_queue",
+              version: 1,
+              title: "Review queue ready",
+              body: "2 cards are ready for recall.",
+              entity_ref: null,
+              actions: [
+                {
+                  id: "open_review",
+                  label: "Open Review",
+                  kind: "navigate",
+                  style: "primary",
+                  payload: { route: "review" },
+                },
+              ],
+              metadata: { due_count: 2 },
+            },
+            entity_ref: null,
+            metadata: { tool_name: "list_due_cards" },
+          },
+        },
+      ],
+    };
+
+    const tree = renderWithHooks(() =>
+      MobileAssistantRebuild({
+        styles: {},
+        palette: {
+          ...palette,
+          onAccent: "#0f172a",
+          error: "#ffb4b7",
+        },
+        pendingConversationTurn: false,
+        homeDraft: "",
+        setHomeDraft: () => undefined,
+        runAssistantTurn: () => undefined,
+        onVoiceAction: () => undefined,
+        onCancelVoiceAction: () => undefined,
+        voiceActionState: "idle",
+        voiceActionHint: null,
+        refreshThread: () => undefined,
+        resetConversationSession: () => undefined,
+        threadSnapshot: {
+          id: "primary",
+          slug: "primary",
+          title: "Primary",
+          mode: "assistant",
+          messages: [assistantMessage],
+          interrupts: [],
+          next_cursor: null,
+          updated_at: "2026-05-19T05:00:00Z",
+          metadata: {},
+        },
+        visibleThreadMessages: [assistantMessage],
+        hiddenThreadMessageCount: 0,
+        previewCommandFlow: () => undefined,
+        formatCardMeta: () => "2 due",
+        onCardAction: (action: { id: string }, card: { title?: string | null }) => {
+          actionCalls.push({ actionId: action.id, cardTitle: card.title });
+        },
+        onInterruptSubmit: () => undefined,
+        onInterruptDismiss: () => undefined,
+        reuseCardText: () => undefined,
+        onOpenEntityRef: () => undefined,
+        onOpenAttachment: () => undefined,
+        assistantTodaySummary: null,
+        assistantWeeklySummary: null,
+        onAssistantTodayAction: () => undefined,
+      }),
+    );
+
+    assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
+    assert.equal(findByTestId(tree, "mobile-tool-result-card-tool_result_review_queue").length, 1);
+    assert.equal(findText(tree, "Review queue ready"), true);
+    assert.equal(findText(tree, "2 cards are ready for recall."), true);
+    assert.equal(findText(tree, "Open Review"), true);
+    assert.equal(textIncludes(tree, "tool_result"), false);
+    assert.equal(textIncludes(tree, "list_due_cards"), false);
+
+    const openReview = findByTestId(tree, "mobile-tool-result-card-action-tool_result_review_queue-open_review")[0];
+    assert.equal(typeof openReview.props.onPress, "function");
+    (openReview.props.onPress as () => void)();
+    assert.deepEqual(actionCalls, [{ actionId: "open_review", cardTitle: "Review queue ready" }]);
   }
 
   {
