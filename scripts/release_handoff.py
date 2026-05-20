@@ -259,9 +259,11 @@ def sync_bundle_docs(
 ) -> list[Path]:
     targets = [
         ("README.md", "README.md"),
+        ("CURRENT_STATE.md", "docs/CURRENT_STATE.md"),
         ("IMPLEMENTATION_STATUS.md", "docs/IMPLEMENTATION_STATUS.md"),
+        ("ASSISTANT_UI_REFERENCE.md", "docs/ASSISTANT_UI_REFERENCE.md"),
+        ("ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md", "docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md"),
         ("ANDROID_DEV_BUILD.md", "docs/ANDROID_DEV_BUILD.md"),
-        ("UI_CONCEPT_COMPARISON_2026-04-29.md", "docs/UI_CONCEPT_COMPARISON_2026-04-29.md"),
         ("UI_FUNCTIONAL_TEST_HARNESSES.md", "docs/UI_FUNCTIONAL_TEST_HARNESSES.md"),
         ("CODEX_PHONE_PWA_CONNECTION.md", "docs/CODEX_PHONE_PWA_CONNECTION.md"),
         ("RELEASE_HANDOFF.md", "docs/RELEASE_HANDOFF.md"),
@@ -292,8 +294,6 @@ def sync_bundle_docs(
 
 def sync_bundle_artifacts(repo_root: Path, bundle_root: Path, dry_run: bool) -> list[Path]:
     targets = [
-        ("artifacts/ui-comparison/2026-04-29", "artifacts/ui-comparison/2026-04-29"),
-        ("artifacts/phone-current/2026-04-29", "artifacts/phone-current/2026-04-29"),
         ("artifacts/ui-concept", "artifacts/ui-concept"),
     ]
     copied: list[Path] = []

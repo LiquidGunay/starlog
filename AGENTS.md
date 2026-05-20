@@ -189,7 +189,7 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - Keep assistant and agent behavior prompts in repo-local `.md` files under `services/ai-runtime/prompts/` so users can inspect and edit them directly; do not bury canonical prompt behavior in code literals.
 - Keep OpenAI/Codex credentials out of PWA and mobile clients; route agent work through the API, AI runtime, desktop helper, or paired worker with server-side/worker-local secret handling.
 - Treat `/library` as the canonical Library route. References to `/notes` or `/artifacts` as user-facing Library routes are stale unless explicitly marked as legacy compatibility or API endpoints.
-- Avoid duplicate planning docs. Keep `PLAN.md`, `VISION.md`, assistant reset docs, and the active UI concept/comparison docs authoritative, and remove stale plans when they no longer match direction.
+- Avoid duplicate planning docs. Keep `PLAN.md`, `VISION.md`, assistant reset docs, active UI reference docs, and `artifacts/ui-concept/**` authoritative, and remove stale plans when they no longer match direction.
 - Delete stale merged branches and abandoned worktrees promptly; salvage only the pieces that still fit the current plan.
 - Use one canonical conversation path for assistant UX and keep debug/operator controls secondary to the main user flow.
 - For subagent supervision, do not treat a missing final response after a short wait as a hang. Define reusable
