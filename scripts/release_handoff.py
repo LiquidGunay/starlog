@@ -268,6 +268,22 @@ def sync_bundle_docs(
         ("CODEX_PHONE_PWA_CONNECTION.md", "docs/CODEX_PHONE_PWA_CONNECTION.md"),
         ("RELEASE_HANDOFF.md", "docs/RELEASE_HANDOFF.md"),
     ]
+    architecture_targets = [
+        ("architecture/README.md", "docs/architecture/README.md"),
+        ("architecture/assistant-runtime.md", "docs/architecture/assistant-runtime.md"),
+        ("architecture/assistant-protocol.md", "docs/architecture/assistant-protocol.md"),
+        ("architecture/interview-prep-loop.md", "docs/architecture/interview-prep-loop.md"),
+        ("architecture/deployment.md", "docs/architecture/deployment.md"),
+        ("architecture/diagrams/system-context.mmd", "docs/architecture/diagrams/system-context.mmd"),
+        (
+            "architecture/diagrams/assistant-runtime-sequence.mmd",
+            "docs/architecture/diagrams/assistant-runtime-sequence.mmd",
+        ),
+        ("architecture/diagrams/interview-prep-loop.mmd", "docs/architecture/diagrams/interview-prep-loop.mmd"),
+        ("architecture/diagrams/data-provenance.mmd", "docs/architecture/diagrams/data-provenance.mmd"),
+        ("architecture/diagrams/deployment-topology.mmd", "docs/architecture/diagrams/deployment-topology.mmd"),
+    ]
+    targets.extend(architecture_targets)
     copied: list[Path] = []
     for source_rel, dest_rel in targets:
         source = docs_root / source_rel if source_rel != "README.md" else repo_root / source_rel

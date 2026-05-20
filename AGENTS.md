@@ -63,6 +63,25 @@ place where normal development accumulates.
 
 For parallel-agent coordination, workitem locks, worktree hygiene, and shared dependency reuse, use [docs/PARALLEL_AGENT_WORKFLOW.md](/home/ubuntu/starlog/docs/PARALLEL_AGENT_WORKFLOW.md).
 
+## Supervisor-worker operating model
+
+When the user or supervising agent says the main assistant is supervisor-only, treat that as a
+strict operating mode, not a style preference.
+
+- The supervisor defines scope, sequencing, checkpoints, and acceptance criteria.
+- Worker agents do repo reading, writing, testing, review, merge-conflict handling, and handoff
+  reporting for their assigned lane.
+- Supervisors may inspect high-level worker evidence, status, and final handoff material, but should
+  not directly edit files, run validation, or resolve conflicts unless the user explicitly overrides
+  supervisor-only mode.
+- Keep each worker on one `{workitem_id, worktree, branch, role}` lane until handoff. Use role names
+  such as `IMPLEMENT`, `VALIDATE`, `REVIEW`, or `CLEANUP` in the workitem title and lock metadata
+  when available.
+- If a worker is silent, use `wait_agent` or objective evidence before nudging. Do not treat a short
+  missing final response, stale heartbeat, or long-running command as failure by itself.
+- If supervisor-only mode conflicts with the available tooling or sandbox, stop and ask for a mode
+  correction instead of silently falling back to direct edits.
+
 ## Artifact and proof retention
 
 Keep repo-tracked artifacts small and current.
@@ -91,6 +110,8 @@ truth actually changed.
   `starlog_assistant_ui_backend_migration_design.md`,
   `starlog_assistant_ui_contracts_and_api_blueprint.md`, and
   `starlog_assistant_ui_repo_execution_checklist.md`) for assistant protocol/runtime plan changes.
+- `docs/architecture/**` for concise architecture source-of-truth summaries and diagrams that bind
+  the active product/runtime/deployment docs together.
 - `docs/CURRENT_STATE.md` for works-today, unproven, access, and latest evidence status.
 - `docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md`, `docs/ASSISTANT_UI_REFERENCE.md`, and
   `apps/web/app/design/assistant-runtime-reference/page.tsx` for runtime/UI reference changes.
@@ -103,6 +124,26 @@ truth actually changed.
 
 Avoid duplicate planning/status/comparison docs. If a new doc looks like another source of truth,
 update the fixed doc set instead or archive the one-off detail as incident/history.
+
+
+## Documentation taxonomy
+
+Keep documentation incremental and path-stable. Prefer adding a focused note to the existing fixed
+doc set over moving files or creating another source of truth. Move or rename only when the old path
+is clearly obsolete, link-safe, and worth the churn.
+
+- **Architecture truth:** `PLAN.md`, `VISION.md`, assistant reset docs, and `docs/architecture/**`.
+  Use these for durable product, runtime, protocol, data, and deployment shape.
+- **Current state:** `docs/CURRENT_STATE.md`. Use it for what works today, what is unproven, access
+  notes, and latest evidence pointers.
+- **Runbooks:** operational docs under `docs/` such as Android, Railway, phone setup, desktop helper,
+  release handoff, go-live, and portability procedures.
+- **Validation:** repeatable smoke matrices, harness docs, and validation scripts. Current proof
+  output belongs in `.localdata/`, `/tmp`, ignored build output, or one explicitly current proof path.
+- **Release:** `docs/RELEASE_HANDOFF.md`, `docs/RELEASE_HANDOFF_RUNBOOK.md`, and
+  `scripts/release_handoff.py`.
+- **History:** `docs/ENGINEERING_ISSUE_HISTORY.md` and `docs/IMPLEMENTATION_STATUS.md`. Do not put
+  dated incident chronology or stale comparison proof in `AGENTS.md`.
 
 ## Markdown map
 
@@ -117,6 +158,11 @@ This section is the repo-local purpose map for markdown files so agents know whi
 - `starlog_assistant_ui_repo_execution_checklist.md` — canonical execution-ordered migration checklist for the assistant reset.
 - `README.md` — top-level user-facing product README for install, sign-in handoff, release status, and operator entrypoints; keep developer internals and secrets out of it.
 - `docs/CURRENT_STATE.md` — concise current-state summary for what works today, what remains unproven, and where the evidence lives.
+- `docs/architecture/README.md` — architecture index and taxonomy bridge for source-of-truth architecture notes and diagrams.
+- `docs/architecture/assistant-runtime.md` — concise assistant runtime ownership, client, orchestration, and migration architecture.
+- `docs/architecture/assistant-protocol.md` — durable assistant protocol, event, message-part, interrupt, and provenance contract summary.
+- `docs/architecture/interview-prep-loop.md` — architecture of the study/interview preparation loop across ingest, topic gating, review, and planning.
+- `docs/architecture/deployment.md` — deployment topology, secret boundaries, local runtimes, and Railway/mobile/helper responsibilities.
 - `docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md` — assistant runtime option decision record: assistant-ui as strategic web+native chat runtime, Starlog protocol as source of truth, MCP Apps as pattern not dependency, and rejected/deferred alternatives.
 - `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local UI reference for the assistant reset.
 - `artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md` — active PWA UI concept reference; use with sibling PNG mockups.

@@ -1,0 +1,32 @@
+flowchart TB
+  subgraph Devices
+    mobile[Native mobile<br/>capture, alarm, playback]
+    web[Desktop browser / PWA fallback]
+    helper[Desktop helper]
+    clipper[Browser clipper]
+    local[On-device/host-local<br/>STT, TTS, OCR]
+  end
+
+  subgraph Railway
+    api[services/api]
+    webhost[apps/web]
+    db[(Persistent data)]
+  end
+
+  subgraph Providers
+    openai[OpenAI primary]
+    fallback[Fallback/local provider]
+    calendar[Google Calendar]
+  end
+
+  web --> webhost
+  webhost --> api
+  mobile --> api
+  helper --> api
+  clipper --> api
+  mobile --> local
+  helper --> local
+  api --> db
+  api --> openai
+  api --> fallback
+  api <--> calendar

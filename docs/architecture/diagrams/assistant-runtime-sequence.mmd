@@ -1,0 +1,17 @@
+sequenceDiagram
+  participant Client as Web/Native client
+  participant API as services/api
+  participant Runtime as services/ai-runtime
+  participant Tools as Starlog tools
+  participant Store as Persistent store
+
+  Client->>API: Submit message, capture context, or confirmation
+  API->>Store: Append thread message and create/resume run
+  API->>Runtime: Start run with thread snapshot and policy
+  Runtime->>Runtime: Select prompt, provider, tools, fallback path
+  Runtime->>Tools: Request typed tool call or guarded action
+  Tools->>API: Persist tool result, interrupt, or candidate write
+  API->>Store: Store run step and surface event
+  API-->>Client: Stream/poll typed message parts and panels
+  Client->>API: Confirm or reject major write
+  API->>Store: Persist confirmation and final run state

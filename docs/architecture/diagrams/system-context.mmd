@@ -1,0 +1,29 @@
+flowchart LR
+  user[Single user]
+  web[Desktop web / PWA fallback]
+  mobile[Native mobile]
+  helper[Desktop helper]
+  clipper[Browser clipper]
+  api[Starlog API<br/>system of record]
+  ai[AI runtime<br/>prompts + orchestration]
+  local[Local voice/OCR runtimes]
+  openai[OpenAI primary LLM]
+  fallback[Fallback providers/local models]
+  google[Google Calendar]
+  store[(Artifact graph<br/>threads, planner, review)]
+
+  user --> web
+  user --> mobile
+  user --> helper
+  user --> clipper
+  web --> api
+  mobile --> api
+  helper --> api
+  clipper --> api
+  api <--> store
+  api --> ai
+  ai --> openai
+  ai --> fallback
+  mobile --> local
+  helper --> local
+  api <--> google

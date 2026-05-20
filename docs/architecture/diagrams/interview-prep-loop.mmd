@@ -1,0 +1,16 @@
+flowchart TD
+  source[Source material<br/>deck, PDF, clip, note]
+  artifact[Artifact + provenance]
+  extract[Normalize and extract<br/>topics, chunks, metadata]
+  generate[Generate notes, cards,<br/>answers, practice items]
+  gate[Topic readiness gate<br/>card-topic links]
+  review[Review attempts<br/>reveal, grade, due date]
+  planner[Planner<br/>tasks + time blocks]
+  brief[Assistant / daily briefing]
+  user[User reads, practices,<br/>confirms next actions]
+
+  source --> artifact --> extract --> generate --> gate
+  user --> gate
+  gate --> review --> planner --> brief --> user
+  review --> gate
+  planner --> user

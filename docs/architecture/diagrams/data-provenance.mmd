@@ -1,0 +1,13 @@
+flowchart LR
+  raw[Raw source<br/>file, clip, audio, image]
+  normalized[Normalized source<br/>clean text + metadata]
+  extracted[Extracted units<br/>topics, chunks, entities]
+  generated[Generated artifacts<br/>summary, card, note]
+  versioned[Version history<br/>regen + user edits]
+  surfaces[Assistant, Library,<br/>Planner, Review]
+
+  raw --> normalized --> extracted --> generated --> versioned --> surfaces
+  raw -. provenance id .-> generated
+  normalized -. source offsets .-> generated
+  extracted -. chunk/topic links .-> generated
+  versioned -. prior versions .-> generated

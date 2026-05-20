@@ -42,10 +42,11 @@ Shared code used by more than one surface.
 
 ### Other important roots
 
-- `docs` — runbooks, status docs, release checklists, and implementation guides.
+- `docs` — architecture notes, runbooks, status docs, release checklists, and implementation guides.
 - `scripts` — local automation, smoke flows, helper tooling, and workitem coordination scripts.
 - `artifacts` — captured validation output, screenshots, release evidence, and proof bundles.
 - `VISION.md` plus the assistant reset markdown files in the repo root — active product and assistant architecture sources of truth.
+- `docs/architecture` — concise architecture source-of-truth notes and Mermaid diagram sources.
 - `docs/ASSISTANT_UI_REFERENCE.md` — active repo-local assistant UI reference.
 - `/home/ubuntu/starlog_extras/starlog_unified_design_april_2026` — historical-only external design reference from the pre-reset observatory work.
 
@@ -225,10 +226,11 @@ Common categories:
 
 ### `docs`
 
-Use `docs/` for human-readable runbooks and status material, not for duplicate source-of-truth logic.
+Use `docs/` for architecture summaries, human-readable runbooks, and status material, not for duplicate source-of-truth logic.
 
 Examples:
 
+- architecture summaries and Mermaid source diagrams
 - setup guides
 - release checklists
 - validation matrices
@@ -265,4 +267,5 @@ Examples that may belong here when current and intentional:
 3. `docs/CURRENT_STATE.md` for the concise current-state summary.
 4. This file for code ownership and navigation.
 5. `docs/IMPLEMENTATION_STATUS.md` only when you need the historical implementation log.
-6. The specific surface runbook that matches your task, such as Android, desktop helper, or PWA release docs.
+6. `docs/architecture/README.md` when the task touches durable runtime, protocol, learning-loop, or deployment shape.
+7. The specific surface runbook that matches your task, such as Android, desktop helper, or PWA release docs.
