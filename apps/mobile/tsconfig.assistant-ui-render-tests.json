@@ -9,8 +9,10 @@
   },
   "include": [
     "src/mobile-assistant-aui-adapter.ts",
+    "src/mobile-assistant-rebuild.tsx",
     "src/mobile-assistant-panel-state.ts",
     "src/mobile-dynamic-panel-host.tsx",
+    "tests/assistant-ui-react-native.d.ts",
     "tests/mobile-react-render-harness.d.ts",
     "tests/mobile-assistant-ui-render-harness.test.ts"
   ]

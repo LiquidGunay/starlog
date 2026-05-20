@@ -1650,6 +1650,186 @@ export function MobileAssistantRebuild({
     />
   );
 
+  const assistantComposerChrome = (
+    <View
+      testID="mobile-assistant-aui-composer-surface"
+      style={{
+        borderRadius: 28,
+        paddingHorizontal: 8,
+        paddingTop: 8,
+        paddingBottom: 8,
+        borderWidth: 1,
+        borderColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.065)",
+        backgroundColor: "rgba(9, 13, 18, 0.92)",
+        gap: 7,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        {showVoiceHint ? (
+          <Text style={{ flex: 1, color: palette.muted, fontSize: 10.5, lineHeight: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            {voiceActionHint || voiceLabel}
+          </Text>
+        ) : (
+          <View />
+        )}
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {[
+            { icon: "tune-variant", action: previewCommandFlow },
+            { icon: "refresh", action: refreshThread },
+            { icon: "eraser-variant", action: resetConversationSession },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.icon}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(255,255,255,0.018)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.04)",
+              }}
+              onPress={item.action}
+            >
+              <MaterialCommunityIcons name={item.icon as never} size={14} color={palette.muted} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+        <TouchableOpacity
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor:
+              voiceActionState === "recording"
+                ? "rgba(255, 180, 183, 0.16)"
+                : voiceActionState === "ready"
+                  ? "rgba(166, 222, 191, 0.14)"
+                  : "rgba(255,255,255,0.025)",
+            borderWidth: 1,
+            borderColor:
+              voiceActionState === "recording"
+                ? "rgba(255, 180, 183, 0.18)"
+                : voiceActionState === "ready"
+                  ? "rgba(166, 222, 191, 0.18)"
+                  : "rgba(255,255,255,0.04)",
+            opacity: voiceMicDisabled ? 0.48 : 1,
+          }}
+          onPress={onVoiceAction}
+          disabled={voiceMicDisabled}
+        >
+          <MaterialCommunityIcons name={voiceIcon as never} size={17} color={voiceActionState === "recording" ? palette.error : palette.text} />
+        </TouchableOpacity>
+
+        {voiceActionState === "ready" ? (
+          <TouchableOpacity
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 4,
+              backgroundColor: "rgba(255,255,255,0.018)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.04)",
+            }}
+            onPress={onCancelVoiceAction}
+          >
+            <MaterialCommunityIcons name={"close" as never} size={14} color={palette.muted} />
+          </TouchableOpacity>
+        ) : null}
+
+        <View
+          style={{
+            flex: 1,
+            minHeight: 50,
+            borderRadius: 21,
+            paddingHorizontal: 13,
+            paddingTop: 4,
+            paddingBottom: 4,
+            backgroundColor: "rgba(255,255,255,0.035)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          <MobileAssistantUiComposerBridge
+            draft={homeDraft}
+            onDraftChange={setHomeDraft}
+            onSubmit={runAssistantTurn}
+            placeholder={productCopy.assistant.inputPlaceholder}
+            placeholderTextColor={palette.muted}
+            disabled={pendingConversationTurn}
+            inputStyle={{
+              minHeight: 32,
+              maxHeight: 82,
+              color: palette.text,
+              fontSize: 15,
+              lineHeight: 21,
+              paddingVertical: 5,
+              paddingHorizontal: 0,
+            }}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pendingConversationTurn ? "rgba(255,255,255,0.12)" : palette.accent,
+          }}
+          disabled={pendingConversationTurn}
+          onPress={runAssistantTurn}
+          accessibilityRole="button"
+          accessibilityLabel="Send assistant message"
+          testID="assistant-send-message"
+          hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+        >
+          <MaterialCommunityIcons name={pendingConversationTurn ? "dots-horizontal" : "arrow-up"} size={19} color={palette.onAccent} />
+        </TouchableOpacity>
+      </View>
+
+      {displaySuggestions.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
+          {displaySuggestions.map((label) => (
+            <TouchableOpacity
+              key={label}
+              style={{
+                minHeight: 36,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor: "rgba(255,255,255,0.018)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.05)",
+                justifyContent: "center",
+                maxWidth: assistantPanelLayout.promptChipMaxWidth,
+              }}
+              onPress={() => setHomeDraft(label)}
+            >
+              <Text
+                {...ASSISTANT_TIGHT_TEXT_PROPS}
+                style={{ maxWidth: 190, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+
   return (
     <View style={{ gap: 16, paddingTop: 4 }}>
       <View style={{ gap: 10 }}>
@@ -1993,7 +2173,7 @@ export function MobileAssistantRebuild({
             </View>
           )
         ) : (
-          <>
+          <View testID="mobile-assistant-aui-transcript" style={{ alignSelf: "stretch" }}>
             <MobileAssistantUiShell
               messages={visibleThreadMessages}
               liveInterrupts={liveInterrupts}
@@ -2400,186 +2580,12 @@ export function MobileAssistantRebuild({
                 );
               }}
             />
-          </>
+            {assistantComposerChrome}
+          </View>
         )}
       </View>
 
-      <View
-        style={{
-          borderRadius: 28,
-          paddingHorizontal: 8,
-          paddingTop: 8,
-          paddingBottom: 8,
-          borderWidth: 1,
-          borderColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.065)",
-          backgroundColor: "rgba(9, 13, 18, 0.92)",
-          gap: 7,
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          {showVoiceHint ? (
-            <Text style={{ flex: 1, color: palette.muted, fontSize: 10.5, lineHeight: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 }}>
-              {voiceActionHint || voiceLabel}
-            </Text>
-          ) : (
-            <View />
-          )}
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            {[
-              { icon: "tune-variant", action: previewCommandFlow },
-              { icon: "refresh", action: refreshThread },
-              { icon: "eraser-variant", action: resetConversationSession },
-            ].map((item) => (
-              <TouchableOpacity
-                key={item.icon}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(255,255,255,0.018)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.04)",
-                }}
-                onPress={item.action}
-              >
-                <MaterialCommunityIcons name={item.icon as never} size={14} color={palette.muted} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
-          <TouchableOpacity
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor:
-                voiceActionState === "recording"
-                  ? "rgba(255, 180, 183, 0.16)"
-                  : voiceActionState === "ready"
-                    ? "rgba(166, 222, 191, 0.14)"
-                    : "rgba(255,255,255,0.025)",
-              borderWidth: 1,
-              borderColor:
-                voiceActionState === "recording"
-                  ? "rgba(255, 180, 183, 0.18)"
-                  : voiceActionState === "ready"
-                    ? "rgba(166, 222, 191, 0.18)"
-                    : "rgba(255,255,255,0.04)",
-              opacity: voiceMicDisabled ? 0.48 : 1,
-            }}
-            onPress={onVoiceAction}
-            disabled={voiceMicDisabled}
-          >
-            <MaterialCommunityIcons name={voiceIcon as never} size={17} color={voiceActionState === "recording" ? palette.error : palette.text} />
-          </TouchableOpacity>
-
-          {voiceActionState === "ready" ? (
-            <TouchableOpacity
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 999,
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 4,
-                backgroundColor: "rgba(255,255,255,0.018)",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.04)",
-              }}
-              onPress={onCancelVoiceAction}
-            >
-              <MaterialCommunityIcons name={"close" as never} size={14} color={palette.muted} />
-            </TouchableOpacity>
-          ) : null}
-
-          <View
-            style={{
-              flex: 1,
-              minHeight: 50,
-              borderRadius: 21,
-              paddingHorizontal: 13,
-              paddingTop: 4,
-              paddingBottom: 4,
-              backgroundColor: "rgba(255,255,255,0.035)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.06)",
-            }}
-          >
-            <MobileAssistantUiComposerBridge
-              draft={homeDraft}
-              onDraftChange={setHomeDraft}
-              onSubmit={runAssistantTurn}
-              placeholder={productCopy.assistant.inputPlaceholder}
-              placeholderTextColor={palette.muted}
-              disabled={pendingConversationTurn}
-              inputStyle={{
-                minHeight: 32,
-                maxHeight: 82,
-                color: palette.text,
-                fontSize: 15,
-                lineHeight: 21,
-                paddingVertical: 5,
-                paddingHorizontal: 0,
-              }}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: pendingConversationTurn ? "rgba(255,255,255,0.12)" : palette.accent,
-            }}
-            disabled={pendingConversationTurn}
-            onPress={runAssistantTurn}
-            accessibilityRole="button"
-            accessibilityLabel="Send assistant message"
-            testID="assistant-send-message"
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          >
-            <MaterialCommunityIcons name={pendingConversationTurn ? "dots-horizontal" : "arrow-up"} size={19} color={palette.onAccent} />
-          </TouchableOpacity>
-        </View>
-
-        {displaySuggestions.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12 }}>
-            {displaySuggestions.map((label) => (
-              <TouchableOpacity
-                key={label}
-                style={{
-                  minHeight: 36,
-                  borderRadius: 999,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  backgroundColor: "rgba(255,255,255,0.018)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.05)",
-                  justifyContent: "center",
-                  maxWidth: assistantPanelLayout.promptChipMaxWidth,
-                }}
-                onPress={() => setHomeDraft(label)}
-              >
-                <Text
-                  {...ASSISTANT_TIGHT_TEXT_PROPS}
-                  style={{ maxWidth: 190, color: palette.text, fontSize: 13, lineHeight: 17, fontWeight: "700" }}
-                  numberOfLines={1}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
-      </View>
+      {visibleThreadMessages.length === 0 ? assistantComposerChrome : null}
 
     </View>
   );
