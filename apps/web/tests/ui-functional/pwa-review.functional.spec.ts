@@ -1,6 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-
 import { API_BASE, seedAssistantSession } from "./assistant-concept-fixtures";
 
 const reviewSummary = {
@@ -124,7 +122,7 @@ const decks = [
   },
 ];
 
-test("PWA review renders the ladder summary and supports reveal plus grading", async ({ page }) => {
+test("PWA review renders the ladder summary and supports reveal plus grading", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
   const assistantEvents: Array<Record<string, unknown>> = [];
   const reviewRequests: Array<Record<string, unknown>> = [];
@@ -204,8 +202,7 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await expect(page.locator(".april-review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
   await expect(page.getByText("Onboarding flow polish")).toBeVisible();
 
-  mkdirSync("artifacts/ui-functional", { recursive: true });
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-review-learning-insights.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("pwa-review-learning-insights.png"), fullPage: true });
 
   const goodButton = page.getByRole("button", { name: /Good/ });
   await expect(goodButton).toBeDisabled();

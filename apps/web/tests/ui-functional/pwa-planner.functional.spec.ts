@@ -122,6 +122,7 @@ const expectedSummaryConflictDraftHref = assistantDraftHref(
 );
 
 test("PWA planner renders execution summary and conflict repair with mocked API data", async ({ page }) => {
+  await page.clock.setFixedTime(new Date(plannerSummary.date + "T12:00:00.000Z"));
   await seedAssistantSession(page);
   const resolutions: Array<Record<string, unknown>> = [];
 
@@ -148,6 +149,10 @@ test("PWA planner renders execution summary and conflict repair with mocked API 
 
   await page.route(`${API_BASE}/v1/calendar/sync/google/oauth/status`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(oauthStatus) });
+  });
+
+  await page.route(API_BASE + "/v1/alarms", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
   });
 
   await page.route(`${API_BASE}/v1/calendar/sync/google/conflicts`, async (route) => {
@@ -230,6 +235,7 @@ test("PWA planner renders execution summary and conflict repair with mocked API 
 });
 
 test("PWA planner shows summary-only conflicts without fake calendar repair actions", async ({ page }) => {
+  await page.clock.setFixedTime(new Date(plannerSummary.date + "T12:00:00.000Z"));
   await seedAssistantSession(page);
 
   await page.route(`${API_BASE}/v1/surfaces/planner/summary?date=**`, async (route) => {
@@ -248,6 +254,10 @@ test("PWA planner shows summary-only conflicts without fake calendar repair acti
   });
   await page.route(`${API_BASE}/v1/calendar/sync/google/oauth/status`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(oauthStatus) });
+  });
+
+  await page.route(API_BASE + "/v1/alarms", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
   });
   await page.route(`${API_BASE}/v1/calendar/sync/google/conflicts`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });

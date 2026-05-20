@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-
 import { API_BASE, seedAssistantSession } from "./assistant-concept-fixtures";
-
-const screenshotDir = "artifacts/ui-functional";
-
-test.beforeAll(() => {
-  mkdirSync(screenshotDir, { recursive: true });
-});
 
 const artifacts = [
   {
@@ -287,7 +279,7 @@ const focusDetail = {
   ],
 };
 
-test("PWA library renders the capture pipeline with mocked API data", async ({ page }) => {
+test("PWA library renders the capture pipeline with mocked API data", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];
   const assistantEvents: Array<Record<string, unknown>> = [];
@@ -378,12 +370,12 @@ test("PWA library renders the capture pipeline with mocked API data", async ({ p
   await expect(page.getByRole("heading", { name: "Recent sources" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Suggestions" })).toBeVisible();
 
-  await page.screenshot({ path: `${screenshotDir}/pwa-library-main.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("pwa-library-main.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Library sections" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Make cards" }).first()).toBeVisible();
-  await page.screenshot({ path: `${screenshotDir}/pwa-library-main-mobile.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("pwa-library-main-mobile.png"), fullPage: true });
   await expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await expect(await page.getByTestId("library-surface").evaluate((surface) => {
     const rect = surface.getBoundingClientRect();
@@ -566,7 +558,7 @@ test("PWA library keeps artifact action success visible when assistant event syn
   await expect(page.locator("[aria-live='polite']")).toHaveText("Summarize completed for The Focus Fallacy. Assistant sync failed.");
 });
 
-test("PWA library detail renders provenance, layers, connections, and conversion actions", async ({ page }) => {
+test("PWA library detail renders provenance, layers, connections, and conversion actions", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];
   const assistantEvents: Array<Record<string, unknown>> = [];
@@ -675,7 +667,7 @@ test("PWA library detail renders provenance, layers, connections, and conversion
   await expect(page.getByRole("button", { name: /Extract highlights/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: /Link to project/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: /Archive/ })).toBeDisabled();
-  await page.screenshot({ path: `${screenshotDir}/pwa-library-artifact-detail.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("pwa-library-artifact-detail.png"), fullPage: true });
 
   await page.getByRole("button", { name: /Summarize/ }).click();
   expect(actionRequests).toEqual([expect.objectContaining({ action: "summarize" })]);
