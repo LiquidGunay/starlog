@@ -43,6 +43,9 @@ where Starlog is going. Use this page for current implementation confidence.
   `scripts/android_fresh_local_srs_validation.sh --adb-preflight-only` exited 2 with no visible device.
   Local-only evidence lives under `.localdata/android-local-validation/builds/20260520T172710Z/` and is
   not committed.
+- **Validation cleanup known on 2026-05-20:** after proof cleanup, the canonical checkout was clean on
+  `master` at `53d5597f8a7491c97d08b939f5ec88276382a501`, completed validation worktrees were
+  pruned/removed, and the registered worktree list contained only `/home/ubuntu/starlog`.
 
 ## Post-Merge PR Status
 
