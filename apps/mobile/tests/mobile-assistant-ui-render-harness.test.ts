@@ -17,11 +17,22 @@ type ElementNode = {
   children: RenderNode[];
 };
 
+type AssistantUiHarnessMessage = {
+  id: string;
+  role: "system" | "user" | "assistant";
+  content: string | Array<{ type: string; text?: string }>;
+  createdAt?: Date;
+  metadata?: Record<string, unknown>;
+};
+
 const Fragment = Symbol("Fragment");
 let hookCursor = 0;
 let hookValues: unknown[] = [];
 let pendingEffects: Array<() => void | (() => void)> = [];
 let hookStateChanged = false;
+let currentAssistantUiMessage: AssistantUiHarnessMessage | null = null;
+let currentAssistantUiMessages: AssistantUiHarnessMessage[] = [];
+let assistantUiComposerText = "";
 
 function createElement(type: unknown, props: Record<string, unknown> | null, key?: unknown): RenderNode {
   return { type, key, props: props || {}, children: [] };
@@ -36,6 +47,7 @@ function nativeComponent(name: string) {
 Module._load = function mockMobileRenderHarnessDependencies(request: string, parent: unknown, isMain: boolean) {
   if (request === "react") {
     return {
+      useCallback: (callback: unknown) => callback,
       useEffect: (effect: () => void | (() => void)) => {
         pendingEffects.push(effect);
       },
@@ -70,13 +82,93 @@ Module._load = function mockMobileRenderHarnessDependencies(request: string, par
       Modal: nativeComponent("Modal"),
       ScrollView: nativeComponent("ScrollView"),
       Text: nativeComponent("Text"),
+      TextInput: nativeComponent("TextInput"),
       TouchableOpacity: nativeComponent("TouchableOpacity"),
       View: nativeComponent("View"),
+      useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
     };
   }
   if (request === "@expo/vector-icons") {
     return {
       MaterialCommunityIcons: nativeComponent("MaterialCommunityIcons"),
+    };
+  }
+  if (request === "@starlog/contracts") {
+    return {
+      productCopy: {
+        assistant: {
+          emptyTitle: "Ask Starlog",
+          emptyBody: "Start a thread.",
+          inputPlaceholder: "Message Starlog",
+        },
+      },
+    };
+  }
+  if (request === "@assistant-ui/react-native") {
+    function AssistantUiMessageItem({
+      message,
+      Message,
+    }: {
+      message: AssistantUiHarnessMessage;
+      Message: () => RenderNode;
+    }) {
+      currentAssistantUiMessage = message;
+      return createElement(Message, {});
+    }
+
+    return {
+      AssistantRuntimeProvider: ({ children }: { children?: RenderNode }) => createElement("AssistantRuntimeProvider", { children }),
+      ComposerPrimitive: {
+        Root: nativeComponent("ComposerPrimitive.Root"),
+      },
+      MessagePrimitive: {
+        Root: nativeComponent("MessagePrimitive.Root"),
+        Content: (props: { renderText?: (options: { part: { text: string }; index: number }) => RenderNode }) => {
+          const content = currentAssistantUiMessage?.content ?? [];
+          const parts = typeof content === "string" ? [{ type: "text", text: content }] : content;
+          return createElement("MessagePrimitive.Content", {
+            children: parts
+              .map((part, index) =>
+                part.type === "text" && typeof part.text === "string"
+                  ? props.renderText?.({ part: { text: part.text }, index }) ?? part.text
+                  : null,
+              )
+              .filter(Boolean),
+          });
+        },
+      },
+      ThreadPrimitive: {
+        Root: nativeComponent("ThreadPrimitive.Root"),
+        Messages: ({ components }: { components: { Message: () => RenderNode } }) =>
+          createElement("ThreadPrimitive.Messages", {
+            children: currentAssistantUiMessages.map((message) =>
+              createElement(AssistantUiMessageItem, { key: message.id, message, Message: components.Message }),
+            ),
+          }),
+      },
+      useAui: () => ({
+        composer: () => ({
+          getState: () => ({ text: assistantUiComposerText }),
+          setText: (value: string) => {
+            assistantUiComposerText = value;
+          },
+        }),
+      }),
+      useAuiState: (selector: (state: unknown) => unknown) =>
+        selector({
+          message:
+            currentAssistantUiMessage || {
+              id: "assistant-ui-empty-message",
+              role: "assistant",
+              content: [],
+              createdAt: new Date("2026-05-19T00:00:00Z"),
+              metadata: { custom: {} },
+            },
+        }),
+      useLocalRuntime: (_adapter: unknown, options?: { initialMessages?: AssistantUiHarnessMessage[] }) => {
+        currentAssistantUiMessages = options?.initialMessages ?? [];
+        return { runtime: "local" };
+      },
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -163,6 +255,20 @@ function findByType(node: RenderNode | RenderNode[], type: string): ElementNode[
   return matches;
 }
 
+function findText(node: RenderNode | RenderNode[], text: string): boolean {
+  let found = false;
+  visit(node, (current) => {
+    if (current === text) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+function hasDescendantWithTestId(node: ElementNode, testID: string): boolean {
+  return findByTestId(node.children, testID).length > 0;
+}
+
 function visit(node: RenderNode | RenderNode[], visitor: (node: RenderNode) => void) {
   if (Array.isArray(node)) {
     node.forEach((child) => visit(child, visitor));
@@ -208,6 +314,7 @@ function interrupt(overrides: Partial<AssistantInterrupt>): AssistantInterrupt {
 
 try {
   const { MobileDynamicPanelHost } = require("../src/mobile-dynamic-panel-host");
+  const { MobileAssistantRebuild } = require("../src/mobile-assistant-rebuild");
   const { mobileDynamicPanelStates } = require("../src/mobile-assistant-panel-state");
   const { mobileDynamicPanelInterruptsFromStarlogMessage } = require("../src/mobile-assistant-aui-adapter");
 
@@ -216,6 +323,88 @@ try {
     muted: "#94a3b8",
     text: "#f8fafc",
   };
+
+  {
+    resetHooks();
+    currentAssistantUiMessages = [];
+    assistantUiComposerText = "";
+    const assistantMessage: AssistantThreadMessage = {
+      id: "assistant-ui-real-path-message",
+      thread_id: "primary",
+      run_id: "run-1",
+      role: "assistant",
+      status: "complete",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        {
+          type: "text",
+          id: "part-text",
+          text: "Assistant-ui backed transcript message.",
+        },
+      ],
+    };
+
+    const tree = renderWithHooks(() =>
+      MobileAssistantRebuild({
+        styles: {},
+        palette: {
+          ...palette,
+          onAccent: "#0f172a",
+          error: "#ffb4b7",
+        },
+        pendingConversationTurn: false,
+        homeDraft: "Draft command",
+        setHomeDraft: () => undefined,
+        runAssistantTurn: () => undefined,
+        onVoiceAction: () => undefined,
+        onCancelVoiceAction: () => undefined,
+        voiceActionState: "idle",
+        voiceActionHint: null,
+        refreshThread: () => undefined,
+        resetConversationSession: () => undefined,
+        threadSnapshot: {
+          id: "primary",
+          slug: "primary",
+          title: "Primary",
+          mode: "assistant",
+          messages: [assistantMessage],
+          interrupts: [],
+          next_cursor: null,
+          updated_at: "2026-05-19T05:00:00Z",
+          metadata: {},
+        },
+        visibleThreadMessages: [assistantMessage],
+        hiddenThreadMessageCount: 0,
+        previewCommandFlow: () => undefined,
+        formatCardMeta: () => "",
+        onCardAction: () => undefined,
+        onInterruptSubmit: () => undefined,
+        onInterruptDismiss: () => undefined,
+        reuseCardText: () => undefined,
+        onOpenEntityRef: () => undefined,
+        onOpenAttachment: () => undefined,
+        assistantTodaySummary: null,
+        assistantWeeklySummary: null,
+        onAssistantTodayAction: () => undefined,
+      }),
+    );
+
+    const transcriptHosts = findByTestId(tree, "mobile-assistant-aui-transcript");
+    assert.equal(transcriptHosts.length, 1);
+    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "assistant-ui-shell"), true);
+    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "mobile-assistant-aui-composer-surface"), true);
+    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "assistant-ui-composer"), true);
+    assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
+    assert.equal(findByTestId(tree, "assistant-ui-thread").length, 1);
+    assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
+    assert.equal(findByTestId(tree, "mobile-assistant-aui-composer-surface").length, 1);
+    assert.equal(findByType(tree, "ThreadPrimitive.Messages").length, 1);
+    assert.equal(findByType(tree, "MessagePrimitive.Root").length, 1);
+    assert.equal(findByType(tree, "MessagePrimitive.Content").length, 1);
+    assert.equal(findText(tree, "Assistant-ui backed transcript message."), true);
+  }
 
   {
     resetHooks();

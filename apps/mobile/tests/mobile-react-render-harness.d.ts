@@ -5,6 +5,10 @@ declare namespace JSX {
     key?: unknown;
   }
 
+  interface ElementChildrenAttribute {
+    children: {};
+  }
+
   interface IntrinsicElements {
     [elementName: string]: Record<string, unknown>;
   }
@@ -29,10 +33,12 @@ declare module "react/jsx-runtime" {
 declare module "react-native" {
   export const Modal: (props: Record<string, unknown>) => any;
   export const ScrollView: (props: Record<string, unknown>) => any;
+  export const Switch: (props: Record<string, unknown>) => any;
   export const Text: (props: Record<string, unknown>) => any;
   export const TextInput: (props: Record<string, unknown>) => any;
   export const TouchableOpacity: (props: Record<string, unknown>) => any;
   export const View: (props: Record<string, unknown>) => any;
+  export function useWindowDimensions(): { width: number; height: number; fontScale: number };
 }
 
 declare module "@expo/vector-icons" {
