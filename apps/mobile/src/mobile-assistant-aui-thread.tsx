@@ -17,7 +17,6 @@ import {
   assistantUiThreadFingerprint,
   MOBILE_ASSISTANT_UI_TEST_MARKERS,
   mobileDynamicPanelInterruptsFromAssistantUiMessage,
-  type MobileAssistantUiRichPart,
   type MobileAssistantUiThreadMessage,
   starlogMessagesToAssistantUiMessages,
 } from "./mobile-assistant-aui-adapter";
@@ -148,16 +147,6 @@ export function MobileStarlogAssistantRuntime({
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }
 
-function dynamicUiBadgeText(part: MobileAssistantUiRichPart): string | null {
-  if (!part.rendererLabel || part.fallback) {
-    return null;
-  }
-  if (part.placementLabel) {
-    return `${part.rendererLabel} · ${part.placementLabel}`;
-  }
-  return part.rendererLabel;
-}
-
 function formatMessageTime(value: Date | string | undefined): string {
   if (!value) {
     return "";
@@ -198,11 +187,6 @@ function AssistantUiMessage({
   const role = message.role;
   const isUser = role === "user";
   const isSystem = role === "system";
-  const richParts = message.metadata?.custom?.richParts ?? [];
-  const dynamicBadges = richParts
-    .filter((part) => !part.diagnostic)
-    .map(dynamicUiBadgeText)
-    .filter((label): label is string => Boolean(label));
   const sourceMessage = sourceMessagesById.get(message.metadata.custom.starlogMessageId);
   const compatibilityContent = sourceMessage && renderCompatibilityForMessage ? renderCompatibilityForMessage(sourceMessage) : null;
   const dynamicPanelInterrupts = renderDynamicPanelHostForMessage
@@ -294,32 +278,6 @@ function AssistantUiMessage({
               )}
             />
           </View>
-
-          {dynamicBadges.length > 0 ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignSelf: isUser ? "flex-end" : "stretch" }}>
-              {dynamicBadges.slice(0, 3).map((label) => (
-                <View
-                  key={`${message.id}-${label}`}
-                  style={{
-                    borderRadius: 999,
-                    paddingHorizontal: 9,
-                    paddingVertical: 5,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.06)",
-                    backgroundColor: "rgba(255,255,255,0.024)",
-                  }}
-                >
-                  <Text
-                    maxFontSizeMultiplier={1}
-                    style={{ color: palette.muted, fontSize: 10, lineHeight: 13, fontWeight: "800" }}
-                    numberOfLines={1}
-                  >
-                    {label}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
 
           {dynamicPanelContent}
 
@@ -500,9 +458,6 @@ export function MobileAssistantUiShell({
   const fingerprint = useMemo(() => assistantUiThreadFingerprint(assistantUiMessages), [assistantUiMessages]);
   const sourceMessagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
 
-  if (assistantUiMessages.length === 0) {
-    return null;
-  }
 
   return (
     <AssistantUiRuntimeShell

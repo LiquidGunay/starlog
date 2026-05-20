@@ -265,6 +265,16 @@ function findText(node: RenderNode | RenderNode[], text: string): boolean {
   return found;
 }
 
+function textIncludes(node: RenderNode | RenderNode[], text: string): boolean {
+  let found = false;
+  visit(node, (current) => {
+    if (typeof current === "string" && current.includes(text)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 function hasDescendantWithTestId(node: ElementNode, testID: string): boolean {
   return findByTestId(node.children, testID).length > 0;
 }
@@ -419,6 +429,78 @@ try {
     assert.equal(findByType(tree, "MessagePrimitive.Root").length, 1);
     assert.equal(findByType(tree, "MessagePrimitive.Content").length, 1);
     assert.equal(findText(tree, "Assistant-ui backed transcript message."), true);
+    assert.equal(findText(tree, "Starlog Assistant"), false);
+    assert.equal(findText(tree, "Synced just now"), false);
+    assert.equal(textIncludes(tree, "Inline panel"), false);
+    assert.equal(textIncludes(tree, "interview."), false);
+  }
+
+  {
+    resetHooks();
+    currentAssistantUiMessages = [];
+    assistantUiComposerText = "";
+    const tree = renderWithHooks(() =>
+      MobileAssistantRebuild({
+        styles: {},
+        palette: {
+          ...palette,
+          onAccent: "#0f172a",
+          error: "#ffb4b7",
+        },
+        pendingConversationTurn: false,
+        homeDraft: "",
+        setHomeDraft: () => undefined,
+        runAssistantTurn: () => undefined,
+        onVoiceAction: () => undefined,
+        onCancelVoiceAction: () => undefined,
+        voiceActionState: "idle",
+        voiceActionHint: null,
+        refreshThread: () => undefined,
+        resetConversationSession: () => undefined,
+        threadSnapshot: {
+          id: "primary",
+          slug: "primary",
+          title: "Primary",
+          mode: "assistant",
+          messages: [],
+          interrupts: [],
+          next_cursor: null,
+          updated_at: "2026-05-19T05:00:00Z",
+          metadata: {},
+        },
+        visibleThreadMessages: [],
+        hiddenThreadMessageCount: 2,
+        previewCommandFlow: () => undefined,
+        formatCardMeta: () => "",
+        onCardAction: () => undefined,
+        onInterruptSubmit: () => undefined,
+        onInterruptDismiss: () => undefined,
+        reuseCardText: () => undefined,
+        onOpenEntityRef: () => undefined,
+        onOpenAttachment: () => undefined,
+        assistantTodaySummary: { title: "Today cockpit should stay hidden" } as any,
+        assistantWeeklySummary: { title: "Weekly cockpit should stay hidden" } as any,
+        onAssistantTodayAction: () => undefined,
+      }),
+    );
+
+    const transcriptHosts = findByTestId(tree, "mobile-assistant-aui-transcript");
+    assert.equal(transcriptHosts.length, 1);
+    assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
+    assert.equal(findByTestId(tree, "assistant-ui-thread").length, 1);
+    assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
+    assert.equal(findByTestId(tree, "mobile-assistant-aui-composer-surface").length, 1);
+    assert.equal(findByTestId(tree, "mobile-assistant-empty-thread").length, 1);
+    assert.equal(findByType(tree, "ThreadPrimitive.Messages").length, 1);
+    assert.equal(findByType(tree, "MessagePrimitive.Root").length, 0);
+    assert.equal(findText(tree, "Ask Starlog"), true);
+    assert.equal(findText(tree, "Starlog Assistant"), false);
+    assert.equal(findText(tree, "Synced just now"), false);
+    assert.equal(findText(tree, "What should I focus on this morning?"), false);
+    assert.equal(findText(tree, "Move project forward"), false);
+    assert.equal(findText(tree, "Adjust options"), false);
+    assert.equal(textIncludes(tree, "Inline panel"), false);
+    assert.equal(textIncludes(tree, "interview."), false);
   }
 
   {
@@ -502,6 +584,133 @@ try {
 
     assert.deepEqual(submits, [{ id: "focus-submit-panel", values: { focus: "project" } }]);
     assert.deepEqual(dismisses, ["focus-submit-panel"]);
+  }
+
+  {
+    resetHooks();
+    currentAssistantUiMessages = [];
+    assistantUiComposerText = "";
+    const reviewGrade = interrupt({
+      id: "review-grade-panel",
+      tool_name: "grade_review_recall",
+      title: "Grade recall",
+      body: "Pick how the answer landed.",
+      renderer_key: "interview.review_grade",
+      renderer_version: 1,
+      placement: "inline",
+      display_mode: "inline",
+      fields: [
+        {
+          id: "grade",
+          kind: "select",
+          label: "Recall result",
+          required: true,
+          options: [
+            { label: "Again", value: "again" },
+            { label: "Good", value: "good" },
+          ],
+        },
+        {
+          id: "support_action",
+          kind: "select",
+          label: "Support",
+          required: false,
+          options: [
+            { label: "Review soon", value: "review_soon" },
+            { label: "No extra help", value: "none" },
+          ],
+        },
+      ],
+      primary_label: "Save grade",
+      secondary_label: "Keep in review",
+      recommended_defaults: { grade: "good", support_action: "review_soon" },
+      metadata: {
+        prompt: "Explain the sliding window invariant.",
+        insight: "The answer had the right frame but missed the boundary case.",
+      },
+    });
+    const submits: Array<{ id: string; values: Record<string, unknown> }> = [];
+    const dismisses: string[] = [];
+    const message: AssistantThreadMessage = {
+      id: "msg_review_grade_panel",
+      thread_id: "primary",
+      run_id: "run-review",
+      role: "assistant",
+      status: "requires_action",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        { type: "text", id: "part-text", text: "Grade the last recall." },
+        { type: "interrupt_request", id: "part-review-grade", interrupt: reviewGrade },
+      ],
+    };
+
+    const tree = renderWithHooks(() =>
+      MobileAssistantRebuild({
+        styles: {},
+        palette: {
+          ...palette,
+          onAccent: "#0f172a",
+          error: "#ffb4b7",
+        },
+        pendingConversationTurn: false,
+        homeDraft: "",
+        setHomeDraft: () => undefined,
+        runAssistantTurn: () => undefined,
+        onVoiceAction: () => undefined,
+        onCancelVoiceAction: () => undefined,
+        voiceActionState: "idle",
+        voiceActionHint: null,
+        refreshThread: () => undefined,
+        resetConversationSession: () => undefined,
+        threadSnapshot: {
+          id: "primary",
+          slug: "primary",
+          title: "Primary",
+          mode: "assistant",
+          messages: [message],
+          interrupts: [reviewGrade],
+          next_cursor: null,
+          updated_at: "2026-05-19T05:00:00Z",
+          metadata: {},
+        },
+        visibleThreadMessages: [message],
+        hiddenThreadMessageCount: 0,
+        previewCommandFlow: () => undefined,
+        formatCardMeta: () => "",
+        onCardAction: () => undefined,
+        onInterruptSubmit: (id: string, values: Record<string, unknown>) => {
+          submits.push({ id, values });
+        },
+        onInterruptDismiss: (id: string) => {
+          dismisses.push(id);
+        },
+        reuseCardText: () => undefined,
+        onOpenEntityRef: () => undefined,
+        onOpenAttachment: () => undefined,
+        assistantTodaySummary: null,
+        assistantWeeklySummary: null,
+        onAssistantTodayAction: () => undefined,
+      }),
+    );
+
+    assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
+    assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-host").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-submit-review-grade-panel").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-secondary-review-grade-panel").length, 1);
+    assert.equal(findText(tree, "Review grade"), true);
+    assert.equal(findText(tree, "Explain the sliding window invariant."), true);
+    assert.equal(textIncludes(tree, "interview.review_grade"), false);
+    assert.equal(textIncludes(tree, "grade_review_recall"), false);
+    assert.equal(textIncludes(tree, "Inline panel"), false);
+
+    (findByTestId(tree, "mobile-dynamic-panel-submit-review-grade-panel")[0].props.onPress as () => void)();
+    (findByTestId(tree, "mobile-dynamic-panel-secondary-review-grade-panel")[0].props.onPress as () => void)();
+
+    assert.deepEqual(submits, [{ id: "review-grade-panel", values: { grade: "good", support_action: "review_soon" } }]);
+    assert.deepEqual(dismisses, ["review-grade-panel"]);
   }
 
   {
