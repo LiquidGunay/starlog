@@ -9,14 +9,14 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.time import utc_now
-from app.schemas.agent import AgentCommandResponse, AgentCommandStep
+from app.schemas.agent import AgentCommandResponse
 from app.schemas.assistant import AssistantRuntimeRequest
 from app.services import (
     agent_command_service,
-    agent_service,
     ai_jobs_service,
     ai_service,
     assistant_handoff_service,
+    assistant_interrupt_handlers,
     assistant_projection_service,
     assistant_thread_service,
     artifacts_service,
@@ -25,8 +25,6 @@ from app.services import (
     integrations_service,
     memory_service,
     memory_vault_service,
-    review_mode_service,
-    srs_service,
 )
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
@@ -1431,125 +1429,49 @@ def cancel_run(conn: Connection, *, run_id: str, user_id: str | None = None) -> 
 def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
     row = _interrupt_row(conn, interrupt_id, user_id=user_id)
     if row["status"] != "pending":
+        if row["status"] == "submitted":
+            return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
         raise ValueError("Interrupt is no longer pending")
 
     metadata = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
-    planned_arguments = metadata.get("planned_arguments") if isinstance(metadata.get("planned_arguments"), dict) else {}
-    user_content = str(metadata.get("user_content") or "Create task")
-    due_date_raw = str(values.get("due_date") or "").strip()
-    if row["tool_name"] == "request_due_date" and not due_date_raw:
-        raise ValueError("due_date is required")
+    handler = assistant_interrupt_handlers.handler_for_tool(str(row["tool_name"]))
+    if handler is not None:
+        handler.validate_submit(row=row, metadata=metadata, values=values)
+        resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="submit", values=values)
+        context = assistant_interrupt_handlers.InterruptActionContext(
+            row=row,
+            metadata=metadata,
+            resolution=resolution,
+            interrupt_id=interrupt_id,
+            user_id=user_id,
+            record_step=_record_step,
+            record_trace=_record_trace,
+            complete_interrupt=_complete_interrupt,
+            update_run=_update_run,
+            merge_session_state=_merge_session_state,
+            assistant_client_timezone=_assistant_client_timezone,
+            due_date_to_utc_start=lambda due_date, client_timezone: _due_date_to_utc_start(
+                due_date,
+                client_timezone=client_timezone,
+            ),
+            review_rating_label=_review_rating_label,
+        )
+        try:
+            handler.submit(conn, context=context, values=values)
+        except Exception as exc:
+            _record_run_failure(
+                conn,
+                thread_id=str(row["thread_id"]),
+                run_id=str(row["run_id"]),
+                error_text=str(exc),
+                stage=f"interrupt:{row['tool_name']}",
+                metadata={"interrupt_id": interrupt_id},
+            )
+        return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
 
     resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="submit", values=values)
     try:
-        if row["tool_name"] == "request_due_date":
-            client_timezone = _assistant_client_timezone(metadata.get("request_metadata"), values)
-            due_at = _due_date_to_utc_start(due_date_raw, client_timezone=client_timezone)
-            priority = int(values.get("priority") or planned_arguments.get("priority") or 3)
-            create_arguments = {
-                **planned_arguments,
-                "due_at": due_at.isoformat(),
-                "priority": priority,
-            }
-            spec, _validated, normalized, confirmation_policy = agent_service.prepare_tool_call("create_task", create_arguments)
-            status_text, _executed_arguments, result = agent_service.execute_tool(
-                conn,
-                tool_name="create_task",
-                arguments=normalized,
-                dry_run=False,
-            )
-            step = AgentCommandStep(
-                tool_name="create_task",
-                arguments=normalized,
-                status="ok" if status_text in {"ok", "completed"} else status_text,
-                message=f"Create task {normalized['title']}",
-                result=result,
-                backing_endpoint=spec.backing_endpoint,
-                requires_confirmation=confirmation_policy.mode == "always",
-                confirmation_state="confirmed",
-            )
-            response = AgentCommandResponse(
-                command=user_content,
-                planner="deterministic",
-                matched_intent="create_task",
-                status="executed",
-                summary=f"Created task {normalized['title']}.",
-                steps=[step],
-            )
-            assistant_message = assistant_thread_service.append_message(
-                conn,
-                thread_id=row["thread_id"],
-                role="assistant",
-                status="complete",
-                run_id=row["run_id"],
-                metadata={
-                    "assistant_command": response.model_dump(mode="json"),
-                    "interrupt_resolution": resolution,
-                    "due_date_resolution": {
-                        "due_date": due_date_raw,
-                        "client_timezone": client_timezone,
-                        "due_at_utc": due_at.isoformat(),
-                    },
-                },
-                parts=[
-                    assistant_projection_service.text_part(response.summary),
-                    assistant_projection_service.interrupt_resolution_part(resolution),
-                    *[
-                        assistant_projection_service.card_part(card)
-                        for card in conversation_card_service.project_agent_response_cards(conn, response)
-                    ],
-                ],
-            )
-            _record_step(
-                conn,
-                run_id=row["run_id"],
-                thread_id=row["thread_id"],
-                step_index=1,
-                title="Create task after due date resolution",
-                tool_name="create_task",
-                tool_kind="domain_tool",
-                status="completed",
-                arguments={
-                    **normalized,
-                    "due_date": due_date_raw,
-                    "client_timezone": client_timezone,
-                },
-                result=result,
-                interrupt_id=interrupt_id,
-                message_id=assistant_message["id"],
-            )
-            _record_trace(
-                conn,
-                thread_id=row["thread_id"],
-                assistant_message_id=assistant_message["id"],
-                tool_name="create_task",
-                arguments={
-                    **normalized,
-                    "due_date": due_date_raw,
-                    "client_timezone": client_timezone,
-                },
-                status="completed",
-                result=result,
-                metadata={"resolved_from_interrupt": interrupt_id},
-            )
-            _merge_session_state(
-                conn,
-                command=user_content,
-                response_text=response.summary,
-                matched_intent="create_task",
-                planner="deterministic",
-                status="executed",
-                tool_names=["create_task"],
-            )
-            _complete_interrupt(
-                conn,
-                interrupt_id=interrupt_id,
-                action="submit",
-                values=values,
-                resolution=resolution,
-            )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary=response.summary)
-        elif row["tool_name"] == "triage_capture":
+        if row["tool_name"] == "triage_capture":
             artifact_id = str(metadata.get("artifact_id") or "")
             artifact = artifacts_service.get_artifact(conn, artifact_id) if artifact_id else None
             next_step_value = str(values.get("next_step") or "follow_up").strip()
@@ -1834,108 +1756,6 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 resolution=resolution,
             )
             _update_run(conn, run_id=row["run_id"], status="completed", summary="Project link recorded")
-        elif row["tool_name"] == "grade_review_recall":
-            rating_raw = values.get("rating")
-            try:
-                rating = int(rating_raw)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("Review rating must be one of 1, 3, 4, or 5") from exc
-            if rating not in {1, 3, 4, 5}:
-                raise ValueError("Review rating must be one of 1, 3, 4, or 5")
-
-            latency_raw = values.get("latency_ms")
-            latency_ms: int | None = None
-            if latency_raw not in (None, ""):
-                try:
-                    latency_ms = int(latency_raw)
-                except (TypeError, ValueError) as exc:
-                    raise ValueError("Review latency must be a non-negative integer when provided") from exc
-                if latency_ms < 0:
-                    raise ValueError("Review latency must be a non-negative integer when provided")
-
-            card_id = str(metadata.get("card_id") or "").strip() or str(
-                ((row.get("entity_ref_json") or {}) if isinstance(row.get("entity_ref_json"), dict) else {}).get("entity_id") or ""
-            ).strip()
-            if not card_id:
-                raise ValueError("Review interrupt is missing the target card")
-
-            reviewed = srs_service.review_card(conn, card_id=card_id, rating=rating, latency_ms=latency_ms)
-            if reviewed is None:
-                raise LookupError(f"Review card not found: {card_id}")
-
-            prompt_text = str(metadata.get("prompt") or "that card").strip() or "that card"
-            card_type = str(metadata.get("card_type") or reviewed.get("card_type") or "").strip() or None
-            raw_review_mode = str(metadata.get("review_mode") or reviewed.get("review_mode") or "").strip()
-            review_mode = (
-                raw_review_mode
-                if raw_review_mode in review_mode_service.REVIEW_MODE_ORDER
-                else review_mode_service.review_mode_for_card_type(card_type)
-            )
-            review_mode_label = review_mode.replace("_", " ")
-            rating_label = _review_rating_label(rating)
-            next_due_at = str(reviewed.get("next_due_at") or "")
-            next_due_label = next_due_at[:10] if next_due_at else "the next review window"
-            assistant_message = assistant_thread_service.append_message(
-                conn,
-                thread_id=row["thread_id"],
-                role="assistant",
-                status="complete",
-                run_id=row["run_id"],
-                metadata={
-                    "interrupt_resolution": resolution,
-                    "review_result": reviewed,
-                    "card_type": card_type,
-                    "review_mode": review_mode,
-                },
-                parts=[
-                    assistant_projection_service.text_part(
-                        f"Recorded {rating_label} for {review_mode_label} review: {prompt_text}. Next due: {next_due_label}."
-                    ),
-                    assistant_projection_service.tool_result_part(
-                        tool_call_id=str(metadata.get("tool_call_id") or new_id("toolcall")),
-                        status="complete",
-                        output=reviewed,
-                        metadata={"message": "Review grade recorded", "tool_name": "grade_review_recall"},
-                        renderer_key="interview.review_grade",
-                        renderer_version=1,
-                        placement="thread",
-                        structured_content={
-                            "card_id": card_id,
-                            "grade": str(rating),
-                            "next_due_at": reviewed.get("next_due_at"),
-                        },
-                        ui_meta={
-                            "tone": "review",
-                            "rating_label": rating_label,
-                            "review_mode": review_mode,
-                            "card_type": card_type,
-                        },
-                    ),
-                    assistant_projection_service.interrupt_resolution_part(resolution),
-                ],
-            )
-            _record_step(
-                conn,
-                run_id=row["run_id"],
-                thread_id=row["thread_id"],
-                step_index=1,
-                title="Grade review recall",
-                tool_name="grade_review_recall",
-                tool_kind="ui_tool",
-                status="completed",
-                arguments={"rating": rating, "latency_ms": latency_ms, "card_type": card_type, "review_mode": review_mode},
-                result=reviewed,
-                interrupt_id=interrupt_id,
-                message_id=assistant_message["id"],
-            )
-            _complete_interrupt(
-                conn,
-                interrupt_id=interrupt_id,
-                action="submit",
-                values=values,
-                resolution=resolution,
-            )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Review grade recorded")
         else:
             raise ValueError(f"Unsupported interrupt tool: {row['tool_name']}")
     except Exception as exc:
@@ -1954,19 +1774,16 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
 def dismiss_interrupt(conn: Connection, *, interrupt_id: str, user_id: str | None = None) -> dict[str, Any]:
     row = _interrupt_row(conn, interrupt_id, user_id=user_id)
     if row["status"] != "pending":
+        if row["status"] == "dismissed":
+            return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
         raise ValueError("Interrupt is no longer pending")
-    resolution = _complete_interrupt(conn, interrupt_id=interrupt_id, action="dismiss", values={})
-    assistant_thread_service.append_message(
+    resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="dismiss", values={})
+    assistant_interrupt_handlers.dismiss_interrupt(
         conn,
-        thread_id=row["thread_id"],
-        role="assistant",
-        status="complete",
-        run_id=row["run_id"],
-        metadata={"interrupt_resolution": resolution},
-        parts=[
-            assistant_projection_service.text_part("Okay. I left that as a draft and kept the thread moving."),
-            assistant_projection_service.interrupt_resolution_part(resolution),
-        ],
+        row=row,
+        interrupt_id=interrupt_id,
+        resolution=resolution,
+        complete_interrupt=_complete_interrupt,
+        update_run=_update_run,
     )
-    _update_run(conn, run_id=row["run_id"], status="cancelled", summary="Interrupt dismissed")
     return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)

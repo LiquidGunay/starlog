@@ -1476,6 +1476,45 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
     created_task = next(task for task in tasks.json() if task["title"] == "Review the diffusion notes")
     assert created_task["due_at"] == "2026-04-22T07:00:00Z"
 
+    with get_connection() as conn:
+        task_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM tasks WHERE title = ?",
+            ("Review the diffusion notes",),
+        ).fetchone()["count"]
+        step = conn.execute(
+            """
+            SELECT message_id, result_json
+            FROM conversation_run_steps
+            WHERE interrupt_id = ? AND tool_name = 'create_task' AND status = 'completed'
+            """,
+            (interrupt["id"],),
+        ).fetchone()
+        trace_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM conversation_tool_traces WHERE metadata_json LIKE ?",
+            (f'%"resolved_from_interrupt": "{interrupt["id"]}"%',),
+        ).fetchone()["count"]
+    assert task_count == 1
+    assert step is not None
+    assert step["message_id"] in {message["id"] for message in snapshot["messages"]}
+    assert trace_count == 1
+
+    duplicate = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"due_date": "2026-04-22", "priority": "4", "create_time_block": False, "client_timezone": "America/Los_Angeles"}},
+        headers=auth_headers,
+    )
+    assert duplicate.status_code == 200
+    assert len(duplicate.json()["messages"]) == len(snapshot["messages"])
+    with get_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM tasks WHERE title = ?",
+            ("Review the diffusion notes",),
+        ).fetchone()["count"] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM conversation_run_steps WHERE interrupt_id = ? AND tool_name = 'create_task'",
+            (interrupt["id"],),
+        ).fetchone()["count"] == 1
+
     legacy = client.get("/v1/conversations/primary", headers=auth_headers)
     assert legacy.status_code == 200
     legacy_payload = legacy.json()
@@ -1528,6 +1567,19 @@ def test_assistant_due_date_interrupt_dismiss_records_protocol_resolution(
     )
     assert resolution_part.resolution["interrupt_id"] == interrupt["id"]
     assert resolution_part.resolution["action"] == "dismiss"
+
+    duplicate = client.post(f"/v1/assistant/interrupts/{interrupt['id']}/dismiss", headers=auth_headers)
+    assert duplicate.status_code == 200
+    assert len(duplicate.json()["messages"]) == len(snapshot["messages"])
+    with get_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM conversation_run_steps WHERE run_id = ? AND title = 'Run failed'",
+            (run_id,),
+        ).fetchone()["count"] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM conversation_messages WHERE run_id = ? AND role = 'assistant'",
+            (run_id,),
+        ).fetchone()["count"] == 2
 
 
 def test_create_interrupt_enriches_dynamic_ui_contract_fields(
@@ -1912,6 +1964,88 @@ def test_assistant_review_reveal_event_can_open_grade_interrupt_and_submit_revie
     updated = next(item for item in cards.json() if item["id"] == card["id"])
     assert updated["repetitions"] == 1
     assert updated["interval_days"] == 1
+
+    with get_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
+            (card["id"],),
+        ).fetchone()["count"] == 1
+        step = conn.execute(
+            """
+            SELECT message_id, result_json
+            FROM conversation_run_steps
+            WHERE interrupt_id = ? AND tool_name = 'grade_review_recall' AND status = 'completed'
+            """,
+            (interrupt["id"],),
+        ).fetchone()
+        step_count_before_duplicate = conn.execute(
+            "SELECT COUNT(*) AS count FROM conversation_run_steps WHERE interrupt_id = ? AND tool_name = 'grade_review_recall'",
+            (interrupt["id"],),
+        ).fetchone()["count"]
+    assert step is not None
+    assert step["message_id"] in {message["id"] for message in snapshot["messages"]}
+
+    duplicate = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"rating": "4"}},
+        headers=auth_headers,
+    )
+    assert duplicate.status_code == 200
+    assert len(duplicate.json()["messages"]) == len(snapshot["messages"])
+    with get_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM review_events WHERE card_id = ?",
+            (card["id"],),
+        ).fetchone()["count"] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) AS count FROM conversation_run_steps WHERE interrupt_id = ? AND tool_name = 'grade_review_recall'",
+            (interrupt["id"],),
+        ).fetchone()["count"] == step_count_before_duplicate
+
+
+def test_unsupported_interrupt_submit_records_failed_run_without_resolution(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    interrupt = _create_pending_ui_interrupt(
+        tool_name="unknown_future_renderer",
+        title="Future renderer",
+        fields=[{"id": "choice", "kind": "text", "label": "Choice"}],
+        metadata={"display_mode": "inline"},
+        entity_ref={"entity_type": "artifact", "entity_id": "future-renderer", "href": "/library", "title": "Future renderer"},
+    )
+
+    submitted = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"choice": "ok"}},
+        headers=auth_headers,
+    )
+
+    assert submitted.status_code == 200
+    payload = submitted.json()
+    pending = next(item for item in payload["interrupts"] if item["id"] == interrupt["id"])
+    assert pending["status"] == "pending"
+    assert pending["resolution"] == {}
+    run = next(item for item in payload["runs"] if item["id"] == interrupt["run_id"])
+    assert run["status"] == "failed"
+    assert run["summary"] == "Run failed before completion"
+    assert any(
+        part["type"] == "status" and part["status"] == "error"
+        for message in payload["messages"]
+        for part in message["parts"]
+    )
+    with get_connection() as conn:
+        failed_step = conn.execute(
+            """
+            SELECT message_id, error_text
+            FROM conversation_run_steps
+            WHERE run_id = ? AND tool_name = ? AND status = 'failed'
+            """,
+            (interrupt["run_id"], "interrupt:unknown_future_renderer"),
+        ).fetchone()
+    assert failed_step is not None
+    assert "Unsupported interrupt tool" in failed_step["error_text"]
+    assert failed_step["message_id"] in {message["id"] for message in payload["messages"]}
 
 
 def test_mobile_phase2_ui_interrupt_tools_submit_conservatively(
