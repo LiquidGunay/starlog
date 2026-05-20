@@ -1196,6 +1196,7 @@ function AssistantPageContent() {
             ) : null}
             <StarlogAssistantComposer
               draft={composerDraft}
+              threadId={normalizedSnapshot?.id ?? null}
               disabled={!snapshot}
               busy={sending}
               error={error}

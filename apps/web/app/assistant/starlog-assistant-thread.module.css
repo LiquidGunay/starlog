@@ -395,9 +395,20 @@
 }
 
 .voiceButton:hover:not(:disabled),
-.voiceButton:global(.recording) {
+.voiceButtonRecording {
   border-color: rgba(107, 196, 164, 0.62);
   background: rgba(107, 196, 164, 0.18);
+}
+
+.voiceButtonLabel {
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.voiceButtonMeta {
+  color: rgba(244, 241, 232, 0.58);
+  font-size: 12px;
+  line-height: 1.15;
 }
 
 .voiceButton:disabled,

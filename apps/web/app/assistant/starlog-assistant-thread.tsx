@@ -60,6 +60,7 @@ type StarlogAssistantThreadProps = {
 
 type StarlogAssistantComposerProps = {
   draft: ComposerDraftSeed | null;
+  threadId: string | null;
   disabled: boolean;
   busy: boolean;
   error: string | null;
@@ -1115,7 +1116,7 @@ function ComposerDraftController({ draft }: { draft: ComposerDraftSeed | null })
   return null;
 }
 
-export function StarlogAssistantComposer({ draft, disabled, busy, error, onShortcut }: StarlogAssistantComposerProps) {
+export function StarlogAssistantComposer({ draft, threadId, disabled, busy, error, onShortcut }: StarlogAssistantComposerProps) {
   const { apiBase, token } = useSessionConfig();
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1134,16 +1135,17 @@ export function StarlogAssistantComposer({ draft, disabled, busy, error, onShort
     streamRef.current = null;
   }, []);
 
-  const uploadVoiceQueue = useCallback(async () => {
-    if (uploadInFlightRef.current || voiceQueue.length === 0 || !navigator.onLine || !token) {
+  const uploadVoiceQueue = useCallback(async (clips: VoiceClip[]) => {
+    if (uploadInFlightRef.current || clips.length === 0 || !navigator.onLine || !threadId || !token) {
       return;
     }
 
     uploadInFlightRef.current = true;
     const uploadedIds: string[] = [];
-    const remaining: VoiceClip[] = [];
+    const uploadedClipIds: string[] = [];
+    const remainingIds: string[] = [];
 
-    for (const clip of voiceQueue) {
+    for (const clip of clips) {
       try {
         const formData = new FormData();
         formData.append("title", "Web voice command");
@@ -1153,40 +1155,50 @@ export function StarlogAssistantComposer({ draft, disabled, busy, error, onShort
         formData.append("provider_hint", "whisper_local");
         formData.append("file", clip.blob, `voice-command-${clip.id}.webm`);
 
-        const response = await fetch(`${apiBase.replace(/\/$/, "")}/v1/agent/command/voice`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
+        const response = await fetch(
+          `${apiBase.replace(/\/$/, "")}/v1/assistant/threads/${encodeURIComponent(threadId)}/voice`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          },
+        );
         if (!response.ok) {
           throw new Error(await response.text());
         }
         const payload = (await response.json()) as { id?: string };
+        uploadedClipIds.push(clip.id);
         if (payload.id) {
           uploadedIds.push(payload.id);
         }
       } catch {
-        remaining.push(clip);
+        remainingIds.push(clip.id);
       }
     }
 
-    setVoiceQueue(remaining);
+    if (uploadedClipIds.length > 0) {
+      const uploadedClipIdSet = new Set(uploadedClipIds);
+      setVoiceQueue((current) => current.filter((clip) => !uploadedClipIdSet.has(clip.id)));
+    }
     if (uploadedIds.length > 0) {
       setUploadedJobIds((current) => [...uploadedIds, ...current].slice(0, 5));
       setVoiceStatus(`Uploaded ${uploadedIds.length} queued voice command(s).`);
-    } else if (remaining.length > 0) {
+    } else if (remainingIds.length > 0) {
       setVoiceStatus("Voice upload paused; queued for retry.");
     }
     uploadInFlightRef.current = false;
-  }, [apiBase, token, voiceQueue]);
+  }, [apiBase, threadId, token]);
 
   useEffect(() => {
     const onOnline = () => {
-      void uploadVoiceQueue();
+      void uploadVoiceQueue(voiceQueue);
     };
     window.addEventListener("online", onOnline);
+    if (navigator.onLine) {
+      void uploadVoiceQueue(voiceQueue);
+    }
     return () => window.removeEventListener("online", onOnline);
-  }, [uploadVoiceQueue]);
+  }, [uploadVoiceQueue, voiceQueue]);
 
   useEffect(() => {
     return () => {
@@ -1284,7 +1296,8 @@ export function StarlogAssistantComposer({ draft, disabled, busy, error, onShort
       <div className={styles.voiceDock}>
         <button
           type="button"
-          className={`assistant-voice-button ${styles.voiceButton} ${recording ? "recording" : ""}`}
+          className={`${styles.voiceButton} ${recording ? styles.voiceButtonRecording : ""}`}
+          data-testid="assistant-voice-control"
           disabled={disabled || busy}
           onPointerDown={() => void beginVoiceCapture()}
           onPointerUp={endVoiceCapture}
@@ -1302,8 +1315,8 @@ export function StarlogAssistantComposer({ draft, disabled, busy, error, onShort
             }
           }}
         >
-          <span className="assistant-voice-button-label">{recording ? "Listening" : "Hold to talk"}</span>
-          <span className="assistant-voice-button-meta">Upload queue {voiceQueue.length}</span>
+          <span className={styles.voiceButtonLabel}>{recording ? "Listening" : "Hold to talk"}</span>
+          <span className={styles.voiceButtonMeta}>Upload queue {voiceQueue.length}</span>
         </button>
         <div className={styles.voiceStatus} aria-live="polite">
           <span>{voiceStatus}</span>

@@ -121,7 +121,7 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
   });
 
   let uploadCalls = 0;
-  await page.route(`${API_BASE}/v1/agent/command/voice`, async (route) => {
+  await page.route(`${API_BASE}/v1/assistant/threads/thr_primary/voice`, async (route) => {
     uploadCalls += 1;
     await route.fulfill({
       status: 200,
@@ -146,7 +146,7 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
 
   await page.goto("/assistant");
   await context.setOffline(true);
-  const holdToTalk = page.locator(".assistant-voice-button");
+  const holdToTalk = page.getByTestId("assistant-voice-control");
   await holdToTalk.dispatchEvent("pointerdown");
   await expect(page.getByText("Recording voice command...")).toBeVisible();
   await holdToTalk.dispatchEvent("pointerup");
@@ -162,7 +162,7 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
   await expect(page.getByText("voice-job-1", { exact: false })).toBeVisible();
 });
 
-test("keyboard users can hold the assistant voice control to capture a voice clip", async ({ page }) => {
+test("keyboard users can hold the assistant voice control and upload an already-online clip", async ({ page }) => {
   await seedSession(page);
 
   await routeAssistantShell(page);
@@ -183,8 +183,20 @@ test("keyboard users can hold the assistant voice control to capture a voice cli
     });
   });
 
+  let uploadCalls = 0;
+  await page.route(`${API_BASE}/v1/assistant/threads/thr_primary/voice`, async (route) => {
+    uploadCalls += 1;
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataBuffer()).toBeTruthy();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "voice-job-online", status: "pending" }),
+    });
+  });
+
   await page.goto("/assistant");
-  const holdToTalk = page.locator(".assistant-voice-button");
+  const holdToTalk = page.getByTestId("assistant-voice-control");
   await holdToTalk.focus();
   await page.keyboard.down("Space");
   await expect(page.getByText("Recording voice command...")).toBeVisible();
@@ -192,5 +204,7 @@ test("keyboard users can hold the assistant voice control to capture a voice cli
   await expect(page.getByText("Voice clip captured and ready for upload.")).toBeVisible();
 
   await page.getByRole("button", { name: /Plan voice/i }).click();
-  await expect(page.getByText(/Upload queue 1/i)).toBeVisible();
+  await expect.poll(() => uploadCalls).toBe(1);
+  await expect(page.getByText(/Upload queue 0/i)).toBeVisible();
+  await expect(page.getByText("voice-job-online", { exact: false })).toBeVisible();
 });
