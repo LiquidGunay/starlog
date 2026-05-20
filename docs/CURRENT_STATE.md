@@ -227,8 +227,9 @@ Known outcome for `Inference Engineering.pdf`:
   `https://starlog-api-production.up.railway.app/v1/health`. These checks intentionally did not use or
   expose the hosted passphrase or bearer token, and token material from local authenticated checks must
   not be copied into this document.
-- Latest local functional evidence:
-  [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
+- Latest local functional evidence: regenerate from the relevant harness before claiming current
+  confidence. Keep run output in `.localdata/`, `/tmp`, ignored build folders, or a single explicitly
+  requested latest proof bundle; do not treat removed dated artifact folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). Current Android validation is blocked by ADB bridge/device-control instability, so
@@ -288,8 +289,11 @@ Known outcome for `Inference Engineering.pdf`:
 - API stability baseline:
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py) and
   [services/api/pyproject.toml](/home/ubuntu/starlog/services/api/pyproject.toml)
-- Current UI comparison and known visual/function gaps:
-  [docs/UI_CONCEPT_COMPARISON_2026-04-29.md](/home/ubuntu/starlog/docs/UI_CONCEPT_COMPARISON_2026-04-29.md)
+- Current UI targets and known visual/function gaps:
+  [docs/ASSISTANT_UI_REFERENCE.md](/home/ubuntu/starlog/docs/ASSISTANT_UI_REFERENCE.md),
+  [apps/web/app/design/assistant-runtime-reference/page.tsx](/home/ubuntu/starlog/apps/web/app/design/assistant-runtime-reference/page.tsx),
+  [artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md](/home/ubuntu/starlog/artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md), and
+  [artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md](/home/ubuntu/starlog/artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md)
 - Repeatable web/mobile functional harnesses:
   [docs/UI_FUNCTIONAL_TEST_HARNESSES.md](/home/ubuntu/starlog/docs/UI_FUNCTIONAL_TEST_HARNESSES.md)
 - Cross-surface proof runner:

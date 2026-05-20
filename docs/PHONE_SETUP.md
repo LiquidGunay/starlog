@@ -153,8 +153,9 @@ ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
 6. Set:
    - `API base`: `https://starlog-api-production.up.railway.app`
    - `Bearer token`: token from Railway login
-7. Record the configured preview UI in a dated artifact folder, for example:
-   - `artifacts/phone-current/<date>/`
+7. Record the configured preview UI only when needed for a fresh proof pass. Prefer
+   `.localdata/phone-current/latest/`, `/tmp`, or an explicitly requested latest proof bundle
+   instead of committing dated screenshot folders.
 
 If the hosted Starlog passphrase is lost, reset it through the operator-only API path in
 [PWA_HOSTED_SMOKE_CHECKLIST.md](/home/ubuntu/starlog/docs/PWA_HOSTED_SMOKE_CHECKLIST.md#hosted-passphrase-reset),

@@ -1,8 +1,9 @@
 # Parallel Agent Workflow
 
-Use this doc only when the task genuinely needs parallel agents, subagents, isolated recovery, or
-multiple worktrees. For normal single-agent work, stay in the canonical checkout and follow
-[AGENTS.md](/home/ubuntu/starlog/AGENTS.md).
+Use this doc when the task needs parallel agents, subagents, isolated recovery, multiple worktrees,
+or explicit worktree/branch hygiene. The default development policy is in
+[AGENTS.md](/home/ubuntu/starlog/AGENTS.md): keep the canonical checkout clean on `master` and do
+normal task work in a fresh isolated `codex/*` worktree from current `origin/master`.
 
 ## Shared workitem locking (`.git` common dir)
 
@@ -81,7 +82,8 @@ entries. Treat these flags as supervisor action triggers:
 Keep branch/worktree count low enough that `master`, active task branches, and abandoned
 experiments are easy to distinguish.
 
-- Default to the canonical checkout at `/home/ubuntu/starlog`; create an extra worktree only when the task genuinely benefits from isolation.
+- Keep the canonical checkout at `/home/ubuntu/starlog` clean on `master` and aligned with `origin/master`.
+- Create normal task worktrees from current `origin/master`; create additional worktrees only for parallel lanes, isolated recovery, validation, or explicit multi-branch coordination.
 - Keep exactly one active `codex/*` task branch per worktree.
 - The canonical checkout should own local `master` whenever possible. Do not leave `master` pinned in a side worktree after the recovery or validation task that needed it is done.
 - If a branch/worktree falls out of the current plan, prefer deleting it. Only preserve it when it contains unsalvaged work that is still valuable against the current plan.
