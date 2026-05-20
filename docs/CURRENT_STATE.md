@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -32,10 +32,17 @@ where Starlog is going. Use this page for current implementation confidence.
   over server-owned Starlog messages; it is not yet the full visible phone chat/runtime replacement.
   Full server-owned runtime migration is still pending on both surfaces, and fallback renderers remain
   compatibility paths for unsupported/non-migrated protocol shapes, not the target runtime.
-- **Native Android evidence known:** historical local physical-device evidence exists for selected
-  interview-prep flows, but current repeatable Android validation is blocked by ADB bridge/device-control
-  instability until the preflight and phone-control path is fixed. Do not use older Android evidence as
-  current release confidence without a fresh passing run.
+- **Clean PWA assistant/dynamic UI proof known on 2026-05-20:** `corepack pnpm test:ui:pwa-functional`
+  passed with 14 tests, the full web Playwright config passed with 42 tests, and the live PWA
+  interview flow spec passed with 1 test.
+- **Mobile viewport/native-code UI proof known on 2026-05-20:** `corepack pnpm test:ui:mobile-functional`
+  passed with 6 tests, and `apps/mobile` `test:assistant-ui-render`, `test:assistant-aui`, and
+  `test:assistant-thread-actions` passed.
+- **Native Android connected-phone proof known on 2026-05-20:** current physical-phone validation remains
+  blocked because neither Linux `adb` nor Windows `adb.exe` listed a device row. The repo preflight
+  `scripts/android_fresh_local_srs_validation.sh --adb-preflight-only` exited 2 with no visible device.
+  Local-only evidence lives under `.localdata/android-local-validation/builds/20260520T172710Z/` and is
+  not committed.
 
 ## Post-Merge PR Status
 
@@ -81,6 +88,10 @@ where Starlog is going. Use this page for current implementation confidence.
   server-owned Starlog messages with a read-only adapter. It is useful for rendering/transcript slices
   and selected dynamic-panel host integration, but it is not yet the full visible phone chat/runtime
   replacement unless the pending mobile runtime work lands and is validated.
+- **Current local UI harness proof:** as of 2026-05-20, the clean PWA assistant/dynamic UI harness,
+  full web Playwright config, live PWA interview flow spec, mobile viewport functional harness, and
+  focused native assistant-ui rendering/thread-action tests passed. These prove current local web and
+  native-code UI behavior; they do not replace physical connected-phone Android proof.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -212,16 +223,27 @@ Known outcome for `Inference Engineering.pdf`:
   over Starlog messages, so broader dynamic-panel host behavior, full server-owned runtime migration, and
   repeatable Android functional automation are still pending.
 - **Android validation stability:** current Android validation is blocked until a physical phone is
-  visible as a ready ADB `device`. The preflight now reports Linux `adb`, Windows `adb.exe`,
-  `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness explicitly, and marks
-  absent/unauthorized/offline phone gates as `validation_stage: blocked`. Historical
-  screenshots/manifests remain useful context, but they are not current release proof.
+  visible as a ready ADB `device`. On 2026-05-20, both Linux ADB and Windows ADB showed no device rows,
+  and `scripts/android_fresh_local_srs_validation.sh --adb-preflight-only` exited 2 with no visible
+  device. The local-only evidence directory for that blocked run is
+  `.localdata/android-local-validation/builds/20260520T172710Z/`, which is intentionally uncommitted.
+  Historical screenshots/manifests remain useful context, but they are not current release proof.
 - **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
   Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
   `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
 
 ## Evidence Map
 
+- Current UI proof from 2026-05-20:
+  - Clean PWA assistant/dynamic UI: `corepack pnpm test:ui:pwa-functional` passed 14 tests, the full
+    web Playwright config passed 42 tests, and the live PWA interview flow spec passed 1 test.
+  - Mobile viewport/native-code: `corepack pnpm test:ui:mobile-functional` passed 6 tests, and
+    `apps/mobile` `test:assistant-ui-render`, `test:assistant-aui`, and
+    `test:assistant-thread-actions` passed.
+  - Connected-phone Android proof remains blocked: Linux ADB and Windows ADB both showed no device rows,
+    and `scripts/android_fresh_local_srs_validation.sh --adb-preflight-only` exited 2. The associated
+    local evidence remains under `.localdata/android-local-validation/builds/20260520T172710Z/` and is
+    not committed.
 - Hosted Railway access evidence:
   fresh public no-secret `curl` checks on 2026-05-19 returned Railway fallback `HTTP 404` with
   `x-railway-fallback: true` for `https://starlog-web-production.up.railway.app/login`,
@@ -235,9 +257,9 @@ Known outcome for `Inference Engineering.pdf`:
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). On 2026-05-20, the latest preflight was blocked because neither Linux `adb` nor the
-  documented Windows `adb.exe` route listed a ready device, and WSL had no `powershell.exe` route.
-  Phone-level migration claims must wait for a fresh `validation_passed: true` run after the phone is
-  attached, unlocked, and authorized. Older evidence remains historical context only.
+  documented Windows `adb.exe` route listed a ready device. Phone-level migration claims must wait for
+  a fresh `validation_passed: true` run after the phone is attached, unlocked, and authorized. Older
+  evidence remains historical context only.
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
   `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
   clean Python 3.12 `uv` environment and prove that marking `Sliding Window` read releases a linked
