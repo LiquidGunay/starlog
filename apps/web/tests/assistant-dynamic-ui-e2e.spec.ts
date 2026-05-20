@@ -7,7 +7,7 @@ import net from "node:net";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const API_APP_DIR = path.join(REPO_ROOT, "services/api");
-const API_PYTHON = path.join(API_APP_DIR, ".venv/bin/python");
+const API_PYTHON_VERSION = process.env.STARLOG_ASSISTANT_E2E_API_PYTHON_VERSION || "3.12";
 const API_HEALTH_TIMEOUT_MS = 30_000;
 const TEST_PASSPHRASE = `assistant-dynamic-ui-e2e-${process.pid}-${Date.now()}`;
 
@@ -25,6 +25,27 @@ type TaskResponse = {
   priority: number;
   due_at: string | null;
 };
+
+function getApiPythonCommand(): { command: string; args: string[] } {
+  const explicitPython = process.env.STARLOG_ASSISTANT_E2E_API_PYTHON;
+  if (explicitPython) {
+    return { command: explicitPython, args: [] };
+  }
+
+  return {
+    command: "uv",
+    args: [
+      "run",
+      "--project",
+      API_APP_DIR,
+      "--extra",
+      "dev",
+      "--python",
+      API_PYTHON_VERSION,
+      "python",
+    ],
+  };
+}
 
 async function getFreePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -69,9 +90,11 @@ async function startApiServer(): Promise<void> {
   const port = await getFreePort();
   apiBase = `http://127.0.0.1:${port}`;
   apiDbPath = path.join(tmpdir(), `starlog-assistant-dynamic-ui-e2e-${process.pid}-${Date.now()}.db`);
+  const apiPython = getApiPythonCommand();
   apiProcess = spawn(
-    API_PYTHON,
+    apiPython.command,
     [
+      ...apiPython.args,
       "-m",
       "uvicorn",
       "app.main:app",
@@ -98,6 +121,9 @@ async function startApiServer(): Promise<void> {
   });
   apiProcess.stderr.on("data", (chunk) => {
     apiOutput += chunk.toString();
+  });
+  apiProcess.once("error", (error) => {
+    apiOutput += `\nFailed to start Starlog API command ${apiPython.command}: ${error.message}`;
   });
 
   apiProcess.once("exit", (code, signal) => {
