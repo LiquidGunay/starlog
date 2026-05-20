@@ -197,7 +197,9 @@ test("keyboard users can hold the assistant voice control and upload an already-
 
   await page.goto("/assistant");
   const holdToTalk = page.getByTestId("assistant-voice-control");
+  await expect(holdToTalk).toBeEnabled();
   await holdToTalk.focus();
+  await expect(holdToTalk).toBeFocused();
   await page.keyboard.down("Space");
   await expect(page.getByText("Recording voice command...")).toBeVisible();
   await page.keyboard.up("Space");

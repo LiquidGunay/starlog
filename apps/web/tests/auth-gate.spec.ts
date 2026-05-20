@@ -77,7 +77,11 @@ test("sign-in on pre-login experience routes to assistant", async ({ page }) => 
   });
 
   await page.goto("/assistant");
-  await page.getByLabel("Passphrase").fill("unit-test-passphrase");
+  await expect(page).toHaveURL("/login");
+  const passphrase = page.getByLabel("Passphrase");
+  await expect(passphrase).toBeVisible();
+  await passphrase.fill("unit-test-passphrase");
+  await expect(passphrase).toHaveValue("unit-test-passphrase");
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL("/assistant");
