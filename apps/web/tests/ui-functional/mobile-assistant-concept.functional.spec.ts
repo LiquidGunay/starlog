@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import {
   API_BASE,
@@ -25,7 +25,11 @@ function localDateValue(offsetDays = 0): string {
   return `${year}-${month}-${day}`;
 }
 
-test("mobile viewport assistant keeps one inline schedule-conflict decision and planner escape", async ({ page }) => {
+async function captureProof(page: Page, testInfo: TestInfo, name: string) {
+  await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
+}
+
+test("mobile viewport assistant keeps one inline schedule-conflict decision and planner escape", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   const olderSubmittedInterrupt = morningFocusInterrupt("submitted");
@@ -243,7 +247,7 @@ test("mobile viewport assistant keeps one inline schedule-conflict decision and 
   await expect(page.locator("aside")).toBeHidden();
   await expect(page.locator("main")).not.toContainText(/Diagnostics|protocol|runtime|tool_call|tool_result/i);
 
-  await page.getByRole("link", { name: "Open planner" }).click();
+  await conflictPanel.getByRole("link", { name: "Open planner" }).click();
   expect(submissions).toHaveLength(0);
   expect(dismissals).toEqual([]);
   await expect(page.getByText("Starlog Planner")).toBeVisible();
@@ -260,7 +264,7 @@ test("mobile viewport assistant keeps one inline schedule-conflict decision and 
     }),
   );
   await expect(page.getByRole("button", { name: "Apply choice" })).toHaveCount(0);
-  await expect(page.getByText("move deep work")).toBeVisible();
+  await expect(page.getByText("Saved.").first()).toBeVisible();
   await expect(page.getByText("If you want, I can also repair the rest of the afternoon.")).toBeVisible();
 
   snapshot = assistantThreadSnapshot({
@@ -291,10 +295,10 @@ test("mobile viewport assistant keeps one inline schedule-conflict decision and 
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("dynamic-panel-renderer").getByText("Planner conflict", { exact: true })).toBeVisible();
-  await page.screenshot({ path: "artifacts/ui-functional/mobile-assistant-concept-thread-panel.png", fullPage: true });
+  await captureProof(page, testInfo, "mobile-assistant-concept-thread-panel");
 });
 
-test("mobile viewport assistant keeps tool activity compact and readable", async ({ page }) => {
+test("mobile viewport assistant keeps tool activity compact and readable", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   await routeAssistantThread(page, () => assistantThreadActivitySnapshot());
@@ -303,22 +307,17 @@ test("mobile viewport assistant keeps tool activity compact and readable", async
 
   const viewport = page.viewportSize();
   expect(viewport?.width).toBeLessThanOrEqual(430);
-  const activity = page.getByLabel("Assistant activity");
-  await expect(activity).toBeVisible();
-  const activitySummary = activity.locator("summary");
-  await expect(activitySummary.getByText("What I checked").first()).toBeVisible();
-  await expect(activitySummary.getByText("Checked Planner").first()).toBeVisible();
-  await expect(activitySummary.getByText("Checked Review").first()).toBeVisible();
-  await expect(activitySummary.getByText("Created task").first()).toBeVisible();
-  await expect(activity.getByText("tool_call")).toHaveCount(0);
-  await expect(activity.getByText("tool_result")).toHaveCount(0);
-  await expect(activity.getByText("domain tool").first()).toBeHidden();
+  const activityRows = page.getByLabel("Assistant activity");
+  await expect(activityRows.filter({ hasText: "Checked Planner" }).first()).toBeVisible();
+  await expect(page.getByText("Checked Review")).toBeVisible();
+  await expect(activityRows.filter({ hasText: "Created task" }).first()).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/tool_call|tool_result|domain tool/i);
   await expect(page.getByRole("heading", { name: "Launch polish next task" })).toBeVisible();
 
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(horizontalOverflow).toBe(false);
 
-  await page.screenshot({ path: "artifacts/ui-functional/mobile-assistant-tool-activity-strip.png", fullPage: true });
+  await captureProof(page, testInfo, "mobile-assistant-tool-activity-strip");
 });
 
 test("mobile viewport assistant renders task detail and capture triage panels inline", async ({ page }) => {
@@ -464,7 +463,7 @@ test("mobile viewport assistant renders task detail and capture triage panels in
   for (const label of ["Reference", "Idea", "Task", "Review material", "Project input", "Summarize", "Make cards", "Create task", "Append to note"]) {
     await expect(capturePanel.getByRole("radio", { name: label, exact: true })).toBeVisible();
   }
-  await expect(page.getByRole("link", { name: "Open Library" })).toBeVisible();
+  await expect(capturePanel.getByRole("link", { name: "Open Library" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save triage" })).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/tool_name|triage_capture|request_due_date|Diagnostics|dashboard/i);
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);

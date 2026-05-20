@@ -7,14 +7,14 @@
     "assistant": {
       "label": "Assistant",
       "shortLabel": "Assistant",
-      "description": "Daily cockpit for focus, capture, planning, review, and follow-through.",
+      "description": "Primary thread for focus, capture, planning, review, and follow-through.",
       "href": "/assistant"
     },
     "library": {
       "label": "Library",
       "shortLabel": "Library",
       "description": "Notes, captures, saved sources, search, and artifact history.",
-      "href": "/notes"
+      "href": "/library"
     },
     "planner": {
       "label": "Planner",

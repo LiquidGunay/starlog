@@ -244,15 +244,6 @@ function isSupportField(field: AssistantInterruptField): boolean {
   return field.id === "support_action" || /support|help|mode/i.test(field.id);
 }
 
-function isInterviewReviewInterrupt(interrupt: AssistantInterrupt): boolean {
-  const viewModel = createDynamicUiViewModel("interrupt", interrupt);
-  if (viewModel.rendererKey === "interview.review_grade" || viewModel.rendererKey === "grade_review_recall") {
-    return true;
-  }
-
-  return interrupt.tool_name === "grade_review_recall";
-}
-
 function dynamicUiViewModel(data: DynamicUiAdapterData) {
   if (data.source === "interrupt") {
     return createDynamicUiViewModel("interrupt", data.input);
@@ -914,16 +905,6 @@ function useStarlogAssistantUiRegistration({
     () =>
       function InterruptRenderer({ data }: DataPartProps<AssistantInterrupt>) {
         const liveInterrupt = interruptById[data.id] || data;
-        if (isInterviewReviewInterrupt(liveInterrupt)) {
-          return (
-            <ReviewGradeDataPart
-              interrupt={liveInterrupt}
-              busy={busy}
-              onSubmit={onInterruptSubmit}
-              onDismiss={onInterruptDismiss}
-            />
-          );
-        }
         if (liveInterrupt.status !== "pending") {
           return <ResolvedInterruptDataPart interrupt={liveInterrupt} />;
         }
