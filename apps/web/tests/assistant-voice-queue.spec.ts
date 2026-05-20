@@ -3,6 +3,56 @@ import { expect, test } from "@playwright/test";
 const API_BASE = "http://api.local";
 const TOKEN = "token-123";
 
+
+function assistantThreadSnapshot() {
+  return {
+    id: "thr_primary",
+    slug: "primary",
+    title: "Primary conversation",
+    mode: "voice_native",
+    created_at: "2026-03-22T09:00:00.000Z",
+    updated_at: "2026-03-22T09:00:00.000Z",
+    last_message_at: null,
+    last_preview_text: null,
+    messages: [],
+    runs: [],
+    interrupts: [],
+    context_cards: [],
+    session_state: {},
+    next_cursor: null,
+  };
+}
+
+async function routeAssistantShell(page: import("@playwright/test").Page): Promise<void> {
+  await page.route(`${API_BASE}/v1/assistant/threads/primary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(assistantThreadSnapshot()),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/assistant/threads/thr_primary/stream*`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
+  });
+
+  await page.route(`${API_BASE}/v1/assistant/threads/thr_primary/updates*`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ thread_id: "thr_primary", cursor: null, deltas: [] }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/surfaces/assistant/today*`, async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+
+  await page.route(`${API_BASE}/v1/surfaces/assistant/weekly*`, async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+}
+
 async function seedSession(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(
     ({ apiBase, token }) => {
@@ -52,23 +102,7 @@ async function seedSession(page: import("@playwright/test").Page): Promise<void>
 test("replays queued assistant voice uploads from offline capture", async ({ context, page }) => {
   await seedSession(page);
 
-  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "thr_primary",
-        slug: "primary",
-        title: "Primary conversation",
-        mode: "voice_native",
-        session_state: {},
-        tool_traces: [],
-        created_at: "2026-03-22T09:00:00.000Z",
-        updated_at: "2026-03-22T09:00:00.000Z",
-        messages: [],
-      }),
-    });
-  });
+  await routeAssistantShell(page);
 
   await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
     await route.fulfill({
@@ -114,6 +148,7 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
   await context.setOffline(true);
   const holdToTalk = page.locator(".assistant-voice-button");
   await holdToTalk.dispatchEvent("pointerdown");
+  await expect(page.getByText("Recording voice command...")).toBeVisible();
   await holdToTalk.dispatchEvent("pointerup");
   await expect(page.getByText("Voice clip captured and ready for upload.")).toBeVisible();
 
@@ -130,23 +165,7 @@ test("replays queued assistant voice uploads from offline capture", async ({ con
 test("keyboard users can hold the assistant voice control to capture a voice clip", async ({ page }) => {
   await seedSession(page);
 
-  await page.route(`${API_BASE}/v1/conversations/primary`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "thr_primary",
-        slug: "primary",
-        title: "Primary conversation",
-        mode: "voice_native",
-        session_state: {},
-        tool_traces: [],
-        created_at: "2026-03-22T09:00:00.000Z",
-        updated_at: "2026-03-22T09:00:00.000Z",
-        messages: [],
-      }),
-    });
-  });
+  await routeAssistantShell(page);
 
   await page.route(`${API_BASE}/v1/agent/intents`, async (route) => {
     await route.fulfill({
@@ -170,7 +189,7 @@ test("keyboard users can hold the assistant voice control to capture a voice cli
   await page.keyboard.down("Space");
   await expect(page.getByText("Recording voice command...")).toBeVisible();
   await page.keyboard.up("Space");
-  await expect(page.getByText("Voice command ready to upload")).toBeVisible();
+  await expect(page.getByText("Voice clip captured and ready for upload.")).toBeVisible();
 
   await page.getByRole("button", { name: /Plan voice/i }).click();
   await expect(page.getByText(/Upload queue 1/i)).toBeVisible();

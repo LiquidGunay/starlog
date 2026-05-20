@@ -611,7 +611,7 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
                 renderer_version: 1,
                 placement: "thread",
                 title: "Application quiz ready",
-                body: "Reason: You just unlocked this interview-prep topic and one application card is due now.",
+                body: "You just unlocked this interview-prep topic and one application card is due now.",
                 structured_content: {
                   reason: "You just unlocked this interview-prep topic and one application card is due now.",
                   evidence: ["Unlocked topic: Sliding Window Interview Patterns", "Due application cards: 1"],
@@ -730,7 +730,7 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
   await expect(page.getByText(command)).toBeVisible();
   await expect(page.getByText("I unlocked Sliding Window Interview Patterns and queued one application review card.")).toBeVisible();
   const quizCard = page.locator("section").filter({ hasText: "Application quiz ready" });
-  await expect(quizCard.getByText("Reason: You just unlocked this interview-prep topic and one application card is due now.")).toBeVisible();
+  await expect(quizCard.getByText("You just unlocked this interview-prep topic and one application card is due now.")).toBeVisible();
   await quizCard.getByRole("link", { name: "Open Review" }).click();
 
   await expect(page).toHaveURL(/\/review$/);

@@ -33,10 +33,10 @@ test("planner sidecar pane stays collapsed after reload", async ({ page }) => {
   await page.goto("/planner");
 
   await page.getByRole("button", { name: "Hide pane" }).click();
-  await expect(page.getByRole("button", { name: "Show ritual sidecar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show planner context" })).toBeVisible();
 
   await page.reload();
 
-  await expect(page.getByRole("button", { name: "Show ritual sidecar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show planner context" })).toBeVisible();
   await expect(page.getByText("Unscheduled pool and sync drift")).toHaveCount(0);
 });

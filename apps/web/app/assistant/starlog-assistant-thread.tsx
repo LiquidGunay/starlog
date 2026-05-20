@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -29,6 +29,7 @@ import {
 } from "../components/main-room-thread";
 import { DynamicPanelRenderer } from "../components/dynamic-panel-renderer";
 import { getConversationCardRegistryEntry } from "../components/conversation-card-registry";
+import { useSessionConfig } from "../session-provider";
 import { summarizeSupportSurfaces, supportSurfaceActionLabel } from "./support-surfaces";
 import styles from "./starlog-assistant-thread.module.css";
 
@@ -80,6 +81,12 @@ type DynamicUiAdapterData =
   | { source: "interrupt"; input: AssistantInterrupt }
   | { source: "card"; input: AssistantCard }
   | { source: "tool_result"; input: AssistantToolResult };
+
+type VoiceClip = {
+  id: string;
+  blob: Blob;
+  durationMs: number;
+};
 
 const REVIEW_GRADES = [
   { value: "1", label: "Again", hint: "Review soon" },
@@ -1109,6 +1116,156 @@ function ComposerDraftController({ draft }: { draft: ComposerDraftSeed | null })
 }
 
 export function StarlogAssistantComposer({ draft, disabled, busy, error, onShortcut }: StarlogAssistantComposerProps) {
+  const { apiBase, token } = useSessionConfig();
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef<number>(0);
+  const uploadInFlightRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceClip, setVoiceClip] = useState<VoiceClip | null>(null);
+  const [voiceQueue, setVoiceQueue] = useState<VoiceClip[]>([]);
+  const [voiceStatus, setVoiceStatus] = useState("Hold to talk when you want to capture voice.");
+  const [uploadedJobIds, setUploadedJobIds] = useState<string[]>([]);
+
+  const stopStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }, []);
+
+  const uploadVoiceQueue = useCallback(async () => {
+    if (uploadInFlightRef.current || voiceQueue.length === 0 || !navigator.onLine || !token) {
+      return;
+    }
+
+    uploadInFlightRef.current = true;
+    const uploadedIds: string[] = [];
+    const remaining: VoiceClip[] = [];
+
+    for (const clip of voiceQueue) {
+      try {
+        const formData = new FormData();
+        formData.append("title", "Web voice command");
+        formData.append("duration_ms", String(clip.durationMs));
+        formData.append("execute", "true");
+        formData.append("device_target", "web-desktop");
+        formData.append("provider_hint", "whisper_local");
+        formData.append("file", clip.blob, `voice-command-${clip.id}.webm`);
+
+        const response = await fetch(`${apiBase.replace(/\/$/, "")}/v1/agent/command/voice`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const payload = (await response.json()) as { id?: string };
+        if (payload.id) {
+          uploadedIds.push(payload.id);
+        }
+      } catch {
+        remaining.push(clip);
+      }
+    }
+
+    setVoiceQueue(remaining);
+    if (uploadedIds.length > 0) {
+      setUploadedJobIds((current) => [...uploadedIds, ...current].slice(0, 5));
+      setVoiceStatus(`Uploaded ${uploadedIds.length} queued voice command(s).`);
+    } else if (remaining.length > 0) {
+      setVoiceStatus("Voice upload paused; queued for retry.");
+    }
+    uploadInFlightRef.current = false;
+  }, [apiBase, token, voiceQueue]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      void uploadVoiceQueue();
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [uploadVoiceQueue]);
+
+  useEffect(() => {
+    return () => {
+      recorderRef.current = null;
+      stopStream();
+    };
+  }, [stopStream]);
+
+  const beginVoiceCapture = useCallback(async () => {
+    if (disabled || busy || recording) {
+      return;
+    }
+    stopRequestedRef.current = false;
+    try {
+      const mediaDevices = navigator.mediaDevices;
+      if (!mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        stopRequestedRef.current = false;
+        setVoiceStatus("Voice capture is unavailable in this browser.");
+        return;
+      }
+      const stream = await mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      streamRef.current = stream;
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const durationMs = Math.max(1, Date.now() - recordingStartedAtRef.current);
+        setRecording(false);
+        stopStream();
+        if (blob.size === 0) {
+          setVoiceStatus("Voice capture was empty.");
+          return;
+        }
+        setVoiceClip({ id: String(Date.now()), blob, durationMs });
+        setVoiceStatus("Voice clip captured and ready for upload.");
+      };
+      recorder.start();
+      setRecording(true);
+      setVoiceStatus("Recording voice command...");
+      if (stopRequestedRef.current) {
+        recorder.stop();
+        recorderRef.current = null;
+      }
+    } catch {
+      stopRequestedRef.current = false;
+      setRecording(false);
+      stopStream();
+      setVoiceStatus("Voice capture could not start.");
+    }
+  }, [busy, disabled, recording, stopStream]);
+
+  const endVoiceCapture = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || !recording) {
+      stopRequestedRef.current = true;
+      return;
+    }
+    stopRequestedRef.current = false;
+    recorder.stop();
+    recorderRef.current = null;
+  }, [recording]);
+
+  const planVoiceClip = useCallback(() => {
+    if (!voiceClip) {
+      return;
+    }
+    setVoiceQueue((current) => [voiceClip, ...current]);
+    setVoiceClip(null);
+    setVoiceStatus("Voice command ready to upload");
+  }, [voiceClip]);
+
   return (
     <ComposerPrimitive.Root className={styles.composer}>
       <ComposerDraftController draft={draft} />
@@ -1123,6 +1280,38 @@ export function StarlogAssistantComposer({ draft, disabled, busy, error, onShort
             {shortcut.label}
           </button>
         ))}
+      </div>
+      <div className={styles.voiceDock}>
+        <button
+          type="button"
+          className={`assistant-voice-button ${styles.voiceButton} ${recording ? "recording" : ""}`}
+          disabled={disabled || busy}
+          onPointerDown={() => void beginVoiceCapture()}
+          onPointerUp={endVoiceCapture}
+          onPointerCancel={endVoiceCapture}
+          onKeyDown={(event) => {
+            if ((event.key === " " || event.key === "Enter") && !event.repeat) {
+              event.preventDefault();
+              void beginVoiceCapture();
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.key === " " || event.key === "Enter") {
+              event.preventDefault();
+              endVoiceCapture();
+            }
+          }}
+        >
+          <span className="assistant-voice-button-label">{recording ? "Listening" : "Hold to talk"}</span>
+          <span className="assistant-voice-button-meta">Upload queue {voiceQueue.length}</span>
+        </button>
+        <div className={styles.voiceStatus} aria-live="polite">
+          <span>{voiceStatus}</span>
+          {uploadedJobIds.length > 0 ? <small>{uploadedJobIds.join(", ")}</small> : null}
+        </div>
+        <button type="button" className={styles.planVoiceButton} disabled={!voiceClip || disabled || busy} onClick={planVoiceClip}>
+          Plan voice
+        </button>
       </div>
       <ComposerPrimitive.Input
         className={styles.composerInput}
