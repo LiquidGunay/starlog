@@ -214,6 +214,11 @@ cd /home/ubuntu/starlog
 bash ./scripts/android_fresh_local_srs_validation.sh
 ```
 
+Current status: this remains the intended validation loop, but current reruns are blocked by ADB
+bridge/device-control instability until the preflight and phone-control path is fixed. Do not treat
+older `latest.json` manifests or screenshots as current release proof without a fresh
+`validation_passed: true` run from the corrected phone-control path.
+
 What this loop does:
 
 - exports the documented Linux build prerequisites:
@@ -301,6 +306,11 @@ build folder so the latest proof is obvious without manually sorting old APKs.
 
 Use this sequence when validating the native mobile app on the connected Android phone from WSL.
 Keep the phone unlocked for the full run.
+
+Current blocker: if Windows `adb.exe` can list the device but shell, reverse, screencap, or input
+commands hang/truncate/fail, stop and fix the ADB bridge/device-control preflight before claiming
+native validation. A successful install alone is not enough for current Assistant, Review, Planner,
+alarm, or screenshot proof.
 
 1. Use the newer Windows ADB binary:
 

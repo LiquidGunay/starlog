@@ -16,24 +16,26 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Hosted Railway access paths:** hosted browser entry is
   `https://starlog-web-production.up.railway.app/login`; hosted API base is
   `https://starlog-api-production.up.railway.app`.
-- **Hosted reachability known on 2026-05-19:** evidence under
-  `/tmp/starlog-hosted-pwa-verify-20260519` recorded public unauthenticated HTTP 200 checks for
-  `/login` and `/assistant`, and an OK production health payload from the API health endpoint.
-  This proves the hosted web shell and API health route were reachable from the public internet.
-- **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15.
-  The 2026-05-19 check did not use or disclose the hosted passphrase or bearer token, so it does not
-  re-prove authenticated Starlog session behavior.
+- **Hosted reachability known on 2026-05-19:** fresh public no-secret checks for `/login`,
+  `/assistant`, and `/v1/health` returned Railway fallback `HTTP 404` responses with
+  `x-railway-fallback: true`. Treat the configured Railway domains as not currently serving the
+  Starlog web/API apps until deployment/domain routing is fixed and revalidated.
+- **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15,
+  but that historical proof is superseded for current access confidence by the 2026-05-19 Railway
+  fallback responses. Do not claim hosted authenticated Starlog session behavior until the public
+  routes serve the app again and an authenticated smoke is rerun without exposing token material.
 - **Native vs PWA priority:** native mobile is the primary phone surface; PWA is fallback-only on phone and
   remains supported for browser checks or when the app is unavailable.
 - **assistant-ui migration status:** desktop web and native assistant-ui migration are partial. Web has
-  assistant-ui coverage for supported protocol snapshots, while native currently has assistant-ui
-  shell/thread/composer markers and shared dynamic-panel host evidence with `assistant-ui` metadata.
+  assistant-ui `ExternalStoreRuntime` coverage for supported protocol snapshots plus data/tool UI
+  rendering paths. Native currently uses an assistant-ui React Native `LocalRuntime` read-only host
+  over server-owned Starlog messages; it is not yet the full visible phone chat/runtime replacement.
   Full server-owned runtime migration is still pending on both surfaces, and fallback renderers remain
   compatibility paths for unsupported/non-migrated protocol shapes, not the target runtime.
-- **Native Android evidence known:** local physical-device evidence exists for the interview-prep command
-  flow (`read` / `unlock` / `question` / review-grade dynamic UI), including Assistant-hosted
-  review-grade controls. Broader dynamic-panel behavior, production-hosted Android smoke, non-interview
-  flow parity, and repeatable Android functional automation are still pending.
+- **Native Android evidence known:** historical local physical-device evidence exists for selected
+  interview-prep flows, but current repeatable Android validation is blocked by ADB bridge/device-control
+  instability until the preflight and phone-control path is fixed. Do not use older Android evidence as
+  current release confidence without a fresh passing run.
 
 ## Post-Merge PR Status
 
@@ -50,8 +52,8 @@ where Starlog is going. Use this page for current implementation confidence.
   study commands, Review reveal/grade, briefing recommendation hints, and alarm scheduling evidence.
 - **Merged #231 (mobile dynamic panel host):** native Assistant dynamic-panel placement now uses a shared panel
   host path with `assistant-ui` metadata, while unsupported panel shapes still use fallback renderers.
-- **Merged #233 (assistant runtime docs alignment):** current docs now treat assistant-ui as the cross-surface
-  chat runtime and remove stale web-only wording in Assistant/docs alignment artifacts.
+- **Merged #233 (assistant runtime docs alignment):** current docs now document assistant-ui as the
+  cross-surface target direction while keeping web/native migration boundaries explicit.
 - **Merged #234 (objective evidence workflow):** added `scripts/agent_objective_evidence.py` and documented
   evidence-first supervisor flow in `docs/PARALLEL_AGENT_WORKFLOW.md` and `AGENTS.md`.
 - **Merged #235 (PDF ingestion manifest evidence):** PDF preflight now emits `ingestion_manifest.json` with
@@ -69,21 +71,16 @@ where Starlog is going. Use this page for current implementation confidence.
   as the source of truth.
   This is documented in
   [docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md](/home/ubuntu/starlog/docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md).
-- **Web + native assistant-ui migration:** assistant-ui is partially migrated for supported Starlog
-  assistant protocol snapshots and dynamic panel parts across desktop web and native mobile. Native has
-  shell/thread/composer marker evidence and a shared dynamic-panel host path with assistant-ui metadata.
-  Unsupported or not-yet-migrated message/tool shapes still use Starlog compatibility projections and
-  fallback render paths. Those fallbacks are temporary compatibility coverage while full server-owned
-  assistant-ui runtime migration remains pending.
-- **Mobile Assistant dynamic UI:** React Native assistant-ui-style view-model coverage is partially
-  migrated and currently evidenced through interview-prep (read/unlock/question/review-grade). Native
-  evidence includes assistant-ui shell/thread/composer markers, an Assistant dynamic UI capability prompt,
-  shared dynamic-panel host metadata, and Assistant-hosted review-grade controls (`RECALL QUALITY`,
-  `Save grade`, `Keep in Review`) instead of old diagnostic or Review-tab-only screens. Treat the
-  latest physical-device pass at
-  `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json` as bounded
-  evidence, not proof that repeatable Android functional automation or full native runtime migration is
-  complete.
+- **Web assistant-ui migration:** desktop web has partial assistant-ui `ExternalStoreRuntime` adapter
+  coverage for supported Starlog assistant protocol snapshots. The adapter maps text, sources, tool
+  calls, data parts, and selected dynamic-ui metadata/tool-result renderers; unsupported or not-yet
+  migrated message/tool shapes still use Starlog compatibility projections and fallback render paths.
+  This is partial coverage rather than full assistant-ui parity.
+- **Mobile Assistant assistant-ui path:** native mobile has a React Native assistant-ui host and adapter
+  coverage, but the current runtime is `server-owned-local-read-only`: a `LocalRuntime` seeded from
+  server-owned Starlog messages with a read-only adapter. It is useful for rendering/transcript slices
+  and selected dynamic-panel host integration, but it is not yet the full visible phone chat/runtime
+  replacement unless the pending mobile runtime work lands and is validated.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -125,22 +122,23 @@ where Starlog is going. Use this page for current implementation confidence.
   entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user notes.
   `scripts/import_neetcode_150.py` can validate dry-run payloads and perform an idempotent local
   Study Core/SRS import without proprietary problem text or generated answers.
-- **Minimal PWA/native interview-prep UI:** the PWA Review surface has thin controls for topic
-  unlock/read, question-mode requests, progress state, and recommendation rationale. Native Android
-  Review shows study progress, can unlock/read topics, create question-mode requests, load/reveal
-  backend-owned cards, and submit review grades on a physical-device local validation loop.
+- **Minimal PWA interview-prep UI:** the PWA Review surface has thin controls for topic unlock/read,
+  question-mode requests, progress state, and recommendation rationale.
+- **Historical native interview-prep evidence:** older physical-device Android evidence showed Review
+  study progress, topic unlock/read controls, question-mode requests, backend-owned card reveal, and
+  review grading. Keep that as historical context only; current repeatable Android validation is blocked
+  by ADB bridge/device-control instability until a fresh passing device run exists.
 - **Live PWA interview-prep loop:** Playwright boots the local API and PWA, submits visible Assistant
   commands for `Sliding Window`, verifies due-card gating, reveals a Review card, returns to the
   Assistant to grade the generated review-grade dynamic UI, generates a recommendation-backed briefing,
   and creates an alarm.
-- **Hosted PWA/API reachability:** `https://starlog-web-production.up.railway.app/login` is the hosted
-  browser entry point and `https://starlog-api-production.up.railway.app` is the hosted API base. On
-  2026-05-19, public evidence under `/tmp/starlog-hosted-pwa-verify-20260519` recorded HTTP 200 for
-  hosted `/login` and `/assistant`, and `/v1/health` returned an OK production health payload.
-  Authenticated hosted passphrase login was last proven on 2026-05-15. Treat this as access/login
-  evidence only; it is not proof of full hosted workflow freshness or production release readiness.
-  Do not copy passphrases, bearer tokens, or token-bearing command output from local verification
-  artifacts into docs.
+- **Hosted PWA/API reachability:** `https://starlog-web-production.up.railway.app/login` is the intended
+  hosted browser entry point and `https://starlog-api-production.up.railway.app` is the intended hosted
+  API base. Fresh public checks on 2026-05-19 returned Railway fallback `HTTP 404` for hosted `/login`,
+  `/assistant`, and `/v1/health`, so hosted Starlog access is currently unproven/broken. Authenticated
+  hosted passphrase login was last proven on 2026-05-15, but that old proof should not be used for
+  current readiness. Do not copy passphrases, bearer tokens, or token-bearing command output from local
+  verification artifacts into docs.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.
@@ -162,7 +160,8 @@ Current status after PRs #202-#206:
 4. Request question style preferences, such as application questions, against a topic.
    - **Status:** works as deterministic Assistant command flow into `study_question_requests`.
 5. Review and grade cards through the PWA or Android native Review surface.
-   - **Status:** works on both surfaces with live local PWA and Android physical-device grading evidence.
+   - **Status:** works in the live local PWA path. Android physical-device grading has historical
+     evidence, but current repeatable validation is blocked on ADB bridge/device-control stability.
 6. Feed review/question/practice events into deterministic recommendation scoring.
    - **Status:** works; PR #204 also injects these signals into briefing review pressure.
 7. Preflight local PDFs before creating cards from them.
@@ -202,17 +201,19 @@ Known outcome for `Inference Engineering.pdf`:
 - **Production Android store readiness:** Android release-signing, signed production QA smoke, store
   packaging, and final screenshots still require
   [docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md](/home/ubuntu/starlog/docs/ANDROID_STORE_DISTRIBUTION_CHECKLIST.md).
-- **Railway production freshness:** public hosted page/API reachability was checked on 2026-05-19, and
-  authenticated hosted passphrase login was last proven on 2026-05-15. Hosted smoke and release-gate
-  checks still need a fresh authenticated run before relying on full hosted deployment state.
+- **Railway production access:** public hosted page/API checks on 2026-05-19 returned Railway fallback
+  `HTTP 404` for the configured web and API domains. Hosted smoke, release-gate checks, and any
+  authenticated login claims are blocked until Railway deployment/domain routing serves Starlog again.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
   provider polish and fallback behavior still need focused validation.
 - **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
-  compatibility fallbacks for unsupported Starlog protocol parts. Native mobile assistant-ui is also
-  partially migrated: assistant-ui shell/thread/composer markers, shared dynamic-panel host metadata,
-  interview-prep capability, and review-grade dynamic UI have device evidence. Broader dynamic-panel host
-  behavior, full server-owned runtime migration, and repeatable Android functional automation are still
-  pending.
+  compatibility fallbacks for unsupported Starlog protocol parts. Web has partial data/tool UI and
+  dynamic-ui metadata paths. Native mobile currently uses a read-only assistant-ui `LocalRuntime` host
+  over Starlog messages, so broader dynamic-panel host behavior, full server-owned runtime migration, and
+  repeatable Android functional automation are still pending.
+- **Android validation stability:** current Android validation is blocked by ADB bridge/device-control
+  instability until the preflight and phone-control path is fixed. Historical screenshots/manifests remain
+  useful context, but they are not current release proof.
 - **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
   Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
   `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
@@ -220,44 +221,31 @@ Known outcome for `Inference Engineering.pdf`:
 ## Evidence Map
 
 - Hosted Railway access evidence:
-  `/tmp/starlog-hosted-pwa-verify-20260519` contains the local verification output for public checks run
-  on 2026-05-19. Public `curl` checks returned HTTP 200 for
-  `https://starlog-web-production.up.railway.app/login` and
-  `https://starlog-web-production.up.railway.app/assistant`; the public API health check at
-  `https://starlog-api-production.up.railway.app/v1/health` returned an OK production payload. These
-  checks intentionally did not use or expose the hosted passphrase or bearer token, and token material
-  from local authenticated checks must not be copied into this document.
+  fresh public no-secret `curl` checks on 2026-05-19 returned Railway fallback `HTTP 404` with
+  `x-railway-fallback: true` for `https://starlog-web-production.up.railway.app/login`,
+  `https://starlog-web-production.up.railway.app/assistant`, and
+  `https://starlog-api-production.up.railway.app/v1/health`. These checks intentionally did not use or
+  expose the hosted passphrase or bearer token, and token material from local authenticated checks must
+  not be copied into this document.
 - Latest local functional evidence:
   [artifacts/interview-prep-functional-2026-05-13](/home/ubuntu/starlog/artifacts/interview-prep-functional-2026-05-13)
-- Fresh Android native evidence is written by
-  `scripts/android_fresh_local_srs_validation.sh` and indexed in
-  `.localdata/android-local-validation/builds/latest.json` (and companion artifact files listed there).
-  Phone-level migration claims should be based on Android functional harness evidence plus artifact review,
-  not isolated manual confidence alone. The current evidence proves selected assistant-ui markers and
-  flows; it does not yet prove repeatable Android functional automation for the full native assistant-ui
-  runtime.
-  A passing evidence run must include `validation_passed: true` plus Assistant evidence files for
-  `assistant-capability-shell-thread`, `assistant-capability-composer`,
-  `assistant-dynamic-ui-capability-prompt`, `assistant-command-shell-thread`,
-  `assistant-command-composer`, `assistant-review-grade-controls`, and
-  `assistant-review-grade-dynamic-ui`. Failed runs publish `validation_passed: false` with partial
-  screenshots/XML and a failure reason instead of leaving an older passed-looking final manifest.
-  The required run evidence includes Assistant command submission, native Study Core unlock/read/question
-  writes, Review reveal and `Good` grade submission through Assistant dynamic UI, review progress update
-  verification, briefing recommendation-hints validation, and Planner alarm scheduling on the connected
-  Android device.
+- Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
+  indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
+  listed there). Current Android validation is blocked by ADB bridge/device-control instability, so
+  phone-level migration claims must wait for a fresh passing run after the preflight/phone-control path
+  is fixed. Older evidence remains historical context only.
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
   `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
   clean Python 3.12 `uv` environment and prove that marking `Sliding Window` read releases a linked
   gated card only after prerequisites/read state are satisfied.
-- Fresh frontend/native validation: the Next.js production build passed,
+- Recent frontend/native validation: the Next.js production build passed,
   `corepack pnpm --filter mobile test:study-mutations` passed, and the focused Playwright PWA
   Assistant study-command test passed against a local production web server with mocked API routes.
 - Assistant-ui/dynamic UI status evidence is still bounded: desktop web assistant-ui rendering is
-  partial with compatibility fallbacks, and mobile React Native dynamic panel shaping is partial.
-  The functional harnesses now require the actual Assistant surface for capability and review-grade
-  dynamic UI proof, with a fresh Android device pass recorded at
-  `/tmp/starlog-assistant-functional-loop-validation-4/builds/20260517T214452Z/latest.json`.
+  partial with compatibility fallbacks, and mobile React Native uses a read-only assistant-ui
+  `LocalRuntime` host over Starlog messages. Functional harnesses should require the actual Assistant
+  surface for capability and review-grade dynamic UI proof, but current Android reruns are blocked until
+  ADB bridge/device-control preflight is stable.
 - The PDF pipeline now uses manifest-driven preflight evidence:
   `ingestion_manifest.json`, `candidate_cards.jsonl`, and blocked segment entries in the preflight report/
   manifest are the first pass for trusted extraction before final card import.
