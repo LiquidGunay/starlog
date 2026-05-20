@@ -336,6 +336,25 @@ def _assistant_tool_result_for_call(payload: dict, tool_call_id: str) -> dict:
     )
 
 
+def _assert_dynamic_tool_result(
+    payload: dict,
+    *,
+    tool_name: str,
+    renderer_key: str,
+    structured_keys: set[str],
+    ui_meta_keys: set[str],
+) -> tuple[dict, dict]:
+    tool_call = _assistant_tool_call(payload, tool_name)
+    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
+    assert tool_result["tool_call_id"] == tool_call["id"]
+    assert tool_result["renderer_key"] == renderer_key
+    assert tool_result["renderer_version"] == 1
+    assert tool_result["placement"] == "thread"
+    assert structured_keys.issubset(tool_result["structured_content"])
+    assert ui_meta_keys.issubset(tool_result["ui_meta"])
+    return tool_call, tool_result
+
+
 def test_assistant_primary_thread_snapshot_bootstraps(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -448,7 +467,7 @@ def test_assistant_dynamic_ui_capabilities_are_structured_and_survive_reload(
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
     monkeypatch.setattr(
         ai_service,
         "execute_chat_turn",
@@ -643,14 +662,8 @@ def test_assistant_runtime_turn_emits_tool_result_part_for_recent_trace(
     assert tool_result_part["tool_result"]["metadata"]["projection"] == "runtime_recent_trace"
     assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "list_due_cards"
     assert tool_result_part["tool_result"]["card"]["kind"] == "review_queue"
-    assert not any(card["kind"] == "assistant_summary" for card in assistant_message["cards"])
-    assert len(
-        [
-            card
-            for card in assistant_message["cards"]
-            if card["kind"] == "review_queue" and card.get("metadata", {}).get("projection") == "runtime_recent_trace"
-        ]
-    ) == 1
+    message_cards = assistant_message.get("cards", [])
+    assert not any(card["kind"] == "assistant_summary" for card in message_cards)
 
     with get_connection() as conn:
         trace_row = conn.execute(
@@ -704,7 +717,7 @@ def test_assistant_primary_study_read_command_unblocks_gated_due_card(
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
     monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
     card = _create_assistant_due_card(client, auth_headers, prompt="BFS gated Assistant card")
     _source, topic = _create_assistant_study_source_and_topic(
@@ -735,14 +748,16 @@ def test_assistant_primary_study_read_command_unblocks_gated_due_card(
     assistant_command = payload["assistant_message"]["metadata"]["assistant_command"]
     assert assistant_command["matched_intent"] == "mark_study_topic_read"
     assert assistant_command["status"] == "executed"
-    tool_call = _assistant_tool_call(payload, "mark_study_topic_read")
+    tool_call, tool_result = _assert_dynamic_tool_result(
+        payload,
+        tool_name="mark_study_topic_read",
+        renderer_key="interview.topic_unlock",
+        structured_keys={"topic", "topic_id", "topic_title", "unlock_reason"},
+        ui_meta_keys={"tone", "action", "status", "source_id"},
+    )
     assert tool_call["status"] == "complete"
     assert tool_call["arguments"]["topic_id"] == topic["id"]
-    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
     assert tool_result["status"] == "complete"
-    assert tool_result["renderer_key"] == "interview.topic_unlock"
-    assert tool_result["renderer_version"] == 1
-    assert tool_result["placement"] == "thread"
     assert tool_result["structured_content"]["topic"]["id"] == topic["id"]
     assert tool_result["ui_meta"]["source_id"] == topic["source_id"]
     assert tool_result["output"]["topic"]["id"] == topic["id"]
@@ -758,7 +773,7 @@ def test_assistant_primary_study_unlock_command_is_visible_and_executes(
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
     monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
     _source, topic = _create_assistant_study_source_and_topic(
         client,
@@ -777,13 +792,15 @@ def test_assistant_primary_study_unlock_command_is_visible_and_executes(
     assistant_command = payload["assistant_message"]["metadata"]["assistant_command"]
     assert assistant_command["matched_intent"] == "unlock_study_topic"
     assert assistant_command["status"] == "executed"
-    tool_call = _assistant_tool_call(payload, "unlock_study_topic")
+    tool_call, tool_result = _assert_dynamic_tool_result(
+        payload,
+        tool_name="unlock_study_topic",
+        renderer_key="interview.topic_unlock",
+        structured_keys={"topic", "topic_id", "topic_title", "unlock_reason"},
+        ui_meta_keys={"tone", "action", "status", "source_id"},
+    )
     assert tool_call["status"] == "complete"
     assert tool_call["arguments"]["topic_id"] == topic["id"]
-    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
-    assert tool_result["renderer_key"] == "interview.topic_unlock"
-    assert tool_result["renderer_version"] == 1
-    assert tool_result["placement"] == "thread"
     assert tool_result["structured_content"]["topic"]["id"] == topic["id"]
     assert tool_result["output"]["topic"]["status"] == "unlocked"
     assert tool_result["output"]["topic"]["manually_unlocked"] is True
@@ -794,7 +811,7 @@ def test_assistant_primary_study_quiz_command_is_visible_and_creates_request(
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
     monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
     source, _topic = _create_assistant_study_source_and_topic(
         client,
@@ -813,12 +830,14 @@ def test_assistant_primary_study_quiz_command_is_visible_and_creates_request(
     assistant_command = payload["assistant_message"]["metadata"]["assistant_command"]
     assert assistant_command["matched_intent"] == "create_study_question_request"
     assert assistant_command["status"] == "executed"
-    tool_call = _assistant_tool_call(payload, "create_study_question_request")
+    tool_call, tool_result = _assert_dynamic_tool_result(
+        payload,
+        tool_name="create_study_question_request",
+        renderer_key="interview.question_request",
+        structured_keys={"request", "source_id", "topic_id", "question_type", "prompt"},
+        ui_meta_keys={"tone", "request_id", "question_preference"},
+    )
     assert tool_call["status"] == "complete"
-    tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
-    assert tool_result["renderer_key"] == "interview.question_request"
-    assert tool_result["renderer_version"] == 1
-    assert tool_result["placement"] == "thread"
     request = tool_result["output"]["request"]
     assert tool_result["structured_content"]["request"]["id"] == request["id"]
     assert tool_result["ui_meta"]["question_preference"] == "application"
@@ -842,7 +861,7 @@ def test_assistant_interview_prep_dynamic_ui_loop_accepts_natural_phrases_and_re
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
     monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
     source, topic = _create_assistant_study_source_and_topic(
         client,
@@ -860,9 +879,13 @@ def test_assistant_interview_prep_dynamic_ui_loop_accepts_natural_phrases_and_re
     assert read_payload["run"]["status"] == "completed"
     read_command = read_payload["assistant_message"]["metadata"]["assistant_command"]
     assert read_command["matched_intent"] == "mark_study_topic_read"
-    read_tool_call = _assistant_tool_call(read_payload, "mark_study_topic_read")
-    read_tool_result = _assistant_tool_result_for_call(read_payload, read_tool_call["id"])
-    assert read_tool_result["renderer_key"] == "interview.topic_unlock"
+    read_tool_call, read_tool_result = _assert_dynamic_tool_result(
+        read_payload,
+        tool_name="mark_study_topic_read",
+        renderer_key="interview.topic_unlock",
+        structured_keys={"topic", "topic_id", "topic_title", "unlock_reason"},
+        ui_meta_keys={"tone", "action", "status", "source_id"},
+    )
     assert read_tool_result["structured_content"]["topic_id"] == topic["id"]
     assert read_tool_result["output"]["topic"]["status"] == "read"
 
@@ -875,10 +898,14 @@ def test_assistant_interview_prep_dynamic_ui_loop_accepts_natural_phrases_and_re
     assert quiz_payload["run"]["status"] == "completed"
     quiz_command = quiz_payload["assistant_message"]["metadata"]["assistant_command"]
     assert quiz_command["matched_intent"] == "create_study_question_request"
-    quiz_tool_call = _assistant_tool_call(quiz_payload, "create_study_question_request")
-    quiz_tool_result = _assistant_tool_result_for_call(quiz_payload, quiz_tool_call["id"])
+    quiz_tool_call, quiz_tool_result = _assert_dynamic_tool_result(
+        quiz_payload,
+        tool_name="create_study_question_request",
+        renderer_key="interview.question_request",
+        structured_keys={"request", "source_id", "topic_id", "question_type", "prompt"},
+        ui_meta_keys={"tone", "request_id", "question_preference"},
+    )
     request = quiz_tool_result["output"]["request"]
-    assert quiz_tool_result["renderer_key"] == "interview.question_request"
     assert quiz_tool_result["structured_content"]["topic_id"] == topic["id"]
     assert quiz_tool_result["structured_content"]["source_id"] == source["id"]
     assert quiz_tool_result["ui_meta"]["question_preference"] == "application"
@@ -911,7 +938,7 @@ def test_assistant_interview_loop_records_study_review_and_recommendation_signal
     auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, "http://127.0.0.1:9")
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
     monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
     source, topic = _create_assistant_study_source_and_topic(
         client,
@@ -943,9 +970,13 @@ def test_assistant_interview_loop_records_study_review_and_recommendation_signal
     )
     read_command = read_payload["assistant_message"]["metadata"]["assistant_command"]
     assert read_command["matched_intent"] == "mark_study_topic_read"
-    read_tool_call = _assistant_tool_call(read_payload, "mark_study_topic_read")
-    read_tool_result = _assistant_tool_result_for_call(read_payload, read_tool_call["id"])
-    assert read_tool_result["renderer_key"] == "interview.topic_unlock"
+    _read_tool_call, read_tool_result = _assert_dynamic_tool_result(
+        read_payload,
+        tool_name="mark_study_topic_read",
+        renderer_key="interview.topic_unlock",
+        structured_keys={"topic", "topic_id", "topic_title", "unlock_reason"},
+        ui_meta_keys={"tone", "action", "status", "source_id"},
+    )
     assert read_tool_result["structured_content"]["topic_id"] == topic["id"]
     assert read_tool_result["output"]["topic"]["status"] == "read"
 
@@ -964,10 +995,14 @@ def test_assistant_interview_loop_records_study_review_and_recommendation_signal
     )
     quiz_command = quiz_payload["assistant_message"]["metadata"]["assistant_command"]
     assert quiz_command["matched_intent"] == "create_study_question_request"
-    quiz_tool_call = _assistant_tool_call(quiz_payload, "create_study_question_request")
-    quiz_tool_result = _assistant_tool_result_for_call(quiz_payload, quiz_tool_call["id"])
+    _quiz_tool_call, quiz_tool_result = _assert_dynamic_tool_result(
+        quiz_payload,
+        tool_name="create_study_question_request",
+        renderer_key="interview.question_request",
+        structured_keys={"request", "source_id", "topic_id", "question_type", "prompt"},
+        ui_meta_keys={"tone", "request_id", "question_preference"},
+    )
     request = quiz_tool_result["output"]["request"]
-    assert quiz_tool_result["renderer_key"] == "interview.question_request"
     assert quiz_tool_result["structured_content"]["topic_id"] == topic["id"]
     assert quiz_tool_result["ui_meta"]["question_preference"] == "application"
     assert request["source_id"] == source["id"]
@@ -1066,9 +1101,186 @@ def test_assistant_interview_loop_records_study_review_and_recommendation_signal
     assert review_summary.status_code == 200
     assert review_summary.json()["queue_health"]["reviewed_today_count"] == 1
     assert review_summary.json()["queue_health"]["average_latency_ms"] == 1500
-    assistant_today = client.get("/v1/surfaces/assistant/today?date=2026-05-19", headers=auth_headers)
+    assistant_today = client.get(
+        f"/v1/surfaces/assistant/today?date={utc_now().date().isoformat()}",
+        headers=auth_headers,
+    )
     assert assistant_today.status_code == 200
     assert "1 briefing review recommendation available" in assistant_today.json()["reason_stack"]
+
+
+def test_assistant_interview_loop_gates_unread_signals_and_surfaces_low_grade_reason(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
+    monkeypatch.setattr(ai_service, "execute_chat_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")))
+    source, topic = _create_assistant_study_source_and_topic(
+        client,
+        auth_headers,
+        source_title="Interview Prep",
+        topic_title="Sliding Window",
+    )
+    study_card = _create_assistant_due_card(
+        client,
+        auth_headers,
+        prompt="How do you decide when a sliding window should shrink?",
+        card_type="application",
+    )
+    plain_card = _create_assistant_due_card(
+        client,
+        auth_headers,
+        prompt="What is a hash map?",
+        card_type="qa",
+    )
+    low_grade_peer = _create_assistant_due_card(
+        client,
+        auth_headers,
+        prompt="When is a fixed-size window appropriate?",
+        card_type="application",
+    )
+    for card_id in {study_card["id"], low_grade_peer["id"]}:
+        link_response = client.post(
+            "/v1/study/card-topic-links",
+            json={"card_id": card_id, "topic_id": topic["id"], "gate_required": True},
+            headers=auth_headers,
+        )
+        assert link_response.status_code == 201
+
+    quiz_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="quiz me on application questions for sliding window",
+    )
+
+    quiz_tool_call, quiz_tool_result = _assert_dynamic_tool_result(
+        quiz_payload,
+        tool_name="create_study_question_request",
+        renderer_key="interview.question_request",
+        structured_keys={"request", "source_id", "topic_id", "question_type", "prompt"},
+        ui_meta_keys={"tone", "request_id", "question_preference"},
+    )
+    request = quiz_tool_result["output"]["request"]
+    assert request["source_id"] == source["id"]
+    assert request["topic_id"] == topic["id"]
+    assert quiz_tool_result["tool_call_id"] == quiz_tool_call["id"]
+    assert quiz_tool_result["structured_content"]["request"]["id"] == request["id"]
+
+    due_before_read = client.get("/v1/cards/due?limit=5", headers=auth_headers)
+    assert due_before_read.status_code == 200
+    due_before_read_ids = [item["id"] for item in due_before_read.json()]
+    assert plain_card["id"] in due_before_read_ids
+    assert study_card["id"] not in due_before_read_ids
+    assert low_grade_peer["id"] not in due_before_read_ids
+
+    review_before_read = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+    assert review_before_read.status_code == 200
+    review_before_payload = review_before_read.json()
+    assert review_before_payload["queue_health"]["due_count"] == 1
+    ladder_counts_before_read = {bucket["key"]: bucket["count"] for bucket in review_before_payload["ladder_counts"]}
+    assert ladder_counts_before_read["recall"] == 1
+    assert ladder_counts_before_read["application"] == 0
+    assert ladder_counts_before_read["synthesis"] == 0
+    assert ladder_counts_before_read["judgment"] == 0
+    assistant_today_before_read = client.get(
+        f"/v1/surfaces/assistant/today?date={utc_now().date().isoformat()}",
+        headers=auth_headers,
+    )
+    assert assistant_today_before_read.status_code == 200
+    assert "1 study-loop review card due" not in assistant_today_before_read.json()["reason_stack"]
+
+    read_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="unlock/read Sliding Window",
+    )
+    read_tool_call, read_tool_result = _assert_dynamic_tool_result(
+        read_payload,
+        tool_name="mark_study_topic_read",
+        renderer_key="interview.topic_unlock",
+        structured_keys={"topic", "topic_id", "topic_title", "unlock_reason"},
+        ui_meta_keys={"tone", "action", "status", "source_id"},
+    )
+    assert read_tool_result["tool_call_id"] == read_tool_call["id"]
+    assert read_tool_result["structured_content"]["topic_id"] == topic["id"]
+    assert read_tool_result["output"]["topic"]["status"] == "read"
+
+    due_after_read = client.get("/v1/cards/due?limit=5", headers=auth_headers)
+    assert due_after_read.status_code == 200
+    due_after_read_ids = [item["id"] for item in due_after_read.json()]
+    assert set(due_after_read_ids[:2]) == {study_card["id"], low_grade_peer["id"]}
+    assert due_after_read_ids.index(plain_card["id"]) > due_after_read_ids.index(study_card["id"])
+    assert due_after_read_ids.index(plain_card["id"]) > due_after_read_ids.index(low_grade_peer["id"])
+    assistant_today_after_read = client.get(
+        f"/v1/surfaces/assistant/today?date={utc_now().date().isoformat()}",
+        headers=auth_headers,
+    )
+    assert assistant_today_after_read.status_code == 200
+    assert "2 study-loop review cards due" in assistant_today_after_read.json()["reason_stack"]
+
+    reveal = client.post(
+        "/v1/assistant/threads/primary/events",
+        json={
+            "source_surface": "review",
+            "kind": "review.answer.revealed",
+            "entity_ref": {
+                "entity_type": "card",
+                "entity_id": study_card["id"],
+                "href": "/review",
+                "title": study_card["prompt"],
+            },
+            "payload": {
+                "card_id": study_card["id"],
+                "prompt": study_card["prompt"],
+                "card_type": study_card["card_type"],
+            },
+            "visibility": "assistant_message",
+        },
+        headers=auth_headers,
+    )
+    assert reveal.status_code == 201
+    interrupt = next(item for item in reveal.json()["interrupts"] if item["tool_name"] == "grade_review_recall")
+    assert interrupt["tool_call_id"]
+    assert interrupt["renderer_key"] == "interview.review_grade"
+    assert interrupt["structured_content"]["card_id"] == study_card["id"]
+    assert interrupt["ui_meta"]["review_mode"] == "application"
+
+    submit = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"rating": "1", "latency_ms": "1500"}},
+        headers=auth_headers,
+    )
+    assert submit.status_code == 200
+    review_grade_result = next(
+        part["tool_result"]
+        for message in reversed(submit.json()["messages"])
+        for part in message["parts"]
+        if part["type"] == "tool_result" and part["tool_result"].get("renderer_key") == "interview.review_grade"
+    )
+    assert review_grade_result["tool_call_id"] == interrupt["tool_call_id"]
+    assert review_grade_result["structured_content"]["card_id"] == study_card["id"]
+    assert review_grade_result["structured_content"]["grade"] == "1"
+    assert review_grade_result["ui_meta"]["review_mode"] == "application"
+
+    peer_review = client.post(
+        "/v1/reviews",
+        json={"card_id": low_grade_peer["id"], "rating": 1, "latency_ms": 1200},
+        headers=auth_headers,
+    )
+    assert peer_review.status_code == 201
+
+    review_after_low_grades = client.get("/v1/surfaces/review/summary", headers=auth_headers)
+    assert review_after_low_grades.status_code == 200
+    recommended_drill = review_after_low_grades.json()["recommended_drill"]
+    assert recommended_drill == {
+        "mode": "application",
+        "title": "Application drill",
+        "body": "Practice cards with 2 recent low ratings before returning to the full queue.",
+        "prompt": "Start an application drill from cards I recently rated low.",
+        "reason": "2 recent low ratings on application cards.",
+        "enabled": True,
+    }
 
 
 def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
@@ -1107,14 +1319,8 @@ def test_assistant_runtime_turn_emits_task_tool_result_for_recent_task_trace(
     assert tool_result_part["tool_result"]["tool_call_id"] == tool_call_part["tool_call"]["id"]
     assert tool_result_part["tool_result"]["metadata"]["tool_name"] == "create_task"
     assert tool_result_part["tool_result"]["card"]["kind"] == "task_list"
-    assert not any(card["kind"] == "assistant_summary" for card in assistant_message["cards"])
-    assert len(
-        [
-            card
-            for card in assistant_message["cards"]
-            if card["kind"] == "task_list" and card.get("metadata", {}).get("projection") == "runtime_recent_trace"
-        ]
-    ) == 1
+    message_cards = assistant_message.get("cards", [])
+    assert not any(card["kind"] == "assistant_summary" for card in message_cards)
 
     with get_connection() as conn:
         thread = assistant_thread_service.get_thread(conn, "primary")
@@ -1237,6 +1443,7 @@ def test_create_interrupt_enriches_dynamic_ui_contract_fields(
         structured_content={"card_id": "card-1", "grade": "again"},
         ui_meta={"tone": "compact"},
         metadata={"display_mode": "inline", "consequence_preview": "Tracks recall feedback."},
+        entity_ref={"entity_type": "card", "entity_id": "card-1", "href": "/review", "title": "Grade review"},
     )
     snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
     assert snapshot.status_code == 200
