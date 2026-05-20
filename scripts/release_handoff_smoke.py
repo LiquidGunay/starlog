@@ -74,8 +74,25 @@ def main() -> int:
         with tarfile.open(tarball_path, "r:gz") as archive:
             names = set(archive.getnames())
             prefix = f"{bundle_root.name}/"
-            assert f"{prefix}docs/RELEASE_HANDOFF_RUNBOOK.md" in names
-            assert f"{prefix}docs/RELEASE_HANDOFF.md" in names
+            expected_docs = {
+                "README.md",
+                "docs/CURRENT_STATE.md",
+                "docs/IMPLEMENTATION_STATUS.md",
+                "docs/ASSISTANT_UI_REFERENCE.md",
+                "docs/ASSISTANT_RUNTIME_ARCHITECTURE_DECISION.md",
+                "docs/ANDROID_DEV_BUILD.md",
+                "docs/UI_FUNCTIONAL_TEST_HARNESSES.md",
+                "docs/CODEX_PHONE_PWA_CONNECTION.md",
+                "docs/RELEASE_HANDOFF.md",
+                "docs/RELEASE_HANDOFF_RUNBOOK.md",
+            }
+            for doc_path in expected_docs:
+                assert f"{prefix}{doc_path}" in names, doc_path
+            assert f"{prefix}docs/UI_CONCEPT_COMPARISON_2026-04-29.md" not in names
+            assert f"{prefix}artifacts/ui-concept/pwa/EXPLANATION_OF_SCREENS_PWA.md" in names
+            assert f"{prefix}artifacts/ui-concept/mobile/EXPLANATION_OF_SCREENS_MOBILE.md" in names
+            assert not any(name.startswith(f"{prefix}artifacts/ui-comparison/") for name in names)
+            assert not any(name.startswith(f"{prefix}artifacts/phone-current/") for name in names)
             assert f"{prefix}release-manifest.json" in names
             runbook_text = archive.extractfile(f"{prefix}docs/RELEASE_HANDOFF_RUNBOOK.md").read().decode("utf-8")
             release_text = archive.extractfile(f"{prefix}docs/RELEASE_HANDOFF.md").read().decode("utf-8")
