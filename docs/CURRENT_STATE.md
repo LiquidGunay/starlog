@@ -122,10 +122,12 @@ where Starlog is going. Use this page for current implementation confidence.
   entries with stable IDs, LeetCode URLs, difficulty, pattern, prerequisites, and empty user notes.
   `scripts/import_neetcode_150.py` can validate dry-run payloads and perform an idempotent local
   Study Core/SRS import without proprietary problem text or generated answers.
-- **Minimal PWA/native interview-prep UI:** the PWA Review surface has thin controls for topic
-  unlock/read, question-mode requests, progress state, and recommendation rationale. Native Android
-  Review shows study progress, can unlock/read topics, create question-mode requests, load/reveal
-  backend-owned cards, and submit review grades on a physical-device local validation loop.
+- **Minimal PWA interview-prep UI:** the PWA Review surface has thin controls for topic unlock/read,
+  question-mode requests, progress state, and recommendation rationale.
+- **Historical native interview-prep evidence:** older physical-device Android evidence showed Review
+  study progress, topic unlock/read controls, question-mode requests, backend-owned card reveal, and
+  review grading. Keep that as historical context only; current repeatable Android validation is blocked
+  by ADB bridge/device-control instability until a fresh passing device run exists.
 - **Live PWA interview-prep loop:** Playwright boots the local API and PWA, submits visible Assistant
   commands for `Sliding Window`, verifies due-card gating, reveals a Review card, returns to the
   Assistant to grade the generated review-grade dynamic UI, generates a recommendation-backed briefing,
