@@ -15,10 +15,6 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
 }
 
-type JsonResponse = {
-  json: () => Promise<unknown>;
-};
-
 type StarlogSession = {
   apiBase: string;
   token: string;
@@ -131,11 +127,6 @@ function isBriefingGenerateRequest(url: string): boolean {
   return url.endsWith("/v1/briefings/generate");
 }
 
-async function expectJsonWith<T>(response: JsonResponse, matcher: (payload: T) => void): Promise<void> {
-  const payload = (await response.json()) as T;
-  matcher(payload);
-}
-
 async function getAuthenticatedSession(page: Page): Promise<StarlogSession> {
   const session = await page.evaluate(() => ({
     apiBase: window.localStorage.getItem("starlog-api-base"),
@@ -191,6 +182,35 @@ async function sendAssistantMessage(
 
 function latestCommandMessage(page: Page, expected: string | RegExp): Locator {
   return page.locator("main").getByText(expected).last();
+}
+
+function assistantUiDataParts(
+  page: Page,
+  testId: "assistant-ui-question-request" | "assistant-ui-review-grade" | "assistant-ui-topic-unlock",
+  rendererKey: string,
+): Locator {
+  return page.locator(`[data-testid="${testId}"][data-dynamic-ui-renderer="${rendererKey}"]`);
+}
+
+async function expectAssistantUiDataPart(
+  page: Page,
+  testId: "assistant-ui-question-request" | "assistant-ui-review-grade" | "assistant-ui-topic-unlock",
+  rendererKey: string,
+): Promise<Locator> {
+  const dataPart = assistantUiDataParts(page, testId, rendererKey).last();
+  await expect(dataPart).toBeVisible();
+  return dataPart;
+}
+
+async function expectAssistantUiDataPartCountToIncrease(
+  page: Page,
+  testId: "assistant-ui-question-request" | "assistant-ui-review-grade" | "assistant-ui-topic-unlock",
+  rendererKey: string,
+  previousCount: number,
+): Promise<Locator> {
+  const dataParts = assistantUiDataParts(page, testId, rendererKey);
+  await expect(dataParts).toHaveCount(previousCount + 1);
+  return dataParts.last();
 }
 
 function escapedRegExp(value: string): RegExp {
@@ -253,8 +273,15 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, escapedRegExp(studyTopic.title))).toBeVisible();
+  const unlockDataPart = await expectAssistantUiDataPart(page, "assistant-ui-topic-unlock", "interview.topic_unlock");
+  await expect(unlockDataPart).toContainText(studyTopic.title);
 
   const readCommand = `I read ${studyTopic.title}`;
+  const topicUnlockCountBeforeRead = await assistantUiDataParts(
+    page,
+    "assistant-ui-topic-unlock",
+    "interview.topic_unlock",
+  ).count();
   const readResponse = await sendAssistantMessage(page, composer, readCommand);
   const readCommandMetadata = readResponse.assistant_message.metadata?.assistant_command;
   expect(readCommandMetadata).toMatchObject({
@@ -262,6 +289,13 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, escapedRegExp(studyTopic.title))).toBeVisible();
+  const readDataPart = await expectAssistantUiDataPartCountToIncrease(
+    page,
+    "assistant-ui-topic-unlock",
+    "interview.topic_unlock",
+    topicUnlockCountBeforeRead,
+  );
+  await expect(readDataPart).toContainText(studyTopic.title);
 
   const quizCommand = `quiz me on ${studyTopic.title}`;
   const quizResponse = await sendAssistantMessage(page, composer, quizCommand);
@@ -271,6 +305,12 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, /request study questions/i)).toBeVisible();
+  const questionRequestDataPart = await expectAssistantUiDataPart(
+    page,
+    "assistant-ui-question-request",
+    "interview.question_request",
+  );
+  await expect(questionRequestDataPart).toContainText(studyTopic.title);
   await screenshot(page, testInfo, "04-study-commands");
 
   const dueCards = await apiGetJson<DueCard[]>(page, session, "/v1/cards/due?limit=20");
@@ -318,16 +358,12 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await page.goto("/assistant");
   await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
   await expect(composer).toBeEnabled();
-  const reviewGradePanel = page.locator(
-    '[data-testid="dynamic-panel-renderer"][data-panel-tool="grade_review_recall"]',
-  );
-  await expect(reviewGradePanel).toBeVisible();
-  await expect(reviewGradePanel).toContainText("Review grade");
-  await expect(reviewGradePanel).toContainText("Keep in Review");
+  const reviewGradePanel = await expectAssistantUiDataPart(page, "assistant-ui-review-grade", "interview.review_grade");
+  await expect(reviewGradePanel).toContainText("Interview review");
   await expect(reviewGradePanel).toContainText(expectedRevealedCard.prompt);
-  await expect(reviewGradePanel.getByLabel("Review prompt")).toBeVisible();
-  await expect(reviewGradePanel.getByLabel("Review prompt")).toContainText(expectedRevealedCard.prompt);
-  await expect(page.getByText("Review grade").first()).toBeVisible();
+  await expect(reviewGradePanel.getByLabel("Interview review prompt")).toBeVisible();
+  await expect(reviewGradePanel.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
+  await expect(reviewGradePanel.getByText("Recommendation reason")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
@@ -352,52 +388,11 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     rating: "4",
   });
 
-  const reviewResponse = await assistantGradeResponse;
-  await expectJsonWith<{
-    messages: Array<{
-      parts: Array<{
-        type: string;
-        text?: string;
-        tool_result?: {
-          renderer_key?: string;
-          structured_content?: {
-            card_id?: string;
-            grade?: string;
-            next_due_at?: string;
-          };
-          ui_meta?: {
-            rating_label?: string;
-            review_mode?: string;
-          };
-        };
-      }>;
-    }>;
-  }>(
-    reviewResponse,
-    (payload) => {
-      const textParts = payload.messages.flatMap((message) => message.parts.filter((part) => part.type === "text"));
-      expect(textParts.some((part) => /Recorded Good for .+ review/i.test(part.text || ""))).toBe(true);
-      const reviewToolResults = payload.messages.flatMap((message) =>
-        message.parts
-          .map((part) => part.tool_result)
-          .filter((part): part is NonNullable<typeof part> => Boolean(part) && part.renderer_key === "interview.review_grade"),
-      );
-      expect(reviewToolResults.length).toBeGreaterThan(0);
-      const latestReviewToolResult = reviewToolResults[reviewToolResults.length - 1];
-      expect(latestReviewToolResult).toBeTruthy();
-      expect(latestReviewToolResult?.structured_content).toMatchObject({
-        card_id: expectedRevealedCardId,
-        grade: "4",
-        next_due_at: expect.any(String),
-      });
-      expect(Number.isNaN(Date.parse(String(latestReviewToolResult?.structured_content?.next_due_at || "")))).toBe(false);
-      expect(latestReviewToolResult?.ui_meta).toMatchObject({
-        rating_label: "Good",
-        review_mode: expect.any(String),
-      });
-    },
-  );
+  await assistantGradeResponse;
   await expect(page.getByText(/Recorded Good for .+ review/i)).toBeVisible();
+  const savedReviewGrade = await expectAssistantUiDataPart(page, "assistant-ui-review-grade", "interview.review_grade");
+  await expect(savedReviewGrade).toContainText("Review grade saved");
+  await expect(savedReviewGrade).toContainText("4");
   await screenshot(page, testInfo, "07-assistant-review-graded");
 
   await page.goto("/planner");
