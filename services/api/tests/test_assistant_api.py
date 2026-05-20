@@ -5,11 +5,13 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import TypeAdapter
 
 from app.api.routes import assistant as assistant_routes
 from app.core.security import create_session_token, hash_passphrase
 from app.core.time import utc_now
 from app.db.storage import get_connection
+from app.schemas.assistant import AssistantMessagePart, AssistantRuntimeRequest, AssistantThreadSnapshot
 from app.services import (
     ai_runtime_service,
     ai_service,
@@ -413,6 +415,57 @@ def test_assistant_snapshot_exposes_strategic_context_cards(
 
     runtime_context_cards = runtime_request["context"]["strategic_context_cards"]
     assert [card["kind"] for card in runtime_context_cards] == ["goal_status", "project_status", "commitment_status"]
+
+
+
+def test_assistant_runtime_context_and_message_parts_validate_as_protocol_contract(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
+    monkeypatch.setattr(
+        ai_service,
+        "execute_chat_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")),
+    )
+
+    create_message = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "show me what UI actions you can take",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert create_message.status_code == 201
+    payload = create_message.json()
+    typed_snapshot = AssistantThreadSnapshot.model_validate(payload["snapshot"])
+    assistant_message = payload["snapshot"]["messages"][-1]
+    typed_parts = TypeAdapter(list[AssistantMessagePart]).validate_python(assistant_message["parts"])
+    part_types = [part.type for part in typed_parts]
+    assert {"text", "tool_call", "tool_result", "status"} <= set(part_types)
+
+    with get_connection() as conn:
+        thread = assistant_thread_service.get_thread(conn, "primary")
+        runtime_request = assistant_run_service._build_runtime_request(  # noqa: SLF001
+            conn,
+            thread_id=thread["id"],
+            content="Use this protocol context next.",
+            metadata={"surface": "assistant_web", "client_timezone": "UTC"},
+        )
+
+    typed_runtime_request = AssistantRuntimeRequest.model_validate(runtime_request)
+    assert typed_runtime_request.thread_id == typed_snapshot.id
+    assert typed_runtime_request.context.thread.slug == "primary"
+    assert typed_runtime_request.context.request_metadata["client_timezone"] == "UTC"
+    assert typed_runtime_request.context.ui_capabilities.version == "starlog.dynamic_ui_capabilities.v1"
+    assert any(
+        message.role == "assistant" and "structured tool output" in message.content
+        for message in typed_runtime_request.context.recent_messages
+    )
 
 
 def test_assistant_runtime_request_includes_recommendation_hints(
@@ -1427,6 +1480,54 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
     assert legacy.status_code == 200
     legacy_payload = legacy.json()
     assert any(message["content"] == "create task Review the diffusion notes" for message in legacy_payload["messages"])
+
+
+
+def test_assistant_due_date_interrupt_dismiss_records_protocol_resolution(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
+    create = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "create task Decide whether to file the draft",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+    assert create.status_code == 201
+    payload = create.json()
+    run_id = payload["run"]["id"]
+    interrupt = payload["run"]["current_interrupt"]
+    assert payload["run"]["status"] == "interrupted"
+    assert interrupt is not None
+    assert interrupt["status"] == "pending"
+
+    dismiss = client.post(f"/v1/assistant/interrupts/{interrupt['id']}/dismiss", headers=auth_headers)
+    assert dismiss.status_code == 200
+    snapshot = dismiss.json()
+    typed_snapshot = AssistantThreadSnapshot.model_validate(snapshot)
+
+    dismissed_interrupt = next(item for item in typed_snapshot.interrupts if item.id == interrupt["id"])
+    assert dismissed_interrupt.status == "dismissed"
+    assert dismissed_interrupt.resolution["action"] == "dismiss"
+    assert dismissed_interrupt.resolution["values"] == {}
+
+    cancelled_run = next(run for run in typed_snapshot.runs if run.id == run_id)
+    assert cancelled_run.status == "cancelled"
+    assert cancelled_run.current_interrupt is None
+
+    resolution_part = next(
+        part
+        for message in snapshot["messages"]
+        if message.get("run_id") == run_id and message["role"] == "assistant"
+        for part in TypeAdapter(list[AssistantMessagePart]).validate_python(message["parts"])
+        if part.type == "interrupt_resolution"
+    )
+    assert resolution_part.resolution["interrupt_id"] == interrupt["id"]
+    assert resolution_part.resolution["action"] == "dismiss"
 
 
 def test_create_interrupt_enriches_dynamic_ui_contract_fields(

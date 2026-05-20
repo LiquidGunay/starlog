@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -109,6 +109,120 @@ class AssistantInterrupt(BaseModel):
     created_at: datetime
     resolved_at: datetime | None = None
     resolution: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantTextPart(BaseModel):
+    type: Literal["text"]
+    id: str = Field(..., min_length=1)
+    text: str
+
+
+class AssistantCardPart(BaseModel):
+    type: Literal["card"]
+    id: str = Field(..., min_length=1)
+    card: AssistantCard
+
+
+class AssistantStatusPart(BaseModel):
+    type: Literal["status"]
+    id: str = Field(..., min_length=1)
+    status: str = Field(..., min_length=1)
+    label: str | None = None
+
+
+class AssistantToolCall(BaseModel):
+    id: str = Field(..., min_length=1)
+    tool_name: str = Field(..., min_length=1)
+    tool_kind: str = Field(default="system_tool", min_length=1)
+    status: str = Field(..., min_length=1)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    title: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantToolCallPart(BaseModel):
+    type: Literal["tool_call"]
+    id: str = Field(..., min_length=1)
+    tool_call: AssistantToolCall
+
+
+class AssistantToolResult(BaseModel):
+    id: str = Field(..., min_length=1)
+    tool_call_id: str = Field(..., min_length=1)
+    status: str = Field(..., min_length=1)
+    output: dict[str, Any] = Field(default_factory=dict)
+    renderer_key: str | None = None
+    renderer_version: int | None = None
+    placement: AssistantDynamicUiPlacement | None = None
+    structured_content: dict[str, Any] | None = None
+    ui_meta: dict[str, Any] | None = None
+    card: AssistantCard | None = None
+    entity_ref: AssistantEntityRef | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantToolResultPart(BaseModel):
+    type: Literal["tool_result"]
+    id: str = Field(..., min_length=1)
+    tool_result: AssistantToolResult
+
+
+class AssistantInterruptRequestPart(BaseModel):
+    type: Literal["interrupt_request"]
+    id: str = Field(..., min_length=1)
+    interrupt: AssistantInterrupt
+
+
+class AssistantInterruptResolutionPart(BaseModel):
+    type: Literal["interrupt_resolution"]
+    id: str = Field(..., min_length=1)
+    resolution: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantAmbientUpdate(BaseModel):
+    id: str = Field(..., min_length=1)
+    event_id: str = Field(..., min_length=1)
+    label: str
+    body: str | None = None
+    entity_ref: AssistantEntityRef | None = None
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | str
+
+
+class AssistantAmbientUpdatePart(BaseModel):
+    type: Literal["ambient_update"]
+    id: str = Field(..., min_length=1)
+    update: AssistantAmbientUpdate
+
+
+class AssistantAttachment(BaseModel):
+    id: str = Field(..., min_length=1)
+    kind: str = Field(..., min_length=1)
+    label: str = Field(..., min_length=1)
+    url: str | None = None
+    mime_type: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssistantAttachmentPart(BaseModel):
+    type: Literal["attachment"]
+    id: str = Field(..., min_length=1)
+    attachment: AssistantAttachment
+
+
+AssistantMessagePart = Annotated[
+    AssistantTextPart
+    | AssistantCardPart
+    | AssistantStatusPart
+    | AssistantToolCallPart
+    | AssistantToolResultPart
+    | AssistantInterruptRequestPart
+    | AssistantInterruptResolutionPart
+    | AssistantAmbientUpdatePart
+    | AssistantAttachmentPart,
+    Field(discriminator="type"),
+]
 
 
 class AssistantRunStep(BaseModel):
@@ -223,6 +337,52 @@ class AssistantCreateMessageResponse(BaseModel):
     user_message: AssistantThreadMessage
     assistant_message: AssistantThreadMessage
     snapshot: AssistantThreadSnapshot
+
+
+class AssistantRuntimeThreadContext(BaseModel):
+    id: str
+    slug: str
+    mode: str
+
+
+class AssistantRuntimeRecentMessage(BaseModel):
+    id: str
+    role: AssistantRole
+    content: str
+    cards: list[AssistantCard] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class AssistantRuntimeRecentToolTrace(BaseModel):
+    id: str
+    message_id: str | None = None
+    tool_name: str
+    status: str
+    result: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    projected_card: AssistantCard | None = None
+
+
+class AssistantRuntimeContext(BaseModel):
+    thread: AssistantRuntimeThreadContext
+    session_state: dict[str, Any] = Field(default_factory=dict)
+    recent_messages: list[AssistantRuntimeRecentMessage] = Field(default_factory=list)
+    recent_tool_traces: list[AssistantRuntimeRecentToolTrace] = Field(default_factory=list)
+    strategic_context_cards: list[AssistantCard] = Field(default_factory=list)
+    request_metadata: dict[str, Any] = Field(default_factory=dict)
+    memory_context: dict[str, Any] = Field(default_factory=dict)
+    assistant_memory_suggestions: list[dict[str, Any]] = Field(default_factory=list)
+    recommendation_hints: list[dict[str, Any]] = Field(default_factory=list)
+    ui_capabilities: AssistantDynamicUiCapabilityManifest
+
+
+class AssistantRuntimeRequest(BaseModel):
+    thread_id: str
+    title: str
+    text: str
+    context: AssistantRuntimeContext
 
 
 class AssistantInterruptSubmitRequest(BaseModel):

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.time import utc_now
 from app.schemas.agent import AgentCommandResponse, AgentCommandStep
+from app.schemas.assistant import AssistantRuntimeRequest
 from app.services import (
     agent_command_service,
     agent_service,
@@ -605,27 +606,30 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
                 "projected_card": projected_cards[0] if projected_cards else None,
             }
         )
-    return {
-        "thread_id": snapshot["id"],
-        "title": snapshot["title"],
-        "text": content,
-        "context": {
-            "thread": {
-                "id": snapshot["id"],
-                "slug": snapshot["slug"],
-                "mode": snapshot["mode"],
+    runtime_request = AssistantRuntimeRequest.model_validate(
+        {
+            "thread_id": snapshot["id"],
+            "title": snapshot["title"],
+            "text": content,
+            "context": {
+                "thread": {
+                    "id": snapshot["id"],
+                    "slug": snapshot["slug"],
+                    "mode": snapshot["mode"],
+                },
+                "session_state": snapshot.get("session_state", {}),
+                "recent_messages": recent_messages,
+                "recent_tool_traces": recent_tool_traces,
+                "strategic_context_cards": snapshot.get("context_cards", []),
+                "request_metadata": metadata,
+                "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
+                "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],
+                "recommendation_hints": memory_service.list_recommendation_hints(conn, limit=8),
+                "ui_capabilities": _ui_capability_manifest(),
             },
-            "session_state": snapshot.get("session_state", {}),
-            "recent_messages": recent_messages,
-            "recent_tool_traces": recent_tool_traces,
-            "strategic_context_cards": snapshot.get("context_cards", []),
-            "request_metadata": metadata,
-            "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
-            "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],
-            "recommendation_hints": memory_service.list_recommendation_hints(conn, limit=8),
-            "ui_capabilities": _ui_capability_manifest(),
-        },
-    }
+        }
+    )
+    return runtime_request.model_dump(mode="json")
 
 
 def _request_due_date_interrupt(conn: Connection, *, thread_id: str, run_id: str, content: str, title: str, arguments: dict[str, Any], input_mode: str, device_target: str, metadata: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
