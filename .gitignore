@@ -57,6 +57,7 @@ ios/
 *:Zone.Identifier
 
 # Playwright / local test artifacts
+/.tmp/
 test-results/
 apps/web/test-results/
 apps/web/tsconfig.live-functional.*.json
