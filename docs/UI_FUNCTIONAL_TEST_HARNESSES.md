@@ -147,29 +147,15 @@ the long-term web and native runtime, but the proof gaps are whether a command c
 Starlog protocol parts and complete the workflow end to end across web and native mobile, and whether
 the native surface can run that path repeatably through Android automation.
 
-## 2026-04-29 Run Notes
+## Historical Screenshot Comparisons
 
-Screenshot comparison artifacts for this pass are in:
+The old 2026-04-29 screenshot comparison folders were removed from git. Use this document for
+repeatable harness commands, `docs/CURRENT_STATE.md` for current confidence, and
+`artifacts/ui-concept/**` plus `docs/ASSISTANT_UI_REFERENCE.md` for target UI references.
 
-```text
-artifacts/ui-comparison/2026-04-29/
-```
-
-Runs completed during the comparison pass:
-
-- PWA Assistant + Library + Review targeted functional refresh: `15 passed`.
-- Production PWA dynamic panel renderer: `4 passed`.
-- Mobile Assistant targeted functional refresh: `4 passed`.
-- Mobile Planner focused rerun: `1 passed`.
-- PWA Planner targeted run: `1 failed, 1 passed`.
-- Mobile Library + Planner focused rerun: `1 failed, 1 passed`.
-
-Observed current failures:
-
-- PWA Planner first test expected the April 28 execution plan after date selection, but did not find the expected April 28 heading.
-- Mobile Library main test found the expected detail link `href`, but `tap()` did not navigate to `/library/captures/art_capture_focus`.
-
-These are current-state findings, not expected behavior.
+When a visual pass needs evidence, write fresh output to the harness default output location,
+`.localdata/`, `/tmp`, or a single explicitly requested latest proof bundle. Do not commit dated
+historical comparison folders as ongoing source of truth.
 
 ## Native Mobile Gap
 
@@ -191,7 +177,7 @@ instability, so treat older installed-device evidence as historical context for 
 shell/thread/composer markers and dynamic-panel host path. It is not yet a complete, repeatable Android
 functional automation suite for the full server-owned native assistant-ui runtime.
 
-Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. A fresh active-device pass on 2026-04-29 captured native Assistant, Library, Planner, and Review screenshots under `artifacts/phone-current/2026-04-29/`. On this device, `adb shell svc power stayon true` exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture.
+Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. On this device, `adb shell svc power stayon true` has exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture and publish only the latest requested evidence bundle.
 
 ## Native Android Interview Functional Capture
 

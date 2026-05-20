@@ -63,7 +63,8 @@ Date: 2026-03-30
   - `apps/mobile/assets/splash.png` (`512x512`)
 - QA evidence screenshots:
   - production QA screenshots should come from the signed production APK, not an old preview RC APK
-  - store-current screenshots should be collected in a dated artifact folder, for example `artifacts/phone-current/<date>/`
+  - store-current screenshots should be collected in the current release evidence location, not
+    committed as an accumulating dated screenshot archive
 
 ## 4) Permissions + data safety inventory
 

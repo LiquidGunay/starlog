@@ -237,14 +237,16 @@ Examples:
 
 ### `artifacts`
 
-Use `artifacts/` for generated evidence rather than prose guidance.
+Use `artifacts/` only for active repo-local reference material or an explicitly requested latest
+proof/release bundle. Do not commit accumulating dated screenshot comparisons, old smoke logs, or
+historical proof folders. Prefer `.localdata/`, `/tmp`, ignored build outputs, or external release
+storage for generated evidence.
 
-Examples:
+Examples that may belong here when current and intentional:
 
-- screenshots
-- smoke logs
-- exported proof bundles
-- release artifacts
+- active UI concept references
+- latest proof bundle requested for review
+- release artifacts that are intentionally part of a handoff
 
 ## How to decide where a change belongs
 

@@ -481,10 +481,10 @@ Important path constraint that still applies:
 - the same run can then use `./scripts/android_native_smoke.sh` with `SKIP_INSTALL=1` for launch,
   deep-link, and text-share verification
 
-Fresh device evidence should be written to a dated artifact folder, for example:
-
-- `artifacts/phone-current/<date>/`
-- `artifacts/cross-surface-proof/<timestamp>/phone-app/`
+Fresh device evidence should be written to the current validation output, for example
+`.localdata/android-local-validation/builds/latest.json` plus its companion files, or to a single
+explicitly requested latest cross-surface proof bundle. Do not keep accumulating dated phone screenshot
+folders in git.
 
 ## First-time setup
 
