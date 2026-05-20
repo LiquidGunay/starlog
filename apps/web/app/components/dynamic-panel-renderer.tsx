@@ -17,6 +17,8 @@ type DynamicPanelRendererProps = {
 type PanelTone = "task" | "capture" | "planner" | "review" | "focus" | "clarify" | "defer" | "entity" | "default";
 type SetValues = Dispatch<SetStateAction<Record<string, unknown>>>;
 
+const panelDraftValues = new Map<string, Record<string, unknown>>();
+
 const REVIEW_VALUES: Record<string, { label: string; hint: string }> = {
   "1": { label: "Again", hint: "Review soon" },
   "3": { label: "Hard", hint: "Keep it close" },
@@ -42,6 +44,10 @@ function initialValues(interrupt: AssistantInterrupt): Record<string, unknown> {
     accumulator[field.id] = valueForField(field, interrupt);
     return accumulator;
   }, {});
+}
+
+function draftValuesForInterrupt(interrupt: AssistantInterrupt): Record<string, unknown> {
+  return { ...(panelDraftValues.get(interrupt.id) || initialValues(interrupt)) };
 }
 
 function domIdSegment(value: string): string {
@@ -796,12 +802,13 @@ function EmptyConfirmPanel() {
 }
 
 export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: DynamicPanelRendererProps) {
-  const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(interrupt));
+  const [values, setValues] = useState<Record<string, unknown>>(() => draftValuesForInterrupt(interrupt));
   const valuesRef = useRef<Record<string, unknown>>(values);
   const interruptIdRef = useRef(interrupt.id);
   const setPanelValues: SetValues = (action) => {
     const nextValues = typeof action === "function" ? action(valuesRef.current) : action;
     valuesRef.current = nextValues;
+    panelDraftValues.set(interrupt.id, nextValues);
     setValues(nextValues);
   };
   const variant = panelTone(interrupt);
@@ -819,7 +826,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
     if (interruptIdRef.current === interrupt.id) {
       return;
     }
-    const nextValues = initialValues(interrupt);
+    const nextValues = draftValuesForInterrupt(interrupt);
     interruptIdRef.current = interrupt.id;
     valuesRef.current = nextValues;
     setValues(nextValues);

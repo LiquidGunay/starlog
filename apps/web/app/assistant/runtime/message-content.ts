@@ -32,14 +32,25 @@ function dynamicUiPart<Source extends "card" | "interrupt" | "tool_result">(
       : Extract<AssistantThreadMessage["parts"][number], { type: "tool_result" }>["tool_result"],
 ) {
   const viewModel = createDynamicUiViewModel(source, input as never);
+  const rendererName = assistantUiDataPartName(viewModel.rendererKey);
   if (!isStarlogKnownRendererKey(viewModel.rendererKey)) {
     return null;
   }
-  if (!viewModel.rendererKey.startsWith("interview.")) {
+  if (!rendererName) {
     return null;
   }
 
-  return dataPart(viewModel.rendererKey, { source, input });
+  return dataPart(rendererName, { source, input });
+}
+
+function assistantUiDataPartName(rendererKey: string): string | null {
+  if (rendererKey.startsWith("interview.")) {
+    return rendererKey;
+  }
+  if (rendererKey === "grade_review_recall") {
+    return "interview.review_grade";
+  }
+  return null;
 }
 
 function interruptAssistantUiMetadata(

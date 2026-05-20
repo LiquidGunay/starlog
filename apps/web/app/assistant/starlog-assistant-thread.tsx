@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -91,6 +91,13 @@ const REVIEW_GRADES = [
   { value: "4", label: "Good", hint: "Move forward" },
   { value: "5", label: "Easy", hint: "Stretch interval" },
 ];
+
+type ReviewGradeDraft = {
+  selected: string;
+  supportAction: string;
+};
+
+const reviewGradeDraftValues = new Map<string, ReviewGradeDraft>();
 
 const SHORTCUTS = [
   { label: "Capture", prompt: "Capture " },
@@ -500,11 +507,28 @@ function ReviewGradeDataPart({
     interrupt.fields.find((field) => (field.kind === "select" || field.kind === "priority") && !isSupportField(field));
   const supportField = interrupt.fields.find(isSupportField);
   const options = fieldOptions(ratingField);
-  const [selected, setSelected] = useState(() => fieldValue(ratingField, interrupt));
-  const [supportAction, setSupportAction] = useState(() => {
+  const ratingFieldId = ratingField?.id || "rating";
+  const supportFieldId = supportField?.id || null;
+  const initialSupportAction = () => {
     const value = supportField ? fieldValue(supportField, interrupt) : "";
     return supportField?.options?.some((option) => option.value === value) ? value : "";
-  });
+  };
+  const initialDraft = (): ReviewGradeDraft =>
+    reviewGradeDraftValues.get(interrupt.id) || {
+      selected: fieldValue(ratingField, interrupt),
+      supportAction: initialSupportAction(),
+    };
+  const [selected, setSelectedState] = useState(() => initialDraft().selected);
+  const [supportAction, setSupportActionState] = useState(() => initialDraft().supportAction);
+  const setSelected = (value: string) => {
+    reviewGradeDraftValues.set(interrupt.id, { selected: value, supportAction });
+    setSelectedState(value);
+  };
+  const setSupportAction = (action: SetStateAction<string>) => {
+    const nextSupportAction = typeof action === "function" ? action(supportAction) : action;
+    reviewGradeDraftValues.set(interrupt.id, { selected, supportAction: nextSupportAction });
+    setSupportActionState(nextSupportAction);
+  };
   const prompt =
     firstText(
       metadata.prompt,
@@ -530,20 +554,12 @@ function ReviewGradeDataPart({
     ) || "This grade updates the next review interval and keeps the interview loop focused on weak recall.";
 
   useEffect(() => {
-    setSelected(fieldValue(ratingField, interrupt));
-  }, [interrupt, ratingField]);
-
-  useEffect(() => {
-    if (!supportField) {
-      setSupportAction("");
-      return;
-    }
-    const value = fieldValue(supportField, interrupt);
-    setSupportAction(supportField.options?.some((option) => option.value === value) ? value : "");
-  }, [interrupt, supportField]);
+    const nextDraft = initialDraft();
+    setSelectedState(nextDraft.selected);
+    setSupportActionState(nextDraft.supportAction);
+  }, [interrupt.id, ratingFieldId, supportFieldId]);
 
   const submit = () => {
-    const fieldId = ratingField?.id || "rating";
     const values = interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
       if (field.value !== undefined) {
         accumulator[field.id] = field.value;
@@ -553,7 +569,7 @@ function ReviewGradeDataPart({
       }
       return accumulator;
     }, {});
-    values[fieldId] = selected;
+    values[ratingFieldId] = selected;
     if (supportField && supportAction) {
       values[supportField.id] = supportAction;
     }

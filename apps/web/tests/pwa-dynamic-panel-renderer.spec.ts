@@ -395,8 +395,11 @@ test("submits and dismisses dynamic panels through existing assistant interrupt 
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowIso = tomorrow.toISOString().slice(0, 10);
   await taskPanel.getByRole("button", { name: "Tomorrow", exact: true }).click();
+  await expect(taskPanel.getByLabel("Due date")).toHaveValue(tomorrowIso);
   await taskPanel.getByRole("radio", { name: "Priority 4" }).click();
+  await expect(taskPanel.getByRole("radio", { name: "Priority 4" })).toHaveAttribute("aria-checked", "true");
   await taskPanel.getByLabel("Create 45m block").check();
+  await expect(taskPanel.getByLabel("Create 45m block")).toBeChecked();
   await taskPanel.getByRole("button", { name: "Create task" }).click();
 
   await expect.poll(() => submissions.length).toBe(1);
