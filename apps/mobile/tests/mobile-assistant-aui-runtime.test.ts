@@ -109,11 +109,13 @@ async function runTests() {
   const {
     MOBILE_STARLOG_ASSISTANT_RUNTIME_MODE,
     MobileStarlogAssistantRuntime,
-    mobileStarlogAssistantReadOnlyAdapter,
+    createMobileStarlogAssistantProtocolAdapter,
+    latestAssistantUiUserText,
   } = require("../src/mobile-assistant-aui-thread");
 
-  assert.equal(MOBILE_STARLOG_ASSISTANT_RUNTIME_MODE, "server-owned-local-read-only");
+  assert.equal(MOBILE_STARLOG_ASSISTANT_RUNTIME_MODE, "server-owned-local-protocol-bridge");
 
+  const sentMessages: string[] = [];
   const assistantUiMessages = [
     {
       id: "starlog-message",
@@ -126,29 +128,66 @@ async function runTests() {
 
   const tree = MobileStarlogAssistantRuntime({
     assistantUiMessages,
+    onSendMessage: async (content: string) => {
+      sentMessages.push(content);
+    },
     children: "child",
   });
 
   assert.equal(typeof (tree as { type: unknown }).type, "function");
   assert.deepEqual((tree as { props: Record<string, unknown> }).props.runtime, { runtime: "local" });
   assert.deepEqual(capturedLocalRuntime?.options?.initialMessages, assistantUiMessages);
-  assert.equal(capturedLocalRuntime?.adapter, mobileStarlogAssistantReadOnlyAdapter);
 
   const run = capturedLocalRuntime?.adapter.run({
-    messages: [{ role: "user", content: [{ type: "text", text: "Please send this." }] }],
+    messages: [
+      { role: "assistant", content: [{ type: "text", text: "Previous assistant reply." }] },
+      { role: "user", content: [{ type: "text", text: "Please send this." }] },
+    ],
   });
   if (!run) {
     throw new Error("Expected MobileStarlogAssistantRuntime to configure a LocalRuntime adapter.");
   }
 
   const first = await run.next();
+  assert.deepEqual(sentMessages, ["Please send this."]);
   assert.deepEqual(first.value, {
-    content: "Starlog is syncing the native assistant thread.",
+    content: "Starlog is sending this through the native assistant thread.",
   });
 
   const second = await run.next();
   assert.equal(second.done, true);
   assert.equal(JSON.stringify(first.value).includes("Please send this."), false);
+
+  assert.equal(
+    latestAssistantUiUserText({
+      messages: [
+        { role: "user", content: "Earlier draft" },
+        { role: "assistant", content: [{ type: "text", text: "Reply" }] },
+        { role: "user", content: [{ type: "text", text: "Latest draft" }] },
+      ],
+    }),
+    "Latest draft",
+  );
+
+  const disabledSentMessages: string[] = [];
+  const disabledRun = createMobileStarlogAssistantProtocolAdapter({
+    disabled: true,
+    onSendMessage: async (content: string) => {
+      disabledSentMessages.push(content);
+    },
+  }).run({ messages: [{ role: "user", content: [{ type: "text", text: "Wait should block this." }] }] });
+  assert.deepEqual(await disabledRun.next(), {
+    done: false,
+    value: { content: "Starlog is waiting for the current Assistant reply to finish." },
+  });
+  assert.deepEqual(disabledSentMessages, []);
+  assert.equal((await disabledRun.next()).done, true);
+
+  const emptyRun = createMobileStarlogAssistantProtocolAdapter().run({ messages: [{ role: "assistant", content: "No user turn" }] });
+  assert.deepEqual(await emptyRun.next(), {
+    done: false,
+    value: { content: "Enter an Assistant message first." },
+  });
 }
 
 runTests()

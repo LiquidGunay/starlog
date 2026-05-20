@@ -120,7 +120,7 @@ type MobileAssistantRebuildProps = {
   pendingConversationTurn: boolean;
   homeDraft: string;
   setHomeDraft: (value: string) => void;
-  runAssistantTurn: () => void;
+  runAssistantTurn: (commandOverride?: string) => void;
   onVoiceAction: () => void;
   onCancelVoiceAction: () => void;
   voiceActionState: "idle" | "listening" | "recording" | "ready";
@@ -1405,6 +1405,7 @@ function DynamicPanelRenderer({
           <View style={{ flexDirection: panelLayout.actionDirection, gap: 8, flexWrap: panelLayout.actionWraps ? "wrap" : "nowrap" }}>
             <TouchableOpacity
               accessibilityRole="button"
+              testID={`mobile-dynamic-panel-submit-${interrupt.id}`}
               style={{
                 flexGrow: 1,
                 flexBasis: panelLayout.actionPrimaryBasis,
@@ -1424,6 +1425,7 @@ function DynamicPanelRenderer({
             </TouchableOpacity>
             <TouchableOpacity
               accessibilityRole="button"
+              testID={`mobile-dynamic-panel-secondary-${interrupt.id}`}
               style={{
                 flexGrow: 1,
                 flexBasis: panelLayout.actionSecondaryBasis,
@@ -1788,7 +1790,7 @@ export function MobileAssistantRebuild({
             backgroundColor: pendingConversationTurn ? "rgba(255,255,255,0.12)" : palette.accent,
           }}
           disabled={pendingConversationTurn}
-          onPress={runAssistantTurn}
+          onPress={() => runAssistantTurn()}
           accessibilityRole="button"
           accessibilityLabel="Send assistant message"
           testID="assistant-send-message"
@@ -2178,6 +2180,8 @@ export function MobileAssistantRebuild({
               messages={visibleThreadMessages}
               liveInterrupts={liveInterrupts}
               palette={palette}
+              pendingConversationTurn={pendingConversationTurn}
+              onSendMessage={runAssistantTurn}
               renderDynamicPanelHostForMessage={(interrupts) => (
                 <MobileDynamicPanelHost
                   interrupts={interrupts}

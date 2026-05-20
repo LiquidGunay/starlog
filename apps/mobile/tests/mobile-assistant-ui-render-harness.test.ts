@@ -423,6 +423,89 @@ try {
 
   {
     resetHooks();
+    currentAssistantUiMessages = [];
+    assistantUiComposerText = "";
+    const active = interrupt({ id: "focus-submit-panel", tool_name: "choose_morning_focus" });
+    const submits: Array<{ id: string; values: Record<string, unknown> }> = [];
+    const dismisses: string[] = [];
+    const message: AssistantThreadMessage = {
+      id: "msg_focus_submit_panel",
+      thread_id: "primary",
+      run_id: "run-focus",
+      role: "assistant",
+      status: "requires_action",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        { type: "text", id: "part-text", text: "Pick the next focus." },
+        { type: "interrupt_request", id: "part-focus", interrupt: active },
+      ],
+    };
+
+    const tree = renderWithHooks(() =>
+      MobileAssistantRebuild({
+        styles: {},
+        palette: {
+          ...palette,
+          onAccent: "#0f172a",
+          error: "#ffb4b7",
+        },
+        pendingConversationTurn: false,
+        homeDraft: "",
+        setHomeDraft: () => undefined,
+        runAssistantTurn: () => undefined,
+        onVoiceAction: () => undefined,
+        onCancelVoiceAction: () => undefined,
+        voiceActionState: "idle",
+        voiceActionHint: null,
+        refreshThread: () => undefined,
+        resetConversationSession: () => undefined,
+        threadSnapshot: {
+          id: "primary",
+          slug: "primary",
+          title: "Primary",
+          mode: "assistant",
+          messages: [message],
+          interrupts: [active],
+          next_cursor: null,
+          updated_at: "2026-05-19T05:00:00Z",
+          metadata: {},
+        },
+        visibleThreadMessages: [message],
+        hiddenThreadMessageCount: 0,
+        previewCommandFlow: () => undefined,
+        formatCardMeta: () => "",
+        onCardAction: () => undefined,
+        onInterruptSubmit: (id: string, values: Record<string, unknown>) => {
+          submits.push({ id, values });
+        },
+        onInterruptDismiss: (id: string) => {
+          dismisses.push(id);
+        },
+        reuseCardText: () => undefined,
+        onOpenEntityRef: () => undefined,
+        onOpenAttachment: () => undefined,
+        assistantTodaySummary: null,
+        assistantWeeklySummary: null,
+        onAssistantTodayAction: () => undefined,
+      }),
+    );
+
+    const submitButton = findByTestId(tree, "mobile-dynamic-panel-submit-focus-submit-panel")[0];
+    const dismissButton = findByTestId(tree, "mobile-dynamic-panel-secondary-focus-submit-panel")[0];
+    assert.equal(typeof submitButton.props.onPress, "function");
+    assert.equal(typeof dismissButton.props.onPress, "function");
+
+    (submitButton.props.onPress as () => void)();
+    (dismissButton.props.onPress as () => void)();
+
+    assert.deepEqual(submits, [{ id: "focus-submit-panel", values: { focus: "project" } }]);
+    assert.deepEqual(dismisses, ["focus-submit-panel"]);
+  }
+
+  {
+    resetHooks();
     const active = interrupt({ id: "focus-panel", tool_name: "choose_morning_focus" });
     const queued = interrupt({
       id: "conflict-panel",

@@ -3551,8 +3551,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     await submitAssistantCommand(command, execute);
   }
 
-  async function runAssistantTurn() {
-    const command = homeDraft.trim();
+  async function runAssistantTurn(commandOverride?: string) {
+    const command = (commandOverride ?? homeDraft).trim();
     await sendConversationTurn(command);
   }
 

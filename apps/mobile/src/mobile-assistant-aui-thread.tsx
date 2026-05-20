@@ -26,6 +26,8 @@ type MobileAssistantUiThreadProps = {
   messages: AssistantThreadMessage[];
   liveInterrupts?: AssistantInterrupt[];
   palette: Record<string, string>;
+  pendingConversationTurn?: boolean;
+  onSendMessage?: (content: string) => void | Promise<void>;
 };
 
 type MobileAssistantUiShellProps = MobileAssistantUiThreadProps & {
@@ -43,7 +45,78 @@ type MobileAssistantUiComposerBridgeProps = {
   inputStyle: ComponentProps<typeof RNTextInput>["style"];
 };
 
-export const MOBILE_STARLOG_ASSISTANT_RUNTIME_MODE = "server-owned-local-read-only" as const;
+export const MOBILE_STARLOG_ASSISTANT_RUNTIME_MODE = "server-owned-local-protocol-bridge" as const;
+
+type MobileStarlogAssistantProtocolAdapterOptions = {
+  disabled?: boolean;
+  onSendMessage?: (content: string) => void | Promise<void>;
+};
+
+function textFromAssistantUiContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object") {
+        return "";
+      }
+      const record = part as Record<string, unknown>;
+      return record.type === "text" && typeof record.text === "string" ? record.text : "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function latestAssistantUiUserText(runInput: unknown): string {
+  const candidate = runInput as { messages?: unknown[] } | null;
+  const messages = Array.isArray(candidate?.messages) ? candidate.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+    const record = message as Record<string, unknown>;
+    if (record.role !== "user") {
+      continue;
+    }
+    const text = textFromAssistantUiContent(record.content).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+export function createMobileStarlogAssistantProtocolAdapter({
+  disabled,
+  onSendMessage,
+}: MobileStarlogAssistantProtocolAdapterOptions = {}): ChatModelAdapter {
+  return {
+    async *run(runInput: unknown) {
+      const content = latestAssistantUiUserText(runInput);
+      if (!content) {
+        yield {
+          content: "Enter an Assistant message first.",
+        };
+        return;
+      }
+      if (disabled) {
+        yield {
+          content: "Starlog is waiting for the current Assistant reply to finish.",
+        };
+        return;
+      }
+      await onSendMessage?.(content);
+      yield {
+        content: "Starlog is sending this through the native assistant thread.",
+      };
+    },
+  };
+}
 
 export const mobileStarlogAssistantReadOnlyAdapter: ChatModelAdapter = {
   async *run() {
@@ -55,11 +128,22 @@ export const mobileStarlogAssistantReadOnlyAdapter: ChatModelAdapter = {
 
 export type MobileStarlogAssistantRuntimeProps = {
   assistantUiMessages: ThreadMessageLike[];
+  pendingConversationTurn?: boolean;
+  onSendMessage?: (content: string) => void | Promise<void>;
   children: ReactNode;
 };
 
-export function MobileStarlogAssistantRuntime({ assistantUiMessages, children }: MobileStarlogAssistantRuntimeProps) {
-  const runtime = useLocalRuntime(mobileStarlogAssistantReadOnlyAdapter, { initialMessages: assistantUiMessages });
+export function MobileStarlogAssistantRuntime({
+  assistantUiMessages,
+  pendingConversationTurn,
+  onSendMessage,
+  children,
+}: MobileStarlogAssistantRuntimeProps) {
+  const adapter = useMemo(
+    () => createMobileStarlogAssistantProtocolAdapter({ disabled: pendingConversationTurn, onSendMessage }),
+    [onSendMessage, pendingConversationTurn],
+  );
+  const runtime = useLocalRuntime(adapter, { initialMessages: assistantUiMessages });
 
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
 }
@@ -267,6 +351,8 @@ function AssistantUiRuntimeShell({
   renderCompatibilityForMessage,
   renderDynamicPanelHostForMessage,
   liveInterrupts,
+  pendingConversationTurn,
+  onSendMessage,
 }: {
   assistantUiMessages: ThreadMessageLike[];
   sourceMessagesById: Map<string, AssistantThreadMessage>;
@@ -274,6 +360,8 @@ function AssistantUiRuntimeShell({
   renderCompatibilityForMessage?: (message: AssistantThreadMessage) => ReactNode;
   renderDynamicPanelHostForMessage?: (interrupts: AssistantInterrupt[], message: MobileAssistantUiThreadMessage) => ReactNode;
   liveInterrupts?: AssistantInterrupt[];
+  pendingConversationTurn?: boolean;
+  onSendMessage?: (content: string) => void | Promise<void>;
 }) {
   const components = useMemo(
     () => ({
@@ -291,7 +379,11 @@ function AssistantUiRuntimeShell({
   );
 
   return (
-    <MobileStarlogAssistantRuntime assistantUiMessages={assistantUiMessages}>
+    <MobileStarlogAssistantRuntime
+      assistantUiMessages={assistantUiMessages}
+      pendingConversationTurn={pendingConversationTurn}
+      onSendMessage={onSendMessage}
+    >
       <View
         testID="assistant-ui-shell"
         accessibilityRole="summary"
@@ -399,6 +491,8 @@ export function MobileAssistantUiShell({
   messages,
   liveInterrupts,
   palette,
+  pendingConversationTurn,
+  onSendMessage,
   renderCompatibilityForMessage,
   renderDynamicPanelHostForMessage,
 }: MobileAssistantUiShellProps) {
@@ -416,6 +510,8 @@ export function MobileAssistantUiShell({
       assistantUiMessages={assistantUiMessages}
       sourceMessagesById={sourceMessagesById}
       palette={palette}
+      pendingConversationTurn={pendingConversationTurn}
+      onSendMessage={onSendMessage}
       renderCompatibilityForMessage={renderCompatibilityForMessage}
       renderDynamicPanelHostForMessage={renderDynamicPanelHostForMessage}
       liveInterrupts={liveInterrupts}
@@ -423,6 +519,20 @@ export function MobileAssistantUiShell({
   );
 }
 
-export function MobileAssistantUiThread({ messages, liveInterrupts, palette }: MobileAssistantUiThreadProps) {
-  return <MobileAssistantUiShell messages={messages} liveInterrupts={liveInterrupts} palette={palette} />;
+export function MobileAssistantUiThread({
+  messages,
+  liveInterrupts,
+  palette,
+  pendingConversationTurn,
+  onSendMessage,
+}: MobileAssistantUiThreadProps) {
+  return (
+    <MobileAssistantUiShell
+      messages={messages}
+      liveInterrupts={liveInterrupts}
+      palette={palette}
+      pendingConversationTurn={pendingConversationTurn}
+      onSendMessage={onSendMessage}
+    />
+  );
 }
