@@ -32,11 +32,13 @@ ASSISTANT_COMMAND_TEXT="${ASSISTANT_COMMAND_TEXT:-Ask, capture, plan, review, or
 ASSISTANT_CAPABILITY_COMMAND="${ASSISTANT_CAPABILITY_COMMAND:-show me what UI actions you can take}"
 ASSISTANT_COMMAND="${ASSISTANT_COMMAND:-summarize latest artifact}"
 ADB_INSTALL_TIMEOUT_SEC="${ADB_INSTALL_TIMEOUT_SEC:-900}"
+SKIP_ADB_PREFLIGHT="${SKIP_ADB_PREFLIGHT:-0}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BUILD_DIR="$BUILD_ROOT/$STAMP"
 RUNTIME_DIR="$RUNTIME_ROOT/$STAMP"
 SCREENSHOT_DIR="$BUILD_DIR/screens"
 API_LOG="$BUILD_DIR/local-api.log"
+ADB_PREFLIGHT_LOG="$BUILD_DIR/adb-preflight.log"
 UI_XML="$BUILD_DIR/window_dump.xml"
 BUILD_NAME="starlog-dev-${STAMP}-${STARLOG_ANDROID_VERSION_CODE}.apk"
 STAGED_APK="$BUILD_DIR/$BUILD_NAME"
@@ -53,6 +55,7 @@ PLANNER_ALARM_CONTROL_DIAGNOSTICS=""
 STARLOG_LOCAL_ACCESS_TOKEN=""
 VALIDATION_PASSED=0
 FAILURE_METADATA_WRITTEN=0
+ADB_PREFLIGHT_ONLY=0
 
 usage() {
   cat <<EOF
@@ -84,8 +87,13 @@ Environment overrides:
   SKIP_BUILD                    1 to reuse an existing APK instead of rebuilding
   EXISTING_APK_PATH             existing APK path to reuse when SKIP_BUILD=1
   ADB_INSTALL_TIMEOUT_SEC       adb install timeout (default 900 seconds)
+  SKIP_ADB_PREFLIGHT            1 to intentionally skip the adb preflight
   API_PORT / API_BASE           local API endpoint for the mobile login flow
   WINDOWS_TEMP_ROOT             Windows-visible APK staging root
+
+Options:
+  --adb-preflight-only          Check adb/device readiness, then exit before build/API work
+  --help                        Show this help
 EOF
 }
 
@@ -219,6 +227,129 @@ adb_cmd() {
   "$ADB" "$@"
 }
 
+truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+compact_adb_output() {
+  tr '\r\n' '  ' \
+    | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//' \
+    | cut -c 1-500
+}
+
+adb_preflight_failure_reason() {
+  local context="$1"
+  local output="$2"
+  local compact_output
+  compact_output="$(printf '%s' "$output" | compact_adb_output)"
+
+  if grep -Eqi 'UtilAcceptVsock|accept4 failed|vsock|WSL.*(bridge|error)|failed to start daemon|cannot connect to daemon' <<<"$output"; then
+    printf 'ADB preflight failed: adb bridge unavailable while %s using %s%s. Output: %s' \
+      "$context" \
+      "$ADB" \
+      "${ADB_SERIAL:+ (ADB_SERIAL=$ADB_SERIAL)}" \
+      "${compact_output:-none}"
+    return
+  fi
+
+  printf 'ADB preflight failed while %s using %s%s. Output: %s' \
+    "$context" \
+    "$ADB" \
+    "${ADB_SERIAL:+ (ADB_SERIAL=$ADB_SERIAL)}" \
+    "${compact_output:-none}"
+}
+
+prepare_preflight_dirs() {
+  mkdir -p "$BUILD_DIR" "$SCREENSHOT_DIR" "$BUILD_ROOT"
+}
+
+ensure_adb_available() {
+  [[ -x "$ANDROID_SDK_ROOT/platform-tools/adb" || -f "$ADB" || -n "$(command -v "$ADB" 2>/dev/null || true)" ]] \
+    || fail "Android SDK/adb not found"
+}
+
+adb_device_state_from_devices_output() {
+  local devices_output="$1"
+  local serial="$2"
+  awk -v serial="$serial" 'NR > 1 && $1 == serial { print $2; found=1; exit } END { if (!found) exit 1 }' <<<"$devices_output"
+}
+
+run_adb_preflight() {
+  if truthy "$SKIP_ADB_PREFLIGHT"; then
+    log "Skipping adb preflight because SKIP_ADB_PREFLIGHT=$SKIP_ADB_PREFLIGHT"
+    return 0
+  fi
+
+  prepare_preflight_dirs
+  : >"$ADB_PREFLIGHT_LOG"
+  log "Running adb preflight with $ADB${ADB_SERIAL:+ (ADB_SERIAL=$ADB_SERIAL)}"
+
+  local devices_output=""
+  if ! devices_output="$("$ADB" devices -l 2>&1)"; then
+    printf '%s\n' "$devices_output" >"$ADB_PREFLIGHT_LOG"
+    fail "$(adb_preflight_failure_reason "listing devices" "$devices_output")"
+  fi
+  printf '%s\n' "$devices_output" >"$ADB_PREFLIGHT_LOG"
+
+  local ready_serials=()
+  local serial=""
+  while IFS= read -r serial; do
+    [[ -n "$serial" ]] && ready_serials+=("$serial")
+  done < <(awk 'NR > 1 && $2 == "device" { print $1 }' <<<"$devices_output")
+
+  if [[ -n "$ADB_SERIAL" ]]; then
+    local target_state=""
+    target_state="$(adb_device_state_from_devices_output "$devices_output" "$ADB_SERIAL" || true)"
+    if [[ "$target_state" != "device" ]]; then
+      if [[ -n "$target_state" ]]; then
+        fail "ADB preflight failed: target ADB_SERIAL=$ADB_SERIAL is '$target_state', not 'device'. See $ADB_PREFLIGHT_LOG."
+      fi
+      fail "ADB preflight failed: target ADB_SERIAL=$ADB_SERIAL was not listed by '$ADB devices -l'. See $ADB_PREFLIGHT_LOG."
+    fi
+  else
+    case "${#ready_serials[@]}" in
+      0)
+        if grep -Eqi 'UtilAcceptVsock|accept4 failed|vsock|WSL.*(bridge|error)|failed to start daemon|cannot connect to daemon' <<<"$devices_output"; then
+          fail "$(adb_preflight_failure_reason "listing devices" "$devices_output")"
+        fi
+        fail "ADB preflight failed: no ready adb device was listed by '$ADB devices -l'. Connect/unlock the phone, repair the adb bridge, or set SKIP_ADB_PREFLIGHT=1 intentionally. See $ADB_PREFLIGHT_LOG."
+        ;;
+      1)
+        ADB_SERIAL="${ready_serials[0]}"
+        log "ADB preflight selected device $ADB_SERIAL"
+        ;;
+      *)
+        fail "ADB preflight failed: multiple ready adb devices found (${ready_serials[*]}). Set ADB_SERIAL to the intended target."
+        ;;
+    esac
+  fi
+
+  local boot_output=""
+  if ! boot_output="$(adb_cmd shell getprop sys.boot_completed 2>&1)"; then
+    printf '\n$ adb shell getprop sys.boot_completed\n%s\n' "$boot_output" >>"$ADB_PREFLIGHT_LOG"
+    fail "$(adb_preflight_failure_reason "checking sys.boot_completed" "$boot_output")"
+  fi
+  printf '\n$ adb shell getprop sys.boot_completed\n%s\n' "$boot_output" >>"$ADB_PREFLIGHT_LOG"
+
+  local boot_completed
+  boot_completed="$(tr -d '\r\n' <<<"$boot_output")"
+  if [[ "$boot_completed" != "1" ]]; then
+    fail "ADB preflight failed: target ${ADB_SERIAL:-auto} is connected but Android boot is not complete (sys.boot_completed=${boot_completed:-unset}). See $ADB_PREFLIGHT_LOG."
+  fi
+
+  adb_cmd shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  if ! adb_cmd shell svc power stayon usb >/dev/null 2>&1; then
+    adb_cmd shell svc power stayon true >/dev/null 2>&1 || true
+  fi
+
+  log "ADB preflight passed for ${ADB_SERIAL:-auto}"
+}
+
 to_windows_path() {
   local path="$1"
   case "$path" in
@@ -255,7 +386,7 @@ trap cleanup EXIT
 ensure_requirements() {
   [[ -x "$JAVA_HOME/bin/java" ]] || fail "JAVA_HOME is missing a java binary: $JAVA_HOME"
   [[ -x "$JAVA_HOME/bin/javac" ]] || fail "JAVA_HOME is missing a javac binary: $JAVA_HOME"
-  [[ -x "$ANDROID_SDK_ROOT/platform-tools/adb" || -f "$ADB" ]] || fail "Android SDK/adb not found"
+  ensure_adb_available
   [[ -x "$VENV_PYTHON" ]] || fail "services/api virtualenv python not found: $VENV_PYTHON"
   [[ -f "$DECK_PATH" ]] || fail "Deck file not found: $DECK_PATH"
   [[ -f "$NEETCODE_SOURCE_PATH" ]] || fail "NeetCode source file not found: $NEETCODE_SOURCE_PATH"
@@ -3564,14 +3695,34 @@ PY
   fi
 }
 
-if [[ "${1:-}" == "--help" ]]; then
-  usage
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --adb-preflight-only)
+      ADB_PREFLIGHT_ONLY=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      fail "Unknown option: $1"
+      ;;
+  esac
+done
+
+if [[ "$ADB_PREFLIGHT_ONLY" == "1" ]]; then
+  ensure_adb_available
+  run_adb_preflight
+  log "ADB preflight-only check completed"
   exit 0
 fi
 
 ensure_requirements
 create_passphrase
 prepare_dirs
+run_adb_preflight
 resolve_target_architectures
 preflight_phone_state
 start_local_api
