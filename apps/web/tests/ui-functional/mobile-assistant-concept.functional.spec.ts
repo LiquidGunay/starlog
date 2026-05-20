@@ -538,22 +538,24 @@ test("mobile viewport assistant renders review, clarification, defer, and projec
   const viewport = page.viewportSize();
   expect(viewport?.width).toBeLessThanOrEqual(430);
 
-  let panel = page.getByTestId("dynamic-panel-renderer");
-  await expect(panel).toHaveCount(1);
-  await expect(panel.getByText("Review grade")).toBeVisible();
+  const reviewPanel = page.getByTestId("assistant-ui-review-grade");
+  await expect(reviewPanel).toHaveCount(1);
+  await expect(reviewPanel).toHaveAttribute("data-dynamic-ui-renderer", "grade_review_recall");
+  await expect(page.getByTestId("dynamic-panel-renderer")).toHaveCount(0);
+  await expect(reviewPanel.getByText("Interview review")).toBeVisible();
   await expect(
-    panel.getByText("What's the most effective action when a feature flag causes performance degradation in production?"),
+    reviewPanel.getByText("What's the most effective action when a feature flag causes performance degradation in production?"),
   ).toBeVisible();
-  await expect(panel.getByText("You are missing application, not recall.").first()).toBeVisible();
+  await expect(reviewPanel.getByText("Updates the review interval and keeps the card in the right queue.")).toBeVisible();
   for (const label of ["Again", "Hard", "Good", "Easy"]) {
-    await expect(panel.getByRole("radio", { name: label, exact: true })).toBeVisible();
+    await expect(reviewPanel.getByRole("radio", { name: label, exact: true })).toBeVisible();
   }
-  await expect(panel.getByRole("radio", { name: "Hard" })).toBeChecked();
-  await panel.getByRole("button", { name: "Show worked example" }).click();
-  await expect(panel.getByRole("button", { name: "Show worked example" })).toHaveAttribute("aria-pressed", "true");
+  await expect(reviewPanel.getByRole("radio", { name: "Hard" })).toBeChecked();
+  await reviewPanel.getByRole("button", { name: "Show worked example" }).click();
+  await expect(reviewPanel.getByRole("button", { name: "Show worked example" })).toHaveAttribute("aria-pressed", "true");
   expect(submissions).toHaveLength(0);
-  await panel.getByRole("radio", { name: "Good" }).click();
-  await panel.getByRole("button", { name: "Save grade" }).click();
+  await reviewPanel.getByRole("radio", { name: "Good" }).click();
+  await reviewPanel.getByRole("button", { name: "Save grade" }).click();
   expect(submissions.at(-1)).toEqual({
     interruptId: "interrupt_review_grade",
     values: expect.objectContaining({ rating: "4", client_timezone: expect.any(String) }),
@@ -561,7 +563,7 @@ test("mobile viewport assistant renders review, clarification, defer, and projec
 
   setActiveInterrupt(scheduleClarificationInterrupt());
   await page.reload({ waitUntil: "domcontentloaded" });
-  panel = page.getByTestId("dynamic-panel-renderer");
+  let panel = page.getByTestId("dynamic-panel-renderer");
   await expect(panel).toHaveCount(1);
   await expect(panel.getByText("Clarification")).toBeVisible();
   await expect(panel.getByText("What time should I schedule this?").first()).toBeVisible();
