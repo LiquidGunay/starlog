@@ -15,16 +15,18 @@ fallback surface, not the main phone implementation target.
 
 This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and
 assistant protocol snapshots so the UI can be validated deterministically. For hosted-path discovery,
-`https://starlog-web-production.up.railway.app/login` is the user entry URL, and the hosted API base is
-`https://starlog-api-production.up.railway.app`. Public unauthenticated checks on 2026-05-19 are saved
-under `/tmp/starlog-hosted-pwa-verify-20260519`; they returned HTTP 200 for hosted `/login` and
-`/assistant`, and the hosted API health route returned an OK production payload. That proves public route
-reachability only; authenticated hosted login was last proven on 2026-05-15 and requires the
-operator-held passphrase/token, which must not be pasted into docs or committed artifacts. Desktop web
-and native mobile chat surfaces have partial assistant-ui adapter/runtime coverage with compatibility
-fallbacks; these browser/viewport harnesses validate the supported structured protocol path and
-fallback-hidden user experience, not full installed-device assistant-ui parity or complete server-owned
-runtime migration.
+`https://starlog-web-production.up.railway.app/login` is the intended user entry URL, and the hosted API
+base is `https://starlog-api-production.up.railway.app`. Fresh public unauthenticated checks on
+2026-05-19 returned Railway fallback `HTTP 404` with `x-railway-fallback: true` for hosted `/login`,
+`/assistant`, and `/v1/health`, so the configured hosted domains should be treated as broken/unproven
+until deployment/domain routing is fixed. Authenticated hosted login was last proven on 2026-05-15 and
+requires the operator-held passphrase/token, which must not be pasted into docs or committed artifacts.
+Desktop web and native mobile chat surfaces have partial assistant-ui adapter/runtime coverage with
+compatibility fallbacks. Web has partial `ExternalStoreRuntime` data/tool UI paths; native mobile
+currently uses a read-only assistant-ui React Native `LocalRuntime` over server-owned Starlog messages.
+These browser/viewport harnesses validate the supported structured protocol path and fallback-hidden
+user experience, not full installed-device assistant-ui parity or complete server-owned runtime
+migration.
 
 ## Commands
 
@@ -65,9 +67,10 @@ curl -I -L --max-time 20 https://starlog-web-production.up.railway.app/assistant
 curl -sS --max-time 20 https://starlog-api-production.up.railway.app/v1/health
 ```
 
-Those commands are not a hosted authenticated smoke. For authenticated checks, use the hosted smoke
-or cross-surface proof runbooks with locally supplied environment variables, and keep tokens redacted
-from saved output.
+As of the 2026-05-19 sweep, those commands return Railway fallback `HTTP 404`, so they are a routing
+preflight rather than a passing hosted smoke. For authenticated checks, use the hosted smoke or
+cross-surface proof runbooks with locally supplied environment variables only after public routes serve
+Starlog again, and keep tokens redacted from saved output.
 
 ## Coverage
 
@@ -89,7 +92,7 @@ Current functional areas:
 | Mobile Planner viewport | `apps/web/tests/ui-functional/mobile-planner.functional.spec.ts` | Phone-width Planner Assistant handoff drafts and conflict review link behavior. |
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Learning ladder, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
-| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing recommendation hints, notification permission, and Planner alarm scheduling. This is bounded device evidence; repeatable Android functional automation for the full native assistant-ui runtime remains pending. |
+| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Intended physical-device evidence for login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing recommendation hints, notification permission, and Planner alarm scheduling. Current reruns are blocked by ADB bridge/device-control instability until preflight/phone control is fixed; older passes are historical context, not current release proof. |
 | Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
 ## Dynamic UI Coverage Boundary
@@ -109,10 +112,10 @@ Covered:
   shapes remain covered by Starlog compatibility/fallback rendering. The fallback renderers are
   transitional compatibility paths, not the target runtime.
 - React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
-  path has Android fresh-local evidence through assistant-ui shell/thread/composer markers, shared
-  dynamic contract metadata, the dynamic UI capability prompt, and the Assistant-hosted review-grade
-  panel controls. Full server-owned native runtime migration and repeatable Android functional
-  automation are still pending.
+  path currently uses a read-only `LocalRuntime` host over server-owned Starlog messages. Historical
+  Android fresh-local evidence exists for shell/thread/composer markers and selected dynamic-panel
+  controls, but fresh reruns are blocked by ADB bridge/device-control instability. Full server-owned
+  native runtime migration and repeatable Android functional automation are still pending.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:
@@ -174,8 +177,8 @@ The browser viewport harness is not native Android/iOS automation. The current E
 as an Expo web harness without adding `react-native-web` and `@expo/metro-runtime`, and this workitem does
 not add a native automation stack such as Maestro or Detox.
 
-For native Android product-flow evidence, use `scripts/android_fresh_local_srs_validation.sh`. A passing
-run writes its final manifest to
+For native Android product-flow evidence, use `scripts/android_fresh_local_srs_validation.sh` after the
+ADB bridge/device-control preflight is fixed. A passing run writes its final manifest to
 `.localdata/android-local-validation/builds/latest.json` with `validation_passed: true` and includes
 Assistant evidence such as `assistant-capability-shell-thread.png`, `assistant-capability-composer.png`,
 `assistant-dynamic-ui-capability-prompt.png`, `assistant-command-shell-thread.png`,
@@ -183,9 +186,10 @@ Assistant evidence such as `assistant-capability-shell-thread.png`, `assistant-c
 `assistant-review-grade-dynamic-ui.png`. Failed runs write
 their own build-local `latest.json` and publish `.localdata/android-local-validation/builds/latest.json`
 with `validation_passed: false`, `validation_stage: failed`, and any partial screenshots/XML for debugging;
-they do not publish a passed final manifest. Treat this as bounded installed-device evidence for the
-current assistant-ui shell/thread/composer markers and dynamic-panel host path. It is not yet a complete,
-repeatable Android functional automation suite for the full server-owned native assistant-ui runtime.
+they do not publish a passed final manifest. Current reruns are blocked by ADB bridge/device-control
+instability, so treat older installed-device evidence as historical context for the assistant-ui
+shell/thread/composer markers and dynamic-panel host path. It is not yet a complete, repeatable Android
+functional automation suite for the full server-owned native assistant-ui runtime.
 
 Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. A fresh active-device pass on 2026-04-29 captured native Assistant, Library, Planner, and Review screenshots under `artifacts/phone-current/2026-04-29/`. On this device, `adb shell svc power stayon true` exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture.
 
