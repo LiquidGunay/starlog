@@ -720,9 +720,10 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
   });
 
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("button", { name: "Unlock the next interview topic" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sliding Window has one application card ready after unlock." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Locked interview topics: 1" })).toBeVisible();
+  const assistantContext = page.getByLabel("Assistant context");
+  await expect(assistantContext.getByRole("button", { name: "Unlock the next interview topic" })).toBeVisible();
+  await expect(assistantContext.getByRole("button", { name: "Locked interview topics: 1" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Recommended next move" })).toHaveCount(0);
 
   await page.getByPlaceholder("Ask, capture, plan, review, or move something forward...").fill(command);
   await page.getByRole("button", { name: "Send" }).click();

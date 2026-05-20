@@ -1,7 +1,115 @@
 .threadShell {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
+  min-height: 54vh;
+  padding: 22px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.threadStart {
+  display: grid;
+  gap: 18px;
+  align-content: center;
+  min-height: 430px;
+  padding: 34px clamp(18px, 6vw, 68px);
+}
+
+.startCopy {
+  display: grid;
+  gap: 8px;
+  max-width: 680px;
+}
+
+.startCopy h2 {
+  margin: 0;
+  color: #fbf7ee;
+  font-size: clamp(30px, 6vw, 52px);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.startCopy p,
+.startSuggestion p {
+  margin: 0;
+  color: rgba(245, 242, 234, 0.7);
+  line-height: 1.65;
+}
+
+.startSuggestion {
+  display: grid;
+  gap: 7px;
+  max-width: 680px;
+  padding: 14px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.startSuggestion span,
+.eyebrow {
+  color: rgba(245, 242, 234, 0.5);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.startSuggestion strong {
+  color: rgba(251, 247, 238, 0.95);
+  font-size: 18px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.startActions,
+.startContext {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.startActions button,
+.startContext a,
+.startContext span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  max-width: 100%;
+  border-radius: 8px;
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  white-space: normal;
+}
+
+.startActions button {
+  border: 1px solid rgba(239, 205, 160, 0.22);
+  background: rgba(239, 205, 160, 0.08);
+  color: #efcda0;
+  cursor: pointer;
+}
+
+.startActions button:hover {
+  background: rgba(239, 205, 160, 0.13);
+}
+
+.startActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.startContext a,
+.startContext span {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(245, 242, 234, 0.64);
 }
 
 .primitiveRoot,
@@ -17,18 +125,20 @@
 
 .messageList {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .message {
   display: grid;
-  gap: 8px;
-  max-width: 82%;
+  gap: 7px;
+  width: min(100%, 760px);
   min-width: 0;
+  padding: 0 clamp(16px, 5vw, 46px);
 }
 
 .message_user {
   justify-self: end;
+  width: min(100%, 620px);
 }
 
 .message_assistant,
@@ -40,7 +150,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(244, 241, 232, 0.52);
+  color: rgba(245, 242, 234, 0.44);
   font-size: 12px;
 }
 
@@ -52,37 +162,44 @@
   display: grid;
   gap: 12px;
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.055);
-  color: rgba(244, 241, 232, 0.88);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.22);
+  color: rgba(245, 242, 234, 0.9);
 }
 
 .message_user .bubble {
-  border-color: rgba(239, 205, 160, 0.28);
-  background: linear-gradient(135deg, rgba(239, 205, 160, 0.18), rgba(223, 157, 112, 0.1));
+  border-radius: 8px;
+  padding: 14px 15px;
+  background: rgba(239, 205, 160, 0.12);
+  color: rgba(251, 247, 238, 0.96);
+}
+
+.message_assistant .bubble,
+.message_system .bubble {
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .supportSurfaces {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 clamp(16px, 5vw, 46px);
 }
 
 .supportSurface {
   display: grid;
-  gap: 12px;
-  min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.11);
+  gap: 8px;
+  min-width: 180px;
+  flex: 1 1 220px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.045);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .supportSurface h3 {
-  margin: 0 0 5px;
+  margin: 0 0 4px;
   color: #fbf7ee;
   font-size: 14px;
   line-height: 1.25;
@@ -90,77 +207,114 @@
 
 .supportSurface p {
   margin: 0;
-  color: rgba(244, 241, 232, 0.68);
+  color: rgba(245, 242, 234, 0.62);
   font-size: 13px;
   line-height: 1.5;
 }
 
-.supportSurfaceActions {
+.supportSurfaceActions,
+.actions,
+.cardActions,
+.supportActions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
 .supportSurfaceActions a,
-.supportSurfaceActions button {
+.supportSurfaceActions button,
+.primaryButton,
+.secondaryButton,
+.supportButton,
+.cardActions button,
+.cardActions a {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
+  justify-content: center;
+  min-height: 34px;
   border-radius: 8px;
-  padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #efcda0;
+  padding: 8px 10px;
   font: inherit;
   font-size: 13px;
   font-weight: 650;
   text-decoration: none;
 }
 
-.supportSurfaceActions button {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+.supportSurfaceActions a,
+.supportSurfaceActions button,
+.secondaryButton,
+.supportButton,
+.cardActions button,
+.cardActions a {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(245, 242, 234, 0.86);
+}
+
+.supportSurfaceActions button,
+.supportButton,
+.cardActions button {
   cursor: pointer;
 }
 
 .textPart {
   margin: 0;
   white-space: pre-wrap;
-  line-height: 1.62;
+  line-height: 1.68;
   overflow-wrap: anywhere;
 }
 
 .reviewCard,
 .dataCard,
 .toolCard,
-.cardPart {
+.cardPart,
+.ambientRow {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  padding: 16px;
-  background: rgba(6, 12, 18, 0.58);
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.cardPart,
+.dataCard {
+  border: 1px solid rgba(255, 255, 255, 0.075);
+}
+
+.cardPart {
+  border-left: 2px solid rgba(239, 205, 160, 0.22);
+}
+
+.toolCard,
+.ambientRow {
+  border: 1px solid rgba(143, 181, 210, 0.12);
+  background: rgba(143, 181, 210, 0.045);
+}
+
+.ambientRow {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 9px 12px;
 }
 
 .reviewCard {
-  border-color: rgba(107, 196, 164, 0.34);
-  background:
-    linear-gradient(180deg, rgba(107, 196, 164, 0.13), rgba(8, 15, 20, 0.72)),
-    rgba(6, 12, 18, 0.68);
+  border: 1px solid rgba(107, 196, 164, 0.28);
+  background: rgba(107, 196, 164, 0.07);
 }
 
 .partHeader {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
 .partHeader span,
 .eyebrow {
-  color: rgba(244, 241, 232, 0.56);
-  font-size: 12px;
+  color: rgba(245, 242, 234, 0.5);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   line-height: 1.3;
   text-transform: uppercase;
 }
@@ -183,11 +337,12 @@
 .reviewPrompt h3,
 .dataCard h3,
 .cardPart h3,
-.toolCard h3 {
+.toolCard h3,
+.ambientRow h3 {
   margin: 0;
   color: #fbf7ee;
-  font-size: 18px;
-  line-height: 1.25;
+  font-size: 16px;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
@@ -195,9 +350,10 @@
 .dataCard p,
 .cardPart p,
 .toolCard p,
+.ambientRow p,
 .reasonBox p {
   margin: 0;
-  color: rgba(244, 241, 232, 0.76);
+  color: rgba(245, 242, 234, 0.7);
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -212,12 +368,12 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  min-height: 64px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  min-height: 62px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #f4f1e8;
+  background: rgba(255, 255, 255, 0.045);
+  color: #f5f2ea;
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -225,8 +381,8 @@
 
 .gradeButton:hover,
 .gradeButtonSelected {
-  border-color: rgba(239, 205, 160, 0.5);
-  background: rgba(239, 205, 160, 0.14);
+  border-color: rgba(239, 205, 160, 0.42);
+  background: rgba(239, 205, 160, 0.12);
 }
 
 .gradeButton strong,
@@ -236,63 +392,26 @@
 }
 
 .gradeButton small {
-  color: rgba(244, 241, 232, 0.62);
+  color: rgba(245, 242, 234, 0.6);
   font-size: 12px;
 }
 
 .reasonBox {
   display: grid;
   gap: 6px;
-  border-left: 2px solid rgba(107, 196, 164, 0.58);
+  border-left: 2px solid rgba(107, 196, 164, 0.5);
   padding-left: 12px;
-}
-
-.actions,
-.cardActions,
-.supportActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.primaryButton,
-.secondaryButton,
-.supportButton,
-.cardActions button,
-.cardActions a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  border-radius: 8px;
-  padding: 9px 12px;
-  font: inherit;
-  font-weight: 650;
-  text-decoration: none;
 }
 
 .primaryButton {
   border: 0;
-  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  background: #efcda0;
   color: #15120d;
 }
 
-.secondaryButton,
-.supportButton,
-.cardActions button,
-.cardActions a {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.07);
-  color: #f4f1e8;
-}
-
-.supportButton {
-  cursor: pointer;
-}
-
 .supportButtonSelected {
-  border-color: rgba(107, 196, 164, 0.52);
-  background: rgba(107, 196, 164, 0.14);
+  border-color: rgba(107, 196, 164, 0.48);
+  background: rgba(107, 196, 164, 0.12);
   color: #fbf7ee;
 }
 
@@ -308,16 +427,16 @@
 .outputGrid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
 .badge,
 .outputGrid span {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  padding: 5px 9px;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(244, 241, 232, 0.68);
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(245, 242, 234, 0.62);
   font-size: 12px;
 }
 
@@ -326,11 +445,8 @@
   gap: 0;
   overflow: hidden;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background:
-    linear-gradient(180deg, rgba(24, 33, 44, 0.94), rgba(13, 20, 29, 0.96)),
-    rgba(10, 16, 24, 0.96);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .composerInput {
@@ -339,10 +455,10 @@
   border: 0;
   outline: 0;
   border-radius: 0;
-  min-height: 78px;
-  padding: 18px 64px 18px 48px;
+  min-height: 82px;
+  padding: 16px 18px;
   background: transparent;
-  color: #f4f1e8;
+  color: #f5f2ea;
   font: inherit;
   line-height: 1.5;
 }
@@ -354,18 +470,18 @@
 .composerChips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   order: 3;
-  padding: 12px 16px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 11px 14px 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.075);
 }
 
 .composerChips button {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(244, 241, 232, 0.82);
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 242, 234, 0.76);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -373,22 +489,22 @@
 
 .voiceDock {
   display: grid;
-  grid-template-columns: minmax(150px, 0.6fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(140px, 0.5fr) minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px 0;
+  padding: 12px 14px 0;
 }
 
 .voiceButton {
   display: grid;
   gap: 2px;
-  min-height: 46px;
+  min-height: 44px;
   min-width: 0;
-  border: 1px solid rgba(107, 196, 164, 0.36);
+  border: 1px solid rgba(107, 196, 164, 0.28);
   border-radius: 8px;
-  padding: 8px 12px;
-  background: rgba(107, 196, 164, 0.12);
-  color: #f4f1e8;
+  padding: 8px 10px;
+  background: rgba(107, 196, 164, 0.08);
+  color: #f5f2ea;
   font: inherit;
   cursor: pointer;
   text-align: left;
@@ -396,8 +512,8 @@
 
 .voiceButton:hover:not(:disabled),
 .voiceButtonRecording {
-  border-color: rgba(107, 196, 164, 0.62);
-  background: rgba(107, 196, 164, 0.18);
+  border-color: rgba(107, 196, 164, 0.52);
+  background: rgba(107, 196, 164, 0.13);
 }
 
 .voiceButtonLabel {
@@ -406,7 +522,7 @@
 }
 
 .voiceButtonMeta {
-  color: rgba(244, 241, 232, 0.58);
+  color: rgba(245, 242, 234, 0.56);
   font-size: 12px;
   line-height: 1.15;
 }
@@ -421,7 +537,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  color: rgba(244, 241, 232, 0.68);
+  color: rgba(245, 242, 234, 0.64);
   font-size: 13px;
   line-height: 1.35;
 }
@@ -433,16 +549,16 @@
 }
 
 .voiceStatus small {
-  color: rgba(244, 241, 232, 0.52);
+  color: rgba(245, 242, 234, 0.48);
 }
 
 .planVoiceButton {
-  min-height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  padding: 9px 12px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #f4f1e8;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #f5f2ea;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
@@ -453,8 +569,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 16px 14px;
-  color: rgba(244, 241, 232, 0.64);
+  padding: 0 14px 13px;
+  color: rgba(245, 242, 234, 0.58);
   font-size: 13px;
 }
 
@@ -462,12 +578,12 @@
   border: 0;
   border-radius: 8px;
   min-width: 44px;
-  min-height: 40px;
-  padding: 10px 14px;
-  background: linear-gradient(135deg, #efcda0 0%, #df9d70 100%);
+  min-height: 38px;
+  padding: 9px 13px;
+  background: #efcda0;
   color: #15120d;
   font: inherit;
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
 }
 
@@ -478,8 +594,18 @@
 }
 
 @media (max-width: 720px) {
-  .message {
-    max-width: 100%;
+  .threadShell {
+    min-height: 520px;
+    padding: 16px 0;
+  }
+
+  .threadStart {
+    min-height: 380px;
+  }
+
+  .message,
+  .message_user {
+    width: 100%;
   }
 
   .gradeGrid {
@@ -495,7 +621,6 @@
 
   .composerInput {
     min-height: 70px;
-    padding: 16px;
   }
 
   .composerBar {

@@ -121,6 +121,7 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
 
   await routeAssistantThread(page, () => snapshot);
   await routeAssistantToday(page, () => assistantTodaySummary({ open_interrupt_count: 1 }));
+  await routeAssistantWeekly(page, () => assistantWeeklySummary());
   await page.route(`${API_BASE}/v1/assistant/interrupts/interrupt_morning_focus/submit`, async (route) => {
     submissions.push(route.request().postDataJSON() as Record<string, unknown>);
     snapshot = assistantThreadSnapshot({
@@ -161,10 +162,10 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
   await expect(page.getByRole("heading", { name: "Choose morning focus" })).toBeVisible();
   await expect(page.getByText("What should I focus on this morning?")).toBeVisible();
   await expect(page.getByText("Here is what makes the most sense this morning")).toBeVisible();
-  await expect(page.getByText("Planner found a 90m focus window")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose morning focus" })).toBeVisible();
+  const ambientRow = page.getByLabel("Ambient update").filter({ hasText: "Planner found a 90m focus window" });
+  await expect(ambientRow).toBeVisible();
   await expect(page.getByText("Focus mode")).toBeVisible();
-  await expect(page.locator("main")).not.toContainText(/protocol|runtime|tool_call|tool_result|Diagnostics/i);
+  await expect(page.locator("main")).not.toContainText(/protocol|runtime|tool_call|tool_result|Diagnostics|Surface update/i);
   await expect(page.getByRole("radio", { name: /Move project forward/ })).toBeChecked();
   await expect(page.getByLabel("Protect this focus block")).toBeChecked();
   await expect(page.getByText("Planner can reserve 9:30-11:00 AM for focus.")).toBeVisible();
@@ -180,12 +181,12 @@ test("PWA assistant renders and submits a schema-driven dynamic panel", async ({
       client_timezone: expect.any(String),
     }),
   );
-  await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm focus" })).toHaveCount(0);
   await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-concept-thread-panel.png", fullPage: true });
 });
 
-test("PWA assistant empty state renders the Today cockpit recommendation from enriched summary", async ({ page }) => {
+test("PWA assistant empty state uses a clean centered thread with quiet context", async ({ page }) => {
   await seedAssistantSession(page);
 
   await routeAssistantThread(page, () => assistantThreadSnapshot());
@@ -199,7 +200,6 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
         { key: "overdue_tasks", label: "Overdue tasks", count: 1, href: "/planner" },
         { key: "due_reviews", label: "Reviews due", count: 4, href: "/review" },
         { key: "unprocessed_library", label: "Library inbox", count: 2, href: "/library" },
-        { key: "open_commitments", label: "Open commitments", count: 1, href: "/planner" },
       ],
       recommended_next_move: {
         key: "finish_onboarding",
@@ -212,99 +212,34 @@ test("PWA assistant empty state renders the Today cockpit recommendation from en
         priority: 95,
         urgency: "high",
       },
-      reason_stack: [
-        "5 open tasks include launch polish",
-        "4 reviews are due after the focus block",
-        "2 Library inbox items can wait",
-      ],
-      at_a_glance: [
-        { key: "planner", label: "Planner", count: 5, href: "/planner" },
-        { key: "library", label: "Library inbox", count: 2, href: "/library" },
-        { key: "review", label: "Review due", count: 4, href: "/review" },
-        { key: "commitments", label: "Open commitments", count: 1, href: "/planner" },
-      ],
-      quick_actions: [
-        {
-          key: "adjust_plan",
-          title: "Adjust plan",
-          surface: "planner",
-          href: "/planner",
-          action_label: "Adjust plan",
-          prompt: "Adjust today around onboarding flow polish.",
-          enabled: true,
-          count: 5,
-          reason: null,
-          priority: 10,
-        },
-        {
-          key: "open_review",
-          title: "Open Review",
-          surface: "review",
-          href: "/review",
-          action_label: "Open Review",
-          prompt: null,
-          enabled: true,
-          count: 4,
-          reason: null,
-          priority: 20,
-        },
-        {
-          key: "process_inbox",
-          title: "Process inbox",
-          surface: "library",
-          href: "/library",
-          action_label: "Process inbox",
-          prompt: "Process my latest Library captures and route anything actionable.",
-          enabled: true,
-          count: 2,
-          reason: null,
-          priority: 30,
-        },
-      ],
     }),
   );
+  await routeAssistantWeekly(page, () => assistantWeeklySummary());
 
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("region", { name: "Recommended next move" })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Finish onboarding flow polish" })).toBeVisible();
-  await expect(page.getByLabel("Why now").getByText("5 open tasks include launch polish")).toBeVisible();
-  await expect(page.getByLabel("Why now").getByText("4 reviews are due after the focus block")).toBeVisible();
-  await expect(page.getByLabel("At a glance").getByText("Planner")).toBeVisible();
-  await expect(page.getByLabel("At a glance").getByText("5", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Secondary options").getByRole("link", { name: "Adjust plan" })).toHaveAttribute("href", "/planner");
-  const todayRail = page.locator("aside article", { hasText: "Now" }).first();
-  await expect(todayRail.getByRole("heading", { name: "Now" })).toBeVisible();
-  await expect(todayRail.getByText("Finish onboarding flow polish")).toBeVisible();
-  const assistantState = page.getByLabel("Assistant state");
-  await expect(assistantState).toContainText("high priority");
-  await expect(assistantState).not.toContainText("Briefing ready");
-  await expect(page.locator("main")).not.toContainText(/Online|Offline|Assistant is|Sign in needed|Diagnostics|protocol|runtime|Synced just now/i);
-  const openLoopsRail = page.locator("aside article", { hasText: "Open loops" }).first();
-  await expect(openLoopsRail.getByText("Open tasks")).toBeVisible();
-  await expect(openLoopsRail.getByText("Reviews due")).toBeVisible();
-  await expect(openLoopsRail.getByText("Library inbox")).toBeVisible();
+  await expect(page.getByLabel("Assistant thread start")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByLabel("Suggested next prompt")).toContainText("Finish onboarding flow polish");
+  await expect(page.getByLabel("Suggested next prompt")).toContainText("A 90 minute focus block can move launch polish forward.");
+  await expect(page.getByLabel("Assistant context")).toContainText("Open tasks: 5");
+  await expect(page.getByLabel("Assistant context")).toContainText("Reviews due: 4");
+  await expect(page.locator("aside")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Recommended next move" })).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText(/cockpit|observatory|Diagnostics|protocol|runtime/i);
 
   await page.getByRole("button", { name: "Start focus" }).click();
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
     "Start a 90 minute focus block for onboarding flow polish.",
   );
-  await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Open Review" })).toHaveAttribute("href", "/review");
-  const todayPanel = page.getByRole("region", { name: "Recommended next move" });
-  await expectNoHorizontalOverflow("desktop Today cockpit", todayPanel);
-  await expectNoHorizontalOverflow("desktop reason stack", page.getByLabel("Why now"));
-  await expectNoHorizontalOverflow("desktop at-a-glance panel", page.getByLabel("At a glance"));
-  await expectNoHorizontalOverflow("desktop quick actions", page.getByLabel("Quick actions"));
-  await expectNoHorizontalOverflow("desktop Now rail", page.locator("aside article", { hasText: "Now" }).first());
-  await expectNoHorizontalOverflow("desktop Open loops rail", page.locator("aside article", { hasText: "Open loops" }).first());
-  await expectNoHorizontalOverflow("desktop Current context rail", page.locator("aside article", { hasText: "Current context" }).first());
+  await expectNoHorizontalOverflow("desktop clean assistant thread", page.getByLabel("Assistant thread start"));
+  await expectNoHorizontalOverflow("desktop context strip", page.getByLabel("Assistant context"));
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(desktopOverflow).toBe(false);
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-concept-cockpit.png", fullPage: true });
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-clean-thread.png", fullPage: true });
 });
 
-test("PWA assistant normal thread keeps ambient rows separate from message bubbles", async ({ page }) => {
+test("PWA assistant normal thread renders ambient updates as thin rows", async ({ page }) => {
   await seedAssistantSession(page);
 
   await routeAssistantThread(page, () =>
@@ -370,31 +305,6 @@ test("PWA assistant normal thread keeps ambient rows separate from message bubbl
                 created_at: "2026-04-28T09:21:00.000Z",
               },
             },
-            {
-              type: "tool_call",
-              id: "part_plan_tool_call",
-              tool_call: {
-                id: "tool_call_plan",
-                tool_name: "search_planner",
-                tool_kind: "domain_tool",
-                status: "complete",
-                arguments: { query: "afternoon plan" },
-                title: null,
-                metadata: {},
-              },
-            },
-            {
-              type: "tool_result",
-              id: "part_plan_tool_result",
-              tool_result: {
-                id: "tool_result_plan",
-                tool_call_id: "tool_call_plan",
-                status: "complete",
-                output: { block_count: 2, review_count: 32 },
-                entity_ref: { entity_type: "plan", entity_id: "plan_today", href: "/planner", title: "Today's plan" },
-                metadata: { tool_name: "search_planner" },
-              },
-            },
           ],
           metadata: {},
           created_at: "2026-04-28T09:22:00.000Z",
@@ -412,22 +322,16 @@ test("PWA assistant normal thread keeps ambient rows separate from message bubbl
   await expect(page.getByRole("heading", { name: "Suggested next step" })).toBeVisible();
   const ambientRow = page.getByLabel("Ambient update").filter({ hasText: "Planner started Deep Work block" });
   await expect(ambientRow).toBeVisible();
-  await expect
-    .poll(() => ambientRow.evaluate((element) => Boolean(element.closest('[class*="bubble"]'))))
-    .toBe(false);
-
-  const activity = page.getByLabel("Assistant activity");
-  await expect(activity.locator("summary").getByText("What I checked").first()).toBeVisible();
-  await expect(activity.getByText("domain tool").first()).toBeHidden();
-  await expect(page.locator("main")).not.toContainText(/protocol|runtime|tool_call|tool_result|Diagnostics/i);
+  await expect(ambientRow).toContainText("Update");
+  await expect(page.locator("main")).not.toContainText(/Surface update|protocol|runtime|tool_call|tool_result|Diagnostics/i);
   await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-normal-thread-ambient-row.png", fullPage: true });
 });
 
-test("PWA assistant compact cockpit keeps actions and reasons capped on mobile", async ({ page }) => {
+test("PWA assistant clean thread stays readable on mobile", async ({ page }) => {
   await seedAssistantSession(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const longRecommendationTitle =
-    "FinishLaunchPackagingPassWithAnUnbrokenRecommendationTitleThatMustWrapInsideTheCockpitInsteadOfOverflowing";
+    "FinishLaunchPackagingPassWithAnUnbrokenRecommendationTitleThatMustWrapInsideTheThreadInsteadOfOverflowing";
 
   await routeAssistantThread(page, () => assistantThreadSnapshot());
   await routeAssistantToday(page, () =>
@@ -438,8 +342,6 @@ test("PWA assistant compact cockpit keeps actions and reasons capped on mobile",
         { key: "overdue_tasks", label: "Overdue tasks", count: 6, href: "/planner" },
         { key: "due_reviews", label: "Reviews due", count: 4, href: "/review" },
         { key: "unprocessed_library", label: "Library inbox", count: 3, href: "/library" },
-        { key: "open_commitments", label: "Open commitments", count: 5, href: "/planner" },
-        { key: "stale_projects", label: "Stale projects", count: 2, href: "/planner" },
       ],
       recommended_next_move: {
         key: "focus_packaging",
@@ -452,101 +354,15 @@ test("PWA assistant compact cockpit keeps actions and reasons capped on mobile",
         priority: 95,
         urgency: "high",
       },
-      reason_stack: [
-        "8 open tasks are active now",
-        "6 overdue items should clear first",
-        "3 captures can be triaged after focus",
-        "4 reviews are queued for this afternoon",
-      ],
-      quick_actions: [
-        {
-          key: "open_planner",
-          title: "Open Planner",
-          surface: "planner",
-          href: "/planner",
-          action_label: "OpenPlannerWithoutOverflowingTheCompactQuickActionRow",
-          prompt: "Open planner to confirm timing.",
-          enabled: true,
-          count: 8,
-          reason: null,
-          priority: 10,
-        },
-        {
-          key: "open_review",
-          title: "Open Review",
-          surface: "review",
-          href: "/review",
-          action_label: "Open Review",
-          prompt: "Review queued items.",
-          enabled: true,
-          count: 4,
-          reason: null,
-          priority: 20,
-        },
-        {
-          key: "process_inbox",
-          title: "Process inbox",
-          surface: "library",
-          href: "/library",
-          action_label: "Process inbox",
-          prompt: "Process my latest Library captures.",
-          enabled: true,
-          count: 3,
-          reason: null,
-          priority: 30,
-        },
-        {
-          key: "create_task",
-          title: "Create task",
-          surface: "planner",
-          action_label: "Create task",
-          prompt: "Create a task from this move.",
-          enabled: true,
-          count: 1,
-          reason: null,
-          priority: 40,
-        },
-        {
-          key: "open_library",
-          title: "Open library",
-          surface: "library",
-          href: "/library",
-          action_label: "Open library",
-          prompt: "Review captured context.",
-          enabled: true,
-          count: 1,
-          reason: null,
-          priority: 50,
-        },
-      ],
-      at_a_glance: [
-        { key: "planner", label: "PlannerBacklogWithUnbrokenLabelThatMustWrap", count: 8, href: "/planner" },
-        { key: "library", label: "Library inbox", count: 3, href: "/library" },
-        { key: "review", label: "Review due", count: 4, href: "/review" },
-        { key: "commitments", label: "Open commitments", count: 5, href: "/planner" },
-      ],
     }),
   );
+  await routeAssistantWeekly(page, () => assistantWeeklySummary());
 
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: longRecommendationTitle })).toBeVisible();
-  await expect(page.getByLabel("Quick actions").locator("span")).toHaveCount(3);
-  await expect(page.getByLabel("Why now").locator("li")).toHaveCount(2);
-  await expectNoHorizontalOverflow("mobile Today cockpit", page.getByRole("region", { name: "Recommended next move" }));
-  await expectNoHorizontalOverflow("mobile long recommendation heading", page.getByRole("heading", { name: longRecommendationTitle }));
-  await expectNoHorizontalOverflow("mobile reason stack", page.getByLabel("Why now"));
-  await expectNoHorizontalOverflow("mobile at-a-glance panel", page.getByLabel("At a glance"));
-  await expectNoHorizontalOverflow("mobile quick actions", page.getByLabel("Quick actions"));
-  await expectNoHorizontalOverflow(
-    "mobile needs-attention panel",
-    page.getByText("Needs attention", { exact: true }).locator("xpath=ancestor::section[1]").first(),
-  );
-  await expectNoHorizontalOverflow(
-    "mobile current-context panel",
-    page.getByText("Current context", { exact: true }).locator("xpath=ancestor::section[1]").first(),
-  );
-
+  await expect(page.getByLabel("Suggested next prompt")).toContainText(longRecommendationTitle);
+  await expectNoHorizontalOverflow("mobile clean assistant thread", page.getByLabel("Assistant thread start"));
+  await expectNoHorizontalOverflow("mobile context strip", page.getByLabel("Assistant context"));
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);
 
@@ -554,299 +370,7 @@ test("PWA assistant compact cockpit keeps actions and reasons capped on mobile",
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
     "Start a 90 minute focus block for launch packaging.",
   );
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-cockpit-compact-mobile.png", fullPage: true });
-});
-
-test("PWA assistant Today cockpit renders compact strategic context actions", async ({ page }) => {
-  await seedAssistantSession(page);
-
-  await routeAssistantThread(page, () => assistantThreadSnapshot());
-  await routeAssistantToday(page, () =>
-    assistantTodaySummary({
-      open_loops: [
-        { key: "open_tasks", label: "Open tasks", count: 1, href: "/planner" },
-        { key: "overdue_tasks", label: "Overdue tasks", count: 0, href: "/planner" },
-        { key: "due_reviews", label: "Reviews due", count: 0, href: "/review" },
-        { key: "unprocessed_library", label: "Library inbox", count: 0, href: "/library" },
-        { key: "open_commitments", label: "Open commitments", count: 1, href: "/planner" },
-      ],
-      recommended_next_move: {
-        key: "define_project_next_action",
-        title: "Define next project action",
-        body: "1 active project missing a next action.",
-        surface: "planner",
-        href: "/planner",
-        action_label: "Open planner",
-        prompt: "Help me define next actions for active projects.",
-        priority: 85,
-        urgency: "medium",
-      },
-      reason_stack: ["1 active project missing a next action", "1 commitment open", "1 task open"],
-      strategic_context: {
-        active_goal_count: 2,
-        active_project_count: 2,
-        open_commitment_count: 1,
-        overdue_commitment_count: 0,
-        project_missing_next_action_count: 1,
-        attention_count: 3,
-        active_goals: [
-          {
-            id: "goal_launch",
-            title: "Ship a calm Android preview",
-            horizon: "quarter",
-            review_cadence: "weekly",
-            updated_at: "2026-04-27T09:00:00.000Z",
-            last_reviewed_at: null,
-          },
-          {
-            id: "goal_ignored",
-            title: "Second active goal should stay hidden",
-            horizon: "month",
-            review_cadence: "weekly",
-            updated_at: "2026-04-27T09:00:00.000Z",
-            last_reviewed_at: null,
-          },
-        ],
-        active_projects: [
-          {
-            id: "project_android_release",
-            goal_id: "goal_launch",
-            title: "Android release prep",
-            next_action_id: null,
-            updated_at: "2026-04-27T09:00:00.000Z",
-            last_reviewed_at: null,
-          },
-          {
-            id: "project_ignored",
-            goal_id: "goal_launch",
-            title: "Second active project should stay hidden",
-            next_action_id: "task_existing_next_action",
-            updated_at: "2026-04-27T09:00:00.000Z",
-            last_reviewed_at: null,
-          },
-        ],
-        open_commitments: [
-          {
-            id: "commitment_feedback",
-            source_type: "assistant",
-            source_id: null,
-            title: "Send preview feedback bundle",
-            promised_to: "tester group",
-            due_at: null,
-            updated_at: "2026-04-27T09:00:00.000Z",
-          },
-        ],
-        attention_items: [
-          {
-            key: "project_missing_next_action:project_android_release",
-            kind: "project_missing_next_action",
-            title: "Android release prep",
-            body: "Active project has no next action.",
-            entity_type: "project",
-            entity_id: "project_android_release",
-            surface: "planner",
-            href: "/planner",
-            priority: 85,
-            due_at: null,
-          },
-          {
-            key: "goal_review_due:goal_launch",
-            kind: "goal_review_due",
-            title: "Ship a calm Android preview",
-            body: "Active goal has not been reviewed within its weekly cadence.",
-            entity_type: "goal",
-            entity_id: "goal_launch",
-            surface: "planner",
-            href: "/planner",
-            priority: 50,
-            due_at: null,
-          },
-          {
-            key: "project_stale:project_ignored",
-            kind: "project_stale",
-            title: "Third attention item should stay hidden",
-            body: "Active project has not been reviewed in 14 days.",
-            entity_type: "project",
-            entity_id: "project_ignored",
-            surface: "planner",
-            href: "/planner",
-            priority: 55,
-            due_at: null,
-          },
-        ],
-      },
-    }),
-  );
-
-  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
-
-  await expect(page.getByRole("heading", { name: "Define next project action" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open planner" })).toHaveAttribute("href", "/planner");
-
-  const strategicContext = page.getByLabel("Strategic context");
-  const goalRow = strategicContext.locator("article").filter({ hasText: /^Goal/ });
-  const projectRow = strategicContext.locator("article").filter({ hasText: /^Project/ });
-  const commitmentRow = strategicContext.locator("article").filter({ hasText: /^Commitment/ });
-  await expect(goalRow.getByText("Ship a calm Android preview")).toBeVisible();
-  await expect(projectRow.getByText("Android release prep", { exact: true })).toBeVisible();
-  await expect(commitmentRow.getByText("Send preview feedback bundle")).toBeVisible();
-  await expect(projectRow.getByText("No next action yet.")).toBeVisible();
-  await expect(strategicContext.getByText("Active project has no next action.")).toBeVisible();
-  await expect(strategicContext.getByText("Active goal has not been reviewed within its weekly cadence.")).toBeVisible();
-  await expect(strategicContext).not.toContainText("Second active goal should stay hidden");
-  await expect(strategicContext).not.toContainText("Second active project should stay hidden");
-  await expect(strategicContext).not.toContainText("Third attention item should stay hidden");
-  await expect(strategicContext.getByRole("link", { name: "Open" }).first()).toHaveAttribute("href", "/planner");
-
-  await projectRow.getByRole("button", { name: "Discuss" }).click();
-  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
-    'Help me choose the next action for "Android release prep".',
-  );
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-strategic-context.png", fullPage: true });
-});
-
-test("PWA assistant empty cockpit renders weekly systems review with real actions", async ({ page }) => {
-  await seedAssistantSession(page);
-  await page.clock.setFixedTime(new Date("2026-04-29T12:00:00.000Z"));
-
-  const weeklyRequests: string[] = [];
-  await routeAssistantThread(page, () => assistantThreadSnapshot());
-  await routeAssistantToday(page, () =>
-    assistantTodaySummary({
-      recommended_next_move: {
-        key: "finish_onboarding",
-        title: "Finish onboarding flow polish",
-        body: "A 90 minute focus block can move launch polish forward.",
-        surface: "planner",
-        href: null,
-        action_label: "Start focus",
-        prompt: "Start a 90 minute focus block for onboarding flow polish.",
-        priority: 95,
-        urgency: "high",
-      },
-      reason_stack: ["5 open tasks include launch polish"],
-    }),
-  );
-  await page.route(`${API_BASE}/v1/surfaces/assistant/weekly*`, async (route) => {
-    weeklyRequests.push(route.request().url());
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(assistantWeeklySummary()),
-    });
-  });
-
-  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
-
-  await expect(page.getByRole("heading", { name: "Finish onboarding flow polish" })).toBeVisible();
-  const weeklyReview = page.getByLabel("Weekly systems review");
-  await expect(weeklyReview).toBeVisible();
-  await expect(weeklyReview.getByText("3 tasks completed")).toBeVisible();
-  await expect(weeklyReview.getByText("4 review sessions")).toBeVisible();
-  await expect(weeklyReview.getByText("12 review items")).toBeVisible();
-  await expect(weeklyReview.getByText("2 overdue tasks")).toBeVisible();
-  await expect(weeklyReview.getByText("1 overdue commitment")).toBeVisible();
-  await expect(weeklyReview.getByText("1 unprocessed capture")).toBeVisible();
-  await expect(weeklyReview.getByRole("button", { name: "Rebalance the week" })).toBeVisible();
-  await expect(weeklyReview.getByRole("link", { name: "Open Review" })).toHaveAttribute("href", "/review");
-  await expect(weeklyReview.getByText("Calendar sync pending")).toBeVisible();
-  await expect(weeklyReview.getByText("Waiting for calendar sync.")).toBeVisible();
-  await expect(weeklyReview.getByRole("button", { name: "Calendar sync pending" })).toHaveCount(0);
-  await expect(weeklyReview.getByRole("link", { name: "Calendar sync pending" })).toHaveCount(0);
-  await expect(weeklyReview).not.toContainText("Fourth option stays hidden");
-  expect(weeklyRequests[0]).toContain("week_start=2026-04-27");
-
-  await weeklyReview.getByRole("button", { name: "Rebalance the week" }).click();
-  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
-    "Help me rebalance this week around the slipped planning blocks.",
-  );
-  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-weekly-systems-review.png", fullPage: true });
-});
-
-test("PWA assistant weekly systems review hides when endpoint fails or has no content", async ({ page }) => {
-  await seedAssistantSession(page);
-
-  await routeAssistantThread(page, () => assistantThreadSnapshot());
-  await routeAssistantToday(page, () => assistantTodaySummary());
-  await routeAssistantWeekly(page, () => ({ detail: "weekly endpoint unavailable" }), { status: 500 });
-
-  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
-
-  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
-  await expect(page.getByLabel("Weekly systems review")).toHaveCount(0);
-
-  await page.unroute(`${API_BASE}/v1/surfaces/assistant/weekly*`);
-  await routeAssistantWeekly(page, () =>
-    assistantWeeklySummary({
-      progress: {
-        tasks_completed: 0,
-        review_session_count: 0,
-        review_item_count: 0,
-        captures_created: 0,
-        captures_processed: 0,
-        captures_summarized: 0,
-        cards_created: 0,
-        artifact_tasks_created: 0,
-        goals_updated: 0,
-        goals_reviewed: 0,
-        projects_updated: 0,
-        projects_reviewed: 0,
-      },
-      slippage: {
-        overdue_tasks: 0,
-        overdue_commitments: 0,
-        unprocessed_captures: 0,
-        due_review_cards: 0,
-        stale_active_projects: 0,
-        stale_active_goals: 0,
-        projects_missing_next_action: 0,
-      },
-      adaptation_options: [],
-      attention_items: [],
-      system_health: {
-        progress_signal_count: 0,
-        slippage_signal_count: 0,
-      },
-    }),
-  );
-  await page.reload({ waitUntil: "domcontentloaded" });
-
-  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
-  await expect(page.getByLabel("Weekly systems review")).toHaveCount(0);
-});
-
-test("PWA assistant Today cockpit falls back to count-derived recommendation without enriched fields", async ({ page }) => {
-  await seedAssistantSession(page);
-
-  await routeAssistantThread(page, () => assistantThreadSnapshot());
-  await routeAssistantToday(page, () =>
-    assistantTodaySummary({
-      open_interrupt_count: 0,
-      recommended_next_move: null,
-      reason_stack: undefined,
-      at_a_glance: undefined,
-      quick_actions: undefined,
-      open_loops: [
-        { key: "open_tasks", label: "Open tasks", count: 6, href: "/planner" },
-        { key: "overdue_tasks", label: "Overdue tasks", count: 2, href: "/planner" },
-        { key: "due_reviews", label: "Reviews due", count: 3, href: "/review" },
-        { key: "unprocessed_library", label: "Library inbox", count: 1, href: "/library" },
-      ],
-    }),
-  );
-
-  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
-
-  await expect(page.getByRole("heading", { name: "Triage overdue tasks" })).toBeVisible();
-  await expect(page.getByLabel("Why now").getByText("2 tasks overdue")).toBeVisible();
-  await expect(page.getByLabel("Why now").getByText("6 open tasks total")).toBeVisible();
-  await expect(page.getByLabel("At a glance").getByText("Overdue tasks")).toBeVisible();
-  await expect(page.getByLabel("Strategic context")).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Plan recovery" }).click();
-  await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
-    "Triage my overdue tasks and propose the next bounded move.",
-  );
+  await page.screenshot({ path: "artifacts/ui-functional/pwa-assistant-clean-thread-mobile.png", fullPage: true });
 });
 
 test("PWA assistant renders compact tool activity without console-like labels", async ({ page }) => {
@@ -859,28 +383,15 @@ test("PWA assistant renders compact tool activity without console-like labels", 
   await page.goto("/assistant", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("I found the current launch context and added the next concrete task.")).toBeVisible();
-  const activity = page.getByLabel("Assistant activity");
-  await expect(activity).toBeVisible();
-  const activitySummary = activity.locator("summary");
-  await expect(activitySummary.getByText("What I checked").first()).toBeVisible();
-  await expect(activitySummary.getByText("Checked Planner").first()).toBeVisible();
-  await expect(activitySummary.getByText("Checked Review").first()).toBeVisible();
-  await expect(activitySummary.getByText("Created task").first()).toBeVisible();
-  await expect(activity.getByText("tool_call")).toHaveCount(0);
-  await expect(activity.getByText("tool_result")).toHaveCount(0);
-  await expect(activity.getByText("domain tool").first()).toBeHidden();
-  await expect(activity.getByText("task_id").first()).toBeHidden();
+  const activityRows = page.getByLabel("Assistant activity");
+  await expect(activityRows.first()).toBeVisible();
+  await expect(activityRows.filter({ hasText: "Checked Planner" }).first()).toBeVisible();
+  await expect(activityRows.filter({ hasText: "Created task" }).first()).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/tool_call|tool_result|domain tool|task_id|Raw result|Raw arguments/i);
 
   await expect(page.getByRole("heading", { name: "Launch polish next task" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open task" })).toBeVisible();
   await expect(page.getByText("The task is now attached to Android release prep")).toBeVisible();
-
-  await activitySummary.click();
-  await expect(activity.getByText("domain tool").first()).toBeVisible();
-  await expect(activity.getByText("task_id").first()).toBeVisible();
-  await expect(activity.getByText("checklist")).toBeVisible();
-  await expect(activity.getByText("Review mobile screenshots")).toBeVisible();
-  await expect(activity.getByText("Confirm preview handoff")).toBeVisible();
 
   const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(horizontalOverflow).toBe(false);

@@ -22,11 +22,7 @@ import type {
   AssistantToolResult,
 } from "@starlog/contracts";
 
-import {
-  MainRoomTodayState,
-  type AssistantTodaySummary,
-  type AssistantWeeklySummary,
-} from "../components/main-room-thread";
+import type { AssistantTodaySummary, AssistantWeeklySummary } from "../components/main-room-thread";
 import { DynamicPanelRenderer } from "../components/dynamic-panel-renderer";
 import { getConversationCardRegistryEntry } from "../components/conversation-card-registry";
 import { useSessionConfig } from "../session-provider";
@@ -304,6 +300,15 @@ function toolLabel(toolName: string): string {
   if (toolName === "request_due_date") {
     return "Task details";
   }
+  if (toolName === "search_planner") {
+    return "Checked Planner";
+  }
+  if (toolName === "search_review") {
+    return "Checked Review";
+  }
+  if (toolName === "create_task") {
+    return "Created task";
+  }
   return "Assistant check";
 }
 
@@ -387,9 +392,9 @@ function AmbientDataPart({
   onCardAction: (action: AssistantCardAction) => Promise<void> | void;
 }) {
   return (
-    <section className={styles.dataCard}>
+    <section className={styles.ambientRow} aria-label="Ambient update">
       <div className={styles.partHeader}>
-        <span>Surface update</span>
+        <span>Update</span>
         <EntityLink entityRef={data.entity_ref} />
       </div>
       <h3>{data.label}</h3>
@@ -416,7 +421,7 @@ function ToolResultDataPart({ data }: DataPartProps<AssistantToolResult>) {
   const metadata = metadataRecord(data.metadata);
   const toolName = firstText(metadata.tool_name) || "assistant_check";
   return (
-    <section className={styles.toolCard}>
+    <section className={styles.toolCard} aria-label="Assistant activity">
       <div className={styles.partHeader}>
         <span>{toolLabel(toolName)}</span>
         <EntityLink entityRef={data.entity_ref} />
@@ -641,7 +646,7 @@ function ReviewGradeDataPart({
 function ToolCallPart({ toolName, args, result, isError }: ToolPartProps) {
   void args;
   return (
-    <section className={styles.toolCard}>
+    <section className={styles.toolCard} aria-label="Assistant activity">
       <div className={styles.partHeader}>
         <span>{toolLabel(toolName)}</span>
       </div>
@@ -1076,6 +1081,114 @@ function SupportSurfaceSummary({
   );
 }
 
+function pendingStartPrompt(interrupt: AssistantInterrupt): string {
+  if (interrupt.tool_name === "triage_capture") {
+    return "Process latest capture";
+  }
+  if (interrupt.tool_name === "request_due_date") {
+    return "Finish task details";
+  }
+  if (interrupt.tool_name === "choose_morning_focus") {
+    return "Pick my morning focus";
+  }
+  if (interrupt.tool_name === "resolve_planner_conflict") {
+    return "Resolve the planner conflict";
+  }
+  if (interrupt.tool_name === "grade_review_recall") {
+    return "Start review";
+  }
+  return interrupt.title;
+}
+
+function uniqueStartActions(actions: Array<{ label: string; prompt: string }>): Array<{ label: string; prompt: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ label: string; prompt: string }> = [];
+  for (const action of actions) {
+    const label = action.label.trim();
+    const prompt = action.prompt.trim();
+    if (!label || !prompt || seen.has(label)) {
+      continue;
+    }
+    seen.add(label);
+    out.push({ label, prompt });
+    if (out.length >= 4) {
+      break;
+    }
+  }
+  return out;
+}
+
+function AssistantThreadStart({
+  snapshot,
+  todaySummary,
+  todayOpenLoops,
+  todayContextItems,
+  busy,
+  onQuickStart,
+}: {
+  snapshot: AssistantThreadSnapshot;
+  todaySummary?: AssistantTodaySummary | null;
+  todayOpenLoops?: TodayItem[];
+  todayContextItems?: TodayItem[];
+  busy: boolean;
+  onQuickStart: (prompt: string) => void;
+}) {
+  const pendingInterrupt = snapshot.interrupts.find((interrupt) => interrupt.status === "pending");
+  const recommendedMove = todaySummary?.recommended_next_move || null;
+  const title = pendingInterrupt?.title || recommendedMove?.title || "What should we work on?";
+  const body =
+    pendingInterrupt?.body ||
+    recommendedMove?.body ||
+    "Use this thread for capture, planning, review, and follow-through. Context stays nearby without taking over the conversation.";
+  const actions = uniqueStartActions([
+    ...(pendingInterrupt ? [{ label: pendingStartPrompt(pendingInterrupt), prompt: pendingStartPrompt(pendingInterrupt) }] : []),
+    ...(recommendedMove?.prompt
+      ? [{ label: recommendedMove.action_label || "Start", prompt: recommendedMove.prompt }]
+      : []),
+    { label: "Plan today", prompt: "Plan today around my schedule, tasks, and open loops." },
+    { label: "Process latest capture", prompt: "Process my latest Library captures and route anything actionable." },
+    { label: "Start review", prompt: "Start my due review queue." },
+  ]);
+  const contextItems = [...(todayOpenLoops || []), ...(todayContextItems || [])]
+    .filter((item) => item.label !== "No open loops in this thread")
+    .slice(0, 4);
+
+  return (
+    <section className={styles.threadStart} aria-label="Assistant thread start">
+      <div className={styles.startCopy}>
+        <p className={styles.eyebrow}>Assistant</p>
+        <h2>What should we work on?</h2>
+        <p>Talk naturally. Starlog will keep the thread centered and surface decisions only when they need action.</p>
+      </div>
+      <article className={styles.startSuggestion} aria-label="Suggested next prompt">
+        <span>{pendingInterrupt ? "Needs attention" : recommendedMove ? "Suggested" : "Ready"}</span>
+        <strong>{title}</strong>
+        <p>{body}</p>
+      </article>
+      <div className={styles.startActions} aria-label="Suggested prompts">
+        {actions.map((action) => (
+          <button key={action.label} type="button" disabled={busy} onClick={() => onQuickStart(action.prompt)}>
+            {action.label}
+          </button>
+        ))}
+      </div>
+      {contextItems.length > 0 ? (
+        <div className={styles.startContext} aria-label="Thread context">
+          {contextItems.map((item, index) =>
+            item.href ? (
+              <a key={`${item.label}-${index}`} href={item.href}>
+                {item.label}
+              </a>
+            ) : (
+              <span key={`${item.label}-${index}`}>{item.label}</span>
+            ),
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function StarlogTextPart({ text }: { text: string }) {
   return <p className={styles.textPart}>{text}</p>;
 }
@@ -1346,7 +1459,6 @@ export function StarlogAssistantThread({
   loading,
   busy,
   todaySummary,
-  weeklySummary,
   todayOpenLoops,
   todayContextItems,
   onQuickStart,
@@ -1373,18 +1485,22 @@ export function StarlogAssistantThread({
     return <section className={styles.threadShell}>Loading assistant thread...</section>;
   }
 
-  if (!snapshot || snapshot.messages.length === 0) {
+  if (!snapshot) {
+    return <section className={styles.threadShell}>Assistant thread unavailable.</section>;
+  }
+
+  if (snapshot.messages.length === 0) {
     return (
-      <MainRoomTodayState
-        snapshot={snapshot}
-        loading={loading}
-        busy={busy}
-        todaySummary={todaySummary}
-        weeklySummary={weeklySummary}
-        todayOpenLoops={todayOpenLoops}
-        todayContextItems={todayContextItems}
-        onQuickStart={onQuickStart}
-      />
+      <section className={styles.threadShell}>
+        <AssistantThreadStart
+          snapshot={snapshot}
+          todaySummary={todaySummary}
+          todayOpenLoops={todayOpenLoops}
+          todayContextItems={todayContextItems}
+          busy={busy}
+          onQuickStart={onQuickStart}
+        />
+      </section>
     );
   }
 

@@ -457,31 +457,49 @@ function buildStateChips({
   return chips.slice(0, 3);
 }
 
-function RailSection({
-  title,
-  items,
+function ContextStrip({
+  focusItems,
+  openLoopItems,
+  contextItems,
+  suggestions,
   onNavigate,
 }: {
-  title: string;
-  items: RailItem[];
+  focusItems: RailItem[];
+  openLoopItems: RailItem[];
+  contextItems: RailItem[];
+  suggestions: RailItem[];
   onNavigate: (href: string) => void;
 }) {
+  const visibleOpenLoops = openLoopItems.filter((item) => item.label !== "No open loops in this thread");
+  const groups = [
+    { title: "Now", items: focusItems.slice(0, 1) },
+    { title: "Open loops", items: visibleOpenLoops.slice(0, 3) },
+    { title: "Context", items: contextItems.slice(0, 3) },
+    { title: "Next", items: suggestions.slice(0, 2) },
+  ].filter((group) => group.items.length > 0);
+
+  if (groups.length === 0) {
+    return null;
+  }
+
   return (
-    <section className={styles.railGroup}>
-      <h3>{title}</h3>
-      <ul className={styles.railList}>
-        {items.map((item, index) => (
-          <li key={`${title}-${item.label}-${index}`}>
-            {item.href ? (
-              <button type="button" onClick={() => onNavigate(item.href || "")}>
-                {item.label}
-              </button>
-            ) : (
-              <span>{item.label}</span>
+    <section className={styles.contextStrip} aria-label="Assistant context">
+      {groups.map((group) => (
+        <div key={group.title} className={styles.contextGroup}>
+          <span>{group.title}</span>
+          <div>
+            {group.items.map((item, index) =>
+              item.href ? (
+                <button key={`${group.title}-${item.label}-${index}`} type="button" onClick={() => onNavigate(item.href || "")}>
+                  {item.label}
+                </button>
+              ) : (
+                <span key={`${group.title}-${item.label}-${index}`}>{item.label}</span>
+              ),
             )}
-          </li>
-        ))}
-      </ul>
+          </div>
+        </div>
+      ))}
     </section>
   );
 }
@@ -1090,8 +1108,6 @@ function AssistantPageContent() {
   const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
   const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
   const now = new Date();
-  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(now);
-  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(now);
   const openLoops = buildOpenLoops(normalizedSnapshot, handoff);
   const summaryOpenLoops = buildTodaySummaryOpenLoops(todaySummary);
   const cockpitOpenLoops =
@@ -1149,6 +1165,13 @@ function AssistantPageContent() {
 
         <section className={styles.layout}>
           <div className={styles.threadColumn}>
+            <ContextStrip
+              focusItems={nowItems}
+              openLoopItems={railOpenLoops}
+              contextItems={contextItems}
+              suggestions={suggestions}
+              onNavigate={(href) => router.push(href)}
+            />
             <StarlogAssistantThread
               snapshot={normalizedSnapshot}
               loading={loading}
@@ -1203,33 +1226,6 @@ function AssistantPageContent() {
               onShortcut={queueComposerDraft}
             />
           </div>
-
-          <aside className={styles.sideRail}>
-            <article className={styles.sideCard}>
-              <div className={styles.nowHeader}>
-                <h2 className={styles.sideLabel}>Now</h2>
-                <strong>{timeLabel}</strong>
-                <span>{todayLabel}</span>
-              </div>
-              <RailSection title="Focus block" items={nowItems} onNavigate={(href) => router.push(href)} />
-            </article>
-
-            <article className={styles.sideCard}>
-              <h2 className={styles.sideLabel}>Open loops</h2>
-              <div className={styles.loopCount}>{openLoopCount}</div>
-              <RailSection title="Needs attention" items={railOpenLoops} onNavigate={(href) => router.push(href)} />
-            </article>
-
-            <article className={styles.sideCard}>
-              <h2 className={styles.sideLabel}>Current context</h2>
-              <RailSection
-                title="Relevant"
-                items={contextItems.length > 0 ? contextItems : [{ label: "No active context yet" }]}
-                onNavigate={(href) => router.push(href)}
-              />
-              <RailSection title="Suggestions" items={suggestions} onNavigate={(href) => router.push(href)} />
-            </article>
-          </aside>
         </section>
       </main>
     </StarlogAssistantRuntimeProvider>

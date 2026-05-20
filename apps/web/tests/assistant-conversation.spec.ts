@@ -90,7 +90,7 @@ async function routeIdleAssistantStream(page: import("@playwright/test").Page) {
   });
 }
 
-test("opens an empty assistant thread to the Today state", async ({ page }) => {
+test("opens an empty assistant thread to a clean centered start state", async ({ page }) => {
   await seedSession(page);
   await routeAssistantShell(
     page,
@@ -128,11 +128,14 @@ test("opens an empty assistant thread to the Today state", async ({ page }) => {
 
   await page.goto("/assistant");
 
-  await expect(page.getByRole("heading", { name: "Recommended next move" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Resolve the waiting decision" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Capture needs triage" })).toBeVisible();
+  await expect(page.getByLabel("Assistant thread start")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
+  await expect(page.getByLabel("Suggested next prompt")).toContainText("Triage latest capture");
+  await expect(page.getByLabel("Assistant context")).toContainText("Capture needs triage");
+  await expect(page.locator("aside")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Recommended next move" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Process latest capture" }).click();
+  await page.getByLabel("Suggested prompts").getByRole("button", { name: "Process latest capture" }).click();
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
     /^Process (my latest Library captures and route anything actionable\.|latest capture)$/,
   );
