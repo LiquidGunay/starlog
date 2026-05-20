@@ -211,9 +211,11 @@ Known outcome for `Inference Engineering.pdf`:
   dynamic-ui metadata paths. Native mobile currently uses a read-only assistant-ui `LocalRuntime` host
   over Starlog messages, so broader dynamic-panel host behavior, full server-owned runtime migration, and
   repeatable Android functional automation are still pending.
-- **Android validation stability:** current Android validation is blocked by ADB bridge/device-control
-  instability until the preflight and phone-control path is fixed. Historical screenshots/manifests remain
-  useful context, but they are not current release proof.
+- **Android validation stability:** current Android validation is blocked until a physical phone is
+  visible as a ready ADB `device`. The preflight now reports Linux `adb`, Windows `adb.exe`,
+  `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness explicitly, and marks
+  absent/unauthorized/offline phone gates as `validation_stage: blocked`. Historical
+  screenshots/manifests remain useful context, but they are not current release proof.
 - **Raw protocol label cleanup:** most harnesses continue to hide protocol/runtime labels by default.
   Review-grade flow now has an installed-device assertion for raw `interview.review_grade` and
   `grade_review_recall`; older fallback renderer paths still need periodic evidence refresh.
@@ -232,9 +234,10 @@ Known outcome for `Inference Engineering.pdf`:
   requested latest proof bundle; do not treat removed dated artifact folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
-  listed there). Current Android validation is blocked by ADB bridge/device-control instability, so
-  phone-level migration claims must wait for a fresh passing run after the preflight/phone-control path
-  is fixed. Older evidence remains historical context only.
+  listed there). On 2026-05-20, the latest preflight was blocked because neither Linux `adb` nor the
+  documented Windows `adb.exe` route listed a ready device, and WSL had no `powershell.exe` route.
+  Phone-level migration claims must wait for a fresh `validation_passed: true` run after the phone is
+  attached, unlocked, and authorized. Older evidence remains historical context only.
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
   `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
   clean Python 3.12 `uv` environment and prove that marking `Sliding Window` read releases a linked

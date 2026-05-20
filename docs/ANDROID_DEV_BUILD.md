@@ -226,8 +226,10 @@ What this loop does:
   - `ANDROID_HOME=$HOME/.local/android`
   - `ANDROID_SDK_ROOT=$HOME/.local/android`
 - wipes prior local validation runtime/build state under `.localdata/android-local-validation/`
-- runs an explicit ADB preflight before API/bootstrap/build work: `adb devices -l`, target
-  `ADB_SERIAL` selection, `shell getprop sys.boot_completed`, and a best-effort keep-awake setup
+- runs an explicit ADB preflight before API/bootstrap/build work: host-route diagnostics for Linux
+  `adb`, Windows `adb.exe`, and `powershell.exe`; selected-target `adb devices -l`; target
+  `ADB_SERIAL` selection; `shell getprop sys.boot_completed`; unlocked-device check; `adb reverse`
+  for `ADB_PREFLIGHT_REVERSE_PORTS` (defaults to `API_PORT`); and screenshot/UI XML capture probes
 - generates or reuses a non-repo test passphrase from `/home/ubuntu/.config/starlog/android-local-srs-passphrase.txt`
 - starts a fresh local API on `127.0.0.1:8000`
 - bootstraps/imports the ML Interviews SRS deck into that fresh local DB
@@ -260,15 +262,24 @@ ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
 ```
 
 Use `--adb-preflight-only` before a long validation window when USB/WSL bridge state is suspect.
-If the Windows ADB bridge is returning errors such as `UtilAcceptVsock: accept4 failed 110`, the
-script fails before Gradle/API work and records the reason in
-`.localdata/android-local-validation/builds/latest.json`. Only set `SKIP_ADB_PREFLIGHT=1` when you
-intentionally want to bypass this guardrail.
+The preflight writes `.localdata/android-local-validation/builds/<UTC>/adb-preflight.log` with:
+Linux `adb` availability and `devices -l`, Windows `adb.exe` availability and `devices -l`,
+`powershell.exe` availability, the selected ADB route, target serial state, boot-complete state,
+unlocked-device status, reverse-port setup, and screenshot/UI XML capture capability. If no phone is
+visible or the selected serial is `unauthorized`/`offline`, the script exits before Gradle/API work,
+marks `.localdata/android-local-validation/builds/latest.json` as `validation_stage: blocked`, and
+prints the exact device/ADB remediation. If the Windows ADB bridge is returning errors such as
+`UtilAcceptVsock: accept4 failed 110`, the same latest metadata records the bridge error. Only set
+`SKIP_ADB_PREFLIGHT=1` when you intentionally want to bypass this guardrail.
 
 ```bash
 cd /home/ubuntu/starlog
 ADB_SERIAL=<SERIAL> CLEAN_BUILD=1 REACT_NATIVE_ARCHITECTURES=arm64-v8a \
   bash ./scripts/android_fresh_local_srs_validation.sh
+
+# Optional: include additional reverse checks in preflight when validating Metro plus API.
+ADB_PREFLIGHT_REVERSE_PORTS=8000,8081 ADB_SERIAL=<SERIAL> \
+  bash ./scripts/android_fresh_local_srs_validation.sh --adb-preflight-only
 ```
 
 If the build already succeeded and only the install/UI phase needs to be retried, reuse the

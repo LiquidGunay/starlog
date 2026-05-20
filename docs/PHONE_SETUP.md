@@ -130,7 +130,7 @@ pnpm --filter mobile start
 .\scripts\android_native_smoke_windows.ps1 -ReversePorts "8081,8000"
 ```
 
-   If Windows already shows both the phone and an `ADB Interface` but `adb devices` is still empty, the remaining blocker is usually phone-side authorization: unlock the handset, confirm `USB debugging` is enabled, and accept the `Allow USB debugging` prompt.
+   If Windows already shows both the phone and an `ADB Interface` but `adb devices` is still empty, the remaining blocker is usually phone-side authorization: unlock the handset, confirm `USB debugging` is enabled, and accept the `Allow USB debugging` prompt. If WSL has no `powershell.exe` route, run the Windows fallback from Windows Terminal; the fresh-local preflight still probes Windows `adb.exe` directly from `/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe` and records `powershell_status=missing` as an environment fact, not a phone pass.
 
 10. In fresh Codex worktrees, run `npx pnpm@9.15.0 install` before native validation. The checked-in native project still resolves React Native/Expo packages from workspace `node_modules`.
 11. If you validate the Android native project directly with `./gradlew assembleDebug`, export `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` first.

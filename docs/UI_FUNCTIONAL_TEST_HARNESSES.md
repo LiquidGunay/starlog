@@ -171,11 +171,13 @@ Assistant evidence such as `assistant-capability-shell-thread.png`, `assistant-c
 `assistant-command-composer.png`, `assistant-review-grade-controls.png`, and
 `assistant-review-grade-dynamic-ui.png`. Failed runs write
 their own build-local `latest.json` and publish `.localdata/android-local-validation/builds/latest.json`
-with `validation_passed: false`, `validation_stage: failed`, and any partial screenshots/XML for debugging;
-they do not publish a passed final manifest. Current reruns are blocked by ADB bridge/device-control
-instability, so treat older installed-device evidence as historical context for the assistant-ui
-shell/thread/composer markers and dynamic-panel host path. It is not yet a complete, repeatable Android
-functional automation suite for the full server-owned native assistant-ui runtime.
+with `validation_passed: false`; environmental preflight gates publish `validation_stage: blocked`,
+while in-flow script/app failures publish `validation_stage: failed`. Partial screenshots/XML remain
+under the ignored latest build directory for debugging; they do not publish a passed final manifest.
+Current reruns are blocked when neither Linux `adb` nor Windows `adb.exe` lists a ready physical device,
+so treat older installed-device evidence as historical context for the assistant-ui shell/thread/composer
+markers and dynamic-panel host path. It is not yet a complete, repeatable Android functional automation
+suite for the full server-owned native assistant-ui runtime.
 
 Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. On this device, `adb shell svc power stayon true` has exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture and publish only the latest requested evidence bundle.
 

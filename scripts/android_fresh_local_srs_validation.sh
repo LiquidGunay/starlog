@@ -11,13 +11,19 @@ PASSPHRASE_FILE="${STARLOG_TEST_PASSPHRASE_FILE:-$CONFIG_DIR/android-local-srs-p
 JAVA_HOME="${JAVA_HOME:-$HOME/.local/jdks/temurin-17}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/.local/android}"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-ADB="${ADB:-/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe}"
+WINDOWS_ADB_CANDIDATE="${WINDOWS_ADB_CANDIDATE:-/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe}"
+LINUX_ADB_CANDIDATE="${LINUX_ADB_CANDIDATE:-$(command -v adb 2>/dev/null || true)}"
+if [[ -z "$LINUX_ADB_CANDIDATE" && -x "$ANDROID_SDK_ROOT/platform-tools/adb" ]]; then
+  LINUX_ADB_CANDIDATE="$ANDROID_SDK_ROOT/platform-tools/adb"
+fi
+ADB="${ADB:-$WINDOWS_ADB_CANDIDATE}"
 ADB_SERIAL="${ADB_SERIAL:-}"
 APP_VARIANT="${APP_VARIANT:-development}"
 APP_PACKAGE="${APP_PACKAGE:-com.starlog.app.dev}"
 APP_ACTIVITY="${APP_ACTIVITY:-.MainActivity}"
 WINDOWS_TEMP_ROOT="${WINDOWS_TEMP_ROOT:-/mnt/c/Temp}"
 API_PORT="${API_PORT:-8000}"
+ADB_PREFLIGHT_REVERSE_PORTS="${ADB_PREFLIGHT_REVERSE_PORTS:-$API_PORT}"
 API_BASE="${API_BASE:-http://127.0.0.1:${API_PORT}}"
 DECK_PATH="${DECK_PATH:-$ROOT_DIR/data/ml_interviews_part_ii_qa_cards.jsonl}"
 NEETCODE_SOURCE_PATH="${NEETCODE_SOURCE_PATH:-$ROOT_DIR/data/neetcode_150.json}"
@@ -76,6 +82,7 @@ Important defaults:
 
 Environment overrides:
   ADB_SERIAL                    explicit Android serial
+  ADB_PREFLIGHT_REVERSE_PORTS   comma-separated ports to verify with adb reverse during preflight
   APP_VARIANT                   development | preview | production
   APP_PACKAGE                   Android package to install/launch
   APP_ACTIVITY                  Activity class or component; normalized onto APP_PACKAGE
@@ -107,6 +114,12 @@ fail() {
   exit 1
 }
 
+block() {
+  printf '[android-local-srs] %s\n' "$1" >&2
+  STARLOG_FAILURE_STAGE=blocked write_failure_metadata_once "$1"
+  exit 2
+}
+
 write_failure_metadata_once() {
   local reason="${1:-validation failed}"
   if [[ "${FAILURE_METADATA_WRITTEN:-0}" == "1" || "${VALIDATION_PASSED:-0}" == "1" ]]; then
@@ -122,7 +135,7 @@ write_failure_metadata_once() {
   mkdir -p "$BUILD_DIR" "$SCREENSHOT_DIR" "$BUILD_ROOT"
   local metadata_rc=$?
   if [[ "$metadata_rc" == "0" ]] && declare -F write_metadata >/dev/null 2>&1; then
-    STARLOG_FAILURE_REASON="$reason" write_metadata failed >/dev/null 2>&1
+    STARLOG_FAILURE_REASON="$reason" write_metadata "${STARLOG_FAILURE_STAGE:-failed}" >/dev/null 2>&1
     metadata_rc=$?
   elif [[ "$metadata_rc" == "0" ]]; then
     METADATA_PATH_ENV="$METADATA_PATH" \
@@ -136,6 +149,7 @@ write_failure_metadata_once() {
     RUNTIME_DIR_ENV="$RUNTIME_DIR" \
     PASSPHRASE_FILE_ENV="$PASSPHRASE_FILE" \
     INCLUDE_LOCAL_METADATA_ENV="${STARLOG_INCLUDE_LOCAL_METADATA:-0}" \
+    FAILURE_STAGE_ENV="${STARLOG_FAILURE_STAGE:-failed}" \
     FAILURE_REASON_ENV="$reason" \
     python3 - <<'PY'
 from pathlib import Path
@@ -155,7 +169,7 @@ payload = {
     "screenshots": {},
     "evidence_files": {},
     "validated_flows": [],
-    "validation_stage": "failed",
+    "validation_stage": os.environ["FAILURE_STAGE_ENV"],
     "validation_passed": False,
     "failure_reason": os.environ["FAILURE_REASON_ENV"],
 }
@@ -242,13 +256,17 @@ compact_adb_output() {
     | cut -c 1-500
 }
 
+adb_bridge_output_is_unavailable() {
+  grep -Eqi 'UtilAcceptVsock|accept4 failed|vsock|WSL.*(bridge|error)|failed to start daemon|cannot connect to daemon'
+}
+
 adb_preflight_failure_reason() {
   local context="$1"
   local output="$2"
   local compact_output
   compact_output="$(printf '%s' "$output" | compact_adb_output)"
 
-  if grep -Eqi 'UtilAcceptVsock|accept4 failed|vsock|WSL.*(bridge|error)|failed to start daemon|cannot connect to daemon' <<<"$output"; then
+  if adb_bridge_output_is_unavailable <<<"$output"; then
     printf 'ADB preflight failed: adb bridge unavailable while %s using %s%s. Output: %s' \
       "$context" \
       "$ADB" \
@@ -270,13 +288,134 @@ prepare_preflight_dirs() {
 
 ensure_adb_available() {
   [[ -x "$ANDROID_SDK_ROOT/platform-tools/adb" || -f "$ADB" || -n "$(command -v "$ADB" 2>/dev/null || true)" ]] \
-    || fail "Android SDK/adb not found"
+    || block "Android SDK/adb not found. Set ADB to a working adb binary, for example ADB=/usr/bin/adb for Linux adb or ADB=$WINDOWS_ADB_CANDIDATE for Windows adb.exe."
 }
 
 adb_device_state_from_devices_output() {
   local devices_output="$1"
   local serial="$2"
   awk -v serial="$serial" 'NR > 1 && $1 == serial { print $2; found=1; exit } END { if (!found) exit 1 }' <<<"$devices_output"
+}
+
+adb_ready_serials_from_devices_output() {
+  tr -d '\r' <<<"$1" | awk 'NR > 1 && $2 == "device" { print $1 }'
+}
+
+adb_problem_devices_from_devices_output() {
+  tr -d '\r' <<<"$1" | awk 'NR > 1 && $1 != "" && $2 != "" && $2 != "device" { print $1 ":" $2 }'
+}
+
+preflight_probe_adb_route() {
+  local label="$1"
+  local adb_path="$2"
+
+  printf '\n## %s adb probe\n' "$label" >>"$ADB_PREFLIGHT_LOG"
+  if [[ -z "$adb_path" ]]; then
+    printf 'status=missing\n' >>"$ADB_PREFLIGHT_LOG"
+    return 0
+  fi
+  if [[ ! -f "$adb_path" && ! -x "$adb_path" && -z "$(command -v "$adb_path" 2>/dev/null || true)" ]]; then
+    printf 'status=missing\npath=%s\n' "$adb_path" >>"$ADB_PREFLIGHT_LOG"
+    return 0
+  fi
+
+  printf 'path=%s\n$ %s version\n' "$adb_path" "$adb_path" >>"$ADB_PREFLIGHT_LOG"
+  "$adb_path" version >>"$ADB_PREFLIGHT_LOG" 2>&1 || true
+  printf '\n$ %s devices -l\n' "$adb_path" >>"$ADB_PREFLIGHT_LOG"
+  "$adb_path" devices -l >>"$ADB_PREFLIGHT_LOG" 2>&1 || true
+}
+
+write_adb_preflight_host_report() {
+  {
+    printf '# Android validation adb preflight\n'
+    printf 'stamp=%s\n' "$STAMP"
+    printf 'selected_adb=%s\n' "$ADB"
+    printf 'adb_serial=%s\n' "${ADB_SERIAL:-auto}"
+    printf 'linux_adb_candidate=%s\n' "${LINUX_ADB_CANDIDATE:-missing}"
+    printf 'windows_adb_candidate=%s\n' "$WINDOWS_ADB_CANDIDATE"
+    printf 'powershell_status='
+    if command -v powershell.exe >/dev/null 2>&1; then
+      printf 'available\n'
+      printf '$ powershell.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"\n'
+      powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>&1 || true
+    else
+      printf 'missing\n'
+    fi
+  } >"$ADB_PREFLIGHT_LOG"
+
+  preflight_probe_adb_route "linux" "${LINUX_ADB_CANDIDATE:-adb}"
+  preflight_probe_adb_route "windows" "$WINDOWS_ADB_CANDIDATE"
+  printf '\n## selected adb devices\n$ %s devices -l\n' "$ADB" >>"$ADB_PREFLIGHT_LOG"
+}
+
+preflight_no_ready_device_message() {
+  local selected_output="$1"
+  local problem_devices
+  problem_devices="$(adb_problem_devices_from_devices_output "$selected_output" | paste -sd ' ' - || true)"
+
+  if [[ -n "$problem_devices" ]]; then
+    printf 'ADB preflight blocked: no ready adb device is available through selected ADB=%s; non-ready device state(s): %s. Unlock the phone, enable USB debugging, accept the "Allow USB debugging" prompt, then rerun. If more than one device is attached, set ADB_SERIAL to the intended serial. See %s.' \
+      "$ADB" "$problem_devices" "$ADB_PREFLIGHT_LOG"
+    return
+  fi
+
+  printf 'ADB preflight blocked: no device is visible through selected ADB=%s. Linux adb candidate: %s. Windows adb.exe candidate: %s. powershell.exe: %s. Connect the phone by USB, unlock it, enable Developer options > USB debugging, accept the authorization prompt, and verify either `adb devices -l` or `%s devices -l` lists a `device` row. Set ADB_SERIAL=<serial> if needed. See %s.' \
+    "$ADB" \
+    "${LINUX_ADB_CANDIDATE:-missing}" \
+    "$WINDOWS_ADB_CANDIDATE" \
+    "$(command -v powershell.exe >/dev/null 2>&1 && printf available || printf missing)" \
+    "$WINDOWS_ADB_CANDIDATE" \
+    "$ADB_PREFLIGHT_LOG"
+}
+
+verify_adb_reverse_ports() {
+  local ports_csv="$ADB_PREFLIGHT_REVERSE_PORTS"
+  [[ -n "$ports_csv" ]] || return 0
+
+  local port=""
+  IFS=',' read -ra ports <<<"$ports_csv"
+  for port in "${ports[@]}"; do
+    port="${port//[[:space:]]/}"
+    [[ -n "$port" ]] || continue
+    if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+      block "ADB preflight blocked: ADB_PREFLIGHT_REVERSE_PORTS contains non-numeric port '$port'. Use a comma-separated numeric list such as ADB_PREFLIGHT_REVERSE_PORTS=$API_PORT."
+    fi
+
+    local reverse_output=""
+    if ! reverse_output="$(adb_cmd reverse "tcp:$port" "tcp:$port" 2>&1)"; then
+      printf '\n$ adb reverse tcp:%s tcp:%s\n%s\n' "$port" "$port" "$reverse_output" >>"$ADB_PREFLIGHT_LOG"
+      block "$(adb_preflight_failure_reason "setting adb reverse for tcp:$port" "$reverse_output")"
+    fi
+    printf '\n$ adb reverse tcp:%s tcp:%s\n%s\n' "$port" "$port" "$reverse_output" >>"$ADB_PREFLIGHT_LOG"
+  done
+
+  local reverse_list_output=""
+  reverse_list_output="$(adb_cmd reverse --list 2>&1 || true)"
+  printf '\n$ adb reverse --list\n%s\n' "$reverse_list_output" >>"$ADB_PREFLIGHT_LOG"
+}
+
+verify_device_capture_capabilities() {
+  local remote_xml="/sdcard/starlog-preflight-window.xml"
+  local xml_output=""
+  if ! xml_output="$(adb_cmd shell uiautomator dump "$remote_xml" 2>&1)"; then
+    printf '\n$ adb shell uiautomator dump %s\n%s\n' "$remote_xml" "$xml_output" >>"$ADB_PREFLIGHT_LOG"
+    block "$(adb_preflight_failure_reason "dumping UI XML" "$xml_output")"
+  fi
+  printf '\n$ adb shell uiautomator dump %s\n%s\n' "$remote_xml" "$xml_output" >>"$ADB_PREFLIGHT_LOG"
+
+  if ! adb_cmd exec-out cat "$remote_xml" >"$BUILD_DIR/preflight-window.xml" 2>>"$ADB_PREFLIGHT_LOG"; then
+    block "ADB preflight blocked: UI XML dump succeeded but `adb exec-out cat $remote_xml` could not write $BUILD_DIR/preflight-window.xml. If using Windows adb.exe from WSL, keep using exec-out into the Linux path rather than adb pull. See $ADB_PREFLIGHT_LOG."
+  fi
+  if [[ ! -s "$BUILD_DIR/preflight-window.xml" ]]; then
+    block "ADB preflight blocked: UI XML dump produced an empty $BUILD_DIR/preflight-window.xml. Unlock the phone and rerun. See $ADB_PREFLIGHT_LOG."
+  fi
+
+  if ! adb_cmd exec-out screencap -p >"$BUILD_DIR/preflight-screen.png" 2>>"$ADB_PREFLIGHT_LOG"; then
+    block "ADB preflight blocked: `adb exec-out screencap -p` failed. Unlock the phone and verify screen capture works through the selected adb route. See $ADB_PREFLIGHT_LOG."
+  fi
+  if [[ ! -s "$BUILD_DIR/preflight-screen.png" ]]; then
+    block "ADB preflight blocked: screenshot capture produced an empty $BUILD_DIR/preflight-screen.png. Unlock the phone and rerun. See $ADB_PREFLIGHT_LOG."
+  fi
 }
 
 run_adb_preflight() {
@@ -286,45 +425,45 @@ run_adb_preflight() {
   fi
 
   prepare_preflight_dirs
-  : >"$ADB_PREFLIGHT_LOG"
+  write_adb_preflight_host_report
   log "Running adb preflight with $ADB${ADB_SERIAL:+ (ADB_SERIAL=$ADB_SERIAL)}"
 
   local devices_output=""
   if ! devices_output="$("$ADB" devices -l 2>&1)"; then
-    printf '%s\n' "$devices_output" >"$ADB_PREFLIGHT_LOG"
-    fail "$(adb_preflight_failure_reason "listing devices" "$devices_output")"
+    printf '%s\n' "$devices_output" >>"$ADB_PREFLIGHT_LOG"
+    block "$(adb_preflight_failure_reason "listing devices" "$devices_output")"
   fi
-  printf '%s\n' "$devices_output" >"$ADB_PREFLIGHT_LOG"
+  printf '%s\n' "$devices_output" >>"$ADB_PREFLIGHT_LOG"
 
   local ready_serials=()
   local serial=""
   while IFS= read -r serial; do
     [[ -n "$serial" ]] && ready_serials+=("$serial")
-  done < <(awk 'NR > 1 && $2 == "device" { print $1 }' <<<"$devices_output")
+  done < <(adb_ready_serials_from_devices_output "$devices_output")
 
   if [[ -n "$ADB_SERIAL" ]]; then
     local target_state=""
     target_state="$(adb_device_state_from_devices_output "$devices_output" "$ADB_SERIAL" || true)"
     if [[ "$target_state" != "device" ]]; then
       if [[ -n "$target_state" ]]; then
-        fail "ADB preflight failed: target ADB_SERIAL=$ADB_SERIAL is '$target_state', not 'device'. See $ADB_PREFLIGHT_LOG."
+        block "ADB preflight blocked: target ADB_SERIAL=$ADB_SERIAL is '$target_state', not 'device'. Unlock the phone, accept USB debugging authorization, or reconnect it until '$ADB devices -l' shows '$ADB_SERIAL device'. See $ADB_PREFLIGHT_LOG."
       fi
-      fail "ADB preflight failed: target ADB_SERIAL=$ADB_SERIAL was not listed by '$ADB devices -l'. See $ADB_PREFLIGHT_LOG."
+      block "ADB preflight blocked: target ADB_SERIAL=$ADB_SERIAL was not listed by '$ADB devices -l'. Verify the serial with '$ADB devices -l', reconnect/unlock the phone, or update ADB_SERIAL. See $ADB_PREFLIGHT_LOG."
     fi
   else
     case "${#ready_serials[@]}" in
       0)
-        if grep -Eqi 'UtilAcceptVsock|accept4 failed|vsock|WSL.*(bridge|error)|failed to start daemon|cannot connect to daemon' <<<"$devices_output"; then
-          fail "$(adb_preflight_failure_reason "listing devices" "$devices_output")"
+        if adb_bridge_output_is_unavailable <<<"$devices_output"; then
+          block "$(adb_preflight_failure_reason "listing devices" "$devices_output")"
         fi
-        fail "ADB preflight failed: no ready adb device was listed by '$ADB devices -l'. Connect/unlock the phone, repair the adb bridge, or set SKIP_ADB_PREFLIGHT=1 intentionally. See $ADB_PREFLIGHT_LOG."
+        block "$(preflight_no_ready_device_message "$devices_output")"
         ;;
       1)
         ADB_SERIAL="${ready_serials[0]}"
         log "ADB preflight selected device $ADB_SERIAL"
         ;;
       *)
-        fail "ADB preflight failed: multiple ready adb devices found (${ready_serials[*]}). Set ADB_SERIAL to the intended target."
+        block "ADB preflight blocked: multiple ready adb devices found (${ready_serials[*]}). Set ADB_SERIAL to the intended target."
         ;;
     esac
   fi
@@ -332,20 +471,23 @@ run_adb_preflight() {
   local boot_output=""
   if ! boot_output="$(adb_cmd shell getprop sys.boot_completed 2>&1)"; then
     printf '\n$ adb shell getprop sys.boot_completed\n%s\n' "$boot_output" >>"$ADB_PREFLIGHT_LOG"
-    fail "$(adb_preflight_failure_reason "checking sys.boot_completed" "$boot_output")"
+    block "$(adb_preflight_failure_reason "checking sys.boot_completed" "$boot_output")"
   fi
   printf '\n$ adb shell getprop sys.boot_completed\n%s\n' "$boot_output" >>"$ADB_PREFLIGHT_LOG"
 
   local boot_completed
   boot_completed="$(tr -d '\r\n' <<<"$boot_output")"
   if [[ "$boot_completed" != "1" ]]; then
-    fail "ADB preflight failed: target ${ADB_SERIAL:-auto} is connected but Android boot is not complete (sys.boot_completed=${boot_completed:-unset}). See $ADB_PREFLIGHT_LOG."
+    block "ADB preflight blocked: target ${ADB_SERIAL:-auto} is connected but Android boot is not complete (sys.boot_completed=${boot_completed:-unset}). Wait for Android to finish booting, unlock the phone, then rerun. See $ADB_PREFLIGHT_LOG."
   fi
 
   adb_cmd shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
   if ! adb_cmd shell svc power stayon usb >/dev/null 2>&1; then
     adb_cmd shell svc power stayon true >/dev/null 2>&1 || true
   fi
+  require_phone_unlocked
+  verify_adb_reverse_ports
+  verify_device_capture_capabilities
 
   log "ADB preflight passed for ${ADB_SERIAL:-auto}"
 }
@@ -3648,6 +3790,9 @@ screenshot_candidates = {
 }
 
 evidence_candidates = {
+    "adb_preflight_log": f"{path.parent}/adb-preflight.log",
+    "preflight_screen": f"{path.parent}/preflight-screen.png",
+    "preflight_window_xml": f"{path.parent}/preflight-window.xml",
     "api_log": f"{path.parent}/local-api.log",
     "native_study_before_xml": f"{path.parent}/native-study-before.xml",
     "native_study_after_xml": f"{path.parent}/native-study-after.xml",
