@@ -1,15 +1,101 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 
-import { AprilWorkspaceShell } from "../components/april-observatory-shell";
+import { PRODUCT_SURFACES } from "@starlog/contracts";
 import { readEntitySnapshot, writeEntitySnapshot } from "../lib/entity-snapshot";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { emitLibraryArtifactAssistantEvent, type ArtifactActionKind, type ArtifactActionResponse } from "./assistant-events";
 import styles from "./library.module.css";
+
+const LIBRARY_SURFACES = [
+  { href: "/assistant", label: PRODUCT_SURFACES.assistant.label },
+  { href: "/library", label: PRODUCT_SURFACES.library.label },
+  { href: "/planner", label: PRODUCT_SURFACES.planner.label },
+  { href: "/review", label: PRODUCT_SURFACES.review.label },
+];
+
+type LibraryWorkspaceShellProps = {
+  statusLabel: string;
+  queueLabel: string;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  children: ReactNode;
+};
+
+function LibraryWorkspaceShell({
+  statusLabel,
+  queueLabel,
+  searchValue,
+  onSearchChange,
+  children,
+}: LibraryWorkspaceShellProps) {
+  return (
+    <div className={styles.workspaceShell}>
+      <aside className={styles.workspaceRail} aria-label="Library navigation">
+        <div className={styles.workspaceBrand}>
+          <span>Starlog</span>
+          <strong>Library pipeline</strong>
+        </div>
+        <nav className={styles.workspaceNav} aria-label="Primary surfaces">
+          {LIBRARY_SURFACES.map((surface) => (
+            <Link
+              key={surface.href}
+              href={surface.href}
+              className={surface.href === "/library" ? styles.workspaceNavActive : undefined}
+              aria-current={surface.href === "/library" ? "page" : undefined}
+            >
+              {surface.label}
+            </Link>
+          ))}
+        </nav>
+        <button className={styles.workspaceCta} type="button">Quick capture</button>
+        <section className={styles.workspaceRailSection} aria-labelledby="library-pipeline-nav-title">
+          <h2 id="library-pipeline-nav-title">Pipeline</h2>
+          <div className={styles.workspaceRailLinks}>
+            <a href="#library-inbox">Inbox</a>
+            <a href="#library-artifacts">Recent artifacts</a>
+            <a href="#library-notes">Notes and saved items</a>
+          </div>
+        </section>
+        <div className={styles.workspaceRailFooter}>
+          <Link href="/runtime">Settings</Link>
+          <div>
+            <strong>Single-user thread</strong>
+            <span>{queueLabel}</span>
+          </div>
+        </div>
+      </aside>
+
+      <div className={styles.workspaceColumn}>
+        <header className={styles.workspaceTopbar}>
+          <div className={styles.workspaceStatus}>
+            <span aria-hidden="true" />
+            <strong>{statusLabel}</strong>
+          </div>
+          <label className={styles.workspaceSearch}>
+            <span>Library search</span>
+            <input
+              aria-label="Search Library"
+              type="text"
+              placeholder="Search captures, artifacts, notes..."
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+            />
+          </label>
+          <div className={styles.workspaceActions}>
+            <Link href="/assistant" aria-label="Open Assistant thread">Assistant</Link>
+            <Link href="/runtime" aria-label="Open settings">Settings</Link>
+          </div>
+        </header>
+        <main className={styles.workspaceContent}>{children}</main>
+      </div>
+    </div>
+  );
+}
 
 type CaptureStatus =
   | "unprocessed"
@@ -457,29 +543,11 @@ function LibraryPageContent() {
   }
 
   return (
-    <AprilWorkspaceShell
-      activeSurface="knowledge-base"
-      brandMeta="Library pipeline"
+    <LibraryWorkspaceShell
       statusLabel={status}
       queueLabel={`${outbox.length} queued`}
-      ctaLabel="Quick capture"
-      searchLabel="Library search"
-      searchAriaLabel="Search Library"
-      searchPlaceholder="Search captures, artifacts, notes..."
       searchValue={searchValue}
       onSearchChange={setSearchValue}
-      railSlot={(
-        <>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Pipeline</span>
-            <div className="april-rail-link-stack">
-              <a href="#library-inbox">Inbox</a>
-              <a href="#library-artifacts">Recent artifacts</a>
-              <a href="#library-notes">Notes and saved items</a>
-            </div>
-          </div>
-        </>
-      )}
     >
       <div className={styles.surface} data-testid="library-surface">
         <header className={styles.header}>
@@ -678,13 +746,13 @@ function LibraryPageContent() {
           </aside>
         </div>
       </div>
-    </AprilWorkspaceShell>
+    </LibraryWorkspaceShell>
   );
 }
 
 export default function LibraryPage() {
   return (
-    <Suspense fallback={<main className="shell"><section className="observatory-panel glass"><p className="status">Loading Library...</p></section></main>}>
+    <Suspense fallback={<main className={styles.loadingShell}><p>Loading Library...</p></main>}>
       <LibraryPageContent />
     </Suspense>
   );

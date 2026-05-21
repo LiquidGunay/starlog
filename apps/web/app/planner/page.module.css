@@ -1,10 +1,140 @@
-.surface {
+.plannerShell {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  padding: 1rem;
+}
+
+.surfaceNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 auto 0.75rem;
+  max-width: 1440px;
+}
+
+.surfaceNav a {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 0.45rem 0.72rem;
+  text-decoration: none;
+}
+
+.surfaceNav a[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--primary), transparent 55%);
+  background: color-mix(in srgb, var(--primary), transparent 88%);
+  color: var(--text);
+}
+
+.shellHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 auto 0.85rem;
+  max-width: 1440px;
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 24%);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  padding: 0.85rem 1rem;
+}
+
+.statusSummary {
+  margin: 0.24rem 0 0;
+  color: var(--muted);
+}
+
+.contextRail {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.75rem;
+  min-width: 0;
+  grid-row: span 5;
+  position: sticky;
+  top: 0.85rem;
+}
+
+.railSection,
+.railMetricCard,
+.panel {
+  border: 1px solid color-mix(in srgb, var(--panel-border), transparent 22%);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+}
+
+.railSection {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+}
+
+.railSection h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.railMetricStack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.railMetricCard {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.72rem;
+}
+
+.railMetricCard strong {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.railMetricCard span,
+.panelKicker,
+.kicker,
+.generatedAt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.panel {
+  min-width: 0;
   padding: 0.9rem;
 }
 
+.panelHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.panelHead h2,
+.composerPanel h2 {
+  margin: 0.15rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.supportingCopy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.surface {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 0.9rem;
+  margin: 0 auto;
+  max-width: 1440px;
+}
+
 .heroPanel {
+  grid-column: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
@@ -17,10 +147,8 @@
 
 .heroPanel h1 {
   margin: 0.2rem 0 0;
-  font-family: "Rajdhani", sans-serif;
-  font-size: clamp(2rem, 3.4vw, 3.35rem);
-  line-height: 0.95;
-  text-transform: uppercase;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1.04;
 }
 
 .heroPanel p {
@@ -33,10 +161,7 @@
 .kicker,
 .generatedAt {
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .dateControls {
@@ -50,13 +175,11 @@
   display: grid;
   gap: 0.25rem;
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .metricGrid {
+  grid-column: 2;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.6rem;
@@ -73,17 +196,13 @@
 }
 
 .metricGrid strong {
-  font-family: "Rajdhani", sans-serif;
-  font-size: 2rem;
+  font-size: 1.85rem;
   line-height: 1;
 }
 
 .metricGrid span {
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .warningMetric {
@@ -92,6 +211,7 @@
 }
 
 .workspaceGrid {
+  grid-column: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   gap: 0.85rem;
@@ -132,8 +252,7 @@
   padding: 0.3rem 0.35rem;
   border-bottom: 1px solid color-mix(in srgb, var(--panel-border), transparent 55%);
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.64rem;
+  font-size: 0.74rem;
   text-align: right;
 }
 
@@ -172,10 +291,7 @@
 .conflictCard p,
 .suggestionList small {
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.64rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.74rem;
 }
 
 .timelineItem strong {
@@ -224,10 +340,7 @@
   gap: 0.75rem;
   margin-top: 0.7rem;
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .legend span {
@@ -300,10 +413,7 @@
 
 .emptyGroup {
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .composerPanel {
@@ -328,6 +438,19 @@
 .syncActions {
   display: grid;
   gap: 0.45rem;
+}
+
+.pressureTag {
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-transform: none;
+}
+
+.pressureTagConflict {
+  color: var(--warning);
 }
 
 .conflictCard {
@@ -370,10 +493,7 @@
   display: grid;
   gap: 0.3rem;
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .alarmField :global(.input) {
@@ -397,10 +517,7 @@
   border-top: 1px solid color-mix(in srgb, var(--panel-border), transparent 45%);
   padding-top: 0.45rem;
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .alarmTime {
@@ -422,7 +539,12 @@
   padding-top: 0.5rem;
 }
 
+.routeStatus {
+  grid-column: 2;
+}
+
 .quickDates {
+  grid-column: 2;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
@@ -445,10 +567,7 @@
 .quickDates span {
   margin-top: 0.18rem;
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.78rem;
 }
 
 .activeQuickDate {
@@ -457,6 +576,24 @@
 }
 
 @media (max-width: 1180px) {
+  .surface {
+    grid-template-columns: 1fr;
+  }
+
+  .contextRail,
+  .heroPanel,
+  .metricGrid,
+  .workspaceGrid,
+  .routeStatus,
+  .quickDates {
+    grid-column: 1;
+  }
+
+  .contextRail {
+    grid-row: auto;
+    position: static;
+  }
+
   .heroPanel,
   .workspaceGrid {
     grid-template-columns: 1fr;
@@ -468,8 +605,14 @@
 }
 
 @media (max-width: 760px) {
-  .surface {
+  .plannerShell {
     padding: 0.65rem;
+  }
+
+  .shellHeader,
+  .heroPanel,
+  .panel {
+    padding: 0.75rem;
   }
 
   .metricGrid,
@@ -487,7 +630,7 @@
   }
 
   .hourRail span {
-    font-size: 0.58rem;
+    font-size: 0.68rem;
     padding-right: 0.25rem;
   }
 
