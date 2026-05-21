@@ -37,29 +37,23 @@ where Starlog is going. Use this page for current implementation confidence.
   tests, the full web Playwright config passed 42 tests, the live PWA interview flow spec passed 1 test,
   the mobile viewport functional harness passed 6 tests, and `apps/mobile` `test:assistant-ui-render`,
   `test:assistant-aui`, and `test:assistant-thread-actions` passed.
-- **Latest local interview-prep/UI proof known on 2026-05-21:** PWA Review functional passed 3/3,
-  PWA assistant study-command passed 5/5, PWA dynamic panel renderer passed 4/4, Assistant dynamic-ui
-  due-date e2e passed 1/1, API due-date pytest passed 1/1, mobile Assistant render/actions/aui passed,
-  live PWA user flow passed 1/1, PWA Review/Planner functional specs passed 5 tests, and
-  `corepack pnpm --filter web lint` passed with the existing
-  `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning.
+- **Latest local interview-prep/UI proof known on 2026-05-21:** PR #282 merged the dynamic-panel e2e
+  proof at squash `48f1a92a009992ac09f20c412f124a729382eb51`; its validation included Playwright
+  dynamic-panel e2e 2/2, API pytest 2/2, and `corepack pnpm --filter web lint` with the existing
+  `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning. Current
+  `origin/master` proof also passed `corepack pnpm test:ui:pwa-functional` 16/16 with evidence under
+  `.localdata/ui-functional/latest/test-results/`, the live functional PWA flow with evidence under
+  `.localdata/live-functional/latest/test-results/`, and API due-date pytest.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
-  `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`. It proves the bounded
-  native interview-prep loop, Assistant-hosted due-date and review-grade dynamic UI, Planner briefing
-  cache generation, and cache-first alarm scheduling on the attached Android phone. The due-date path
-  created task `tsk_833ac32672064fdea73d07f5c87976e7` with `due_at: 2026-05-21T18:30:00Z`; the
-  briefing is `brf_189a758c19ed4c648c0a7d552719e93e` for `2026-05-21` with six recommendation hints.
-  Validated flows include `assistant_ui_shell_thread_composer_verified`,
-  `assistant_due_date_dynamic_ui_verified`, `native_study_question_request_created`,
-  `review_good_grade_submitted`, `assistant_review_grade_dynamic_ui_verified`,
-  `planner_briefing_cache_generated`, `planner_alarm_scheduled`, and
-  `planner_alarm_briefing_path_verified`. Relevant captures show no visible `create_time_block` or
-  fallback labels, and the manifest has no `native_study_question_request_fallback_after_visible_tap`
-  marker, so the Study question request is pure native tap/API success. Future fallback-assisted Study
-  question proof must use that distinct marker and be treated as lower-confidence than pure native-tap
-  proof. It does not prove production-hosted Android parity or full server-owned native
-  assistant-ui runtime migration.
+  `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`. PR #283 merged the Android
+  harness stabilization at squash `6c48a3df664903fa20c5619430c2a39f5b0e054f`. The current manifest
+  proves the bounded native interview-prep loop across install/login, Assistant, Review/Study,
+  grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling on the attached Android
+  phone. Future fallback-assisted Study question proof must use the distinct
+  `native_study_question_request_fallback_after_visible_tap` marker and be treated as lower-confidence
+  than pure native-tap proof. It does not prove production-hosted Android parity or full server-owned
+  native assistant-ui runtime migration.
 
 ## Post-Merge PR Status
 
@@ -87,6 +81,11 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Merged #279 (canonical Library handoffs/mobile a11y cleanup):** Library handoffs use the canonical
   Assistant path and mobile accessibility/overflow cleanup keeps the fallback PWA support surface usable
   without turning it into the primary phone UX.
+- **Merged #282 (dynamic-panel e2e proof):** dynamic-panel e2e coverage now validates the deterministic
+  due-date panel path with Playwright and API pytest on the merged `master` code.
+- **Merged #283 (Android harness stabilization):** the fresh local Android validation harness now waits
+  for exact enabled Study controls and fresh Planner alarm targets, with current physical-phone proof
+  at `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
 
 ## Works Today
 
@@ -110,13 +109,13 @@ where Starlog is going. Use this page for current implementation confidence.
   over server-owned Starlog messages. It is useful for rendering/transcript slices and selected
   dynamic-panel host integration, but it is not yet the full visible phone chat/runtime replacement
   unless the pending mobile runtime work lands and is validated.
-- **Current local UI harness proof:** as of 2026-05-21, the latest targeted PWA Review, PWA Assistant
-  study-command, PWA dynamic panel renderer, Assistant due-date e2e, API due-date, and focused native
-  Assistant rendering/thread-action/aui tests pass. This proof-refresh lane also passed the live PWA
-  user flow, the dev-config due-date dynamic UI e2e, and the PWA Review/Planner functional specs. The
-  broader 2026-05-20 PWA and mobile viewport harness passes remain useful baseline evidence. These prove
-  current local web and native-code UI behavior; the connected-phone Android proof is tracked in the
-  native interview-prep evidence below.
+- **Current local UI harness proof:** as of 2026-05-21, current `master` has passing PWA functional
+  proof (`corepack pnpm test:ui:pwa-functional`, 16/16) at
+  `.localdata/ui-functional/latest/test-results/`, passing live functional PWA proof at
+  `.localdata/live-functional/latest/test-results/`, passing API due-date pytest, and the merged PR #282
+  dynamic-panel e2e validation. The broader 2026-05-20 PWA and mobile viewport harness passes remain
+  useful baseline evidence. These prove current local web and native-code UI behavior; the
+  connected-phone Android proof is tracked in the native interview-prep evidence below.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -181,7 +180,7 @@ where Starlog is going. Use this page for current implementation confidence.
 
 ## Current Interview-Prep Loop
 
-Current status after PRs #202-#206:
+Current status with the latest 2026-05-21 proof refresh:
 
 1. Import or validate structured study material:
    - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
@@ -197,7 +196,7 @@ Current status after PRs #202-#206:
    - **Status:** works as deterministic Assistant command flow into `study_question_requests`.
 5. Review and grade cards through the PWA or Android native Review surface.
    - **Status:** works in the live local PWA path and in the fresh local physical Android validation
-     run from `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`.
+     run from `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
 6. Feed review/question/practice events into deterministic recommendation scoring.
    - **Status:** works; PR #204 also injects these signals into briefing review pressure.
 7. Preflight local PDFs before creating cards from them.
@@ -205,22 +204,17 @@ Current status after PRs #202-#206:
 
 Key loop evidence path for this status:
 - Historical Chapter 0 PDF builder/import artifacts were generated under `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/`; current PDF review-card proof should be regenerated into `.localdata/pdf-review-cards/latest` and treated as the active latest lane.
-- `corepack pnpm test:ui:pwa-functional apps/web/tests/ui-functional/pwa-review.functional.spec.ts`
-  (PWA Review functional, 3/3 passing)
-- `corepack pnpm exec playwright test --config=playwright.web.config.ts apps/web/tests/pwa-assistant-study-command.web-functional.spec.ts`
-  (PWA assistant study-command flow, 5/5 passing)
-- `corepack pnpm exec playwright test --config=playwright.web.config.ts apps/web/tests/pwa-dynamic-panel-renderer.spec.ts`
-  (PWA dynamic panel renderer, 4/4 passing)
-- `corepack pnpm exec playwright test --config=playwright.web.config.ts apps/web/tests/assistant-dynamic-ui-e2e.spec.ts`
-  (Assistant due-date dynamic-ui e2e, 1/1 passing)
-- `services/api/tests/test_assistant_api.py` due-date pytest coverage (1/1 passing)
+- `corepack pnpm test:ui:pwa-functional`
+  (PWA functional suite, 16/16 passing; evidence at `.localdata/ui-functional/latest/test-results/`)
+- PR #282 dynamic-panel validation
+  (Playwright dynamic-panel e2e 2/2 passing, API pytest 2/2 passing, web lint passing with the existing
+  `initialDraft` dependency warning)
+- API due-date pytest coverage (passing on current `master`)
 - `corepack pnpm exec playwright test --config=playwright.live-functional.config.ts apps/web/tests/live-functional/pwa-live-user-flow.spec.ts`
-  (live PWA user flow, 1/1 passing)
-- PWA Review/Planner functional specs
-  (5 tests passing in this proof-refresh lane)
+  (live PWA user flow passing; evidence at `.localdata/live-functional/latest/test-results/`)
 - `corepack pnpm test:assistant-ui-render`, `corepack pnpm test:assistant-thread-actions`, and
   `corepack pnpm test:assistant-aui` in `apps/mobile` (mobile render/action/assistant-ui runtime passes)
-- `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`
+- `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`
   (fresh local physical Android validation with `validation_passed: true`)
 
 Known outcome for `Inference Engineering.pdf`:
@@ -294,27 +288,21 @@ Known outcome for `Inference Engineering.pdf`:
   expose the hosted passphrase or bearer token, and token material from local authenticated checks must
   not be copied into this document.
 - Latest local UI/interview-prep evidence on 2026-05-21:
-  PWA Review functional passed 3/3, PWA assistant study-command passed 5/5, PWA dynamic panel renderer
-  passed 4/4, Assistant due-date dynamic-ui e2e passed 1/1, API due-date pytest passed 1/1, the live PWA
-  user flow passed 1/1, PWA Review/Planner functional specs passed 5 tests, mobile Assistant
-  render/actions/aui passed, and `corepack pnpm --filter web lint` passed with the existing
-  `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning. Keep run output in
-  `.localdata/`, ignored build folders, or a single explicitly requested latest proof bundle;
-  do not treat removed dated artifact folders as current evidence.
+  PR #282 dynamic-panel e2e validation passed Playwright 2/2 and API pytest 2/2, and
+  `corepack pnpm --filter web lint` passed with the existing
+  `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning.
+  Current `master` also passed `corepack pnpm test:ui:pwa-functional` 16/16 with evidence at
+  `.localdata/ui-functional/latest/test-results/`, the live functional PWA flow with evidence at
+  `.localdata/live-functional/latest/test-results/`, and API due-date pytest. Keep run output in
+  `.localdata/`, ignored build folders, or a single explicitly requested latest proof bundle; do not
+  treat removed dated artifact folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). The current proof is
-  `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`, with validated flows for
-  Assistant shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command
-  submission, Assistant due-date dynamic UI task creation, native Study topic unlock/read/question
-  request, Review answer reveal and `Good` grade, Assistant review-grade dynamic UI, Planner briefing
-  cache generation, Planner alarm scheduling, and Planner alarm briefing-path verification. The
-  due-date flow created task `tsk_833ac32672064fdea73d07f5c87976e7` with
-  `due_at: 2026-05-21T18:30:00Z`; the briefing was
-  `brf_189a758c19ed4c648c0a7d552719e93e` for `2026-05-21` with six recommendation hints. Relevant
-  captures showed no visible `create_time_block` or fallback labels. The manifest has no
-  `native_study_question_request_fallback_after_visible_tap` marker, so the Study question request is
-  pure native tap/API success; fallback-assisted proof must use that marker and be treated as
+  `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`, with validated flows for
+  install/login, Assistant, Review/Study, grading, Assistant due-date dynamic UI, and Planner alarm
+  scheduling. The manifest has `validation_passed: true`. Fallback-assisted Study question proof must
+  use the `native_study_question_request_fallback_after_visible_tap` marker and be treated as
   lower-confidence.
 - Fresh focused backend validation: Python 3.12 API/study/assistant tests passed with
   `STARLOG_AI_RUNTIME_BASE_URL` set to a bogus localhost URL. NeetCode script tests pass under a
@@ -327,7 +315,7 @@ Known outcome for `Inference Engineering.pdf`:
   partial with compatibility fallbacks, and mobile React Native uses the
   `server-owned-local-protocol-bridge` path over Starlog messages. Functional harnesses now require the
   actual Assistant surface for capability, due-date, and review-grade dynamic UI proof, with current
-  physical Android evidence from `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`.
+  physical Android evidence from `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
 - The PDF pipeline now uses manifest-driven preflight evidence:
   `ingestion_manifest.json`, `candidate_cards.jsonl`, and blocked segment entries in the preflight report/
   manifest are the first pass for trusted extraction before final card import.
