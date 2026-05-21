@@ -1,13 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-
 import { API_BASE, seedAssistantSession } from "./assistant-concept-fixtures";
 
-const screenshotDir = "artifacts/ui-functional";
-
-test.beforeAll(() => {
-  mkdirSync(screenshotDir, { recursive: true });
-});
 
 const artifacts = [
   {
@@ -165,7 +158,7 @@ const focusDetail = {
   ],
 };
 
-test("mobile viewport Library main stays compact and keeps artifact detail reachable", async ({ page }) => {
+test("mobile viewport Library main stays compact and keeps artifact detail reachable", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
 
   await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
@@ -198,7 +191,7 @@ test("mobile viewport Library main stays compact and keeps artifact detail reach
     return boxes.every((box, index) => index === 0 || box.left >= boxes[index - 1].right - 1);
   })).toBe(true);
 
-  await page.screenshot({ path: `${screenshotDir}/mobile-library-main.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("mobile-library-main.png"), fullPage: true });
 
   const focusDetailLink = page.getByRole("link", { name: "Open Library detail for The Focus Fallacy" }).first();
   await expect(focusDetailLink).toHaveAttribute("href", "/library/captures/art_capture_focus");

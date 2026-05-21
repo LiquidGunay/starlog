@@ -13,9 +13,21 @@ The default runner is `./scripts/cross_surface_proof_bundle.sh`.
 
 ## Bundle layout
 
-Every run writes one timestamped bundle under:
+Current proof output should stay out of tracked timestamped `artifacts/**` folders. Write generated
+evidence to `.localdata/cross-surface-proof/latest/`, another ignored lane-specific latest path,
+or to one explicitly requested current proof path when a release handoff needs a single current bundle.
 
-- `artifacts/cross-surface-proof/<timestamp>/`
+Recommended local destination:
+
+- `.localdata/cross-surface-proof/latest/`
+
+The runner writes directly to `.localdata/cross-surface-proof/latest/` by default and replaces that
+current bundle on each run. `STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR` is constrained to a path ending
+in `.localdata/cross-surface-proof/latest` so cleanup cannot target repo roots, `.localdata` roots, worktree parents, `/tmp`,
+or tracked artifact trees. Hosted smoke Playwright results are collected from
+`STARLOG_PWA_HOSTED_TEST_RESULTS_DIR` when set; otherwise they are collected from the hosted smoke
+artifact directory's `test-results/` child. When set, it must be an absolute path ending in
+`.localdata/pwa-hosted-smoke/latest/test-results`.
 
 Top-level files:
 
@@ -39,7 +51,7 @@ Subfolders:
 - `desktop-helper/` captures helper Playwright smoke, Windows host probes, and helper screenshots in
   the same evidence set.
 
-This keeps the latest hosted web, phone, and helper proof artifacts together instead of spreading
+This keeps the current hosted web, phone, and helper proof outputs together instead of spreading
 them across separate runbooks and folders.
 
 ## Canonical command
@@ -51,7 +63,7 @@ cd /home/ubuntu/starlog
 ./scripts/cross_surface_proof_bundle.sh
 ```
 
-That creates `artifacts/cross-surface-proof/<timestamp>/`, runs:
+That replaces `.localdata/cross-surface-proof/latest/`, runs:
 
 - hosted PWA smoke
 - desktop-helper Playwright smoke
@@ -81,7 +93,7 @@ SKIP_INSTALL=1 \
 Optional roots for split worktrees:
 
 ```bash
-CROSS_SURFACE_PROOF_ROOT=/home/ubuntu/starlog \
+STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR=/home/ubuntu/starlog/.localdata/cross-surface-proof/latest \
 PWA_ROOT=/home/ubuntu/starlog-worktrees/<pwa-worktree> \
 MOBILE_ROOT=/home/ubuntu/starlog-worktrees/<mobile-worktree> \
 HELPER_ROOT=/home/ubuntu/starlog-worktrees/<helper-worktree> \
@@ -90,7 +102,6 @@ HELPER_ROOT=/home/ubuntu/starlog-worktrees/<helper-worktree> \
 
 Compatibility note:
 
-- `VALIDATION_ROOT` is still honored as a fallback bundle root for existing wrapper-driven flows.
 - `STARLOG_CROSS_SURFACE_WORKITEM_ID` can override the manifest workitem id; otherwise the bundle
   records the generic `cross-surface-proof` identifier instead of a branch-specific WI value.
 
@@ -125,9 +136,9 @@ Desktop helper:
 
 If the Linux shell still cannot complete the installed-phone proof, use the native Windows ADB flow
 documented in `AGENTS.md`, `docs/PHONE_SETUP.md`, and `docs/ANDROID_DEV_BUILD.md`, then copy the
-resulting smoke log and screenshots into:
+resulting smoke log and screenshots into the current non-tracked proof bundle, for example:
 
-- `artifacts/cross-surface-proof/<timestamp>/phone-app/`
+- `.localdata/cross-surface-proof/latest/phone-app/`
 
 Run this exact command from a native Windows PowerShell session in the repo root when needed:
 

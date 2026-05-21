@@ -4,8 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
-ARTIFACT_DIR="$ROOT_DIR/artifacts/ai-validation-smoke"
-LOG_PATH="$ARTIFACT_DIR/smoke-${STAMP}.log"
+ARTIFACT_DIR="${STARLOG_AI_VALIDATION_SMOKE_ARTIFACT_DIR:-$ROOT_DIR/.localdata/ai-validation-smoke/latest}"
+LOG_PATH="$ARTIFACT_DIR/smoke.log"
 
 INCLUDE_WATCH=0
 INCLUDE_OPENAI_LIVE=0
@@ -26,10 +26,38 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-mkdir -p "$ARTIFACT_DIR"
-touch "$LOG_PATH"
+require_safe_latest_artifact_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/ai-validation-smoke/latest"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
 
-exec > >(tee -a "$LOG_PATH") 2>&1
+  if [[ -z "$path" || "$path" != /* ]]; then
+    echo "refusing unsafe artifact dir: $path" >&2
+    exit 1
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    echo "refusing artifact dir under tracked artifacts root: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    echo "refusing unsafe artifact dir: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    echo "artifact dir must end with $lane_suffix: $path" >&2
+    exit 1
+  fi
+}
+
+require_safe_latest_artifact_dir "$ARTIFACT_DIR"
+
+rm -rf "$ARTIFACT_DIR"
+mkdir -p "$ARTIFACT_DIR"
+: >"$LOG_PATH"
+
+exec > >(tee "$LOG_PATH") 2>&1
 
 run_step() {
   local label="$1"

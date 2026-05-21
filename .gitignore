@@ -63,3 +63,4 @@ apps/web/test-results/
 apps/web/tsconfig.live-functional.*.json
 artifacts/ui-functional/test-results/
 artifacts/pwa-release-gate/test-results/
+artifacts/desktop-helper/

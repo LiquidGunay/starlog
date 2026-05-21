@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="artifacts/pdf-deck-preflight",
+        default=str(repo_root / ".localdata/pdf-deck-preflight/latest"),
         help="Directory where JSON and Markdown evidence should be written.",
     )
     parser.add_argument(
@@ -537,6 +537,58 @@ def _next_local_steps(report: dict[str, object]) -> list[str]:
     return steps
 
 
+def _remove_stale_output_files(output_dir: Path) -> None:
+    for name in ("report.json", "report.md", "ingestion_manifest.json", "candidate_cards.jsonl"):
+        path = output_dir / name
+        if path.exists():
+            path.unlink()
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _has_suffix(path: Path, suffix: Path) -> bool:
+    return tuple(path.parts[-len(suffix.parts) :]) == suffix.parts
+
+
+def _validate_safe_output_dir(output_dir: Path, repo_root: Path, label: str) -> None:
+    lane_suffix = Path(".localdata/pdf-deck-preflight/latest")
+    localdata_root = repo_root / ".localdata"
+    lane_root = localdata_root / "pdf-deck-preflight"
+    artifacts_root = repo_root / "artifacts"
+    tmp_root = Path("/tmp")
+    unsafe_dirs = {Path("/"), tmp_root, repo_root, localdata_root, repo_root.parent}
+    if not output_dir.is_absolute() or output_dir in unsafe_dirs:
+        raise ValueError(f"refusing unsafe PDF preflight output dir ({label}): {output_dir}")
+    if output_dir == artifacts_root or _is_relative_to(output_dir, artifacts_root):
+        raise ValueError(f"refusing PDF preflight output dir under tracked artifacts root ({label}): {output_dir}")
+    if output_dir == tmp_root or _is_relative_to(output_dir, tmp_root):
+        raise ValueError(f"refusing PDF preflight output dir under /tmp ({label}): {output_dir}")
+    if not _has_suffix(output_dir, lane_suffix):
+        raise ValueError(
+            "PDF preflight output dir must end with "
+            f"{lane_suffix.as_posix()} ({label}): {output_dir}"
+        )
+    if not _is_relative_to(output_dir, lane_root):
+        raise ValueError(f"PDF preflight output dir must stay under {lane_root} ({label}): {output_dir}")
+
+
+def _replace_stable_output_dir(output_dir: Path, repo_root: Path) -> Path:
+    lexical_dir = output_dir.expanduser()
+    resolved_dir = lexical_dir.resolve()
+    _validate_safe_output_dir(lexical_dir, repo_root, "lexical")
+    _validate_safe_output_dir(resolved_dir, repo_root, "resolved")
+    if resolved_dir.exists():
+        shutil.rmtree(resolved_dir)
+    resolved_dir.mkdir(parents=True, exist_ok=True)
+    return resolved_dir
+
+
 def build_report(
     pdf_path: Path,
     output_dir: Path,
@@ -582,8 +634,9 @@ def build_report(
 
     started_at = datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
-    run_dir = output_dir / run_id
+    run_dir = output_dir
     run_dir.mkdir(parents=True, exist_ok=True)
+    _remove_stale_output_files(run_dir)
 
     candidate_count = 0
     blocked_chunks: list[dict[str, object]] = []
@@ -765,12 +818,11 @@ def _markdown_runtime(runtime: dict[str, object]) -> list[str]:
 
 def main() -> int:
     args = parse_args()
-    output_dir = Path(args.output_dir)
-    if not output_dir.is_absolute():
-        output_dir = Path(__file__).resolve().parents[1] / output_dir
+    repo_root = Path(__file__).resolve().parents[1]
+    output_dir = _replace_stable_output_dir(Path(args.output_dir), repo_root)
     report = build_report(
         Path(args.pdf).expanduser().resolve(),
-        output_dir.resolve(),
+        output_dir,
         parse_max_pages=args.parse_max_pages,
         extract_max_chars=args.extract_max_chars,
     )

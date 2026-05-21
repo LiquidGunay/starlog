@@ -9,7 +9,6 @@ if [[ -d "$HOME/.local/bin" ]]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-BUNDLE_ROOT="${CROSS_SURFACE_PROOF_ROOT:-${VALIDATION_ROOT:-$ROOT_DIR}}"
 PWA_ROOT="${PWA_ROOT:-$ROOT_DIR}"
 MOBILE_ROOT="${MOBILE_ROOT:-$ROOT_DIR}"
 HELPER_ROOT="${HELPER_ROOT:-$ROOT_DIR}"
@@ -30,7 +29,47 @@ ADB_WIN="${ADB_WIN:-/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe}"
 ADB_PATH="${ADB:-}"
 ADB_SERIAL_VALUE="${ADB_SERIAL:-}"
 
-BUNDLE_DIR="$BUNDLE_ROOT/artifacts/cross-surface-proof/$STAMP"
+BUNDLE_DIR="${STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR:-$ROOT_DIR/.localdata/cross-surface-proof/latest}"
+PWA_DIR="$BUNDLE_DIR/hosted-pwa"
+PHONE_DIR="$BUNDLE_DIR/phone-app"
+DESKTOP_DIR="$BUNDLE_DIR/desktop-helper"
+LOG_DIR="$BUNDLE_DIR/logs"
+SUMMARY_JSON="$BUNDLE_DIR/run-summary.json"
+SUMMARY_MD="$BUNDLE_DIR/RUN_SUMMARY.md"
+HOSTED_SMOKE_ARTIFACT_DIR="${STARLOG_PWA_HOSTED_SMOKE_ARTIFACT_DIR:-$PWA_ROOT/.localdata/pwa-hosted-smoke/latest}"
+HOSTED_TEST_RESULTS_DIR="${STARLOG_PWA_HOSTED_TEST_RESULTS_DIR:-$HOSTED_SMOKE_ARTIFACT_DIR/test-results}"
+
+declare -A STEP_STATUS
+declare -A STEP_DETAIL
+OVERALL_EXIT_CODE=0
+
+require_safe_bundle_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/cross-surface-proof/latest"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
+
+  if [[ -z "$path" || "$path" != /* ]]; then
+    echo "refusing unsafe cross-surface bundle dir: $path" >&2
+    exit 1
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    echo "refusing cross-surface bundle dir under tracked artifacts root: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    echo "refusing unsafe cross-surface bundle dir: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    echo "cross-surface bundle dir must end with $lane_suffix: $path" >&2
+    exit 1
+  fi
+}
+
+require_safe_bundle_dir "$BUNDLE_DIR"
+BUNDLE_DIR="$(realpath -m "$BUNDLE_DIR")"
 PWA_DIR="$BUNDLE_DIR/hosted-pwa"
 PHONE_DIR="$BUNDLE_DIR/phone-app"
 DESKTOP_DIR="$BUNDLE_DIR/desktop-helper"
@@ -38,16 +77,12 @@ LOG_DIR="$BUNDLE_DIR/logs"
 SUMMARY_JSON="$BUNDLE_DIR/run-summary.json"
 SUMMARY_MD="$BUNDLE_DIR/RUN_SUMMARY.md"
 
-declare -A STEP_STATUS
-declare -A STEP_DETAIL
-OVERALL_EXIT_CODE=0
-
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [timestamp]
 
-Creates a timestamped cross-surface proof bundle and optionally runs hosted PWA, phone-app, and
-desktop-helper evidence lanes into one artifact tree.
+Creates a current cross-surface proof bundle and optionally runs hosted PWA, phone-app, and
+desktop-helper evidence lanes into one artifact tree. The default bundle path is replaced on each run.
 
 Defaults:
   - hosted PWA smoke: enabled
@@ -56,7 +91,7 @@ Defaults:
   - phone-app smoke/screenshot: disabled unless STARLOG_CROSS_SURFACE_RUN_PHONE_SMOKE=1
 
 Useful environment variables:
-  CROSS_SURFACE_PROOF_ROOT               Bundle destination root (default: repo root)
+  STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR Bundle destination (default: .localdata/cross-surface-proof/latest)
   PWA_ROOT                               Root used for hosted PWA smoke/proof commands
   MOBILE_ROOT                            Root used for phone-app smoke
   HELPER_ROOT                            Root used for helper checks
@@ -133,7 +168,7 @@ prepare_bundle() {
   fi
   local bundle_tmp
   bundle_tmp="$(mktemp)"
-  "$ROOT_DIR/scripts/prepare_cross_surface_proof_bundle.sh" "$STAMP" >"$bundle_tmp"
+  STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR="$BUNDLE_DIR" "$ROOT_DIR/scripts/prepare_cross_surface_proof_bundle.sh" "$STAMP" >"$bundle_tmp"
   local bundle_path
   bundle_path="$(cat "$bundle_tmp")"
   rm -f "$bundle_tmp"
@@ -149,24 +184,23 @@ run_hosted_pwa_smoke() {
   log "Running hosted PWA smoke from $PWA_ROOT"
   local stdout_log="$LOG_DIR/hosted-pwa-smoke.stdout.log"
   if [[ "$DRY_RUN" == "1" ]]; then
-    printf '[dry-run] (cd %q && bash ./scripts/pwa_hosted_smoke.sh | tee %q)\n' "$PWA_ROOT" "$stdout_log"
+    printf '[dry-run] (cd %q && STARLOG_PWA_HOSTED_SMOKE_ARTIFACT_DIR=%q bash ./scripts/pwa_hosted_smoke.sh | tee %q)\n' "$PWA_ROOT" "$HOSTED_SMOKE_ARTIFACT_DIR" "$stdout_log"
     record_step "hosted_pwa_smoke" "dry-run" "$stdout_log"
     return 0
   fi
 
-  (cd "$PWA_ROOT" && bash ./scripts/pwa_hosted_smoke.sh) | tee "$stdout_log"
+  (cd "$PWA_ROOT" && STARLOG_PWA_HOSTED_SMOKE_ARTIFACT_DIR="$HOSTED_SMOKE_ARTIFACT_DIR" bash ./scripts/pwa_hosted_smoke.sh) | tee "$stdout_log"
 
-  local smoke_dir="$PWA_ROOT/artifacts/pwa-hosted-smoke"
-  local latest_log
-  local latest_api_log
-  latest_log="$(latest_file 'hosted-smoke-*.log' "$smoke_dir")"
-  latest_api_log="$(latest_file 'api-*.log' "$smoke_dir")"
+  local smoke_dir="$HOSTED_SMOKE_ARTIFACT_DIR"
+  local latest_log="$smoke_dir/hosted-smoke.log"
+  local latest_api_log="$smoke_dir/api.log"
 
-  [[ -n "$latest_log" ]] && cp "$latest_log" "$LOG_DIR/"
-  [[ -n "$latest_api_log" ]] && cp "$latest_api_log" "$LOG_DIR/"
-  if [[ -d "$smoke_dir/test-results" ]]; then
+  [[ -f "$latest_log" ]] && cp "$latest_log" "$LOG_DIR/"
+  [[ -f "$latest_api_log" ]] && cp "$latest_api_log" "$LOG_DIR/"
+  local hosted_test_results_dir="$HOSTED_TEST_RESULTS_DIR"
+  if [[ -d "$hosted_test_results_dir" ]]; then
     rm -rf "$PWA_DIR/test-results"
-    cp -R "$smoke_dir/test-results" "$PWA_DIR/test-results"
+    cp -R "$hosted_test_results_dir" "$PWA_DIR/test-results"
   fi
   {
     printf 'stdout_log=%s\n' "$stdout_log"
@@ -249,7 +283,7 @@ run_windows_probe() {
     return 0
   fi
 
-  "$ROOT_DIR/scripts/capture_cross_surface_windows_host_probe.sh" "$STAMP" >/dev/null
+  STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR="$BUNDLE_DIR" "$ROOT_DIR/scripts/capture_cross_surface_windows_host_probe.sh" "$STAMP" >/dev/null
   record_step "windows_probe" "passed" "$DESKTOP_DIR/windows-host-probes.txt"
 }
 
@@ -369,9 +403,9 @@ write_summary() {
 {
   "generated_at_utc": "$now",
   "stamp": "$STAMP",
-  "bundle_dir": "${BUNDLE_DIR#$BUNDLE_ROOT/}",
+  "bundle_dir": "$BUNDLE_DIR",
   "roots": {
-    "bundle_root": "$BUNDLE_ROOT",
+    "bundle_dir": "$BUNDLE_DIR",
     "pwa_root": "$PWA_ROOT",
     "mobile_root": "$MOBILE_ROOT",
     "helper_root": "$HELPER_ROOT"

@@ -71,6 +71,12 @@ basis for this plan:
 - Major writes still require explicit confirmation or explicit user completion of a structured
   interrupt.
 - Near-term proactivity is execution-support oriented, not open-ended life coaching.
+- Strategic context uses lightweight `goals`, `projects`, and `commitments` primitives rather than
+  overloading tasks, notes, or calendar events. The v1 API exposes list/create/update routes at
+  `/v1/goals`, `/v1/projects`, and `/v1/commitments`, with narrow statuses and assistant card
+  projections (`goal_status`, `project_status`, `commitment_status`) for context. These primitives
+  support execution guidance, but automatic prioritization and major writes still stay bounded by
+  explicit confirmation.
 
 ## Experience Direction
 

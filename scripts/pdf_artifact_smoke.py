@@ -4,10 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,8 +24,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--title", default="MIT Diffusion Lecture Notes", help="Artifact title override")
     parser.add_argument(
         "--output-dir",
-        default="artifacts/pdf-ocr-smoke",
-        help="Directory where smoke evidence should be written",
+        default=str(ROOT_DIR / ".localdata/pdf-ocr-smoke/latest"),
+        help="Directory where current smoke evidence should be written",
     )
     parser.add_argument("--notes", default="", help="Optional notes override for manual PDF ingest")
     parser.add_argument("--parse-server-url", default="", help="Optional LiteParse server URL for PDF extraction")
@@ -36,13 +40,55 @@ def download_pdf(url: str) -> bytes:
         return response.read()
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _has_suffix(path: Path, suffix: Path) -> bool:
+    return tuple(path.parts[-len(suffix.parts) :]) == suffix.parts
+
+
+def _validate_safe_output_root(output_root: Path, repo_root: Path, label: str) -> None:
+    lane_suffix = Path(".localdata/pdf-ocr-smoke/latest")
+    localdata_root = repo_root / ".localdata"
+    lane_root = localdata_root / "pdf-ocr-smoke"
+    artifacts_root = repo_root / "artifacts"
+    tmp_root = Path("/tmp")
+    unsafe_dirs = {Path("/"), tmp_root, repo_root, localdata_root, repo_root.parent}
+    if not output_root.is_absolute() or output_root in unsafe_dirs:
+        raise ValueError(f"refusing unsafe PDF artifact smoke output dir ({label}): {output_root}")
+    if output_root == artifacts_root or _is_relative_to(output_root, artifacts_root):
+        raise ValueError(f"refusing PDF artifact smoke output dir under tracked artifacts root ({label}): {output_root}")
+    if output_root == tmp_root or _is_relative_to(output_root, tmp_root):
+        raise ValueError(f"refusing PDF artifact smoke output dir under /tmp ({label}): {output_root}")
+    if not _has_suffix(output_root, lane_suffix):
+        raise ValueError(f"PDF artifact smoke output dir must end with {lane_suffix.as_posix()} ({label}): {output_root}")
+    if not _is_relative_to(output_root, lane_root):
+        raise ValueError(f"PDF artifact smoke output dir must stay under {lane_root} ({label}): {output_root}")
+
+
+def safe_output_root(output_root: Path, repo_root: Path) -> Path:
+    lexical_root = output_root if output_root.is_absolute() else repo_root / output_root
+    lexical_root = lexical_root.expanduser()
+    resolved_root = lexical_root.resolve()
+    _validate_safe_output_root(lexical_root, repo_root, "lexical")
+    _validate_safe_output_root(resolved_root, repo_root, "resolved")
+    return resolved_root
+
+
 def main() -> int:
     args = parse_args()
-    repo_root = Path(__file__).resolve().parents[1]
-    output_root = (repo_root / args.output_dir).resolve()
+    repo_root = ROOT_DIR
+    output_root = safe_output_root(Path(args.output_dir), repo_root)
     started_at = datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
-    run_dir = output_root / run_id
+    if output_root.exists():
+        shutil.rmtree(output_root)
+    run_dir = output_root
     run_dir.mkdir(parents=True, exist_ok=True)
 
     os.environ["STARLOG_DB_PATH"] = str(run_dir / "smoke.db")

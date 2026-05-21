@@ -28,7 +28,7 @@ Deploy approval was given and the first supervised production deployments are li
 
 On 2026-03-15, `master` was updated to include the `next@15.0.7` security fix so GitHub-based Railway builds against `master` no longer hit the prior `next@15.0.0` vulnerability gate.
 
-On 2026-03-22, the public Railway endpoints were re-checked as part of WI-582 to make the hosted PWA path concrete for user testing.
+On 2026-03-22, the public Railway endpoints were re-checked as part of WI-582 to make the hosted PWA path concrete for user testing. Treat those checks and artifact paths as historical examples. For current hosted access confidence, use [docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
 
 - `starlog-api`
   - status: live
@@ -38,12 +38,12 @@ On 2026-03-22, the public Railway endpoints were re-checked as part of WI-582 to
   - status: live
   - public URL: `https://starlog-web-production.up.railway.app`
   - verified response on 2026-03-22: `HTTP/2 200`
-  - current edge headers confirm Railway + Next.js are serving the app (`server: railway-edge`, `x-powered-by: Next.js`)
+  - historical edge headers confirmed Railway + Next.js were serving the app (`server: railway-edge`, `x-powered-by: Next.js`)
   - GitHub deploy status on 2026-03-15: source hook is active, but one deploy failed because the live Railway start command still used the old `pnpm --filter web start -- --hostname ...` form.
   - repo release evidence on 2026-03-22:
     - local production-style release gate completed successfully when run in isolation
     - `bash ./scripts/pwa_hosted_smoke.sh` passed end-to-end at `2026-03-22T14:16:56Z`
-    - hosted smoke artifacts: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T141604Z.log`
+    - historical hosted smoke evidence was dated and should be regenerated under the current latest path when needed
 
 ## Railway access note for this environment
 

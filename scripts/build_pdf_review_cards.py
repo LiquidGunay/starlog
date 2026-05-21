@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,7 @@ import pdf_deck_preflight as preflight  # noqa: E402
 from app.services import pdf_ingest_service  # noqa: E402
 
 TRUSTED_FINAL_CARD_PROVIDERS = {"liteparse_server", "ocr_server", "pypdf"}
-DEFAULT_OUTPUT_DIR = ROOT_DIR / "artifacts/pdf-review-cards"
+DEFAULT_OUTPUT_DIR = ROOT_DIR / ".localdata/pdf-review-cards/latest"
 DEFAULT_MAX_CARDS = 14
 DEFAULT_MIN_SEGMENT_WORDS = 24
 DEFAULT_MAX_SCAN_CHUNKS = 80
@@ -275,6 +276,46 @@ def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     path.write_text("\n".join(json.dumps(item, sort_keys=True) for item in records) + "\n", encoding="utf-8")
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _has_suffix(path: Path, suffix: Path) -> bool:
+    return tuple(path.parts[-len(suffix.parts) :]) == suffix.parts
+
+
+def _validate_safe_output_dir(output_dir: Path, label: str) -> None:
+    lane_suffix = Path(".localdata/pdf-review-cards/latest")
+    localdata_root = ROOT_DIR / ".localdata"
+    lane_root = localdata_root / "pdf-review-cards"
+    artifacts_root = ROOT_DIR / "artifacts"
+    tmp_root = Path("/tmp")
+    unsafe_dirs = {Path("/"), tmp_root, ROOT_DIR, localdata_root, ROOT_DIR.parent}
+    if not output_dir.is_absolute() or output_dir in unsafe_dirs:
+        raise ValueError(f"refusing unsafe PDF review cards output dir ({label}): {output_dir}")
+    if output_dir == artifacts_root or _is_relative_to(output_dir, artifacts_root):
+        raise ValueError(f"refusing PDF review cards output dir under tracked artifacts root ({label}): {output_dir}")
+    if output_dir == tmp_root or _is_relative_to(output_dir, tmp_root):
+        raise ValueError(f"refusing PDF review cards output dir under /tmp ({label}): {output_dir}")
+    if not _has_suffix(output_dir, lane_suffix):
+        raise ValueError(f"PDF review cards output dir must end with {lane_suffix.as_posix()} ({label}): {output_dir}")
+    if not _is_relative_to(output_dir, lane_root):
+        raise ValueError(f"PDF review cards output dir must stay under {lane_root} ({label}): {output_dir}")
+
+
+def safe_output_dir(output_dir: Path) -> Path:
+    lexical_dir = output_dir if output_dir.is_absolute() else ROOT_DIR / output_dir
+    lexical_dir = lexical_dir.expanduser()
+    resolved_dir = lexical_dir.resolve()
+    _validate_safe_output_dir(lexical_dir, "lexical")
+    _validate_safe_output_dir(resolved_dir, "resolved")
+    return resolved_dir
+
+
 def build_report(
     pdf_path: Path,
     output_dir: Path,
@@ -324,7 +365,9 @@ def build_report(
 
     started_at = datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
-    run_dir = output_dir / run_id
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    run_dir = output_dir
     run_dir.mkdir(parents=True, exist_ok=True)
 
     source_sha = preflight._sha256_path(pdf_path)  # type: ignore[attr-defined]
@@ -543,12 +586,10 @@ def main() -> int:
         help="Return a non-zero exit code when no trusted final cards were produced.",
     )
     args = parser.parse_args()
-    output_dir = args.output_dir
-    if not output_dir.is_absolute():
-        output_dir = ROOT_DIR / output_dir
+    output_dir = safe_output_dir(args.output_dir)
     report = build_report(
         args.pdf.expanduser().resolve(),
-        output_dir.resolve(),
+        output_dir,
         max_cards=max(1, args.max_cards),
         max_scan_chunks=max(1, args.max_scan_chunks),
         parse_max_pages=max(1, args.parse_max_pages),

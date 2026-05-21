@@ -40,7 +40,10 @@ If any default step fails, the PR smoke matrix fails.
 
 ## Artifacts
 
-- Logs: `artifacts/ai-validation-smoke/smoke-<timestamp>.log`
+- Logs default to `.localdata/ai-validation-smoke/latest/smoke.log`.
+- `STARLOG_AI_VALIDATION_SMOKE_ARTIFACT_DIR` is constrained to a path ending in `.localdata/ai-validation-smoke/latest`;
+  the script deletes and recreates only that narrow current evidence directory. Older timestamped
+  artifact paths are historical only and are not current-state evidence.
 
 ## Optional lanes
 
@@ -50,14 +53,17 @@ If any default step fails, the PR smoke matrix fails.
 ./scripts/ci_smoke_matrix.sh --include-watch
 ```
 
-These are useful, but they are not the default PR gate today because current `master` still has known drift:
+These are useful, but they are not the default PR gate today. Historical observations that removed
+them from the fast gate included:
 
 - `services/api/tests/test_voice_native_regression.py`
-  - currently red on `master`
-  - latest observed failure: stale `"Calendar blocks:"` expectation versus current `"Schedule blocks:"` briefing output
+  - stale `"Calendar blocks:"` expectation versus current `"Schedule blocks:"` briefing output
 - assistant Playwright lanes under `apps/web/tests/assistant-*.spec.ts`
-  - still under recovery with `WI-522` / `WI-523`
+  - recovery work tracked under `WI-522` / `WI-523`
   - do not make them required again until the chat-surface recovery branch lands cleanly
+
+Use [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) for live current-state confidence before claiming
+whether any watch lane is red or green on the current `master`.
 
 ### Live provider lane
 
@@ -84,8 +90,8 @@ Use this only when the required environment is available, for example:
 
 ## Why this split exists
 
-The repo currently needs a practical green PR gate, not an aspirational one.
+The repo needs a practical green PR gate, not an aspirational one.
 
-- The default matrix is the set of commands verified as current and useful on `master`.
+- The default matrix is the set of commands intended to remain fast and useful for PR-opening checks.
 - The watch lanes stay visible so regressions do not disappear into tribal knowledge.
 - Release-specific gates remain separate from the faster PR-opening path.

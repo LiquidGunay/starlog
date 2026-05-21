@@ -413,7 +413,8 @@ SKIP_INSTALL=1 \
 
 ```bash
 ADB_WIN=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe
-"$ADB_WIN" -s <SERIAL> exec-out screencap -p > /tmp/starlog-phone.png
+mkdir -p .localdata/android-local-validation/latest
+"$ADB_WIN" -s <SERIAL> exec-out screencap -p > .localdata/android-local-validation/latest/starlog-phone.png
 ```
 
 Host-specific troubleshooting:
@@ -425,9 +426,9 @@ Host-specific troubleshooting:
 - `adb devices` empty but the phone appears in Device Manager: unlock the phone, enable USB debugging, and accept the authorization prompt.
 - `unauthorized` over TCP ADB: reconnect USB once and re-authorize before retrying the wireless flow.
 
-## Current voice-native RC artifact (WI-581)
+## Historical voice-native RC artifact (WI-581)
 
-Current preview release-candidate artifact:
+Historical preview release-candidate artifact:
 
 - Output artifact: `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
 - Selected package: `com.starlog.app.preview`
@@ -453,11 +454,11 @@ For this host, Linux `adb devices -l` may stay empty even when the physical phon
 through the Windows platform-tools `adb.exe`. Use the Windows-host path below for reproducible
 installs and keep the phone on that device path for the final screenshot proof.
 
-For the current RC proof pass, the APK has already been staged into a Windows-visible path:
+For that historical RC proof pass, the APK was staged into a Windows-visible path:
 
 - `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
 
-Use this exact native Windows PowerShell command from the repo root for the remaining RC install
+Use this native Windows PowerShell command shape from the repo root when reproducing that RC install
 and screenshot proof:
 
 ```powershell
@@ -472,36 +473,14 @@ and screenshot proof:
 
 Then capture and save:
 
-- a hold-to-talk screenshot on the current RC APK
-- an assistant/chat screenshot on the current RC APK
-- the Windows smoke log for the RC install/run
+- a hold-to-talk screenshot for the APK under test
+- an assistant/chat screenshot for the APK under test
+- the Windows smoke log for the install/run
 
-## Current-master proof refresh (WI-590)
+## Physical-phone proof retention
 
-On 2026-03-22, the latest `origin/master` validation worktree resolved to the same commit already
-present in the canonical checkout:
-
-- `fbf6c44c8d42e825022d3a5b565860b4e5cbee7f`
-
-The current preview artifact therefore remains:
-
-- `/home/ubuntu/starlog/apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
-- staged host copy: `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
-- SHA-256: `01a4dea0fb448e9ae02e5cdce39789c6a80efd5ec6f6c361ec225268743aaa5a`
-
-The remaining app-side artifact is unchanged, but the usable phone path on this host is now the
-Windows platform-tools `adb.exe`; Linux `adb devices -l` still returns no connected phone here.
-
-Use the native Windows-path install command above, then rerun the smoke via the note below when
-you want another fresh physical-phone screenshot pass.
-
-## Post-proof refresh note (WI-601)
-
-On 2026-03-23, the main Codex shell on this host was again able to execute the Windows
-platform-tools `adb.exe` path directly and complete a real physical-phone install/launch/smoke
-pass against the current RC artifact.
-
-Important path constraint that still applies:
+Use the native Windows-path install command above when Linux `adb devices -l` cannot see the phone.
+The durable host constraint is:
 
 - `adb.exe install` must use the native Windows APK path `C:\Temp\starlog-preview-0.1.0-preview.rc1-102.apk`
 - the same run can then use `./scripts/android_native_smoke.sh` with `SKIP_INSTALL=1` for launch,
@@ -510,7 +489,9 @@ Important path constraint that still applies:
 Fresh device evidence should be written to the current validation output, for example
 `.localdata/android-local-validation/builds/latest.json` plus its companion files, or to a single
 explicitly requested latest cross-surface proof bundle. Do not keep accumulating dated phone screenshot
-folders in git.
+folders in git. Dated proof chronology belongs in
+[docs/ENGINEERING_ISSUE_HISTORY.md](/home/ubuntu/starlog/docs/ENGINEERING_ISSUE_HISTORY.md), while
+current works-today status belongs in [docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
 
 ## First-time setup
 

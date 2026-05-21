@@ -4,22 +4,51 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
-ARTIFACT_DIR="$ROOT_DIR/artifacts/pwa-portability-drill"
+ARTIFACT_DIR="${STARLOG_PWA_PORTABILITY_ARTIFACT_DIR:-$ROOT_DIR/.localdata/pwa-portability-drill/latest}"
 RUNTIME_DIR="$ARTIFACT_DIR/runtime"
-LOG_PATH="$ARTIFACT_DIR/portability-drill-${STAMP}.log"
-API_LOG_PATH="$ARTIFACT_DIR/api-${STAMP}.log"
-BACKUP_RESPONSE_PATH="$ARTIFACT_DIR/backup-response-${STAMP}.json"
-EXPORT_REPORT_PATH="$ARTIFACT_DIR/export-roundtrip-${STAMP}.txt"
+LOG_PATH="$ARTIFACT_DIR/portability-drill.log"
+API_LOG_PATH="$ARTIFACT_DIR/api.log"
+BACKUP_RESPONSE_PATH="$ARTIFACT_DIR/backup-response.json"
+EXPORT_REPORT_PATH="$ARTIFACT_DIR/export-roundtrip.txt"
 API_PORT="${STARLOG_PORTABILITY_API_PORT:-8010}"
 API_BASE="http://127.0.0.1:${API_PORT}"
 PASS_PHRASE="${STARLOG_SMOKE_PASSPHRASE:-portability-passphrase-2026}"
 TOKEN=""
 API_PID=""
 
-mkdir -p "$ARTIFACT_DIR" "$RUNTIME_DIR"
-touch "$LOG_PATH" "$API_LOG_PATH"
+require_safe_latest_artifact_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/pwa-portability-drill/latest"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
 
-exec > >(tee -a "$LOG_PATH") 2>&1
+  if [[ -z "$path" || "$path" != /* ]]; then
+    echo "refusing unsafe artifact dir: $path" >&2
+    exit 1
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    echo "refusing artifact dir under tracked artifacts root: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    echo "refusing unsafe artifact dir: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    echo "artifact dir must end with $lane_suffix: $path" >&2
+    exit 1
+  fi
+}
+
+require_safe_latest_artifact_dir "$ARTIFACT_DIR"
+
+rm -rf "$ARTIFACT_DIR"
+mkdir -p "$ARTIFACT_DIR" "$RUNTIME_DIR"
+: >"$LOG_PATH"
+: >"$API_LOG_PATH"
+
+exec > >(tee "$LOG_PATH") 2>&1
 
 cleanup() {
   if [[ -n "$API_PID" ]]; then

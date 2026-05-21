@@ -86,7 +86,7 @@ Desktop capture companion for Starlog.
 
 ## Release packaging
 
-- Staged release artifacts are generated under:
+- Staged release binaries and package metadata are generated under the ignored packaging-output path:
   - `artifacts/desktop-helper/v<version>/<arch-os>/`
 - `build_release_artifacts.sh` produces:
   - host installers (`.deb`, `.AppImage`, `.msi`, `.dmg`, etc. when supported),

@@ -14,7 +14,8 @@ available extracted PDF text on the artifact, rather than only the blob referenc
 - Extracted text, when available, is written into the artifact's `extracted_content`.
 - Extraction provenance is stored under `metadata.pdf_extraction`.
 - A runnable smoke script now exercises `manual-pdf -> summarize -> cards -> append_note` against
-  the provided lecture-notes PDF and writes evidence under `artifacts/pdf-ocr-smoke/<timestamp>/`.
+  the provided lecture-notes PDF and writes current evidence directly under the guarded lane path
+  `.localdata/pdf-ocr-smoke/latest`, replacing that lane on each run.
 
 ## Current extraction strategy
 
@@ -98,7 +99,8 @@ LiteParse's published OCR API (`POST /ocr`, multipart `file` + `language`, JSON 
 Run from repo root:
 
 ```bash
-./services/api/.venv/bin/python scripts/pdf_artifact_smoke.py
+./services/api/.venv/bin/python scripts/pdf_artifact_smoke.py \
+  --output-dir /home/ubuntu/starlog/.localdata/pdf-ocr-smoke/latest
 ```
 
 The script:
@@ -111,7 +113,7 @@ The script:
 - optionally routes the PDF through `STARLOG_PDF_PARSE_SERVER_URL`,
 - optionally routes page images through `STARLOG_PDF_OCR_SERVER_URL`,
 - runs `summarize`, `cards`, and `append_note`,
-- writes JSON + Markdown evidence in `artifacts/pdf-ocr-smoke/<timestamp>/`.
+- clears the lane and writes JSON + Markdown evidence directly under `<output-dir>/`.
 
 ## Expected evidence
 
@@ -131,7 +133,7 @@ PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/pdf_deck_preflig
 
 This path calls `pdf_ingest_service.extract_pdf_text(Path(...))` directly. It does not boot FastAPI,
 does not use `TestClient`, and only allows PDF parse/OCR server URLs on localhost. The report is
-written under `artifacts/pdf-deck-preflight/<timestamp>/` and includes provider, mode, usable,
+written into the default `.localdata/pdf-deck-preflight/latest` lane path and includes provider, mode, usable,
 readable, `rejected_as_noise`, local runtime diagnostics, and next local steps.
 
 If local LiteParse/OCR/text-layer extraction is unavailable or unreadable, the report marks the
@@ -148,9 +150,10 @@ PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/build_pdf_review
   --fail-on-blocked
 ```
 
-This final-card builder reuses the same local URL restrictions and trust gate. It only writes
-`review_cards.jsonl` when the provider is `liteparse_server`, `ocr_server`, or `pypdf` and the
-individual source chunk is readable and content-like. Front matter, table-of-contents chunks,
+This final-card builder reuses the same local URL restrictions and trust gate. It writes current
+evidence directly under `.localdata/pdf-review-cards/latest`, replacing that lane on each run, and
+only writes `review_cards.jsonl` when the provider is `liteparse_server`, `ocr_server`, or `pypdf`
+and the individual source chunk is readable and content-like. Front matter, table-of-contents chunks,
 appendix/resource-list chunks, `strings` fallback output, and noisy/scanned chunks are written as
 blocked segment evidence rather than converted into weak cards. Do not commit generated
 `review_cards.jsonl` files when they contain source excerpts from local PDFs.
@@ -171,10 +174,12 @@ matching imported PDF topic is marked read. Re-importing corrected sections repl
 links for the same PDF source, but the importer does not delete cards omitted from later reviewed
 JSONL files.
 
-Latest canonical-checkout result on 2026-05-13:
+Historical canonical-checkout result on 2026-05-13:
 
-- Command:
-  `/tmp/starlog-liteparse-cli/node_modules/.bin/lit parse "Inference Engineering.pdf" --format json -o /tmp/inference-engineering-liteparse-noocr.json --max-pages 20 --no-ocr -q`
+- Historical command:
+  LiteParse direct CLI parse of `Inference Engineering.pdf` with `--max-pages 20 --no-ocr`. The
+  temporary CLI output path used for that one-off run is intentionally not an active proof-output
+  location.
 - LiteParse direct CLI output:
   top-level JSON only had `pages`; 16 of the first 20 pages had `pages[].text`, with no top-level
   `text`.
@@ -191,16 +196,17 @@ Latest canonical-checkout result on 2026-05-13:
   `rejected_as_noise=false`, `evidence_status=proven_local_text`, `cards_generated=0`
 - Runtime diagnostics:
   the canonical API venv still lacks `pypdf`, `pymupdf`, LiteParse server deps, and PaddleOCR deps;
-  the successful preflight used a temporary localhost parse-server shim backed by the local
-  `/tmp` LiteParse CLI output.
+  the successful preflight used a temporary localhost parse-server shim backed by one-off
+  historical LiteParse CLI output.
 - Next safe import step:
   run the real `scripts/liteparse_parse_server.py` with a local LiteParse CLI environment, rerun
   preflight with `STARLOG_PDF_PARSE_SERVER_URL=http://127.0.0.1:8830/parse`, then run
   `scripts/build_pdf_review_cards.py` and `scripts/import_pdf_review_cards.py` against the same
   trusted extraction path. OCR is not required for this PDF when LiteParse `--no-ocr` succeeds.
-- 2026-05-14 local proof:
-  the real LiteParse path generated 8 Chapter 0 cards in `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/`.
-  Importing that JSONL into a temp DB produced 8 cards, 8 gated card-topic links, 8 source-backed
+- 2026-05-14 historical local proof:
+  the real LiteParse path generated 8 Chapter 0 cards. Current reruns should write the refreshed
+  proof to `.localdata/pdf-review-cards/latest/`. Importing that JSONL into a temp DB produced
+  8 cards, 8 gated card-topic links, 8 source-backed
   answer chunks, one Study source, and one Study topic. Due review was empty before marking
   `Chapter 0: Inference` read and contained all 8 cards after the read marker.
 

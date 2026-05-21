@@ -11,9 +11,39 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
-const outputDir = process.argv[2]
-  ? path.resolve(process.argv[2])
-  : path.join(repoRoot, "artifacts", "cross-surface-proof", new Date().toISOString().replace(/[:.]/g, "-"));
+function requireSafeOutputDir(rawOutputDir) {
+  if (!rawOutputDir?.trim()) {
+    throw new Error("Cross-surface web proof output dir is required");
+  }
+  if (!path.isAbsolute(rawOutputDir)) {
+    throw new Error(`Cross-surface web proof output dir must be absolute: ${rawOutputDir}`);
+  }
+
+  const resolved = path.resolve(rawOutputDir);
+  const worktreeParent = path.dirname(repoRoot);
+  const safeOutputRoot = path.join(repoRoot, ".localdata", "cross-surface-proof", "latest");
+
+  if (resolved === repoRoot || resolved === path.join(repoRoot, ".localdata") || resolved === worktreeParent) {
+    throw new Error(`Refusing broad cross-surface web proof output dir: ${resolved}`);
+  }
+  if (resolved === "/" || resolved === "/tmp" || resolved === safeOutputRoot) {
+    throw new Error(`Refusing broad cross-surface web proof output dir: ${resolved}`);
+  }
+  if (resolved === path.join(repoRoot, "artifacts") || resolved.startsWith(`${path.join(repoRoot, "artifacts")}${path.sep}`)) {
+    throw new Error(`Refusing cross-surface web proof output dir under repo artifacts: ${resolved}`);
+  }
+  if (!resolved.startsWith(`${safeOutputRoot}${path.sep}`)) {
+    throw new Error(`Cross-surface web proof output dir must be under ${safeOutputRoot}: ${resolved}`);
+  }
+
+  return resolved;
+}
+
+const outputDir = requireSafeOutputDir(
+  process.argv[2]
+    ? process.argv[2]
+    : path.join(repoRoot, ".localdata", "cross-surface-proof", "latest", "web"),
+);
 
 const apiBase = process.env.STARLOG_CROSS_SURFACE_API_BASE?.trim() || "http://127.0.0.1:8011";
 const token = process.env.STARLOG_CROSS_SURFACE_TOKEN?.trim();

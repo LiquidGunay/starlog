@@ -40,7 +40,8 @@ Last updated: 2026-04-08
 
 ### Artifact output contract
 
-- Output root: `artifacts/desktop-helper/v<version>/<arch-os>/`
+- Output root: ignored release-binary staging path
+  `artifacts/desktop-helper/v<version>/<arch-os>/`
 - Produced metadata:
   - `checksums.sha256`
   - `manifest.tsv`
@@ -51,8 +52,8 @@ Last updated: 2026-04-08
 ### Evidence
 
 Old committed RC packages were removed from the repo. Generate fresh packages with
-`tools/desktop-helper/scripts/build_release_artifacts.sh` and keep release-specific artifacts outside
-the long-lived source tree unless they are needed for an active handoff.
+`tools/desktop-helper/scripts/build_release_artifacts.sh`. The generated installers, binaries, and
+metadata are packaging outputs in an ignored staging path, not retained proof/evidence history.
 
 ## Signing/notarization readiness (WI-322)
 
@@ -131,9 +132,10 @@ the long-lived source tree unless they are needed for an active handoff.
 - Native release build:
   - `cd tools/desktop-helper && ./node_modules/.bin/tauri build`
 - Localhost RC smoke:
-  - `STARLOG_DESKTOP_HELPER_RC_API_BASE=http://127.0.0.1:8010 STARLOG_DESKTOP_HELPER_RC_BEARER_TOKEN=<token> STARLOG_DESKTOP_HELPER_RC_BRIDGE_TOKEN=<bridge-token> node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/rc-evidence/<timestamp>`
+  - `STARLOG_DESKTOP_HELPER_RC_API_BASE=http://127.0.0.1:8010 STARLOG_DESKTOP_HELPER_RC_BEARER_TOKEN=<token> STARLOG_DESKTOP_HELPER_RC_BRIDGE_TOKEN=<bridge-token> node tools/desktop-helper/scripts/capture_rc_smoke.mjs .localdata/desktop-helper/rc-evidence/latest`
 - QA screenshot capture:
-  - `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
+  - `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs` (writes `.localdata/desktop-helper/qa/latest`)
+  - Default output is `.localdata/desktop-helper/qa/latest`; the script clears and replaces that lane per run.
 
 ### Matrix status
 
@@ -153,15 +155,15 @@ the long-lived source tree unless they are needed for an active handoff.
 Old committed RC screenshots and smoke summaries were removed from the repo. For a current release
 candidate, regenerate QA evidence with:
 
-- `node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/rc-evidence/<timestamp>`
-- `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs`
+- `node tools/desktop-helper/scripts/capture_rc_smoke.mjs .localdata/desktop-helper/rc-evidence/latest`
+- `cd tools/desktop-helper && node ./scripts/capture_qa_screenshots.mjs` (writes `.localdata/desktop-helper/qa/latest`)
 - `./scripts/cross_surface_proof_bundle.sh`
 
 ## RC package + handoff (WI-325)
 
 ### RC structure
 
-- RC candidate is the artifact folder under:
+- RC candidate is the generated release-binary staging folder under:
   - `artifacts/desktop-helper/v<version>/<arch-os>/`
 - Required files for handoff:
   - staged installers/binaries,
@@ -172,9 +174,9 @@ candidate, regenerate QA evidence with:
 
 ### Current RC candidate
 
-Generate a fresh RC candidate from the current branch. The build command writes the candidate under
-`artifacts/desktop-helper/v<version>/<arch-os>/` with `checksums.sha256`, `manifest.tsv`, and
-`build-info.txt`.
+Generate a fresh RC candidate from the current branch. The build command writes installable package
+outputs under the ignored staging path `artifacts/desktop-helper/v<version>/<arch-os>/` with
+`checksums.sha256`, `manifest.tsv`, and `build-info.txt`.
 
 ### Host install smoke (non-destructive, this host)
 

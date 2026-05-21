@@ -57,8 +57,9 @@ Hosted login flow for verification smoke and operator checks:
 
 Current access status:
 
-- Public hosted `/login`, `/assistant`, and API health reachability were checked on 2026-05-19, with
-  local evidence under `/tmp/starlog-hosted-pwa-verify-20260519`.
+- Public hosted `/login`, `/assistant`, and API health reachability status is tracked in
+  `docs/CURRENT_STATE.md`; current hosted proof should be regenerated into the latest ignored
+  `.localdata` evidence lane before release decisions.
 - Authenticated hosted passphrase login was last proven on 2026-05-15. The current docs do not include
   the hosted passphrase or bearer token.
 - Hosted full-flow smoke and release-gate checks are still re-prove items before treating Railway as

@@ -16,10 +16,13 @@ The drill covers:
 
 Artifacts:
 
-- drill log: `artifacts/pwa-portability-drill/portability-drill-<timestamp>.log`
-- export roundtrip output: `artifacts/pwa-portability-drill/export-roundtrip-<timestamp>.txt`
-- backup response JSON: `artifacts/pwa-portability-drill/backup-response-<timestamp>.json`
-- API log: `artifacts/pwa-portability-drill/api-<timestamp>.log`
+- drill log: `.localdata/pwa-portability-drill/latest/portability-drill.log`
+- export roundtrip output: `.localdata/pwa-portability-drill/latest/export-roundtrip.txt`
+- backup response JSON: `.localdata/pwa-portability-drill/latest/backup-response.json`
+- API log: `.localdata/pwa-portability-drill/latest/api.log`
+
+`STARLOG_PWA_PORTABILITY_ARTIFACT_DIR` is constrained to a path ending in `.localdata/pwa-portability-drill/latest`;
+the drill deletes and recreates only that narrow current evidence directory.
 
 Pass criteria:
 

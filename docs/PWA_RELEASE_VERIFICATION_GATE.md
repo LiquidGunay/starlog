@@ -19,10 +19,14 @@ If any step fails, the gate fails.
 
 ## Evidence artifacts
 
-- Gate logs: `artifacts/pwa-release-gate/gate-<timestamp>.log`
+- Gate logs: `.localdata/pwa-release-gate/latest/gate.log`
 - Playwright results + screenshots:
-  - `artifacts/pwa-release-gate/test-results/`
+  - `.localdata/pwa-release-gate/latest/test-results/`
   - screenshots are captured for each passing test via `playwright.web.config.ts`
+
+`STARLOG_PWA_RELEASE_GATE_ARTIFACT_DIR` is constrained to a path ending in `.localdata/pwa-release-gate/latest`;
+the script deletes and recreates only that narrow current evidence directory. Do not point it at
+repo roots, `.localdata` roots, worktree parents, `/tmp`, or tracked `artifacts/**` folders.
 
 ## Test scope notes
 

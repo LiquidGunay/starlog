@@ -62,7 +62,7 @@ const expectedSummaryConflictDraftHref = `/assistant?draft=${encodeURIComponent(
   `Inspect the planner conflicts for ${plannerDraftDate}. There is 1 planner conflict not shown as calendar sync repairs. Propose clear repair options and the safest next step.`,
 )}`;
 
-test("mobile planner exposes action-oriented Assistant handoff drafts", async ({ page }) => {
+test("mobile planner exposes action-oriented Assistant handoff drafts", async ({ page }, testInfo) => {
   await page.clock.setFixedTime(new Date(`${plannerDraftDate}T12:00:00.000Z`));
   await seedAssistantSession(page);
 
@@ -91,5 +91,5 @@ test("mobile planner exposes action-oriented Assistant handoff drafts", async ({
     expectedSummaryConflictDraftHref,
   );
 
-  await page.screenshot({ path: "artifacts/ui-functional/mobile-planner-assistant-handoff.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("mobile-planner-assistant-handoff.png"), fullPage: true });
 });
