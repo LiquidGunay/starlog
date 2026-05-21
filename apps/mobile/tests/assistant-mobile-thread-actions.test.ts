@@ -144,6 +144,25 @@ async function runTests() {
 
     await handleAssistantCardActionOnMobile(
       action({
+        id: "open-legacy-note",
+        label: "Open note",
+        kind: "navigate",
+        payload: { href: "/notes/note-123" },
+      }),
+      card({ kind: "knowledge_note" }),
+      harness.options,
+    );
+
+    assert.deepEqual(harness.activated, ["library"]);
+    assert.deepEqual(harness.webPaths, []);
+    assert.deepEqual(harness.statuses, []);
+  }
+
+  {
+    const harness = createHarness();
+
+    await handleAssistantCardActionOnMobile(
+      action({
         id: "ask-briefing",
         label: "Ask Assistant",
         kind: "composer",

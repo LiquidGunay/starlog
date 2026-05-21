@@ -558,6 +558,109 @@ test("PWA library keeps artifact action success visible when assistant event syn
   await expect(page.locator("[aria-live='polite']")).toHaveText("Summarize completed for The Focus Fallacy. Assistant sync failed.");
 });
 
+test("PWA library detail encodes artifact ids when loading detail", async ({ page }) => {
+  await seedAssistantSession(page);
+  const specialId = "art/focus?branch#clip";
+  const encodedId = encodeURIComponent(specialId);
+  const detailRequests: string[] = [];
+
+  await page.route(`${API_BASE}/v1/artifacts/**`, async (route) => {
+    const requestUrl = route.request().url();
+    detailRequests.push(requestUrl);
+    if (requestUrl !== `${API_BASE}/v1/artifacts/${encodedId}/detail`) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: `Unexpected artifact detail URL: ${requestUrl}` }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...focusDetail,
+        artifact: {
+          ...focusDetail.artifact,
+          id: specialId,
+          title: "Encoded Capture",
+        },
+        suggested_actions: [],
+      }),
+    });
+  });
+
+  await page.goto(`/library/captures/${encodedId}`, { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("banner").getByText("Loaded artifact detail")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Encoded Capture" })).toBeVisible();
+  expect(detailRequests.length).toBeGreaterThan(0);
+  expect(detailRequests.every((requestUrl) => requestUrl === `${API_BASE}/v1/artifacts/${encodedId}/detail`)).toBe(true);
+});
+
+test("PWA library list encodes artifact ids in detail links", async ({ page }) => {
+  await seedAssistantSession(page);
+  const specialId = "art/focus?branch#clip";
+  const encodedId = encodeURIComponent(specialId);
+  const specialArtifact = {
+    ...artifacts[0],
+    id: specialId,
+    title: "Encoded Capture",
+    updated_at: "2026-04-27T11:15:00.000Z",
+  };
+
+  await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...librarySummary,
+        recent_artifacts: [
+          {
+            ...librarySummary.recent_artifacts[0],
+            id: specialId,
+            title: "Encoded Capture",
+            updated_at: "2026-04-27T11:15:00.000Z",
+            summary_count: 0,
+            card_count: 0,
+            task_count: 0,
+            note_count: 0,
+          },
+          ...librarySummary.recent_artifacts,
+        ],
+      }),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([specialArtifact, ...artifacts]),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/notes`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(notes),
+    });
+  });
+
+  await page.goto("/library", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("link", { name: "Open Library detail for Encoded Capture" })).toHaveAttribute(
+    "href",
+    `/library/captures/${encodedId}`,
+  );
+  await expect(page.getByRole("link", { name: "Open Library detail for The Focus Fallacy" }).first()).toHaveAttribute(
+    "href",
+    "/library/captures/art_capture_focus",
+  );
+});
+
 test("PWA library detail renders provenance, layers, connections, and conversion actions", async ({ page }, testInfo) => {
   await seedAssistantSession(page);
   const actionRequests: Array<Record<string, unknown>> = [];

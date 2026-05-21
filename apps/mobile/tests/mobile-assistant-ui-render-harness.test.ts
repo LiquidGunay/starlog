@@ -306,6 +306,27 @@ function accessibilityRoles(node: RenderNode | RenderNode[]): string[] {
   return roles;
 }
 
+function accessibilityLabels(node: RenderNode | RenderNode[]): string[] {
+  const labels: string[] = [];
+  visit(node, (current) => {
+    if (
+      current &&
+      typeof current === "object" &&
+      !Array.isArray(current) &&
+      typeof current.props.accessibilityLabel === "string"
+    ) {
+      labels.push(current.props.accessibilityLabel);
+    }
+  });
+  return labels;
+}
+
+function hasImplementationAccessibilityLabel(node: RenderNode | RenderNode[]): boolean {
+  return accessibilityLabels(node).some((label) =>
+    /assistant-ui|interrupt[-_]|sheet-open|sheet-closed|sheet:|tool_name/.test(label),
+  );
+}
+
 function visit(node: RenderNode | RenderNode[], visitor: (node: RenderNode) => void) {
   if (Array.isArray(node)) {
     node.forEach((child) => visit(child, visitor));
@@ -446,6 +467,11 @@ try {
     assert.equal(findByTestId(tree, "assistant-ui-thread").length, 1);
     assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
     assert.equal(findByTestId(tree, "mobile-assistant-aui-composer-surface").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Assistant conversation").length > 0, true);
+    assert.equal(findByAccessibilityLabel(tree, "Conversation messages").length > 0, true);
+    assert.equal(findByAccessibilityLabel(tree, "Message composer").length > 0, true);
+    assert.equal(findByAccessibilityLabel(tree, "Write a message").length, 1);
+    assert.equal(hasImplementationAccessibilityLabel(tree), false);
     assert.equal(findByType(tree, "ThreadPrimitive.Messages").length, 1);
     assert.equal(findByType(tree, "MessagePrimitive.Root").length, 1);
     assert.equal(findByType(tree, "MessagePrimitive.Content").length, 1);
@@ -1015,8 +1041,11 @@ try {
     assert.equal(findByTestId(tree, "rendered-panel-focus-panel").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-queued-conflict-panel").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-host-state").length, 1);
-    assert.equal((findByTestId(tree, "mobile-dynamic-panel-host-state")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet-closed");
+    assert.equal(findByAccessibilityLabel(tree, "Assistant decision panel status").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Planner conflict is waiting").length, 1);
+    assert.equal((findByTestId(tree, "mobile-dynamic-panel-host-state")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "Decision panel closed");
     assert.equal((findByTestId(tree, "mobile-dynamic-panel-queued-conflict-panel")[0].props.accessibilityValue as { text?: string } | undefined)?.text, "queued");
+    assert.equal(hasImplementationAccessibilityLabel(tree), false);
     assert.equal(accessibilityRoles(tree).includes("status"), false);
   }
 
@@ -1045,8 +1074,12 @@ try {
 
     assert.equal(sheetRows.length, 1);
     assert.equal(sheetRows[0].props.accessibilityRole, "button");
-    assert.equal((sheetRows[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet:review-sheet");
-    assert.equal((hostState[0].props.accessibilityValue as { text?: string } | undefined)?.text, "sheet-open");
+    assert.equal(findByAccessibilityLabel(tree, "Assistant decision panel status").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Open Review grade decision panel").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Close decision panel").length, 1);
+    assert.equal((sheetRows[0].props.accessibilityValue as { text?: string } | undefined)?.text, "Decision panel available");
+    assert.equal((hostState[0].props.accessibilityValue as { text?: string } | undefined)?.text, "Decision panel open");
+    assert.equal(hasImplementationAccessibilityLabel(tree), false);
     assert.equal(modals.length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-sheet-backdrop").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-sheet-content").length, 1);

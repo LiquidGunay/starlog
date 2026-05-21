@@ -293,7 +293,8 @@ function linkedCount(...counts: Array<number | null | undefined>): number {
 }
 
 function libraryDetailHref(entry: Pick<LibraryEntry, "id" | "kind">): string {
-  return entry.kind === "capture" ? `/library/captures/${entry.id}` : `/library/artifacts/${entry.id}`;
+  const encodedId = encodeURIComponent(entry.id);
+  return entry.kind === "capture" ? `/library/captures/${encodedId}` : `/library/artifacts/${encodedId}`;
 }
 
 function artifactToEntry(artifact: Artifact, summary: SurfaceArtifactSummary | undefined): LibraryEntry {

@@ -278,8 +278,8 @@ test("desktop helper handoff draft prefills the assistant composer", async ({ pa
       body: JSON.stringify({
         handoff: {
           source: "desktop_helper",
-          artifact_id: "art_123",
-          draft: "Help me process artifact art_123.",
+          artifact_id: "art 123/needs?review#v1",
+          draft: "Help me process artifact art 123/needs?review#v1.",
         },
       }),
     });
@@ -288,10 +288,13 @@ test("desktop helper handoff draft prefills the assistant composer", async ({ pa
   await page.goto("/assistant?handoff=handoff_token_123");
 
   await expect(page.getByPlaceholder("Ask, capture, plan, review, or move something forward...")).toHaveValue(
-    "Help me process artifact art_123.",
+    "Help me process artifact art 123/needs?review#v1.",
   );
   await expect(page.getByText("Desktop Helper handoff")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open in Library" })).toBeVisible();
+  const openInLibrary = page.getByRole("button", { name: "Open in Library" });
+  await expect(openInLibrary).toBeVisible();
+  await openInLibrary.click();
+  await expect(page).toHaveURL(/\/library\/artifacts\/art%20123%2Fneeds%3Freview%23v1$/);
 });
 
 test("desktop helper handoff metadata is attached when the draft is sent", async ({ page }) => {
@@ -1110,6 +1113,28 @@ test("library capture flows into the assistant triage interrupt", async ({ page 
   );
   await routeIdleAssistantStream(page);
 
+  await page.route(`${API_BASE}/v1/surfaces/library/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status_buckets: [],
+        source_breakdown: [],
+        recent_artifacts: [],
+        notes: { total: 0, recent_count: 0, latest_updated_at: null },
+        suggested_actions: [],
+        generated_at: "2026-04-21T09:05:00.000Z",
+      }),
+    });
+  });
+  await page.route(`${API_BASE}/v1/notes`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
   await page.route(`${API_BASE}/v1/artifacts`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -1151,11 +1176,22 @@ test("library capture flows into the assistant triage interrupt", async ({ page 
     });
   });
 
-  await page.goto("/artifacts");
-  await page.getByLabel("Title").fill("Reading capture");
-  await page.getByLabel("Quick clip").fill("Remember the synthesis idea for tomorrow.");
-  await page.locator("details.artifact-quick-capture").getByRole("button", { name: "Create Clip" }).click();
-  await expect(page.getByRole("button", { name: /Reading capture \(clip_manual\)/ })).toBeVisible();
+  await page.goto("/library");
+  await expect(page.getByRole("heading", { name: "Starlog Library" })).toBeVisible();
+  const captureStatus = await page.evaluate(async (apiBase) => {
+    const response = await fetch(`${apiBase}/v1/capture`, {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Reading capture",
+        content: "Remember the synthesis idea for tomorrow.",
+        source_type: "clip_manual",
+      }),
+    });
+    return response.status;
+  }, API_BASE);
+  expect(captureStatus).toBe(201);
+  await page.reload();
+  await expect(page.getByRole("link", { name: "Open Library detail for Reading capture" })).toBeVisible();
 
   await page.goto("/assistant");
   await expect(page.getByText("I saved Reading capture. One quick choice will help route it correctly.")).toBeVisible();

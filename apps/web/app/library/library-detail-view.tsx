@@ -600,7 +600,20 @@ function mergeActions(actions?: DetailAction[]): DetailAction[] {
   }));
 }
 
+function decodeRouteId(id: string): string {
+  try {
+    return decodeURIComponent(id);
+  } catch {
+    return id;
+  }
+}
+
+function artifactApiPath(id: string, suffix: string): string {
+  return `/v1/artifacts/${encodeURIComponent(id)}${suffix}`;
+}
+
 export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
+  const artifactId = useMemo(() => decodeRouteId(id), [id]);
   const { apiBase, token, outbox, mutateWithQueue } = useSessionConfig();
   const [detail, setDetail] = useState<ArtifactDetail | null>(null);
   const [status, setStatus] = useState("Loading Library detail...");
@@ -615,7 +628,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
       const payload = await apiRequest<ArtifactDetailContract>(
         apiBase,
         token,
-        `/v1/artifacts/${id}/detail`,
+        artifactApiPath(artifactId, "/detail"),
       );
       setDetail(normalizeContractDetail(payload));
       setStatus("Loaded artifact detail");
@@ -623,7 +636,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
       if (error instanceof ApiError && (error.status === 404 || error.status === 501)) {
         try {
           const artifacts = await apiRequest<LegacyArtifact[]>(apiBase, token, "/v1/artifacts");
-          const artifact = artifacts.find((item) => item.id === id);
+          const artifact = artifacts.find((item) => item.id === artifactId);
           if (!artifact) {
             setStatus("Artifact was not found in Library fallback data.");
             return;
@@ -638,7 +651,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
       }
       setStatus(error instanceof Error ? error.message : "Failed to load artifact detail.");
     }
-  }, [apiBase, id, token]);
+  }, [apiBase, artifactId, token]);
 
   useEffect(() => {
     loadDetail().catch(() => undefined);
@@ -688,7 +701,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
           {
             id: detail.id,
             title: detail.title,
-            href: `/library/${kind === "capture" ? "captures" : "artifacts"}/${detail.id}`,
+            href: `/library/${kind === "capture" ? "captures" : "artifacts"}/${encodeURIComponent(detail.id)}`,
           },
           action.action,
           result.data,
@@ -716,7 +729,7 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
           <span aria-hidden="true">/</span>
           <span>All captures</span>
           <span aria-hidden="true">/</span>
-          <strong>{kind === "capture" ? "Capture" : "Artifact"}: {detail?.title || id}</strong>
+          <strong>{kind === "capture" ? "Capture" : "Artifact"}: {detail?.title || artifactId}</strong>
         </nav>
 
         <header className={styles.header}>

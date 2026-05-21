@@ -381,9 +381,13 @@ function buildOpenLoops(snapshot: AssistantThreadSnapshot | null, handoff: Assis
     });
   }
   if (handoff?.artifactId) {
-    loops.push({ label: "Helper capture ready", href: `/artifacts?artifact=${encodeURIComponent(handoff.artifactId)}` });
+    loops.push({ label: "Helper capture ready", href: libraryArtifactHref(handoff.artifactId) });
   }
   return loops.length > 0 ? loops : [{ label: "No open loops in this thread" }];
+}
+
+function libraryArtifactHref(artifactId: string): string {
+  return `/library/artifacts/${encodeURIComponent(artifactId)}`;
 }
 
 function buildTodaySummaryOpenLoops(todaySummary: AssistantTodaySummary | null): RailItem[] {
@@ -1145,6 +1149,7 @@ function AssistantPageContent() {
   const activeInterrupt = snapshot?.interrupts.find((interrupt) => interrupt.status === "pending");
   const normalizedSnapshot = normalizeSnapshot(snapshot);
   const handoffSourceLabel = handoff?.source === "desktop_helper" ? "Desktop Helper" : "Support surface";
+  const handoffArtifactHref = handoff?.artifactId ? libraryArtifactHref(handoff.artifactId) : null;
   const supportSurfaces = summarizeSupportSurfaces(normalizedSnapshot, handoff);
   const now = new Date();
   const openLoops = buildOpenLoops(normalizedSnapshot, handoff);
@@ -1239,8 +1244,8 @@ function AssistantPageContent() {
                   </p>
                 </div>
                 <div className={styles.handoffActions}>
-                  {handoff.artifactId ? (
-                    <button type="button" onClick={() => router.push(`/artifacts?artifact=${encodeURIComponent(handoff.artifactId || "")}`)}>
+                  {handoffArtifactHref ? (
+                    <button type="button" onClick={() => router.push(handoffArtifactHref)}>
                       Open in Library
                     </button>
                   ) : null}
