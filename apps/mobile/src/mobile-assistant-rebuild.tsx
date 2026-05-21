@@ -209,35 +209,27 @@ function compactMeta(meta: string): string {
 }
 
 function cardTone(kind: string, palette: Record<string, string>) {
-  if (kind === "review_queue") {
-    return {
-      border: "rgba(166, 222, 191, 0.18)",
-      bg: "rgba(31, 27, 30, 0.92)",
-      accent: "#d8f3e2",
-      accentBg: "rgba(166, 222, 191, 0.12)",
-    };
-  }
   if (kind === "knowledge_note") {
     return {
-      border: "rgba(151, 188, 255, 0.18)",
-      bg: "rgba(29, 28, 33, 0.92)",
-      accent: "#d9e8ff",
-      accentBg: "rgba(151, 188, 255, 0.12)",
+      border: "rgba(157, 185, 222, 0.22)",
+      bg: palette.surfaceLow,
+      accent: palette.secondary,
+      accentBg: "rgba(157, 185, 222, 0.12)",
     };
   }
   if (kind === "task_list") {
     return {
-      border: "rgba(243, 207, 122, 0.18)",
-      bg: "rgba(33, 29, 28, 0.92)",
-      accent: "#f4ddb0",
-      accentBg: "rgba(243, 207, 122, 0.12)",
+      border: "rgba(211, 181, 107, 0.22)",
+      bg: palette.surfaceLow,
+      accent: palette.tertiary,
+      accentBg: "rgba(211, 181, 107, 0.12)",
     };
   }
   return {
-    border: "rgba(241, 182, 205, 0.16)",
-    bg: "rgba(38, 25, 32, 0.92)",
+    border: palette.border,
+    bg: palette.surfaceLow,
     accent: palette.accent,
-    accentBg: "rgba(241, 182, 205, 0.1)",
+    accentBg: palette.accentMuted,
   };
 }
 
@@ -418,7 +410,7 @@ function interruptDetail(interrupt: AssistantInterrupt): string {
 
 function panelAccent(tone: PanelTone, palette: Record<string, string>) {
   if (tone === "focus") {
-    return { text: "#d8f3e2", bg: "rgba(166, 222, 191, 0.11)", border: "rgba(166, 222, 191, 0.2)" };
+    return { text: palette.accent, bg: palette.accentMuted, border: palette.border };
   }
   if (tone === "task") {
     return { text: "#f4ddb0", bg: "rgba(243, 207, 122, 0.11)", border: "rgba(243, 207, 122, 0.2)" };
@@ -432,7 +424,7 @@ function panelAccent(tone: PanelTone, palette: Record<string, string>) {
   if (tone === "review") {
     return { text: "#d7d4ff", bg: "rgba(178, 168, 255, 0.1)", border: "rgba(178, 168, 255, 0.2)" };
   }
-  return { text: palette.accent, bg: "rgba(241, 182, 205, 0.1)", border: "rgba(241, 182, 205, 0.18)" };
+  return { text: palette.accent, bg: palette.accentMuted, border: palette.border };
 }
 
 function AttachmentRow({
@@ -684,8 +676,8 @@ function InterruptFieldInput({
                   paddingHorizontal: 12,
                   paddingVertical: 9,
                   borderWidth: 1,
-                  borderColor: selected ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.06)",
-                  backgroundColor: selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  borderColor: selected ? accent?.border || palette.border : "rgba(255,255,255,0.06)",
+                  backgroundColor: selected ? accent?.bg || palette.accentMuted : "rgba(255,255,255,0.025)",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -776,8 +768,8 @@ function InterruptFieldInput({
                   paddingHorizontal: 11,
                   paddingVertical: 8,
                   borderWidth: 1,
-                  borderColor: option.selected ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.06)",
-                  backgroundColor: option.selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  borderColor: option.selected ? accent?.border || palette.border : "rgba(255,255,255,0.06)",
+                  backgroundColor: option.selected ? accent?.bg || palette.accentMuted : "rgba(255,255,255,0.025)",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -841,8 +833,8 @@ function InterruptFieldInput({
                   paddingHorizontal: 12,
                   paddingVertical: 11,
                   borderWidth: 1,
-                  borderColor: option.selected ? accent?.border || "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
-                  backgroundColor: option.selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.025)",
+                  borderColor: option.selected ? accent?.border || palette.border : "rgba(255,255,255,0.05)",
+                  backgroundColor: option.selected ? accent?.bg || palette.accentMuted : "rgba(255,255,255,0.025)",
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 11,
@@ -858,7 +850,7 @@ function InterruptFieldInput({
                     justifyContent: "center",
                     borderWidth: 1,
                     borderColor: option.selected ? accent?.text || palette.accent : "rgba(255,255,255,0.16)",
-                    backgroundColor: option.selected ? accent?.bg || "rgba(241, 182, 205, 0.12)" : "transparent",
+                    backgroundColor: option.selected ? accent?.bg || palette.accentMuted : "transparent",
                     flexShrink: 0,
                   }}
                 >
@@ -1679,13 +1671,13 @@ export function MobileAssistantRebuild({
     <View
       testID="mobile-assistant-aui-composer-surface"
       style={{
-        borderRadius: 28,
+        borderRadius: 16,
         paddingHorizontal: 8,
         paddingTop: 8,
         paddingBottom: 8,
         borderWidth: 1,
-        borderColor: pendingConversationTurn ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.065)",
-        backgroundColor: "rgba(9, 13, 18, 0.92)",
+        borderColor: pendingConversationTurn ? palette.accent : palette.border,
+        backgroundColor: palette.panel,
         gap: 7,
       }}
     >
@@ -1727,22 +1719,22 @@ export function MobileAssistantRebuild({
           style={{
             width: 42,
             height: 42,
-            borderRadius: 21,
+            borderRadius: 14,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor:
               voiceActionState === "recording"
                 ? "rgba(255, 180, 183, 0.16)"
                 : voiceActionState === "ready"
-                  ? "rgba(166, 222, 191, 0.14)"
-                  : "rgba(255,255,255,0.025)",
+                  ? palette.accentMuted
+                  : palette.surfaceHigh,
             borderWidth: 1,
             borderColor:
               voiceActionState === "recording"
                 ? "rgba(255, 180, 183, 0.18)"
                 : voiceActionState === "ready"
-                  ? "rgba(166, 222, 191, 0.18)"
-                  : "rgba(255,255,255,0.04)",
+                  ? palette.accent
+                  : palette.border,
             opacity: voiceMicDisabled ? 0.48 : 1,
           }}
           onPress={onVoiceAction}
@@ -1774,7 +1766,7 @@ export function MobileAssistantRebuild({
           style={{
             flex: 1,
             minHeight: 50,
-            borderRadius: 21,
+            borderRadius: 14,
             paddingHorizontal: 13,
             paddingTop: 4,
             paddingBottom: 4,
@@ -1806,7 +1798,7 @@ export function MobileAssistantRebuild({
           style={{
             width: 44,
             height: 44,
-            borderRadius: 22,
+            borderRadius: 14,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: pendingConversationTurn ? "rgba(255,255,255,0.12)" : palette.accent,
@@ -1839,7 +1831,7 @@ export function MobileAssistantRebuild({
       }}
     >
       <ScrollView
-        ref={transcriptScrollRef}
+        ref={transcriptScrollRef as never}
         testID="mobile-assistant-aui-transcript"
         style={{ alignSelf: "stretch", maxHeight: transcriptMaxHeight }}
         contentContainerStyle={{ gap: 12, paddingBottom: 8 }}
@@ -1935,9 +1927,9 @@ export function MobileAssistantRebuild({
                                       borderRadius: 999,
                                       paddingHorizontal: 10,
                                       paddingVertical: 6,
-                                      backgroundColor: action.style === "primary" ? "rgba(241, 182, 205, 0.12)" : "rgba(255,255,255,0.03)",
+                                      backgroundColor: action.style === "primary" ? palette.accentMuted : "rgba(255,255,255,0.03)",
                                       borderWidth: 1,
-                                      borderColor: action.style === "primary" ? "rgba(241, 182, 205, 0.18)" : "rgba(255,255,255,0.05)",
+                                      borderColor: action.style === "primary" ? palette.border : "rgba(255,255,255,0.05)",
                                     }}
                                     onPress={() =>
                                       onCardAction(action, {
