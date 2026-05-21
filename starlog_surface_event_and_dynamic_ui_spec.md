@@ -348,6 +348,23 @@ Recommended pipeline:
 
 Not every event deserves a visible thread row.
 
+The backend resolves requested visibility through `services/api/app/services/assistant_event_policy.py`
+before persisting an event. `internal` is honored exactly. Known action events may upgrade an
+`assistant_message` request to `dynamic_panel`; unknown assistant-message requests remain plain
+assistant messages. Keep low-noise lifecycle updates as `ambient`, reserve `dynamic_panel` for
+high-confidence action cases, and add resolver tests when introducing a new event kind.
+
+Current policy buckets:
+
+- `internal`: `assistant.card.action_used`, `assistant.recommendation.deferred`
+- `ambient`: capture enrichment/untriaged updates, artifact activity, task lifecycle updates,
+  time-block lifecycle updates, resolved/cleared planner conflicts, review session/graded events,
+  briefing played, panel submitted, and voice capture transcribed
+- `assistant_message`: missed tasks, overdue commitments, repeated review failures, stale projects,
+  and stale goals
+- `dynamic_panel`: capture creation, detected planner conflicts, review answer reveal, and briefing
+  generation
+
 ### Internal only
 Use when the event only improves context assembly.
 
@@ -361,7 +378,7 @@ Use when the event matters but does not need a full assistant response.
 Examples:
 - `task.completed`
 - `time_block.started`
-- `capture.created`
+- `capture.enriched`
 
 ### Assistant reply with cards
 Use when the event deserves interpretation or next-step guidance.

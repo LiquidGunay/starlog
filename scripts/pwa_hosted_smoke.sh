@@ -4,10 +4,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
-ARTIFACT_DIR="$ROOT_DIR/artifacts/pwa-hosted-smoke"
+ARTIFACT_DIR="${STARLOG_PWA_HOSTED_SMOKE_ARTIFACT_DIR:-$ROOT_DIR/.localdata/pwa-hosted-smoke/latest}"
 RUNTIME_DIR="$ARTIFACT_DIR/runtime"
-LOG_PATH="$ARTIFACT_DIR/hosted-smoke-${STAMP}.log"
-API_LOG_PATH="$ARTIFACT_DIR/api-${STAMP}.log"
+LOG_PATH="$ARTIFACT_DIR/hosted-smoke.log"
+API_LOG_PATH="$ARTIFACT_DIR/api.log"
+TEST_RESULTS_DIR="${STARLOG_PWA_HOSTED_TEST_RESULTS_DIR:-$ARTIFACT_DIR/test-results}"
 API_PORT="${STARLOG_HOSTED_SMOKE_API_PORT:-8000}"
 API_BASE="http://127.0.0.1:${API_PORT}"
 PASS_PHRASE="${STARLOG_SMOKE_PASSPHRASE:-hosted-smoke-passphrase-2026}"
@@ -15,10 +16,70 @@ SMOKE_LABEL="Hosted Smoke ${STAMP}"
 TOKEN=""
 API_PID=""
 
-mkdir -p "$ARTIFACT_DIR" "$RUNTIME_DIR"
-touch "$LOG_PATH" "$API_LOG_PATH"
+require_safe_latest_artifact_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/pwa-hosted-smoke/latest"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
 
-exec > >(tee -a "$LOG_PATH") 2>&1
+  if [[ -z "$path" || "$path" != /* ]]; then
+    echo "refusing unsafe artifact dir: $path" >&2
+    exit 1
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    echo "refusing artifact dir under tracked artifacts root: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    echo "refusing unsafe artifact dir: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    echo "artifact dir must end with $lane_suffix: $path" >&2
+    exit 1
+  fi
+}
+
+require_safe_latest_artifact_dir "$ARTIFACT_DIR"
+
+require_safe_test_results_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/pwa-hosted-smoke/latest/test-results"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
+
+  if [[ -z "$path" || "$path" != /* ]]; then
+    echo "refusing unsafe Playwright test-results dir: $path" >&2
+    exit 1
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    echo "refusing Playwright test-results dir under tracked artifacts root: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    echo "refusing unsafe Playwright test-results dir: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    echo "Playwright test-results dir must end with $lane_suffix: $path" >&2
+    exit 1
+  fi
+}
+
+require_safe_test_results_dir "$TEST_RESULTS_DIR"
+TEST_RESULTS_DIR="$(realpath -m "$TEST_RESULTS_DIR")"
+
+rm -rf "$ARTIFACT_DIR"
+mkdir -p "$ARTIFACT_DIR" "$RUNTIME_DIR"
+: >"$LOG_PATH"
+: >"$API_LOG_PATH"
+
+export STARLOG_PWA_HOSTED_SMOKE_ARTIFACT_DIR="$ARTIFACT_DIR"
+export STARLOG_PWA_HOSTED_TEST_RESULTS_DIR="$TEST_RESULTS_DIR"
+
+exec > >(tee "$LOG_PATH") 2>&1
 
 cleanup() {
   if [[ -n "$API_PID" ]]; then
@@ -96,7 +157,7 @@ curl -fsS -X POST "$API_BASE/v1/capture" \
   -H "Content-Type: application/json" \
   -d "{\"source_type\":\"clip_manual\",\"capture_source\":\"hosted_smoke\",\"title\":\"${SMOKE_LABEL} Artifact\",\"raw\":{\"text\":\"Hosted smoke raw\",\"mime_type\":\"text/plain\"},\"normalized\":{\"text\":\"Hosted smoke raw\",\"mime_type\":\"text/plain\"},\"extracted\":{\"text\":\"Hosted smoke raw\",\"mime_type\":\"text/plain\"},\"metadata\":{\"origin\":\"hosted_smoke\"}}" >/dev/null
 
-VOICE_SAMPLE="$ARTIFACT_DIR/voice-sample-${STAMP}.wav"
+VOICE_SAMPLE="$ARTIFACT_DIR/voice-sample.wav"
 printf "RIFFSMOKEWAVE" > "$VOICE_SAMPLE"
 curl -fsS -X POST "$API_BASE/v1/capture/voice" \
   -H "$AUTH_HEADER" \
@@ -117,5 +178,5 @@ STARLOG_SMOKE_LABEL="$SMOKE_LABEL" \
 ./node_modules/.bin/playwright test --config=playwright.hosted.config.ts
 
 echo "[pwa-hosted-smoke] PASS at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-echo "[pwa-hosted-smoke] playwright screenshots: $ARTIFACT_DIR/test-results"
+echo "[pwa-hosted-smoke] playwright screenshots: $TEST_RESULTS_DIR"
 echo "[pwa-hosted-smoke] api log: $API_LOG_PATH"

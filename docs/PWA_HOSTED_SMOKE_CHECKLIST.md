@@ -19,15 +19,26 @@ What this does:
 3. Seeds note/task/calendar/artifact data plus a voice capture upload.
 4. Runs Playwright hosted smoke tests against a production `next build && next start` server.
 
-Artifacts:
+Artifacts should stay out of tracked timestamped `artifacts/**` folders for normal validation. Keep
+current generated output in `.localdata/pwa-hosted-smoke/latest/`, another ignored
+lane-specific latest path, or a single explicitly requested current proof path, and summarize current confidence in
+[docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
 
-- run log: `artifacts/pwa-hosted-smoke/hosted-smoke-<timestamp>.log`
-- API log: `artifacts/pwa-hosted-smoke/api-<timestamp>.log`
-- screenshots: `artifacts/pwa-hosted-smoke/test-results/`
-- latest verified pass in WI-582:
-  - run log: `artifacts/pwa-hosted-smoke/hosted-smoke-20260322T141604Z.log`
-  - API log: `artifacts/pwa-hosted-smoke/api-20260322T141604Z.log`
+Current default paths:
+
+- run log: `.localdata/pwa-hosted-smoke/latest/hosted-smoke.log`
+- API log: `.localdata/pwa-hosted-smoke/latest/api.log`
+- screenshots: `.localdata/pwa-hosted-smoke/latest/test-results/`
+
+`STARLOG_PWA_HOSTED_SMOKE_ARTIFACT_DIR` is intentionally constrained to a path ending in
+`.localdata/pwa-hosted-smoke/latest`; the script deletes and recreates only that narrow current
+evidence directory. Use `STARLOG_PWA_HOSTED_TEST_RESULTS_DIR` when Playwright output needs a
+different test-results location for collection; it must be an absolute path ending in
+`.localdata/pwa-hosted-smoke/latest/test-results`.
+
+Historical WI-582 pass:
   - completed at: `2026-03-22T14:16:56Z`
+  - dated log paths are historical only; regenerate current evidence under the default latest path above
 
 ## Hosted (Railway) manual checks
 
@@ -37,10 +48,12 @@ Hosted URLs currently in use:
 - API: `https://starlog-api-production.up.railway.app`
 - API health probe: `https://starlog-api-production.up.railway.app/v1/health`
 
-Latest public checks from this repo pass:
+Historical public checks from this repo pass on 2026-03-22:
 
 - `curl -I https://starlog-web-production.up.railway.app` -> `HTTP/2 200`
 - `curl https://starlog-api-production.up.railway.app/v1/health` -> `{"status":"ok","env":"prod","users":1}`
+
+For current hosted access status, use [docs/CURRENT_STATE.md](/home/ubuntu/starlog/docs/CURRENT_STATE.md).
 
 ## Hosted passphrase reset
 

@@ -16,8 +16,9 @@ cd tools/desktop-helper
 ./scripts/build_release_artifacts.sh
 ```
 
-The generated package, binary fallback, checksums, manifest, and build info are written under
-`artifacts/desktop-helper/v<version>/<arch-os>/`.
+The generated package, binary fallback, checksums, manifest, and build info are release packaging
+outputs written under the ignored staging path `artifacts/desktop-helper/v<version>/<arch-os>/`.
+This path is for current installable binaries, not proof/evidence history.
 
 ## Production API target
 
@@ -38,7 +39,7 @@ Generate the exact package list for this host:
 
 ```bash
 tools/desktop-helper/scripts/bootstrap_linux_runtime_deps.sh \
-  --output-json artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/linux-bootstrap.json
+  --output-json .localdata/desktop-helper/rc-evidence/latest/voice-runtime/linux-bootstrap.json
 ```
 
 Current install command for this Linux setup:
@@ -62,7 +63,8 @@ Exact blocker on this host:
 
 ## Install
 
-Install the freshly generated `.deb` from `artifacts/desktop-helper/v<version>/<arch-os>/`.
+Install the freshly generated `.deb` from the ignored release-binary staging path
+`artifacts/desktop-helper/v<version>/<arch-os>/`.
 
 If Debian reports unresolved dependencies:
 
@@ -128,13 +130,13 @@ PYTHONPATH=services/ai-runtime uv run --project services/ai-runtime uvicorn brid
 
 ```bash
 python3 scripts/write_debug_wav.py \
-  --output-path artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/smoke.wav \
+  --output-path .localdata/desktop-helper/rc-evidence/latest/voice-runtime/smoke.wav \
   --seconds 1.2
 ```
 
 ```bash
 STARLOG_LOCAL_BRIDGE_AUTH_TOKEN='bridge-secret' \
-STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=artifacts/desktop-helper/rc-evidence/<timestamp>/voice-runtime/smoke.wav \
+STARLOG_LOCAL_VOICE_SMOKE_AUDIO_PATH=.localdata/desktop-helper/rc-evidence/latest/voice-runtime/smoke.wav \
 STARLOG_LOCAL_VOICE_SMOKE_SKIP_TTS=1 \
 PYTHONPATH=services/ai-runtime \
 uv run --project services/ai-runtime python scripts/local_voice_runtime_smoke.py
@@ -162,7 +164,7 @@ The helper now has a built-in `Reset Local State` control. It clears:
 STARLOG_DESKTOP_HELPER_RC_API_BASE='http://127.0.0.1:8010' \
 STARLOG_DESKTOP_HELPER_RC_BEARER_TOKEN='<token>' \
 STARLOG_DESKTOP_HELPER_RC_BRIDGE_TOKEN='bridge-secret' \
-node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/rc-evidence/<timestamp>
+node tools/desktop-helper/scripts/capture_rc_smoke.mjs .localdata/desktop-helper/rc-evidence/latest
 ```
 
 3. For an installed native helper check, trigger `Cmd/Ctrl+Shift+C`.
@@ -182,7 +184,8 @@ node tools/desktop-helper/scripts/capture_rc_smoke.mjs artifacts/desktop-helper/
 
 Upgrade in place:
 
-Install the newly generated `.deb` from `artifacts/desktop-helper/v<version>/<arch-os>/`.
+Install the newly generated `.deb` from the ignored release-binary staging path
+`artifacts/desktop-helper/v<version>/<arch-os>/`.
 
 Preferred reset path before uninstall or device handoff:
 

@@ -4,11 +4,39 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAMP="${1:-$(date -u +"%Y%m%dT%H%M%SZ")}"
-BUNDLE_ROOT="${CROSS_SURFACE_PROOF_ROOT:-${VALIDATION_ROOT:-$ROOT_DIR}}"
-BUNDLE_DIR="$BUNDLE_ROOT/artifacts/cross-surface-proof/$STAMP"
+BUNDLE_DIR="${STARLOG_CROSS_SURFACE_PROOF_BUNDLE_DIR:-$ROOT_DIR/.localdata/cross-surface-proof/latest}"
 WINDOWS_DIR="$BUNDLE_DIR/desktop-helper"
 ADB_WIN="${ADB_WIN:-/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe}"
 GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+require_safe_bundle_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/cross-surface-proof/latest"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
+
+  if [[ -z "$path" || "$path" != /* ]]; then
+    echo "refusing unsafe cross-surface bundle dir: $path" >&2
+    exit 1
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    echo "refusing cross-surface bundle dir under tracked artifacts root: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    echo "refusing unsafe cross-surface bundle dir: $path" >&2
+    exit 1
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    echo "cross-surface bundle dir must end with $lane_suffix: $path" >&2
+    exit 1
+  fi
+}
+
+require_safe_bundle_dir "$BUNDLE_DIR"
+BUNDLE_DIR="$(realpath -m "$BUNDLE_DIR")"
+WINDOWS_DIR="$BUNDLE_DIR/desktop-helper"
 
 mkdir -p "$WINDOWS_DIR"
 

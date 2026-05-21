@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STAMP="${1:-$(date -u +"%Y%m%dT%H%M%SZ")}"
+STAMP="${1:-latest}"
 
-ARTIFACT_DIR="${STARLOG_VERIFY_ARTIFACT_DIR:-$ROOT_DIR/artifacts/verify-hosted-pwa-and-apk/$STAMP}"
+ARTIFACT_DIR="${STARLOG_VERIFY_ARTIFACT_DIR:-$ROOT_DIR/.localdata/verify-hosted-pwa-and-apk/$STAMP}"
 LOG_PATH="$ARTIFACT_DIR/verify.log"
 PWA_DIR="$ARTIFACT_DIR/hosted-pwa"
 APK_DIR="$ARTIFACT_DIR/android-apk"
@@ -27,7 +27,7 @@ REVERSE_PORTS="${REVERSE_PORTS:-}"
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [timestamp]
+Usage: $(basename "$0") [latest]
 
 Validates (1) a hosted PWA deployment and (2) an Android APK smoke/precheck in one place.
 
@@ -48,7 +48,7 @@ Environment variables:
   STARLOG_VERIFY_APK_MODE       precheck | smoke (default: precheck)
   STARLOG_VERIFY_DRY_RUN        1 to print commands without running them (default: 0)
   STARLOG_VERIFY_BROWSER_PROBE  1 to run the Playwright-backed browser probe (default: 1)
-  STARLOG_VERIFY_ARTIFACT_DIR   output dir override (default: artifacts/verify-hosted-pwa-and-apk/<stamp>/)
+  STARLOG_VERIFY_ARTIFACT_DIR   output dir override (default: .localdata/verify-hosted-pwa-and-apk/latest/)
 
   STARLOG_HOSTED_WEB_ORIGIN     required when running PWA checks (example: https://starlog-web-production.up.railway.app)
   STARLOG_HOSTED_API_BASE       optional for API health probe (example: https://starlog-api-production.up.railway.app)
@@ -74,6 +74,27 @@ log() {
 die() {
   printf '[verify-hosted] ERROR: %s\n' "$1" >&2
   exit 1
+}
+
+require_safe_latest_artifact_dir() {
+  local path="$1"
+  local lane_suffix="/.localdata/verify-hosted-pwa-and-apk/latest"
+  local worktree_parent
+  worktree_parent="$(dirname "$ROOT_DIR")"
+
+  if [[ -z "$path" || "$path" != /* ]]; then
+    die "refusing unsafe artifact dir: $path"
+  fi
+  path="$(realpath -m "$path")"
+  if [[ "$path" == "$ROOT_DIR/artifacts" || "$path" == "$ROOT_DIR/artifacts/"* ]]; then
+    die "refusing artifact dir under tracked artifacts root: $path"
+  fi
+  if [[ "$path" == "/" || "$path" == "/tmp" || "$path" == "/tmp/"* || "$path" == "$ROOT_DIR" || "$path" == "$ROOT_DIR/.localdata" || "$path" == "$worktree_parent" ]]; then
+    die "refusing unsafe artifact dir: $path"
+  fi
+  if [[ "$path" != *"$lane_suffix" ]]; then
+    die "artifact dir must end with $lane_suffix: $path"
+  fi
 }
 
 require_nonempty() {
@@ -312,9 +333,16 @@ main() {
     exit 0
   fi
 
+  require_safe_latest_artifact_dir "$ARTIFACT_DIR"
+  ARTIFACT_DIR="$(realpath -m "$ARTIFACT_DIR")"
+  LOG_PATH="$ARTIFACT_DIR/verify.log"
+  PWA_DIR="$ARTIFACT_DIR/hosted-pwa"
+  APK_DIR="$ARTIFACT_DIR/android-apk"
+
+  rm -rf "$ARTIFACT_DIR"
   mkdir -p "$ARTIFACT_DIR"
-  touch "$LOG_PATH"
-  exec > >(tee -a "$LOG_PATH") 2>&1
+  : >"$LOG_PATH"
+  exec > >(tee "$LOG_PATH") 2>&1
 
   log "started at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   log "repo root: $ROOT_DIR"

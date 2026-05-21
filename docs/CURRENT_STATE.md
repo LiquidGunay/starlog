@@ -204,7 +204,7 @@ Current status after PRs #202-#206:
    - **Status:** works with `scripts/pdf_deck_preflight.py` and `scripts/build_pdf_review_cards.py`.
 
 Key loop evidence path for this status:
-- `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/` (builder/import artifacts for Chapter 0)
+- Historical Chapter 0 PDF builder/import artifacts were generated under `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/`; current PDF review-card proof should be regenerated into `.localdata/pdf-review-cards/latest` and treated as the active latest lane.
 - `corepack pnpm test:ui:pwa-functional apps/web/tests/ui-functional/pwa-review.functional.spec.ts`
   (PWA Review functional, 3/3 passing)
 - `corepack pnpm exec playwright test --config=playwright.web.config.ts apps/web/tests/pwa-assistant-study-command.web-functional.spec.ts`
@@ -225,16 +225,18 @@ Key loop evidence path for this status:
 
 Known outcome for `Inference Engineering.pdf`:
 
-- Latest LiteParse direct CLI evidence used
-  `/tmp/starlog-liteparse-cli/node_modules/.bin/lit parse "Inference Engineering.pdf" --format json -o /tmp/inference-engineering-liteparse-noocr.json --max-pages 20 --no-ocr -q`.
-  LiteParse returned `pages[].text` and no top-level `text`, so `scripts/liteparse_parse_server.py`
-  now aggregates cleaned page text when top-level text is absent.
+- Historical LiteParse direct CLI evidence used host temporary paths for the LiteParse binary and raw JSON output.
+  Current PDF proof should use the repo scripts' `.localdata/pdf-ocr-smoke/latest` or
+  `.localdata/pdf-review-cards/latest` output lanes. LiteParse returned `pages[].text` and no
+  top-level `text`, so `scripts/liteparse_parse_server.py` now aggregates cleaned page text when
+  top-level text is absent.
 - Latest local preflight evidence with a localhost LiteParse parse endpoint reported
   `provider=liteparse_server`, `mode=liteparse`, `usable=true`, `readable=true`,
   `rejected_as_noise=false`, `evidence_status=proven_local_text`, and `cards_generated=0`.
-- Fresh local builder/import evidence on 2026-05-14 generated 8 Chapter 0 review cards from
-  LiteParse extraction into `/tmp/starlog-pdf-review-cards-final2/20260514T131342Z/`, then imported
-  them into a temp DB with 8 cards, 8 gated card-topic links, 8 source-backed answer chunks, one
+- Historical local builder/import evidence on 2026-05-14 generated 8 Chapter 0 review cards from
+  LiteParse extraction into a host temporary proof directory. Current builder/import proof should write
+  current artifacts to `.localdata/pdf-review-cards/latest`, then import them into a temp DB with 8 cards,
+  8 gated card-topic links, 8 source-backed answer chunks, one
   Study source, and one Study topic. Due review was empty before marking `Chapter 0: Inference`
   read and contained all 8 cards after the read marker.
 
@@ -297,7 +299,7 @@ Known outcome for `Inference Engineering.pdf`:
   user flow passed 1/1, PWA Review/Planner functional specs passed 5 tests, mobile Assistant
   render/actions/aui passed, and `corepack pnpm --filter web lint` passed with the existing
   `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning. Keep run output in
-  `.localdata/`, `/tmp`, ignored build folders, or a single explicitly requested latest proof bundle;
+  `.localdata/`, ignored build folders, or a single explicitly requested latest proof bundle;
   do not treat removed dated artifact folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
@@ -342,8 +344,8 @@ Known outcome for `Inference Engineering.pdf`:
   [services/api/app/services/memory_service.py](/home/ubuntu/starlog/services/api/app/services/memory_service.py).
 - Focused Assistant recommendation surfacing validation: Python 3.12
   `tests/test_surface_summaries.py` coverage verifies recommendation events appear in Assistant Today
-  `reason_stack`, and `/tmp/starlog-pwa-reason-stack/` contains a Playwright browser proof that the
-  PWA Assistant renders those "Why now" reasons.
+  `reason_stack`. A historical Playwright browser proof was kept under a host temporary path; current
+  browser proof should be regenerated into the relevant `.localdata/.../latest` harness lane.
 
 - Study Core backend and tests:
   [services/api/app/services/study_service.py](/home/ubuntu/starlog/services/api/app/services/study_service.py),

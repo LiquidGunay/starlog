@@ -69,6 +69,8 @@ PYTHONPATH=services/api ./services/api/.venv/bin/python scripts/pdf_deck_preflig
   --pdf "/home/ubuntu/starlog/Inference Engineering.pdf"
 ```
 
-The preflight writes evidence under `artifacts/pdf-deck-preflight/<timestamp>/` and generates no
-cards. Treat `evidence_status: unproven` or `rejected_as_noise: true` as a blocker until local
+The preflight writes local evidence under `.localdata/pdf-deck-preflight/latest/` by default and
+generates no cards. Allowed output dirs must be absolute paths ending in
+`.localdata/pdf-deck-preflight/latest`; the stable `latest` directory is replaced each run. Treat
+`evidence_status: unproven` or `rejected_as_noise: true` as a blocker until local
 LiteParse/OCR/text-layer extraction or reliable notes are available.
