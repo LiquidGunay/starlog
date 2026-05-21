@@ -105,7 +105,7 @@ Current functional areas:
 | Mobile Planner viewport | `apps/web/tests/ui-functional/mobile-planner.functional.spec.ts` | Phone-width Planner Assistant handoff drafts and conflict review link behavior. |
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Clean Review shell/study-loop surface, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
-| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for install/login, Assistant, Review/Study, grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling. The current proof is `.localdata/android-local-validation/builds/20260521T225432Z/latest.json` with `validation_passed: true` and `validation_stage: final`; PR #283 stabilized the harness around exact enabled Study controls and fresh Planner alarm targets. |
+| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for install/login, Assistant, Review/Study, grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling. The current proof is `.localdata/latest/android-study-proof-seed-20260521/latest.json` with `validation_passed: true` and `validation_stage: final`; PR #283 stabilized the harness around exact enabled Study controls and fresh Planner alarm targets. |
 | Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
 ## Dynamic UI Coverage Boundary
@@ -133,7 +133,7 @@ Covered:
 - React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
   path currently uses `server-owned-local-protocol-bridge` over server-owned Starlog messages.
   Historical Android fresh-local evidence has been refreshed by
-  `.localdata/android-local-validation/builds/20260521T225432Z/latest.json` for shell/thread/composer
+  `.localdata/latest/android-study-proof-seed-20260521/latest.json` for shell/thread/composer
   markers, due-date and review-grade dynamic-panel controls, native Study controls, Review reveal/grade,
   briefing cache generation, and alarm scheduling. Full server-owned native runtime migration is still
   pending.
@@ -197,7 +197,7 @@ their own build-local `latest.json` and publish `.localdata/android-local-valida
 with `validation_passed: false`; environmental preflight gates publish `validation_stage: blocked`,
 while in-flow script/app failures publish `validation_stage: failed`. Partial screenshots/XML remain
 under the ignored latest build directory for debugging; they do not publish a passed final manifest.
-The latest physical proof is `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`,
+The latest physical proof is `.localdata/latest/android-study-proof-seed-20260521/latest.json`,
 which passed with `validation_stage: final` for install/login, Assistant, Review/Study, grading,
 Assistant due-date dynamic UI, and Planner alarm scheduling. Treat it as current installed-device
 evidence for those bounded flows, not as complete proof of the full server-owned native assistant-ui

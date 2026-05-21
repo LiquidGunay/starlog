@@ -46,7 +46,7 @@ where Starlog is going. Use this page for current implementation confidence.
   `.localdata/live-functional/latest/test-results/`, and API due-date pytest.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
-  `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`. PR #283 merged the Android
+  `.localdata/latest/android-study-proof-seed-20260521/latest.json`. PR #283 merged the Android
   harness stabilization at squash `6c48a3df664903fa20c5619430c2a39f5b0e054f`. The current manifest
   proves the bounded native interview-prep loop across install/login, Assistant, Review/Study,
   grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling on the attached Android
@@ -85,7 +85,7 @@ where Starlog is going. Use this page for current implementation confidence.
   due-date panel path with Playwright and API pytest on the merged `master` code.
 - **Merged #283 (Android harness stabilization):** the fresh local Android validation harness now waits
   for exact enabled Study controls and fresh Planner alarm targets, with current physical-phone proof
-  at `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
+  at `.localdata/latest/android-study-proof-seed-20260521/latest.json`.
 
 ## Works Today
 
@@ -196,7 +196,7 @@ Current status with the latest 2026-05-21 proof refresh:
    - **Status:** works as deterministic Assistant command flow into `study_question_requests`.
 5. Review and grade cards through the PWA or Android native Review surface.
    - **Status:** works in the live local PWA path and in the fresh local physical Android validation
-     run from `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
+     run from `.localdata/latest/android-study-proof-seed-20260521/latest.json`.
 6. Feed review/question/practice events into deterministic recommendation scoring.
    - **Status:** works; PR #204 also injects these signals into briefing review pressure.
 7. Preflight local PDFs before creating cards from them.
@@ -214,7 +214,7 @@ Key loop evidence path for this status:
   (live PWA user flow passing; evidence at `.localdata/live-functional/latest/test-results/`)
 - `corepack pnpm test:assistant-ui-render`, `corepack pnpm test:assistant-thread-actions`, and
   `corepack pnpm test:assistant-aui` in `apps/mobile` (mobile render/action/assistant-ui runtime passes)
-- `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`
+- `.localdata/latest/android-study-proof-seed-20260521/latest.json`
   (fresh local physical Android validation with `validation_passed: true`)
 
 Known outcome for `Inference Engineering.pdf`:
@@ -299,7 +299,7 @@ Known outcome for `Inference Engineering.pdf`:
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). The current proof is
-  `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`, with validated flows for
+  `.localdata/latest/android-study-proof-seed-20260521/latest.json`, with validated flows for
   install/login, Assistant, Review/Study, grading, Assistant due-date dynamic UI, and Planner alarm
   scheduling. The manifest has `validation_passed: true`. Fallback-assisted Study question proof must
   use the `native_study_question_request_fallback_after_visible_tap` marker and be treated as
@@ -315,7 +315,7 @@ Known outcome for `Inference Engineering.pdf`:
   partial with compatibility fallbacks, and mobile React Native uses the
   `server-owned-local-protocol-bridge` path over Starlog messages. Functional harnesses now require the
   actual Assistant surface for capability, due-date, and review-grade dynamic UI proof, with current
-  physical Android evidence from `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
+  physical Android evidence from `.localdata/latest/android-study-proof-seed-20260521/latest.json`.
 - The PDF pipeline now uses manifest-driven preflight evidence:
   `ingestion_manifest.json`, `candidate_cards.jsonl`, and blocked segment entries in the preflight report/
   manifest are the first pass for trusted extraction before final card import.

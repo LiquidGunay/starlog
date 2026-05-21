@@ -215,7 +215,7 @@ bash ./scripts/android_fresh_local_srs_validation.sh
 ```
 
 Current status: the 2026-05-21 physical-device run passed with `validation_passed: true` and
-`validation_stage: final` at `.localdata/android-local-validation/builds/20260521T225432Z/latest.json`.
+`validation_stage: final` at `.localdata/latest/android-study-proof-seed-20260521/latest.json`.
 It proves the bounded native interview-prep loop across install/login, Assistant, Review/Study,
 grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling on the attached Android
 phone. PR #283 stabilized the harness around exact enabled Study controls and fresh Planner alarm
