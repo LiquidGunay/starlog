@@ -1,13 +1,91 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import { AprilWorkspaceShell } from "../components/april-observatory-shell";
+import { PRODUCT_SURFACES } from "@starlog/contracts";
 import { ApiError, apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 import { emitLibraryArtifactAssistantEvent, type ArtifactActionKind, type ArtifactActionResponse } from "./assistant-events";
 import styles from "./detail.module.css";
+
+const LIBRARY_SURFACES = [
+  { href: "/assistant", label: PRODUCT_SURFACES.assistant.label },
+  { href: "/library", label: PRODUCT_SURFACES.library.label },
+  { href: "/planner", label: PRODUCT_SURFACES.planner.label },
+  { href: "/review", label: PRODUCT_SURFACES.review.label },
+];
+
+type LibraryDetailShellProps = {
+  statusLabel: string;
+  queueLabel: string;
+  children: ReactNode;
+};
+
+function LibraryDetailShell({ statusLabel, queueLabel, children }: LibraryDetailShellProps) {
+  return (
+    <div className={styles.workspaceShell}>
+      <aside className={styles.workspaceRail} aria-label="Library detail navigation">
+        <div className={styles.workspaceBrand}>
+          <span>Starlog</span>
+          <strong>Library detail</strong>
+        </div>
+        <nav className={styles.workspaceNav} aria-label="Primary surfaces">
+          {LIBRARY_SURFACES.map((surface) => (
+            <Link
+              key={surface.href}
+              href={surface.href}
+              className={surface.href === "/library" ? styles.workspaceNavActive : undefined}
+              aria-current={surface.href === "/library" ? "page" : undefined}
+            >
+              {surface.label}
+            </Link>
+          ))}
+        </nav>
+        <button className={styles.workspaceCta} type="button">Quick capture</button>
+        <section className={styles.workspaceRailSection} aria-labelledby="library-detail-nav-title">
+          <h2 id="library-detail-nav-title">Detail board</h2>
+          <div className={styles.workspaceRailLinks}>
+            <a href="#artifact-detail">Artifact detail</a>
+            <a href="#source-provenance">Source provenance</a>
+            <a href="#conversion-actions">Conversions</a>
+            <a href="#activity-timeline">Activity</a>
+          </div>
+        </section>
+        <div className={styles.workspaceRailFooter}>
+          <Link href="/runtime">Settings</Link>
+          <div>
+            <strong>Single-user thread</strong>
+            <span>{queueLabel}</span>
+          </div>
+        </div>
+      </aside>
+
+      <div className={styles.workspaceColumn}>
+        <header className={styles.workspaceTopbar}>
+          <div className={styles.workspaceStatus}>
+            <span aria-hidden="true" />
+            <strong>{statusLabel}</strong>
+          </div>
+          <label className={styles.workspaceSearch}>
+            <span>Library detail</span>
+            <input
+              aria-label="Library detail search"
+              type="text"
+              placeholder="Inspect source, layers, outputs..."
+              readOnly
+            />
+          </label>
+          <div className={styles.workspaceActions}>
+            <Link href="/assistant" aria-label="Open Assistant thread">Assistant</Link>
+            <Link href="/runtime" aria-label="Open settings">Settings</Link>
+          </div>
+        </header>
+        <main className={styles.workspaceContent}>{children}</main>
+      </div>
+    </div>
+  );
+}
 
 type DetailActionKind = ArtifactActionKind | "archive" | "link" | string;
 
@@ -628,28 +706,9 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
   }
 
   return (
-    <AprilWorkspaceShell
-      activeSurface="knowledge-base"
-      brandMeta="Library detail"
+    <LibraryDetailShell
       statusLabel={status}
       queueLabel={`${outbox.length} queued`}
-      ctaLabel="Quick capture"
-      searchLabel="Library detail"
-      searchAriaLabel="Library detail search"
-      searchPlaceholder="Inspect source, layers, outputs..."
-      railSlot={(
-        <>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Detail board</span>
-            <div className="april-rail-link-stack">
-              <a href="#artifact-detail">Artifact detail</a>
-              <a href="#source-provenance">Source provenance</a>
-              <a href="#conversion-actions">Conversions</a>
-              <a href="#activity-timeline">Activity</a>
-            </div>
-          </div>
-        </>
-      )}
     >
       <div className={styles.surface}>
         <nav className={styles.breadcrumb} aria-label="Breadcrumb">
@@ -898,6 +957,6 @@ export function LibraryDetailView({ id, kind }: LibraryDetailViewProps) {
           </aside>
         </div>
       </div>
-    </AprilWorkspaceShell>
+    </LibraryDetailShell>
   );
 }

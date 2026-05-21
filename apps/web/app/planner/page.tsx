@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 
-import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
 import { PaneRestoreStrip, PaneToggleButton } from "../components/pane-controls";
 import { replaceEntityCacheScope } from "../lib/entity-cache";
 import {
@@ -768,34 +767,40 @@ export default function PlannerPage() {
   );
 
   return (
-    <AprilWorkspaceShell
-      activeSurface="planner"
-      statusLabel={conflictCount > 0 ? `${conflictCount} plan repair${conflictCount === 1 ? "" : "s"} needed` : "Plan ready"}
-      queueLabel={`${openTasks} open tasks`}
-      brandMeta="Execution planner"
-      ctaLabel="New block"
-      searchLabel="Planner search"
-      searchAriaLabel="Search Planner"
-      searchPlaceholder="Search tasks, blocks, commitments"
-      profileTitle="Planning context"
-      railSlot={(
-        <>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Today</span>
-            <div className="april-rail-metric-stack">
-              <div className="april-rail-metric-card">
+    <main className={styles.plannerShell}>
+      <nav className={styles.surfaceNav} aria-label="Starlog surfaces">
+        <Link href="/assistant">Assistant</Link>
+        <Link href="/library">Library</Link>
+        <Link aria-current="page" href="/planner">Planner</Link>
+        <Link href="/review">Review</Link>
+      </nav>
+      <header className={styles.shellHeader}>
+        <div>
+          <span className={styles.kicker}>Execution planner</span>
+          <p className={styles.statusSummary}>
+            {conflictCount > 0 ? `${conflictCount} plan repair${conflictCount === 1 ? "" : "s"} needed` : "Plan ready"} - {openTasks} open tasks
+          </p>
+        </div>
+        <Link className="button primary" href={generalPlannerDraft}>Ask Assistant</Link>
+      </header>
+      <section className={styles.surface} aria-labelledby="planner-title">
+        <aside className={styles.contextRail} aria-label="Planner context">
+          <section className={styles.railSection}>
+            <h2>Today</h2>
+            <div className={styles.railMetricStack}>
+              <div className={styles.railMetricCard}>
                 <strong>{focusBlocks}</strong>
                 <span>Focus blocks</span>
               </div>
-              <div className="april-rail-metric-card">
+              <div className={styles.railMetricCard}>
                 <strong>{bufferBlocks}</strong>
                 <span>Buffers</span>
               </div>
             </div>
-          </div>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Suggestion</span>
-            <p className="console-copy">
+          </section>
+          <section className={styles.railSection}>
+            <h2>Suggestion</h2>
+            <p className={styles.supportingCopy}>
               {repairableConflictCount > 0
                 ? "Repair calendar sync conflicts before adding more work."
                 : summaryOnlyConflictCount > 0
@@ -804,11 +809,8 @@ export default function PlannerPage() {
                     ? "Place unscheduled tasks into the flexible parts of the day."
                     : "Protect the focus blocks and keep buffers open."}
             </p>
-          </div>
-        </>
-      )}
-    >
-      <section className={styles.surface} aria-labelledby="planner-title">
+          </section>
+        </aside>
         <div className={styles.heroPanel}>
           <div>
             <span className={styles.kicker}>Starlog Planner</span>
@@ -853,10 +855,10 @@ export default function PlannerPage() {
 
         <div className={styles.workspaceGrid}>
           <div className={styles.mainColumn}>
-            <AprilPanel className={styles.timelinePanel} aria-labelledby="day-timeline-heading">
-              <div className="april-panel-head">
+            <section className={`${styles.panel} ${styles.timelinePanel}`} aria-labelledby="day-timeline-heading">
+              <div className={styles.panelHead}>
                 <div>
-                  <span className="april-panel-kicker">Day timeline</span>
+                  <span className={styles.panelKicker}>Day timeline</span>
                   <h2 id="day-timeline-heading">Focus, commitments, flexibility, and buffers</h2>
                 </div>
                 <div className="button-row">
@@ -898,12 +900,12 @@ export default function PlannerPage() {
                 <span><i className={styles.bufferDot} />Buffer</span>
                 <span><i className={styles.conflictDot} />Conflict</span>
               </div>
-            </AprilPanel>
+            </section>
 
-            <AprilPanel className={styles.groupPanel} aria-labelledby="today-plan-heading">
-              <div className="april-panel-head">
+            <section className={`${styles.panel} ${styles.groupPanel}`} aria-labelledby="today-plan-heading">
+              <div className={styles.panelHead}>
                 <div>
-                  <span className="april-panel-kicker">Today plan</span>
+                  <span className={styles.panelKicker}>Today plan</span>
                   <h2 id="today-plan-heading">Work grouped by execution role</h2>
                 </div>
                 <span className={styles.generatedAt}>{summary?.generated_at ? `Updated ${formatTime(summary.generated_at)}` : "Waiting for summary"}</span>
@@ -928,19 +930,19 @@ export default function PlannerPage() {
                   </section>
                 ))}
               </div>
-            </AprilPanel>
+            </section>
 
-            <AprilPanel className={styles.composerPanel} aria-labelledby="planner-composer-heading">
+            <section className={`${styles.panel} ${styles.composerPanel}`} aria-labelledby="planner-composer-heading">
               <div>
-                <span className="april-panel-kicker">Planning assistant</span>
+                <span className={styles.panelKicker}>Planning assistant</span>
                 <h2 id="planner-composer-heading">Ask in Assistant with this plan in mind</h2>
-                <p className="console-copy">Ask Assistant to review the day, weigh tradeoffs, and suggest one bounded next move before you change the plan.</p>
+                <p className={styles.supportingCopy}>Ask Assistant to review the day, weigh tradeoffs, and suggest one bounded next move before you change the plan.</p>
               </div>
               <div className={styles.composerRow}>
                 <Link className="button primary" href={generalPlannerDraft}>Review plan in Assistant</Link>
                 <button className="button" type="button" onClick={() => load()}>Refresh plan context</button>
               </div>
-            </AprilPanel>
+            </section>
           </div>
 
           <aside className={styles.sideColumn}>
@@ -948,29 +950,29 @@ export default function PlannerPage() {
               actions={sidecarPane.collapsed ? [{ id: "planner-sidecar", label: "Show planner context", onClick: sidecarPane.expand }] : []}
             />
             {!sidecarPane.collapsed ? (
-              <AprilPanel className={styles.sidePanel} aria-labelledby="planner-context-heading">
-                <div className="april-panel-head">
+              <section className={`${styles.panel} ${styles.sidePanel}`} aria-labelledby="planner-context-heading">
+                <div className={styles.panelHead}>
                   <div>
-                    <span className="april-panel-kicker">Context</span>
+                    <span className={styles.panelKicker}>Context</span>
                     <h2 id="planner-context-heading">Plan pressure</h2>
                   </div>
                   <PaneToggleButton label="Hide pane" onClick={sidecarPane.collapse} />
                 </div>
 
                 <section className={styles.pressureCard}>
-                  <span className="chronos-pool-tag">Workload</span>
+                  <span className={styles.pressureTag}>Workload</span>
                   <strong>{openTasks} open tasks</strong>
                   <small>{dueTodayTasks} due today, {overdueTasks} overdue, {unscheduledTasks} unscheduled</small>
                 </section>
 
                 <section className={styles.pressureCard}>
-                  <span className="chronos-pool-tag">Capacity</span>
+                  <span className={styles.pressureTag}>Capacity</span>
                   <strong>{focusHours} focus hours</strong>
                   <small>{totalKnownBlocks} fixed or flexible blocks, {activeSummary.calendar_event_count} calendar commitments</small>
                 </section>
 
                 <section className={conflictCount > 0 ? styles.conflictCard : styles.pressureCard} aria-label="Conflict repair">
-                  <span className={conflictCount > 0 ? "chronos-pool-tag conflict" : "chronos-pool-tag"}>Conflict repair</span>
+                  <span className={conflictCount > 0 ? [styles.pressureTag, styles.pressureTagConflict].join(" ") : styles.pressureTag}>Conflict repair</span>
                   {repairableConflictCount > 0 ? (
                     <div className={styles.conflictList}>
                       {unresolvedConflicts.map((conflict) => {
@@ -1038,7 +1040,7 @@ export default function PlannerPage() {
 
                 <section className={styles.syncActions}>
                   <h3>Calendar sync</h3>
-                  <p className="console-copy">{oauthStatus?.detail || "Internal planner mode is available without Google Calendar."}</p>
+                  <p className={styles.supportingCopy}>{oauthStatus?.detail || "Internal planner mode is available without Google Calendar."}</p>
                   {latestSyncSummary ? (
                     <p className="status">Latest sync {latestSyncSummary.run_id}: pushed {latestSyncSummary.pushed}, pulled {latestSyncSummary.pulled}, conflicts {latestSyncSummary.conflicts}</p>
                   ) : null}
@@ -1081,12 +1083,12 @@ export default function PlannerPage() {
                     </button>
                   </div>
                 </section>
-              </AprilPanel>
+              </section>
             ) : null}
           </aside>
         </div>
 
-        <p className="status" aria-live="polite">{status}</p>
+        <p className={`${styles.routeStatus} status`} aria-live="polite">{status}</p>
 
         <div className={styles.quickDates} aria-label="Quick date choices">
           {dayOptions.map((option) => (
@@ -1102,6 +1104,6 @@ export default function PlannerPage() {
           ))}
         </div>
       </section>
-    </AprilWorkspaceShell>
+    </main>
   );
 }
