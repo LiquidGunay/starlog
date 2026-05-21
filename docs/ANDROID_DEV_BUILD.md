@@ -204,9 +204,9 @@ Launch verification command on this host:
   shell am start -W -n com.starlog.app.preview/com.starlog.app.dev.MainActivity
 ```
 
-## Fresh local April validation loop
+## Fresh local Android validation loop
 
-When the goal is to prove the current April mobile implementation from current source, use the
+When the goal is to prove the current native mobile interview-prep implementation from current source, use the
 fresh local loop instead of an older preview bundle:
 
 ```bash
@@ -214,12 +214,12 @@ cd /home/ubuntu/starlog
 bash ./scripts/android_fresh_local_srs_validation.sh
 ```
 
-Current status: this remains the intended validation loop, but current reruns are blocked until a
-physical phone is visible as a ready ADB `device`. The preflight now reports Linux `adb`, Windows
+Current status: the 2026-05-21 physical-device run passed with `validation_passed: true` at
+`.localdata/android-local-validation/builds/20260521T053609Z/latest.json`. It proves the bounded native
+Study/Review interview-prep loop, Assistant-hosted review-grade dynamic UI, Planner briefing path, and
+alarm scheduling on the attached Android phone. The preflight still reports Linux `adb`, Windows
 `adb.exe`, `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness explicitly, and
-marks absent/unauthorized/offline phone gates as `validation_stage: blocked`. Do not treat older
-`latest.json` manifests or screenshots as current release proof without a fresh
-`validation_passed: true` run from an attached, unlocked, authorized phone.
+marks absent/unauthorized/offline phone gates as `validation_stage: blocked`.
 
 What this loop does:
 
@@ -240,7 +240,7 @@ What this loop does:
 - writes the latest staged-build metadata at `.localdata/android-local-validation/builds/latest.json`
 - uninstalls prior Starlog phone packages before install
 - installs the new APK with Windows `adb.exe install --no-streaming -r`
-- launches the April login UI, establishes the fresh local station, opens the review tab, loads due cards, reveals an answer, and records one `Good` rating
+- launches the Starlog login UI, establishes the fresh local station, opens the Review tab, loads due cards, reveals an answer, and records one `Good` rating
 - validates Planner cache generation as briefing evidence and asserts recommendation-hints presence before alarm scheduling
 - mirrors the latest installable APK at `.localdata/android-local-validation/builds/latest.apk`
 
@@ -310,7 +310,7 @@ Phone-state rules for this loop:
 - dismiss the software keyboard before tapping `Initiate Neural Sync`; otherwise the CTA tap can be lost even though the field contents look correct
 - if Google Play Protect appears during sideload install, the script will try the common `More details` -> `Install anyway` path automatically
 - if Play Protect still blocks the install, accept the dialog manually on-device and rerun with `SKIP_BUILD=1` against the latest APK instead of paying for another Gradle build
-- `versionName`: `0.1.0-april.devtest.<UTCSTAMP>`
+- `versionName`: `0.1.0-android.devtest.<UTCSTAMP>`
 
 The script writes `latest.json`, screenshots, API logs, and import/build evidence into the same
 build folder so the latest proof is obvious without manually sorting old APKs.

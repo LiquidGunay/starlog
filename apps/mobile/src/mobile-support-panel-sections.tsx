@@ -116,6 +116,113 @@ type ConversationToolTrace = {
   result: unknown;
 };
 
+const SUPPORT_CARD_TYPE_LABELS: Record<string, string> = {
+  qa: "Recall",
+  cloze: "Recall",
+  recall: "Recall",
+  understanding: "Understanding",
+  explain: "Understanding",
+  why: "Understanding",
+  application: "Application",
+  application_case: "Application",
+  scenario: "Application",
+  drill: "Application",
+  synthesis: "Synthesis",
+  compare: "Synthesis",
+  connect: "Synthesis",
+  judgment: "Judgment",
+  judgment_prompt: "Judgment",
+  tradeoff: "Judgment",
+  critique: "Judgment",
+  interview: "Interview prompt",
+  interview_prompt: "Interview prompt",
+};
+
+const SUPPORT_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  queued: "Queued",
+  running: "Running",
+  in_progress: "In progress",
+  processing: "Processing",
+  complete: "Complete",
+  completed: "Completed",
+  done: "Done",
+  success: "Succeeded",
+  succeeded: "Succeeded",
+  failed: "Failed",
+  error: "Error",
+  skipped: "Skipped",
+  blocked: "Blocked",
+  open: "Open",
+  closed: "Closed",
+};
+
+const SUPPORT_PROVIDER_LABELS: Record<string, string> = {
+  codex: "Codex",
+  local: "Local",
+  local_first: "Local first",
+  openai: "OpenAI",
+  openai_primary: "OpenAI primary",
+  pending: "Pending",
+};
+
+const SUPPORT_SOURCE_TYPE_LABELS: Record<string, string> = {
+  browser_clip: "Browser clip",
+  desktop_helper: "Desktop helper",
+  file_upload: "File upload",
+  manual: "Manual entry",
+  pdf: "PDF",
+  shared_file: "Shared file",
+  text: "Text",
+  url: "Web page",
+  voice_note: "Voice note",
+  web: "Web page",
+};
+
+function supportMachineKey(value?: string | null): string {
+  return value?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
+function supportMachineLabel(value?: string | null, fallback = "Unknown"): string {
+  const normalized = value?.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function supportStatusLabel(status?: string | null): string {
+  const key = supportMachineKey(status);
+  return SUPPORT_STATUS_LABELS[key] ?? supportMachineLabel(status);
+}
+
+function supportCardTypeLabel(cardType?: string | null): string {
+  const key = supportMachineKey(cardType);
+  return SUPPORT_CARD_TYPE_LABELS[key] ?? supportMachineLabel(cardType, "Review card");
+}
+
+function supportActionLabel(action?: string | null): string {
+  return supportMachineLabel(action, "Action");
+}
+
+function supportCommandLabel(command?: string | null): string {
+  return supportMachineLabel(command, "Assistant command");
+}
+
+function supportToolLabel(toolName?: string | null): string {
+  return supportMachineLabel(toolName, "Runtime tool");
+}
+
+function supportProviderLabel(provider?: string | null): string {
+  const key = supportMachineKey(provider);
+  return SUPPORT_PROVIDER_LABELS[key] ?? supportMachineLabel(provider, "Pending");
+}
+
+function supportArtifactSourceLabel(sourceType?: string | null): string {
+  const key = supportMachineKey(sourceType);
+  return SUPPORT_SOURCE_TYPE_LABELS[key] ?? supportMachineLabel(sourceType, "Source");
+}
+
 type CaptureQueueSectionProps = SharedProps & {
   quickCaptureTitle: string;
   setQuickCaptureTitle: (value: string) => void;
@@ -305,18 +412,18 @@ export function CaptureQueueSection({
       />
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={submitQuickCapture}>
-          <Text style={styles.buttonText}>Capture / Queue</Text>
+          <Text style={styles.buttonText}>Capture / queue</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={flushPendingCaptures}>
-          <Text style={styles.buttonText}>Flush Queue</Text>
+          <Text style={styles.buttonText}>Flush queue</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={voiceRecording ? stopVoiceRecording : startVoiceRecording}>
-          <Text style={styles.buttonText}>{voiceRecording ? "Stop Voice Note" : "Start Voice Note"}</Text>
+          <Text style={styles.buttonText}>{voiceRecording ? "Stop voice note" : "Start voice note"}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={submitVoiceCapture}>
-          <Text style={styles.buttonText}>Upload / Queue Voice</Text>
+          <Text style={styles.buttonText}>Upload / queue voice</Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.subtle}>
@@ -337,7 +444,7 @@ export function CaptureQueueSection({
           ) : null}
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.button} onPress={clearSharedFiles}>
-              <Text style={styles.buttonText}>Clear Shared Files</Text>
+              <Text style={styles.buttonText}>Clear shared files</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -390,19 +497,19 @@ export function CaptureRoutingSection({
         <View style={styles.opsChipRow}>
           <MobileOpsChip
             styles={styles}
-            label="Shared Policy"
+            label="Shared policy"
             active={voiceRoutePreference === "shared_policy"}
             onPress={() => setVoiceRoutePreference("shared_policy")}
           />
           <MobileOpsChip
             styles={styles}
-            label="On-device First"
+            label="On-device first"
             active={voiceRoutePreference === "on_device_first"}
             onPress={() => setVoiceRoutePreference("on_device_first")}
           />
           <MobileOpsChip
             styles={styles}
-            label="Bridge First"
+            label="Bridge first"
             active={voiceRoutePreference === "bridge_first"}
             onPress={() => setVoiceRoutePreference("bridge_first")}
           />
@@ -420,10 +527,10 @@ export function CaptureRoutingSection({
       </Text>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={refreshPolicy}>
-          <Text style={styles.buttonText}>Refresh Policy</Text>
+          <Text style={styles.buttonText}>Refresh policy</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={openIntegrations}>
-          <Text style={styles.buttonText}>Open Integrations</Text>
+          <Text style={styles.buttonText}>Open integrations</Text>
         </TouchableOpacity>
       </View>
     </>
@@ -453,13 +560,13 @@ export function ArtifactTriageSection({
       <Text style={styles.subtle}>{MOBILE_SUPPORT_PANEL_COPY.libraryDetail.description}</Text>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={loadArtifacts}>
-          <Text style={styles.buttonText}>Refresh Library</Text>
+          <Text style={styles.buttonText}>Refresh library</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={openSelectedArtifactInPwa}>
           <Text style={styles.buttonText}>{MOBILE_SUPPORT_PANEL_COPY.libraryDetail.openLabel}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={speakSelectedArtifact}>
-          <Text style={styles.buttonText}>Speak Locally</Text>
+          <Text style={styles.buttonText}>Speak locally</Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.subtle}>Selected: {selectedArtifact ? `${selectedArtifact.title || selectedArtifact.id}` : "none"}</Text>
@@ -490,7 +597,7 @@ export function ArtifactTriageSection({
             >
               <Text style={styles.inlineCardTitle}>{artifact.title || artifact.id}</Text>
               <Text style={styles.subtle}>
-                {artifact.source_type} | {new Date(artifact.created_at).toLocaleString()}
+                {supportArtifactSourceLabel(artifact.source_type)} | {new Date(artifact.created_at).toLocaleString()}
               </Text>
             </TouchableOpacity>
           );
@@ -515,10 +622,10 @@ export function ArtifactTriageSection({
           {artifactGraph.tasks.slice(0, 2).map((task) => (
             <View key={task.id} style={styles.inlineCard}>
               <Text style={styles.inlineCardTitle}>{task.title}</Text>
-              <Text style={styles.subtle}>task status: {task.status}</Text>
+              <Text style={styles.subtle}>Task status: {supportStatusLabel(task.status)}</Text>
               <View style={styles.buttonRow}>
                 <TouchableOpacity style={styles.button} onPress={() => openTaskInPwa(task.id)}>
-                  <Text style={styles.buttonText}>Open Task</Text>
+                  <Text style={styles.buttonText}>Open task</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -532,7 +639,7 @@ export function ArtifactTriageSection({
               </Text>
               <View style={styles.buttonRow}>
                 <TouchableOpacity style={styles.button} onPress={() => openNoteInPwa(note.id)}>
-                  <Text style={styles.buttonText}>Open Note</Text>
+                  <Text style={styles.buttonText}>Open note</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -554,7 +661,7 @@ export function ArtifactTriageSection({
               </Text>
               {artifactVersions.actions.slice(0, 3).map((action) => (
                 <Text key={action.id} style={styles.subtle}>
-                  {action.action} [{action.status}]
+                  {supportActionLabel(action.action)} ({supportStatusLabel(action.status)})
                 </Text>
               ))}
             </View>
@@ -578,16 +685,16 @@ export function ReviewSessionSection({
       <Text style={styles.opsSectionTitle}>Review tools</Text>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={loadDueCards}>
-          <Text style={styles.buttonText}>Load Due Cards</Text>
+          <Text style={styles.buttonText}>Load due cards</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={revealAnswer}>
-          <Text style={styles.buttonText}>Reveal Answer</Text>
+          <Text style={styles.buttonText}>Reveal answer</Text>
         </TouchableOpacity>
       </View>
       {dueCards[0] ? (
         <View style={styles.reviewCard}>
           <Text style={styles.subtle}>
-            Card type: {dueCards[0].card_type} | due queue: {dueCards.length}
+            Card type: {supportCardTypeLabel(dueCards[0].card_type)}; due queue: {dueCards.length}
           </Text>
           <Text style={styles.reviewPrompt}>{dueCards[0].prompt}</Text>
           {showAnswer ? <Text style={styles.reviewAnswer}>{dueCards[0].answer}</Text> : null}
@@ -688,13 +795,13 @@ export function BriefingPipelineSection({
         <View style={styles.opsChipRow}>
           <MobileOpsChip
             styles={styles}
-            label="Offline First"
+            label="Offline first"
             active={briefingPlaybackPreference === "offline_first"}
             onPress={() => setBriefingPlaybackPreference("offline_first")}
           />
           <MobileOpsChip
             styles={styles}
-            label="Refresh + Cache"
+            label="Refresh + cache"
             active={briefingPlaybackPreference === "refresh_then_cache"}
             onPress={() => setBriefingPlaybackPreference("refresh_then_cache")}
           />
@@ -702,19 +809,19 @@ export function BriefingPipelineSection({
       </View>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={generateAndCache}>
-          <Text style={styles.buttonText}>Cache Briefing</Text>
+          <Text style={styles.buttonText}>Cache briefing</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={queueBriefingAudio}>
-          <Text style={styles.buttonText}>Queue Audio Render</Text>
+          <Text style={styles.buttonText}>Queue audio render</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={playBriefing}>
-          <Text style={styles.buttonText}>Play Briefing</Text>
+          <Text style={styles.buttonText}>Play briefing</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={scheduleMorningAlarm}>
-          <Text style={styles.buttonText}>Schedule Daily Alarm</Text>
+          <Text style={styles.buttonText}>Schedule daily alarm</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={clearMorningAlarm}>
-          <Text style={styles.buttonText}>Clear Alarm</Text>
+          <Text style={styles.buttonText}>Clear alarm</Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.subtle}>Notification permission: {notificationPermission}</Text>
@@ -798,10 +905,10 @@ export function AssistantToolsSection({
       </View>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={runAssistantPlan}>
-          <Text style={styles.buttonText}>Plan Command</Text>
+          <Text style={styles.buttonText}>Plan command</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={runAssistantExecute}>
-          <Text style={styles.buttonText}>Execute Command</Text>
+          <Text style={styles.buttonText}>Execute command</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.button} onPress={queueAssistantPlan}>
           <Text style={styles.buttonText}>{MOBILE_SUPPORT_PANEL_COPY.assistant.queuePlanLabel}</Text>
@@ -817,10 +924,10 @@ export function AssistantToolsSection({
         {sttUsesOnDevice ? (
           <>
             <TouchableOpacity style={styles.button} onPress={submitLocalVoiceAssistantPlan}>
-              <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Plan"}</Text>
+              <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & plan"}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={submitLocalVoiceAssistantExecute}>
-              <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & Execute"}</Text>
+              <Text style={styles.buttonText}>{localSttListening ? "Listening..." : "Listen & execute"}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={refreshLocalSttAvailability}>
               <Text style={styles.buttonText}>Refresh STT</Text>
@@ -833,14 +940,14 @@ export function AssistantToolsSection({
               onPress={voiceRecording && voiceClipTarget === "assistant" ? stopVoiceRecording : startAssistantVoiceRecording}
             >
               <Text style={styles.buttonText}>
-                {voiceRecording && voiceClipTarget === "assistant" ? "Stop Voice Command" : "Start Voice Command"}
+                {voiceRecording && voiceClipTarget === "assistant" ? "Stop voice command" : "Start voice command"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={submitVoiceAssistantPlan}>
-              <Text style={styles.buttonText}>Plan Voice Command</Text>
+              <Text style={styles.buttonText}>Plan voice command</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={submitVoiceAssistantExecute}>
-              <Text style={styles.buttonText}>Execute Voice</Text>
+              <Text style={styles.buttonText}>Execute voice</Text>
             </TouchableOpacity>
           </>
         )}
@@ -883,7 +990,7 @@ export function AssistantToolsSection({
                 </Text>
                 <View style={styles.buttonRow}>
                   <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(true)}>
-                    <Text style={styles.buttonText}>Show Full Thread</Text>
+                    <Text style={styles.buttonText}>Show full thread</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -920,7 +1027,7 @@ export function AssistantToolsSection({
                       </View>
                       {message.cards.map((card, index) => (
                         <View key={`${message.id}-card-${index}`} style={styles.threadDetailRow}>
-                          <Text style={styles.threadDetailTitle}>{card.title || card.kind.replace(/_/g, " ")}</Text>
+                          <Text style={styles.threadDetailTitle}>{card.title || supportMachineLabel(card.kind, "Card")}</Text>
                           <Text style={styles.threadDetailMeta}>{cardMetaText(card)}</Text>
                           {cardsExpanded && card.body ? <Text style={styles.subtle}>{card.body}</Text> : null}
                           {cardsExpanded && card.metadata && Object.keys(card.metadata).length > 0 ? (
@@ -950,7 +1057,8 @@ export function AssistantToolsSection({
                       </View>
                       {messageTraces.map((trace) => (
                         <View key={trace.id} style={styles.threadDetailRow}>
-                          <Text style={styles.threadDetailTitle}>{trace.tool_name} [{trace.status}]</Text>
+                          <Text style={styles.threadDetailTitle}>{supportToolLabel(trace.tool_name)}</Text>
+                          <Text style={styles.threadDetailMeta}>Status: {supportStatusLabel(trace.status)}</Text>
                           <Text style={styles.subtle}>{summarizeTraceValue(trace.result)}</Text>
                           {tracesExpanded && Object.keys(trace.arguments).length > 0 ? (
                             <Text style={styles.mono}>{JSON.stringify(trace.arguments, null, 2)}</Text>
@@ -962,7 +1070,7 @@ export function AssistantToolsSection({
                   {message.metadata?.assistant_command ? (
                     <View style={styles.inlineCard}>
                       <Text style={styles.inlineCardTitle}>
-                        {message.metadata.assistant_command.matched_intent} [{message.metadata.assistant_command.status}]
+                        {supportCommandLabel(message.metadata.assistant_command.matched_intent)}: {supportStatusLabel(message.metadata.assistant_command.status)}
                       </Text>
                       <Text style={styles.subtle}>{message.metadata.assistant_command.summary}</Text>
                     </View>
@@ -973,7 +1081,7 @@ export function AssistantToolsSection({
             {showFullConversationThread && threadMessagesLength > defaultVisibleMessages ? (
               <View style={styles.buttonRow}>
                 <TouchableOpacity style={styles.button} onPress={() => setShowFullConversationThread(false)}>
-                  <Text style={styles.buttonText}>Collapse Thread</Text>
+                  <Text style={styles.buttonText}>Collapse thread</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -982,7 +1090,7 @@ export function AssistantToolsSection({
       </View>
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.button} onPress={toggleDiagnostics}>
-          <Text style={styles.buttonText}>{showDiagnostics ? "Hide Diagnostics" : "Show Diagnostics"}</Text>
+          <Text style={styles.buttonText}>{showDiagnostics ? "Hide diagnostics" : "Show diagnostics"}</Text>
         </TouchableOpacity>
       </View>
       {showDiagnostics ? (
@@ -990,13 +1098,13 @@ export function AssistantToolsSection({
           {assistantHistory[0] ? (
             <View style={styles.detailCard}>
               <Text style={styles.inlineCardTitle}>
-                Latest: {assistantHistory[0].matched_intent} [{assistantHistory[0].status}]
+                Latest: {supportCommandLabel(assistantHistory[0].matched_intent)}: {supportStatusLabel(assistantHistory[0].status)}
               </Text>
               <Text style={styles.subtle}>{assistantHistory[0].summary}</Text>
               {assistantHistory[0].steps.map((step, index) => (
                 <View key={`${step.tool_name}-${index}`} style={styles.inlineCard}>
                   <Text style={styles.inlineCardTitle}>
-                    {step.tool_name} [{step.status}]
+                    {supportToolLabel(step.tool_name)}: {supportStatusLabel(step.status)}
                   </Text>
                   {step.message ? <Text style={styles.subtle}>{step.message}</Text> : null}
                   <Text style={styles.mono}>{JSON.stringify(step.arguments)}</Text>
@@ -1012,15 +1120,15 @@ export function AssistantToolsSection({
               {assistantVoiceJobs.slice(0, 4).map((job) => (
                 <View key={job.id} style={styles.inlineCard}>
                   <Text style={styles.inlineCardTitle}>
-                    {job.id} [{job.status}]
+                    Voice job {job.id}: {supportStatusLabel(job.status)}
                   </Text>
                   <Text style={styles.subtle}>
-                    provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
+                    Provider: {supportProviderLabel(job.provider_used || job.provider_hint)} | {new Date(job.created_at).toLocaleString()}
                   </Text>
                   {job.output.transcript ? <Text style={styles.subtle}>Transcript: {job.output.transcript}</Text> : null}
                   {job.output.assistant_command ? (
                     <Text style={styles.subtle}>
-                      Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                      Command result: {supportCommandLabel(job.output.assistant_command.matched_intent)}: {supportStatusLabel(job.output.assistant_command.status)}
                     </Text>
                   ) : null}
                   {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}
@@ -1034,17 +1142,17 @@ export function AssistantToolsSection({
               {assistantAiJobs.slice(0, 4).map((job) => (
                 <View key={job.id} style={styles.inlineCard}>
                   <Text style={styles.inlineCardTitle}>
-                    {job.id} [{job.status}]
+                    Codex job {job.id}: {supportStatusLabel(job.status)}
                   </Text>
                   <Text style={styles.subtle}>
-                    provider {job.provider_used || job.provider_hint || "pending"} | {new Date(job.created_at).toLocaleString()}
+                    Provider: {supportProviderLabel(job.provider_used || job.provider_hint)} | {new Date(job.created_at).toLocaleString()}
                   </Text>
                   {typeof job.payload.command === "string" && job.payload.command ? (
                     <Text style={styles.subtle}>Command: {job.payload.command}</Text>
                   ) : null}
                   {job.output.assistant_command ? (
                     <Text style={styles.subtle}>
-                      Command result: {job.output.assistant_command.matched_intent} [{job.output.assistant_command.status}]
+                      Command result: {supportCommandLabel(job.output.assistant_command.matched_intent)}: {supportStatusLabel(job.output.assistant_command.status)}
                     </Text>
                   ) : null}
                   {job.error_text ? <Text style={styles.subtle}>Error: {job.error_text}</Text> : null}

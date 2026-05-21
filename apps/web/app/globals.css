@@ -993,491 +993,6 @@ a {
   line-height: 1.65;
 }
 
-.april-review-surface {
-  display: grid;
-  gap: 1.4rem;
-}
-
-.april-review-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.april-review-heading h1 {
-  margin: 0.1rem 0 0;
-  color: var(--text);
-  font-family: "Manrope", sans-serif;
-  font-size: clamp(2.2rem, 4vw, 4rem);
-  line-height: 0.95;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.april-review-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  justify-content: flex-end;
-}
-
-.april-review-tabs span {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(73, 71, 63, 0.18);
-  border-radius: 999px;
-  background: rgba(43, 27, 35, 0.74);
-  color: var(--muted);
-  padding: 0.62rem 0.82rem;
-  font-family: "Manrope", sans-serif;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.april-review-tabs span.active {
-  border-color: rgba(225, 113, 79, 0.36);
-  background: rgba(225, 113, 79, 0.14);
-  color: var(--primary-soft);
-}
-
-.april-review-focus-panel {
-  min-height: 41rem;
-  display: grid;
-  gap: 1.3rem;
-  align-content: start;
-}
-
-.april-review-ladder-panel {
-  display: grid;
-  gap: 0.9rem;
-  align-content: start;
-}
-
-.april-review-ladder-list {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.april-review-ladder-step {
-  display: grid;
-  gap: 0.45rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(73, 71, 63, 0.16);
-  background: rgba(39, 23, 30, 0.72);
-  padding: 0.9rem;
-}
-
-.april-review-ladder-step.active {
-  border-color: rgba(225, 113, 79, 0.36);
-  background: rgba(79, 44, 43, 0.62);
-}
-
-.april-review-ladder-step-head,
-.april-review-health-list div,
-.april-review-rail-health div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-}
-
-.april-review-ladder-step strong {
-  color: var(--primary-soft);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.9rem;
-  font-weight: 800;
-}
-
-.april-review-ladder-step-head span {
-  color: var(--primary);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.april-review-ladder-step p,
-.april-review-ladder-step small,
-.april-review-context-grid p,
-.april-review-health-list span,
-.april-review-health-list strong,
-.april-review-rail-health span,
-.april-review-rail-health strong {
-  margin: 0;
-  color: color-mix(in srgb, var(--muted), white 6%);
-  line-height: 1.55;
-}
-
-.april-review-ladder-step small,
-.april-review-health-list span,
-.april-review-rail-health span {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.66rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.april-review-focus-meta,
-.april-review-card-footer,
-.april-review-shortcuts,
-.april-review-control-actions,
-.april-review-side-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.april-review-focus-meta span,
-.april-review-card-footer span,
-.april-review-shortcuts span {
-  color: rgba(202, 198, 187, 0.64);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-}
-
-.april-review-card-body {
-  position: relative;
-  min-height: 28rem;
-  border-radius: 1.9rem;
-  padding: 2.25rem 1.5rem 1.7rem;
-  background:
-    radial-gradient(circle at 84% 10%, rgba(241, 182, 205, 0.1), transparent 26%),
-    radial-gradient(circle at 20% 86%, rgba(101, 57, 76, 0.16), transparent 24%),
-    rgba(43, 27, 35, 0.72);
-  overflow: hidden;
-}
-
-.april-review-card-body::before,
-.april-review-card-body::after {
-  content: "";
-  position: absolute;
-  border-radius: 999px;
-  background: rgba(241, 182, 205, 0.06);
-  filter: blur(12px);
-}
-
-.april-review-card-body::before {
-  width: 16rem;
-  height: 16rem;
-  top: -5rem;
-  right: -4rem;
-}
-
-.april-review-card-body::after {
-  width: 10rem;
-  height: 10rem;
-  bottom: -2rem;
-  left: -2rem;
-}
-
-.april-review-reveal-button {
-  min-width: 13rem;
-  justify-content: center;
-}
-
-.april-review-card-footer {
-  justify-content: space-between;
-}
-
-.april-review-side {
-  display: grid;
-  gap: 1rem;
-  align-content: start;
-}
-
-.april-review-side-card {
-  display: grid;
-  gap: 0.9rem;
-}
-
-.april-review-learning-card {
-  gap: 1rem;
-}
-
-.april-review-insight-list {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.april-review-insight,
-.april-review-drill {
-  display: grid;
-  gap: 0.55rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(73, 71, 63, 0.14);
-  background: rgba(39, 23, 30, 0.68);
-  padding: 0.85rem;
-}
-
-.april-review-insight.severity-high,
-.april-review-insight.severity-critical {
-  border-color: rgba(225, 113, 79, 0.36);
-  background: rgba(79, 44, 43, 0.58);
-}
-
-.april-review-insight-head,
-.april-review-drill-head,
-.april-review-insight-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-}
-
-.april-review-insight-head strong,
-.april-review-drill-head strong {
-  color: var(--primary-soft);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.86rem;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.april-review-insight-head span,
-.april-review-drill-head span,
-.april-review-insight-meta span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.5rem;
-  border-radius: 999px;
-  background: rgba(225, 113, 79, 0.12);
-  color: var(--primary);
-  padding: 0.2rem 0.5rem;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.april-review-insight p,
-.april-review-drill p {
-  margin: 0;
-  color: color-mix(in srgb, var(--muted), white 7%);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-.april-review-insight-meta {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
-.april-review-drill-prompt {
-  border-left: 2px solid rgba(225, 113, 79, 0.42);
-  padding-left: 0.7rem;
-}
-
-.april-review-study-topic {
-  display: grid;
-  gap: 0.65rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(73, 71, 63, 0.14);
-  background: rgba(39, 23, 30, 0.68);
-  padding: 0.85rem;
-}
-
-.april-review-study-topic p {
-  margin: 0;
-  color: color-mix(in srgb, var(--muted), white 7%);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-.april-review-study-question-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
-}
-
-.april-review-study-question-actions .april-chip-button {
-  justify-content: center;
-  min-height: 2.35rem;
-  text-align: center;
-}
-
-.april-review-context-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.april-review-context-grid div {
-  display: grid;
-  gap: 0.45rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(73, 71, 63, 0.14);
-  background: rgba(39, 23, 30, 0.64);
-  padding: 0.85rem;
-}
-
-.april-review-health-list,
-.april-review-rail-health {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.april-review-health-list div,
-.april-review-rail-health div {
-  border-radius: 0.9rem;
-  background: rgba(39, 23, 30, 0.66);
-  padding: 0.65rem 0.75rem;
-}
-
-.april-review-health-list strong,
-.april-review-rail-health strong {
-  color: var(--primary-soft);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.86rem;
-  font-weight: 800;
-  text-align: right;
-}
-
-.april-review-side-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
-}
-
-.april-review-side-metrics div {
-  border-radius: 1rem;
-  padding: 0.95rem;
-  background: rgba(39, 23, 30, 0.72);
-}
-
-.april-review-side-metrics strong {
-  display: block;
-  color: var(--primary);
-  font-family: "Manrope", sans-serif;
-  font-size: 2rem;
-  font-weight: 800;
-}
-
-.april-review-side-metrics span {
-  display: block;
-  margin-top: 0.35rem;
-  color: var(--muted);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.april-review-side-metrics .april-review-mode-chip {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  min-height: 2rem;
-  padding: 0.25rem 0.65rem;
-  border: 1px solid rgba(225, 113, 79, 0.34);
-  border-radius: 999px;
-  color: var(--primary);
-  background: rgba(225, 113, 79, 0.12);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.8rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  line-height: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-transform: none;
-  white-space: nowrap;
-}
-
-.april-review-control-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  opacity: 0.82;
-}
-
-.april-review-shortcuts {
-  justify-content: center;
-  flex: 1;
-}
-
-.april-review-shortcuts kbd {
-  border-radius: 0.55rem;
-  padding: 0.35rem 0.55rem;
-  background: rgba(55, 37, 45, 0.88);
-  color: var(--primary);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.68rem;
-}
-
-.april-review-empty {
-  min-height: 31rem;
-  display: grid;
-  gap: 1rem;
-  place-items: center;
-  text-align: center;
-  padding: 2rem 1rem;
-}
-
-.april-review-empty h2 {
-  margin: 0;
-  font-family: "Manrope", sans-serif;
-  font-size: clamp(2rem, 3.4vw, 3rem);
-  line-height: 1;
-  letter-spacing: -0.05em;
-}
-
-.april-review-empty p {
-  margin: 0;
-  max-width: 32rem;
-  color: color-mix(in srgb, var(--muted), white 8%);
-  line-height: 1.8;
-}
-
-.april-review-rail-decks {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.april-review-rail-deck {
-  display: flex;
-  gap: 0.8rem;
-  align-items: flex-start;
-  justify-content: space-between;
-  border-radius: 1rem;
-  padding: 0.8rem 0.85rem;
-  background: rgba(39, 23, 30, 0.74);
-  border: 1px solid rgba(73, 71, 63, 0.14);
-}
-
-.april-review-rail-deck.active {
-  background: rgba(66, 47, 56, 0.92);
-  border-color: rgba(241, 182, 205, 0.28);
-}
-
-.april-review-rail-deck strong {
-  display: block;
-  color: var(--primary-soft);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.april-review-rail-deck span,
-.april-review-rail-deck small {
-  display: block;
-  color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.64rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .april-page-heading {
   display: grid;
   gap: 0.5rem;
@@ -1527,7 +1042,6 @@ a {
 }
 
 .april-main-room-layout,
-.april-review-layout,
 .april-knowledge-shell,
 .april-agenda-layout {
   display: grid;
@@ -1541,7 +1055,6 @@ a {
 
 .april-main-room-stage,
 .april-agenda-main,
-.april-review-grid,
 .april-knowledge-layout {
   display: grid;
   gap: 1.25rem;
@@ -1634,8 +1147,7 @@ a {
 .assistant-inline-card-head,
 .assistant-inline-step-head,
 .assistant-diagnostic-card,
-.assistant-thread-message-meta,
-.april-review-progress-head {
+.assistant-thread-message-meta {
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
@@ -1744,94 +1256,6 @@ a {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   text-decoration: none;
-}
-
-.april-review-progress {
-  max-width: 64rem;
-}
-
-.april-review-progress-head {
-  color: rgba(202, 198, 187, 0.68);
-  font-family: "Manrope", sans-serif;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin-bottom: 0.55rem;
-}
-
-.april-review-progress-bar {
-  height: 0.32rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(39, 23, 30, 0.94);
-}
-
-.april-review-progress-bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--primary);
-}
-
-.april-review-grid {
-  grid-template-columns: minmax(15rem, 0.55fr) minmax(0, 1.2fr) minmax(19rem, 0.65fr);
-  align-items: start;
-}
-
-.april-review-question {
-  font-family: "Noto Serif", serif;
-  font-size: clamp(2rem, 4vw, 3rem);
-  line-height: 1.4;
-  text-align: center;
-  max-width: 36rem;
-  margin: 3rem auto 2rem;
-  color: #e7e3ce;
-}
-
-.april-review-answer {
-  max-width: 34rem;
-  margin: 1rem auto 0;
-  text-align: center;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.april-review-reveal {
-  display: flex;
-  justify-content: center;
-}
-
-.april-review-ratings {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.65rem;
-  margin-top: 2rem;
-}
-
-.april-rating-button {
-  display: grid;
-  gap: 0.35rem;
-  justify-items: center;
-  border-radius: 1rem;
-  border: 1px solid rgba(73, 71, 63, 0.18);
-  background: rgba(43, 27, 35, 0.94);
-  color: var(--muted);
-  padding: 1rem 0.55rem;
-  font-family: "Manrope", sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-}
-
-.april-rating-button small {
-  font-family: "JetBrains Mono", monospace;
-}
-
-.april-rating-button.primary,
-.april-rating-button.easy,
-.april-rating-button.again {
-  color: var(--primary-soft);
 }
 
 .april-knowledge-layout {
@@ -2047,8 +1471,7 @@ a {
 @media (max-width: 1180px) {
   .april-main-room-layout,
   .april-main-room-desktop,
-  .april-review-grid,
-  .april-knowledge-layout,
+    .april-knowledge-layout,
   .april-agenda-grid {
     grid-template-columns: 1fr;
   }
@@ -2085,19 +1508,6 @@ a {
 
   .april-shell-content {
     padding: 1rem;
-  }
-
-  .april-review-heading,
-  .april-review-tabs {
-    justify-content: flex-start;
-  }
-
-  .april-review-context-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .april-review-ratings {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .knowledge-base-editor-pane {
@@ -7197,5 +6607,730 @@ a {
   .review-focus-question,
   .review-empty-state h1 {
     font-size: 1.7rem;
+  }
+}
+
+/* Review route shell: durable styles for the focused Review surface. */
+.review-workspace-shell.review-primary-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  background: #141014;
+  color: var(--text);
+}
+
+.review-primary-shell .review-rail {
+  min-height: 100vh;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: rgba(18, 15, 18, 0.96);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.review-primary-shell .review-rail-brand {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.review-primary-shell .review-rail-brand-mark {
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.review-primary-shell .review-rail-brand-meta,
+.review-primary-shell .review-rail-profile span {
+  color: var(--muted);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.review-primary-shell .review-rail-nav,
+.review-primary-shell .review-rail-slot,
+.review-primary-shell .review-rail-decks,
+.review-primary-shell .review-rail-section,
+.review-primary-shell .review-rail-link-stack,
+.review-primary-shell .review-rail-footer {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.review-primary-shell .review-rail-link,
+.review-primary-shell .review-rail-footer-link,
+.review-primary-shell .review-rail-link-stack a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.75rem;
+  padding: 0.62rem 0.72rem;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+.review-primary-shell .review-rail-link.active,
+.review-primary-shell .review-rail-link:hover,
+.review-primary-shell .review-rail-footer-link:hover,
+.review-primary-shell .review-rail-link-stack a:hover {
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+}
+
+.review-primary-shell .review-rail-section-label,
+.review-primary-shell .review-sidebar-kicker {
+  display: block;
+  color: var(--muted);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.review-primary-shell .review-rail-health,
+.review-primary-shell .review-health-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.review-primary-shell .review-rail-health div,
+.review-primary-shell .review-health-list div,
+.review-primary-shell .review-rail-deck,
+.review-primary-shell .review-study-topic,
+.review-primary-shell .review-context-grid div,
+.review-primary-shell .review-insight,
+.review-primary-shell .review-drill,
+.review-primary-shell .review-side-metrics div {
+  border-radius: 0.75rem;
+  padding: 0.7rem;
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.review-primary-shell .review-rail-health div,
+.review-primary-shell .review-health-list div,
+.review-primary-shell .review-ladder-step-head,
+.review-primary-shell .review-focus-meta,
+.review-primary-shell .review-card-footer,
+.review-primary-shell .review-control-actions,
+.review-primary-shell .review-side-actions,
+.review-primary-shell .review-drill-head,
+.review-primary-shell .review-insight-head,
+.review-primary-shell .review-insight-meta,
+.review-primary-shell .review-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.review-primary-shell .review-rail-deck {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.review-primary-shell .review-rail-deck.active,
+.review-primary-shell .review-ladder-step.active,
+.review-primary-shell .review-insight.severity-high,
+.review-primary-shell .review-insight.severity-critical {
+  border-color: rgba(241, 182, 205, 0.28);
+  background: rgba(66, 47, 56, 0.42);
+}
+
+.review-primary-shell .review-rail-deck strong,
+.review-primary-shell .review-rail-health strong,
+.review-primary-shell .review-health-list strong,
+.review-primary-shell .review-ladder-step strong,
+.review-primary-shell .review-side-metrics strong,
+.review-primary-shell .review-insight-head strong,
+.review-primary-shell .review-drill-head strong {
+  color: var(--primary-soft);
+  font-family: "Manrope", sans-serif;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.review-primary-shell .review-rail-deck span,
+.review-primary-shell .review-rail-deck small,
+.review-primary-shell .review-rail-health span,
+.review-primary-shell .review-health-list span,
+.review-primary-shell .review-ladder-step-head span,
+.review-primary-shell .review-ladder-step small,
+.review-primary-shell .review-focus-meta span,
+.review-primary-shell .review-card-footer span,
+.review-primary-shell .review-shortcuts span,
+.review-primary-shell .review-side-metrics span,
+.review-primary-shell .review-insight-head span,
+.review-primary-shell .review-drill-head span,
+.review-primary-shell .review-insight-meta span {
+  color: color-mix(in srgb, var(--muted), white 6%);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.review-primary-shell .review-rail-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.25rem;
+}
+
+.review-primary-shell .review-rail-profile-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--primary);
+}
+
+.review-primary-shell .review-rail-profile-copy {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.review-primary-shell .review-rail-profile-copy strong {
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.review-primary-shell .review-shell-column {
+  min-height: 100vh;
+  background: #141014;
+}
+
+.review-primary-shell .review-topbar {
+  min-height: 3.5rem;
+  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: minmax(13rem, auto) minmax(14rem, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(20, 16, 20, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.review-primary-shell .review-topbar-status,
+.review-primary-shell .review-topbar-actions,
+.review-primary-shell .review-shortcuts,
+.review-primary-shell .review-inline-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.review-primary-shell .review-topbar-status {
+  color: var(--muted);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.review-primary-shell .review-topbar-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.review-primary-shell .review-topbar-search {
+  min-width: 0;
+}
+
+.review-primary-shell .review-topbar-search-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.review-primary-shell .review-topbar-search-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  padding: 0.66rem 0.78rem;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.84rem;
+  letter-spacing: 0;
+}
+
+.review-primary-shell .review-topbar-icon,
+.review-primary-shell .review-icon-button,
+.review-primary-shell .review-chip-button,
+.review-primary-shell .review-rating-button {
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  letter-spacing: 0;
+  text-decoration: none;
+  text-transform: none;
+}
+
+.review-primary-shell .review-topbar-icon,
+.review-primary-shell .review-icon-button {
+  min-height: 2.35rem;
+  border-radius: 0.75rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 0.72rem;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.review-primary-shell .review-chip-button {
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  padding: 0.62rem 0.82rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.review-primary-shell .review-chip-button.muted,
+.review-primary-shell .review-icon-button:disabled,
+.review-primary-shell .review-chip-button:disabled,
+.review-primary-shell .review-rating-button:disabled {
+  color: var(--muted);
+  opacity: 0.68;
+}
+
+.review-primary-shell .review-shell-content {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+.review-primary-shell .review-panel {
+  display: grid;
+  gap: 1rem;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.review-primary-shell .review-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.review-primary-shell .review-panel-head h2,
+.review-primary-shell .review-heading h1,
+.review-primary-shell .review-empty h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  letter-spacing: 0;
+}
+
+.review-primary-shell .review-surface {
+  display: grid;
+  gap: 1rem;
+}
+
+.review-primary-shell .review-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.review-primary-shell .review-heading h1 {
+  margin-top: 0.1rem;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1.08;
+  font-weight: 700;
+}
+
+.review-primary-shell .review-heading-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-transform: none;
+}
+
+.review-primary-shell .review-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.review-primary-shell .review-tabs span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 0.75rem;
+  padding: 0.48rem 0.68rem;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.review-primary-shell .review-tabs span.active {
+  border-color: rgba(225, 113, 79, 0.28);
+  background: rgba(225, 113, 79, 0.12);
+  color: var(--primary-soft);
+}
+
+.review-primary-shell .review-progress {
+  max-width: none;
+}
+
+.review-primary-shell .review-progress-head {
+  color: rgba(202, 198, 187, 0.68);
+  font-family: "Manrope", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  margin-bottom: 0.45rem;
+  text-transform: none;
+}
+
+.review-primary-shell .review-progress-head span,
+.review-primary-shell .review-progress-head strong {
+  display: block;
+}
+
+.review-primary-shell .review-progress-bar {
+  height: 0.32rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(39, 23, 30, 0.94);
+}
+
+.review-primary-shell .review-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.review-primary-shell .review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.7fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.review-primary-shell .review-focus-panel {
+  order: 1;
+  min-height: auto;
+  align-content: start;
+}
+
+.review-primary-shell .review-side {
+  order: 2;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.review-primary-shell .review-ladder-panel {
+  order: 3;
+  grid-column: 1 / -1;
+}
+
+.review-primary-shell .review-ladder-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.review-primary-shell .review-ladder-step {
+  display: grid;
+  gap: 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.028);
+  padding: 0.9rem;
+}
+
+.review-primary-shell .review-ladder-step p,
+.review-primary-shell .review-copy,
+.review-primary-shell .review-context-grid p,
+.review-primary-shell .review-study-topic p,
+.review-primary-shell .review-insight p,
+.review-primary-shell .review-drill p,
+.review-primary-shell .review-answer p,
+.review-primary-shell .review-empty p {
+  margin: 0;
+  color: color-mix(in srgb, var(--muted), white 7%);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.review-primary-shell .review-card-body {
+  min-height: auto;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background: rgba(43, 27, 35, 0.74);
+}
+
+.review-primary-shell .review-question {
+  max-width: none;
+  margin: 0;
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1.45;
+  text-align: left;
+}
+
+.review-primary-shell .review-reveal {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 1rem;
+}
+
+.review-primary-shell .review-reveal-button {
+  min-width: 13rem;
+}
+
+.review-primary-shell .review-answer {
+  max-width: none;
+  margin: 1rem 0 0;
+  text-align: left;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.review-primary-shell .review-context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.review-primary-shell .review-context-grid div,
+.review-primary-shell .review-study-topic,
+.review-primary-shell .review-insight,
+.review-primary-shell .review-drill {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.review-primary-shell .review-ratings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.review-primary-shell .review-rating-button {
+  min-height: 4.5rem;
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.55rem;
+  font-weight: 700;
+}
+
+.review-primary-shell .review-rating-button.primary,
+.review-primary-shell .review-rating-button.easy,
+.review-primary-shell .review-rating-button.again {
+  color: var(--primary-soft);
+}
+
+.review-primary-shell .review-rating-button small {
+  color: var(--muted);
+}
+
+.review-primary-shell .review-empty {
+  min-height: 31rem;
+  display: grid;
+  gap: 1rem;
+  place-items: center;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.review-primary-shell .review-empty h2 {
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  line-height: 1.05;
+}
+
+.review-primary-shell .review-side-card {
+  align-content: start;
+}
+
+.review-primary-shell .review-side-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.review-primary-shell .review-side-metrics strong {
+  display: block;
+  color: var(--primary);
+  font-size: 2rem;
+}
+
+.review-primary-shell .review-side-metrics .review-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid rgba(225, 113, 79, 0.34);
+  border-radius: 999px;
+  color: var(--primary);
+  background: rgba(225, 113, 79, 0.12);
+  font-size: 0.8rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-primary-shell .review-sidebar-chart {
+  height: 4.5rem;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.28rem;
+  align-items: end;
+}
+
+.review-primary-shell .review-sidebar-chart span {
+  border-radius: 0.3rem 0.3rem 0 0;
+  background: rgba(73, 71, 63, 0.36);
+}
+
+.review-primary-shell .review-sidebar-chart span.active {
+  background: var(--primary);
+}
+
+.review-primary-shell .review-study-question-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.review-primary-shell .review-study-question-actions .review-chip-button {
+  min-height: 2.45rem;
+  padding-inline: 0.5rem;
+  text-align: center;
+}
+
+.review-primary-shell .review-insight-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.review-primary-shell .review-insight-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.review-primary-shell .review-drill-prompt {
+  border-left: 2px solid rgba(225, 113, 79, 0.42);
+  padding-left: 0.7rem;
+}
+
+.review-primary-shell .review-control-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  opacity: 0.82;
+}
+
+.review-primary-shell .review-shortcuts {
+  justify-content: center;
+  flex: 1;
+}
+
+.review-primary-shell .review-shortcuts kbd {
+  border-radius: 0.55rem;
+  padding: 0.35rem 0.55rem;
+  background: rgba(55, 37, 45, 0.88);
+  color: var(--primary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+}
+
+@media (max-width: 1100px) {
+  .review-primary-shell .review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .review-primary-shell .review-ladder-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .review-workspace-shell.review-primary-shell {
+    display: block;
+  }
+
+  .review-primary-shell .review-rail {
+    display: none;
+  }
+
+  .review-primary-shell .review-topbar {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+
+  .review-primary-shell .review-shell-content {
+    padding: 1rem;
+  }
+
+  .review-primary-shell .review-heading,
+  .review-primary-shell .review-tabs {
+    justify-content: flex-start;
+  }
+
+  .review-primary-shell .review-context-grid,
+  .review-primary-shell .review-ratings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .review-primary-shell .review-context-grid,
+  .review-primary-shell .review-ratings,
+  .review-primary-shell .review-study-question-actions,
+  .review-primary-shell .review-ladder-list {
+    grid-template-columns: 1fr;
   }
 }

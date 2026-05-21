@@ -318,7 +318,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const expectedDueCard = dueCards[0];
 
   await page.goto("/review");
-  await expect(page.getByRole("button", { name: "Reveal Answer" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reveal answer" })).toBeVisible();
 
   const reviewRevealRequest = page.waitForRequest((request) =>
     request.method() === "POST" && isReviewRevealRequest(request.url()),
@@ -330,7 +330,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const [revealRequest, revealResponse] = await Promise.all([
     reviewRevealRequest,
     reviewRevealResponse,
-    page.getByRole("button", { name: "Reveal Answer" }).click(),
+    page.getByRole("button", { name: "Reveal answer" }).click(),
   ]);
   const revealPayload = revealRequest.postDataJSON() as ReviewRevealPayload;
   expect(revealPayload).toMatchObject({

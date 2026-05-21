@@ -27,7 +27,7 @@ ADB_PREFLIGHT_REVERSE_PORTS="${ADB_PREFLIGHT_REVERSE_PORTS:-$API_PORT}"
 API_BASE="${API_BASE:-http://127.0.0.1:${API_PORT}}"
 DECK_PATH="${DECK_PATH:-$ROOT_DIR/data/ml_interviews_part_ii_qa_cards.jsonl}"
 NEETCODE_SOURCE_PATH="${NEETCODE_SOURCE_PATH:-$ROOT_DIR/data/neetcode_150.json}"
-STARLOG_VERSION_NAME="${STARLOG_VERSION_NAME:-0.1.0-april.devtest.$(date -u +%Y%m%dT%H%M%SZ)}"
+STARLOG_VERSION_NAME="${STARLOG_VERSION_NAME:-0.1.0-android.devtest.$(date -u +%Y%m%dT%H%M%SZ)}"
 # Keep versionCode below Android's signed-int max while still encoding UTC freshness.
 STARLOG_ANDROID_VERSION_CODE="${STARLOG_ANDROID_VERSION_CODE:-1$(date -u +%y%j%H%M)}"
 REACT_NATIVE_ARCHITECTURES="${REACT_NATIVE_ARCHITECTURES:-}"
@@ -67,7 +67,7 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0")
 
-Builds a fresh April mobile APK, resets the connected phone's Starlog packages,
+Builds a fresh Android validation APK, resets the connected phone's Starlog packages,
 bootstraps a fresh local API station with a non-repo test passphrase, imports the
 ML Interviews deck, installs the APK through Windows adb, and drives the first
 login + SRS review steps on the phone.
@@ -1567,6 +1567,110 @@ raise SystemExit(1)
 PY
 }
 
+ui_has_review_surface_marker() {
+  python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+root = ET.parse(path).getroot()
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", value.lower().strip())
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def bottom_nav_top():
+    candidates = []
+    for node in root.iter("node"):
+        desc = normalize(node.attrib.get("content-desc") or "")
+        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+            continue
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
+visible_values = []
+has_review_header = False
+for node in root.iter("node"):
+    if not is_visible(node):
+        continue
+    bounds = bounds_of(node)
+    text = normalize(node.attrib.get("text") or "")
+    desc = normalize(node.attrib.get("content-desc") or "")
+    values = [value for value in (text, desc) if value]
+    visible_values.extend(values)
+    if text == "review" and bounds:
+        _left, top, _right, bottom = bounds
+        if top < 400 and bottom <= nav_top:
+            has_review_header = True
+
+if not has_review_header:
+    raise SystemExit(1)
+
+review_markers = {
+    "interview prep",
+    "study loop",
+    "today",
+    "all due",
+    "recall",
+    "application",
+    "unlock",
+    "mark read",
+    "application question",
+    "recall question",
+    "reveal answer",
+    "hide answer",
+    "explanation shown",
+    "answer ready",
+    "answer open",
+    "worked solution",
+    "again",
+    "hard",
+    "good",
+    "easy",
+    "free recall",
+    "due",
+}
+
+matched = set()
+for value in visible_values:
+    for marker in review_markers:
+        if marker in value:
+            matched.add(marker)
+
+if len(matched) >= 2:
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 ui_has_assistant_marker() {
   local marker="$1"
   python3 - "$UI_XML" "$marker" <<'PY'
@@ -2022,7 +2126,7 @@ wait_for_review_surface() {
       sleep 1
       continue
     fi
-    if ui_has_text "Starlog Review" || ui_has_text "Focused Review" || ui_has_text "Knowledge Health" || ui_has_text "Load due cards" || ui_has_text "Reveal answer" || ui_has_text "Hide answer" || ui_has_text "Study progress" || ui_has_text "Recall review"; then
+    if ui_has_review_surface_marker; then
       return 0
     fi
     adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=review" -n "$APP_COMPONENT" >/dev/null || true
