@@ -639,7 +639,7 @@ export function ArtifactTriageSection({
               </Text>
               <View style={styles.buttonRow}>
                 <TouchableOpacity style={styles.button} onPress={() => openNoteInPwa(note.id)}>
-                  <Text style={styles.buttonText}>Open note</Text>
+                  <Text style={styles.buttonText}>Open in Library</Text>
                 </TouchableOpacity>
               </View>
             </View>

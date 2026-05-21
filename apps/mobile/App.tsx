@@ -2248,18 +2248,18 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
     try {
       await Linking.openURL(
-        `${normalizeBaseUrl(pwaBase)}/artifacts?artifact=${encodeURIComponent(selectedArtifactId)}`,
+        `${normalizeBaseUrl(pwaBase)}/library/artifacts/${encodeURIComponent(selectedArtifactId)}`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to open Library detail");
     }
   }
 
-  async function openNoteInPwa(noteId: string) {
+  async function openNoteInPwa(_noteId: string) {
     try {
-      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/notes?note=${encodeURIComponent(noteId)}`);
+      await Linking.openURL(`${normalizeBaseUrl(pwaBase)}/library`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to open note detail");
+      setStatus(error instanceof Error ? error.message : "Failed to open Library");
     }
   }
 

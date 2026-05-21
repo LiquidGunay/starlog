@@ -80,8 +80,8 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
         testID="mobile-dynamic-panel-host-state"
         accessible
         accessibilityLiveRegion="polite"
-        accessibilityLabel="Mobile dynamic panel host state"
-        accessibilityValue={{ text: hostSheetState.isSheetOpen ? "sheet-open" : "sheet-closed" }}
+        accessibilityLabel="Assistant decision panel status"
+        accessibilityValue={{ text: hostSheetState.isSheetOpen ? "Decision panel open" : "Decision panel closed" }}
         accessibilityState={{ busy: hostSheetState.hasSheetCandidate }}
         style={{ height: 1, width: 1, opacity: 0.01 }}
         pointerEvents="none"
@@ -97,7 +97,7 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
                 testID={`mobile-dynamic-panel-queued-${effectiveInterrupt.id}`}
                 accessible
                 accessibilityLiveRegion="polite"
-                accessibilityLabel={`Queued dynamic panel ${effectiveInterrupt.id}`}
+                accessibilityLabel={`${panelKicker(effectiveInterrupt)} is waiting`}
                 accessibilityValue={{ text: "queued" }}
                 style={{
                 borderRadius: 14,
@@ -136,8 +136,8 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
               }}
                 onPress={() => reopenSheetForInterrupt(effectiveInterrupt.id)}
                 accessibilityRole="button"
-                accessibilityLabel={`Open ${panelKicker(effectiveInterrupt)} sheet`}
-                accessibilityValue={{ text: `sheet:${effectiveInterrupt.id}` }}
+                accessibilityLabel={`Open ${panelKicker(effectiveInterrupt)} decision panel`}
+                accessibilityValue={{ text: "Decision panel available" }}
               >
               <MaterialCommunityIcons name={"dock-bottom" as never} size={15} color={palette.accent} />
               <Text style={{ flex: 1, color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
@@ -161,8 +161,8 @@ export function MobileDynamicPanelHost({ interrupts, panelStates, palette, rende
             activeOpacity={1}
             onPress={closeSheetForActiveInterrupt}
             accessibilityRole="button"
-            accessibilityLabel="Close assistant sheet"
-            accessibilityValue={{ text: "close-sheet" }}
+            accessibilityLabel="Close decision panel"
+            accessibilityValue={{ text: "Dismiss panel" }}
             testID="mobile-dynamic-panel-sheet-backdrop"
           />
           <View

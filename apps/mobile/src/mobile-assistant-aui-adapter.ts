@@ -23,10 +23,10 @@ import { attachmentActionLabel, toolStatusSummary } from "./assistant-mobile-ui"
 type MobileAssistantUiRole = "system" | "user" | "assistant";
 
 export const MOBILE_ASSISTANT_UI_TEST_MARKERS = {
-  shell: "assistant-ui shell",
-  thread: "assistant-ui thread",
-  composer: "assistant-ui composer",
-  composerInput: "assistant-ui composer input",
+  shell: "Assistant conversation",
+  thread: "Conversation messages",
+  composer: "Message composer",
+  composerInput: "Write a message",
 } as const;
 
 type DynamicRendererDescriptor = {
