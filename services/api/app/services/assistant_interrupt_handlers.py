@@ -26,6 +26,7 @@ MergeSessionState = Callable[..., dict[str, Any]]
 ClientTimezoneResolver = Callable[[dict[str, Any] | None, dict[str, Any] | None], str]
 DueDateConverter = Callable[[str, str], datetime]
 ReviewRatingLabel = Callable[[int], str]
+NextStepIndex = Callable[..., int]
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class InterruptActionContext:
     assistant_client_timezone: ClientTimezoneResolver
     due_date_to_utc_start: DueDateConverter
     review_rating_label: ReviewRatingLabel
+    next_step_index: NextStepIndex
 
 
 class InterruptSubmitHandler(Protocol):
@@ -145,7 +147,7 @@ class RequestDueDateInterruptHandler:
             conn,
             run_id=row["run_id"],
             thread_id=row["thread_id"],
-            step_index=1,
+            step_index=context.next_step_index(conn, run_id=row["run_id"]),
             title="Create task after due date resolution",
             tool_name="create_task",
             tool_kind="domain_tool",
@@ -303,7 +305,7 @@ class GradeReviewRecallInterruptHandler:
             conn,
             run_id=row["run_id"],
             thread_id=row["thread_id"],
-            step_index=1,
+            step_index=context.next_step_index(conn, run_id=row["run_id"]),
             title="Grade review recall",
             tool_name="grade_review_recall",
             tool_kind="ui_tool",
