@@ -116,7 +116,7 @@ Interview-loop note:
   shapes still use compatibility fallback screens; those fallbacks are not the target runtime.
 - Current native Android evidence is local/physical-device evidence from the fresh-local SRS validation
   harness. Latest proof:
-  `.localdata/android-local-validation/builds/20260521T111452Z/latest.json`. It proves the bounded
+  `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`. It proves the bounded
   interview-prep loop, due-date dynamic UI task creation, Assistant-hosted review-grade dynamic UI, and
   Planner briefing/alarm path, not broad production-hosted Android parity or full server-owned native
   runtime migration.
