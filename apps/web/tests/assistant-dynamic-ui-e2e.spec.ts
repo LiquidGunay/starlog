@@ -19,6 +19,7 @@ let apiOutput = "";
 let mockRuntimeBase = "";
 let mockRuntimeServer: Server | null = null;
 const mockRuntimeRequests: Array<Record<string, unknown>> = [];
+let mockReviewCardTarget: { cardId: string; prompt: string; cardType: string; reviewMode: string } | null = null;
 
 type AuthResponse = {
   access_token: string;
@@ -28,6 +29,17 @@ type TaskResponse = {
   title: string;
   priority: number;
   due_at: string | null;
+};
+
+type CardResponse = {
+  id: string;
+  card_type: string;
+  review_mode: string;
+  prompt: string;
+  due_at: string;
+  interval_days: number;
+  repetitions: number;
+  ease_factor: number;
 };
 
 type AssistantThreadSnapshot = {
@@ -98,6 +110,87 @@ async function startMockRuntimeServer(): Promise<void> {
       const payload = body ? JSON.parse(body) as Record<string, unknown> : {};
       mockRuntimeRequests.push(payload);
       const command = String(payload.text || "");
+      if (mockReviewCardTarget && /review|grade|interview/i.test(command)) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({
+          workflow: "chat_turn",
+          provider_used: "mock_codex_bridge",
+          model: "mock-agent-interview-review",
+          response_text: "I can record that review result once you choose how it went.",
+          parts: [
+            {
+              type: "text",
+              id: "part_mock_agent_review_grade_text",
+              text: "I can record that review result once you choose how it went.",
+            },
+          ],
+          interrupts: [
+            {
+              tool_call_id: "toolcall_mock_agent_review_grade",
+              tool_name: "grade_review_recall",
+              interrupt_type: "choice",
+              title: "Grade application review",
+              body: "Choose the grade for the interview-prep card you just answered.",
+              primary_label: "Record grade",
+              secondary_label: "Not now",
+              defer_label: "Not now",
+              fields: [
+                {
+                  id: "rating",
+                  kind: "select",
+                  label: "Review quality",
+                  value: "3",
+                  required: true,
+                  options: [
+                    { label: "Again", value: "1" },
+                    { label: "Hard", value: "3" },
+                    { label: "Good", value: "4" },
+                    { label: "Easy", value: "5" },
+                  ],
+                },
+              ],
+              display_mode: "composer",
+              renderer_key: "interview.review_grade",
+              renderer_version: 1,
+              placement: "inline",
+              structured_content: {
+                card_id: mockReviewCardTarget.cardId,
+                prompt: mockReviewCardTarget.prompt,
+                review_mode: mockReviewCardTarget.reviewMode,
+              },
+              ui_meta: {
+                tone: "review",
+                review_mode: mockReviewCardTarget.reviewMode,
+                card_type: mockReviewCardTarget.cardType,
+              },
+              consequence_preview: "Updates the SRS schedule for this interview-prep card.",
+              recommended_defaults: { rating: "4" },
+              entity_ref: {
+                entity_type: "card",
+                entity_id: mockReviewCardTarget.cardId,
+                title: mockReviewCardTarget.prompt,
+                href: "/review",
+              },
+              metadata: {
+                card_id: mockReviewCardTarget.cardId,
+                card_type: mockReviewCardTarget.cardType,
+                review_mode: mockReviewCardTarget.reviewMode,
+                prompt: mockReviewCardTarget.prompt,
+                planned_tool_name: "grade_review_recall",
+                planned_arguments: { card_id: mockReviewCardTarget.cardId },
+                display_mode: "composer",
+                option_descriptions: {
+                  "1": "Review soon.",
+                  "3": "Keep it close.",
+                  "4": "Move forward.",
+                  "5": "Stretch interval.",
+                },
+              },
+            },
+          ],
+        }));
+        return;
+      }
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({
         workflow: "chat_turn",
@@ -386,3 +479,100 @@ test("creates a task through a mocked agent-emitted dynamic panel", async ({ pag
   expect(runtimeRun?.steps.map((step) => step.step_index)).toEqual([0, 1, 2]);
   expect(runtimeRun?.steps.map((step) => step.tool_name)).toEqual(["request_due_date", "chat_turn_runtime", "create_task"]);
 });
+
+test("grades an interview-prep review card through a mocked agent-emitted dynamic panel", async ({ page, request }) => {
+  const token = await bootstrapAndLogin(request);
+  await seedBrowserSession(page, token);
+
+  const prompt = "Apply sliding window invariants to a longest-subarray interview problem.";
+  const createCardResponse = await request.post(`${apiBase}/v1/cards`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      prompt,
+      answer: "Maintain a valid window, advance the left bound when invalid, and update the best length after restoring validity.",
+      card_type: "scenario",
+      due_at: "2026-05-01T00:00:00.000Z",
+      interval_days: 1,
+      repetitions: 0,
+      ease_factor: 2.5,
+      tags: ["interview-prep", "sliding-window"],
+    },
+  });
+  expect(createCardResponse.ok()).toBeTruthy();
+  const card = (await createCardResponse.json()) as CardResponse;
+  mockReviewCardTarget = {
+    cardId: card.id,
+    prompt: card.prompt,
+    cardType: card.card_type,
+    reviewMode: card.review_mode,
+  };
+
+  const dueBeforeResponse = await request.get(`${apiBase}/v1/cards/due`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(dueBeforeResponse.ok()).toBeTruthy();
+  const dueBefore = (await dueBeforeResponse.json()) as CardResponse[];
+  expect(dueBefore.some((dueCard) => dueCard.id === card.id)).toBeTruthy();
+
+  mockRuntimeRequests.length = 0;
+  const command = "I answered the current interview prep review card; grade it";
+  await page.goto("/assistant");
+
+  await page.getByPlaceholder("Ask, capture, plan, review, or move something forward...").fill(command);
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await expect(page.getByText("Interview review", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Interview review prompt")).toContainText(prompt);
+  await expect(page.getByText("Updates the SRS schedule for this interview-prep card.")).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "Review quality" })).toBeVisible();
+
+  expect(mockRuntimeRequests).toHaveLength(1);
+  expect(mockRuntimeRequests[0].text).toBe(command);
+  expect(mockRuntimeRequests[0].context).toEqual(
+    expect.objectContaining({
+      ui_capabilities: expect.objectContaining({ version: expect.any(String) }),
+    }),
+  );
+
+  await page.getByRole("radio", { name: "Good" }).click();
+  await page.getByRole("button", { name: "Record grade" }).click();
+
+  await expect(page.getByText(`Recorded Good for ${card.review_mode} review: ${prompt}`).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record grade" })).toHaveCount(0);
+
+  const cardsResponse = await request.get(`${apiBase}/v1/cards`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(cardsResponse.ok()).toBeTruthy();
+  const cards = (await cardsResponse.json()) as CardResponse[];
+  const reviewedCard = cards.find((candidate) => candidate.id === card.id);
+  expect(reviewedCard).toBeTruthy();
+  expect(reviewedCard?.repetitions).toBe(1);
+  expect(reviewedCard?.interval_days).toBe(1);
+  expect(reviewedCard?.due_at ? Date.parse(reviewedCard.due_at) : 0).toBeGreaterThan(Date.parse(card.due_at));
+
+  const dueAfterResponse = await request.get(`${apiBase}/v1/cards/due`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(dueAfterResponse.ok()).toBeTruthy();
+  const dueAfter = (await dueAfterResponse.json()) as CardResponse[];
+  expect(dueAfter.some((dueCard) => dueCard.id === card.id)).toBeFalsy();
+
+  const threadResponse = await request.get(`${apiBase}/v1/assistant/threads/primary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(threadResponse.ok()).toBeTruthy();
+  const thread = (await threadResponse.json()) as AssistantThreadSnapshot;
+  const reviewRun = thread.runs.find((run) =>
+    run.steps.some((step) => step.tool_name === "chat_turn_runtime") &&
+    run.steps.some((step) => step.tool_name === "grade_review_recall" && step.arguments.rating === 4),
+  );
+  expect(reviewRun).toBeTruthy();
+  expect(reviewRun?.status).toBe("completed");
+  expect(reviewRun?.current_interrupt).toBeNull();
+  expect(reviewRun?.steps.map((step) => step.step_index)).toEqual([0, 1, 2]);
+  expect(reviewRun?.steps.map((step) => step.tool_name)).toEqual(["grade_review_recall", "chat_turn_runtime", "grade_review_recall"]);
+
+  mockReviewCardTarget = null;
+});
+
