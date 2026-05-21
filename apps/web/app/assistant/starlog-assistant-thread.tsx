@@ -280,7 +280,7 @@ function roleLabel(role: string): string {
     return "You";
   }
   if (role === "assistant") {
-    return "Starlog Assistant";
+    return "Assistant";
   }
   return "Update";
 }
@@ -1237,7 +1237,7 @@ export function StarlogAssistantComposer({ draft, threadId, disabled, busy, erro
   const [recording, setRecording] = useState(false);
   const [voiceClip, setVoiceClip] = useState<VoiceClip | null>(null);
   const [voiceQueue, setVoiceQueue] = useState<VoiceClip[]>([]);
-  const [voiceStatus, setVoiceStatus] = useState("Hold to talk when you want to capture voice.");
+  const [voiceStatus, setVoiceStatus] = useState("Hold to talk when voice is easier.");
   const [uploadedJobIds, setUploadedJobIds] = useState<string[]>([]);
 
   const stopStream = useCallback(() => {
@@ -1444,7 +1444,7 @@ export function StarlogAssistantComposer({ draft, threadId, disabled, busy, erro
         disabled={disabled || busy}
       />
       <div className={styles.composerBar}>
-        <span>{error || (busy ? "Starlog is working..." : "Voice, capture, planning, and review all land in this thread.")}</span>
+        <span>{error || (busy ? "Starlog is working..." : "Message, capture, plan, or review from this thread.")}</span>
         <ComposerPrimitive.Send disabled={disabled || busy}>Send</ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>

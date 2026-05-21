@@ -1194,7 +1194,7 @@ function AssistantPageContent() {
       <main className={styles.page}>
         <header className={styles.topBar}>
           <div>
-            <h1>Starlog Assistant</h1>
+            <h1>Assistant</h1>
             <div className={styles.stateChips} aria-label="Assistant state">
               {stateChips.map((chip) => (
                 <span key={chip}>{chip}</span>
