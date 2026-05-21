@@ -6612,10 +6612,19 @@ a {
 
 /* Review route shell: durable styles for the focused Review surface. */
 .review-workspace-shell.review-primary-shell {
+  --review-bg: #101317;
+  --review-rail-bg: #11161c;
+  --review-panel-bg: rgba(255, 255, 255, 0.034);
+  --review-panel-strong-bg: rgba(19, 25, 31, 0.94);
+  --review-border: rgba(226, 232, 240, 0.075);
+  --review-border-strong: rgba(139, 180, 248, 0.28);
+  --review-accent: #8ab4f8;
+  --review-accent-soft: #b7d0ff;
+  --review-accent-green: #8fd1a8;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 14rem minmax(0, 1fr);
-  background: #141014;
+  background: var(--review-bg);
   color: var(--text);
 }
 
@@ -6625,8 +6634,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  background: rgba(18, 15, 18, 0.96);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--review-rail-bg);
+  border-right: 1px solid var(--review-border);
 }
 
 .review-primary-shell .review-rail-brand {
@@ -6665,7 +6674,7 @@ a {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   padding: 0.62rem 0.72rem;
   background: transparent;
   box-shadow: none;
@@ -6682,7 +6691,7 @@ a {
 .review-primary-shell .review-rail-link:hover,
 .review-primary-shell .review-rail-footer-link:hover,
 .review-primary-shell .review-rail-link-stack a:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(139, 180, 248, 0.11);
   color: var(--text);
 }
 
@@ -6711,10 +6720,10 @@ a {
 .review-primary-shell .review-insight,
 .review-primary-shell .review-drill,
 .review-primary-shell .review-side-metrics div {
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   padding: 0.7rem;
-  background: rgba(255, 255, 255, 0.028);
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.026);
+  border: 1px solid var(--review-border);
 }
 
 .review-primary-shell .review-rail-health div,
@@ -6745,8 +6754,8 @@ a {
 .review-primary-shell .review-ladder-step.active,
 .review-primary-shell .review-insight.severity-high,
 .review-primary-shell .review-insight.severity-critical {
-  border-color: rgba(241, 182, 205, 0.28);
-  background: rgba(66, 47, 56, 0.42);
+  border-color: var(--review-border-strong);
+  background: rgba(139, 180, 248, 0.1);
 }
 
 .review-primary-shell .review-rail-deck strong,
@@ -6756,7 +6765,7 @@ a {
 .review-primary-shell .review-side-metrics strong,
 .review-primary-shell .review-insight-head strong,
 .review-primary-shell .review-drill-head strong {
-  color: var(--primary-soft);
+  color: var(--review-accent-soft);
   font-family: "Manrope", sans-serif;
   font-weight: 800;
   line-height: 1.25;
@@ -6797,7 +6806,7 @@ a {
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.045);
-  color: var(--primary);
+  color: var(--review-accent);
 }
 
 .review-primary-shell .review-rail-profile-copy {
@@ -6814,7 +6823,7 @@ a {
 
 .review-primary-shell .review-shell-column {
   min-height: 100vh;
-  background: #141014;
+  background: var(--review-bg);
 }
 
 .review-primary-shell .review-topbar {
@@ -6824,8 +6833,8 @@ a {
   grid-template-columns: minmax(13rem, auto) minmax(14rem, 1fr) auto;
   align-items: center;
   gap: 1rem;
-  background: rgba(20, 16, 20, 0.92);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 19, 23, 0.96);
+  border-bottom: 1px solid var(--review-border);
 }
 
 .review-primary-shell .review-topbar-status,
@@ -6849,7 +6858,7 @@ a {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 999px;
-  background: var(--primary);
+  background: var(--review-accent-green);
 }
 
 .review-primary-shell .review-topbar-search {
@@ -6866,10 +6875,10 @@ a {
 
 .review-primary-shell .review-topbar-search-input {
   width: 100%;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   padding: 0.66rem 0.78rem;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.032);
+  border: 1px solid var(--review-border);
   color: var(--text);
   font-family: "Manrope", sans-serif;
   font-size: 0.84rem;
@@ -6880,8 +6889,8 @@ a {
 .review-primary-shell .review-icon-button,
 .review-primary-shell .review-chip-button,
 .review-primary-shell .review-rating-button {
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--review-border);
+  background: rgba(255, 255, 255, 0.032);
   color: var(--text);
   font-family: "Manrope", sans-serif;
   letter-spacing: 0;
@@ -6892,7 +6901,7 @@ a {
 .review-primary-shell .review-topbar-icon,
 .review-primary-shell .review-icon-button {
   min-height: 2.35rem;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   display: inline-grid;
   place-items: center;
   padding: 0 0.72rem;
@@ -6905,7 +6914,7 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   padding: 0.62rem 0.82rem;
   font-size: 0.82rem;
   font-weight: 650;
@@ -6929,11 +6938,11 @@ a {
 .review-primary-shell .review-panel {
   display: grid;
   gap: 1rem;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   padding: 1.25rem;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--review-panel-bg);
+  border: 1px solid var(--review-border);
 }
 
 .review-primary-shell .review-panel-head {
@@ -6993,9 +7002,9 @@ a {
   display: inline-flex;
   align-items: center;
   border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   padding: 0.48rem 0.68rem;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(255, 255, 255, 0.032);
   color: var(--muted);
   font-family: "Manrope", sans-serif;
   font-size: 0.8rem;
@@ -7005,9 +7014,9 @@ a {
 }
 
 .review-primary-shell .review-tabs span.active {
-  border-color: rgba(225, 113, 79, 0.28);
-  background: rgba(225, 113, 79, 0.12);
-  color: var(--primary-soft);
+  border-color: var(--review-border-strong);
+  background: rgba(139, 180, 248, 0.12);
+  color: var(--review-accent-soft);
 }
 
 .review-primary-shell .review-progress {
@@ -7033,14 +7042,14 @@ a {
   height: 0.32rem;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(39, 23, 30, 0.94);
+  background: rgba(3, 7, 18, 0.78);
 }
 
 .review-primary-shell .review-progress-bar span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--primary);
+  background: var(--review-accent-green);
 }
 
 .review-primary-shell .review-grid {
@@ -7077,9 +7086,9 @@ a {
 .review-primary-shell .review-ladder-step {
   display: grid;
   gap: 0.45rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  background: rgba(255, 255, 255, 0.028);
+  border-radius: 0.5rem;
+  border: 1px solid var(--review-border);
+  background: rgba(255, 255, 255, 0.026);
   padding: 0.9rem;
 }
 
@@ -7099,9 +7108,9 @@ a {
 
 .review-primary-shell .review-card-body {
   min-height: auto;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   padding: 1.25rem;
-  background: rgba(43, 27, 35, 0.74);
+  background: var(--review-panel-strong-bg);
 }
 
 .review-primary-shell .review-question {
@@ -7166,7 +7175,7 @@ a {
 .review-primary-shell .review-rating-button.primary,
 .review-primary-shell .review-rating-button.easy,
 .review-primary-shell .review-rating-button.again {
-  color: var(--primary-soft);
+  color: var(--review-accent-soft);
 }
 
 .review-primary-shell .review-rating-button small {
@@ -7199,7 +7208,7 @@ a {
 
 .review-primary-shell .review-side-metrics strong {
   display: block;
-  color: var(--primary);
+  color: var(--review-accent);
   font-size: 2rem;
 }
 
@@ -7209,10 +7218,10 @@ a {
   max-width: 100%;
   min-height: 2rem;
   padding: 0.25rem 0.65rem;
-  border: 1px solid rgba(225, 113, 79, 0.34);
+  border: 1px solid var(--review-border-strong);
   border-radius: 999px;
-  color: var(--primary);
-  background: rgba(225, 113, 79, 0.12);
+  color: var(--review-accent);
+  background: rgba(139, 180, 248, 0.12);
   font-size: 0.8rem;
   font-weight: 800;
   overflow: hidden;
@@ -7234,7 +7243,7 @@ a {
 }
 
 .review-primary-shell .review-sidebar-chart span.active {
-  background: var(--primary);
+  background: var(--review-accent-green);
 }
 
 .review-primary-shell .review-study-question-actions {
@@ -7260,7 +7269,7 @@ a {
 }
 
 .review-primary-shell .review-drill-prompt {
-  border-left: 2px solid rgba(225, 113, 79, 0.42);
+  border-left: 2px solid var(--review-border-strong);
   padding-left: 0.7rem;
 }
 
@@ -7281,8 +7290,8 @@ a {
 .review-primary-shell .review-shortcuts kbd {
   border-radius: 0.55rem;
   padding: 0.35rem 0.55rem;
-  background: rgba(55, 37, 45, 0.88);
-  color: var(--primary);
+  background: rgba(15, 23, 42, 0.88);
+  color: var(--review-accent);
   font-family: "JetBrains Mono", monospace;
   font-size: 0.68rem;
 }

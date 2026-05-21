@@ -4,23 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
-  OBSERVATORY_CONTEXT_LINKS,
-  OBSERVATORY_SURFACES,
-  matchesObservatoryPath,
-  resolveObservatorySurface,
+  SURFACE_CONTEXT_LINKS,
+  SURFACE_NAV_ITEMS,
+  matchesSurfacePath,
+  resolveSurface,
 } from "./observatory-navigation";
 import { useSessionConfig } from "../session-provider";
 
 export function TopNavigation() {
   const pathname = usePathname();
   const { isOnline, outbox } = useSessionConfig();
-  const activeSurface = resolveObservatorySurface(pathname);
-  const utilityLinks = OBSERVATORY_CONTEXT_LINKS[activeSurface.id];
-  const hideForPrimaryObservatoryRoute = ["/", "/login", "/assistant", "/library", "/notes", "/review", "/planner"].some(
+  const activeSurface = resolveSurface(pathname);
+  const utilityLinks = SURFACE_CONTEXT_LINKS[activeSurface.id];
+  const hideForPrimarySurfaceRoute = ["/", "/login", "/assistant", "/library", "/notes", "/review", "/planner"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-  if (hideForPrimaryObservatoryRoute) {
+  if (hideForPrimarySurfaceRoute) {
     return null;
   }
 
@@ -35,8 +35,8 @@ export function TopNavigation() {
           <span className="brand-version">Assistant-first workspace</span>
         </div>
         <nav className="surface-nav" aria-label="Primary surfaces">
-          {OBSERVATORY_SURFACES.map((surface) => {
-            const active = matchesObservatoryPath(pathname, surface.prefixes);
+          {SURFACE_NAV_ITEMS.map((surface) => {
+            const active = matchesSurfacePath(pathname, surface.prefixes);
             return (
               <Link key={surface.id} href={surface.href} className={active ? "surface-link active" : "surface-link"}>
                 <span className="surface-link-glyph" aria-hidden="true">

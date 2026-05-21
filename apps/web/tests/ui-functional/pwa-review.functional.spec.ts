@@ -172,6 +172,10 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await page.goto("/review", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "Focused review" })).toBeVisible();
+  const surfaceLinks = page.locator(".review-rail-nav .review-rail-link");
+  await expect(surfaceLinks.locator(".review-rail-link-label")).toHaveText(["Assistant", "Library", "Planner", "Review"]);
+  await expect(surfaceLinks.nth(3)).toHaveClass(/active/);
+  await expect(page.getByText(/Observatory|April/)).toHaveCount(0);
   await expect(page.getByText("Application").first()).toBeVisible();
   await expect(page.getByText("3 due").first()).toBeVisible();
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 3 · Synthesis 1")).toBeVisible();

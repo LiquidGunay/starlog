@@ -6,13 +6,13 @@ import Link from "next/link";
 import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { OBSERVATORY_SURFACES, type ObservatorySurfaceId } from "../components/observatory-navigation";
+import { SURFACE_NAV_ITEMS, type SurfaceId } from "../components/observatory-navigation";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
 
 
 type ReviewWorkspaceShellProps = {
-  activeSurface: ObservatorySurfaceId;
+  activeSurface: SurfaceId;
   statusLabel: string;
   queueLabel?: string;
   brandMeta?: string;
@@ -45,13 +45,13 @@ function ReviewWorkspaceShell({
   activeSurface,
   statusLabel,
   queueLabel,
-  brandMeta = "Persistent thread system",
+  brandMeta = "Focused learning system",
   searchLabel = "Review search",
   searchAriaLabel = "Search review decks",
   searchPlaceholder = "Search decks...",
   searchValue,
   onSearchChange,
-  profileTitle = "Single-user thread",
+  profileTitle = "Review queue",
   railSlot,
   children,
   className,
@@ -64,7 +64,7 @@ function ReviewWorkspaceShell({
           <span className="review-rail-brand-meta">{brandMeta}</span>
         </div>
         <nav className="review-rail-nav" aria-label="Primary surfaces">
-          {OBSERVATORY_SURFACES.map((surface) => (
+          {SURFACE_NAV_ITEMS.map((surface) => (
             <Link
               key={surface.id}
               href={surface.href}
@@ -73,7 +73,7 @@ function ReviewWorkspaceShell({
               <span className="review-rail-link-glyph" aria-hidden="true">
                 {surface.glyph}
               </span>
-              <span>{surface.label}</span>
+              <span className="review-rail-link-label">{surface.label}</span>
             </Link>
           ))}
         </nav>
@@ -116,10 +116,10 @@ function ReviewWorkspaceShell({
             />
           </label>
           <div className="review-topbar-actions">
-            <Link className="review-topbar-icon" href="/assistant" aria-label="Open assistant thread">
+            <Link className="review-topbar-icon" href="/assistant" aria-label="Open Assistant">
               ✦
             </Link>
-            <Link className="review-topbar-icon" href="/runtime" aria-label="Open runtime">
+            <Link className="review-topbar-icon" href="/runtime" aria-label="Open settings">
               ⌘
             </Link>
           </div>
@@ -714,7 +714,7 @@ export default function ReviewPage() {
 
   return (
     <ReviewWorkspaceShell
-      activeSurface="srs-review"
+      activeSurface="review"
       statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${REVIEW_MODE_LABELS[currentMode]} · ${dueCount} due` : "Focused review ready"}
       queueLabel={`${dueCount} due`}
       searchPlaceholder="Search decks..."
