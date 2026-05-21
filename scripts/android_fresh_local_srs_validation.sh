@@ -2865,6 +2865,7 @@ tap_planner_alarm_control() {
   local diagnostics_path="${2:-$BUILD_DIR/planner-alarm-control-candidate-${attempt}.json}"
   PLANNER_ALARM_CONTROL_DIAGNOSTICS="$diagnostics_path"
   local coords
+  dump_ui || return 1
   coords="$(python3 - "$UI_XML" "$diagnostics_path" <<'PY'
 import re
 import sys
@@ -3184,6 +3185,10 @@ PY
 tap_planner_alarm_control_with_verification() {
   local attempt="${1:-1}"
 
+  if ! dump_ui; then
+    snapshot_phone_state "planner-alarm-control-pre-tap-dump-failed-${attempt}"
+    fail "Could not refresh UI before tapping planner alarm control (attempt ${attempt})"
+  fi
   capture_screen "$SCREENSHOT_DIR/planner-alarm-control-pre-tap-${attempt}.png"
   snapshot_phone_state "planner-alarm-control-pre-tap-${attempt}"
 
@@ -4995,13 +5000,15 @@ PY_FALLBACK
   fail "fallback_api_after_visible_tap succeeded with HTTP $status but API log did not record a 2xx question request (last status: ${observed_status:-none})"
 }
 
-native_study_application_question_target() {
-  python3 - "$UI_XML" <<'PY'
+native_study_enabled_control_target() {
+  local control_label="$1"
+  python3 - "$UI_XML" "$control_label" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
 
 path = sys.argv[1]
+target_label = sys.argv[2]
 root = ET.parse(path).getroot()
 parent_by_id = {id(child): parent for parent in root.iter() for child in parent}
 
@@ -5076,10 +5083,13 @@ def is_visible(node):
     return top < nav_top and bottom <= nav_top and bottom > 0
 
 
-def exact_application_question(node):
+target_label = normalize(target_label)
+
+
+def exact_target_label(node):
     text = normalize(node.attrib.get("text"))
     desc = normalize(node.attrib.get("content-desc"))
-    return text == "application question" or desc == "application question" or desc == "[application question]"
+    return text == target_label or desc == target_label or desc == f"[{target_label}]"
 
 
 def enabled_clickable(node):
@@ -5095,28 +5105,117 @@ def node_label(node):
     return (node.attrib.get("text") or node.attrib.get("content-desc") or "").strip()
 
 
-def emit(node, source):
+def describe(node, source):
     bounds = bounds_of(node)
     if not bounds:
-        raise SystemExit(1)
+        return None
     x, y = center(bounds)
-    print(f"{x} {y}|[{bounds[0]},{bounds[1]}][{bounds[2]},{bounds[3]}]|{source}|{node_label(node)}")
-    raise SystemExit(0)
+    area = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1])
+    return {
+        "area": area,
+        "bounds": bounds,
+        "label": node_label(node),
+        "source": source,
+        "x": x,
+        "y": y,
+    }
+
+
+candidates = []
 
 
 for label_node in root.iter("node"):
-    if not is_visible(label_node) or not exact_application_question(label_node):
+    if not is_visible(label_node) or not exact_target_label(label_node):
         continue
+    if enabled_clickable(label_node):
+        candidate = describe(label_node, "clickable-label")
+        if candidate:
+            candidates.append((0, candidate["area"], 0, candidate))
     current = parent_by_id.get(id(label_node))
+    depth = 1
     while current is not None:
         if enabled_clickable(current):
-            emit(current, "clickable-parent")
+            candidate = describe(current, "clickable-parent")
+            if candidate:
+                candidates.append((1, candidate["area"], depth, candidate))
         current = parent_by_id.get(id(current))
-    if enabled_clickable(label_node):
-        emit(label_node, "clickable-label-fallback")
+        depth += 1
+
+if candidates:
+    _rank, _area, _depth, selected = sorted(candidates, key=lambda item: item[:3])[0]
+    left, top, right, bottom = selected["bounds"]
+    print(
+        f"{selected['x']} {selected['y']}|"
+        f"[{left},{top}][{right},{bottom}]|"
+        f"{selected['source']}|{selected['label']}"
+    )
+    raise SystemExit(0)
 
 raise SystemExit(1)
 PY
+}
+
+native_study_application_question_target() {
+  native_study_enabled_control_target "Application question"
+}
+
+wait_for_native_study_enabled_control() {
+  local control_label="$1"
+  local fail_suffix="$2"
+  local deadline=$((SECONDS + 35))
+  local target=""
+
+  while (( SECONDS < deadline )); do
+    if dump_ui && target="$(native_study_enabled_control_target "$control_label")"; then
+      printf '%s\n' "$target"
+      return 0
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/native-study-${fail_suffix}-enabled-timeout.png"
+  snapshot_phone_state "native-study-${fail_suffix}-enabled-timeout"
+  fail "Timed out waiting for enabled native Study control: ${control_label}"
+}
+
+tap_native_study_enabled_control() {
+  local control_label="$1"
+  local fail_suffix="$2"
+  local target
+  target="$(wait_for_native_study_enabled_control "$control_label" "$fail_suffix")"
+  local coords="${target%%|*}"
+  log "Tapping enabled native Study control '${control_label}' at ${coords}"
+  adb_cmd shell input tap ${coords} >/dev/null
+}
+
+wait_for_native_study_mutation_status() {
+  local log_line_before="$1"
+  local mutation_key="$2"
+  local deadline=$((SECONDS + 35))
+  local statuses_json=""
+  local status=""
+
+  while (( SECONDS < deadline )); do
+    statuses_json="$(study_mutation_statuses_after_line "$log_line_before" || true)"
+    if [[ -n "$statuses_json" ]]; then
+      status="$(python3 - "$statuses_json" "$mutation_key" <<'PY'
+import json
+import sys
+
+statuses = json.loads(sys.argv[1])
+print(statuses.get(sys.argv[2]) or "")
+PY
+)"
+      if [[ "$status" == 2* ]]; then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/native-study-${mutation_key}-mutation-timeout.png"
+  snapshot_phone_state "native-study-${mutation_key}-mutation-timeout"
+  fail "Did not observe successful native Study ${mutation_key} API write (last statuses: ${statuses_json:-none})"
 }
 
 tap_native_study_application_question_until_recorded() {
@@ -5263,12 +5362,11 @@ validate_native_study_controls() {
   local study_api_log_line_before
   study_api_log_line_before="$(wc -l < "$API_LOG")"
 
-  tap_exact_text "Unlock"
-  sleep 2
-  wait_for_any_ui_text "Mark read" "Application question"
-  tap_exact_text "Mark read"
-  sleep 2
-  wait_for_any_ui_text "Study loop" "Application question"
+  tap_native_study_enabled_control "Unlock" "unlock"
+  wait_for_native_study_mutation_status "$study_api_log_line_before" "unlock"
+  tap_native_study_enabled_control "Mark read" "mark-read"
+  wait_for_native_study_mutation_status "$study_api_log_line_before" "read"
+  wait_for_native_study_enabled_control "Application question" "application-question" >/dev/null
   tap_native_study_application_question_until_recorded "$study_api_log_line_before" 3
 
   capture_screen "$SCREENSHOT_DIR/native-study-after.png"
