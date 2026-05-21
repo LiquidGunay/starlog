@@ -119,8 +119,9 @@ export const MOBILE_PANEL_ACTION_LAYOUT = {
 export const MOBILE_ASSISTANT_MAX_PROMPT_CHIPS = 3;
 
 export function defaultPanelValues(interrupt: AssistantInterrupt): Record<string, unknown> {
-  return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
-    accumulator[field.id] = interrupt.recommended_defaults?.[field.id] ?? field.value ?? (field.kind === "toggle" ? false : "");
+  const defaults = mobilePanelRecommendedDefaults(interrupt);
+  return mobilePanelFields(interrupt).reduce<Record<string, unknown>>((accumulator, field) => {
+    accumulator[field.id] = defaults[field.id] ?? field.value ?? (field.kind === "toggle" ? false : "");
     return accumulator;
   }, {});
 }
@@ -131,6 +132,30 @@ export function activePendingInterruptId(interrupts: AssistantInterrupt[]): stri
 
 export function isTaskDetailPanel(interrupt: AssistantInterrupt): boolean {
   return interrupt.tool_name === "request_due_date" || /missing.*(task|detail)|task.*missing/i.test(interrupt.tool_name);
+}
+
+export function mobilePanelFields(interrupt: AssistantInterrupt): AssistantInterruptField[] {
+  if (!isTaskDetailPanel(interrupt)) {
+    return interrupt.fields;
+  }
+  return interrupt.fields.filter((field) => field.id !== "create_time_block");
+}
+
+export function mobilePanelRecommendedDefaults(interrupt: AssistantInterrupt): Record<string, unknown> {
+  const defaults = { ...(interrupt.recommended_defaults || {}) };
+  if (isTaskDetailPanel(interrupt)) {
+    delete defaults.create_time_block;
+  }
+  return defaults;
+}
+
+export function mobilePanelSubmitValues(interrupt: AssistantInterrupt, values: Record<string, unknown>): Record<string, unknown> {
+  if (!isTaskDetailPanel(interrupt)) {
+    return values;
+  }
+  const nextValues = { ...values };
+  delete nextValues.create_time_block;
+  return nextValues;
 }
 
 export function isCaptureTriagePanel(interrupt: AssistantInterrupt): boolean {
@@ -355,7 +380,7 @@ export function valueLabel(field: AssistantInterruptField, value: unknown): stri
 }
 
 export function selectedValueLabel(interrupt: AssistantInterrupt, values: Record<string, unknown>): string | null {
-  const field = interrupt.fields.find((candidate) => {
+  const field = mobilePanelFields(interrupt).find((candidate) => {
     const value = values[candidate.id];
     return value !== undefined && value !== null && String(value).trim().length > 0;
   });

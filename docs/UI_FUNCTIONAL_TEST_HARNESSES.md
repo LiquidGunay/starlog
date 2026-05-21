@@ -26,7 +26,8 @@ until deployment/domain routing is fixed. Authenticated hosted login was last pr
 requires the operator-held passphrase/token, which must not be pasted into docs or committed artifacts.
 Desktop web and native mobile chat surfaces have partial assistant-ui adapter/runtime coverage with
 compatibility fallbacks. Web has partial `ExternalStoreRuntime` data/tool UI paths; native mobile
-currently uses a read-only assistant-ui React Native `LocalRuntime` over server-owned Starlog messages.
+currently uses the assistant-ui React Native `server-owned-local-protocol-bridge` path over
+server-owned Starlog messages.
 These browser/viewport harnesses validate the supported structured protocol path and fallback-hidden
 user experience, not full installed-device assistant-ui parity or complete server-owned runtime
 migration.
@@ -46,7 +47,9 @@ Targeted commands that are useful during UI work:
 ```bash
 ./node_modules/.bin/playwright test --config=playwright.ui-functional.config.ts --project=pwa-chromium apps/web/tests/ui-functional/pwa-assistant-concept.functional.spec.ts
 ./node_modules/.bin/playwright test --config=playwright.ui-functional.config.ts --project=mobile-chromium apps/web/tests/ui-functional/mobile-assistant-concept.functional.spec.ts
+./node_modules/.bin/playwright test --config=playwright.web.config.ts apps/web/tests/pwa-assistant-study-command.web-functional.spec.ts
 ./node_modules/.bin/playwright test --config=playwright.web.config.ts apps/web/tests/pwa-dynamic-panel-renderer.spec.ts
+./node_modules/.bin/playwright test --config=playwright.web.config.ts apps/web/tests/assistant-dynamic-ui-e2e.spec.ts
 ```
 
 Live functional PWA smoke for the actual click path:
@@ -88,14 +91,16 @@ Current functional areas:
 | --- | --- | --- |
 | PWA Assistant concept | `apps/web/tests/ui-functional/pwa-assistant-concept.functional.spec.ts` | Clean centered Assistant thread, quiet context strip with useful today/weekly context, recommended starter prompt, ambient rows, cards, inline dynamic panel submission, compact tool activity, and hidden raw protocol labels against mocked assistant snapshots. |
 | Mobile Assistant concept | `apps/web/tests/ui-functional/mobile-assistant-concept.functional.spec.ts` | Phone-width Assistant thread behavior with one active inline panel, schedule-conflict decision, task details, capture triage, review grade, clarification, defer, project picker, compact activity, and no raw protocol labels. |
-| PWA dynamic panel renderer | `apps/web/tests/pwa-dynamic-panel-renderer.spec.ts` | Production-rendered dynamic panel field behavior, interrupt submit/dismiss APIs, field-id reuse, and hidden diagnostic labels. |
+| PWA Assistant study-command | `apps/web/tests/pwa-assistant-study-command.web-functional.spec.ts` | Assistant study-command and due-date task creation paths against mocked API responses; current due-date coverage is 5/5 passing. |
+| PWA dynamic panel renderer | `apps/web/tests/pwa-dynamic-panel-renderer.spec.ts` | Production-rendered dynamic panel field behavior, interrupt submit/dismiss APIs, field-id reuse, due-date task panel controls, and hidden diagnostic labels; current coverage is 4/4 passing. |
+| Assistant dynamic-ui e2e | `apps/web/tests/assistant-dynamic-ui-e2e.spec.ts` | Deterministic web/API due-date dynamic panel flow creates a Planner task end to end; current coverage is 1/1 passing. |
 | PWA Library | `apps/web/tests/ui-functional/pwa-library.functional.spec.ts` | Capture pipeline, conversion actions, offline queued actions, assistant event sync behavior, artifact detail, provenance, source layers, generated outputs, and timeline. |
 | Mobile Library viewport | `apps/web/tests/ui-functional/mobile-library.functional.spec.ts` | Compact mobile Library main surface, tab layout, horizontal overflow guard, and attempted artifact detail reachability. |
 | PWA Planner | `apps/web/tests/ui-functional/pwa-planner.functional.spec.ts` | Planner summary, blocks, calendar events, conflict repair actions, and Assistant handoff drafts against mocked planner/calendar APIs. |
 | Mobile Planner viewport | `apps/web/tests/ui-functional/mobile-planner.functional.spec.ts` | Phone-width Planner Assistant handoff drafts and conflict review link behavior. |
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Clean Review shell/study-loop surface, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
-| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing recommendation hints, notification permission, and Planner alarm scheduling. The current proof is `.localdata/android-local-validation/builds/20260521T053609Z/latest.json` with `validation_passed: true`; the harness now recognizes durable current Review markers after answer/grade state instead of older pre-answer copy. |
+| Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for login, assistant-ui shell/thread/composer markers, Assistant dynamic UI capability prompt, Assistant command submission, due-date task creation, Study Core unlock/read/question controls, Review reveal/grade evidence, Assistant-hosted review-grade dynamic UI controls, briefing cache generation, notification permission, and Planner cache-first alarm scheduling. The current proof is `.localdata/android-local-validation/builds/20260521T111452Z/latest.json` with `validation_passed: true`; it includes `assistant_due_date_dynamic_ui_verified`, `planner_briefing_cache_generated`, `planner_alarm_scheduled`, and `planner_alarm_briefing_path_verified`. |
 | Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
 ## Dynamic UI Coverage Boundary
@@ -111,15 +116,19 @@ Covered:
 - The live PWA harness sends `show me what UI actions you can take`, requires the Assistant capability
   prompt to describe dynamic UI actions without raw protocol labels, reveals a card from Review, then
   returns to Assistant to submit the generated review-grade dynamic panel.
+- The due-date dynamic UI path creates a Planner task and keeps the user-facing panel free of raw
+  protocol/fallback labels and `create_time_block` or time-block controls; the expected copy says
+  "Time blocking can be handled next."
 - Supported web and native chat paths can render structured protocol parts while unsupported
   shapes remain covered by Starlog compatibility/fallback rendering. The fallback renderers are
   transitional compatibility paths, not the target runtime.
 - React Native view-model tests cover mobile dynamic-panel shaping. The native assistant-ui-style
-  path currently uses a read-only `LocalRuntime` host over server-owned Starlog messages. Historical
-  Android fresh-local evidence has been refreshed by
-  `.localdata/android-local-validation/builds/20260521T053609Z/latest.json` for shell/thread/composer
-  markers, selected dynamic-panel controls, native Study controls, Review reveal/grade, briefing, and
-  alarm scheduling. Full server-owned native runtime migration is still pending.
+  path currently uses `server-owned-local-protocol-bridge` over server-owned Starlog messages.
+  Historical Android fresh-local evidence has been refreshed by
+  `.localdata/android-local-validation/builds/20260521T111452Z/latest.json` for shell/thread/composer
+  markers, due-date and review-grade dynamic-panel controls, native Study controls, Review reveal/grade,
+  briefing cache generation, and alarm scheduling. Full server-owned native runtime migration is still
+  pending.
 - Raw labels such as `tool_call`, `tool_result`, protocol, runtime, and diagnostics are hidden from the default user-facing UI.
 
 Not yet covered:
@@ -172,17 +181,18 @@ ready, unlocked physical Android phone. The preflight reports absent/unauthorize
 clearly. A passing run writes its final manifest to
 `.localdata/android-local-validation/builds/latest.json` with `validation_passed: true` and includes
 Assistant evidence such as `assistant-capability-shell-thread.png`, `assistant-capability-composer.png`,
-`assistant-dynamic-ui-capability-prompt.png`, `assistant-command-shell-thread.png`,
+`assistant-dynamic-ui-capability-prompt.png`, `assistant-due-date-dynamic-ui.png`,
+`assistant-due-date-created.png`, `assistant-command-shell-thread.png`,
 `assistant-command-composer.png`, `assistant-review-grade-controls.png`, and
 `assistant-review-grade-dynamic-ui.png`. Failed runs write
 their own build-local `latest.json` and publish `.localdata/android-local-validation/builds/latest.json`
 with `validation_passed: false`; environmental preflight gates publish `validation_stage: blocked`,
 while in-flow script/app failures publish `validation_stage: failed`. Partial screenshots/XML remain
 under the ignored latest build directory for debugging; they do not publish a passed final manifest.
-The latest physical proof is `.localdata/android-local-validation/builds/20260521T053609Z/latest.json`,
-which passed the bounded interview-prep path and Planner briefing/alarm path. Treat it as current
-installed-device evidence for those flows, not as complete proof of the full server-owned native
-assistant-ui runtime.
+The latest physical proof is `.localdata/android-local-validation/builds/20260521T111452Z/latest.json`,
+which passed the bounded interview-prep path, Assistant due-date dynamic UI path, and Planner
+cache-first briefing/alarm path. Treat it as current installed-device evidence for those flows, not as
+complete proof of the full server-owned native assistant-ui runtime.
 
 Physical phone screenshot proof also requires the attached Android device to be awake and unlocked. On this device, `adb shell svc power stayon true` has exited with code `137`, and changing `stay_on_while_plugged_in` is blocked by Android's `WRITE_SECURE_SETTINGS` permission, so current repeatable phone proof should wake the device immediately before capture and publish only the latest requested evidence bundle.
 

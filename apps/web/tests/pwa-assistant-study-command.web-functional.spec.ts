@@ -31,6 +31,305 @@ const COMMON_TEST_METADATA = {
   client_timezone: expect.any(String),
 };
 
+const DUE_DATE_COMMAND = "create task Review diffusion notes";
+const DUE_DATE_TASK_TITLE = "Review diffusion notes";
+
+function dueDateInterrupt(sequence: number, status: "pending" | "submitted" | "dismissed" = "pending", resolution: Record<string, unknown> | null = null): Record<string, unknown> {
+  const suffix = String(sequence);
+  return {
+    id: `interrupt_task_due_${suffix}`,
+    thread_id: "thr_primary",
+    run_id: `run_task_due_${suffix}`,
+    tool_name: "request_due_date",
+    interrupt_type: "form",
+    status,
+    title: "Finish task details",
+    body: "Give the missing fields so Starlog can create the task without leaving the thread.",
+    primary_label: "Create task",
+    secondary_label: "Not now",
+    defer_label: "Not now",
+    fields: [
+      { id: "due_date", kind: "date", label: "Due date", required: true },
+      { id: "priority", kind: "priority", label: "Priority", value: 3, min: 1, max: 5 },
+      { id: "create_time_block", kind: "toggle", label: "Unsupported time block", value: false },
+    ],
+    display_mode: "composer",
+    consequence_preview: "Creates a Planner task. Time blocking can be handled next.",
+    recommended_defaults: { priority: 3, create_time_block: false },
+    entity_ref: {
+      entity_type: "task",
+      entity_id: `draft:${DUE_DATE_TASK_TITLE}`,
+      title: DUE_DATE_TASK_TITLE,
+    },
+    metadata: {
+      planned_tool_name: "create_task",
+      planned_arguments: { title: DUE_DATE_TASK_TITLE },
+      display_mode: "composer",
+    },
+    resolution,
+    created_at: `2026-05-21T10:0${sequence}:02.000Z`,
+    resolved_at: status === "pending" ? null : `2026-05-21T10:0${sequence}:20.000Z`,
+  };
+}
+
+function dueDateUserMessage(sequence: number): Record<string, unknown> {
+  return {
+    id: `msg_user_task_due_${sequence}`,
+    thread_id: "thr_primary",
+    run_id: null,
+    role: "user",
+    status: "complete",
+    parts: [{ type: "text", id: `part_user_task_due_${sequence}`, text: DUE_DATE_COMMAND }],
+    metadata: {},
+    created_at: `2026-05-21T10:0${sequence}:00.000Z`,
+    updated_at: `2026-05-21T10:0${sequence}:00.000Z`,
+  };
+}
+
+function dueDateAssistantMessage(sequence: number, interrupt: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: `msg_assistant_task_due_${sequence}`,
+    thread_id: "thr_primary",
+    run_id: interrupt.run_id,
+    role: "assistant",
+    status: "requires_action",
+    parts: [
+      {
+        type: "text",
+        id: `part_assistant_task_due_text_${sequence}`,
+        text: "I can add that now. I only need when you want it due.",
+      },
+      {
+        type: "interrupt_request",
+        id: `part_assistant_task_due_interrupt_${sequence}`,
+        interrupt,
+      },
+      {
+        type: "status",
+        id: `part_assistant_task_due_status_${sequence}`,
+        status: "requires_action",
+        label: "Waiting for task details",
+      },
+    ],
+    metadata: { interrupt_id: interrupt.id },
+    created_at: `2026-05-21T10:0${sequence}:02.000Z`,
+    updated_at: `2026-05-21T10:0${sequence}:02.000Z`,
+  };
+}
+
+function dueDateRun(sequence: number, interrupt: Record<string, unknown>, status = "interrupted"): Record<string, unknown> {
+  return {
+    id: interrupt.run_id,
+    thread_id: "thr_primary",
+    origin_message_id: `msg_user_task_due_${sequence}`,
+    orchestrator: "deterministic",
+    status,
+    summary: `Create task ${DUE_DATE_TASK_TITLE}`,
+    metadata: {},
+    steps: [],
+    current_interrupt: status === "interrupted" ? interrupt : null,
+    created_at: `2026-05-21T10:0${sequence}:00.000Z`,
+    updated_at: `2026-05-21T10:0${sequence}:02.000Z`,
+  };
+}
+
+function appendDueDateInterrupt(snapshot: Record<string, unknown>, sequence: number): {
+  snapshot: Record<string, unknown>;
+  run: Record<string, unknown>;
+  userMessage: Record<string, unknown>;
+  assistantMessage: Record<string, unknown>;
+} {
+  const interrupt = dueDateInterrupt(sequence);
+  const userMessage = dueDateUserMessage(sequence);
+  const assistantMessage = dueDateAssistantMessage(sequence, interrupt);
+  const run = dueDateRun(sequence, interrupt);
+  const messages = [...(snapshot.messages as Record<string, unknown>[]), userMessage, assistantMessage];
+  const runs = [...(snapshot.runs as Record<string, unknown>[]), run];
+  const interrupts = [...(snapshot.interrupts as Record<string, unknown>[]), interrupt];
+
+  return {
+    userMessage,
+    assistantMessage,
+    run,
+    snapshot: {
+      ...snapshot,
+      last_message_at: assistantMessage.created_at,
+      last_preview_text: "I can add that now. I only need when you want it due.",
+      messages,
+      runs,
+      interrupts,
+      updated_at: assistantMessage.updated_at,
+      next_cursor: assistantMessage.updated_at,
+    },
+  };
+}
+
+function resolveDueDateInterrupt(
+  snapshot: Record<string, unknown>,
+  action: "submit" | "dismiss",
+  values: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const interrupts = snapshot.interrupts as Record<string, unknown>[];
+  const pendingInterrupt = interrupts.find((interrupt) => interrupt.tool_name === "request_due_date" && interrupt.status === "pending");
+  if (!pendingInterrupt) {
+    throw new Error("Expected a pending due-date interrupt.");
+  }
+  const resolvedInterrupt = dueDateInterrupt(
+    Number(String(pendingInterrupt.id).replace("interrupt_task_due_", "")),
+    action === "submit" ? "submitted" : "dismissed",
+    {
+      id: `resolution_${pendingInterrupt.id}`,
+      interrupt_id: pendingInterrupt.id,
+      action,
+      values,
+      metadata: {},
+      created_at: "2026-05-21T10:08:20.000Z",
+    },
+  );
+  const resolvedRuns = (snapshot.runs as Record<string, unknown>[]).map((run) =>
+    run.id === pendingInterrupt.run_id
+      ? { ...run, status: "completed", current_interrupt: null, updated_at: "2026-05-21T10:08:20.000Z" }
+      : run,
+  );
+  const resolvedInterrupts = interrupts.map((interrupt) => (interrupt.id === pendingInterrupt.id ? resolvedInterrupt : interrupt));
+  const confirmationMessage =
+    action === "submit"
+      ? {
+          id: `msg_assistant_task_created_${pendingInterrupt.id}`,
+          thread_id: "thr_primary",
+          run_id: pendingInterrupt.run_id,
+          role: "assistant",
+          status: "complete",
+          parts: [
+            {
+              type: "text",
+              id: `part_assistant_task_created_${pendingInterrupt.id}`,
+              text: `Created task ${DUE_DATE_TASK_TITLE}.`,
+            },
+            {
+              type: "interrupt_resolution",
+              id: `part_assistant_task_resolution_${pendingInterrupt.id}`,
+              resolution: resolvedInterrupt.resolution,
+            },
+          ],
+          metadata: {},
+          created_at: "2026-05-21T10:08:20.000Z",
+          updated_at: "2026-05-21T10:08:20.000Z",
+        }
+      : null;
+  const messages = confirmationMessage
+    ? [...(snapshot.messages as Record<string, unknown>[]), confirmationMessage]
+    : (snapshot.messages as Record<string, unknown>[]);
+
+  return {
+    ...snapshot,
+    last_message_at: confirmationMessage?.created_at || snapshot.last_message_at,
+    last_preview_text: confirmationMessage ? `Created task ${DUE_DATE_TASK_TITLE}.` : "Task details dismissed.",
+    messages,
+    runs: resolvedRuns,
+    interrupts: resolvedInterrupts,
+    updated_at: "2026-05-21T10:08:20.000Z",
+    next_cursor: "2026-05-21T10:08:20.000Z",
+  };
+}
+
+test("PWA assistant creates a task through the due-date dynamic panel", async ({ page }) => {
+  await seedAssistantSession(page);
+  const messageRequests: Array<Record<string, unknown>> = [];
+  const submissions: Array<{ url: string; values: Record<string, unknown> }> = [];
+  const dismissals: string[] = [];
+  let sequence = 0;
+  let snapshot = assistantThreadSnapshot({
+    last_message_at: "2026-05-21T10:00:00.000Z",
+    last_preview_text: "Ready for a Planner command.",
+  });
+
+  await routeAssistantThread(page, () => snapshot);
+  await routeAssistantToday(page, () => assistantTodaySummary());
+  await routeAssistantWeekly(page, () => assistantWeeklySummary());
+  await routeAssistantMessages(page, (payload) => {
+    messageRequests.push(payload);
+    sequence += 1;
+    const appended = appendDueDateInterrupt(snapshot, sequence);
+    snapshot = appended.snapshot;
+
+    return {
+      thread_id: "thr_primary",
+      run: appended.run,
+      user_message: appended.userMessage,
+      assistant_message: appended.assistantMessage,
+      snapshot,
+    };
+  });
+  await page.route(`${API_BASE}/v1/assistant/interrupts/*/dismiss`, async (route) => {
+    dismissals.push(route.request().url());
+    snapshot = resolveDueDateInterrupt(snapshot, "dismiss");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  });
+  await page.route(`${API_BASE}/v1/assistant/interrupts/*/submit`, async (route) => {
+    const payload = route.request().postDataJSON() as { values: Record<string, unknown> };
+    submissions.push({ url: route.request().url(), values: payload.values });
+    snapshot = resolveDueDateInterrupt(snapshot, "submit", payload.values);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  });
+
+  await page.goto("/assistant", { waitUntil: "domcontentloaded" });
+
+  await page.getByPlaceholder("Ask, capture, plan, review, or move something forward...").fill(DUE_DATE_COMMAND);
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const main = page.locator("main");
+  const rawProtocolText = /request_due_date|renderer_key|tool_name|starlog-interrupt-request|Fallback|Diagnostic|Raw|ui_tool|domain_tool|create_task/i;
+  const firstTaskPanel = page.getByTestId("dynamic-panel-renderer").filter({ hasText: DUE_DATE_TASK_TITLE });
+  await expect(firstTaskPanel).toBeVisible();
+  await expect(firstTaskPanel.getByText("Task setup", { exact: true })).toBeVisible();
+  await expect(firstTaskPanel.getByText("Finish task details", { exact: true })).toBeVisible();
+  await expect(firstTaskPanel.getByLabel("Task preview")).toContainText(DUE_DATE_TASK_TITLE);
+  await expect(firstTaskPanel.getByLabel("Due date")).toBeVisible();
+  await expect(firstTaskPanel.getByRole("radio", { name: "Priority 4" })).toBeVisible();
+  await expect(main).not.toContainText(rawProtocolText);
+
+  await firstTaskPanel.getByRole("button", { name: "Not now" }).click();
+  await expect.poll(() => dismissals.length).toBe(1);
+  expect(dismissals[0]).toContain("/v1/assistant/interrupts/interrupt_task_due_1/dismiss");
+  await expect(page.getByText("Dismissed.")).toBeVisible();
+  await expect(page.getByTestId("dynamic-panel-renderer").filter({ hasText: DUE_DATE_TASK_TITLE })).toHaveCount(0);
+  await expect(main).not.toContainText(rawProtocolText);
+
+  const dueDate = "2026-05-28";
+  await page.getByPlaceholder("Ask, capture, plan, review, or move something forward...").fill(DUE_DATE_COMMAND);
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const secondTaskPanel = page.getByTestId("dynamic-panel-renderer").filter({ hasText: DUE_DATE_TASK_TITLE });
+  await expect(secondTaskPanel).toBeVisible();
+  await secondTaskPanel.getByLabel("Due date").fill(dueDate);
+  await secondTaskPanel.getByRole("radio", { name: "Priority 4" }).click();
+  await expect(secondTaskPanel).not.toContainText("Unsupported time block");
+  await secondTaskPanel.getByRole("button", { name: "Create task" }).click();
+
+  await expect.poll(() => submissions.length).toBe(1);
+  expect(submissions[0].url).toContain("/v1/assistant/interrupts/interrupt_task_due_2/submit");
+  expect(submissions[0].values).toMatchObject({
+    due_date: dueDate,
+    priority: "4",
+  });
+  expect(submissions[0].values).not.toHaveProperty("create_time_block");
+  expect(typeof submissions[0].values.client_timezone).toBe("string");
+  await expect(page.getByText(`Created task ${DUE_DATE_TASK_TITLE}.`)).toBeVisible();
+  await expect(page.getByTestId("dynamic-panel-renderer").filter({ hasText: DUE_DATE_TASK_TITLE })).toHaveCount(0);
+  await expect(main).not.toContainText(rawProtocolText);
+
+  expect(messageRequests).toHaveLength(2);
+  for (const request of messageRequests) {
+    expect(request.content).toBe(DUE_DATE_COMMAND);
+    expect(request).toMatchObject({
+      input_mode: "text",
+      device_target: "web-desktop",
+      metadata: COMMON_TEST_METADATA,
+    });
+  }
+});
+
 test("PWA assistant visible unlock study command execution", async ({ page }) => {
   await seedAssistantSession(page);
   const requests: Array<Record<string, unknown>> = [];

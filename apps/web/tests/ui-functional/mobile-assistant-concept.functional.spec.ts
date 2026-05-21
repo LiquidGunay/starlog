@@ -391,8 +391,7 @@ test("mobile viewport assistant renders task detail and capture triage panels in
   await expect(page.getByRole("radio", { name: "High" })).toBeChecked();
   await expect(page.getByRole("radio", { name: "Medium" })).toBeVisible();
   await expect(taskPanel.getByText("Track it without protecting time yet.")).toBeVisible();
-  await expect(page.getByText("Create 45m focus block")).toBeVisible();
-  await expect(page.getByText("Blocks 9:30-10:15 AM for deep work and keeps the task visible in Planner.")).toBeVisible();
+  await expect(page.getByText("Creates a Planner task and keeps it visible.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save without date" })).toBeVisible();
   await taskPanel.getByRole("button", { name: "Save without date" }).click();
   expect(submissions[0].values).toEqual(
@@ -426,7 +425,6 @@ test("mobile viewport assistant renders task detail and capture triage panels in
     expect.objectContaining({
       due_date: localDateValue(0),
       priority: 1,
-      create_time_block: true,
       client_timezone: expect.any(String),
     }),
   );

@@ -535,12 +535,6 @@ export function taskDetailInterrupt(status: "pending" | "submitted" = "pending")
           { label: "Low", value: "3" },
         ],
       },
-      {
-        id: "create_time_block",
-        kind: "toggle",
-        label: "Create 45m focus block",
-        value: true,
-      },
     ],
     entity_ref: {
       entity_type: "task",
@@ -548,14 +542,14 @@ export function taskDetailInterrupt(status: "pending" | "submitted" = "pending")
       href: "/planner?task=task_onboarding_polish",
       title: "Finish onboarding flow polish",
     },
-    consequence_preview: "Blocks 9:30-10:15 AM for deep work and keeps the task visible in Planner.",
+    consequence_preview: "Creates a Planner task and keeps it visible.",
     resolution:
       status === "submitted"
         ? {
             id: "resolution_task_detail",
             interrupt_id: "interrupt_task_detail",
             action: "submit",
-            values: { due_date: "2026-04-28", priority: "1", create_time_block: true, client_timezone: "UTC" },
+            values: { due_date: "2026-04-28", priority: "1", client_timezone: "UTC" },
             metadata: {},
             created_at: "2026-04-28T09:14:00.000Z",
           }

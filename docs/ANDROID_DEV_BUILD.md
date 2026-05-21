@@ -215,11 +215,15 @@ bash ./scripts/android_fresh_local_srs_validation.sh
 ```
 
 Current status: the 2026-05-21 physical-device run passed with `validation_passed: true` at
-`.localdata/android-local-validation/builds/20260521T053609Z/latest.json`. It proves the bounded native
-Study/Review interview-prep loop, Assistant-hosted review-grade dynamic UI, Planner briefing path, and
-alarm scheduling on the attached Android phone. The preflight still reports Linux `adb`, Windows
-`adb.exe`, `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness explicitly, and
-marks absent/unauthorized/offline phone gates as `validation_stage: blocked`.
+`.localdata/android-local-validation/builds/20260521T111452Z/latest.json`. It proves the bounded native
+Study/Review interview-prep loop, Assistant-hosted due-date and review-grade dynamic UI, Planner
+briefing cache generation, and cache-first alarm scheduling on the attached Android phone. The due-date
+path created task `tsk_73ed0bf84eb944c3b60c339fda41ce4d` with
+`due_at: 2026-05-21T18:30:00Z`, and `assistant_due_date_dynamic_ui_verified`,
+`planner_briefing_cache_generated`, `planner_alarm_scheduled`, and
+`planner_alarm_briefing_path_verified` are in `validated_flows`. The preflight still reports Linux
+`adb`, Windows `adb.exe`, `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness
+explicitly, and marks absent/unauthorized/offline phone gates as `validation_stage: blocked`.
 
 What this loop does:
 
@@ -241,7 +245,8 @@ What this loop does:
 - uninstalls prior Starlog phone packages before install
 - installs the new APK with Windows `adb.exe install --no-streaming -r`
 - launches the Starlog login UI, establishes the fresh local station, opens the Review tab, loads due cards, reveals an answer, and records one `Good` rating
-- validates Planner cache generation as briefing evidence and asserts recommendation-hints presence before alarm scheduling
+- verifies the Assistant due-date dynamic UI can create a Planner task without exposing raw protocol/fallback labels or a time-block control
+- validates Planner cache generation as briefing evidence and asserts recommendation-hints presence before cache-first alarm scheduling
 - mirrors the latest installable APK at `.localdata/android-local-validation/builds/latest.apk`
 
 Performance defaults for this loop:

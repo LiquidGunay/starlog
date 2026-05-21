@@ -37,7 +37,9 @@ import {
   mobileClarificationPreview,
   mobileDynamicPanelStates,
   mobileEntityPickerPreview,
+  mobilePanelFields,
   mobilePanelSecondaryAction,
+  mobilePanelSubmitValues,
   mobilePlannerConflictPreview,
   mobilePanelOptionViewModels,
   mobileReviewGradePreview,
@@ -106,6 +108,24 @@ function assistantMachineLabel(value?: string | null, fallback = "Attachment"): 
 function attachmentKindLabel(kind?: string | null): string {
   const key = kind?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
   return ATTACHMENT_KIND_LABELS[key] ?? assistantMachineLabel(kind);
+}
+
+function mobileClientTimezone(): string | null {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof timeZone === "string" && timeZone.trim() ? timeZone.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function mobileInterruptSubmitValues(interrupt: AssistantInterrupt, values: Record<string, unknown>): Record<string, unknown> {
+  const panelValues = mobilePanelSubmitValues(interrupt, values);
+  if (!isTaskDetailPanel(interrupt) || !String(panelValues.due_date ?? "").trim() || String(panelValues.client_timezone ?? "").trim()) {
+    return panelValues;
+  }
+  const clientTimezone = mobileClientTimezone();
+  return clientTimezone ? { ...panelValues, client_timezone: clientTimezone } : panelValues;
 }
 
 const MORNING_FOCUS_OPTIONS = [
@@ -1267,10 +1287,11 @@ function DynamicPanelRenderer({
   const tone = panelTone(interrupt);
   const accent = panelAccent(tone, palette);
   const selectedLabel = selectedValueLabel(interrupt, values);
-  const complexFields = interrupt.fields.filter((field) => field.kind === "entity_search" && (!field.options || field.options.length === 0));
+  const panelFields = mobilePanelFields(interrupt);
+  const complexFields = panelFields.filter((field) => field.kind === "entity_search" && (!field.options || field.options.length === 0));
   const visibleFields = isReviewGradePanel(interrupt)
-    ? interrupt.fields.filter((field) => field.id !== "support_action" && !/support|help|mode/i.test(field.id))
-    : interrupt.fields;
+    ? panelFields.filter((field) => field.id !== "support_action" && !/support|help|mode/i.test(field.id))
+    : panelFields;
   const dimensions = useWindowDimensions();
   const panelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
   const secondaryAction = mobilePanelSecondaryAction(interrupt);
@@ -1593,7 +1614,7 @@ export function MobileAssistantRebuild({
 
   const submitInterrupt = (interrupt: AssistantInterrupt, valuesOverride?: Record<string, unknown>) => {
     const payload = valuesOverride ? { interruptId: interrupt.id, values: valuesOverride } : panelSubmitPayload(interrupt, interruptValuesById);
-    onInterruptSubmit(payload.interruptId, payload.values);
+    onInterruptSubmit(payload.interruptId, mobileInterruptSubmitValues(interrupt, payload.values));
   };
 
   const dismissInterrupt = (interrupt: AssistantInterrupt) => {

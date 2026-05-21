@@ -38,6 +38,61 @@ function starlogDynamicUiDescriptor(part: ReturnType<typeof starlogRichPartsForM
   return descriptor;
 }
 
+function dueDateMessage(): AssistantThreadMessage {
+  return {
+    id: "msg_due_date_interrupt",
+    thread_id: "thread_primary",
+    run_id: "run_due_date",
+    role: "assistant",
+    status: "requires_action",
+    created_at: createdAt,
+    updated_at: createdAt,
+    metadata: {},
+    parts: [
+      {
+        type: "text",
+        id: "part_text",
+        text: "I can add that now. I only need when you want it due.",
+      },
+      {
+        type: "interrupt_request",
+        id: "part_due_date",
+        interrupt: {
+          id: "interrupt_due_date_1",
+          thread_id: "thread_primary",
+          run_id: "run_due_date",
+          tool_call_id: "toolcall_due_date_1",
+          status: "pending",
+          interrupt_type: "form",
+          tool_name: "request_due_date",
+          title: "Finish task details",
+          body: "Give the missing fields so Starlog can create the task without leaving the thread.",
+          renderer_key: null,
+          renderer_version: null,
+          placement: null,
+          structured_content: null,
+          ui_meta: null,
+          fields: [
+            { id: "due_date", kind: "date", label: "Due date", required: true },
+            { id: "priority", kind: "priority", label: "Priority", required: false, value: 3 },
+            { id: "create_time_block", kind: "toggle", label: "Unsupported time block", required: false, value: false },
+          ],
+          primary_label: "Create task",
+          secondary_label: "Not now",
+          display_mode: "composer",
+          recommended_defaults: { priority: 3, create_time_block: false },
+          metadata: {
+            planned_tool_name: "create_task",
+            planned_arguments: { title: "Review diffusion notes", priority: 3 },
+            consequence_preview: "Creates a Planner task. Time blocking can be handled next.",
+          },
+          created_at: createdAt,
+        },
+      },
+    ],
+  };
+}
+
 function reviewGradeMessage(): AssistantThreadMessage {
   return {
     id: "msg_review_interrupt",
@@ -348,6 +403,53 @@ function runTests() {
     assert.equal(descriptor.fallback_reason, null);
     assert.ok(!String(part.rendererLabel).includes("interview.review_grade"));
     assert.ok(!String(part.rendererLabel).includes("grade_review_recall"));
+  }
+
+  {
+    const message = dueDateMessage();
+    const richParts = starlogRichPartsForMessage(message);
+    assert.equal(richParts.length, 1);
+    const [part] = richParts;
+    assert.equal(part.type, "interrupt_request");
+    assert.equal(part.label, "Finish task details");
+    assert.equal(part.rendererLabel, "Request due date");
+    assert.equal(part.requestedRendererKey, "request_due_date");
+    assert.equal(part.resolvedRendererKey, "request_due_date");
+    assert.equal(part.placement, "composer");
+    assert.equal(part.fallback, false);
+    assert.ok(!String(part.label).includes("request_due_date"));
+    const descriptor = starlogDynamicUiDescriptor(part);
+    assert.equal(descriptor.source, "interrupt");
+    assert.equal(descriptor.id, "interrupt_due_date_1");
+    assert.equal(descriptor.tool_call_id, "toolcall_due_date_1");
+    assert.equal(descriptor.renderer_key, "request_due_date");
+    assert.equal(descriptor.resolved_renderer_key, "request_due_date");
+    assert.equal(descriptor.fallback, false);
+    assert.deepEqual((descriptor.structured_content?.fields as Array<{ id: string }>).map((field) => field.id), [
+      "due_date",
+      "priority",
+      "create_time_block",
+    ]);
+    assert.deepEqual(descriptor.structured_content?.recommended_defaults, { priority: 3, create_time_block: false });
+
+    const [converted] = starlogMessagesToAssistantUiMessages([message]);
+    assert.ok(converted);
+    assert.equal(converted.content, "I can add that now. I only need when you want it due.");
+    assert.equal(converted.metadata.custom.richParts[0]?.rendererLabel, "Request due date");
+    const [panelInterrupt] = mobileDynamicPanelInterruptsFromAssistantUiMessage(converted);
+    assert.ok(panelInterrupt);
+    assert.equal(panelInterrupt.id, "interrupt_due_date_1");
+    assert.equal(panelInterrupt.status, "pending");
+    assert.equal(panelInterrupt.interrupt_type, "form");
+    assert.equal(panelInterrupt.tool_name, "request_due_date");
+    assert.equal(panelInterrupt.title, "Finish task details");
+    assert.equal(panelInterrupt.body, "Choose a due date and priority so Starlog can create the task.");
+    assert.equal(panelInterrupt.primary_label, "Create task");
+    assert.equal(panelInterrupt.secondary_label, "Not now");
+    assert.equal(panelInterrupt.display_mode, "composer");
+    assert.deepEqual(panelInterrupt.fields.map((field) => field.id), ["due_date", "priority"]);
+    assert.deepEqual(panelInterrupt.recommended_defaults, { priority: 3 });
+    assert.deepEqual(mobileNativeDynamicPanelPartIdsFromStarlogMessage(message), ["part_due_date"]);
   }
 
   {

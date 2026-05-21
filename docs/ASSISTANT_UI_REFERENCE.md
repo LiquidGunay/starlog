@@ -67,6 +67,9 @@ Primary architecture sources:
   - capture triage
   - review grading
   - morning-focus selection
+- Due-date task panels create Planner tasks only. They should use follow-up copy such as "Time
+  blocking can be handled next." rather than exposing `create_time_block` or time-block controls, and
+  must not show raw protocol or fallback labels.
 - Panels are not appropriate for deep document editing or full planner workflows.
 
 ## Visual Guardrails

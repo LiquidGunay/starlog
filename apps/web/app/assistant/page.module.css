@@ -114,9 +114,8 @@
   color: rgba(245, 242, 234, 0.42);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   line-height: 1.2;
-  text-transform: uppercase;
 }
 
 .contextGroup div {
@@ -167,8 +166,7 @@
 
 .handoffKicker {
   margin: 0 0 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   font-size: 11px;
   color: rgba(245, 242, 234, 0.5);
 }
