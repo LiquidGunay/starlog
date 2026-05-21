@@ -214,16 +214,24 @@ cd /home/ubuntu/starlog
 bash ./scripts/android_fresh_local_srs_validation.sh
 ```
 
-Current status: the 2026-05-21 physical-device run passed with `validation_passed: true` at
-`.localdata/android-local-validation/builds/20260521T111452Z/latest.json`. It proves the bounded native
-Study/Review interview-prep loop, Assistant-hosted due-date and review-grade dynamic UI, Planner
-briefing cache generation, and cache-first alarm scheduling on the attached Android phone. The due-date
-path created task `tsk_73ed0bf84eb944c3b60c339fda41ce4d` with
-`due_at: 2026-05-21T18:30:00Z`, and `assistant_due_date_dynamic_ui_verified`,
-`planner_briefing_cache_generated`, `planner_alarm_scheduled`, and
-`planner_alarm_briefing_path_verified` are in `validated_flows`. The preflight still reports Linux
-`adb`, Windows `adb.exe`, `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness
-explicitly, and marks absent/unauthorized/offline phone gates as `validation_stage: blocked`.
+Current status: the 2026-05-21 physical-device run passed with `validation_passed: true` and
+`validation_stage: final` at `.localdata/android-local-validation/builds/20260521T173754Z/latest.json`.
+It proves the bounded native Study/Review interview-prep loop, Assistant-hosted due-date and
+review-grade dynamic UI, Planner briefing cache generation, and cache-first alarm scheduling on the
+attached Android phone. The due-date path created task `tsk_833ac32672064fdea73d07f5c87976e7` with
+`due_at: 2026-05-21T18:30:00Z`; the briefing is `brf_189a758c19ed4c648c0a7d552719e93e` for
+`2026-05-21` with six recommendation hints. Validated flows include
+`assistant_ui_shell_thread_composer_verified`, `assistant_due_date_dynamic_ui_verified`,
+`native_study_question_request_created`, `review_good_grade_submitted`,
+`assistant_review_grade_dynamic_ui_verified`, `planner_briefing_cache_generated`,
+`planner_alarm_scheduled`, and `planner_alarm_briefing_path_verified`. Relevant captures show no
+visible `create_time_block` or fallback labels, and the manifest has no
+`native_study_question_request_fallback_after_visible_tap` marker, so the Study question request is
+pure native tap/API success. Future fallback-assisted Study question proof must use the distinct
+`native_study_question_request_fallback_after_visible_tap` marker and be treated as lower-confidence
+than pure native-tap proof. The preflight still reports Linux `adb`, Windows
+`adb.exe`, `powershell.exe`, serial, reverse-port, screenshot, and UI XML readiness explicitly, and
+marks absent/unauthorized/offline phone gates as `validation_stage: blocked`.
 
 What this loop does:
 
@@ -245,7 +253,7 @@ What this loop does:
 - uninstalls prior Starlog phone packages before install
 - installs the new APK with Windows `adb.exe install --no-streaming -r`
 - launches the Starlog login UI, establishes the fresh local station, opens the Review tab, loads due cards, reveals an answer, and records one `Good` rating
-- verifies the Assistant due-date dynamic UI can create a Planner task without exposing raw protocol/fallback labels or a time-block control
+- verifies the Assistant due-date dynamic UI can create a Planner task without exposing raw protocol/fallback labels or a time-block control, including bottom-sheet/tap reliability after transcript scroll
 - validates Planner cache generation as briefing evidence and asserts recommendation-hints presence before cache-first alarm scheduling
 - mirrors the latest installable APK at `.localdata/android-local-validation/builds/latest.apk`
 

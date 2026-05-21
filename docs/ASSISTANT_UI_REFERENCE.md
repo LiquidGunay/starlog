@@ -81,5 +81,8 @@ Primary architecture sources:
 - Avoid stacked generic cards, decorative dashboards, or debug panes competing with the thread.
 - The thread should look operational, calm, and serious, with clear status changes and strong
   hierarchy.
+- Library and Planner are support surfaces for capture, artifact review, schedule context, and
+  Assistant handoffs. Keep their primary shells aligned with the `Assistant`, `Library`, `Planner`,
+  `Review` taxonomy and route consequential follow-up back through the canonical Assistant thread.
 - Mobile and web should share one system language, with ergonomics adapting by layout rather
   than by divergent themes.

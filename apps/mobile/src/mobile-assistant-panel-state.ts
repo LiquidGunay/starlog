@@ -255,6 +255,9 @@ export function mobilePanelDisplayModeLabel(interrupt: AssistantInterrupt): stri
 }
 
 function mobileInterruptPlacement(interrupt: AssistantInterrupt): AssistantDynamicUiPlacement | null | undefined {
+  if (interrupt.status === "pending" && interrupt.tool_name === "request_due_date") {
+    return "bottom_sheet";
+  }
   return interrupt.placement ?? interrupt.display_mode;
 }
 

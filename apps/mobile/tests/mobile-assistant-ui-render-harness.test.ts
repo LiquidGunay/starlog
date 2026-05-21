@@ -461,8 +461,9 @@ try {
     const transcriptHosts = findByTestId(tree, "mobile-assistant-aui-transcript");
     assert.equal(transcriptHosts.length, 1);
     assert.equal(hasDescendantWithTestId(transcriptHosts[0], "assistant-ui-shell"), true);
-    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "mobile-assistant-aui-composer-surface"), true);
-    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "assistant-ui-composer"), true);
+    assert.equal(typeof transcriptHosts[0].props.onContentSizeChange, "function");
+    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "mobile-assistant-aui-composer-surface"), false);
+    assert.equal(hasDescendantWithTestId(transcriptHosts[0], "assistant-ui-composer"), false);
     assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
     assert.equal(findByTestId(tree, "assistant-ui-thread").length, 1);
     assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
@@ -471,6 +472,7 @@ try {
     assert.equal(findByAccessibilityLabel(tree, "Conversation messages").length > 0, true);
     assert.equal(findByAccessibilityLabel(tree, "Message composer").length > 0, true);
     assert.equal(findByAccessibilityLabel(tree, "Write a message").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Send assistant message").length, 1);
     assert.equal(hasImplementationAccessibilityLabel(tree), false);
     assert.equal(findByType(tree, "ThreadPrimitive.Messages").length, 1);
     assert.equal(findByType(tree, "MessagePrimitive.Root").length, 1);
@@ -789,7 +791,13 @@ try {
       updated_at: "2026-05-19T05:00:00Z",
       metadata: {},
       parts: [
-        { type: "text", id: "part-text", text: "I can add that now. I only need when you want it due." },
+        {
+          type: "text",
+          id: "part-text",
+          text:
+            "I can add that now. I only need when you want it due. ".repeat(36) +
+            "The composer must stay available after this longer due-date thread content.",
+        },
         { type: "interrupt_request", id: "part-due-date", interrupt: dueDate },
       ],
     };
@@ -845,6 +853,18 @@ try {
     let tree = renderWithHooks(render);
 
     assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
+    const dueDateTranscriptHosts = findByTestId(tree, "mobile-assistant-aui-transcript");
+    assert.equal(dueDateTranscriptHosts.length, 1);
+    assert.equal(typeof dueDateTranscriptHosts[0].props.onContentSizeChange, "function");
+    assert.equal(hasDescendantWithTestId(dueDateTranscriptHosts[0], "mobile-dynamic-panel-host"), true);
+    assert.equal(hasDescendantWithTestId(dueDateTranscriptHosts[0], "mobile-dynamic-panel-sheet-row-due-date-panel"), true);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-sheet-content").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-sheet").length, 1);
+    assert.equal(hasDescendantWithTestId(dueDateTranscriptHosts[0], "assistant-ui-composer"), false);
+    assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Message composer").length > 0, true);
+    assert.equal(findByAccessibilityLabel(tree, "Write a message").length, 1);
+    assert.equal(findByAccessibilityLabel(tree, "Send assistant message").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-host").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-submit-due-date-panel").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-secondary-due-date-panel").length, 1);

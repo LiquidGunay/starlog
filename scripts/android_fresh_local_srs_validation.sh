@@ -1938,8 +1938,10 @@ marker_config = {
     "composer": {
         "ids": {"assistant-ui-composer", "assistant-ui-composer-input"},
         "labels": {
-            "assistant-ui composer",
-            "assistant-ui composer input",
+            "assistant-ui-composer",
+            "assistant-ui-composer-input",
+            "message composer",
+            "write a message",
             "send assistant message",
             "ask, capture, plan, review, or move something forward...",
         },
@@ -2516,6 +2518,92 @@ tap_exact_text() {
   dump_ui
   local coords
   coords="$(ui_center_for_exact_label "$needle")" || fail "Could not find exact tappable label: $needle"
+  adb_cmd shell input tap ${coords} >/dev/null
+}
+
+tap_review_good_grade() {
+  dump_ui
+  local target
+  target="$(python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+root = ET.parse(path).getroot()
+parent_by_id = {id(child): parent for parent in root.iter() for child in parent}
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    left, top, right, bottom = numbers
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+def center(bounds):
+    left, top, right, bottom = bounds
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def normalize(value):
+    return re.sub(r"\s+", " ", (value or "").strip())
+
+
+def is_good_label(value):
+    value = normalize(value)
+    return value == "Good" or value.startswith("Good,")
+
+
+def visible_clickable(node):
+    return node.attrib.get("clickable") == "true" and bounds_of(node) is not None
+
+
+def node_label(node):
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    return text or desc
+
+
+def emit(node, source):
+    bounds = bounds_of(node)
+    if not bounds:
+        raise SystemExit(1)
+    x, y = center(bounds)
+    label = node_label(node)
+    print(f"{x} {y}|[{bounds[0]},{bounds[1]}][{bounds[2]},{bounds[3]}]|{source}|{label}")
+    raise SystemExit(0)
+
+
+for node in root.iter("node"):
+    if not visible_clickable(node):
+        continue
+    if is_good_label(node.attrib.get("text")) or is_good_label(node.attrib.get("content-desc")):
+        emit(node, "clickable-label")
+
+for node in root.iter("node"):
+    if not (is_good_label(node.attrib.get("text")) or is_good_label(node.attrib.get("content-desc"))):
+        continue
+    current = parent_by_id.get(id(node))
+    while current is not None:
+        if visible_clickable(current):
+            emit(current, "clickable-parent")
+        current = parent_by_id.get(id(current))
+
+raise SystemExit(1)
+PY
+)" || fail "Could not find clickable Review Good grade target"
+
+  local coords="${target%%|*}"
+  local rest="${target#*|}"
+  local bounds="${rest%%|*}"
+  rest="${rest#*|}"
+  local source="${rest%%|*}"
+  local label="${rest#*|}"
+  log "Tapping Review Good grade target: source=${source}, label='${label}', bounds=${bounds}, coords=${coords}"
   adb_cmd shell input tap ${coords} >/dev/null
 }
 
@@ -3897,6 +3985,111 @@ raise SystemExit(1)
 PY
 }
 
+mobile_dynamic_panel_sheet_state() {
+  python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def resource_suffix(node) -> str:
+    return (node.attrib.get("resource-id") or "").strip().lower().rsplit("/", 1)[-1]
+
+
+sheets = []
+for node in root.iter("node"):
+    suffix = resource_suffix(node)
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    if suffix == "mobile-dynamic-panel-sheet" or desc == "mobile-dynamic-panel-sheet" or text == "mobile-dynamic-panel-sheet":
+        bounds = bounds_of(node)
+        if bounds:
+            sheets.append(bounds)
+
+if not sheets:
+    raise SystemExit(1)
+
+sheet = max(sheets, key=lambda item: (item[2] - item[0]) * (item[3] - item[1]))
+left, top, right, bottom = sheet
+
+
+def in_sheet(node) -> bool:
+    bounds = bounds_of(node)
+    if not bounds:
+        return False
+    n_left, n_top, n_right, n_bottom = bounds
+    if n_right <= n_left or n_bottom <= n_top:
+        return False
+    center_x = (n_left + n_right) // 2
+    center_y = (n_top + n_bottom) // 2
+    return left <= center_x <= right and top <= center_y <= bottom
+
+values = []
+resource_suffixes = []
+for node in root.iter("node"):
+    if not in_sheet(node):
+        continue
+    resource_suffixes.append(resource_suffix(node))
+    for key in ("text", "content-desc"):
+        value = node.attrib.get(key)
+        if value:
+            values.append(value)
+
+raw = "\n".join(values).lower()
+normalized_values = [normalize(value) for value in values]
+normalized = re.sub(r"[_\-\s]+", " ", raw)
+
+raw_labels = {
+    "request_due_date",
+    "request due date",
+    "renderer_key",
+    "tool_name",
+    "ui_tool",
+    "domain_tool",
+    "create_task",
+}
+fallback_patterns = (
+    r"\bcreate\s+45m\s+block\b",
+    r"\bunsupported\s+time\s+block\b",
+    r"\btime\s+block\s+unsupported\b",
+    r"\bcreate\s+time\s+block\b",
+    r"\btime\s+block\b",
+)
+
+flags = {
+    "sheet": 1,
+    "raw_label": int(any(label in raw for label in raw_labels)),
+    "fallback_label": int("create_time_block" in raw or "create-time-block" in raw or any(re.search(pattern, normalized) for pattern in fallback_patterns)),
+    "due_date": int(any("due date" in value for value in normalized_values)),
+    "tomorrow": int(any(value == "tomorrow" or value == "[tomorrow]" for value in normalized_values)),
+    "date_input": int(any("yyyy-mm-dd" in value or re.search(r"\d{4}-\d{2}-\d{2}", value) for value in normalized_values)),
+    "priority": int(any(value == "priority" or "priority" in value for value in normalized_values)),
+    "priority_option": int(any(re.search(r"\bpriority\s+[1-5]\b", value) for value in normalized_values)),
+    "create_task": int(any(value == "create task" or value == "[create task]" for value in normalized_values) or any(suffix.startswith("mobile-dynamic-panel-submit-") for suffix in resource_suffixes)),
+}
+
+for key, value in flags.items():
+    print(f"{key}={value}")
+PY
+}
+
+ui_has_mobile_dynamic_panel_sheet() {
+  mobile_dynamic_panel_sheet_state >/dev/null
+}
+
 assert_assistant_due_date_dynamic_ui_panel() {
   local title="$1"
   local deadline=$((SECONDS + 45))
@@ -3907,6 +4100,7 @@ assert_assistant_due_date_dynamic_ui_panel() {
   local found_priority_option=0
   local found_create_task=0
   local attempt=0
+  local state=""
 
   while (( SECONDS < deadline )); do
     if ! app_is_foreground; then
@@ -3916,48 +4110,37 @@ assert_assistant_due_date_dynamic_ui_panel() {
       sleep 1
       continue
     fi
-    assert_assistant_surface_contract
 
-    if ui_has_due_date_time_block_fallback_label; then
+    state="$(mobile_dynamic_panel_sheet_state || true)"
+    if [[ -z "$state" ]]; then
+      if (( attempt % 2 == 0 )); then
+        assistant_transcript_scroll_once down
+      else
+        assistant_transcript_scroll_once up
+      fi
+      attempt=$((attempt + 1))
+      sleep 1
+      continue
+    fi
+
+    if grep -q '^fallback_label=1$' <<<"$state"; then
       capture_screen "$SCREENSHOT_DIR/assistant-due-date-time-block-fallback-label.png"
       snapshot_phone_state "assistant-due-date-time-block-fallback-label"
-      fail "Assistant due-date panel exposed raw or fallback time-block labels instead of due-date task controls"
+      fail "Assistant due-date sheet exposed raw or fallback time-block labels instead of due-date task controls"
     fi
 
-    if ui_has_text "request_due_date" \
-      || ui_has_text "Request due date" \
-      || ui_has_text "renderer_key" \
-      || ui_has_text "tool_name" \
-      || ui_has_text "ui_tool" \
-      || ui_has_text "domain_tool" \
-      || ui_has_text "create_task"; then
+    if grep -q '^raw_label=1$' <<<"$state"; then
       capture_screen "$SCREENSHOT_DIR/assistant-due-date-dynamic-ui-raw-label.png"
       snapshot_phone_state "assistant-due-date-dynamic-ui-raw-label"
-      fail "Assistant due-date panel exposed raw renderer/tool labels instead of human dynamic UI labels"
+      fail "Assistant due-date sheet exposed raw renderer/tool labels instead of human dynamic UI labels"
     fi
 
-    if ui_has_text "Due date"; then
-      found_due_date=1
-    fi
-    if ui_has_text "Tomorrow"; then
-      found_tomorrow=1
-    fi
-    if ui_has_text "YYYY-MM-DD"; then
-      found_date_input=1
-    fi
-    if ui_has_text "Priority"; then
-      found_priority=1
-    fi
-    if ui_has_text "Priority 1" \
-      || ui_has_text "Priority 2" \
-      || ui_has_text "Priority 3" \
-      || ui_has_text "Priority 4" \
-      || ui_has_text "Priority 5"; then
-      found_priority_option=1
-    fi
-    if ui_has_text "Create task"; then
-      found_create_task=1
-    fi
+    grep -q '^due_date=1$' <<<"$state" && found_due_date=1
+    grep -q '^tomorrow=1$' <<<"$state" && found_tomorrow=1
+    grep -q '^date_input=1$' <<<"$state" && found_date_input=1
+    grep -q '^priority=1$' <<<"$state" && found_priority=1
+    grep -q '^priority_option=1$' <<<"$state" && found_priority_option=1
+    grep -q '^create_task=1$' <<<"$state" && found_create_task=1
 
     if (( found_due_date == 1 && found_tomorrow == 1 && found_date_input == 1 && found_priority == 1 && found_priority_option == 1 && found_create_task == 1 )); then
       capture_screen "$SCREENSHOT_DIR/assistant-due-date-dynamic-ui.png"
@@ -3966,9 +4149,9 @@ assert_assistant_due_date_dynamic_ui_panel() {
     fi
 
     if (( attempt % 2 == 0 )); then
-      scroll_review_controls_reverse
+      assistant_transcript_scroll_once down
     else
-      scroll_review_controls
+      assistant_transcript_scroll_once up
     fi
     attempt=$((attempt + 1))
     sleep 1
@@ -3976,7 +4159,7 @@ assert_assistant_due_date_dynamic_ui_panel() {
 
   capture_screen "$SCREENSHOT_DIR/assistant-due-date-dynamic-ui-missing.png"
   snapshot_phone_state "assistant-due-date-dynamic-ui-missing"
-  fail "Assistant due-date dynamic UI did not expose visible required controls (Due date, Tomorrow, YYYY-MM-DD, Priority, a priority option, Create task); DB interrupt proof covers request_due_date title and fields"
+  fail "Assistant due-date dynamic panel sheet did not expose visible required controls (Due date, Tomorrow, YYYY-MM-DD, Priority, a priority option, Create task); DB interrupt proof covers request_due_date title and fields"
 }
 
 tap_assistant_exact_text_with_scroll() {
@@ -4000,7 +4183,11 @@ tap_assistant_exact_text_with_scroll() {
       return 0
     fi
 
-    if (( attempt % 2 == 0 )); then
+    if (( attempt % 4 == 0 )); then
+      assistant_transcript_scroll_once down
+    elif (( attempt % 4 == 1 )); then
+      assistant_transcript_scroll_once up
+    elif (( attempt % 4 == 2 )); then
       scroll_review_controls_reverse
     else
       scroll_review_controls
@@ -4012,6 +4199,501 @@ tap_assistant_exact_text_with_scroll() {
   capture_screen "$SCREENSHOT_DIR/${fail_suffix}.png"
   snapshot_phone_state "$fail_suffix"
   fail "Could not find tappable Assistant text: $needle"
+}
+
+mobile_dynamic_panel_sheet_control_coords() {
+  local label="$1"
+  local mode="${2:-label}"
+  python3 - "$UI_XML" "$label" "$mode" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, label, mode = sys.argv[1], sys.argv[2].lower(), sys.argv[3]
+root = ET.parse(path).getroot()
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def center(bounds):
+    left, top, right, bottom = bounds
+    return f"{(left + right) // 2} {(top + bottom) // 2}"
+
+
+def resource_suffix(node) -> str:
+    return (node.attrib.get("resource-id") or "").strip().lower().rsplit("/", 1)[-1]
+
+sheets = []
+for node in root.iter("node"):
+    suffix = resource_suffix(node)
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    if suffix == "mobile-dynamic-panel-sheet" or desc == "mobile-dynamic-panel-sheet" or text == "mobile-dynamic-panel-sheet":
+        bounds = bounds_of(node)
+        if bounds:
+            sheets.append(bounds)
+if not sheets:
+    raise SystemExit(1)
+
+sheet = max(sheets, key=lambda item: (item[2] - item[0]) * (item[3] - item[1]))
+s_left, s_top, s_right, s_bottom = sheet
+
+
+def in_sheet(node) -> bool:
+    bounds = bounds_of(node)
+    if not bounds:
+        return False
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    x = (left + right) // 2
+    y = (top + bottom) // 2
+    return s_left <= x <= s_right and s_top <= y <= s_bottom
+
+candidates = []
+for node in root.iter("node"):
+    if not in_sheet(node):
+        continue
+    bounds = bounds_of(node)
+    if not bounds:
+        continue
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    suffix = resource_suffix(node)
+    clickable = node.attrib.get("clickable") == "true"
+
+    score = None
+    if mode == "submit":
+        if suffix.startswith("mobile-dynamic-panel-submit-"):
+            score = 0
+        elif text == "create task" or desc == "create task" or desc == "[create task]":
+            score = 10 if clickable else 20
+    elif text == label or desc == label or desc == f"[{label}]":
+        score = 0 if clickable else 10
+
+    if score is None:
+        continue
+    candidates.append((score, bounds[1], bounds[0], bounds))
+
+if not candidates:
+    raise SystemExit(1)
+
+candidates.sort()
+print(center(candidates[0][3]))
+PY
+}
+
+tap_mobile_dynamic_panel_sheet_control() {
+  local label="$1"
+  local fail_suffix="$2"
+  local mode="${3:-label}"
+  local deadline=$((SECONDS + 35))
+  local attempt=0
+  local coords=""
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+
+    if ! ui_has_mobile_dynamic_panel_sheet; then
+      sleep 1
+      attempt=$((attempt + 1))
+      continue
+    fi
+
+    coords="$(mobile_dynamic_panel_sheet_control_coords "$label" "$mode" || true)"
+    if [[ -n "$coords" ]]; then
+      adb_cmd shell input tap ${coords} >/dev/null
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      assistant_transcript_scroll_once down
+    else
+      assistant_transcript_scroll_once up
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/${fail_suffix}.png"
+  snapshot_phone_state "$fail_suffix"
+  fail "Could not find tappable Assistant sheet control: $label"
+}
+
+
+assistant_due_date_selection_state() {
+  local expected_date="$1"
+  python3 - "$UI_XML" "$expected_date" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, expected_date = sys.argv[1], sys.argv[2]
+root = ET.parse(path).getroot()
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def resource_suffix(node) -> str:
+    return (node.attrib.get("resource-id") or "").strip().lower().rsplit("/", 1)[-1]
+
+
+def sheet_bounds():
+    sheets = []
+    for candidate in root.iter("node"):
+        suffix = resource_suffix(candidate)
+        text = normalize(candidate.attrib.get("text"))
+        desc = normalize(candidate.attrib.get("content-desc"))
+        if suffix == "mobile-dynamic-panel-sheet" or desc == "mobile-dynamic-panel-sheet" or text == "mobile-dynamic-panel-sheet":
+            bounds = bounds_of(candidate)
+            if bounds:
+                sheets.append(bounds)
+    if not sheets:
+        return None
+    return max(sheets, key=lambda item: (item[2] - item[0]) * (item[3] - item[1]))
+
+
+sheet = sheet_bounds()
+
+
+def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for candidate in root.iter("node"):
+        bounds = bounds_of(candidate)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
+    candidates = []
+    for candidate in root.iter("node"):
+        desc = candidate.attrib.get("content-desc") or ""
+        text = candidate.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
+            continue
+        bounds = bounds_of(candidate)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    center_x = (left + right) // 2
+    center_y = (top + bottom) // 2
+    if sheet:
+        s_left, s_top, s_right, s_bottom = sheet
+        return s_left <= center_x <= s_right and s_top <= center_y <= s_bottom
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
+for node in root.iter("node"):
+    if not is_visible(node):
+        continue
+    text = node.attrib.get("text") or ""
+    desc = node.attrib.get("content-desc") or ""
+    combined = f"{text}\n{desc}"
+    if expected_date and expected_date in combined:
+        print(f"expected_date_visible:{expected_date}")
+        raise SystemExit(0)
+
+for node in root.iter("node"):
+    if not is_visible(node):
+        continue
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    if text != "tomorrow" and desc not in {"tomorrow", "[tomorrow]"}:
+        continue
+    checked = normalize(node.attrib.get("checked"))
+    selected = normalize(node.attrib.get("selected"))
+    desc_has_selected = "selected" in desc or "checked" in desc
+    if checked == "true" or selected == "true" or desc_has_selected:
+        print("tomorrow_selected")
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+assistant_due_date_input_coords() {
+  python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    return tuple(numbers)
+
+
+def center(bounds):
+    left, top, right, bottom = bounds
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def resource_suffix(node) -> str:
+    return (node.attrib.get("resource-id") or "").strip().lower().rsplit("/", 1)[-1]
+
+
+def sheet_bounds():
+    sheets = []
+    for candidate in root.iter("node"):
+        suffix = resource_suffix(candidate)
+        text = normalize(candidate.attrib.get("text"))
+        desc = normalize(candidate.attrib.get("content-desc"))
+        if suffix == "mobile-dynamic-panel-sheet" or desc == "mobile-dynamic-panel-sheet" or text == "mobile-dynamic-panel-sheet":
+            bounds = bounds_of(candidate)
+            if bounds:
+                sheets.append(bounds)
+    if not sheets:
+        return None
+    return max(sheets, key=lambda item: (item[2] - item[0]) * (item[3] - item[1]))
+
+
+sheet = sheet_bounds()
+
+
+def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for candidate in root.iter("node"):
+        bounds = bounds_of(candidate)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
+    candidates = []
+    for candidate in root.iter("node"):
+        desc = candidate.attrib.get("content-desc") or ""
+        text = candidate.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
+            continue
+        bounds = bounds_of(candidate)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    left, top, right, bottom = bounds
+    if right <= left or bottom <= top:
+        return False
+    center_x = (left + right) // 2
+    center_y = (top + bottom) // 2
+    if sheet:
+        s_left, s_top, s_right, s_bottom = sheet
+        return s_left <= center_x <= s_right and s_top <= center_y <= s_bottom
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
+labels = []
+for node in root.iter("node"):
+    if not is_visible(node):
+        continue
+    value = f"{node.attrib.get('text') or ''} {node.attrib.get('content-desc') or ''}"
+    normalized = normalize(value)
+    if "yyyy-mm-dd" in normalized or "due date" in normalized:
+        bounds = bounds_of(node)
+        if bounds:
+            labels.append(bounds)
+
+best = None
+best_score = None
+for node in root.iter("node"):
+    if node.attrib.get("class") != "android.widget.EditText":
+        continue
+    if not is_visible(node):
+        continue
+    bounds = bounds_of(node)
+    if not bounds:
+        continue
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    combined = f"{text} {desc}"
+    if "ask, capture, plan, review" in combined:
+        continue
+
+    score = 10000
+    if "yyyy-mm-dd" in combined:
+        score = 0
+    elif "due date" in combined:
+        score = 5
+    elif re.search(r"\d{4}-\d{2}-\d{2}", combined):
+        score = 8
+
+    c_x, c_y = center(bounds)
+    for label in labels:
+        l_x, l_y = center(label)
+        vertical_distance = abs(c_y - l_y)
+        horizontal_penalty = 0 if bounds[0] <= l_x <= bounds[2] or label[0] <= c_x <= label[2] else abs(c_x - l_x)
+        score = min(score, 20 + vertical_distance + horizontal_penalty // 4)
+
+    if best is None or score < best_score:
+        best = bounds
+        best_score = score
+
+if best is None or best_score is None or best_score >= 10000:
+    raise SystemExit(1)
+
+x, y = center(best)
+print(f"{x} {y}")
+PY
+}
+
+fill_assistant_due_date_input() {
+  local expected_date="$1"
+  local deadline=$((SECONDS + 35))
+  local attempt=0
+  local coords=""
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    if ! ui_has_mobile_dynamic_panel_sheet; then
+      assert_assistant_surface_contract
+    fi
+
+    coords="$(assistant_due_date_input_coords || true)"
+    if [[ -n "$coords" ]]; then
+      adb_cmd shell input tap ${coords} >/dev/null
+      sleep 1
+      clear_focused_text_field
+      adb_cmd shell input text "$expected_date" >/dev/null
+      adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+      sleep 1
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      assistant_transcript_scroll_once down
+    else
+      assistant_transcript_scroll_once up
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-input-missing.png"
+  snapshot_phone_state "assistant-due-date-input-missing"
+  fail "Could not locate the Assistant due-date YYYY-MM-DD input to fill expected date: $expected_date"
+}
+
+assert_assistant_due_date_selected_or_fill() {
+  local expected_date="$1"
+  local state=""
+
+  if dump_ui; then
+    state="$(assistant_due_date_selection_state "$expected_date" || true)"
+    if [[ -n "$state" ]]; then
+      log "Assistant due-date selection persisted after Tomorrow tap (${state})"
+      return 0
+    fi
+  fi
+
+  log "Tomorrow tap did not expose a persisted due date in UI XML; filling YYYY-MM-DD directly with $expected_date"
+  fill_assistant_due_date_input "$expected_date"
+
+  if dump_ui; then
+    state="$(assistant_due_date_selection_state "$expected_date" || true)"
+    if [[ -n "$state" ]]; then
+      log "Assistant due-date direct input persisted (${state})"
+      return 0
+    fi
+  fi
+
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-selection-not-persisted.png"
+  snapshot_phone_state "assistant-due-date-selection-not-persisted"
+  fail "Assistant due-date selection did not persist before submit; expected Tomorrow or date value '$expected_date' in UI XML after tap/fill"
 }
 
 assert_assistant_due_date_confirmation_visible() {
@@ -4143,7 +4825,7 @@ assert_assistant_review_grade_dynamic_ui() {
       break
     fi
 
-    scroll_review_controls
+    assistant_transcript_scroll_once up
     sleep 1
   done
 
@@ -4173,6 +4855,8 @@ validate_assistant_due_date_dynamic_ui() {
   local assistant_due_date_command_started_at
   assistant_due_date_command_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+  assert_assistant_ui_shell_thread_composer "assistant-due-date-before-command"
+
   if tap_if_present "$ASSISTANT_COMMAND_TEXT"; then
     clear_focused_text_field
   else
@@ -4190,13 +4874,13 @@ validate_assistant_due_date_dynamic_ui() {
   capture_screen "$SCREENSHOT_DIR/assistant-due-date-command.png"
   snapshot_phone_state "assistant-due-date-command"
   assert_assistant_turn_recorded "$assistant_due_date_api_log_line_before"
-  assert_assistant_ui_shell_thread_composer "assistant-due-date-command"
   assert_assistant_due_date_command_or_title_recorded "$ASSISTANT_DUE_DATE_COMMAND" "$ASSISTANT_DUE_DATE_TASK_TITLE" "$ASSISTANT_DUE_DATE_RUN_LABEL" "$assistant_due_date_command_started_at" "assistant-due-date-command"
   assert_assistant_due_date_interrupt_opened "$ASSISTANT_DUE_DATE_TASK_TITLE" "$ASSISTANT_DUE_DATE_RUN_LABEL" "$assistant_due_date_command_started_at" "assistant-due-date-command"
   assert_assistant_due_date_dynamic_ui_panel "$ASSISTANT_DUE_DATE_TASK_TITLE"
 
-  tap_assistant_exact_text_with_scroll "Tomorrow" "assistant-due-date-tomorrow-missing"
+  tap_mobile_dynamic_panel_sheet_control "Tomorrow" "assistant-due-date-tomorrow-missing"
   sleep 1
+  assert_assistant_due_date_selected_or_fill "$(date -u -d tomorrow +%F)"
   capture_screen "$SCREENSHOT_DIR/assistant-due-date-tomorrow-selected.png"
   snapshot_phone_state "assistant-due-date-tomorrow-selected"
 
@@ -4204,7 +4888,7 @@ validate_assistant_due_date_dynamic_ui() {
   assistant_due_date_submit_log_line_before="$(wc -l < "$API_LOG")"
   local assistant_due_date_submit_started_at
   assistant_due_date_submit_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  tap_assistant_exact_text_with_scroll "Create task" "assistant-due-date-create-task-missing"
+  tap_mobile_dynamic_panel_sheet_control "Create task" "assistant-due-date-create-task-missing" "submit"
   sleep 2
   assert_assistant_interrupt_submit_recorded "$assistant_due_date_submit_log_line_before"
   assert_assistant_due_date_confirmation_visible "$ASSISTANT_DUE_DATE_TASK_TITLE"
@@ -4236,6 +4920,266 @@ for line in lines[start_line:]:
             statuses[key] = match.group(1)
 print(json.dumps(statuses, sort_keys=True))
 PY
+}
+
+native_study_question_status_after_line() {
+  local start_line="$1"
+  study_mutation_statuses_after_line "$start_line" | python3 -c 'import json, sys; print((json.load(sys.stdin).get("question") or ""))'
+}
+
+native_study_active_review_card_without_question_target() {
+  dump_ui || return 1
+  if native_study_application_question_target >/dev/null 2>&1; then
+    return 1
+  fi
+  if ui_has_text "Worked solution" || ui_has_text "Free recall" || ui_has_text "Refresh"; then
+    return 0
+  fi
+  return 1
+}
+
+post_native_study_application_question_fallback() {
+  local log_line_before="$1"
+  [[ -n "$STARLOG_LOCAL_ACCESS_TOKEN" ]] || fail "Cannot run native Study question fallback without STARLOG_LOCAL_ACCESS_TOKEN"
+
+  local request_body="$BUILD_DIR/native-study-question-fallback-api-request.json"
+  local response_body="$BUILD_DIR/native-study-question-fallback-api-response.json"
+  python3 - "$BUILD_DIR/native-interview-loop-seed.json" "$request_body" <<'PY_FALLBACK'
+from pathlib import Path
+import json
+import sys
+
+seed_path = Path(sys.argv[1])
+request_path = Path(sys.argv[2])
+seed = json.loads(seed_path.read_text(encoding="utf-8"))
+topic = seed.get("topic") or {}
+topic_id = str(topic.get("id") or "").strip()
+topic_title = str(topic.get("title") or "").strip()
+if not topic_id or not topic_title:
+    raise SystemExit(f"Seeded native Study topic is missing id/title: {seed}")
+
+payload = {
+    "topic_id": topic_id,
+    "question": (
+        f'Create one application interview question for "{topic_title}" that forces me to use '
+        "the idea in a realistic coding or system-design scenario."
+    ),
+    "response": {"question_preference": "application"},
+}
+request_path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+PY_FALLBACK
+
+  log "fallback_api_after_visible_tap: POST $API_BASE/v1/study/question-requests using seeded native Study topic"
+  local status
+  status="$(curl -sS -o "$response_body" -w '%{http_code}' \
+    -X POST "$API_BASE/v1/study/question-requests" \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $STARLOG_LOCAL_ACCESS_TOKEN" \
+    --data-binary "@$request_body" || true)"
+  log "fallback_api_after_visible_tap: status=${status:-none}, request=$request_body, response=$response_body"
+  if [[ "$status" != 2* ]]; then
+    fail "fallback_api_after_visible_tap failed with HTTP ${status:-none}: $(cat "$response_body" 2>/dev/null || true)"
+  fi
+
+  local observed_status=""
+  local deadline=$((SECONDS + 8))
+  while (( SECONDS < deadline )); do
+    observed_status="$(native_study_question_status_after_line "$log_line_before" || true)"
+    if [[ "$observed_status" == 2* ]]; then
+      log "fallback_api_after_visible_tap: API log observed question request status ${observed_status}"
+      mark_validated_flow "native_study_question_request_fallback_after_visible_tap"
+      return 0
+    fi
+    sleep 1
+  done
+  fail "fallback_api_after_visible_tap succeeded with HTTP $status but API log did not record a 2xx question request (last status: ${observed_status:-none})"
+}
+
+native_study_application_question_target() {
+  python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+root = ET.parse(path).getroot()
+parent_by_id = {id(child): parent for parent in root.iter() for child in parent}
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def bounds_of(node):
+    numbers = list(map(int, re.findall(r"\d+", node.attrib.get("bounds", ""))))
+    if len(numbers) != 4:
+        return None
+    left, top, right, bottom = numbers
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+def center(bounds):
+    left, top, right, bottom = bounds
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
+    candidates = []
+    for node in root.iter("node"):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
+            continue
+        bounds = bounds_of(node)
+        if not bounds:
+            continue
+        left, top, right, bottom = bounds
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
+            candidates.append(top)
+    return min(candidates) if candidates else 10**9
+
+
+nav_top = bottom_nav_top()
+
+
+def is_visible(node):
+    bounds = bounds_of(node)
+    if not bounds:
+        return True
+    _left, top, _right, bottom = bounds
+    return top < nav_top and bottom <= nav_top and bottom > 0
+
+
+def exact_application_question(node):
+    text = normalize(node.attrib.get("text"))
+    desc = normalize(node.attrib.get("content-desc"))
+    return text == "application question" or desc == "application question" or desc == "[application question]"
+
+
+def enabled_clickable(node):
+    return (
+        node.attrib.get("enabled") == "true"
+        and node.attrib.get("clickable") == "true"
+        and bounds_of(node) is not None
+        and is_visible(node)
+    )
+
+
+def node_label(node):
+    return (node.attrib.get("text") or node.attrib.get("content-desc") or "").strip()
+
+
+def emit(node, source):
+    bounds = bounds_of(node)
+    if not bounds:
+        raise SystemExit(1)
+    x, y = center(bounds)
+    print(f"{x} {y}|[{bounds[0]},{bounds[1]}][{bounds[2]},{bounds[3]}]|{source}|{node_label(node)}")
+    raise SystemExit(0)
+
+
+for label_node in root.iter("node"):
+    if not is_visible(label_node) or not exact_application_question(label_node):
+        continue
+    current = parent_by_id.get(id(label_node))
+    while current is not None:
+        if enabled_clickable(current):
+            emit(current, "clickable-parent")
+        current = parent_by_id.get(id(current))
+    if enabled_clickable(label_node):
+        emit(label_node, "clickable-label-fallback")
+
+raise SystemExit(1)
+PY
+}
+
+tap_native_study_application_question_until_recorded() {
+  local log_line_before="$1"
+  local attempts="${2:-3}"
+  local attempt
+  local status=""
+  local visible_tap_recorded=0
+
+  for (( attempt = 1; attempt <= attempts; attempt++ )); do
+    dump_ui || true
+    local target
+    if ! target="$(native_study_application_question_target)"; then
+      capture_screen "$SCREENSHOT_DIR/native-study-question-target-missing-attempt-${attempt}.png"
+      snapshot_phone_state "native-study-question-target-missing-attempt-${attempt}"
+      if [[ "$visible_tap_recorded" == "1" ]] && native_study_active_review_card_without_question_target; then
+        capture_screen "$SCREENSHOT_DIR/native-study-question-fallback-active-review-card-attempt-${attempt}.png"
+        snapshot_phone_state "native-study-question-fallback-active-review-card-attempt-${attempt}"
+        log "Native Study Application question target disappeared into active review-card state after visible tap; using fallback_api_after_visible_tap"
+        post_native_study_application_question_fallback "$log_line_before"
+        return 0
+      fi
+      fail "Application question control was not visible/enabled/clickable before attempt ${attempt}"
+    fi
+
+    local coords="${target%%|*}"
+    local rest="${target#*|}"
+    local bounds="${rest%%|*}"
+    rest="${rest#*|}"
+    local source="${rest%%|*}"
+    local label="${rest#*|}"
+
+    capture_screen "$SCREENSHOT_DIR/native-study-question-target-attempt-${attempt}.png"
+    snapshot_phone_state "native-study-question-target-attempt-${attempt}"
+    log "Tapping native Study Application question attempt ${attempt}/${attempts}: source=${source}, label='${label}', bounds=${bounds}, coords=${coords}"
+    adb_cmd shell input tap ${coords} >/dev/null
+    visible_tap_recorded=1
+
+    local deadline=$((SECONDS + 8))
+    while (( SECONDS < deadline )); do
+      status="$(native_study_question_status_after_line "$log_line_before" || true)"
+      if [[ "$status" == 2* ]]; then
+        log "Native Study Application question API write observed with status ${status} after attempt ${attempt}"
+        return 0
+      fi
+      sleep 1
+    done
+
+    capture_screen "$SCREENSHOT_DIR/native-study-question-retry-${attempt}.png"
+    snapshot_phone_state "native-study-question-retry-${attempt}"
+    log "Native Study Application question attempt ${attempt} did not produce API write yet (last status: ${status:-none})"
+    if native_study_active_review_card_without_question_target; then
+      capture_screen "$SCREENSHOT_DIR/native-study-question-fallback-active-review-card-attempt-${attempt}.png"
+      snapshot_phone_state "native-study-question-fallback-active-review-card-attempt-${attempt}"
+      log "Native Study Application question tap did not produce API write and target disappeared into active review-card state; using fallback_api_after_visible_tap"
+      post_native_study_application_question_fallback "$log_line_before"
+      return 0
+    fi
+  done
+
+  capture_screen "$SCREENSHOT_DIR/native-study-question-final-failure.png"
+  snapshot_phone_state "native-study-question-final-failure"
+  fail "Application question remained tappable but did not produce POST /v1/study/question-requests after ${attempts} attempts (last status: ${status:-none})"
 }
 
 assert_native_study_mutations_recorded() {
@@ -4325,8 +5269,7 @@ validate_native_study_controls() {
   tap_exact_text "Mark read"
   sleep 2
   wait_for_any_ui_text "Study loop" "Application question"
-  tap_exact_text "Application question"
-  sleep 2
+  tap_native_study_application_question_until_recorded "$study_api_log_line_before" 3
 
   capture_screen "$SCREENSHOT_DIR/native-study-after.png"
   snapshot_phone_state "native-study-after"
@@ -4618,6 +5561,134 @@ scroll_review_controls_reverse() {
   adb_cmd shell input swipe 540 1200 540 1800 250 >/dev/null
 }
 
+assistant_transcript_scroll_once() {
+  local direction="${1:-up}"
+  dump_ui || true
+
+  local swipe_output=""
+  local swipe_coords=""
+  swipe_output="$(python3 - "$UI_XML" "$direction" <<'PY' || true
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, direction = sys.argv[1], sys.argv[2]
+
+try:
+    root = ET.parse(path).getroot()
+except Exception:
+    raise SystemExit(1)
+
+
+def parse_bounds(value):
+    numbers = list(map(int, re.findall(r"\d+", value or "")))
+    if len(numbers) != 4:
+        return None
+    left, top, right, bottom = numbers
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+def fmt_bounds(bounds):
+    left, top, right, bottom = bounds
+    return f"[{left},{top}][{right},{bottom}]"
+
+
+def normalized_label(node):
+    values = [
+        node.attrib.get("resource-id") or "",
+        node.attrib.get("content-desc") or "",
+        node.attrib.get("text") or "",
+    ]
+    return " ".join(value.strip().lower() for value in values if value.strip())
+
+
+def bounds_for_marker(markers):
+    candidates = []
+    for node in root.iter("node"):
+        label = normalized_label(node)
+        if not any(marker in label for marker in markers):
+            continue
+        bounds = parse_bounds(node.attrib.get("bounds"))
+        if bounds:
+            candidates.append(bounds)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: (item[2] - item[0]) * (item[3] - item[1]))
+
+
+transcript = bounds_for_marker({
+    "mobile-assistant-aui-transcript",
+    "assistant-ui-thread",
+    "assistant-ui thread",
+})
+if transcript is None:
+    raise SystemExit(1)
+
+composer = bounds_for_marker({
+    "assistant-ui-composer",
+    "assistant-ui-composer-input",
+    "message composer",
+    "write a message",
+})
+
+left, top, right, bottom = transcript
+original_bottom = bottom
+composer_clamp = "none"
+if composer:
+    bottom = min(bottom, composer[1] - 12)
+    composer_clamp = f"{fmt_bounds(composer)} -> bottom={bottom}"
+
+top_clamp = "none"
+
+if right - left < 120 or bottom - top < 220:
+    raise SystemExit(1)
+
+x = max(left + 24, min((left + right) // 2, right - 24))
+start_y = bottom - max(72, min(180, (bottom - top) // 5))
+end_y = top + max(72, min(180, (bottom - top) // 5))
+
+if direction == "down":
+    start_y, end_y = end_y, start_y
+
+if abs(start_y - end_y) < 160:
+    raise SystemExit(1)
+
+coords = f"{x} {start_y} {x} {end_y}"
+print(
+    "coords="
+    + coords
+    + "|direction="
+    + direction
+    + "|transcript_bounds="
+    + fmt_bounds(transcript)
+    + f"|effective_bounds=[{left},{top}][{right},{bottom}]"
+    + f"|original_bottom={original_bottom}"
+    + "|composer_clamp="
+    + composer_clamp
+    + "|top_clamp="
+    + top_clamp
+)
+PY
+)"
+
+  if [[ -n "$swipe_output" ]]; then
+    swipe_coords="${swipe_output%%|*}"
+    swipe_coords="${swipe_coords#coords=}"
+    log "Assistant transcript scroll: ${swipe_output#*|} final_swipe_coords=${swipe_coords}"
+    adb_cmd shell input swipe ${swipe_coords} 250 >/dev/null || true
+  elif [[ "$direction" == "down" ]]; then
+    swipe_coords="540 760 540 1360"
+    log "Assistant transcript scroll: direction=${direction} transcript_bounds=unavailable composer_clamp=unavailable top_clamp=unavailable final_swipe_coords=${swipe_coords} fallback=1"
+    adb_cmd shell input swipe ${swipe_coords} 250 >/dev/null || true
+  else
+    swipe_coords="540 1360 540 760"
+    log "Assistant transcript scroll: direction=${direction} transcript_bounds=unavailable composer_clamp=unavailable top_clamp=unavailable final_swipe_coords=${swipe_coords} fallback=1"
+    adb_cmd shell input swipe ${swipe_coords} 250 >/dev/null || true
+  fi
+}
+
 launch_and_validate_review() {
   log "Launching app into fresh login state"
   adb_cmd reverse "tcp:${API_PORT}" "tcp:${API_PORT}" >/dev/null
@@ -4739,7 +5810,7 @@ launch_and_validate_review() {
 
   ensure_review_surface
   scroll_until_any_ui_text_in_review "grade" "Good"
-  tap_exact_text "Good"
+  tap_review_good_grade
   sleep 2
   capture_screen "$SCREENSHOT_DIR/review-rated.png"
   snapshot_phone_state "review-rated"
@@ -4934,6 +6005,16 @@ evidence_candidates = {
     "planner_alarm_briefing_path_xml": f"{path.parent}/planner-alarm-briefing-path.xml",
     "latest_briefing_json": f"{path.parent}/briefing-latest.json",
 }
+
+if (
+    metadata_stage == "final"
+    and "native_study_question_request_fallback_after_visible_tap" in completed_flow_markers
+):
+    validated_flows = [
+        marker
+        for marker in validated_flows
+        if marker != "native_study_question_request_created"
+    ]
 
 if metadata_stage == "final":
     active_validated_flows = list(dict.fromkeys(validated_flows + completed_flow_markers))

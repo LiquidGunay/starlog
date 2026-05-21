@@ -1521,14 +1521,47 @@ export function MobileAssistantRebuild({
   const [revealedReviewCards, setRevealedReviewCards] = useState<Record<string, boolean>>({});
   const [interruptValuesById, setInterruptValuesById] = useState<Record<string, Record<string, unknown>>>({});
   const [selectedFallbackFocus, setSelectedFallbackFocus] = useState<(typeof MORNING_FOCUS_OPTIONS)[number]["key"]>("project");
+  const [transcriptScrollRef] = useState<{ current: { scrollToEnd?: (options?: { animated?: boolean }) => void } | null }>(() => ({ current: null }));
+  const [transcriptScrollTimeoutRef] = useState<{ current: ReturnType<typeof setTimeout> | null }>(() => ({ current: null }));
   const dimensions = useWindowDimensions();
   const assistantPanelLayout = mobileAssistantPanelLayout(dimensions.width, dimensions.fontScale);
 
   const liveInterrupts = threadSnapshot?.interrupts ?? [];
+  const pendingInterruptScrollKey = useMemo(
+    () =>
+      liveInterrupts
+        .filter((interrupt) => interrupt.status === "pending")
+        .map((interrupt) => interrupt.id)
+        .join("|"),
+    [liveInterrupts],
+  );
+  const latestVisibleMessageId = visibleThreadMessages[visibleThreadMessages.length - 1]?.id || "";
   const liveInterruptById = useMemo(
     () => Object.fromEntries(liveInterrupts.map((interrupt) => [interrupt.id, interrupt])),
     [liveInterrupts],
   );
+
+  const queueTranscriptScrollToEnd = (animated = true) => {
+    if (transcriptScrollTimeoutRef.current) {
+      clearTimeout(transcriptScrollTimeoutRef.current);
+    }
+
+    transcriptScrollTimeoutRef.current = setTimeout(() => {
+      transcriptScrollTimeoutRef.current = null;
+      transcriptScrollRef.current?.scrollToEnd?.({ animated });
+    }, 32);
+  };
+
+  useEffect(() => {
+    queueTranscriptScrollToEnd(false);
+
+    return () => {
+      if (transcriptScrollTimeoutRef.current) {
+        clearTimeout(transcriptScrollTimeoutRef.current);
+        transcriptScrollTimeoutRef.current = null;
+      }
+    };
+  }, [latestVisibleMessageId, pendingInterruptScrollKey, visibleThreadMessages.length]);
 
   useEffect(() => {
     setInterruptValuesById((previous) => {
@@ -1791,9 +1824,29 @@ export function MobileAssistantRebuild({
     </View>
   );
 
+  const assistantShellHeight = Math.max(520, dimensions.height - 206);
+  const transcriptMaxHeight = Math.max(280, assistantShellHeight - 154);
+
   return (
-    <View testID="mobile-assistant-clean-chat" style={{ gap: 12, paddingTop: 0 }}>
-      <View testID="mobile-assistant-aui-transcript" style={{ alignSelf: "stretch", gap: 12 }}>
+    <View
+      testID="mobile-assistant-clean-chat"
+      style={{
+        height: assistantShellHeight,
+        alignSelf: "stretch",
+        justifyContent: "space-between",
+        gap: 10,
+        paddingTop: 0,
+      }}
+    >
+      <ScrollView
+        ref={transcriptScrollRef}
+        testID="mobile-assistant-aui-transcript"
+        style={{ alignSelf: "stretch", maxHeight: transcriptMaxHeight }}
+        contentContainerStyle={{ gap: 12, paddingBottom: 8 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => queueTranscriptScrollToEnd()}
+      >
         <MobileAssistantUiShell
               messages={visibleThreadMessages}
               liveInterrupts={liveInterrupts}
@@ -2104,8 +2157,8 @@ export function MobileAssistantRebuild({
             </Text>
           </View>
         ) : null}
-        {assistantComposerChrome}
-      </View>
+      </ScrollView>
+      {assistantComposerChrome}
     </View>
   );
 }
