@@ -1,20 +1,18 @@
 .threadShell {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
-  min-height: 54vh;
-  padding: 22px 0;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.025);
+  min-height: 56vh;
+  padding: 12px 0 4px;
+  background: transparent;
 }
 
 .threadStart {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   align-content: center;
-  min-height: 430px;
-  padding: 34px clamp(18px, 6vw, 68px);
+  min-height: 390px;
+  padding: 42px clamp(18px, 6vw, 64px);
 }
 
 .startCopy {
@@ -26,8 +24,8 @@
 .startCopy h2 {
   margin: 0;
   color: #fbf7ee;
-  font-size: clamp(30px, 6vw, 52px);
-  line-height: 1.05;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
@@ -42,8 +40,9 @@
   display: grid;
   gap: 7px;
   max-width: 680px;
-  padding: 14px 0 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 0 4px 14px;
+  border-left: 2px solid rgba(239, 205, 160, 0.28);
+  background: transparent;
 }
 
 .startSuggestion span,
@@ -77,7 +76,7 @@
   align-items: center;
   justify-content: center;
   min-height: 36px;
-  max-width: 100%;
+  max-width: min(100%, 280px);
   border-radius: 8px;
   padding: 8px 11px;
   font: inherit;
@@ -89,6 +88,7 @@
 }
 
 .startActions button {
+  white-space: nowrap;
   border: 1px solid rgba(239, 205, 160, 0.22);
   background: rgba(239, 205, 160, 0.08);
   color: #efcda0;
@@ -107,8 +107,8 @@
 .startContext a,
 .startContext span {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(245, 242, 234, 0.64);
+  background: transparent;
+  color: rgba(245, 242, 234, 0.6);
 }
 
 .primitiveRoot,
@@ -124,20 +124,20 @@
 
 .messageList {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .message {
   display: grid;
   gap: 7px;
-  width: min(100%, 760px);
+  width: min(100%, 730px);
   min-width: 0;
   padding: 0 clamp(16px, 5vw, 46px);
 }
 
 .message_user {
   justify-self: end;
-  width: min(100%, 620px);
+  width: min(100%, 600px);
 }
 
 .message_assistant,
@@ -150,7 +150,7 @@
   align-items: center;
   gap: 8px;
   color: rgba(245, 242, 234, 0.44);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .message_user .meta {
@@ -166,8 +166,8 @@
 
 .message_user .bubble {
   border-radius: 8px;
-  padding: 14px 15px;
-  background: rgba(239, 205, 160, 0.12);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(251, 247, 238, 0.96);
 }
 
@@ -180,34 +180,33 @@
 }
 
 .supportSurfaces {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 clamp(16px, 5vw, 46px);
+  display: grid;
+  gap: 0;
+  padding: 0 clamp(16px, 5vw, 46px) 8px;
 }
 
 .supportSurface {
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  min-width: 180px;
-  flex: 1 1 220px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.025);
+  min-width: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 10px 0;
+  background: transparent;
 }
 
 .supportSurface h3 {
   margin: 0 0 4px;
   color: #fbf7ee;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.25;
 }
 
 .supportSurface p {
   margin: 0;
   color: rgba(245, 242, 234, 0.62);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -230,11 +229,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  min-height: 32px;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
   text-decoration: none;
 }
@@ -248,6 +247,11 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.045);
   color: rgba(245, 242, 234, 0.86);
+}
+
+.supportSurfaceActions a,
+.supportSurfaceActions button {
+  background: transparent;
 }
 
 .supportSurfaceActions button,
@@ -269,26 +273,26 @@
 .cardPart,
 .ambientRow {
   display: grid;
-  gap: 10px;
+  gap: 9px;
   min-width: 0;
   border-radius: 8px;
-  padding: 12px 13px;
-  background: rgba(255, 255, 255, 0.028);
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.018);
 }
 
 .cardPart,
 .dataCard {
-  border: 1px solid rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.065);
 }
 
 .cardPart {
-  border-left: 2px solid rgba(239, 205, 160, 0.22);
+  border-left: 2px solid rgba(239, 205, 160, 0.2);
 }
 
 .toolCard,
 .ambientRow {
   border: 1px solid rgba(143, 181, 210, 0.12);
-  background: rgba(143, 181, 210, 0.045);
+  background: rgba(143, 181, 210, 0.032);
 }
 
 .ambientRow {
@@ -298,7 +302,7 @@
 
 .reviewCard {
   border: 1px solid rgba(107, 196, 164, 0.28);
-  background: rgba(107, 196, 164, 0.07);
+  background: rgba(107, 196, 164, 0.052);
 }
 
 .partHeader {
@@ -443,8 +447,9 @@
   gap: 0;
   overflow: hidden;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(11, 15, 20, 0.94);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18);
 }
 
 .composerInput {
@@ -453,8 +458,8 @@
   border: 0;
   outline: 0;
   border-radius: 0;
-  min-height: 82px;
-  padding: 16px 18px;
+  min-height: 76px;
+  padding: 15px 17px;
   background: transparent;
   color: #f5f2ea;
   font: inherit;
@@ -470,8 +475,8 @@
   flex-wrap: wrap;
   gap: 7px;
   order: 3;
-  padding: 11px 14px 13px;
-  border-top: 1px solid rgba(255, 255, 255, 0.075);
+  padding: 9px 12px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.065);
 }
 
 .composerChips button {
