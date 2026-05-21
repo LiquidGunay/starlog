@@ -72,6 +72,9 @@ Primary architecture sources:
 ## Visual Guardrails
 
 - Do not preserve observatory-era naming or shell composition for its own sake.
+- Primary Assistant and Review surfaces use sentence-case, clean chrome. The Review route should use
+  durable Review-specific shell/panel primitives such as `review-primary-shell`, not April or
+  observatory shell composition hidden behind overrides.
 - Avoid stacked generic cards, decorative dashboards, or debug panes competing with the thread.
 - The thread should look operational, calm, and serious, with clear status changes and strong
   hierarchy.

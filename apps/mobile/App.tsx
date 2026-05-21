@@ -934,6 +934,40 @@ function shareSourcePlatformLabel(): string {
   return Platform.OS === "ios" ? "iOS" : "Android";
 }
 
+const MOBILE_REVIEW_CARD_TYPE_LABELS: Record<string, string> = {
+  qa: "Recall",
+  cloze: "Recall",
+  recall: "Recall",
+  understanding: "Understanding",
+  explain: "Understanding",
+  why: "Understanding",
+  application: "Application",
+  application_case: "Application",
+  scenario: "Application",
+  drill: "Application",
+  synthesis: "Synthesis",
+  compare: "Synthesis",
+  judgment: "Judgment",
+  critique: "Judgment",
+  interview_prompt: "Interview prompt",
+};
+
+function mobileReviewCardTypeLabel(card: DueCard | undefined): string {
+  if (!card) {
+    return "Queue idle";
+  }
+  const key = (card.review_mode || card.card_type).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const mapped = MOBILE_REVIEW_CARD_TYPE_LABELS[key];
+  if (mapped) {
+    return mapped;
+  }
+  const words = key.split("_").filter(Boolean);
+  if (words.length === 0) {
+    return "Review card";
+  }
+  return words.map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`).join(" ");
+}
+
 const DEFAULT_VOICE_ROUTE_PREFERENCE: VoiceRoutePreference = "shared_policy";
 const DEFAULT_BRIEFING_PLAYBACK_PREFERENCE: BriefingPlaybackPreference = "offline_first";
 
@@ -1671,7 +1705,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   }, [alarmHour, alarmMinute, countdownTick]);
   const reviewCard = dueCards[0];
   const hasActiveReviewCard = Boolean(reviewCard);
-  const reviewCardTypeLabel = reviewCard ? reviewCard.card_type.replace(/_/g, " ").toUpperCase() : "QUEUE IDLE";
+  const reviewCardTypeLabel = mobileReviewCardTypeLabel(reviewCard);
   const reviewMetaLabel = reviewCard
     ? `Due ${new Date(reviewCard.due_at).toLocaleString()}`
     : (token ? "Load due cards to start a focused pass." : "Add API credentials to load the review queue.");
@@ -5325,8 +5359,7 @@ function themedStyles(palette: Palette) {
       color: palette.accent,
       fontSize: 10,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
+      letterSpacing: 0,
     },
     topBarAvatarText: {
       color: palette.accent,
@@ -5367,8 +5400,7 @@ function themedStyles(palette: Palette) {
       color: palette.muted,
       fontSize: 10,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.7,
+      letterSpacing: 0,
     },
     topBarActions: {
       flexDirection: "row",
@@ -5397,8 +5429,7 @@ function themedStyles(palette: Palette) {
       color: palette.accent,
       fontSize: 12,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
+      letterSpacing: 0,
     },
     scrollContent: {
       paddingHorizontal: 20,
@@ -5435,8 +5466,7 @@ function themedStyles(palette: Palette) {
       gap: 12,
     },
     eyebrow: {
-      textTransform: "uppercase",
-      letterSpacing: 1.4,
+      letterSpacing: 0,
       color: palette.accent,
       fontSize: 10,
       fontWeight: "700",
@@ -5492,8 +5522,7 @@ function themedStyles(palette: Palette) {
     routeLabel: {
       color: palette.muted,
       fontSize: 10,
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
+      letterSpacing: 0,
     },
     routeValue: {
       color: palette.text,
@@ -5516,16 +5545,14 @@ function themedStyles(palette: Palette) {
       color: palette.accent,
       fontSize: 10,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
+      letterSpacing: 0,
     },
     heroCardLabelInverse: {
       color: palette.onAccent,
       opacity: 0.76,
       fontSize: 10,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
+      letterSpacing: 0,
     },
     intentHeroCopy: {
       color: palette.onAccent,
@@ -5645,8 +5672,7 @@ function themedStyles(palette: Palette) {
       color: palette.tertiary,
       fontSize: 10,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.9,
+      letterSpacing: 0,
     },
     captureArtifactTitle: {
       color: palette.text,
@@ -5799,8 +5825,7 @@ function themedStyles(palette: Palette) {
     surfaceStatLabel: {
       color: palette.muted,
       fontSize: 10,
-      letterSpacing: 0.9,
-      textTransform: "uppercase",
+      letterSpacing: 0,
     },
     reviewTopRow: {
       flexDirection: "row",
@@ -5836,14 +5861,12 @@ function themedStyles(palette: Palette) {
     reviewMeta: {
       color: palette.muted,
       fontSize: 10,
-      letterSpacing: 1,
-      textTransform: "uppercase",
+      letterSpacing: 0,
     },
     reviewCategory: {
       color: palette.secondary,
       fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: 1.5,
+      letterSpacing: 0,
       textAlign: "center",
     },
     reviewPromptLarge: {
@@ -5889,8 +5912,7 @@ function themedStyles(palette: Palette) {
     reviewRateLabel: {
       color: palette.muted,
       fontSize: 10,
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      letterSpacing: 0,
       fontWeight: "700",
     },
     reviewRateLabelActive: {
@@ -5924,8 +5946,7 @@ function themedStyles(palette: Palette) {
     alarmStationMeta: {
       color: palette.muted,
       fontSize: 11,
-      letterSpacing: 1.2,
-      textTransform: "uppercase",
+      letterSpacing: 0,
       textAlign: "center",
       marginBottom: 2,
     },
@@ -6022,8 +6043,7 @@ function themedStyles(palette: Palette) {
     sectionKicker: {
       color: palette.accent,
       fontSize: 10,
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
+      letterSpacing: 0,
       opacity: 0.8,
     },
     panelTitle: {
@@ -6073,8 +6093,7 @@ function themedStyles(palette: Palette) {
       color: palette.muted,
       fontWeight: "700",
       fontSize: 11,
-      letterSpacing: 0.3,
-      textTransform: "uppercase",
+      letterSpacing: 0,
     },
     opsChipTextActive: {
       color: palette.accent,
@@ -6150,8 +6169,7 @@ function themedStyles(palette: Palette) {
     threadRoleChip: {
       color: palette.secondary,
       fontSize: 9,
-      textTransform: "uppercase",
-      letterSpacing: 1.1,
+      letterSpacing: 0,
       fontWeight: "800",
       borderWidth: 1,
       borderColor: "rgba(241, 182, 205, 0.14)",
@@ -6183,8 +6201,7 @@ function themedStyles(palette: Palette) {
     threadDetailToggleText: {
       color: palette.muted,
       fontSize: 10,
-      letterSpacing: 0.8,
-      textTransform: "uppercase",
+      letterSpacing: 0,
     },
     threadDetailRow: {
       gap: 4,
@@ -6198,7 +6215,7 @@ function themedStyles(palette: Palette) {
     threadDetailMeta: {
       color: palette.muted,
       fontSize: 10,
-      letterSpacing: 0.4,
+      letterSpacing: 0,
     },
     subtle: {
       color: palette.muted,
@@ -6208,8 +6225,7 @@ function themedStyles(palette: Palette) {
       color: palette.muted,
       fontSize: 11,
       marginTop: 6,
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
+      letterSpacing: 0,
     },
     input: {
       borderWidth: 1,
@@ -6295,8 +6311,7 @@ function themedStyles(palette: Palette) {
       color: palette.onAccent,
       fontSize: 12,
       fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
+      letterSpacing: 0,
     },
     bottomNav: {
       position: "absolute",
@@ -6322,11 +6337,10 @@ function themedStyles(palette: Palette) {
       backgroundColor: palette.surfaceHighest,
     },
     bottomNavLabel: {
-      color: "#49473f",
-      fontSize: 11,
+      color: palette.muted,
+      fontSize: 11.5,
       fontWeight: "600",
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      letterSpacing: 0,
     },
     bottomNavLabelActive: {
       color: palette.accent,

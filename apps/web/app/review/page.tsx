@@ -1,11 +1,134 @@
 "use client";
 
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
+
 import Link from "next/link";
+import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { AprilPanel, AprilWorkspaceShell } from "../components/april-observatory-shell";
+import { OBSERVATORY_SURFACES, type ObservatorySurfaceId } from "../components/observatory-navigation";
 import { apiRequest } from "../lib/starlog-client";
 import { useSessionConfig } from "../session-provider";
+
+
+type ReviewWorkspaceShellProps = {
+  activeSurface: ObservatorySurfaceId;
+  statusLabel: string;
+  queueLabel?: string;
+  brandMeta?: string;
+  searchLabel?: string;
+  searchAriaLabel?: string;
+  searchPlaceholder?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  profileTitle?: string;
+  railSlot?: ReactNode;
+  children: ReactNode;
+  className?: string;
+};
+
+type ReviewPanelProps = ComponentPropsWithoutRef<"section">;
+
+function reviewClassName(parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(" ");
+}
+
+function ReviewPanel({ className, children, ...rest }: ReviewPanelProps) {
+  return (
+    <section className={reviewClassName(["review-panel", className])} {...rest}>
+      {children}
+    </section>
+  );
+}
+
+function ReviewWorkspaceShell({
+  activeSurface,
+  statusLabel,
+  queueLabel,
+  brandMeta = "Persistent thread system",
+  searchLabel = "Review search",
+  searchAriaLabel = "Search review decks",
+  searchPlaceholder = "Search decks...",
+  searchValue,
+  onSearchChange,
+  profileTitle = "Single-user thread",
+  railSlot,
+  children,
+  className,
+}: ReviewWorkspaceShellProps) {
+  return (
+    <div className={reviewClassName(["review-workspace-shell", className])}>
+      <aside className="review-rail">
+        <div className="review-rail-brand">
+          <span className="review-rail-brand-mark">{productCopy.brand.name}</span>
+          <span className="review-rail-brand-meta">{brandMeta}</span>
+        </div>
+        <nav className="review-rail-nav" aria-label="Primary surfaces">
+          {OBSERVATORY_SURFACES.map((surface) => (
+            <Link
+              key={surface.id}
+              href={surface.href}
+              className={reviewClassName(["review-rail-link", surface.id === activeSurface && "active"])}
+            >
+              <span className="review-rail-link-glyph" aria-hidden="true">
+                {surface.glyph}
+              </span>
+              <span>{surface.label}</span>
+            </Link>
+          ))}
+        </nav>
+        {railSlot ? <div className="review-rail-slot">{railSlot}</div> : null}
+        <div className="review-rail-footer">
+          <Link className="review-rail-footer-link" href="/library">
+            {PRODUCT_SURFACES.library.label}
+          </Link>
+          <Link className="review-rail-footer-link" href="/runtime">
+            Settings
+          </Link>
+          <div className="review-rail-profile">
+            <div className="review-rail-profile-avatar" aria-hidden="true">
+              ◉
+            </div>
+            <div className="review-rail-profile-copy">
+              <strong>{profileTitle}</strong>
+              <span>{queueLabel || "Live context"}</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="review-shell-column">
+        <header className="review-topbar">
+          <div className="review-topbar-status">
+            <span className="review-topbar-status-dot" aria-hidden="true" />
+            <span>{statusLabel}</span>
+          </div>
+          <label className="review-topbar-search">
+            <span className="review-topbar-search-label">{searchLabel}</span>
+            <input
+              aria-label={searchAriaLabel}
+              className="review-topbar-search-input"
+              type="text"
+              placeholder={searchPlaceholder}
+              value={searchValue ?? ""}
+              onChange={(event) => onSearchChange?.(event.target.value)}
+              readOnly={!onSearchChange}
+            />
+          </label>
+          <div className="review-topbar-actions">
+            <Link className="review-topbar-icon" href="/assistant" aria-label="Open assistant thread">
+              ✦
+            </Link>
+            <Link className="review-topbar-icon" href="/runtime" aria-label="Open runtime">
+              ⌘
+            </Link>
+          </div>
+        </header>
+        <main className="review-shell-content">{children}</main>
+      </div>
+    </div>
+  );
+}
 
 type Card = {
   id: string;
@@ -219,7 +342,42 @@ function reviewModeLabel(mode?: string | null): string | null {
   if (!mode) {
     return null;
   }
-  return REVIEW_MODE_LABELS[mode as ReviewMode] ?? mode.replace(/_/g, " ");
+  return REVIEW_MODE_LABELS[mode as ReviewMode] ?? machineLabel(mode);
+}
+
+function machineLabel(value?: string | null): string | null {
+  const normalized = value?.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function reviewCardTypeLabel(card: Pick<Card, "card_type" | "review_mode">): string {
+  const modeLabel = reviewModeLabel(card.review_mode);
+  if (modeLabel) {
+    return modeLabel;
+  }
+
+  const normalizedCardType = card.card_type.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const mode = REVIEW_MODE_BY_CARD_TYPE[normalizedCardType];
+  if (mode) {
+    return REVIEW_MODE_LABELS[mode];
+  }
+
+  return machineLabel(card.card_type) ?? "Review card";
+}
+
+function reviewSeverityLabel(severity?: string | null): string {
+  return machineLabel(severity) ?? "Signal";
+}
+
+function reviewLadderStageLabel(stage?: string | null): string | null {
+  const normalizedStage = stage?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalizedStage && REVIEW_MODE_LABELS[normalizedStage as ReviewMode]) {
+    return REVIEW_MODE_LABELS[normalizedStage as ReviewMode];
+  }
+  return machineLabel(stage);
 }
 
 function assistantDraftHref(prompt: string): string {
@@ -555,31 +713,32 @@ export default function ReviewPage() {
   }
 
   return (
-    <AprilWorkspaceShell
+    <ReviewWorkspaceShell
       activeSurface="srs-review"
       statusLabel={currentCard ? `${currentDeck?.name ?? "Focused review"} · ${REVIEW_MODE_LABELS[currentMode]} · ${dueCount} due` : "Focused review ready"}
       queueLabel={`${dueCount} due`}
       searchPlaceholder="Search decks..."
+      className="review-primary-shell"
       railSlot={(
         <>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Queue Health</span>
-            <div className="april-review-rail-health">
+          <div className="review-rail-section">
+            <span className="review-rail-section-label">Queue health</span>
+            <div className="review-rail-health">
               <div><strong>{dueCount}</strong><span>Due</span></div>
               <div><strong>{overdueCount}</strong><span>Overdue</span></div>
               <div><strong>{reviewedTodayCount}</strong><span>Reviewed today</span></div>
             </div>
           </div>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Deck Buckets</span>
-            <div className="april-review-rail-decks">
+          <div className="review-rail-section">
+            <span className="review-rail-section-label">Deck buckets</span>
+            <div className="review-rail-decks">
               {deckBuckets.length === 0 ? (
                 <p className="console-copy">No deck buckets loaded yet.</p>
               ) : (
                 deckBuckets.slice(0, 6).map((deck) => (
                   <div
                     key={deck.key}
-                    className={deck.key === currentDeck?.name || deck.key === currentDeck?.id ? "april-review-rail-deck active" : "april-review-rail-deck"}
+                    className={deck.key === currentDeck?.name || deck.key === currentDeck?.id ? "review-rail-deck active" : "review-rail-deck"}
                   >
                     <div>
                       <strong>{deck.label}</strong>
@@ -591,17 +750,17 @@ export default function ReviewPage() {
               )}
             </div>
           </div>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Return Points</span>
-            <div className="april-rail-link-stack">
-              <Link href="/review/decks">Deck Workspace</Link>
+          <div className="review-rail-section">
+            <span className="review-rail-section-label">Return points</span>
+            <div className="review-rail-link-stack">
+              <Link href="/review/decks">Deck workspace</Link>
               <Link href="/library">Library</Link>
-              <Link href={missingConfig ? "/login" : "/runtime"}>{missingConfig ? "Open Login" : "Runtime"}</Link>
+              <Link href={missingConfig ? "/login" : "/runtime"}>{missingConfig ? "Open login" : "Runtime"}</Link>
             </div>
           </div>
-          <div className="april-rail-section">
-            <span className="april-rail-section-label">Study Progress</span>
-            <div className="april-review-rail-health">
+          <div className="review-rail-section">
+            <span className="review-rail-section-label">Study progress</span>
+            <div className="review-rail-health">
               <div><strong>{studyProgress?.read_topic_count ?? 0}</strong><span>Read</span></div>
               <div><strong>{studyProgress?.unlocked_topic_count ?? 0}</strong><span>Ready</span></div>
               <div><strong>{studyProgress?.locked_topic_count ?? 0}</strong><span>Locked</span></div>
@@ -610,13 +769,13 @@ export default function ReviewPage() {
         </>
       )}
     >
-      <section className="april-review-surface">
-        <div className="april-review-heading">
+      <section className="review-surface">
+        <div className="review-heading">
           <div>
-            <p className="eyebrow">Starlog Review</p>
-            <h1>Learning ladder</h1>
+            <p className="review-heading-kicker">Review</p>
+            <h1>Focused review</h1>
           </div>
-          <div className="april-review-tabs" aria-label="Review view status">
+          <div className="review-tabs" aria-label="Review view status">
             {["Today", "All due", "Upcoming", "Mastered", "Insights"].map((label, index) => (
               <span key={label} className={index === 0 ? "active" : ""} aria-current={index === 0 ? "page" : undefined}>
                 {label}
@@ -625,10 +784,10 @@ export default function ReviewPage() {
           </div>
         </div>
 
-        <div className="april-review-progress">
-          <div className="april-review-progress-head">
+        <div className="review-progress">
+          <div className="review-progress-head">
             <div>
-              <span>Session Progress</span>
+              <span>Session progress</span>
               <strong>
                 {currentCard ? `Card ${stats.reviewed + 1} of ${Math.max(reviewedTotal, 1)}` : "Awaiting queue"}
               </strong>
@@ -638,28 +797,28 @@ export default function ReviewPage() {
               {studyProgress ? ` · ${studyProgress.read_topic_count}/${studyProgress.topic_count} topics read` : ""}
             </span>
           </div>
-          <div className="april-review-progress-bar">
+          <div className="review-progress-bar">
             <span style={{ width: `${sessionProgress}%` }} />
           </div>
         </div>
 
-        <div className="april-review-grid">
-          <AprilPanel className="april-review-ladder-panel">
-            <div className="april-panel-head">
+        <div className="review-grid">
+          <ReviewPanel className="review-ladder-panel">
+            <div className="review-panel-head">
               <div>
-                <span className="review-sidebar-kicker">Learning Ladder</span>
-                <h2>Depth of review</h2>
-                <p className="review-copy">Current queue context by card mode, with learning-engine signals when Starlog detects repeated misses.</p>
+                <span className="review-sidebar-kicker">Learning path</span>
+                <h2>Review depth</h2>
+                <p className="review-copy">Queue context by card mode, with learning signals when misses repeat.</p>
               </div>
             </div>
-            <div className="april-review-ladder-list">
+            <div className="review-ladder-list">
               {REVIEW_MODE_ORDER.map((mode) => {
                 const due = ladderCounts[mode];
                 const total = totalLadderCounts[mode];
                 const isActive = mode === currentMode;
                 return (
-                  <div key={mode} className={isActive ? "april-review-ladder-step active" : "april-review-ladder-step"}>
-                    <div className="april-review-ladder-step-head">
+                  <div key={mode} className={isActive ? "review-ladder-step active" : "review-ladder-step"}>
+                    <div className="review-ladder-step-head">
                       <strong>{REVIEW_MODE_LABELS[mode]}</strong>
                       <span>{due} due</span>
                     </div>
@@ -669,22 +828,22 @@ export default function ReviewPage() {
                 );
               })}
             </div>
-          </AprilPanel>
+          </ReviewPanel>
 
-          <AprilPanel className="april-review-focus-panel">
+          <ReviewPanel className="review-focus-panel">
             {currentCard ? (
               <>
-                <div className="april-review-focus-meta">
+                <div className="review-focus-meta">
                   <span>Complexity: Tier {focusTier}</span>
                   <span>{REVIEW_MODE_LABELS[currentMode]}</span>
                 </div>
-                <div className="april-review-card-body">
-                  <div className="april-review-question">
+                <div className="review-card-body">
+                  <div className="review-question">
                     {currentCard.prompt}
                   </div>
-                  <div className="april-review-reveal">
+                  <div className="review-reveal">
                     <button
-                      className="april-chip-button april-review-reveal-button"
+                      className="review-chip-button review-reveal-button"
                       type="button"
                       onClick={() => {
                         const nextShowAnswer = !showAnswer;
@@ -695,39 +854,39 @@ export default function ReviewPage() {
                         }
                       }}
                     >
-                      {showAnswer ? "Hide Answer" : "Reveal Answer"}
+                      {showAnswer ? "Hide answer" : "Reveal answer"}
                     </button>
                   </div>
                   {showAnswer ? (
-                    <div className="april-review-answer">
+                    <div className="review-answer">
                       <p className="status">Due {new Date(currentCard.due_at).toLocaleString()}</p>
                       <p>{currentCard.answer}</p>
                     </div>
                   ) : null}
                 </div>
-                <div className="april-review-card-footer">
-                  <span>Card ID: {currentCard.id}</span>
+                <div className="review-card-footer">
+                  <span>Card {currentCard.id}</span>
                   <span>Last review window: due {new Date(currentCard.due_at).toLocaleDateString()}</span>
                 </div>
-                <div className="april-review-context-grid" aria-label="Review context">
+                <div className="review-context-grid" aria-label="Review context">
                   <div>
                     <span className="review-sidebar-kicker">Why this now</span>
                     <p>{whyThisNow}</p>
                   </div>
                   <div>
                     <span className="review-sidebar-kicker">Source trace</span>
-                    <p>{currentDeck?.name ? `${currentDeck.name} deck` : `Card ${currentCard.id}`} · {currentCard.card_type}</p>
+                    <p>{currentDeck?.name ? `${currentDeck.name} deck` : `Card ${currentCard.id}`} · {reviewCardTypeLabel(currentCard)}</p>
                   </div>
                   <div>
                     <span className="review-sidebar-kicker">Project context</span>
                     <p>{currentDeck?.description || "No linked project context is available on this card yet."}</p>
                   </div>
                 </div>
-                <div className="april-review-ratings">
+                <div className="review-ratings">
                   {REVIEW_OPTIONS.map((option) => (
                     <button
                       key={option.label}
-                      className={`april-rating-button ${option.tone}`}
+                      className={`review-rating-button ${option.tone}`}
                       type="button"
                       disabled={!showAnswer}
                       onClick={() => reviewCurrent(option.rating)}
@@ -739,41 +898,41 @@ export default function ReviewPage() {
                 </div>
               </>
             ) : (
-              <div className="april-review-empty">
+              <div className="review-empty">
                 <h2>{missingConfig ? "Access required" : "No due cards loaded."}</h2>
                 <p>
                   {missingConfig
                     ? "Open login, sign in to Starlog, then return to this focused review surface."
                     : "The queue is empty until you load due cards or import a deck."}
                 </p>
-                <div className="assistant-inline-action-row">
+                <div className="review-inline-actions">
                   <button
-                    className="april-chip-button"
+                    className="review-chip-button"
                     type="button"
                     onClick={() => void loadReviewData()}
                     disabled={missingConfig || loading}
                   >
-                    {loading ? "Loading..." : "Load Due Cards"}
+                    {loading ? "Loading..." : "Load due cards"}
                   </button>
-                  <Link className="april-chip-button muted" href={missingConfig ? "/login" : "/review/decks"}>
-                    {missingConfig ? "Open Login" : "Open Deck Workspace"}
+                  <Link className="review-chip-button muted" href={missingConfig ? "/login" : "/review/decks"}>
+                    {missingConfig ? "Open login" : "Open deck workspace"}
                   </Link>
                 </div>
               </div>
             )}
-          </AprilPanel>
+          </ReviewPanel>
 
-          <div className="april-review-side">
-            <AprilPanel className="april-review-side-card">
-              <span className="review-sidebar-kicker">Knowledge Health</span>
-              <div className="april-review-side-metrics">
+          <div className="review-side">
+            <ReviewPanel className="review-side-card">
+              <span className="review-sidebar-kicker">Knowledge health</span>
+              <div className="review-side-metrics">
                 <div>
                   <strong>{dueCount}</strong>
-                  <span>Cards Due</span>
+                  <span>Cards due</span>
                 </div>
                 <div>
-                  <span className="april-review-mode-chip">{REVIEW_MODE_LABELS[primaryMode]}</span>
-                  <span>Primary Mode</span>
+                  <span className="review-mode-chip">{REVIEW_MODE_LABELS[primaryMode]}</span>
+                  <span>Primary mode</span>
                 </div>
               </div>
               <div className="review-sidebar-chart" aria-hidden="true">
@@ -781,21 +940,21 @@ export default function ReviewPage() {
                   <span key={`bar-${index}`} style={{ height: `${height}%` }} className={index >= 4 ? "active" : ""} />
                 ))}
               </div>
-            </AprilPanel>
+            </ReviewPanel>
 
-            <AprilPanel className="april-review-side-card">
+            <ReviewPanel className="review-side-card">
               <span className="review-sidebar-kicker">Study loop</span>
               {activeStudyTopic ? (
-                <div className="april-review-study-topic">
-                  <div className="april-review-drill-head">
+                <div className="review-study-topic">
+                  <div className="review-drill-head">
                     <strong>{activeStudyTopic.title}</strong>
                     <span>{studyTopicStatusLabel(activeStudyTopic.status)}</span>
                   </div>
                   {activeStudyTopic.summary ? <p>{activeStudyTopic.summary}</p> : <p>Use this topic to unlock review cards and request one focused question.</p>}
-                  <div className="april-review-side-actions">
+                  <div className="review-side-actions">
                     {activeStudyTopic.status === "locked" ? (
                       <button
-                        className="april-chip-button"
+                        className="review-chip-button"
                         type="button"
                         onClick={() => void updateStudyTopic(activeStudyTopic, "unlock")}
                         disabled={studyBusyAction !== null}
@@ -805,31 +964,31 @@ export default function ReviewPage() {
                     ) : null}
                     {activeStudyTopic.status !== "read" ? (
                       <button
-                        className="april-chip-button"
+                        className="review-chip-button"
                         type="button"
                         onClick={() => void updateStudyTopic(activeStudyTopic, "read")}
                         disabled={studyBusyAction !== null}
                       >
-                        {studyBusyAction === `read:${activeStudyTopic.id}` ? "Marking..." : "Mark Read"}
+                        {studyBusyAction === `read:${activeStudyTopic.id}` ? "Marking..." : "Mark read"}
                       </button>
                     ) : null}
                   </div>
-                  <div className="april-review-study-question-actions">
+                  <div className="review-study-question-actions">
                     <button
-                      className="april-chip-button muted"
+                      className="review-chip-button muted"
                       type="button"
                       onClick={() => void requestStudyQuestion(activeStudyTopic, "recall")}
                       disabled={studyBusyAction !== null}
                     >
-                      Recall Question
+                      Recall question
                     </button>
                     <button
-                      className="april-chip-button muted"
+                      className="review-chip-button muted"
                       type="button"
                       onClick={() => void requestStudyQuestion(activeStudyTopic, "application")}
                       disabled={studyBusyAction !== null}
                     >
-                      Application Question
+                      Application question
                     </button>
                   </div>
                 </div>
@@ -837,56 +996,58 @@ export default function ReviewPage() {
                 <p className="review-copy">No study topics loaded yet. Import or prepare interview material to start the unlock loop.</p>
               )}
               {studyProgress ? (
-                <div className="april-review-health-list">
+                <div className="review-health-list">
                   <div><span>Sources</span><strong>{studyProgress.source_count}</strong></div>
                   <div><span>Topics</span><strong>{studyProgress.topic_count}</strong></div>
                   <div><span>Ready due</span><strong>{studyProgress.due_unlocked_card_count}</strong></div>
                 </div>
               ) : null}
-            </AprilPanel>
+            </ReviewPanel>
 
-            <AprilPanel className="april-review-side-card">
-              <span className="review-sidebar-kicker">Queue Ladder</span>
+            <ReviewPanel className="review-side-card">
+              <span className="review-sidebar-kicker">Queue mix</span>
               <p className="review-copy">{queueSplit}</p>
-              <div className="april-review-health-list">
+              <div className="review-health-list">
                 <div><span>Overdue</span><strong>{overdueCount}</strong></div>
                 <div><span>Due soon</span><strong>{dueSoonCount}</strong></div>
                 <div><span>Suspended</span><strong>{suspendedCount}</strong></div>
                 <div><span>Latency</span><strong>{formatLatency(health?.average_latency_ms)}</strong></div>
               </div>
               <p className="review-copy">Last reviewed: {formatDateTime(health?.last_reviewed_at)}</p>
-              <span className="review-sidebar-kicker">Session Grades</span>
+              <span className="review-sidebar-kicker">Session grades</span>
               <p className="review-copy">
                 Again {stats.again} | Hard {stats.hard} | Good {stats.good} | Easy {stats.easy}
               </p>
               <p className="review-copy" aria-live="polite">{status}</p>
-              <div className="april-review-side-actions">
-                <button className="april-chip-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
-                  Refresh Queue
+              <div className="review-side-actions">
+                <button className="review-chip-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
+                  Refresh queue
                 </button>
-                <Link className="april-chip-button muted" href="/review/decks">Deck Workspace</Link>
+                <Link className="review-chip-button muted" href="/review/decks">Deck workspace</Link>
               </div>
-            </AprilPanel>
+            </ReviewPanel>
 
             {(learningInsights.length > 0 || recommendedDrill) ? (
-              <AprilPanel className="april-review-side-card april-review-learning-card">
+              <ReviewPanel className="review-side-card review-learning-card">
                 {learningInsights.length > 0 ? (
                   <>
                     <span className="review-sidebar-kicker">Learning insights</span>
-                    <div className="april-review-insight-list">
+                    <div className="review-insight-list">
                       {learningInsights.map((insight) => {
                         const modeLabel = reviewModeLabel(insight.mode);
+                        const severityLabel = reviewSeverityLabel(insight.severity);
+                        const ladderStageLabel = reviewLadderStageLabel(insight.ladder_stage);
                         return (
-                          <div key={insight.key} className={`april-review-insight severity-${insight.severity.toLowerCase()}`}>
-                            <div className="april-review-insight-head">
+                          <div key={insight.key} className={`review-insight severity-${insight.severity.toLowerCase()}`}>
+                            <div className="review-insight-head">
                               <strong>{insight.title}</strong>
                               <span>{insight.count}x</span>
                             </div>
                             <p>{insight.body}</p>
-                            <div className="april-review-insight-meta">
-                              <span>{insight.severity}</span>
+                            <div className="review-insight-meta">
+                              <span>{severityLabel}</span>
                               {modeLabel ? <span>{modeLabel}</span> : null}
-                              {insight.ladder_stage ? <span>{insight.ladder_stage}</span> : null}
+                              {ladderStageLabel ? <span>{ladderStageLabel}</span> : null}
                             </div>
                           </div>
                         );
@@ -896,48 +1057,48 @@ export default function ReviewPage() {
                 ) : null}
 
                 {recommendedDrill ? (
-                  <div className="april-review-drill">
+                  <div className="review-drill">
                     <span className="review-sidebar-kicker">Recommended drill</span>
-                    <div className="april-review-drill-head">
+                    <div className="review-drill-head">
                       <strong>{recommendedDrill.title}</strong>
                       {recommendedDrillMode ? <span>{recommendedDrillMode}</span> : null}
                     </div>
                     <p>{recommendedDrill.body}</p>
                     <p className="review-copy">Reason: {recommendedDrill.reason}</p>
                     {recommendedDrill.prompt ? (
-                      <p className="april-review-drill-prompt">{recommendedDrill.prompt}</p>
+                      <p className="review-drill-prompt">{recommendedDrill.prompt}</p>
                     ) : null}
                     {recommendedDrill.enabled && recommendedDrill.prompt ? (
-                      <Link className="april-chip-button" href={assistantDraftHref(recommendedDrill.prompt)}>
+                      <Link className="review-chip-button" href={assistantDraftHref(recommendedDrill.prompt)}>
                         Open in Assistant
                       </Link>
                     ) : null}
                   </div>
                 ) : null}
-              </AprilPanel>
+              </ReviewPanel>
             ) : null}
           </div>
         </div>
 
-        <div className="april-review-control-bar">
-          <div className="april-review-control-actions">
-            <button className="april-icon-button" type="button" onClick={() => setShowAnswer((previous) => !previous)} disabled={!currentCard}>
+        <div className="review-control-bar">
+          <div className="review-control-actions">
+            <button className="review-icon-button" type="button" onClick={() => setShowAnswer((previous) => !previous)} disabled={!currentCard}>
               {showAnswer ? "Hide" : "Reveal"}
             </button>
-            <button className="april-icon-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
-              Reload Queue
+            <button className="review-icon-button" type="button" onClick={() => void loadReviewData()} disabled={loading || missingConfig}>
+              Reload queue
             </button>
           </div>
-          <div className="april-review-shortcuts">
+          <div className="review-shortcuts">
             <span><kbd>Space</kbd> to reveal</span>
             <span><kbd>1-4</kbd> to rate</span>
             <span>Deck progress {deckProgress(currentDeck)}%</span>
           </div>
-          <Link className="april-icon-button" href={missingConfig ? "/login" : "/runtime"}>
-            {missingConfig ? "Open Login" : "Session Settings"}
+          <Link className="review-icon-button" href={missingConfig ? "/login" : "/runtime"}>
+            {missingConfig ? "Open login" : "Session settings"}
           </Link>
         </div>
       </section>
-    </AprilWorkspaceShell>
+    </ReviewWorkspaceShell>
   );
 }

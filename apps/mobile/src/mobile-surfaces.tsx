@@ -118,6 +118,23 @@ type MobileReviewStudyTopic = {
   status: "locked" | "unlocked" | "read" | string;
 };
 
+function mobileStudyTopicStatusLabel(status: MobileReviewStudyTopic["status"]): string {
+  if (status === "locked") {
+    return "Locked";
+  }
+  if (status === "unlocked") {
+    return "Ready";
+  }
+  if (status === "read") {
+    return "Read";
+  }
+  return status
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
+}
+
 type MobileReviewSurfaceProps = SharedProps & {
   reviewPrompt: string;
   reviewAnswer: string;
@@ -212,11 +229,10 @@ function cardBase(palette: Record<string, string>) {
 
 function kickerStyle(palette: Record<string, string>) {
   return {
-    color: palette.accent,
-    fontSize: 10,
-    fontWeight: "800" as const,
-    textTransform: "uppercase" as const,
-    letterSpacing: 1.4,
+    color: palette.muted,
+    fontSize: 11,
+    fontWeight: "700" as const,
+    letterSpacing: 0,
   };
 }
 
@@ -293,6 +309,39 @@ function cardAttachmentLabel(kind: string, title?: string | null): string {
     return "Capture";
   }
   return "Assistant attachment";
+}
+
+const CONVERSATION_STATUS_LABELS: Record<string, string> = {
+  complete: "Complete",
+  completed: "Completed",
+  done: "Done",
+  error: "Error",
+  failed: "Failed",
+  in_progress: "In progress",
+  pending: "Pending",
+  queued: "Queued",
+  requires_action: "Needs decision",
+  running: "Running",
+  skipped: "Skipped",
+  success: "Succeeded",
+  succeeded: "Succeeded",
+};
+
+function conversationMachineKey(value?: string | null): string {
+  return value?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
+function conversationMachineLabel(value?: string | null, fallback = "Updated"): string {
+  const normalized = value?.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function conversationStatusLabel(status?: string | null): string {
+  const key = conversationMachineKey(status);
+  return CONVERSATION_STATUS_LABELS[key] ?? conversationMachineLabel(status);
 }
 
 function compactCardMeta(meta: string): string {
@@ -419,8 +468,6 @@ function renderConversationCardPreview(
                     color: index === 2 ? tone.accentText : palette.muted,
                     fontSize: 10,
                     fontWeight: "800",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.8,
                   }}
                 >
                   {label}
@@ -539,11 +586,9 @@ function renderConversationCardPreview(
                 color: tone.accentText,
                 fontSize: 10,
                 fontWeight: "800",
-                textTransform: "uppercase",
-                letterSpacing: 0.8,
               }}
             >
-              {metadata.status.replace(/_/g, " ")}
+              {conversationStatusLabel(metadata.status)}
             </Text>
           </View>
         ) : null}
@@ -845,7 +890,7 @@ function mobileCaptureRow(
               justifyContent: "center",
             }}
           >
-            <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: statusColor, fontSize: 9, fontWeight: "900", textTransform: "uppercase" }}>
+            <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: statusColor, fontSize: 9, fontWeight: "900" }}>
               {displayStatus}
             </Text>
           </View>
@@ -897,7 +942,7 @@ function mobileCaptureRow(
         </View>
       ) : suggestionLabels.length > 0 ? (
         <View style={{ paddingLeft: compact ? 42 : 52, flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 10, lineHeight: 14, fontWeight: "800", textTransform: "uppercase" }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 10, lineHeight: 14, fontWeight: "800" }}>
             Suggested
           </Text>
           {suggestionLabels.slice(0, 2).map((label) => (
@@ -980,7 +1025,7 @@ function artifactKeyValueRows(palette: Record<string, string>, rows: Array<{ lab
         gap: 3,
       }}
     >
-      <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { fontSize: 9, letterSpacing: 0.7 }]}>{row.label}</Text>
+      <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { fontSize: 9 }]}>{row.label}</Text>
       <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={row.value.length > 64 ? 2 : 1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 12, lineHeight: 17 }}>
         {row.value}
       </Text>
@@ -1062,7 +1107,7 @@ function mobileLibraryCompactRows(
           <Text style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "800" }}>{title}</Text>
           <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>{subtitle}</Text>
         </View>
-        <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>{statusLabel}</Text>
+        <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>{statusLabel}</Text>
       </View>
       {rows.length > 0 ? rows.slice(0, 3).map((row) => (
         <View key={row.id} style={{ flexDirection: "row", gap: 10, alignItems: "center", borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10 }}>
@@ -1220,7 +1265,7 @@ function mobileArtifactDetailView(
               <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} ellipsizeMode="tail" style={[bodyStyle(palette), { fontSize: 12, lineHeight: 17 }]}>{model.subtitle}</Text>
               {model.fileLabel ? (
                 <View style={{ gap: 2 }}>
-                  <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: palette.muted, fontSize: 9, letterSpacing: 0.7 }]}>{model.sourceStatusLabel}</Text>
+                  <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>{model.sourceStatusLabel}</Text>
                   <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
                     {model.fileLabel}
                   </Text>
@@ -1277,7 +1322,7 @@ function mobileArtifactDetailView(
           <View style={{ gap: 7 }}>
             <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>Classification</Text>
             <View style={{ borderRadius: 12, backgroundColor: palette.surfaceHigh, paddingHorizontal: 12, paddingVertical: 10, gap: 3 }}>
-              <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9, letterSpacing: 0.7 }]}>Current</Text>
+              <Text style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>Current</Text>
               <Text numberOfLines={1} style={{ color: palette.text, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
                 {classificationLabel}
               </Text>
@@ -1317,7 +1362,7 @@ function mobileArtifactDetailView(
             >
               <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
                 <Text style={{ color: palette.text, fontSize: 14, fontWeight: "800" }}>{layer.label}</Text>
-                <Text style={[kickerStyle(palette), { color: layer.present ? palette.accent : palette.muted, letterSpacing: 0.7 }]}>
+                <Text style={[kickerStyle(palette), { color: layer.present ? palette.accent : palette.muted }]}>
                   {layer.stateLabel}
                 </Text>
               </View>
@@ -1333,7 +1378,7 @@ function mobileArtifactDetailView(
                     <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{row.label}</Text>
                     <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: palette.text, fontSize: 13, fontWeight: "800" }}>{row.value}</Text>
                   </View>
-                  {row.actionLabel ? <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>Referenced</Text> : null}
+                  {row.actionLabel ? <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>Referenced</Text> : null}
                 </View>
               ))}
             </View>
@@ -1501,7 +1546,7 @@ export function MobileHomeSurface({
           gap: 10,
         }}
       >
-        <Text style={[kickerStyle(palette), { color: palette.accent, letterSpacing: 1.05 }]}>Assistant thread</Text>
+        <Text style={[kickerStyle(palette), { color: palette.accent }]}>Assistant thread</Text>
         <Text style={{ color: palette.text, fontSize: 24, lineHeight: 27, fontWeight: "800" }}>
           Persistent conversation, docked context, minimal chrome.
         </Text>
@@ -1525,7 +1570,7 @@ export function MobileHomeSurface({
                 borderColor: "rgba(255,255,255,0.05)",
               }}
             >
-              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>
                 {label}
               </Text>
             </View>
@@ -1590,8 +1635,6 @@ export function MobileHomeSurface({
                       style={{
                         color: palette.muted,
                         fontSize: 10,
-                        letterSpacing: 0.9,
-                        textTransform: "uppercase",
                         fontWeight: "700",
                       }}
                     >
@@ -1682,7 +1725,7 @@ export function MobileHomeSurface({
                                   <Text
                                     style={[
                                       kickerStyle(palette),
-                                      { color: tone.accentText, letterSpacing: 0.92, fontSize: 8.5 },
+                                      { color: tone.accentText, fontSize: 8.5 },
                                     ]}
                                   >
                                     {mobileConversationCardLabel(card.kind, card.title)}
@@ -1693,8 +1736,6 @@ export function MobileHomeSurface({
                                         color: palette.muted,
                                         fontSize: 8.8,
                                         fontWeight: "700",
-                                        textTransform: "uppercase",
-                                        letterSpacing: 0.6,
                                       }}
                                     >
                                       {meta}
@@ -1756,7 +1797,7 @@ export function MobileHomeSurface({
                                     }))
                                   }
                                 >
-                                  <Text style={{ color: palette.accent, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase" }}>
+                                  <Text style={{ color: palette.accent, fontSize: 10.5, fontWeight: "800" }}>
                                     {revealActive ? "Hide answer" : "Reveal"}
                                   </Text>
                                 </TouchableOpacity>
@@ -1781,8 +1822,6 @@ export function MobileHomeSurface({
                                         color: actionTone.color,
                                         fontSize: 9,
                                         fontWeight: "800",
-                                        textTransform: "uppercase",
-                                        letterSpacing: 0.7,
                                       }}
                                     >
                                       {action.label}
@@ -1802,7 +1841,7 @@ export function MobileHomeSurface({
                                   }}
                                   onPress={() => reuseCardText(reusableText)}
                                 >
-                                  <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase" }}>
+                                  <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
                                     Use in Assistant
                                   </Text>
                                 </TouchableOpacity>
@@ -1828,7 +1867,7 @@ export function MobileHomeSurface({
                         borderColor: "rgba(255,255,255,0.05)",
                       }}
                     >
-                      <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
+                      <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>
                         System trace {showDiagnosticCards ? "shown" : "collapsed"} · {diagnosticCards.length} hidden
                       </Text>
                     </Pressable>
@@ -1858,7 +1897,7 @@ export function MobileHomeSurface({
                               paddingVertical: 9,
                             }}
                           >
-                            <Text style={{ color: palette.text, fontSize: 11.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                            <Text style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
                               {mobileConversationCardLabel(card.kind, card.title)}
                             </Text>
                             <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
@@ -1891,7 +1930,7 @@ export function MobileHomeSurface({
         }}
       >
         <View style={{ gap: 3, paddingHorizontal: 4, paddingBottom: 8 }}>
-          <Text style={[kickerStyle(palette), { color: palette.accent, letterSpacing: 1.05 }]}>Composer</Text>
+          <Text style={[kickerStyle(palette), { color: palette.accent }]}>Composer</Text>
           <Text style={{ color: palette.text, fontSize: 16, lineHeight: 20, fontWeight: "800" }}>
             {voiceActionState === "ready"
               ? "Voice clip ready"
@@ -1920,8 +1959,6 @@ export function MobileHomeSurface({
                   color: index === 0 ? palette.text : palette.muted,
                   fontSize: 9.5,
                   fontWeight: "800",
-                  textTransform: "uppercase",
-                  letterSpacing: 0.65,
                 }}
               >
                 {label}
@@ -1939,7 +1976,7 @@ export function MobileHomeSurface({
             }}
             onPress={previewCommandFlow}
           >
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800" }}>
               Preview flow
             </Text>
           </TouchableOpacity>
@@ -1952,7 +1989,7 @@ export function MobileHomeSurface({
             }}
             onPress={refreshThread}
           >
-            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            <Text style={{ color: palette.text, fontSize: 10, fontWeight: "800" }}>
               Refresh
             </Text>
           </TouchableOpacity>
@@ -1965,7 +2002,7 @@ export function MobileHomeSurface({
             }}
             onPress={resetConversationSession}
           >
-            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>
               Reset session
             </Text>
           </TouchableOpacity>
@@ -2060,8 +2097,6 @@ export function MobileHomeSurface({
                             color: palette.muted,
                             fontSize: 10,
                             fontWeight: "800",
-                            textTransform: "uppercase",
-                            letterSpacing: 0.7,
                           }}
                         >
                           Clear
@@ -2110,7 +2145,7 @@ export function MobileHomeSurface({
                 backgroundColor: "rgba(255,255,255,0.02)",
               }}
             >
-              <Text style={{ color: palette.muted, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+              <Text style={{ color: palette.muted, fontSize: 9.5, fontWeight: "800" }}>
                 {label}
               </Text>
             </View>
@@ -2313,7 +2348,7 @@ export function MobileNotesSurface({
                     : routeNarrative}
             </Text>
           </View>
-          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.1 }}>
+          <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.secondary, fontSize: 11, fontWeight: "800" }}>
             {pendingCaptureCount} pending
           </Text>
         </View> : null}
@@ -2595,7 +2630,7 @@ export function MobileReviewSurface({
     .sort((left, right) => right.due_count - left.due_count)[0] ?? null;
 
   return (
-    <View style={{ gap: 12, paddingBottom: 132 }}>
+    <View style={{ gap: 10, paddingBottom: 120 }}>
       <View style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1, gap: 5 }}>
@@ -2605,8 +2640,8 @@ export function MobileReviewSurface({
                 {model.syncedLabel}
               </Text>
             </View>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>
-              {hasReviewCard ? `${model.activeStage} review` : model.queueState.title}
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "700" }}>
+              {hasReviewCard ? "Interview prep" : model.queueState.title}
             </Text>
           </View>
           <View
@@ -2627,7 +2662,7 @@ export function MobileReviewSurface({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
           {model.statusChips.map((chip) => (
             <View key={chip.label} style={{ ...pillStyle(palette, chip.active), minHeight: 30, justifyContent: "center" }}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: chip.active ? palette.accent : palette.muted, fontSize: 10.5, fontWeight: "800" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: chip.active ? palette.accent : palette.muted, fontSize: 11, fontWeight: "700" }}>
                 {chip.label} {chip.value}
               </Text>
             </View>
@@ -2635,9 +2670,214 @@ export function MobileReviewSurface({
         </ScrollView>
       </View>
 
-      <View style={{ ...cardBase(palette), borderRadius: 18, padding: 12, gap: 10 }}>
+      {activeStudyTopic ? (
+        <View style={{ ...cardBase(palette), borderRadius: 16, padding: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Study loop</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 20, fontWeight: "700" }}>
+                {activeStudyTopic.title}
+              </Text>
+            </View>
+            <View style={{ ...pillStyle(palette, activeStudyTopic.status === "unlocked"), alignItems: "center" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: activeStudyTopic.status === "unlocked" ? palette.accent : palette.muted, fontSize: 10.5, fontWeight: "700" }}>
+                {mobileStudyTopicStatusLabel(activeStudyTopic.status)}
+              </Text>
+            </View>
+          </View>
+          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>
+            {activeStudyTopic.summary || "Use this topic to unlock Review cards and request one focused interview question."}
+          </Text>
+          <View style={{ gap: 8 }}>
+            {activeStudyTopic.status === "locked" || activeStudyTopic.status !== "read" ? (
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {activeStudyTopic.status === "locked" ? (
+                  <TouchableOpacity
+                    style={{ ...pillStyle(palette), flex: 1, minHeight: 42, justifyContent: "center", alignItems: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+                    disabled={Boolean(studyBusyAction)}
+                    onPress={() => updateStudyTopic(activeStudyTopic, "unlock")}
+                  >
+                    <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={{ color: palette.text, fontSize: 11.5, fontWeight: "700", textAlign: "center" }}>
+                      {studyBusyAction === `unlock:${activeStudyTopic.id}` ? "Unlocking" : "Unlock"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {activeStudyTopic.status !== "read" ? (
+                  <TouchableOpacity
+                    style={{ ...pillStyle(palette, true), flex: 1, minHeight: 42, justifyContent: "center", alignItems: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+                    disabled={Boolean(studyBusyAction)}
+                    onPress={() => updateStudyTopic(activeStudyTopic, "read")}
+                  >
+                    <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "700", textAlign: "center" }}>
+                      {studyBusyAction === `read:${activeStudyTopic.id}` ? "Marking" : "Mark read"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={{ ...pillStyle(palette, true), flex: 1, minHeight: 44, justifyContent: "center", alignItems: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+                disabled={Boolean(studyBusyAction)}
+                onPress={() => requestStudyQuestion(activeStudyTopic, "application")}
+              >
+                <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "700", textAlign: "center" }}>Application question</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ ...pillStyle(palette), flex: 1, minHeight: 44, justifyContent: "center", alignItems: "center", opacity: studyBusyAction ? 0.55 : 1 }}
+                disabled={Boolean(studyBusyAction)}
+                onPress={() => requestStudyQuestion(activeStudyTopic, "recall")}
+              >
+                <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: palette.text, fontSize: 11.5, fontWeight: "700", textAlign: "center" }}>Recall question</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {hasReviewCard ? (
+        <View style={{ ...cardBase(palette), borderRadius: 16, gap: 12, padding: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>{model.activeStage}</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "700" }}>
+                {reviewCardType}
+              </Text>
+            </View>
+            <View style={{ ...pillStyle(palette, true), alignItems: "center" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10.5, fontWeight: "700" }}>
+                {model.cardProgressLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ gap: 7 }}>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: reviewQuestionFont, lineHeight: reviewQuestionFont + 6, fontWeight: "700" }}>{reviewPrompt}</Text>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>{model.dueStateLabel}</Text>
+          </View>
+
+          {model.answerChoices.length > 0 ? (
+            <View style={{ gap: 7 }}>
+              {model.answerChoices.map((choice) => (
+                <View
+                  key={choice.key}
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: palette.border,
+                    backgroundColor: palette.surfaceHigh,
+                    paddingHorizontal: 10,
+                    paddingVertical: 9,
+                    flexDirection: "row",
+                    gap: 9,
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 12, fontWeight: "800" }}>{choice.key}</Text>
+                  <Text {...REVIEW_TEXT_PROPS} style={{ flex: 1, color: palette.text, fontSize: reviewChoiceFont, lineHeight: reviewChoiceFont + 5 }}>{choice.label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View
+              style={{
+                borderRadius: 16,
+                backgroundColor: palette.surfaceHigh,
+                borderWidth: 1,
+                borderColor: palette.border,
+                padding: 10,
+              }}
+            >
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+                Free recall. Commit to an answer, then reveal.
+              </Text>
+            </View>
+          )}
+
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette, true), minHeight: 38, justifyContent: "center" }}
+              onPress={revealAnswer}
+            >
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "700" }}>{model.revealLabel}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }}
+              onPress={openReviewWorkspace}
+            >
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "700" }}>Worked solution</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }}
+              onPress={loadDueCards}
+            >
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "700" }}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {model.gradeOptions.map((option) => {
+              const tone = reviewGradeTone(option, palette);
+              return (
+                <TouchableOpacity
+                  key={option.label}
+                  style={{
+                    flex: 1,
+                    minHeight: 56,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: tone.border,
+                    backgroundColor: tone.background,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                    opacity: option.enabled ? 1 : 0.5,
+                  }}
+                  disabled={!option.enabled}
+                  onPress={() => submitReview(option.rating)}
+                >
+                  <Text {...REVIEW_TEXT_PROPS} style={{ color: tone.color, fontSize: 10, fontWeight: "800", letterSpacing: 0 }}>
+                    {option.label}
+                  </Text>
+                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 16, fontWeight: "700" }}>{option.intervalLabel}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <View style={{ ...cardBase(palette), borderRadius: 16, gap: 12, padding: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Focused review</Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "700" }}>
+                {model.queueState.title}
+              </Text>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
+                {model.queueState.detail}
+              </Text>
+            </View>
+            <View style={{ ...pillStyle(palette, true), alignSelf: "flex-start" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10.5, fontWeight: "700" }}>
+                {model.cardProgressLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <TouchableOpacity style={{ ...pillStyle(palette, true), minHeight: 38, justifyContent: "center" }} onPress={loadDueCards}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "700" }}>{model.queueState.actionLabel}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }} onPress={openReviewWorkspace}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "700" }}>Open review</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {showAdvancedReview ? (
+        <View style={{ ...cardBase(palette), borderRadius: 16, padding: 12, gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <Text {...REVIEW_TEXT_PROPS} style={[kickerStyle(palette), { letterSpacing: 0.8 }]}>Learning ladder</Text>
+          <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Learning path</Text>
           <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11, lineHeight: 15, fontWeight: "700" }}>
             {model.activeStage}
           </Text>
@@ -2684,12 +2924,13 @@ export function MobileReviewSurface({
             );
           })}
         </View>
-      </View>
+        </View>
+      ) : null}
 
-      {studyProgress ? (
-        <View style={{ ...cardBase(palette), borderRadius: 18, padding: 12, gap: 10 }}>
+      {showAdvancedReview && studyProgress ? (
+        <View style={{ ...cardBase(palette), borderRadius: 16, padding: 12, gap: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={[kickerStyle(palette), { letterSpacing: 0.8 }]}>Study progress</Text>
+            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Source progress</Text>
             <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11, lineHeight: 15, fontWeight: "700" }}>
               {studyProgress.source_count} source{studyProgress.source_count === 1 ? "" : "s"}
             </Text>
@@ -2719,7 +2960,7 @@ export function MobileReviewSurface({
                 <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 15, fontWeight: "800" }}>
                   {value}
                 </Text>
-                <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 9.5, lineHeight: 12, fontWeight: "800", textTransform: "uppercase" }}>
+                <Text {...REVIEW_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.muted, fontSize: 10, lineHeight: 13, fontWeight: "700" }}>
                   {label}
                 </Text>
               </View>
@@ -2731,203 +2972,7 @@ export function MobileReviewSurface({
         </View>
       ) : null}
 
-      {activeStudyTopic ? (
-        <View style={{ ...cardBase(palette), borderRadius: 18, padding: 12, gap: 10 }}>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text {...REVIEW_TEXT_PROPS} style={[kickerStyle(palette), { letterSpacing: 0.8 }]}>Study loop</Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 19, fontWeight: "800" }}>
-                {activeStudyTopic.title}
-              </Text>
-            </View>
-            <View style={{ ...pillStyle(palette, activeStudyTopic.status === "unlocked"), alignItems: "center" }}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: activeStudyTopic.status === "unlocked" ? palette.accent : palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-                {activeStudyTopic.status}
-              </Text>
-            </View>
-          </View>
-          <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>
-            {activeStudyTopic.summary || "Use this topic to unlock Review cards and request one focused interview question."}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            {activeStudyTopic.status === "locked" ? (
-              <TouchableOpacity
-                style={{ ...pillStyle(palette), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
-                disabled={Boolean(studyBusyAction)}
-                onPress={() => updateStudyTopic(activeStudyTopic, "unlock")}
-              >
-                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
-                  {studyBusyAction === `unlock:${activeStudyTopic.id}` ? "Unlocking" : "Unlock"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            {activeStudyTopic.status !== "read" ? (
-              <TouchableOpacity
-                style={{ ...pillStyle(palette, true), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
-                disabled={Boolean(studyBusyAction)}
-                onPress={() => updateStudyTopic(activeStudyTopic, "read")}
-              >
-                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "800" }}>
-                  {studyBusyAction === `read:${activeStudyTopic.id}` ? "Marking" : "Mark read"}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              style={{ ...pillStyle(palette), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
-              disabled={Boolean(studyBusyAction)}
-              onPress={() => requestStudyQuestion(activeStudyTopic, "recall")}
-            >
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Recall question</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ ...pillStyle(palette), minHeight: 36, justifyContent: "center", opacity: studyBusyAction ? 0.55 : 1 }}
-              disabled={Boolean(studyBusyAction)}
-              onPress={() => requestStudyQuestion(activeStudyTopic, "application")}
-            >
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Application question</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : null}
 
-      {hasReviewCard ? (
-        <View style={{ ...cardBase(palette), borderRadius: 18, gap: 12, padding: 14 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-            <View style={{ flex: 1, gap: 5 }}>
-              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>{model.activeStage}</Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 15, lineHeight: 19, fontWeight: "800" }}>
-                {reviewCardType}
-              </Text>
-            </View>
-            <View style={{ ...pillStyle(palette, true), alignItems: "center" }}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-                {model.cardProgressLabel}
-              </Text>
-            </View>
-          </View>
-
-          <View style={{ gap: 7 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: reviewQuestionFont, lineHeight: reviewQuestionFont + 6, fontWeight: "700" }}>{reviewPrompt}</Text>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>{model.dueStateLabel}</Text>
-          </View>
-
-          {model.answerChoices.length > 0 ? (
-            <View style={{ gap: 7 }}>
-              {model.answerChoices.map((choice) => (
-                <View
-                  key={choice.key}
-                  style={{
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: palette.border,
-                    backgroundColor: palette.surfaceHigh,
-                    paddingHorizontal: 10,
-                    paddingVertical: 9,
-                    flexDirection: "row",
-                    gap: 9,
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 12, fontWeight: "900" }}>{choice.key}</Text>
-                  <Text {...REVIEW_TEXT_PROPS} style={{ flex: 1, color: palette.text, fontSize: reviewChoiceFont, lineHeight: reviewChoiceFont + 5 }}>{choice.label}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View
-              style={{
-                borderRadius: 16,
-                backgroundColor: palette.surfaceHigh,
-                borderWidth: 1,
-                borderColor: palette.border,
-                padding: 10,
-              }}
-            >
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
-                Free recall. Commit to an answer, then reveal.
-              </Text>
-            </View>
-          )}
-
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            <TouchableOpacity
-              style={{ ...pillStyle(palette, true), minHeight: 38, justifyContent: "center" }}
-              onPress={revealAnswer}
-            >
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "800" }}>{model.revealLabel}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }}
-              onPress={openReviewWorkspace}
-            >
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Worked solution</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }}
-              onPress={loadDueCards}
-            >
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Refresh</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {model.gradeOptions.map((option) => {
-              const tone = reviewGradeTone(option, palette);
-              return (
-                <TouchableOpacity
-                  key={option.label}
-                  style={{
-                    flex: 1,
-                    minHeight: 56,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: tone.border,
-                    backgroundColor: tone.background,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 5,
-                    opacity: option.enabled ? 1 : 0.5,
-                  }}
-                  disabled={!option.enabled}
-                  onPress={() => submitReview(option.rating)}
-                >
-                  <Text {...REVIEW_TEXT_PROPS} style={{ color: tone.color, fontSize: 10, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.4 }}>
-                    {option.label}
-                  </Text>
-                  <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{option.intervalLabel}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      ) : (
-        <View style={{ ...cardBase(palette), borderRadius: 18, gap: 12, padding: 14 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-            <View style={{ flex: 1, gap: 5 }}>
-              <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Focused review</Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "800" }}>
-                {model.queueState.title}
-              </Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }}>
-                {model.queueState.detail}
-              </Text>
-            </View>
-            <View style={{ ...pillStyle(palette, true), alignSelf: "flex-start" }}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
-                {model.cardProgressLabel}
-              </Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            <TouchableOpacity style={{ ...pillStyle(palette, true), minHeight: 38, justifyContent: "center" }} onPress={loadDueCards}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 11.5, fontWeight: "800" }}>{model.queueState.actionLabel}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ ...pillStyle(palette), minHeight: 38, justifyContent: "center" }} onPress={openReviewWorkspace}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>Open Review</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {hasReviewCard ? (
         <View style={{ ...cardBase(palette), borderRadius: 18, gap: 10, padding: 14 }}>
@@ -2973,7 +3018,7 @@ export function MobileReviewSurface({
                 </Text>
               </View>
               <View style={pillStyle(palette, model.learningSignal.tone === "drill")}>
-                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+                <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10.5, fontWeight: "700" }}>
                   {model.learningSignal.tone === "drill" ? "Recommended" : "Signal"}
                 </Text>
               </View>
@@ -3003,14 +3048,14 @@ export function MobileReviewSurface({
               <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{model.health.detail}</Text>
             </View>
             <View style={{ ...pillStyle(palette, model.health.label === "Stable"), alignSelf: "flex-start" }}>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.accent, fontSize: 10.5, fontWeight: "700" }}>
                 {model.health.label}
               </Text>
             </View>
           </View>
 
           <View style={{ gap: 8 }}>
-            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Queue ladder</Text>
+            <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Queue mix</Text>
             {model.queueLadder.map((stage) => (
               <View key={stage.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <Text {...REVIEW_TEXT_PROPS} style={{ width: 94, color: stage.active ? palette.accent : palette.muted, fontSize: 11.5, fontWeight: "800" }}>
@@ -3035,7 +3080,7 @@ export function MobileReviewSurface({
           <View style={{ gap: 8 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
               <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Session progress</Text>
-              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "800" }}>
+              <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 11.5, fontWeight: "700" }}>
                 {reviewReviewedCount > 0 ? model.session.label : "Session not started"}
               </Text>
             </View>
@@ -3087,8 +3132,8 @@ export function MobileLoginSurface({
           <Text style={{ color: palette.accent, fontSize: 36, fontWeight: "800" }}>✦</Text>
         </View>
         <View style={{ alignItems: "center", gap: 8 }}>
-          <Text style={{ color: palette.accent, fontSize: 40, fontWeight: "800", letterSpacing: 6 }}>{productCopy.brand.name.toUpperCase()}</Text>
-          <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.3 }}>
+          <Text style={{ color: palette.accent, fontSize: 40, fontWeight: "800" }}>{productCopy.brand.name}</Text>
+          <Text style={{ color: palette.muted, fontSize: 11 }}>
             {productCopy.brand.tagline}
           </Text>
         </View>
@@ -3119,7 +3164,7 @@ export function MobileLoginSurface({
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={kickerStyle(palette)}>Passphrase</Text>
             <Pressable onPress={() => setRevealPassphrase(!revealPassphrase)}>
-              <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>
+              <Text style={{ color: palette.accent, fontSize: 11, fontWeight: "700" }}>
                 {revealPassphrase ? "Hide" : "Reveal"}
               </Text>
             </Pressable>
@@ -3155,14 +3200,14 @@ export function MobileLoginSurface({
           disabled={authBusy}
           onPress={login}
         >
-          <Text style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1.5 }}>
-            {authBusy ? "Signing in..." : "Sign In"}
+          <Text style={{ color: palette.onAccent, fontSize: 12, fontWeight: "800" }}>
+            {authBusy ? "Signing in..." : "Sign in"}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={{ alignItems: "center", paddingVertical: 8 }} disabled={authBusy} onPress={bootstrap}>
-          <Text style={{ color: palette.secondary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.3 }}>
-            Set Up Starlog
+          <Text style={{ color: palette.secondary, fontSize: 12, fontWeight: "700" }}>
+            Set up Starlog
           </Text>
         </TouchableOpacity>
 
@@ -3170,8 +3215,8 @@ export function MobileLoginSurface({
       </View>
 
       <View style={{ alignItems: "center", gap: 12 }}>
-        <Text style={{ color: palette.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.2 }}>
-          Secure Local Access
+        <Text style={{ color: palette.muted, fontSize: 11 }}>
+          Secure local access
         </Text>
         <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18, textAlign: "center" }}>
           Single-user passphrase login. Use setup once for a new Starlog instance, then sign in for later sessions.
@@ -3585,7 +3630,7 @@ export function MobileCalendarSurface({
           <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Desktop web</Text>
         </TouchableOpacity>
         <TouchableOpacity style={{ ...stylesButtonLike(palette, false), flex: 1 }} onPress={openReview}>
-          <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Open Review</Text>
+          <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>Open review</Text>
         </TouchableOpacity>
         <TouchableOpacity style={{ ...stylesButtonLike(palette, false), flex: 1 }} onPress={toggleMissionTools}>
           <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>

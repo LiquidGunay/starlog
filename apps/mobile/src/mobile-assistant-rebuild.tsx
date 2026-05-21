@@ -88,6 +88,26 @@ function TextInput({
   return <RNTextInput maxFontSizeMultiplier={maxFontSizeMultiplier} {...props} />;
 }
 
+const ATTACHMENT_KIND_LABELS: Record<string, string> = {
+  artifact: "Artifact",
+  audio: "Audio",
+  citation: "Source",
+  image: "Image",
+};
+
+function assistantMachineLabel(value?: string | null, fallback = "Attachment"): string {
+  const normalized = value?.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function attachmentKindLabel(kind?: string | null): string {
+  const key = kind?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+  return ATTACHMENT_KIND_LABELS[key] ?? assistantMachineLabel(kind);
+}
+
 const MORNING_FOCUS_OPTIONS = [
   {
     key: "project",
@@ -306,7 +326,7 @@ function attachmentPreview(
                 borderColor: "rgba(255,255,255,0.05)",
               }}
             >
-              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>
                 {label}
               </Text>
             </View>
@@ -416,8 +436,8 @@ function AttachmentRow({
         gap: 4,
       }}
     >
-      <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-        {attachment.kind.replace(/_/g, " ")}
+      <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
+        {attachmentKindLabel(attachment.kind)}
       </Text>
       <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>{attachment.label}</Text>
       {attachment.mime_type ? <Text style={{ color: palette.muted, fontSize: 12 }}>{attachment.mime_type}</Text> : null}
@@ -434,7 +454,7 @@ function AttachmentRow({
           }}
           onPress={() => onOpenAttachment(attachment.url, attachmentActionLabel(attachment))}
         >
-          <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+          <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
             {attachmentActionLabel(attachment)}
           </Text>
         </TouchableOpacity>
@@ -469,7 +489,7 @@ function EntityActionChip({
       }}
       onPress={() => onOpenEntityRef(entityRef)}
     >
-      <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+      <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
         {supportSurfaceActionLabel(entityRef)}
       </Text>
     </TouchableOpacity>
@@ -496,7 +516,7 @@ function ToolCallRow({
         gap: 6,
       }}
     >
-      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800" }}>
         Assistant step
       </Text>
       <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: "800" }}>
@@ -505,8 +525,8 @@ function ToolCallRow({
       <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{toolStatusSummary(toolCall)}</Text>
       {argumentRows.map(([key, value]) => (
         <View key={`${toolCall.id}-${key}`} style={{ gap: 2 }}>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
-            {key.replace(/_/g, " ")}
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>
+            {assistantMachineLabel(key, "Argument")}
           </Text>
           <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18 }}>{value}</Text>
         </View>
@@ -559,7 +579,7 @@ function ToolResultRow({
           gap: 6,
         }}
       >
-        <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800" }}>
           {mobileConversationCardLabel(card.kind, card.title)}
         </Text>
         <Text style={{ color: palette.text, fontSize: 13, lineHeight: 18, fontWeight: "800" }}>
@@ -567,7 +587,7 @@ function ToolResultRow({
         </Text>
         {card.body ? <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>{card.body}</Text> : null}
         {meta ? (
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>
             {meta}
           </Text>
         ) : null}
@@ -588,7 +608,7 @@ function ToolResultRow({
                 }}
                 onPress={() => onCardAction(action, card)}
               >
-                <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800" }}>
                   {action.label}
                 </Text>
               </TouchableOpacity>
@@ -626,7 +646,7 @@ function InterruptFieldInput({
     ];
     return (
       <View style={{ gap: 8 }}>
-        <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800" }}>
           {field.label}
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -719,7 +739,7 @@ function InterruptFieldInput({
     if (compactChoices) {
       return (
         <View style={{ gap: 8 }}>
-          <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+          <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800" }}>
             {field.label}
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -784,7 +804,7 @@ function InterruptFieldInput({
     }
     return (
       <View style={{ gap: 8 }}>
-        <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+        <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800" }}>
           {field.label}
         </Text>
         <View style={{ gap: 8 }}>
@@ -860,7 +880,7 @@ function InterruptFieldInput({
   const multiline = field.kind === "textarea";
   return (
     <View style={{ gap: 8 }}>
-      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+      <Text style={{ color: palette.muted, fontSize: 10.5, fontWeight: "800" }}>
         {field.label}
       </Text>
       <TextInput
@@ -1279,7 +1299,7 @@ function DynamicPanelRenderer({
               backgroundColor: accent.bg,
             }}
           >
-            <Text style={{ color: accent.text, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+            <Text style={{ color: accent.text, fontSize: 9.5, fontWeight: "800" }}>
               {panelKicker(interrupt)}
             </Text>
           </View>
@@ -1340,7 +1360,7 @@ function DynamicPanelRenderer({
                 gap: 4,
               }}
             >
-              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
                 More detail
               </Text>
               <Text style={{ color: palette.muted, fontSize: 12.5, lineHeight: 18 }}>
@@ -1438,7 +1458,7 @@ function DynamicPanelRenderer({
             gap: 4,
           }}
         >
-          <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+          <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
             {interrupt.status === "submitted" ? "Resolved" : "Dismissed"}
           </Text>
           <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{interruptDetail(interrupt)}</Text>
@@ -1617,7 +1637,7 @@ export function MobileAssistantRebuild({
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         {showVoiceHint ? (
-          <Text style={{ flex: 1, color: palette.muted, fontSize: 10.5, lineHeight: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 }}>
+          <Text style={{ flex: 1, color: palette.muted, fontSize: 10.5, lineHeight: 14, fontWeight: "700" }}>
             {voiceActionHint || voiceLabel}
           </Text>
         ) : (
@@ -1827,7 +1847,7 @@ export function MobileAssistantRebuild({
                               gap: 4,
                             }}
                           >
-                            <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                            <Text style={{ color: palette.text, fontSize: 12, fontWeight: "800" }}>
                               {update.label}
                             </Text>
                             {update.body ? <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>{update.body}</Text> : null}
@@ -1857,7 +1877,7 @@ export function MobileAssistantRebuild({
                                       })
                                     }
                                   >
-                                    <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
                                       {action.label}
                                     </Text>
                                   </TouchableOpacity>
@@ -1888,7 +1908,7 @@ export function MobileAssistantRebuild({
                                 }}
                                 onPress={() => setActiveAttachmentByMessage((previous) => ({ ...previous, [message.id]: cardIndex }))}
                               >
-                                <Text style={{ color: active ? tone.accent : palette.muted, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                                <Text style={{ color: active ? tone.accent : palette.muted, fontSize: 10.5, fontWeight: "800" }}>
                                   {mobileConversationCardLabel(card.kind, card.title)}
                                 </Text>
                               </TouchableOpacity>
@@ -1917,14 +1937,14 @@ export function MobileAssistantRebuild({
                             >
                               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                                 <View style={{ flex: 1, gap: 3 }}>
-                                  <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                  <Text style={{ color: tone.accent, fontSize: 9.5, fontWeight: "800" }}>
                                     {mobileConversationCardLabel(activeAttachment.kind, activeAttachment.title)}
                                   </Text>
                                   <Text style={{ color: palette.text, fontSize: 14, lineHeight: 19, fontWeight: "800" }}>
                                     {activeAttachment.title || mobileConversationCardLabel(activeAttachment.kind, activeAttachment.title)}
                                   </Text>
                                   {meta ? (
-                                    <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.65 }}>
+                                    <Text style={{ color: palette.muted, fontSize: 10, fontWeight: "700" }}>
                                       {meta}
                                     </Text>
                                   ) : null}
@@ -1961,7 +1981,7 @@ export function MobileAssistantRebuild({
                                     }}
                                     onPress={() => setRevealedReviewCards((previous) => ({ ...previous, [cardKey]: !previous[cardKey] }))}
                                   >
-                                    <Text style={{ color: tone.accent, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    <Text style={{ color: tone.accent, fontSize: 10.5, fontWeight: "800" }}>
                                       {revealActive ? "Hide answer" : "Reveal"}
                                     </Text>
                                   </TouchableOpacity>
@@ -1980,7 +2000,7 @@ export function MobileAssistantRebuild({
                                     }}
                                     onPress={() => onCardAction(action, activeAttachment)}
                                   >
-                                    <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    <Text style={{ color: action.style === "primary" ? tone.accent : palette.text, fontSize: 10.5, fontWeight: "800" }}>
                                       {action.label}
                                     </Text>
                                   </TouchableOpacity>
@@ -1998,7 +2018,7 @@ export function MobileAssistantRebuild({
                                     }}
                                     onPress={() => reuseCardText(reusableText)}
                                   >
-                                    <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                                    <Text style={{ color: palette.text, fontSize: 10.5, fontWeight: "800" }}>
                                       Use in chat
                                     </Text>
                                   </TouchableOpacity>

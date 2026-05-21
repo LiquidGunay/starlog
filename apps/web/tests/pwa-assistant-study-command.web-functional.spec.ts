@@ -735,14 +735,14 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
   await quizCard.getByRole("link", { name: "Open Review" }).click();
 
   await expect(page).toHaveURL(/\/review$/);
-  const studyTopic = page.locator(".april-review-study-topic");
+  const studyTopic = page.locator(".review-study-topic");
   await expect(studyTopic.getByText("Sliding Window Interview Patterns", { exact: true })).toBeVisible();
   await expect(studyTopic.getByText("Ready to study", { exact: true })).toBeVisible();
   await expect(page.getByText("Reason: You just unlocked this interview-prep topic and one application card is due now.")).toBeVisible();
   await expect(page.getByText("You need the longest subarray with at most two distinct values.")).toBeVisible();
   await expect(page.getByText("Maintain counts inside the current window")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Application Question" }).click();
+  await page.getByRole("button", { name: "Application question" }).click();
   await expect(page.getByText("Requested an application question for Sliding Window Interview Patterns.")).toBeVisible();
   expect(studyQuestionRequests).toEqual([
     expect.objectContaining({
@@ -751,7 +751,7 @@ test("PWA interview prep loop unlocks from Assistant and completes one Review ca
     }),
   ]);
 
-  await page.getByRole("button", { name: "Reveal Answer" }).click();
+  await page.getByRole("button", { name: "Reveal answer" }).click();
   await expect(page.getByText("Maintain counts inside the current window")).toBeVisible();
   expect(revealEvents).toHaveLength(1);
   expect(revealEvents[0]).toMatchObject({

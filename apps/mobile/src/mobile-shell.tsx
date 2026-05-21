@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 import { MOBILE_TABS, type MobileTab } from "./navigation";
 
@@ -64,7 +64,7 @@ export function MobileTopBar({
         )}
         <View style={{ gap: 0 }}>
           <Text {...SHELL_TEXT_PROPS} style={[styles.topBarTitle, isAssistantMode ? styles.topBarTitleAssistant : null]}>
-            {isAssistantMode ? "Assistant" : `Starlog ${surfaceLabel}`}
+            {surfaceLabel}
           </Text>
         </View>
       </View>
@@ -123,15 +123,16 @@ export function MobileAssistantDrawer({
         style={{
           width: 272,
           maxWidth: "82%",
-          paddingHorizontal: 16,
-          paddingTop: 88,
-          paddingBottom: 24,
           backgroundColor: "rgba(34, 19, 27, 0.98)",
           borderRightWidth: 1,
           borderRightColor: "rgba(241, 182, 205, 0.08)",
-          gap: 18,
         }}
       >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 88, paddingBottom: 24, gap: 18 }}
+        >
         <View style={{ gap: 6 }}>
           <Text {...SHELL_TEXT_PROPS} style={[styles.sectionKicker, { color: palette.accent }]}>Workspace</Text>
           <Text {...SHELL_TEXT_PROPS} style={[styles.panelTitle, { fontSize: 23, lineHeight: 27 }]}>Stay in the thread</Text>
@@ -150,7 +151,7 @@ export function MobileAssistantDrawer({
                 borderColor: "rgba(255,255,255,0.05)",
               }}
             >
-              <Text {...SHELL_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+              <Text {...SHELL_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0 }}>
                 {label}
               </Text>
             </View>
@@ -187,7 +188,7 @@ export function MobileAssistantDrawer({
                 }}
               >
                 <Text {...SHELL_TEXT_PROPS} style={{ color: palette.text, fontSize: 16, fontWeight: "800" }}>{item.label}</Text>
-                <Text {...SHELL_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                <Text {...SHELL_TEXT_PROPS} style={{ color: palette.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0 }}>
                   {item.meta}
                 </Text>
               </View>
@@ -243,6 +244,7 @@ export function MobileAssistantDrawer({
             <Text {...SHELL_TEXT_PROPS} style={styles.buttonText}>Reset session</Text>
           </TouchableOpacity>
         </View>
+        </ScrollView>
       </View>
       <TouchableOpacity
         style={{ flex: 1, backgroundColor: "rgba(8, 5, 8, 0.42)" }}

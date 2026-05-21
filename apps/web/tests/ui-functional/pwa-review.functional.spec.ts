@@ -171,25 +171,25 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
 
   await page.goto("/review", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Learning ladder" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Focused review" })).toBeVisible();
   await expect(page.getByText("Application").first()).toBeVisible();
   await expect(page.getByText("3 due").first()).toBeVisible();
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 3 · Synthesis 1")).toBeVisible();
-  await expect(page.locator(".april-review-side-metrics").getByText("7", { exact: true })).toBeVisible();
-  await expect(page.locator(".april-review-health-list").getByText("2", { exact: true })).toBeVisible();
+  await expect(page.locator(".review-side-metrics").getByText("7", { exact: true })).toBeVisible();
+  await expect(page.locator(".review-health-list").getByText("2", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Review view status").getByText("Today")).toBeVisible();
   await expect(page.getByRole("button", { name: "All due" })).toHaveCount(0);
-  await expect(page.getByText("Current queue context by card mode")).toBeVisible();
+  await expect(page.getByText("Queue context by card mode")).toBeVisible();
   await expect(page.getByText("Generated drills and deeper scenario flows are not active here yet.")).toHaveCount(0);
-  const learningCard = page.locator(".april-review-learning-card");
-  const firstInsight = learningCard.locator(".april-review-insight", { hasText: "Application and synthesis miss pattern" });
+  const learningCard = page.locator(".review-learning-card");
+  const firstInsight = learningCard.locator(".review-insight", { hasText: "Application and synthesis miss pattern" });
   await expect(page.getByText("Learning insights")).toBeVisible();
   await expect(firstInsight.getByText("Application and synthesis miss pattern")).toBeVisible();
   await expect(firstInsight.getByText("Repeated misses show answers stall")).toBeVisible();
   await expect(firstInsight.getByText("4x")).toBeVisible();
-  await expect(firstInsight.getByText("high", { exact: true })).toBeVisible();
+  await expect(firstInsight.getByText("High", { exact: true })).toBeVisible();
   await expect(firstInsight.getByText("Application", { exact: true })).toBeVisible();
-  await expect(firstInsight.getByText("scenario transfer", { exact: true })).toBeVisible();
+  await expect(firstInsight.getByText("Scenario transfer", { exact: true })).toBeVisible();
   await expect(learningCard.getByText("Recommended drill", { exact: true })).toBeVisible();
   await expect(learningCard.getByText("Apply the onboarding evidence")).toBeVisible();
   await expect(learningCard.getByText("Reason: Application misses repeated 4 times across the current queue.")).toBeVisible();
@@ -199,7 +199,7 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
     "/assistant?draft=Give%20me%20a%2010%20minute%20application%20drill%20using%20my%20missed%20onboarding%20review%20cards.",
   );
   await expect(page.getByText("Projects deck")).toBeVisible();
-  await expect(page.locator(".april-review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
+  await expect(page.locator(".review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
   await expect(page.getByText("Onboarding flow polish")).toBeVisible();
 
   await page.screenshot({ path: testInfo.outputPath("pwa-review-learning-insights.png"), fullPage: true });
@@ -207,7 +207,7 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   const goodButton = page.getByRole("button", { name: /Good/ });
   await expect(goodButton).toBeDisabled();
 
-  await page.getByRole("button", { name: "Reveal Answer" }).click();
+  await page.getByRole("button", { name: "Reveal answer" }).click();
   await expect(page.getByText("Inspect the earliest high-friction step")).toBeVisible();
   await expect(goodButton).toBeEnabled();
   expect(assistantEvents).toEqual([
@@ -220,11 +220,11 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await goodButton.click();
   expect(reviewRequests).toEqual([expect.objectContaining({ card_id: "card_application", rating: 4 })]);
   await expect(page.locator("[aria-live='polite']")).toHaveText("Recorded Good for card_application.");
-  await expect(page.locator(".april-review-ladder-step", { hasText: "Application" }).getByText("2 due")).toBeVisible();
+  await expect(page.locator(".review-ladder-step", { hasText: "Application" }).getByText("2 due")).toBeVisible();
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 2 · Synthesis 1")).toBeVisible();
-  await expect(page.locator(".april-review-side-metrics").getByText("6", { exact: true })).toBeVisible();
-  await expect(page.locator(".april-review-health-list").getByText("1", { exact: true }).first()).toBeVisible();
-  await expect(page.locator(".april-review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
+  await expect(page.locator(".review-side-metrics").getByText("6", { exact: true })).toBeVisible();
+  await expect(page.locator(".review-health-list").getByText("1", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
   await expect(page.getByText("What does source fidelity preserve?")).toBeVisible();
 });
 
@@ -257,9 +257,9 @@ test("PWA review hides learning signals quietly when the summary has no insights
 
   await page.goto("/review", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Learning ladder" })).toBeVisible();
-  await expect(page.locator(".april-review-learning-card")).toHaveCount(0);
-  await expect(page.locator(".april-review-drill")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Focused review" })).toBeVisible();
+  await expect(page.locator(".review-learning-card")).toHaveCount(0);
+  await expect(page.locator(".review-drill")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Open in Assistant" })).toHaveCount(0);
   await expect(page.getByText("Generated drills and deeper scenario flows are not active here yet.")).toHaveCount(0);
 });
@@ -293,9 +293,9 @@ test("PWA review remains compatible with legacy summaries that omit learning sig
 
   await page.goto("/review", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Learning ladder" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Focused review" })).toBeVisible();
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 3 · Synthesis 1")).toBeVisible();
-  await expect(page.locator(".april-review-learning-card")).toHaveCount(0);
-  await expect(page.locator(".april-review-drill")).toHaveCount(0);
+  await expect(page.locator(".review-learning-card")).toHaveCount(0);
+  await expect(page.locator(".review-drill")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Open in Assistant" })).toHaveCount(0);
 });

@@ -115,9 +115,10 @@ Interview-loop note:
   Unsupported Starlog panel shapes still use compatibility fallback screens; those fallbacks are not the
   target runtime.
 - Current native Android evidence is local/physical-device evidence from the fresh-local SRS validation
-  harness. It proves the bounded interview-prep loop and Assistant-hosted review-grade dynamic UI, not
-  broad production-hosted Android parity, full server-owned native runtime migration, or repeatable
-  Android functional automation.
+  harness. Latest proof:
+  `.localdata/android-local-validation/builds/20260521T053609Z/latest.json`. It proves the bounded
+  interview-prep loop and Assistant-hosted review-grade dynamic UI, not broad production-hosted Android
+  parity or full server-owned native runtime migration.
 
 ## Codex And Local AI
 
