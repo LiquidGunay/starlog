@@ -5105,25 +5105,51 @@ def node_label(node):
     return (node.attrib.get("text") or node.attrib.get("content-desc") or "").strip()
 
 
-def emit(node, source):
+def describe(node, source):
     bounds = bounds_of(node)
     if not bounds:
-        raise SystemExit(1)
+        return None
     x, y = center(bounds)
-    print(f"{x} {y}|[{bounds[0]},{bounds[1]}][{bounds[2]},{bounds[3]}]|{source}|{node_label(node)}")
-    raise SystemExit(0)
+    area = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1])
+    return {
+        "area": area,
+        "bounds": bounds,
+        "label": node_label(node),
+        "source": source,
+        "x": x,
+        "y": y,
+    }
+
+
+candidates = []
 
 
 for label_node in root.iter("node"):
     if not is_visible(label_node) or not exact_target_label(label_node):
         continue
+    if enabled_clickable(label_node):
+        candidate = describe(label_node, "clickable-label")
+        if candidate:
+            candidates.append((0, candidate["area"], 0, candidate))
     current = parent_by_id.get(id(label_node))
+    depth = 1
     while current is not None:
         if enabled_clickable(current):
-            emit(current, "clickable-parent")
+            candidate = describe(current, "clickable-parent")
+            if candidate:
+                candidates.append((1, candidate["area"], depth, candidate))
         current = parent_by_id.get(id(current))
-    if enabled_clickable(label_node):
-        emit(label_node, "clickable-label-fallback")
+        depth += 1
+
+if candidates:
+    _rank, _area, _depth, selected = sorted(candidates, key=lambda item: item[:3])[0]
+    left, top, right, bottom = selected["bounds"]
+    print(
+        f"{selected['x']} {selected['y']}|"
+        f"[{left},{top}][{right},{bottom}]|"
+        f"{selected['source']}|{selected['label']}"
+    )
+    raise SystemExit(0)
 
 raise SystemExit(1)
 PY
