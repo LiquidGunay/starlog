@@ -1522,6 +1522,131 @@ def test_assistant_message_can_open_due_date_interrupt_and_resume(
 
 
 
+def test_runtime_due_date_interrupt_submit_uses_next_step_and_preserves_pending_run(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    def mock_chat_turn(request: dict) -> dict:
+        return {
+            "workflow": "chat_turn",
+            "provider_used": "mock_runtime",
+            "model": "mock-multi-interrupt",
+            "response_text": "I need dates for both tasks.",
+            "parts": [assistant_projection_service.text_part("I need dates for both tasks.")],
+            "interrupts": [
+                {
+                    "tool_call_id": "toolcall_runtime_first_due_date",
+                    "tool_name": "request_due_date",
+                    "interrupt_type": "form",
+                    "title": "First task details",
+                    "body": "Pick a due date for the first task.",
+                    "primary_label": "Create task",
+                    "fields": [
+                        {"id": "due_date", "kind": "date", "label": "Due date", "required": True}
+                    ],
+                    "entity_ref": {
+                        "entity_type": "task",
+                        "entity_id": "draft:Runtime first task",
+                        "title": "Runtime first task",
+                    },
+                    "metadata": {
+                        "planned_tool_name": "create_task",
+                        "planned_arguments": {"title": "Runtime first task", "priority": 2},
+                    },
+                },
+                {
+                    "tool_call_id": "toolcall_runtime_second_due_date",
+                    "tool_name": "request_due_date",
+                    "interrupt_type": "form",
+                    "title": "Second task details",
+                    "body": "Pick a due date for the second task.",
+                    "primary_label": "Create task",
+                    "fields": [
+                        {"id": "due_date", "kind": "date", "label": "Due date", "required": True}
+                    ],
+                    "entity_ref": {
+                        "entity_type": "task",
+                        "entity_id": "draft:Runtime second task",
+                        "title": "Runtime second task",
+                    },
+                    "metadata": {
+                        "planned_tool_name": "create_task",
+                        "planned_arguments": {"title": "Runtime second task", "priority": 3},
+                    },
+                },
+            ],
+        }
+
+    monkeypatch.setattr(ai_service, "execute_chat_turn", mock_chat_turn)
+
+    create = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "help me schedule both runtime followups",
+            "input_mode": "text",
+            "device_target": "web-desktop",
+            "metadata": {"surface": "assistant_web", "client_timezone": "UTC"},
+        },
+        headers=auth_headers,
+    )
+
+    assert create.status_code == 201
+    payload = create.json()
+    run_id = payload["run"]["id"]
+    assert payload["run"]["status"] == "interrupted"
+    pending = [
+        item
+        for item in payload["snapshot"]["interrupts"]
+        if item["run_id"] == run_id and item["status"] == "pending"
+    ]
+    assert len(pending) == 2
+
+    first_interrupt = next(
+        item for item in pending if item["tool_call_id"] == "toolcall_runtime_first_due_date"
+    )
+    submit_first = client.post(
+        f"/v1/assistant/interrupts/{first_interrupt['id']}/submit",
+        json={"values": {"due_date": "2026-05-22", "priority": "2", "client_timezone": "UTC"}},
+        headers=auth_headers,
+    )
+
+    assert submit_first.status_code == 200
+    first_snapshot = submit_first.json()
+    run_after_first_submit = next(run for run in first_snapshot["runs"] if run["id"] == run_id)
+    assert run_after_first_submit["status"] == "interrupted"
+    assert run_after_first_submit["current_interrupt"] is not None
+    assert run_after_first_submit["current_interrupt"]["id"] != first_interrupt["id"]
+    assert run_after_first_submit["current_interrupt"]["status"] == "pending"
+    assert (
+        next(item for item in first_snapshot["interrupts"] if item["id"] == first_interrupt["id"])[
+            "status"
+        ]
+        == "submitted"
+    )
+    assert [step["step_index"] for step in run_after_first_submit["steps"]] == [0, 1, 2, 3]
+    assert [step["tool_name"] for step in run_after_first_submit["steps"]] == [
+        "request_due_date",
+        "request_due_date",
+        "chat_turn_runtime",
+        "create_task",
+    ]
+
+    second_interrupt = run_after_first_submit["current_interrupt"]
+    submit_second = client.post(
+        f"/v1/assistant/interrupts/{second_interrupt['id']}/submit",
+        json={"values": {"due_date": "2026-05-23", "priority": "3", "client_timezone": "UTC"}},
+        headers=auth_headers,
+    )
+
+    assert submit_second.status_code == 200
+    final_snapshot = submit_second.json()
+    completed_run = next(run for run in final_snapshot["runs"] if run["id"] == run_id)
+    assert completed_run["status"] == "completed"
+    assert completed_run["current_interrupt"] is None
+    assert [step["step_index"] for step in completed_run["steps"]] == [0, 1, 2, 3, 4]
+
+
 def test_assistant_due_date_interrupt_dismiss_records_protocol_resolution(
     client: TestClient,
     auth_headers: dict[str, str],

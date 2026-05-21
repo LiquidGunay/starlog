@@ -61,7 +61,10 @@ def _ui_capability_manifest() -> dict[str, Any]:
                 "description": "Request interview-prep questions and emit the question request renderer payload.",
                 "renderer_key": "interview.question_request",
                 "renderer_version": 1,
-                "action_examples": ["quiz me with application questions", "quiz me on application questions for Sliding Window"],
+                "action_examples": [
+                    "quiz me with application questions",
+                    "quiz me on application questions for Sliding Window",
+                ],
             },
             {
                 "tool_name": "grade_review_recall",
@@ -71,10 +74,26 @@ def _ui_capability_manifest() -> dict[str, Any]:
                 "renderer_version": 1,
                 "action_examples": ["grade the revealed review card"],
             },
-            {"tool_name": "request_due_date", "kind": "form", "description": "Ask for missing task due-date fields."},
-            {"tool_name": "resolve_planner_conflict", "kind": "choice", "description": "Ask the user to resolve a planner conflict."},
-            {"tool_name": "triage_capture", "kind": "form", "description": "Ask how to process a captured artifact."},
-            {"tool_name": "choose_morning_focus", "kind": "choice", "description": "Ask which focus should drive a morning briefing."},
+            {
+                "tool_name": "request_due_date",
+                "kind": "form",
+                "description": "Ask for missing task due-date fields.",
+            },
+            {
+                "tool_name": "resolve_planner_conflict",
+                "kind": "choice",
+                "description": "Ask the user to resolve a planner conflict.",
+            },
+            {
+                "tool_name": "triage_capture",
+                "kind": "form",
+                "description": "Ask how to process a captured artifact.",
+            },
+            {
+                "tool_name": "choose_morning_focus",
+                "kind": "choice",
+                "description": "Ask which focus should drive a morning briefing.",
+            },
         ],
         "renderers": [
             {
@@ -91,7 +110,13 @@ def _ui_capability_manifest() -> dict[str, Any]:
                 "renderer_version": 1,
                 "placements": ["thread"],
                 "tool_names": ["create_study_question_request"],
-                "structured_content_fields": ["request", "source_id", "topic_id", "question_type", "prompt"],
+                "structured_content_fields": [
+                    "request",
+                    "source_id",
+                    "topic_id",
+                    "question_type",
+                    "prompt",
+                ],
                 "ui_meta_fields": ["tone", "request_id", "question_preference"],
                 "description": "Show a backend-created interview-prep question request.",
             },
@@ -126,7 +151,9 @@ def _review_rating_label(rating: int) -> str:
     }.get(rating, f"Rating {rating}")
 
 
-def _assistant_client_timezone(metadata: dict[str, Any] | None, values: dict[str, Any] | None = None) -> str:
+def _assistant_client_timezone(
+    metadata: dict[str, Any] | None, values: dict[str, Any] | None = None
+) -> str:
     request_metadata = metadata if isinstance(metadata, dict) else {}
     submitted_values = values if isinstance(values, dict) else {}
     raw_timezone = str(
@@ -192,6 +219,35 @@ def _next_step_index(conn: Connection, *, run_id: str) -> int:
     return int(row.get("max_step_index") or -1) + 1
 
 
+def _pending_interrupt_count(conn: Connection, *, run_id: str) -> int:
+    row = execute_fetchone(
+        conn,
+        "SELECT COUNT(*) AS count FROM conversation_interrupts WHERE run_id = ? AND status = 'pending'",
+        (run_id,),
+    )
+    return int(row.get("count") or 0) if row is not None else 0
+
+
+def _update_run_after_interrupt_resolution(
+    conn: Connection,
+    *,
+    run_id: str,
+    status: str,
+    summary: str | None = None,
+    metadata_patch: dict[str, Any] | None = None,
+) -> None:
+    if status in {"completed", "cancelled"} and _pending_interrupt_count(conn, run_id=run_id) > 0:
+        _update_run(
+            conn,
+            run_id=run_id,
+            status="interrupted",
+            summary=summary,
+            metadata_patch=metadata_patch,
+        )
+        return
+    _update_run(conn, run_id=run_id, status=status, summary=summary, metadata_patch=metadata_patch)
+
+
 def _record_run_failure(
     conn: Connection,
     *,
@@ -246,7 +302,14 @@ def _record_run_failure(
     return assistant_message
 
 
-def _create_run(conn: Connection, *, thread_id: str, origin_message_id: str | None, orchestrator: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+def _create_run(
+    conn: Connection,
+    *,
+    thread_id: str,
+    origin_message_id: str | None,
+    orchestrator: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     now = utc_now().isoformat()
     run_id = new_id("run")
     run_metadata = dict(metadata or {})
@@ -275,9 +338,20 @@ def _create_run(conn: Connection, *, thread_id: str, origin_message_id: str | No
     return row
 
 
-def _update_run(conn: Connection, *, run_id: str, status: str, summary: str | None = None, metadata_patch: dict[str, Any] | None = None) -> None:
-    row = execute_fetchone(conn, "SELECT metadata_json FROM conversation_runs WHERE id = ?", (run_id,))
-    metadata = row.get("metadata_json") if row and isinstance(row.get("metadata_json"), dict) else {}
+def _update_run(
+    conn: Connection,
+    *,
+    run_id: str,
+    status: str,
+    summary: str | None = None,
+    metadata_patch: dict[str, Any] | None = None,
+) -> None:
+    row = execute_fetchone(
+        conn, "SELECT metadata_json FROM conversation_runs WHERE id = ?", (run_id,)
+    )
+    metadata = (
+        row.get("metadata_json") if row and isinstance(row.get("metadata_json"), dict) else {}
+    )
     if metadata_patch:
         metadata = {**metadata, **metadata_patch}
     now = utc_now().isoformat()
@@ -411,7 +485,9 @@ def _create_interrupt(
         ),
     )
     conn.commit()
-    row = execute_fetchone(conn, "SELECT * FROM conversation_interrupts WHERE id = ?", (interrupt_id,))
+    row = execute_fetchone(
+        conn, "SELECT * FROM conversation_interrupts WHERE id = ?", (interrupt_id,)
+    )
     if row is None:
         raise RuntimeError("Failed to create assistant interrupt")
     presentation = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
@@ -430,9 +506,13 @@ def _create_interrupt(
         "tool_name": row["tool_name"],
         "title": row["title"],
         "body": row.get("body"),
-        "renderer_key": presentation.get("renderer_key") if isinstance(presentation.get("renderer_key"), str) else None,
+        "renderer_key": presentation.get("renderer_key")
+        if isinstance(presentation.get("renderer_key"), str)
+        else None,
         "renderer_version": (
-            int(presentation.get("renderer_version")) if isinstance(presentation.get("renderer_version"), int) else None
+            int(presentation.get("renderer_version"))
+            if isinstance(presentation.get("renderer_version"), int)
+            else None
         ),
         "placement": (
             str(presentation.get("placement"))
@@ -441,9 +521,15 @@ def _create_interrupt(
             if isinstance(presentation.get("display_mode"), str)
             else None
         ),
-        "structured_content": presentation.get("structured_content") if isinstance(presentation.get("structured_content"), dict) else None,
-        "ui_meta": presentation.get("ui_meta") if isinstance(presentation.get("ui_meta"), dict) else None,
-        "entity_ref": row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else None,
+        "structured_content": presentation.get("structured_content")
+        if isinstance(presentation.get("structured_content"), dict)
+        else None,
+        "ui_meta": presentation.get("ui_meta")
+        if isinstance(presentation.get("ui_meta"), dict)
+        else None,
+        "entity_ref": row.get("entity_ref_json")
+        if isinstance(row.get("entity_ref_json"), dict)
+        else None,
         "fields": row.get("fields_json") if isinstance(row.get("fields_json"), list) else [],
         "primary_label": row["primary_label"],
         "secondary_label": row.get("secondary_label"),
@@ -457,11 +543,15 @@ def _create_interrupt(
         "metadata": presentation,
         "created_at": row["created_at"],
         "resolved_at": row.get("resolved_at"),
-        "resolution": row.get("resolution_json") if isinstance(row.get("resolution_json"), dict) else {},
+        "resolution": row.get("resolution_json")
+        if isinstance(row.get("resolution_json"), dict)
+        else {},
     }
 
 
-def _build_interrupt_resolution(*, interrupt_id: str, action: str, values: dict[str, Any]) -> dict[str, Any]:
+def _build_interrupt_resolution(
+    *, interrupt_id: str, action: str, values: dict[str, Any]
+) -> dict[str, Any]:
     now = utc_now().isoformat()
     return {
         "id": new_id("resolution"),
@@ -482,7 +572,9 @@ def _complete_interrupt(
     resolution: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = utc_now().isoformat()
-    resolution = resolution or _build_interrupt_resolution(interrupt_id=interrupt_id, action=action, values=values)
+    resolution = resolution or _build_interrupt_resolution(
+        interrupt_id=interrupt_id, action=action, values=values
+    )
     next_status = "submitted" if action == "submit" else "dismissed"
     conn.execute(
         """
@@ -535,7 +627,17 @@ def _record_trace(
     return row
 
 
-def _merge_session_state(conn: Connection, *, command: str, response_text: str, matched_intent: str, planner: str, status: str, tool_names: list[str], extra: dict[str, Any] | None = None) -> dict[str, Any]:
+def _merge_session_state(
+    conn: Connection,
+    *,
+    command: str,
+    response_text: str,
+    matched_intent: str,
+    planner: str,
+    status: str,
+    tool_names: list[str],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     payload = {
         "last_command": command,
         "last_matched_intent": matched_intent,
@@ -553,11 +655,15 @@ def _merge_session_state(conn: Connection, *, command: str, response_text: str, 
     return conversation_service.merge_session_state(conn, payload)
 
 
-def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, metadata: dict[str, Any]) -> dict[str, Any]:
+def _build_runtime_request(
+    conn: Connection, *, thread_id: str, content: str, metadata: dict[str, Any]
+) -> dict[str, Any]:
     snapshot = assistant_thread_service.get_thread_snapshot(conn, thread_id, message_limit=12)
     recent_messages = []
     for message in snapshot["messages"]:
-        message_content, message_cards = assistant_projection_service.legacy_projection_from_parts(message["parts"])
+        message_content, message_cards = assistant_projection_service.legacy_projection_from_parts(
+            message["parts"]
+        )
         recent_messages.append(
             {
                 "id": message["id"],
@@ -581,8 +687,12 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
     )
     recent_tool_traces: list[dict[str, Any]] = []
     for trace in traces:
-        result_payload = trace.get("result_json") if isinstance(trace.get("result_json"), dict) else {}
-        metadata_payload = trace.get("metadata_json") if isinstance(trace.get("metadata_json"), dict) else {}
+        result_payload = (
+            trace.get("result_json") if isinstance(trace.get("result_json"), dict) else {}
+        )
+        metadata_payload = (
+            trace.get("metadata_json") if isinstance(trace.get("metadata_json"), dict) else {}
+        )
         projected_cards = conversation_card_service.project_step_cards(
             conn,
             SimpleNamespace(
@@ -620,8 +730,12 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
                 "recent_tool_traces": recent_tool_traces,
                 "strategic_context_cards": snapshot.get("context_cards", []),
                 "request_metadata": metadata,
-                "memory_context": memory_vault_service.runtime_memory_context(conn, query=content, limit=4),
-                "assistant_memory_suggestions": memory_vault_service.list_suggestions(conn, surface="assistant", refresh=True)[:3],
+                "memory_context": memory_vault_service.runtime_memory_context(
+                    conn, query=content, limit=4
+                ),
+                "assistant_memory_suggestions": memory_vault_service.list_suggestions(
+                    conn, surface="assistant", refresh=True
+                )[:3],
                 "recommendation_hints": memory_service.list_recommendation_hints(conn, limit=8),
                 "ui_capabilities": _ui_capability_manifest(),
             },
@@ -630,7 +744,18 @@ def _build_runtime_request(conn: Connection, *, thread_id: str, content: str, me
     return runtime_request.model_dump(mode="json")
 
 
-def _request_due_date_interrupt(conn: Connection, *, thread_id: str, run_id: str, content: str, title: str, arguments: dict[str, Any], input_mode: str, device_target: str, metadata: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _request_due_date_interrupt(
+    conn: Connection,
+    *,
+    thread_id: str,
+    run_id: str,
+    content: str,
+    title: str,
+    arguments: dict[str, Any],
+    input_mode: str,
+    device_target: str,
+    metadata: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     interrupt = _create_interrupt(
         conn,
         run_id=run_id,
@@ -641,8 +766,20 @@ def _request_due_date_interrupt(conn: Connection, *, thread_id: str, run_id: str
         body="Give the missing fields so Starlog can create the task without leaving the thread.",
         fields=[
             {"id": "due_date", "kind": "date", "label": "Due date", "required": True},
-            {"id": "priority", "kind": "priority", "label": "Priority", "value": int(arguments.get("priority") or 3), "min": 1, "max": 5},
-            {"id": "create_time_block", "kind": "toggle", "label": "Create 45m block", "value": False},
+            {
+                "id": "priority",
+                "kind": "priority",
+                "label": "Priority",
+                "value": int(arguments.get("priority") or 3),
+                "min": 1,
+                "max": 5,
+            },
+            {
+                "id": "create_time_block",
+                "kind": "toggle",
+                "label": "Create 45m block",
+                "value": False,
+            },
         ],
         primary_label="Create task",
         secondary_label="Not now",
@@ -681,8 +818,14 @@ def _request_due_date_interrupt(conn: Connection, *, thread_id: str, run_id: str
             "interrupt_id": interrupt["id"],
         },
         parts=[
-            assistant_projection_service.text_part("I can add that now. I only need when you want it due."),
-            assistant_projection_service.card_part(assistant_projection_service.draft_task_card(title=title, priority=int(arguments.get("priority") or 3))),
+            assistant_projection_service.text_part(
+                "I can add that now. I only need when you want it due."
+            ),
+            assistant_projection_service.card_part(
+                assistant_projection_service.draft_task_card(
+                    title=title, priority=int(arguments.get("priority") or 3)
+                )
+            ),
             assistant_projection_service.interrupt_request_part(interrupt),
             assistant_projection_service.status_part("requires_action", "Waiting for task details"),
         ],
@@ -842,7 +985,12 @@ def _assistant_message_from_command_response(
         tool_names=[step.tool_name for step in response.steps],
         extra=_study_session_state_extra(response),
     )
-    _update_run(conn, run_id=run_id, status="completed" if response.status != "failed" else "failed", summary=response.summary)
+    _update_run(
+        conn,
+        run_id=run_id,
+        status="completed" if response.status != "failed" else "failed",
+        summary=response.summary,
+    )
     return assistant_message
 
 
@@ -1055,7 +1203,11 @@ def _assistant_message_from_dynamic_ui_capability_request(
         arguments={},
         status="ok",
         result={"ui_capabilities": manifest},
-        metadata={"planner": "deterministic", "kind": "protocol_tool", "capability_manifest_version": manifest["version"]},
+        metadata={
+            "planner": "deterministic",
+            "kind": "protocol_tool",
+            "capability_manifest_version": manifest["version"],
+        },
     )
     _merge_session_state(
         conn,
@@ -1081,8 +1233,82 @@ def _assistant_message_from_runtime_turn(
     device_target: str,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    runtime_interrupts: list[dict[str, Any]] = []
+    for raw_interrupt in turn.get("interrupts") if isinstance(turn.get("interrupts"), list) else []:
+        if not isinstance(raw_interrupt, dict):
+            continue
+        tool_name = str(raw_interrupt.get("tool_name") or "").strip()
+        if not tool_name:
+            continue
+        interrupt_metadata = (
+            raw_interrupt.get("metadata") if isinstance(raw_interrupt.get("metadata"), dict) else {}
+        )
+        interrupt_metadata = {
+            **interrupt_metadata,
+            "user_content": str(interrupt_metadata.get("user_content") or content),
+            "input_mode": input_mode,
+            "device_target": device_target,
+            "request_metadata": metadata,
+            "display_mode": str(
+                interrupt_metadata.get("display_mode")
+                or raw_interrupt.get("display_mode")
+                or "composer"
+            ),
+        }
+        if raw_interrupt.get("consequence_preview") is not None:
+            interrupt_metadata["consequence_preview"] = raw_interrupt.get("consequence_preview")
+        if raw_interrupt.get("defer_label") is not None:
+            interrupt_metadata["defer_label"] = raw_interrupt.get("defer_label")
+        if isinstance(raw_interrupt.get("recommended_defaults"), dict):
+            interrupt_metadata["recommended_defaults"] = raw_interrupt.get("recommended_defaults")
+        if raw_interrupt.get("destructive") is not None:
+            interrupt_metadata["destructive"] = bool(raw_interrupt.get("destructive"))
+
+        runtime_interrupts.append(
+            _create_interrupt(
+                conn,
+                run_id=run_id,
+                thread_id=thread_id,
+                tool_name=tool_name,
+                interrupt_type=str(raw_interrupt.get("interrupt_type") or "form"),
+                title=str(raw_interrupt.get("title") or "Assistant needs input"),
+                body=str(raw_interrupt.get("body") or ""),
+                fields=raw_interrupt.get("fields")
+                if isinstance(raw_interrupt.get("fields"), list)
+                else [],
+                primary_label=str(raw_interrupt.get("primary_label") or "Submit"),
+                secondary_label=str(raw_interrupt.get("secondary_label"))
+                if raw_interrupt.get("secondary_label") is not None
+                else None,
+                renderer_key=str(raw_interrupt.get("renderer_key")).strip()
+                if raw_interrupt.get("renderer_key") is not None
+                else None,
+                renderer_version=raw_interrupt.get("renderer_version")
+                if isinstance(raw_interrupt.get("renderer_version"), int)
+                else None,
+                placement=str(raw_interrupt.get("placement")).strip()
+                if raw_interrupt.get("placement") is not None
+                else None,
+                structured_content=raw_interrupt.get("structured_content")
+                if isinstance(raw_interrupt.get("structured_content"), dict)
+                else None,
+                ui_meta=raw_interrupt.get("ui_meta")
+                if isinstance(raw_interrupt.get("ui_meta"), dict)
+                else None,
+                metadata=interrupt_metadata,
+                entity_ref=raw_interrupt.get("entity_ref")
+                if isinstance(raw_interrupt.get("entity_ref"), dict)
+                else None,
+                tool_call_id=str(raw_interrupt.get("tool_call_id")).strip()
+                if raw_interrupt.get("tool_call_id") is not None
+                else None,
+            )
+        )
+
     runtime_cards = conversation_card_service.normalize_cards(
-        turn.get("cards") if isinstance(turn.get("cards"), list) else [
+        turn.get("cards")
+        if isinstance(turn.get("cards"), list)
+        else [
             {
                 "kind": "assistant_summary",
                 "title": "Assistant",
@@ -1096,23 +1322,39 @@ def _assistant_message_from_runtime_turn(
     )
     if runtime_parts:
         if runtime_cards and not any(part.get("type") == "card" for part in runtime_parts):
-            runtime_parts.extend(assistant_projection_service.card_part(card) for card in runtime_cards)
-        if str(turn.get("response_text") or "").strip() and not any(part.get("type") == "text" for part in runtime_parts):
-            runtime_parts.insert(0, assistant_projection_service.text_part(str(turn.get("response_text") or "")))
+            runtime_parts.extend(
+                assistant_projection_service.card_part(card) for card in runtime_cards
+            )
+        if str(turn.get("response_text") or "").strip() and not any(
+            part.get("type") == "text" for part in runtime_parts
+        ):
+            runtime_parts.insert(
+                0, assistant_projection_service.text_part(str(turn.get("response_text") or ""))
+            )
     else:
         runtime_parts = assistant_projection_service.synthesize_parts_from_legacy(
             content=str(turn.get("response_text") or ""),
             cards=runtime_cards,
         )
-    suggestion_cards = conversation_card_service.memory_suggestion_cards(conn, surface="assistant", limit=2)
+    suggestion_cards = conversation_card_service.memory_suggestion_cards(
+        conn, surface="assistant", limit=2
+    )
     for card in suggestion_cards:
         runtime_parts.append(assistant_projection_service.card_part(card))
-    response_text, all_cards = assistant_projection_service.legacy_projection_from_parts(runtime_parts)
+    for interrupt in runtime_interrupts:
+        runtime_parts.append(assistant_projection_service.interrupt_request_part(interrupt))
+    if runtime_interrupts and not any(part.get("type") == "status" for part in runtime_parts):
+        runtime_parts.append(
+            assistant_projection_service.status_part("requires_action", "Waiting for task details")
+        )
+    response_text, all_cards = assistant_projection_service.legacy_projection_from_parts(
+        runtime_parts
+    )
     assistant_message = assistant_thread_service.append_message(
         conn,
         thread_id=thread_id,
         role="assistant",
-        status="complete",
+        status="requires_action" if runtime_interrupts else "complete",
         run_id=run_id,
         metadata={
             "chat_turn": {
@@ -1121,18 +1363,64 @@ def _assistant_message_from_runtime_turn(
                 "model": turn.get("model") or "",
                 "metadata": turn.get("metadata") if isinstance(turn.get("metadata"), dict) else {},
             },
-            "status": "completed",
+            "status": "requires_action" if runtime_interrupts else "completed",
             "input_mode": input_mode,
             "device_target": device_target,
             "request_metadata": metadata,
         },
         parts=runtime_parts,
     )
+    for index, interrupt in enumerate(runtime_interrupts):
+        interrupt_metadata = (
+            interrupt.get("metadata") if isinstance(interrupt.get("metadata"), dict) else {}
+        )
+        planned_arguments = (
+            interrupt_metadata.get("planned_arguments")
+            if isinstance(interrupt_metadata.get("planned_arguments"), dict)
+            else {}
+        )
+        step_result = {
+            "interrupt_id": interrupt["id"],
+            "provider_used": turn.get("provider_used") or "local_prompt_preview",
+        }
+        _record_step(
+            conn,
+            run_id=run_id,
+            thread_id=thread_id,
+            step_index=index,
+            title=str(interrupt.get("title") or interrupt.get("tool_name") or "Runtime interrupt"),
+            tool_name=str(interrupt.get("tool_name") or ""),
+            tool_kind="ui_tool",
+            status="requires_action",
+            arguments=planned_arguments,
+            result=step_result,
+            interrupt_id=str(interrupt["id"]),
+            message_id=assistant_message["id"],
+            metadata={
+                "workflow": turn.get("workflow") or "chat_turn",
+                "provider_used": turn.get("provider_used") or "local_prompt_preview",
+                "kind": "runtime_interrupt",
+            },
+        )
+        _record_trace(
+            conn,
+            thread_id=thread_id,
+            assistant_message_id=assistant_message["id"],
+            tool_name=str(interrupt.get("tool_name") or ""),
+            arguments=planned_arguments,
+            status="requires_action",
+            result=step_result,
+            metadata={
+                "workflow": turn.get("workflow") or "chat_turn",
+                "provider_used": turn.get("provider_used") or "local_prompt_preview",
+                "kind": "runtime_interrupt",
+            },
+        )
     _record_step(
         conn,
         run_id=run_id,
         thread_id=thread_id,
-        step_index=0,
+        step_index=len(runtime_interrupts),
         title="Chat turn runtime",
         tool_name="chat_turn_runtime",
         tool_kind="system_tool",
@@ -1178,7 +1466,12 @@ def _assistant_message_from_runtime_turn(
             "last_chat_turn_model": turn.get("model") or "",
         },
     )
-    _update_run(conn, run_id=run_id, status="completed", summary=response_text)
+    _update_run(
+        conn,
+        run_id=run_id,
+        status="interrupted" if runtime_interrupts else "completed",
+        summary=response_text,
+    )
     return assistant_message
 
 
@@ -1195,7 +1488,9 @@ def start_run(
     thread = assistant_thread_service.get_thread(conn, thread_id, user_id=user_id)
     raw_request_metadata = metadata if isinstance(metadata, dict) else {}
     request_metadata = {
-        key: value for key, value in raw_request_metadata.items() if key not in {"handoff_context", "handoff_token"}
+        key: value
+        for key, value in raw_request_metadata.items()
+        if key not in {"handoff_context", "handoff_token"}
     }
     handoff_token = str(raw_request_metadata.get("handoff_token") or "").strip()
     if handoff_token:
@@ -1226,7 +1521,9 @@ def start_run(
     )
 
     try:
-        command_for_planning = _normalize_dynamic_ui_command(conn, thread_id=thread["id"], content=content)
+        command_for_planning = _normalize_dynamic_ui_command(
+            conn, thread_id=thread["id"], content=content
+        )
         if _is_dynamic_ui_capability_request(content):
             _assistant_message_from_dynamic_ui_capability_request(
                 conn,
@@ -1317,7 +1614,11 @@ def start_run(
 
     snapshot = assistant_thread_service.get_thread_snapshot(conn, thread["id"], user_id=user_id)
     final_run = next(item for item in snapshot["runs"] if item["id"] == run["id"])
-    assistant_messages = [message for message in snapshot["messages"] if message.get("run_id") == run["id"] and message["role"] == "assistant"]
+    assistant_messages = [
+        message
+        for message in snapshot["messages"]
+        if message.get("run_id") == run["id"] and message["role"] == "assistant"
+    ]
     return {
         "thread_id": thread["id"],
         "run": final_run,
@@ -1376,7 +1677,9 @@ def queue_voice_run(
     )
 
 
-def _interrupt_row(conn: Connection, interrupt_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+def _interrupt_row(
+    conn: Connection, interrupt_id: str, *, user_id: str | None = None
+) -> dict[str, Any]:
     owner_user_id = assistant_thread_service._require_assistant_user(conn, user_id)
     sql = """
         SELECT i.*
@@ -1412,7 +1715,9 @@ def _run_row(conn: Connection, run_id: str, *, user_id: str | None = None) -> di
     return row
 
 
-def get_run(conn: Connection, *, thread_id: str, run_id: str, user_id: str | None = None) -> dict[str, Any]:
+def get_run(
+    conn: Connection, *, thread_id: str, run_id: str, user_id: str | None = None
+) -> dict[str, Any]:
     snapshot = assistant_thread_service.get_thread_snapshot(conn, thread_id, user_id=user_id)
     for run in snapshot["runs"]:
         if run["id"] == run_id:
@@ -1426,18 +1731,24 @@ def cancel_run(conn: Connection, *, run_id: str, user_id: str | None = None) -> 
     return get_run(conn, thread_id=str(row["thread_id"]), run_id=run_id, user_id=user_id)
 
 
-def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+def submit_interrupt(
+    conn: Connection, *, interrupt_id: str, values: dict[str, Any], user_id: str | None = None
+) -> dict[str, Any]:
     row = _interrupt_row(conn, interrupt_id, user_id=user_id)
     if row["status"] != "pending":
         if row["status"] == "submitted":
-            return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
+            return assistant_thread_service.get_thread_snapshot(
+                conn, str(row["thread_id"]), user_id=user_id
+            )
         raise ValueError("Interrupt is no longer pending")
 
     metadata = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
     handler = assistant_interrupt_handlers.handler_for_tool(str(row["tool_name"]))
     if handler is not None:
         handler.validate_submit(row=row, metadata=metadata, values=values)
-        resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="submit", values=values)
+        resolution = _build_interrupt_resolution(
+            interrupt_id=interrupt_id, action="submit", values=values
+        )
         context = assistant_interrupt_handlers.InterruptActionContext(
             row=row,
             metadata=metadata,
@@ -1447,7 +1758,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
             record_step=_record_step,
             record_trace=_record_trace,
             complete_interrupt=_complete_interrupt,
-            update_run=_update_run,
+            update_run=_update_run_after_interrupt_resolution,
             merge_session_state=_merge_session_state,
             assistant_client_timezone=_assistant_client_timezone,
             due_date_to_utc_start=lambda due_date, client_timezone: _due_date_to_utc_start(
@@ -1455,6 +1766,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 client_timezone=client_timezone,
             ),
             review_rating_label=_review_rating_label,
+            next_step_index=_next_step_index,
         )
         try:
             handler.submit(conn, context=context, values=values)
@@ -1467,9 +1779,13 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 stage=f"interrupt:{row['tool_name']}",
                 metadata={"interrupt_id": interrupt_id},
             )
-        return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
+        return assistant_thread_service.get_thread_snapshot(
+            conn, str(row["thread_id"]), user_id=user_id
+        )
 
-    resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="submit", values=values)
+    resolution = _build_interrupt_resolution(
+        interrupt_id=interrupt_id, action="submit", values=values
+    )
     try:
         if row["tool_name"] == "triage_capture":
             artifact_id = str(metadata.get("artifact_id") or "")
@@ -1541,7 +1857,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 conn,
                 run_id=row["run_id"],
                 thread_id=row["thread_id"],
-                step_index=1,
+                step_index=_next_step_index(conn, run_id=row["run_id"]),
                 title="Save capture triage",
                 tool_name="triage_capture",
                 tool_kind="ui_tool",
@@ -1563,7 +1879,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 values=values,
                 resolution=resolution,
             )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Capture triage saved")
+            _update_run_after_interrupt_resolution(
+                conn, run_id=row["run_id"], status="completed", summary="Capture triage saved"
+            )
         elif row["tool_name"] == "resolve_planner_conflict":
             resolution_choice = str(values.get("resolution") or "").strip() or "open_planner"
             assistant_message = assistant_thread_service.append_message(
@@ -1574,7 +1892,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 run_id=row["run_id"],
                 metadata={"interrupt_resolution": resolution},
                 parts=[
-                    assistant_projection_service.text_part(f"Recorded the planner conflict resolution: {resolution_choice}."),
+                    assistant_projection_service.text_part(
+                        f"Recorded the planner conflict resolution: {resolution_choice}."
+                    ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],
             )
@@ -1582,7 +1902,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 conn,
                 run_id=row["run_id"],
                 thread_id=row["thread_id"],
-                step_index=1,
+                step_index=_next_step_index(conn, run_id=row["run_id"]),
                 title="Resolve planner conflict",
                 tool_name="resolve_planner_conflict",
                 tool_kind="ui_tool",
@@ -1599,7 +1919,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 values=values,
                 resolution=resolution,
             )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Planner conflict resolved")
+            _update_run_after_interrupt_resolution(
+                conn, run_id=row["run_id"], status="completed", summary="Planner conflict resolved"
+            )
         elif row["tool_name"] == "choose_morning_focus":
             focus = str(values.get("focus") or "").strip() or "review"
             assistant_message = assistant_thread_service.append_message(
@@ -1610,7 +1932,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 run_id=row["run_id"],
                 metadata={"interrupt_resolution": resolution},
                 parts=[
-                    assistant_projection_service.text_part(f"Locked in the first move for today: {focus.replace('_', ' ')}."),
+                    assistant_projection_service.text_part(
+                        f"Locked in the first move for today: {focus.replace('_', ' ')}."
+                    ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],
             )
@@ -1618,7 +1942,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 conn,
                 run_id=row["run_id"],
                 thread_id=row["thread_id"],
-                step_index=1,
+                step_index=_next_step_index(conn, run_id=row["run_id"]),
                 title="Choose morning focus",
                 tool_name="choose_morning_focus",
                 tool_kind="ui_tool",
@@ -1635,7 +1959,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 values=values,
                 resolution=resolution,
             )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Morning focus selected")
+            _update_run_after_interrupt_resolution(
+                conn, run_id=row["run_id"], status="completed", summary="Morning focus selected"
+            )
         elif row["tool_name"] == "clarify_schedule_time":
             scheduled_time = str(values.get("scheduled_time") or values.get("time") or "").strip()
             if not scheduled_time:
@@ -1648,7 +1974,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 run_id=row["run_id"],
                 metadata={"interrupt_resolution": resolution},
                 parts=[
-                    assistant_projection_service.text_part(f"Recorded the schedule time: {scheduled_time}."),
+                    assistant_projection_service.text_part(
+                        f"Recorded the schedule time: {scheduled_time}."
+                    ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],
             )
@@ -1656,7 +1984,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 conn,
                 run_id=row["run_id"],
                 thread_id=row["thread_id"],
-                step_index=1,
+                step_index=_next_step_index(conn, run_id=row["run_id"]),
                 title="Clarify schedule time",
                 tool_name="clarify_schedule_time",
                 tool_kind="ui_tool",
@@ -1673,7 +2001,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 values=values,
                 resolution=resolution,
             )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Schedule time recorded")
+            _update_run_after_interrupt_resolution(
+                conn, run_id=row["run_id"], status="completed", summary="Schedule time recorded"
+            )
         elif row["tool_name"] == "defer_recommendation":
             remind_at = str(values.get("remind_at") or values.get("reminder") or "").strip()
             if not remind_at:
@@ -1686,7 +2016,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 run_id=row["run_id"],
                 metadata={"interrupt_resolution": resolution},
                 parts=[
-                    assistant_projection_service.text_part(f"Reminder preference saved: {remind_at.replace('_', ' ')}."),
+                    assistant_projection_service.text_part(
+                        f"Reminder preference saved: {remind_at.replace('_', ' ')}."
+                    ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],
             )
@@ -1694,7 +2026,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 conn,
                 run_id=row["run_id"],
                 thread_id=row["thread_id"],
-                step_index=1,
+                step_index=_next_step_index(conn, run_id=row["run_id"]),
                 title="Defer recommendation",
                 tool_name="defer_recommendation",
                 tool_kind="ui_tool",
@@ -1711,7 +2043,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 values=values,
                 resolution=resolution,
             )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Reminder preference saved")
+            _update_run_after_interrupt_resolution(
+                conn, run_id=row["run_id"], status="completed", summary="Reminder preference saved"
+            )
         elif row["tool_name"] == "link_capture_project":
             project_id = str(values.get("project_id") or "").strip()
             if not project_id:
@@ -1726,11 +2060,15 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                     "interrupt_resolution": resolution,
                     "project_link": {
                         "project_id": project_id,
-                        "entity_ref": row.get("entity_ref_json") if isinstance(row.get("entity_ref_json"), dict) else {},
+                        "entity_ref": row.get("entity_ref_json")
+                        if isinstance(row.get("entity_ref_json"), dict)
+                        else {},
                     },
                 },
                 parts=[
-                    assistant_projection_service.text_part(f"Recorded the project link: {project_id}."),
+                    assistant_projection_service.text_part(
+                        f"Recorded the project link: {project_id}."
+                    ),
                     assistant_projection_service.interrupt_resolution_part(resolution),
                 ],
             )
@@ -1738,7 +2076,7 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 conn,
                 run_id=row["run_id"],
                 thread_id=row["thread_id"],
-                step_index=1,
+                step_index=_next_step_index(conn, run_id=row["run_id"]),
                 title="Link capture project",
                 tool_name="link_capture_project",
                 tool_kind="ui_tool",
@@ -1755,7 +2093,9 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
                 values=values,
                 resolution=resolution,
             )
-            _update_run(conn, run_id=row["run_id"], status="completed", summary="Project link recorded")
+            _update_run_after_interrupt_resolution(
+                conn, run_id=row["run_id"], status="completed", summary="Project link recorded"
+            )
         else:
             raise ValueError(f"Unsupported interrupt tool: {row['tool_name']}")
     except Exception as exc:
@@ -1768,14 +2108,20 @@ def submit_interrupt(conn: Connection, *, interrupt_id: str, values: dict[str, A
             metadata={"interrupt_id": interrupt_id},
         )
 
-    return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
+    return assistant_thread_service.get_thread_snapshot(
+        conn, str(row["thread_id"]), user_id=user_id
+    )
 
 
-def dismiss_interrupt(conn: Connection, *, interrupt_id: str, user_id: str | None = None) -> dict[str, Any]:
+def dismiss_interrupt(
+    conn: Connection, *, interrupt_id: str, user_id: str | None = None
+) -> dict[str, Any]:
     row = _interrupt_row(conn, interrupt_id, user_id=user_id)
     if row["status"] != "pending":
         if row["status"] == "dismissed":
-            return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
+            return assistant_thread_service.get_thread_snapshot(
+                conn, str(row["thread_id"]), user_id=user_id
+            )
         raise ValueError("Interrupt is no longer pending")
     resolution = _build_interrupt_resolution(interrupt_id=interrupt_id, action="dismiss", values={})
     assistant_interrupt_handlers.dismiss_interrupt(
@@ -1784,6 +2130,8 @@ def dismiss_interrupt(conn: Connection, *, interrupt_id: str, user_id: str | Non
         interrupt_id=interrupt_id,
         resolution=resolution,
         complete_interrupt=_complete_interrupt,
-        update_run=_update_run,
+        update_run=_update_run_after_interrupt_resolution,
     )
-    return assistant_thread_service.get_thread_snapshot(conn, str(row["thread_id"]), user_id=user_id)
+    return assistant_thread_service.get_thread_snapshot(
+        conn, str(row["thread_id"]), user_id=user_id
+    )
