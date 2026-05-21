@@ -106,6 +106,7 @@ export type MobileAssistantUiThread = {
 const DIAGNOSTIC_CARD_KINDS = new Set(["thread_context", "tool_step"]);
 const DIAGNOSTIC_TOOL_NAMES = new Set(["list_dynamic_ui_capabilities"]);
 const MOBILE_NATIVE_DYNAMIC_PANEL_RENDERERS = new Set([
+  "request_due_date",
   "interview.topic_unlock",
   "interview.topic_read",
   "interview.question_request",
@@ -252,6 +253,11 @@ function firstRecordString(record: Record<string, unknown>, ...keys: string[]): 
   return firstString(...keys.map((key) => record[key]));
 }
 
+function recordValue(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key];
+  return hasRecordValue(value) ? value : {};
+}
+
 function statusForAssistantUiPanel(
   message: MobileAssistantUiThreadMessage,
   descriptor: DynamicUiAssistantUiDescriptor,
@@ -291,7 +297,16 @@ function nativeDynamicPanelRendererKey(part: MobileAssistantUiRichPart): string 
   return rendererKey;
 }
 
-function titleForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): string {
+function titleForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>, uiMeta: Record<string, unknown>, fallbackLabel: string): string {
+  if (rendererKey === "request_due_date") {
+    return (
+      firstRecordString(content, "title", "task_title") ||
+      firstRecordString(uiMeta, "title", "task_title") ||
+      fallbackLabel ||
+      firstRecordString(recordValue(uiMeta, "planned_arguments"), "title") ||
+      "Finish task details"
+    );
+  }
   if (rendererKey === "interview.topic_unlock") {
     return firstRecordString(content, "topic_title", "title") || "Topic unlocked";
   }
@@ -310,7 +325,14 @@ function titleForAssistantUiPanel(rendererKey: string, content: Record<string, u
   return firstRecordString(content, "recommendation", "title") || "Why this now";
 }
 
-function bodyForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): string | null {
+function bodyForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>, uiMeta: Record<string, unknown>): string | null {
+  if (rendererKey === "request_due_date") {
+    return (
+      firstRecordString(content, "body", "detail", "task_detail") ||
+      firstRecordString(uiMeta, "body", "detail", "task_detail") ||
+      "Choose a due date and priority so Starlog can create the task."
+    );
+  }
   if (rendererKey === "interview.topic_unlock") {
     return firstRecordString(content, "unlock_reason", "reason");
   }
@@ -390,10 +412,54 @@ function reviewGradePanelFields(content: Record<string, unknown>): {
   };
 }
 
+function structuredPanelFields(content: Record<string, unknown>): AssistantInterruptField[] {
+  const fields = content.fields;
+  if (!Array.isArray(fields)) {
+    return [];
+  }
+  return fields.filter((field): field is AssistantInterruptField => {
+    if (!hasRecordValue(field)) {
+      return false;
+    }
+    return typeof field.id === "string" && typeof field.kind === "string" && typeof field.label === "string";
+  });
+}
+
+function structuredRecommendedDefaults(content: Record<string, unknown>): Record<string, unknown> {
+  const defaults = content.recommended_defaults;
+  return hasRecordValue(defaults) ? defaults : {};
+}
+
+function requestDueDatePanelFields(content: Record<string, unknown>): {
+  fields: AssistantInterruptField[];
+  recommendedDefaults: Record<string, unknown>;
+} {
+  const fields = structuredPanelFields(content);
+  const recommendedDefaults = Object.fromEntries(
+    Object.entries(structuredRecommendedDefaults(content)).filter(([key]) => key !== "create_time_block"),
+  );
+  if (fields.length > 0) {
+    return { fields: fields.filter((field) => field.id !== "create_time_block"), recommendedDefaults };
+  }
+  const priority = recommendedDefaults.priority ?? 3;
+  return {
+    fields: [
+      { id: "due_date", kind: "date", label: "Due date", required: true },
+      { id: "priority", kind: "priority", label: "Priority", required: false, value: priority },
+    ],
+    recommendedDefaults: {
+      priority,
+    },
+  };
+}
+
 function fieldsForAssistantUiPanel(rendererKey: string, content: Record<string, unknown>): {
   fields: AssistantInterruptField[];
   recommendedDefaults: Record<string, unknown>;
 } {
+  if (rendererKey === "request_due_date") {
+    return requestDueDatePanelFields(content);
+  }
   if (rendererKey === "interview.question_request") {
     return questionRequestPanelFields(content);
   }
@@ -408,6 +474,9 @@ function toolNameForAssistantUiPanel(rendererKey: string): string {
 }
 
 function primaryLabelForAssistantUiPanel(rendererKey: string): string {
+  if (rendererKey === "request_due_date") {
+    return "Create task";
+  }
   if (rendererKey === "interview.question_request") {
     return "Create question";
   }
@@ -418,6 +487,23 @@ function primaryLabelForAssistantUiPanel(rendererKey: string): string {
     return "Open topic";
   }
   return "Acknowledge";
+}
+
+function secondaryLabelForAssistantUiPanel(rendererKey: string, status: AssistantInterruptStatus): string | null {
+  if (status !== "pending") {
+    return null;
+  }
+  if (rendererKey === "request_due_date") {
+    return "Not now";
+  }
+  return "Later";
+}
+
+function interruptTypeForAssistantUiPanel(rendererKey: string, fields: AssistantInterruptField[]): AssistantInterrupt["interrupt_type"] {
+  if (rendererKey === "request_due_date") {
+    return "form";
+  }
+  return fields.length > 0 ? "choice" : "confirm";
 }
 
 export function mobileDynamicPanelInterruptsFromAssistantUiMessage(
@@ -449,13 +535,13 @@ export function mobileDynamicPanelInterruptsFromAssistantUiMessage(
         thread_id: message.metadata.custom.starlogThreadId,
         tool_call_id: descriptor.tool_call_id,
         status,
-        interrupt_type: fields.length > 0 ? "choice" : "confirm",
+        interrupt_type: interruptTypeForAssistantUiPanel(rendererKey, fields),
         tool_name: toolNameForAssistantUiPanel(rendererKey),
-        title: titleForAssistantUiPanel(rendererKey, structuredContent),
-        body: bodyForAssistantUiPanel(rendererKey, structuredContent),
+        title: titleForAssistantUiPanel(rendererKey, structuredContent, uiMeta, part.label),
+        body: bodyForAssistantUiPanel(rendererKey, structuredContent, uiMeta),
         fields,
         primary_label: primaryLabelForAssistantUiPanel(rendererKey),
-        secondary_label: status === "pending" ? "Later" : null,
+        secondary_label: secondaryLabelForAssistantUiPanel(rendererKey, status),
         display_mode: displayModeForDynamicPlacement(descriptor.placement),
         recommended_defaults: recommendedDefaults,
         metadata: {

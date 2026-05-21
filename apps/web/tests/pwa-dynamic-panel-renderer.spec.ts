@@ -92,7 +92,7 @@ function dynamicPanelSnapshot() {
       fields: [
         { id: "due_date", kind: "date", label: "Due date", required: true },
         { id: "priority", kind: "priority", label: "Priority", value: 3, min: 1, max: 5 },
-        { id: "create_time_block", kind: "toggle", label: "Create 45m block", value: false },
+        { id: "create_time_block", kind: "toggle", label: "Unsupported time block", value: false },
       ],
       recommended_defaults: { priority: 3, create_time_block: false },
     }),
@@ -398,8 +398,7 @@ test("submits and dismisses dynamic panels through existing assistant interrupt 
   await expect(taskPanel.getByLabel("Due date")).toHaveValue(tomorrowIso);
   await taskPanel.getByRole("radio", { name: "Priority 4" }).click();
   await expect(taskPanel.getByRole("radio", { name: "Priority 4" })).toHaveAttribute("aria-checked", "true");
-  await taskPanel.getByLabel("Create 45m block").check();
-  await expect(taskPanel.getByLabel("Create 45m block")).toBeChecked();
+  await expect(taskPanel).not.toContainText("Unsupported time block");
   await taskPanel.getByRole("button", { name: "Create task" }).click();
 
   await expect.poll(() => submissions.length).toBe(1);
@@ -407,8 +406,8 @@ test("submits and dismisses dynamic panels through existing assistant interrupt 
   expect(submissions[0].values).toMatchObject({
     due_date: tomorrowIso,
     priority: "4",
-    create_time_block: true,
   });
+  expect(submissions[0].values).not.toHaveProperty("create_time_block");
   expect(typeof submissions[0].values.client_timezone).toBe("string");
 
   const reviewPanel = page.getByTestId("assistant-ui-review-grade");

@@ -110,15 +110,16 @@ For local phone setup, use [PHONE_SETUP.md](/home/ubuntu/starlog/docs/PHONE_SETU
 Interview-loop note:
 
 - Native `Assistant` is partially migrated to the RN assistant-ui dynamic UI path for the interview-prep
-  flow (`read` -> `unlock` -> `question` -> review grade). Current evidence includes assistant-ui
-  shell/thread/composer markers, dynamic-panel host metadata, and Assistant-hosted review-grade controls.
-  Unsupported Starlog panel shapes still use compatibility fallback screens; those fallbacks are not the
-  target runtime.
+  flow (`read` -> `unlock` -> `question` -> review grade) and due-date task creation. Current evidence
+  includes assistant-ui shell/thread/composer markers, dynamic-panel host metadata, Assistant-hosted
+  due-date/review-grade controls, and Planner cache-first alarm scheduling. Unsupported Starlog panel
+  shapes still use compatibility fallback screens; those fallbacks are not the target runtime.
 - Current native Android evidence is local/physical-device evidence from the fresh-local SRS validation
   harness. Latest proof:
-  `.localdata/android-local-validation/builds/20260521T053609Z/latest.json`. It proves the bounded
-  interview-prep loop and Assistant-hosted review-grade dynamic UI, not broad production-hosted Android
-  parity or full server-owned native runtime migration.
+  `.localdata/android-local-validation/builds/20260521T111452Z/latest.json`. It proves the bounded
+  interview-prep loop, due-date dynamic UI task creation, Assistant-hosted review-grade dynamic UI, and
+  Planner briefing/alarm path, not broad production-hosted Android parity or full server-owned native
+  runtime migration.
 
 ## Codex And Local AI
 

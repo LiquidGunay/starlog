@@ -80,8 +80,7 @@
 .eyebrowRow span {
   margin: 0;
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   color: rgba(244, 241, 232, 0.58);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -91,7 +90,7 @@
   border-radius: 999px;
   padding: 5px 8px;
   background: rgba(255, 255, 255, 0.07);
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .copy {
@@ -129,7 +128,7 @@
   background: rgba(255, 255, 255, 0.08);
   color: rgba(244, 241, 232, 0.84);
   font-size: 12px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-decoration: none;
   overflow-wrap: anywhere;
   white-space: normal;

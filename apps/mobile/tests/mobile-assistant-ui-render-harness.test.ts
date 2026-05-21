@@ -84,6 +84,7 @@ Module._load = function mockMobileRenderHarnessDependencies(request: string, par
       Text: nativeComponent("Text"),
       TextInput: nativeComponent("TextInput"),
       TouchableOpacity: nativeComponent("TouchableOpacity"),
+      Switch: nativeComponent("Switch"),
       View: nativeComponent("View"),
       useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
     };
@@ -266,6 +267,16 @@ function findText(node: RenderNode | RenderNode[], text: string): boolean {
   return found;
 }
 
+function findByAccessibilityLabel(node: RenderNode | RenderNode[], label: string): ElementNode[] {
+  const matches: ElementNode[] = [];
+  visit(node, (current) => {
+    if (current && typeof current === "object" && !Array.isArray(current) && current.props.accessibilityLabel === label) {
+      matches.push(current);
+    }
+  });
+  return matches;
+}
+
 function textIncludes(node: RenderNode | RenderNode[], text: string): boolean {
   let found = false;
   visit(node, (current) => {
@@ -304,6 +315,15 @@ function visit(node: RenderNode | RenderNode[], visitor: (node: RenderNode) => v
   if (node && typeof node === "object") {
     node.children.forEach((child) => visit(child, visitor));
   }
+}
+
+function localDateValue(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function interrupt(overrides: Partial<AssistantInterrupt>): AssistantInterrupt {
@@ -698,6 +718,142 @@ try {
 
     assert.deepEqual(submits, [{ id: "focus-submit-panel", values: { focus: "project" } }]);
     assert.deepEqual(dismisses, ["focus-submit-panel"]);
+  }
+
+  {
+    resetHooks();
+    currentAssistantUiMessages = [];
+    assistantUiComposerText = "";
+    const dueDate = interrupt({
+      id: "due-date-panel",
+      tool_name: "request_due_date",
+      title: "Finish task details",
+      body: "Give the missing fields so Starlog can create the task without leaving the thread.",
+      interrupt_type: "form",
+      display_mode: "composer",
+      placement: "composer",
+      fields: [
+        { id: "due_date", kind: "date", label: "Due date", required: true },
+        { id: "priority", kind: "priority", label: "Priority", required: false, value: 3 },
+        { id: "create_time_block", kind: "toggle", label: "Unsupported time block", required: false, value: false },
+      ],
+      primary_label: "Create task",
+      secondary_label: "Not now",
+      recommended_defaults: { priority: 3, create_time_block: false },
+      consequence_preview: "Creates a Planner task. Time blocking can be handled next.",
+      entity_ref: {
+        entity_type: "task",
+        entity_id: "draft:Review diffusion notes",
+        title: "Review diffusion notes",
+      },
+      metadata: {
+        planned_tool_name: "create_task",
+        planned_arguments: { title: "Review diffusion notes", priority: 3 },
+      },
+    });
+    const submits: Array<{ id: string; values: Record<string, unknown> }> = [];
+    const dismisses: string[] = [];
+    const message: AssistantThreadMessage = {
+      id: "msg_due_date_panel",
+      thread_id: "primary",
+      run_id: "run-due-date",
+      role: "assistant",
+      status: "requires_action",
+      created_at: "2026-05-19T05:00:00Z",
+      updated_at: "2026-05-19T05:00:00Z",
+      metadata: {},
+      parts: [
+        { type: "text", id: "part-text", text: "I can add that now. I only need when you want it due." },
+        { type: "interrupt_request", id: "part-due-date", interrupt: dueDate },
+      ],
+    };
+
+    const render = () =>
+      MobileAssistantRebuild({
+        styles: {},
+        palette: {
+          ...palette,
+          onAccent: "#0f172a",
+          error: "#ffb4b7",
+        },
+        pendingConversationTurn: false,
+        homeDraft: "",
+        setHomeDraft: () => undefined,
+        runAssistantTurn: () => undefined,
+        onVoiceAction: () => undefined,
+        onCancelVoiceAction: () => undefined,
+        voiceActionState: "idle",
+        voiceActionHint: null,
+        refreshThread: () => undefined,
+        resetConversationSession: () => undefined,
+        threadSnapshot: {
+          id: "primary",
+          slug: "primary",
+          title: "Primary",
+          mode: "assistant",
+          messages: [message],
+          interrupts: [dueDate],
+          next_cursor: null,
+          updated_at: "2026-05-19T05:00:00Z",
+          metadata: {},
+        },
+        visibleThreadMessages: [message],
+        hiddenThreadMessageCount: 0,
+        previewCommandFlow: () => undefined,
+        formatCardMeta: () => "",
+        onCardAction: () => undefined,
+        onInterruptSubmit: (id: string, values: Record<string, unknown>) => {
+          submits.push({ id, values });
+        },
+        onInterruptDismiss: (id: string) => {
+          dismisses.push(id);
+        },
+        reuseCardText: () => undefined,
+        onOpenEntityRef: () => undefined,
+        onOpenAttachment: () => undefined,
+        assistantTodaySummary: null,
+        assistantWeeklySummary: null,
+        onAssistantTodayAction: () => undefined,
+      });
+
+    let tree = renderWithHooks(render);
+
+    assert.equal(findByTestId(tree, "assistant-ui-shell").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-host").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-submit-due-date-panel").length, 1);
+    assert.equal(findByTestId(tree, "mobile-dynamic-panel-secondary-due-date-panel").length, 1);
+    assert.equal(findText(tree, "Task details"), true);
+    assert.equal(findText(tree, "Finish task details"), true);
+    assert.equal(findText(tree, "Review diffusion notes"), true);
+    assert.equal(findText(tree, "Due date"), true);
+    assert.equal(findText(tree, "Today"), true);
+    assert.equal(findText(tree, "Tomorrow"), true);
+    assert.equal(findText(tree, "Priority"), true);
+    assert.equal(findText(tree, "Unsupported time block"), false);
+    assert.equal(findText(tree, "Create task"), true);
+    assert.equal(findText(tree, "Not now"), true);
+    assert.equal(textIncludes(tree, "request_due_date"), false);
+    assert.equal(textIncludes(tree, "Request due date"), false);
+    assert.equal(textIncludes(tree, "tool_name"), false);
+    assert.equal(textIncludes(tree, "Composer panel"), false);
+    assert.equal(textIncludes(tree, "runtime"), false);
+
+    const tomorrowButton = findByAccessibilityLabel(tree, "Tomorrow")[0];
+    assert.equal(typeof tomorrowButton.props.onPress, "function");
+    (tomorrowButton.props.onPress as () => void)();
+    tree = renderWithHooks(render);
+
+    (findByTestId(tree, "mobile-dynamic-panel-submit-due-date-panel")[0].props.onPress as () => void)();
+    (findByTestId(tree, "mobile-dynamic-panel-secondary-due-date-panel")[0].props.onPress as () => void)();
+
+    assert.equal(submits.length, 1);
+    assert.equal(submits[0].id, "due-date-panel");
+    assert.equal(submits[0].values.due_date, localDateValue(1));
+    assert.equal(submits[0].values.priority, 3);
+    assert.equal(Object.prototype.hasOwnProperty.call(submits[0].values, "create_time_block"), false);
+    assert.equal(typeof submits[0].values.client_timezone, "string");
+    assert.equal(String(submits[0].values.client_timezone).length > 0, true);
+    assert.deepEqual(dismisses, ["due-date-panel"]);
   }
 
   {

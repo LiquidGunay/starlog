@@ -37,6 +37,9 @@ EXISTING_APK_PATH="${EXISTING_APK_PATH:-}"
 ASSISTANT_COMMAND_TEXT="${ASSISTANT_COMMAND_TEXT:-Ask, capture, plan, review, or move something forward...}"
 ASSISTANT_CAPABILITY_COMMAND="${ASSISTANT_CAPABILITY_COMMAND:-show me what UI actions you can take}"
 ASSISTANT_COMMAND="${ASSISTANT_COMMAND:-summarize latest artifact}"
+ASSISTANT_DUE_DATE_RUN_LABEL="${ASSISTANT_DUE_DATE_RUN_LABEL:-$(date -u +%Y%m%dT%H%M%SZ)}"
+ASSISTANT_DUE_DATE_TASK_TITLE="${ASSISTANT_DUE_DATE_TASK_TITLE:-Review diffusion notes ${ASSISTANT_DUE_DATE_RUN_LABEL}}"
+ASSISTANT_DUE_DATE_COMMAND="${ASSISTANT_DUE_DATE_COMMAND:-create task ${ASSISTANT_DUE_DATE_TASK_TITLE}}"
 ADB_INSTALL_TIMEOUT_SEC="${ADB_INSTALL_TIMEOUT_SEC:-900}"
 SKIP_ADB_PREFLIGHT="${SKIP_ADB_PREFLIGHT:-0}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -51,6 +54,7 @@ STAGED_APK="$BUILD_DIR/$BUILD_NAME"
 WINDOWS_APK_PATH="$WINDOWS_TEMP_ROOT/$BUILD_NAME"
 METADATA_PATH="$BUILD_DIR/latest.json"
 LATEST_METADATA_PATH="$BUILD_ROOT/latest.json"
+VALIDATED_FLOW_MARKERS_PATH="$BUILD_DIR/validated-flows.txt"
 LATEST_APK_PATH="$BUILD_ROOT/latest.apk"
 TOP_ACTIVITY_PATH="$BUILD_DIR/top-activity.txt"
 WINDOW_POLICY_PATH="$BUILD_DIR/window-policy.txt"
@@ -120,6 +124,22 @@ block() {
   exit 2
 }
 
+mark_validated_flow() {
+  local marker="$1"
+  mkdir -p "$BUILD_DIR"
+  touch "$VALIDATED_FLOW_MARKERS_PATH"
+  if ! grep -Fxq "$marker" "$VALIDATED_FLOW_MARKERS_PATH"; then
+    printf '%s\n' "$marker" >> "$VALIDATED_FLOW_MARKERS_PATH"
+  fi
+}
+
+mark_validated_flows() {
+  local marker
+  for marker in "$@"; do
+    mark_validated_flow "$marker"
+  done
+}
+
 write_failure_metadata_once() {
   local reason="${1:-validation failed}"
   if [[ "${FAILURE_METADATA_WRITTEN:-0}" == "1" || "${VALIDATION_PASSED:-0}" == "1" ]]; then
@@ -148,6 +168,7 @@ write_failure_metadata_once() {
     API_BASE_ENV="$API_BASE" \
     RUNTIME_DIR_ENV="$RUNTIME_DIR" \
     PASSPHRASE_FILE_ENV="$PASSPHRASE_FILE" \
+    VALIDATED_FLOW_MARKERS_PATH_ENV="$VALIDATED_FLOW_MARKERS_PATH" \
     INCLUDE_LOCAL_METADATA_ENV="${STARLOG_INCLUDE_LOCAL_METADATA:-0}" \
     FAILURE_STAGE_ENV="${STARLOG_FAILURE_STAGE:-failed}" \
     FAILURE_REASON_ENV="$reason" \
@@ -159,6 +180,16 @@ import os
 path = Path(os.environ["METADATA_PATH_ENV"])
 latest_path = Path(os.environ["LATEST_METADATA_PATH_ENV"])
 include_local_metadata = os.environ["INCLUDE_LOCAL_METADATA_ENV"].lower() in {"1", "true", "yes"}
+validated_flow_markers_path = Path(os.environ["VALIDATED_FLOW_MARKERS_PATH_ENV"])
+
+validated_flows = []
+if validated_flow_markers_path.is_file():
+    seen = set()
+    for marker in validated_flow_markers_path.read_text(encoding="utf-8").splitlines():
+        marker = marker.strip()
+        if marker and marker not in seen:
+            seen.add(marker)
+            validated_flows.append(marker)
 
 payload = {
     "stamp": os.environ["STAMP_ENV"],
@@ -168,7 +199,7 @@ payload = {
     "api_base_kind": "local" if os.environ["API_BASE_ENV"].startswith("http://127.0.0.1:") else "configured",
     "screenshots": {},
     "evidence_files": {},
-    "validated_flows": [],
+    "validated_flows": validated_flows,
     "validation_stage": os.environ["FAILURE_STAGE_ENV"],
     "validation_passed": False,
     "failure_reason": os.environ["FAILURE_REASON_ENV"],
@@ -1222,16 +1253,41 @@ def bounds_of(node):
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = (node.attrib.get("content-desc") or "").lower()
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -1284,16 +1340,41 @@ def bounds_of(node):
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = (node.attrib.get("content-desc") or "").lower()
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -1345,16 +1426,41 @@ def center(bounds: tuple[int, int, int, int]) -> str:
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = (node.attrib.get("content-desc") or "").lower()
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -1410,16 +1516,41 @@ def center(bounds: tuple[int, int, int, int]) -> str:
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = (node.attrib.get("content-desc") or "").lower()
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -1507,22 +1638,48 @@ def bounds_of(node):
     return left, top, right, bottom
 
 
+def is_nav_label(value: str, expected: str) -> bool:
+    value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+    if not value:
+        return False
+    parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+    for part in parts:
+        part = re.sub(r"[^a-z ]+", " ", part)
+        part = re.sub(r"\s+", " ", part).strip()
+        if part == expected:
+            return True
+        words = part.split()
+        if words and words[0] == expected and set(words[1:]).issubset({"tab", "selected"}):
+            return True
+    return False
+
+
+screen_bottom = 0
+for node in root.iter("node"):
+    try:
+        _left, _top, _right, bottom = bounds_of(node)
+    except ValueError:
+        continue
+    screen_bottom = max(screen_bottom, bottom)
+screen_floor = int(screen_bottom * 0.86)
+
+
 def is_bottom_candidate(node: dict) -> bool:
     bounds = bounds_of(node)
     left, top, right, bottom = bounds
     # Keep it near the bottom nav rail area across screen sizes.
-    return top >= 1700 and bottom > top
+    return top >= 1700 and bottom >= screen_floor and right > left and bottom > top
 
 
 matches = []
 for node in root.iter("node"):
     if node.attrib.get("clickable") != "true":
         continue
-    desc = (node.attrib.get("content-desc") or "").strip().lower()
-    text = (node.attrib.get("text") or "").strip().lower()
+    desc = node.attrib.get("content-desc") or ""
+    text = node.attrib.get("text") or ""
     if not is_bottom_candidate(node):
         continue
-    if tab in desc or f", {tab}" in desc or f"{tab}," in desc or tab in text:
+    if is_nav_label(desc, tab) or is_nav_label(text, tab):
         matches.append(node)
 
 if not matches:
@@ -1589,16 +1746,41 @@ def bounds_of(node):
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = normalize(node.attrib.get("content-desc") or "")
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -1690,16 +1872,41 @@ def bounds_of(node):
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = (node.attrib.get("content-desc") or "").lower()
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -1811,16 +2018,41 @@ def bounds_of(node):
 
 
 def bottom_nav_top():
+    nav_labels = {"assistant", "library", "planner", "review"}
+
+    def is_nav_label(value):
+        value = re.sub(r"\s+", " ", value.lower().strip()).strip("[]")
+        if not value:
+            return False
+        parts = [part.strip() for part in value.split(",") if part.strip()] or [value]
+        for part in parts:
+            part = re.sub(r"[^a-z ]+", " ", part)
+            part = re.sub(r"\s+", " ", part).strip()
+            if part in nav_labels:
+                return True
+            words = part.split()
+            if words and words[0] in nav_labels and set(words[1:]).issubset({"tab", "selected"}):
+                return True
+        return False
+
+    screen_bottom = 0
+    for node in root.iter("node"):
+        bounds = bounds_of(node)
+        if bounds:
+            screen_bottom = max(screen_bottom, bounds[3])
+    screen_floor = int(screen_bottom * 0.86)
+
     candidates = []
     for node in root.iter("node"):
-        desc = (node.attrib.get("content-desc") or "").lower()
-        if not any(tab in desc for tab in ("assistant", "library", "planner", "review")):
+        desc = node.attrib.get("content-desc") or ""
+        text = node.attrib.get("text") or ""
+        if not (is_nav_label(desc) or is_nav_label(text)):
             continue
         bounds = bounds_of(node)
         if not bounds:
             continue
         left, top, right, bottom = bounds
-        if top >= 1600 and right > left and bottom > top:
+        if top >= 1600 and bottom >= screen_floor and right > left and bottom > top:
             candidates.append(top)
     return min(candidates) if candidates else 10**9
 
@@ -2011,6 +2243,11 @@ assert_assistant_ui_shell_and_transcript() {
   fail "Assistant-ui shell/thread proof missing (shell=${found_shell}, thread=${found_thread})"
 }
 
+assert_assistant_ui_shell_thread_composer() {
+  local screenshot_prefix="${1:-assistant-ui}"
+  assert_assistant_ui_shell_and_transcript "" "$screenshot_prefix"
+}
+
 assert_assistant_dynamic_ui_capability_prompt() {
   local deadline=$((SECONDS + 45))
   local found_summary=0
@@ -2093,6 +2330,37 @@ wait_for_assistant_surface() {
   fail "Timed out waiting for Assistant tab surface"
 }
 
+ui_has_planner_surface_marker() {
+  if ui_has_review_controls; then
+    return 1
+  fi
+
+  if ! { ui_has_exact_text "Planner" || ui_has_text "Starlog Planner"; }; then
+    return 1
+  fi
+
+  ui_has_text "Active decision" \
+    || ui_has_text "Day timeline" \
+    || ui_has_exact_text "Next focus" \
+    || ui_has_exact_text "Upcoming" \
+    || ui_has_text "Set next focus" \
+    || ui_has_text "Open calendar" \
+    || ui_has_text "Refresh Planner" \
+    || ui_has_text "Previous planner day" \
+    || ui_has_text "Next planner day" \
+    || ui_has_exact_text "Alarm schedule" \
+    || ui_has_exact_text "Alarm is not scheduled yet" \
+    || ui_has_exact_text "Alarm is not scheduled yet." \
+    || ui_has_exact_text "Generate and cache briefing" \
+    || ui_has_exact_text "No offline briefing cached yet" \
+    || ui_has_text "Morning briefing" \
+    || ui_has_text "Briefing" \
+    || ui_has_text "No alarm" \
+    || ui_has_text "Alarm scheduled" \
+    || ui_has_text "Scheduled for" \
+    || ui_has_text "Daily alarm scheduled"
+}
+
 wait_for_planner_surface() {
   local deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
@@ -2104,8 +2372,7 @@ wait_for_planner_surface() {
       continue
     fi
 
-    if ! ui_has_review_controls \
-      && (ui_has_text "Starlog Planner" || ui_has_exact_text "Alarm schedule" || ui_has_text "Morning briefing" || ui_has_text "Briefing" || ui_has_text "No alarm"); then
+    if ui_has_planner_surface_marker; then
       return 0
     fi
     sleep 1
@@ -2319,17 +2586,7 @@ scroll_planner_content_once() {
 }
 
 assert_planner_surface() {
-  if ! (
-    ui_has_text "Starlog Planner" \
-    || ui_has_exact_text "Alarm schedule" \
-    || ui_has_exact_text "Alarm is not scheduled yet" \
-    || ui_has_exact_text "Alarm is not scheduled yet." \
-    || ui_has_exact_text "Generate and cache briefing" \
-    || ui_has_exact_text "No offline briefing cached yet" \
-    || ui_has_text "Alarm scheduled" \
-    || ui_has_text "Scheduled for" \
-    || ui_has_text "Daily alarm scheduled"
-  ) || ui_has_review_controls; then
+  if ! ui_has_planner_surface_marker; then
     return 1
   fi
   return 0
@@ -2392,7 +2649,8 @@ for node in root.iter("node"):
         continue
 
     if any(marker in text for marker in alarm_status_markers) or any(marker in desc for marker in alarm_status_markers):
-        status_nodes.append((left, top, right, bottom))
+        if node.attrib.get("clickable") != "true":
+            status_nodes.append((left, top, right, bottom))
         continue
 
     if time_pattern.search(text) or time_pattern.search(desc):
@@ -2405,7 +2663,16 @@ title_left = min(node[0] for node in title_nodes)
 title_top = min(node[1] for node in title_nodes)
 title_right = max(node[2] for node in title_nodes)
 title_bottom = max(node[3] for node in title_nodes)
-status_or_time_nodes = status_nodes + time_nodes
+
+def is_near_alarm_title(bounds):
+    left, top, right, _ = bounds
+    if top < title_top - 24 or top > title_top + 560:
+        return False
+    if right < title_left - 40 or left > title_right + 40:
+        return False
+    return True
+
+status_or_time_nodes = [node for node in status_nodes + time_nodes if is_near_alarm_title(node)]
 if not status_or_time_nodes:
     raise SystemExit(1)
 
@@ -2451,12 +2718,27 @@ for node in root.iter("node"):
     desc = normalize(node.attrib.get("content-desc") or "")
     if any(token in text for token in review_markers) or any(token in desc for token in review_markers):
         continue
-    if any(token in text for token in cache_markers) or any(token in desc for token in cache_markers):
+
+    is_cache_control = any(token in text for token in cache_markers) or any(token in desc for token in cache_markers)
+    if is_cache_control:
+        if node.attrib.get("enabled") == "true" and (
+            "generate and cache briefing" in text or "generate and cache briefing" in desc
+        ):
+            raise SystemExit(0)
         continue
 
-    if class_name in {"android.view.viewgroup", "android.view.view"}:
+    alarm_hint = (
+        "toggle morning alarm" in desc
+        or ("morning alarm" in desc and "toggle" in desc)
+        or "alarm" in desc
+    )
+    switchish = class_name in {"android.widget.switch", "android.widget.togglebutton", "android.widget.checkbox"}
+    if not alarm_hint and not switchish:
+        continue
+
+    if class_name in {"android.view.viewgroup", "android.view.view"} and alarm_hint:
         raise SystemExit(0)
-    if class_name in {"android.widget.switch", "android.widget.togglebutton", "android.widget.checkbox"}:
+    if switchish:
         raise SystemExit(0)
 
 raise SystemExit(1)
@@ -2504,6 +2786,10 @@ import json
 path = sys.argv[1]
 diagnostics_path = sys.argv[2]
 root = ET.parse(path).getroot()
+
+def write_diagnostics(payload):
+    with open(diagnostics_path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, indent=2, sort_keys=True))
 
 screen_left = 0
 screen_right = 1080
@@ -2591,23 +2877,40 @@ for node in root.iter("node"):
         continue
 
     if any(marker in text for marker in alarm_status_markers) or any(marker in desc for marker in alarm_status_markers):
-        status_nodes.append((left, top, right, bottom))
+        if node.attrib.get("clickable") != "true":
+            status_nodes.append((left, top, right, bottom))
         continue
 
     if time_pattern.search(text) or time_pattern.search(desc):
         time_nodes.append((left, top, right, bottom))
 
 if not title_nodes:
-    raise SystemExit(1)
-
-status_or_time_nodes = status_nodes + time_nodes
-if not status_or_time_nodes:
+    write_diagnostics({"error": "alarm_title_not_found"})
     raise SystemExit(1)
 
 title_left = min(node[0] for node in title_nodes)
 title_top = min(node[1] for node in title_nodes)
 title_right = max(node[2] for node in title_nodes)
 title_bottom = max(node[3] for node in title_nodes)
+
+def is_near_alarm_title(bounds):
+    left, top, right, _ = bounds
+    if top < title_top - 24 or top > title_top + 560:
+        return False
+    if right < title_left - 40 or left > title_right + 40:
+        return False
+    return True
+
+status_or_time_nodes = [node for node in status_nodes + time_nodes if is_near_alarm_title(node)]
+if not status_or_time_nodes:
+    write_diagnostics({
+        "error": "alarm_status_or_time_not_found_near_title",
+        "title_bounds": f"{title_left} {title_top} {title_right} {title_bottom}",
+        "status_node_count": len(status_nodes),
+        "time_node_count": len(time_nodes),
+    })
+    raise SystemExit(1)
+
 status_top = min((node[1] for node in status_or_time_nodes), default=title_top)
 status_bottom = max((node[3] for node in status_or_time_nodes), default=title_bottom)
 
@@ -2669,12 +2972,15 @@ for node in root.iter("node"):
         continue
 
     alarm_hint = (
-        "toggle" in desc
+        "toggle morning alarm" in desc
+        or ("morning alarm" in desc and "toggle" in desc)
         or "switch" in text
-        or "morning alarm" in desc
         or "alarm" in desc
     )
+    switchish = class_name in {"android.widget.switch", "android.widget.togglebutton", "android.widget.checkbox"}
     inside_tight_region = top >= region_top and bottom <= region_bottom + 180
+    if not alarm_hint and not switchish:
+        continue
     if not inside_tight_region and not alarm_hint:
         continue
 
@@ -2748,6 +3054,19 @@ if not candidates:
         })
 
 if not candidates:
+    write_diagnostics({
+        "error": "no_alarm_control_candidates",
+        "region": {
+            "left": region_left,
+            "top": region_top,
+            "right": region_right,
+            "bottom": region_bottom,
+            "title_bounds": f"{title_left} {title_top} {title_right} {title_bottom}",
+            "control_anchor_x": control_anchor_x,
+        },
+        "status_or_time_bounds": [f"{left} {top} {right} {bottom}" for left, top, right, bottom in status_or_time_nodes],
+        "top_candidates": [],
+    })
     raise SystemExit(1)
 
 candidates.sort(key=lambda item: (item["score"], item["y"], item["x"]))
@@ -2765,8 +3084,7 @@ payload = {
     },
     "top_candidates": candidates[:8],
 }
-with open(diagnostics_path, "w", encoding="utf-8") as handle:
-    handle.write(json.dumps(payload, indent=2, sort_keys=True))
+write_diagnostics(payload)
 
 print(f"{selected['x']} {selected['y']}")
 PY
@@ -2978,6 +3296,25 @@ if latest:
 PY
 }
 
+latest_assistant_interrupt_submit_status_after_line() {
+  local start_line="$1"
+  python3 - "$API_LOG" "$start_line" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+start_line = int(sys.argv[2])
+lines = open(path, errors="ignore").read().splitlines()
+latest = ""
+for line in lines[start_line:]:
+    match = re.search(r'"POST (/v1/assistant/interrupts/[^/]+/submit) HTTP/[0-9.]+"\s+(\d{3})', line)
+    if match:
+        latest = f"{match.group(1)} {match.group(2)}"
+if latest:
+    print(latest)
+PY
+}
+
 latest_briefing_package_marker() {
   "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" <<'PY'
 from pathlib import Path
@@ -3106,6 +3443,613 @@ assert_assistant_turn_recorded() {
   fail "Did not observe a successful assistant command API response after sending command; expected /v1/assistant/threads/primary/messages or /v1/assistant/threads/primary/events. Last observed: ${endpoint:-none} ${status:-none}"
 }
 
+assistant_command_persisted_in_thread() {
+  local expected_command="$1"
+  local created_after="${2:-}"
+
+  "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" "$expected_command" "$created_after" <<'PY'
+from datetime import datetime, timezone
+import sqlite3
+import sys
+
+db_path, expected_command, created_after = sys.argv[1], sys.argv[2], sys.argv[3]
+
+
+def parse_datetime(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+cutoff = parse_datetime(created_after)
+with sqlite3.connect(db_path) as conn:
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, created_at
+        FROM conversation_messages
+        WHERE role = 'user' AND content = ?
+        ORDER BY created_at DESC
+        """,
+        (expected_command,),
+    ).fetchall()
+
+for row in rows:
+    created_at = parse_datetime(row["created_at"])
+    if cutoff is None or (created_at is not None and created_at >= cutoff):
+        print(f"{row['id']}|created_at={row['created_at']}")
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+assert_assistant_command_persisted_in_thread() {
+  local expected_command="$1"
+  local created_after="${2:-}"
+  local screenshot_prefix="${3:-assistant-command}"
+  local deadline=$((SECONDS + 30))
+  local proof=""
+
+  while (( SECONDS < deadline )); do
+    proof="$(assistant_command_persisted_in_thread "$expected_command" "$created_after" || true)"
+    if [[ -n "$proof" ]]; then
+      log "Assistant command persisted in primary thread (${proof})"
+      return 0
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/${screenshot_prefix}-command-persisted-missing.png"
+  snapshot_phone_state "${screenshot_prefix}-command-persisted-missing"
+  fail "Assistant command was not persisted in the primary thread after submit: $expected_command"
+}
+
+assistant_due_date_command_or_title_recorded() {
+  local expected_command="$1"
+  local title="$2"
+  local run_label="${3:-}"
+  local created_after="${4:-}"
+
+  "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" "$expected_command" "$title" "$run_label" "$created_after" <<'PY'
+from datetime import datetime, timezone
+import json
+import sqlite3
+import sys
+
+db_path, expected_command, title, run_label, created_after = sys.argv[1:6]
+
+
+def parse_datetime(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def is_fresh(value):
+    cutoff = parse_datetime(created_after)
+    created_at = parse_datetime(value)
+    return cutoff is None or (created_at is not None and created_at >= cutoff)
+
+
+def compact(value):
+    return " ".join(str(value or "").split()).replace("|", "/")[:180]
+
+
+def payload_text(payload_json):
+    try:
+        payload = json.loads(payload_json or "{}")
+    except json.JSONDecodeError:
+        return ""
+    return str(payload.get("text") or "")
+
+
+with sqlite3.connect(db_path) as conn:
+    conn.row_factory = sqlite3.Row
+    message_rows = conn.execute(
+        """
+        SELECT id, content, created_at
+        FROM conversation_messages
+        WHERE role = 'user'
+        ORDER BY created_at DESC
+        """
+    ).fetchall()
+    part_rows = conn.execute(
+        """
+        SELECT p.id, p.payload_json, p.created_at
+        FROM conversation_message_parts p
+        JOIN conversation_messages m ON m.id = p.message_id
+        WHERE m.role = 'user' AND p.part_type = 'text'
+        ORDER BY p.created_at DESC
+        """
+    ).fetchall()
+
+for row in message_rows:
+    if is_fresh(row["created_at"]) and str(row["content"] or "") == expected_command:
+        print(f"exact_command_message={row['id']}|created_at={row['created_at']}")
+        raise SystemExit(0)
+
+for row in part_rows:
+    text = payload_text(row["payload_json"])
+    if is_fresh(row["created_at"]) and text == expected_command:
+        print(f"exact_command_part={row['id']}|created_at={row['created_at']}")
+        raise SystemExit(0)
+
+for row in message_rows:
+    content = str(row["content"] or "")
+    has_title = title and title in content
+    has_label = (not run_label) or run_label in content or run_label in title
+    if is_fresh(row["created_at"]) and has_title and has_label:
+        print(f"exact_title_message={row['id']}|created_at={row['created_at']}|content={compact(content)}")
+        raise SystemExit(0)
+
+for row in part_rows:
+    text = payload_text(row["payload_json"])
+    has_title = title and title in text
+    has_label = (not run_label) or run_label in text or run_label in title
+    if is_fresh(row["created_at"]) and has_title and has_label:
+        print(f"exact_title_part={row['id']}|created_at={row['created_at']}|content={compact(text)}")
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+assert_assistant_due_date_command_or_title_recorded() {
+  local expected_command="$1"
+  local title="$2"
+  local run_label="${3:-}"
+  local created_after="${4:-}"
+  local screenshot_prefix="${5:-assistant-due-date-command}"
+  local deadline=$((SECONDS + 30))
+  local proof=""
+
+  while (( SECONDS < deadline )); do
+    proof="$(assistant_due_date_command_or_title_recorded "$expected_command" "$title" "$run_label" "$created_after" || true)"
+    if [[ -n "$proof" ]]; then
+      log "Assistant due-date command/title accepted by API (${proof})"
+      return 0
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/${screenshot_prefix}-command-or-title-missing.png"
+  snapshot_phone_state "${screenshot_prefix}-command-or-title-missing"
+  fail "Assistant due-date submit was not recorded with exact command or exact title/run label after submit: command='$expected_command' title='$title' run_label='${run_label:-none}'"
+}
+
+assistant_due_date_interrupt_opened() {
+  local title="$1"
+  local run_label="${2:-}"
+  local created_after="${3:-}"
+
+  "$VENV_PYTHON" - "$RUNTIME_DIR/starlog.db" "$title" "$run_label" "$created_after" <<'PY'
+from datetime import datetime, timezone
+import json
+import sqlite3
+import sys
+
+db_path, title, run_label, created_after = sys.argv[1:5]
+
+
+def parse_datetime(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def is_fresh(value):
+    cutoff = parse_datetime(created_after)
+    created_at = parse_datetime(value)
+    return cutoff is None or (created_at is not None and created_at >= cutoff)
+
+
+def load_json(value, fallback):
+    try:
+        return json.loads(value or "")
+    except (TypeError, json.JSONDecodeError):
+        return fallback
+
+
+with sqlite3.connect(db_path) as conn:
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT i.id,
+               i.run_id,
+               i.status,
+               i.tool_name,
+               i.title,
+               i.fields_json,
+               i.primary_label,
+               i.metadata_json,
+               i.created_at,
+               s.arguments_json
+        FROM conversation_interrupts i
+        LEFT JOIN conversation_run_steps s ON s.interrupt_id = i.id
+        WHERE i.tool_name = 'request_due_date'
+        ORDER BY i.created_at DESC
+        """
+    ).fetchall()
+
+for row in rows:
+    if not is_fresh(row["created_at"]):
+        continue
+
+    metadata = load_json(row["metadata_json"], {})
+    fields = load_json(row["fields_json"], [])
+    arguments = load_json(row["arguments_json"], {})
+    planned_arguments = metadata.get("planned_arguments") if isinstance(metadata, dict) else {}
+    if not isinstance(planned_arguments, dict):
+        planned_arguments = {}
+    if not isinstance(arguments, dict):
+        arguments = {}
+
+    planned_title = str(planned_arguments.get("title") or "")
+    step_title = str(arguments.get("title") or "")
+    user_content = str(metadata.get("user_content") or "") if isinstance(metadata, dict) else ""
+    label_ok = (not run_label) or run_label in title or run_label in user_content
+    exact_title_ok = planned_title == title or step_title == title
+    interrupt_title_ok = row["title"] == "Finish task details"
+    field_ids = {
+        str(field.get("id") or "")
+        for field in fields
+        if isinstance(field, dict)
+    }
+    expected_fields = {"due_date", "priority", "create_time_block"}
+
+    if (
+        row["status"] == "pending"
+        and row["primary_label"] == "Create task"
+        and interrupt_title_ok
+        and exact_title_ok
+        and label_ok
+        and expected_fields.issubset(field_ids)
+    ):
+        print(
+            f"interrupt={row['id']}|run={row['run_id']}|status={row['status']}|"
+            f"interrupt_title={row['title']}|task_title={title}|created_at={row['created_at']}"
+        )
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+assert_assistant_due_date_interrupt_opened() {
+  local title="$1"
+  local run_label="${2:-}"
+  local created_after="${3:-}"
+  local screenshot_prefix="${4:-assistant-due-date-command}"
+  local deadline=$((SECONDS + 30))
+  local proof=""
+
+  while (( SECONDS < deadline )); do
+    proof="$(assistant_due_date_interrupt_opened "$title" "$run_label" "$created_after" || true)"
+    if [[ -n "$proof" ]]; then
+      log "Fresh due-date interrupt opened (${proof})"
+      return 0
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/${screenshot_prefix}-interrupt-missing.png"
+  snapshot_phone_state "${screenshot_prefix}-interrupt-missing"
+  fail "Fresh request_due_date interrupt was not opened for exact task title/run label: title='$title' run_label='${run_label:-none}'"
+}
+
+assert_assistant_interrupt_submit_recorded() {
+  local log_line_before="$1"
+  local deadline=$((SECONDS + 30))
+  local endpoint=""
+  local status=""
+  local status_line=""
+
+  while (( SECONDS < deadline )); do
+    status_line="$(latest_assistant_interrupt_submit_status_after_line "$log_line_before" || true)"
+    if [[ -n "$status_line" ]]; then
+      read -r endpoint status <<<"$status_line"
+      if [[ "$status" == "200" || "$status" == "201" || "$status" == "204" ]]; then
+        return 0
+      fi
+
+      if [[ "$status" == "400" || "$status" == "401" || "$status" == "403" || "$status" == "404" || "$status" == "422" ]]; then
+        fail "Assistant interrupt submit request to $endpoint returned HTTP $status (check $API_LOG)"
+      fi
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-submit-timeout.png"
+  snapshot_phone_state "assistant-due-date-submit-timeout"
+  fail "Did not observe a successful assistant interrupt submit after tapping Create task. Last observed: ${endpoint:-none} ${status:-none}"
+}
+
+assert_due_date_task_created_in_api() {
+  local title="$1"
+  local created_after="${2:-}"
+  local out_file="$BUILD_DIR/assistant-due-date-tasks.json"
+  local deadline=$((SECONDS + 45))
+  local status=""
+  local reason=""
+
+  if [[ -z "$STARLOG_LOCAL_ACCESS_TOKEN" ]]; then
+    fail "Cannot verify due-date task creation without STARLOG_LOCAL_ACCESS_TOKEN"
+  fi
+
+  while (( SECONDS < deadline )); do
+    status="$(curl -sS -o "$out_file" -w '%{http_code}' \
+      -X GET "$API_BASE/v1/tasks" \
+      -H "Authorization: Bearer $STARLOG_LOCAL_ACCESS_TOKEN" || true)"
+    if [[ "$status" == "200" ]]; then
+      reason="$(python3 - "$out_file" "$title" "$created_after" <<'PY'
+from datetime import datetime, timezone
+import json
+import sys
+
+path, title, created_after = sys.argv[1], sys.argv[2], sys.argv[3]
+payload = json.loads(open(path, encoding="utf-8").read())
+if not isinstance(payload, list):
+    raise SystemExit(1)
+
+
+def parse_datetime(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+cutoff = parse_datetime(created_after)
+matches = [task for task in payload if str(task.get("title") or "") == title]
+if not matches:
+    raise SystemExit(2)
+
+with_due = [task for task in matches if str(task.get("due_at") or "").strip()]
+if not with_due:
+    raise SystemExit(3)
+
+fresh = []
+for task in with_due:
+    created_at = parse_datetime(task.get("created_at")) or parse_datetime(task.get("updated_at"))
+    if cutoff is None or (created_at is not None and created_at >= cutoff):
+        fresh.append(task)
+if not fresh:
+    raise SystemExit(4)
+
+fresh.sort(
+    key=lambda task: parse_datetime(task.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc),
+    reverse=True,
+)
+task = fresh[0]
+print(f"{task.get('id')}|{task.get('due_at')}|created_at={task.get('created_at')}")
+PY
+)" || reason=""
+      if [[ -n "$reason" ]]; then
+        log "Due-date task verified in API (${reason})"
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-task-api-timeout.png"
+  snapshot_phone_state "assistant-due-date-task-api-timeout"
+  fail "Did not find fresh created task '$title' with due_at through /v1/tasks after ${created_after:-submit} (last status: ${status:-unknown})"
+}
+
+ui_has_due_date_time_block_fallback_label() {
+  python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+root = ET.parse(path).getroot()
+values = []
+for node in root.iter("node"):
+    for key in ("text", "content-desc"):
+        value = node.attrib.get(key)
+        if value:
+            values.append(value)
+
+raw = "\n".join(values).lower()
+normalized = re.sub(r"[_\-\s]+", " ", raw)
+
+if "create_time_block" in raw or "create-time-block" in raw:
+    raise SystemExit(0)
+
+fallback_patterns = (
+    r"\bcreate\s+45m\s+block\b",
+    r"\bunsupported\s+time\s+block\b",
+    r"\btime\s+block\s+unsupported\b",
+    r"\bcreate\s+time\s+block\b",
+    r"\btime\s+block\b",
+)
+for pattern in fallback_patterns:
+    if re.search(pattern, normalized):
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+assert_assistant_due_date_dynamic_ui_panel() {
+  local title="$1"
+  local deadline=$((SECONDS + 45))
+  local found_due_date=0
+  local found_tomorrow=0
+  local found_date_input=0
+  local found_priority=0
+  local found_priority_option=0
+  local found_create_task=0
+  local attempt=0
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    assert_assistant_surface_contract
+
+    if ui_has_due_date_time_block_fallback_label; then
+      capture_screen "$SCREENSHOT_DIR/assistant-due-date-time-block-fallback-label.png"
+      snapshot_phone_state "assistant-due-date-time-block-fallback-label"
+      fail "Assistant due-date panel exposed raw or fallback time-block labels instead of due-date task controls"
+    fi
+
+    if ui_has_text "request_due_date" \
+      || ui_has_text "Request due date" \
+      || ui_has_text "renderer_key" \
+      || ui_has_text "tool_name" \
+      || ui_has_text "ui_tool" \
+      || ui_has_text "domain_tool" \
+      || ui_has_text "create_task"; then
+      capture_screen "$SCREENSHOT_DIR/assistant-due-date-dynamic-ui-raw-label.png"
+      snapshot_phone_state "assistant-due-date-dynamic-ui-raw-label"
+      fail "Assistant due-date panel exposed raw renderer/tool labels instead of human dynamic UI labels"
+    fi
+
+    if ui_has_text "Due date"; then
+      found_due_date=1
+    fi
+    if ui_has_text "Tomorrow"; then
+      found_tomorrow=1
+    fi
+    if ui_has_text "YYYY-MM-DD"; then
+      found_date_input=1
+    fi
+    if ui_has_text "Priority"; then
+      found_priority=1
+    fi
+    if ui_has_text "Priority 1" \
+      || ui_has_text "Priority 2" \
+      || ui_has_text "Priority 3" \
+      || ui_has_text "Priority 4" \
+      || ui_has_text "Priority 5"; then
+      found_priority_option=1
+    fi
+    if ui_has_text "Create task"; then
+      found_create_task=1
+    fi
+
+    if (( found_due_date == 1 && found_tomorrow == 1 && found_date_input == 1 && found_priority == 1 && found_priority_option == 1 && found_create_task == 1 )); then
+      capture_screen "$SCREENSHOT_DIR/assistant-due-date-dynamic-ui.png"
+      snapshot_phone_state "assistant-due-date-dynamic-ui"
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      scroll_review_controls_reverse
+    else
+      scroll_review_controls
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-dynamic-ui-missing.png"
+  snapshot_phone_state "assistant-due-date-dynamic-ui-missing"
+  fail "Assistant due-date dynamic UI did not expose visible required controls (Due date, Tomorrow, YYYY-MM-DD, Priority, a priority option, Create task); DB interrupt proof covers request_due_date title and fields"
+}
+
+tap_assistant_exact_text_with_scroll() {
+  local needle="$1"
+  local fail_suffix="$2"
+  local deadline=$((SECONDS + 35))
+  local attempt=0
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    assert_assistant_surface_contract
+
+    if ui_has_exact_text "$needle"; then
+      tap_exact_text "$needle"
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      scroll_review_controls_reverse
+    else
+      scroll_review_controls
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/${fail_suffix}.png"
+  snapshot_phone_state "$fail_suffix"
+  fail "Could not find tappable Assistant text: $needle"
+}
+
+assert_assistant_due_date_confirmation_visible() {
+  local title="$1"
+  local expected="Created task ${title}."
+  local deadline=$((SECONDS + 45))
+  local attempt=0
+
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if ! dump_ui; then
+      sleep 1
+      continue
+    fi
+    assert_assistant_surface_contract
+
+    if ui_has_text "$expected"; then
+      capture_screen "$SCREENSHOT_DIR/assistant-due-date-created.png"
+      snapshot_phone_state "assistant-due-date-created"
+      return 0
+    fi
+
+    if (( attempt % 2 == 0 )); then
+      scroll_review_controls_reverse
+    else
+      scroll_review_controls
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-confirmation-missing.png"
+  snapshot_phone_state "assistant-due-date-confirmation-missing"
+  fail "Assistant due-date task confirmation was not visible: $expected"
+}
+
 assert_review_grade_recorded() {
   local log_line_before="$1"
   local due_count_before="$2"
@@ -3213,6 +4157,60 @@ assert_assistant_review_grade_dynamic_ui() {
   snapshot_phone_state "assistant-review-grade-controls"
   capture_screen "$SCREENSHOT_DIR/assistant-review-grade-dynamic-ui.png"
   snapshot_phone_state "assistant-review-grade-dynamic-ui"
+}
+
+validate_assistant_due_date_dynamic_ui() {
+  log "Opening Assistant to validate due-date dynamic UI task creation"
+  if tap_bottom_nav_tab "assistant"; then
+    wait_for_assistant_surface
+  else
+    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=assistant" -n "$APP_COMPONENT" >/dev/null || true
+    wait_for_assistant_surface
+  fi
+
+  local assistant_due_date_api_log_line_before
+  assistant_due_date_api_log_line_before="$(wc -l < "$API_LOG")"
+  local assistant_due_date_command_started_at
+  assistant_due_date_command_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  if tap_if_present "$ASSISTANT_COMMAND_TEXT"; then
+    clear_focused_text_field
+  else
+    tap_nth_edit_text 0 || fail "Assistant input field not detected; cannot validate due-date dynamic UI."
+    clear_focused_text_field
+  fi
+
+  adb_cmd shell input text "${ASSISTANT_DUE_DATE_COMMAND// /%s}" >/dev/null
+  adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+  sleep 3
+  if ! tap_send_after_first_edit_text "$ASSISTANT_DUE_DATE_COMMAND" "$assistant_due_date_api_log_line_before" 300; then
+    fail "Assistant due-date command still present after send tap; see $SCREENSHOT_DIR/assistant-send-verify-fail.png"
+  fi
+  sleep 2
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-command.png"
+  snapshot_phone_state "assistant-due-date-command"
+  assert_assistant_turn_recorded "$assistant_due_date_api_log_line_before"
+  assert_assistant_ui_shell_thread_composer "assistant-due-date-command"
+  assert_assistant_due_date_command_or_title_recorded "$ASSISTANT_DUE_DATE_COMMAND" "$ASSISTANT_DUE_DATE_TASK_TITLE" "$ASSISTANT_DUE_DATE_RUN_LABEL" "$assistant_due_date_command_started_at" "assistant-due-date-command"
+  assert_assistant_due_date_interrupt_opened "$ASSISTANT_DUE_DATE_TASK_TITLE" "$ASSISTANT_DUE_DATE_RUN_LABEL" "$assistant_due_date_command_started_at" "assistant-due-date-command"
+  assert_assistant_due_date_dynamic_ui_panel "$ASSISTANT_DUE_DATE_TASK_TITLE"
+
+  tap_assistant_exact_text_with_scroll "Tomorrow" "assistant-due-date-tomorrow-missing"
+  sleep 1
+  capture_screen "$SCREENSHOT_DIR/assistant-due-date-tomorrow-selected.png"
+  snapshot_phone_state "assistant-due-date-tomorrow-selected"
+
+  local assistant_due_date_submit_log_line_before
+  assistant_due_date_submit_log_line_before="$(wc -l < "$API_LOG")"
+  local assistant_due_date_submit_started_at
+  assistant_due_date_submit_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  tap_assistant_exact_text_with_scroll "Create task" "assistant-due-date-create-task-missing"
+  sleep 2
+  assert_assistant_interrupt_submit_recorded "$assistant_due_date_submit_log_line_before"
+  assert_assistant_due_date_confirmation_visible "$ASSISTANT_DUE_DATE_TASK_TITLE"
+  assert_due_date_task_created_in_api "$ASSISTANT_DUE_DATE_TASK_TITLE" "$assistant_due_date_submit_started_at"
+  mark_validated_flows "assistant_due_date_dynamic_ui_verified"
+  write_metadata progress
 }
 
 study_mutation_statuses_after_line() {
@@ -3748,6 +4746,8 @@ launch_and_validate_review() {
   assert_review_grade_recorded "$review_api_log_line_before" "$review_due_count_before"
   assert_assistant_review_grade_dynamic_ui
 
+  validate_assistant_due_date_dynamic_ui
+
   log "Opening Planner tab and toggling alarm schedule control"
   if tap_bottom_nav_tab "planner"; then
     wait_for_planner_surface
@@ -3829,6 +4829,7 @@ write_metadata() {
   PASSPHRASE_FILE_ENV="$PASSPHRASE_FILE" \
   INCLUDE_LOCAL_METADATA_ENV="${STARLOG_INCLUDE_LOCAL_METADATA:-0}" \
   SCREENSHOT_DIR_ENV="$SCREENSHOT_DIR" \
+  VALIDATED_FLOW_MARKERS_PATH_ENV="$VALIDATED_FLOW_MARKERS_PATH" \
   METADATA_STAGE_ENV="$metadata_stage" \
   FAILURE_REASON_ENV="${STARLOG_FAILURE_REASON:-}" \
   python3 - <<'PY'
@@ -3841,11 +4842,22 @@ screenshot_dir = os.environ["SCREENSHOT_DIR_ENV"]
 metadata_stage = os.environ["METADATA_STAGE_ENV"]
 include_local_metadata = os.environ["INCLUDE_LOCAL_METADATA_ENV"].lower() in {"1", "true", "yes"}
 failure_reason = os.environ.get("FAILURE_REASON_ENV") or None
+validated_flow_markers_path = Path(os.environ["VALIDATED_FLOW_MARKERS_PATH_ENV"])
+
+completed_flow_markers = []
+if validated_flow_markers_path.is_file():
+    seen = set()
+    for marker in validated_flow_markers_path.read_text(encoding="utf-8").splitlines():
+        marker = marker.strip()
+        if marker and marker not in seen:
+            seen.add(marker)
+            completed_flow_markers.append(marker)
 
 validated_flows = [
     "assistant_ui_shell_thread_composer_verified",
     "assistant_dynamic_ui_capability_prompt_verified",
     "assistant_command_submitted",
+    "assistant_due_date_dynamic_ui_verified",
     "native_study_topic_unlocked",
     "native_study_topic_marked_read",
     "native_study_question_request_created",
@@ -3883,6 +4895,10 @@ screenshot_candidates = {
     "assistant_dynamic_ui_capability_prompt": f"{screenshot_dir}/assistant-dynamic-ui-capability-prompt.png",
     "assistant_command": f"{screenshot_dir}/assistant-command.png",
     "assistant_command_shell_thread_composer": f"{screenshot_dir}/assistant-command-shell-thread-composer.png",
+    "assistant_due_date_command": f"{screenshot_dir}/assistant-due-date-command.png",
+    "assistant_due_date_dynamic_ui": f"{screenshot_dir}/assistant-due-date-dynamic-ui.png",
+    "assistant_due_date_tomorrow_selected": f"{screenshot_dir}/assistant-due-date-tomorrow-selected.png",
+    "assistant_due_date_created": f"{screenshot_dir}/assistant-due-date-created.png",
     "assistant_review_grade_controls": f"{screenshot_dir}/assistant-review-grade-controls.png",
     "assistant_review_grade_dynamic_ui": f"{screenshot_dir}/assistant-review-grade-dynamic-ui.png",
     "planner_open": f"{screenshot_dir}/planner-open.png",
@@ -3906,6 +4922,11 @@ evidence_candidates = {
     "assistant_capability_shell_thread_composer_xml": f"{path.parent}/assistant-capability-shell-thread-composer.xml",
     "assistant_dynamic_ui_capability_prompt_xml": f"{path.parent}/assistant-dynamic-ui-capability-prompt.xml",
     "assistant_command_shell_thread_composer_xml": f"{path.parent}/assistant-command-shell-thread-composer.xml",
+    "assistant_due_date_command_xml": f"{path.parent}/assistant-due-date-command.xml",
+    "assistant_due_date_dynamic_ui_xml": f"{path.parent}/assistant-due-date-dynamic-ui.xml",
+    "assistant_due_date_tomorrow_selected_xml": f"{path.parent}/assistant-due-date-tomorrow-selected.xml",
+    "assistant_due_date_created_xml": f"{path.parent}/assistant-due-date-created.xml",
+    "assistant_due_date_tasks_json": f"{path.parent}/assistant-due-date-tasks.json",
     "assistant_review_grade_controls_xml": f"{path.parent}/assistant-review-grade-controls.xml",
     "assistant_review_grade_dynamic_ui_xml": f"{path.parent}/assistant-review-grade-dynamic-ui.xml",
     "planner_briefing_path_xml": f"{path.parent}/planner-briefing-path.xml",
@@ -3913,6 +4934,17 @@ evidence_candidates = {
     "planner_alarm_briefing_path_xml": f"{path.parent}/planner-alarm-briefing-path.xml",
     "latest_briefing_json": f"{path.parent}/briefing-latest.json",
 }
+
+if metadata_stage == "final":
+    active_validated_flows = list(dict.fromkeys(validated_flows + completed_flow_markers))
+else:
+    completed_flow_marker_set = set(completed_flow_markers)
+    active_validated_flows = [marker for marker in validated_flows if marker in completed_flow_marker_set]
+    known_flow_marker_set = set(validated_flows)
+    active_validated_flows.extend(
+        marker for marker in completed_flow_markers
+        if marker not in known_flow_marker_set and marker not in active_validated_flows
+    )
 
 payload = {
     "stamp": os.environ["STAMP_ENV"],
@@ -3922,7 +4954,7 @@ payload = {
     "api_base_kind": "local" if os.environ["API_BASE_ENV"].startswith("http://127.0.0.1:") else "configured",
     "screenshots": existing_file_map(screenshot_candidates),
     "evidence_files": existing_file_map(evidence_candidates),
-    "validated_flows": validated_flows if metadata_stage == "final" else [],
+    "validated_flows": active_validated_flows,
     "validation_stage": metadata_stage,
     "validation_passed": metadata_stage == "final",
 }

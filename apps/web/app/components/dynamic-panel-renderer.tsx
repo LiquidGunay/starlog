@@ -30,8 +30,9 @@ function valueForField(field: AssistantInterruptField, interrupt: AssistantInter
   if (field.value !== undefined) {
     return field.value;
   }
-  if (interrupt.recommended_defaults && Object.prototype.hasOwnProperty.call(interrupt.recommended_defaults, field.id)) {
-    return interrupt.recommended_defaults[field.id];
+  const defaults = panelRecommendedDefaults(interrupt);
+  if (Object.prototype.hasOwnProperty.call(defaults, field.id)) {
+    return defaults[field.id];
   }
   if (field.kind === "toggle") {
     return false;
@@ -40,7 +41,7 @@ function valueForField(field: AssistantInterruptField, interrupt: AssistantInter
 }
 
 function initialValues(interrupt: AssistantInterrupt): Record<string, unknown> {
-  return interrupt.fields.reduce<Record<string, unknown>>((accumulator, field) => {
+  return panelFields(interrupt).reduce<Record<string, unknown>>((accumulator, field) => {
     accumulator[field.id] = valueForField(field, interrupt);
     return accumulator;
   }, {});
@@ -94,6 +95,30 @@ function firstMetadataString(...values: unknown[]): string | null {
 
 function isTaskDetailPanel(interrupt: AssistantInterrupt): boolean {
   return interrupt.tool_name === "request_due_date" || /missing.*(task|detail)|task.*missing/i.test(interrupt.tool_name);
+}
+
+function panelFields(interrupt: AssistantInterrupt): AssistantInterruptField[] {
+  if (!isTaskDetailPanel(interrupt)) {
+    return interrupt.fields;
+  }
+  return interrupt.fields.filter((field) => field.id !== "create_time_block");
+}
+
+function panelRecommendedDefaults(interrupt: AssistantInterrupt): Record<string, unknown> {
+  const defaults = { ...(interrupt.recommended_defaults || {}) };
+  if (isTaskDetailPanel(interrupt)) {
+    delete defaults.create_time_block;
+  }
+  return defaults;
+}
+
+function submitValuesForPanel(interrupt: AssistantInterrupt, values: Record<string, unknown>): Record<string, unknown> {
+  if (!isTaskDetailPanel(interrupt)) {
+    return values;
+  }
+  const nextValues = { ...values };
+  delete nextValues.create_time_block;
+  return nextValues;
 }
 
 function isCaptureTriagePanel(interrupt: AssistantInterrupt): boolean {
@@ -546,7 +571,7 @@ function displayValueForDefault(interrupt: AssistantInterrupt, fieldId: string, 
 }
 
 function RecommendedDefaults({ interrupt }: { interrupt: AssistantInterrupt }) {
-  const defaults = Object.entries(interrupt.recommended_defaults || {}).filter((entry) => entry[1] !== undefined && entry[1] !== null);
+  const defaults = Object.entries(panelRecommendedDefaults(interrupt)).filter((entry) => entry[1] !== undefined && entry[1] !== null);
   if (defaults.length === 0) {
     return null;
   }
@@ -813,9 +838,10 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
   };
   const variant = panelTone(interrupt);
   const secondaryLabel = interrupt.secondary_label || interrupt.defer_label || "Not now";
+  const baseFields = panelFields(interrupt);
   const visibleFields = isReviewGradePanel(interrupt)
-    ? interrupt.fields.filter((field) => field.id !== "support_action" && !/support|help|mode/i.test(field.id))
-    : interrupt.fields;
+    ? baseFields.filter((field) => field.id !== "support_action" && !/support|help|mode/i.test(field.id))
+    : baseFields;
   const secondaryHref = /\b(open|view)\s+planner\b/i.test(secondaryLabel)
     ? interrupt.entity_ref?.href || "/planner"
     : /\b(open|view)\s+library\b/i.test(secondaryLabel)
@@ -897,7 +923,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
               if (secondarySubmits(interrupt, secondaryLabel)) {
                 const valuesWithoutDate = { ...valuesRef.current };
                 delete valuesWithoutDate.due_date;
-                void onSubmit(interrupt.id, valuesWithoutDate);
+                void onSubmit(interrupt.id, submitValuesForPanel(interrupt, valuesWithoutDate));
                 return;
               }
               void onDismiss(interrupt.id);
@@ -910,7 +936,7 @@ export function DynamicPanelRenderer({ interrupt, busy, onSubmit, onDismiss }: D
         )}
         <button
           type="button"
-          onClick={() => void onSubmit(interrupt.id, valuesRef.current)}
+          onClick={() => void onSubmit(interrupt.id, submitValuesForPanel(interrupt, valuesRef.current))}
           disabled={busy}
           className={interrupt.destructive ? styles.dangerButton : styles.primaryButton}
         >

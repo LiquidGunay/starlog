@@ -320,7 +320,7 @@ const taskDetail = interrupt({
         { label: "Low", value: "3" },
       ],
     },
-    { id: "create_time_block", kind: "toggle", label: "Create 45m focus block", value: true },
+    { id: "create_time_block", kind: "toggle", label: "Unsupported time block", value: true },
   ],
   entity_ref: {
     entity_type: "task",
@@ -335,6 +335,7 @@ assert.deepEqual(mobileTaskDetailPreview(taskDetail), {
   title: "Finish onboarding flow polish",
   detail: "Needs due date and priority before Starlog creates it.",
 });
+assert.deepEqual(defaultPanelValues(taskDetail), { due_date: "2026-04-28", priority: 1 });
 const taskPriorityOptions = mobilePanelOptionViewModels(taskDetail, taskDetail.fields[1], defaultPanelValues(taskDetail));
 assert.equal(taskPriorityOptions[0].selected, true);
 assert.equal(taskPriorityOptions[0].description, "Do this before lower-priority tasks.");
