@@ -43,6 +43,7 @@ type CardResponse = {
 };
 
 type AssistantThreadSnapshot = {
+  session_state: Record<string, unknown>;
   runs: Array<{
     id: string;
     status: string;
@@ -521,10 +522,15 @@ test("grades an interview-prep review card through a mocked agent-emitted dynami
   await page.getByPlaceholder("Ask, capture, plan, review, or move something forward...").fill(command);
   await page.getByRole("button", { name: "Send" }).click();
 
-  await expect(page.getByText("Interview review", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Interview review prompt")).toContainText(prompt);
-  await expect(page.getByText("Updates the SRS schedule for this interview-prep card.")).toBeVisible();
-  await expect(page.getByRole("radiogroup", { name: "Review quality" })).toBeVisible();
+  const main = page.locator("main");
+  const rawProtocolText = /renderer_key|tool_name|tool_call|tool_result|starlog-interrupt-request|Fallback|Diagnostic|Raw|ui_tool|domain_tool|grade_review_recall/i;
+  const reviewPanel = page.getByTestId("assistant-ui-review-grade");
+  await expect(reviewPanel).toHaveAttribute("data-dynamic-ui-renderer", "interview.review_grade");
+  await expect(reviewPanel.getByText("Interview review", { exact: true })).toBeVisible();
+  await expect(reviewPanel.getByLabel("Interview review prompt")).toContainText(prompt);
+  await expect(reviewPanel.getByText("Updates the SRS schedule for this interview-prep card.")).toBeVisible();
+  await expect(reviewPanel.getByRole("radiogroup", { name: "Review quality" })).toBeVisible();
+  await expect(main).not.toContainText(rawProtocolText);
 
   expect(mockRuntimeRequests).toHaveLength(1);
   expect(mockRuntimeRequests[0].text).toBe(command);
@@ -534,11 +540,12 @@ test("grades an interview-prep review card through a mocked agent-emitted dynami
     }),
   );
 
-  await page.getByRole("radio", { name: "Good" }).click();
-  await page.getByRole("button", { name: "Record grade" }).click();
+  await reviewPanel.getByRole("radio", { name: "Good" }).click();
+  await reviewPanel.getByRole("button", { name: "Record grade" }).click();
 
   await expect(page.getByText(`Recorded Good for ${card.review_mode} review: ${prompt}`).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Record grade" })).toHaveCount(0);
+  await expect(main).not.toContainText(rawProtocolText);
 
   const cardsResponse = await request.get(`${apiBase}/v1/cards`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -572,6 +579,24 @@ test("grades an interview-prep review card through a mocked agent-emitted dynami
   expect(reviewRun?.current_interrupt).toBeNull();
   expect(reviewRun?.steps.map((step) => step.step_index)).toEqual([0, 1, 2]);
   expect(reviewRun?.steps.map((step) => step.tool_name)).toEqual(["grade_review_recall", "chat_turn_runtime", "grade_review_recall"]);
+  expect(thread.session_state).toEqual(
+    expect.objectContaining({
+      last_turn_kind: "chat_turn",
+      last_user_message: command,
+      last_matched_intent: "grade_review_recall",
+      last_status: "executed",
+      last_tool_names: ["grade_review_recall"],
+      last_chat_turn_provider: "mock_codex_bridge",
+      last_chat_turn_model: "mock-agent-interview-review",
+      last_assistant_response: expect.stringContaining(`Recorded Good for ${card.review_mode} review: ${prompt}`),
+      last_review_grade: expect.objectContaining({
+        card_id: card.id,
+        rating: 4,
+        rating_label: "Good",
+        review_mode: card.review_mode,
+      }),
+    }),
+  );
 
   mockReviewCardTarget = null;
 });

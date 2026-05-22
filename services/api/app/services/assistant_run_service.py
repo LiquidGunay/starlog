@@ -1249,6 +1249,9 @@ def _assistant_message_from_runtime_turn(
             "input_mode": input_mode,
             "device_target": device_target,
             "request_metadata": metadata,
+            "runtime_provider_used": str(turn.get("provider_used") or "local_prompt_preview"),
+            "runtime_model": str(turn.get("model") or ""),
+            "runtime_workflow": str(turn.get("workflow") or "chat_turn"),
             "display_mode": str(
                 interrupt_metadata.get("display_mode")
                 or raw_interrupt.get("display_mode")
