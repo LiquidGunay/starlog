@@ -23,7 +23,11 @@ runtime-emitted dynamic panel to confirmed backend mutation for due-date task cr
 interview-prep review grading. The same e2e harness also proves a mocked PWA voice capture can enter
 the canonical Assistant thread as an `assistant_thread_voice` job, complete with a transcript, receive
 a runtime-emitted `interview.review_grade` panel, and confirm an SRS mutation without live
-STT/LLM/Codex credentials. For hosted-path discovery,
+STT/LLM/Codex credentials. Focused native tests now prove the corresponding mocked
+on-device-STT-style transcript boundary into `/v1/assistant/threads/primary/messages`, native
+assistant-ui rendering of the Review-grade panel, interrupt-submit request construction, and a mocked
+returned session-state/SRS mutation boundary without live STT/LLM/Codex credentials. For hosted-path
+discovery,
 `https://starlog-web-production.up.railway.app/login` is the intended user entry URL, and the hosted API
 base is `https://starlog-api-production.up.railway.app`. Fresh public unauthenticated checks on
 2026-05-19 returned Railway fallback `HTTP 404` with `x-railway-fallback: true` for hosted `/login`,
@@ -112,7 +116,7 @@ Current functional areas:
 | PWA Planner | `apps/web/tests/ui-functional/pwa-planner.functional.spec.ts` | Planner summary, blocks, calendar events, conflict repair actions, and Assistant handoff drafts against mocked planner/calendar APIs. |
 | Mobile Planner viewport | `apps/web/tests/ui-functional/mobile-planner.functional.spec.ts` | Phone-width Planner Assistant handoff drafts and conflict review link behavior. |
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Clean Review shell/study-loop surface, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
-| Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. These are not browser screenshots or device automation. |
+| Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. Focused native voice/render tests also prove mocked on-device-STT-style transcript submission through the canonical Assistant thread path and native `interview.review_grade` panel submit/snapshot handling. These are not browser screenshots or device automation. |
 | Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for install/login, Assistant, Review/Study, grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling. The current proof is `.localdata/latest/android-study-proof-seed-20260521/latest.json` with `validation_passed: true` and `validation_stage: final`; PR #283 stabilized the harness around exact enabled Study controls and fresh Planner alarm targets. |
 | Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
@@ -135,6 +139,10 @@ Covered:
   session state knows the review-grade outcome. The voice-thread variant uses the real PWA voice
   control with mocked recording upload, completes the resulting `assistant_thread_voice` job with a
   transcript, and then drives `interview.review_grade` to the same confirmed SRS mutation.
+- Native focused tests compile and run a mocked on-device-STT-style transcript through the canonical
+  native Assistant thread request builder, render the resulting native assistant-ui
+  `interview.review_grade` panel without raw protocol labels, submit the panel through the interrupt
+  submit request builder, and verify the mocked returned session-state/SRS mutation boundary.
 - The due-date dynamic UI path creates a Planner task and keeps the user-facing panel free of raw
   protocol/fallback labels and `create_time_block` or time-block controls; the expected copy says
   "Time blocking can be handled next." Current PWA proof covers the live/interview due-date flow plus
@@ -158,8 +166,9 @@ Not yet covered:
 - A live LLM/Codex agent interpreting a natural-language command and deciding to emit a dynamic panel.
 - End-to-end command control of all surfaces from phone/PWA without clicks; the mocked bridge currently
   proves one Review-grade interview-prep loop and due-date task creation, not every surface command.
-- Live/on-device STT voice command to assistant run to dynamic panel to confirmed mutation; the PWA
-  browser recording and job-completion path is covered with deterministic mocks, not real STT.
+- Real Android on-device STT audio capture to assistant run to dynamic panel to confirmed mutation; the
+  PWA browser recording/job-completion path and native on-device-STT-style transcript path are covered
+  with deterministic mocks, not live speech recognition.
 - Native iOS automation of dynamic panels.
 - Repeatable Android functional automation for the full native assistant-ui runtime.
 - Full server-owned assistant-ui runtime migration across web and native mobile.

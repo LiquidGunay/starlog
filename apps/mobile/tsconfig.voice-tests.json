@@ -9,6 +9,7 @@
   },
   "include": [
     "src/assistant-mobile-voice.ts",
+    "src/mobile-assistant-thread-api.ts",
     "tests/mobile-assistant-voice.test.ts"
   ]
 }
