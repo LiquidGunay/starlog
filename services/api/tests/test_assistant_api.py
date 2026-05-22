@@ -1837,6 +1837,199 @@ def test_assistant_voice_message_queue_completes_into_shared_thread(
     assert any(task["title"] == "Voice thread task" for task in tasks.json())
 
 
+def test_assistant_voice_message_completion_can_open_and_resolve_runtime_review_panel(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = client.post(
+        "/v1/cards",
+        json={
+            "prompt": "Apply two pointers to a minimum-window interview problem.",
+            "answer": "Expand the window, satisfy the target counts, then shrink while the window remains valid.",
+            "card_type": "scenario",
+            "due_at": "2026-05-01T00:00:00.000Z",
+            "interval_days": 1,
+            "repetitions": 0,
+            "ease_factor": 2.5,
+            "tags": ["interview-prep", "voice"],
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    card = created.json()
+    transcript = "I answered the current interview prep review card; grade it from voice"
+    runtime_requests: list[dict] = []
+
+    def mock_chat_turn(request: dict) -> dict:
+        runtime_requests.append(request)
+        return {
+            "workflow": "chat_turn",
+            "provider_used": "mock_codex_bridge",
+            "model": "mock-agent-voice-review",
+            "response_text": "I can record that review result once you choose how it went.",
+            "parts": [
+                assistant_projection_service.text_part(
+                    "I can record that review result once you choose how it went."
+                )
+            ],
+            "interrupts": [
+                {
+                    "tool_call_id": "toolcall_voice_review_grade",
+                    "tool_name": "grade_review_recall",
+                    "interrupt_type": "choice",
+                    "title": "Grade application review",
+                    "body": "Choose the grade for the interview-prep card you just answered.",
+                    "primary_label": "Record grade",
+                    "secondary_label": "Not now",
+                    "fields": [
+                        {
+                            "id": "rating",
+                            "kind": "select",
+                            "label": "Review quality",
+                            "value": "3",
+                            "required": True,
+                            "options": [
+                                {"label": "Again", "value": "1"},
+                                {"label": "Hard", "value": "3"},
+                                {"label": "Good", "value": "4"},
+                                {"label": "Easy", "value": "5"},
+                            ],
+                        }
+                    ],
+                    "display_mode": "composer",
+                    "renderer_key": "interview.review_grade",
+                    "renderer_version": 1,
+                    "placement": "inline",
+                    "structured_content": {
+                        "card_id": card["id"],
+                        "prompt": card["prompt"],
+                        "review_mode": card["review_mode"],
+                    },
+                    "ui_meta": {
+                        "tone": "review",
+                        "review_mode": card["review_mode"],
+                        "card_type": card["card_type"],
+                    },
+                    "consequence_preview": "Updates the SRS schedule for this interview-prep card.",
+                    "recommended_defaults": {"rating": "4"},
+                    "entity_ref": {
+                        "entity_type": "card",
+                        "entity_id": card["id"],
+                        "title": card["prompt"],
+                        "href": "/review",
+                    },
+                    "metadata": {
+                        "card_id": card["id"],
+                        "card_type": card["card_type"],
+                        "review_mode": card["review_mode"],
+                        "prompt": card["prompt"],
+                        "planned_tool_name": "grade_review_recall",
+                        "planned_arguments": {"card_id": card["id"]},
+                        "display_mode": "composer",
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr(ai_service, "execute_chat_turn", mock_chat_turn)
+
+    queued = client.post(
+        "/v1/assistant/threads/primary/voice",
+        headers=auth_headers,
+        files={"file": ("assistant-voice.webm", b"voice-bytes", "audio/webm")},
+        data={
+            "title": "PWA voice review grade",
+            "duration_ms": "1800",
+            "device_target": "web-desktop",
+            "provider_hint": "whisper_local",
+            "metadata_json": json.dumps({"surface": "assistant_web", "submitted_via": "voice_recording"}),
+        },
+    )
+    assert queued.status_code == 201
+    job_id = queued.json()["id"]
+    assert queued.json()["action"] == "assistant_thread_voice"
+
+    claim = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "assistant-voice-worker"},
+        headers=auth_headers,
+    )
+    assert claim.status_code == 200
+
+    complete = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "assistant-voice-worker",
+            "provider_used": "whisper_local_mock",
+            "output": {"transcript": transcript},
+        },
+        headers=auth_headers,
+    )
+    assert complete.status_code == 200
+    completed_payload = complete.json()
+    assistant_thread_output = completed_payload["output"]["assistant_thread"]
+    assert assistant_thread_output["run_status"] == "interrupted"
+    assert assistant_thread_output["transcript"] == transcript
+    run_id = assistant_thread_output["run_id"]
+
+    assert len(runtime_requests) == 1
+    assert runtime_requests[0]["text"] == transcript
+    assert runtime_requests[0]["context"]["ui_capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    runtime_run = next(run for run in payload["runs"] if run["id"] == run_id)
+    assert runtime_run["status"] == "interrupted"
+    interrupt = next(
+        item for item in payload["interrupts"] if item["run_id"] == run_id and item["status"] == "pending"
+    )
+    assert interrupt["tool_name"] == "grade_review_recall"
+    assert interrupt["renderer_key"] == "interview.review_grade"
+    assert interrupt["renderer_version"] == 1
+    assert interrupt["structured_content"]["card_id"] == card["id"]
+    assert interrupt["ui_meta"]["review_mode"] == card["review_mode"]
+
+    submit = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"rating": "4"}},
+        headers=auth_headers,
+    )
+    assert submit.status_code == 200
+    submitted_snapshot = submit.json()
+    completed_run = next(run for run in submitted_snapshot["runs"] if run["id"] == run_id)
+    assert completed_run["status"] == "completed"
+    assert completed_run["current_interrupt"] is None
+    assert [step["tool_name"] for step in completed_run["steps"]] == [
+        "grade_review_recall",
+        "chat_turn_runtime",
+        "grade_review_recall",
+    ]
+    assert any(
+        part["type"] == "text" and "Recorded Good for" in part["text"]
+        for message in submitted_snapshot["messages"]
+        for part in message["parts"]
+        if part["type"] == "text"
+    )
+    session_state = submitted_snapshot["session_state"]
+    assert session_state["last_turn_kind"] == "chat_turn"
+    assert session_state["last_user_message"] == transcript
+    assert session_state["last_matched_intent"] == "grade_review_recall"
+    assert session_state["last_status"] == "executed"
+    assert session_state["last_tool_names"] == ["grade_review_recall"]
+    assert session_state["last_chat_turn_provider"] == "mock_codex_bridge"
+    assert session_state["last_chat_turn_model"] == "mock-agent-voice-review"
+    assert session_state["last_review_grade"]["card_id"] == card["id"]
+    assert session_state["last_review_grade"]["rating"] == 4
+
+    cards = client.get("/v1/cards", headers=auth_headers)
+    assert cards.status_code == 200
+    reviewed = next(item for item in cards.json() if item["id"] == card["id"])
+    assert reviewed["repetitions"] == 1
+    assert reviewed["interval_days"] == 1
+
+
 def test_assistant_voice_message_job_failure_emits_thread_error_message(
     client: TestClient,
     auth_headers: dict[str, str],
