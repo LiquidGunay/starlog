@@ -184,6 +184,10 @@ function latestCommandMessage(page: Page, expected: string | RegExp): Locator {
   return page.locator("main").getByText(expected).last();
 }
 
+function latestAssistantMessageWithText(page: Page, expected: string | RegExp): Locator {
+  return page.locator("main [class*='message_assistant']").filter({ hasText: expected }).last();
+}
+
 function assistantUiDataParts(
   page: Page,
   testId: "assistant-ui-question-request" | "assistant-ui-review-grade" | "assistant-ui-topic-unlock",
@@ -217,6 +221,11 @@ function escapedRegExp(value: string): RegExp {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
 
+async function expectAssistantSurface(page: Page): Promise<void> {
+  await expect(page.getByRole("heading", { name: "Assistant", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Assistant state")).toBeVisible();
+}
+
 test("live PWA user flow covers study loop + review + briefing hints and alarm", async ({ page }, testInfo) => {
   const studyTag = `run:${TEST_RUN_ID}-w${testInfo.workerIndex}-r${testInfo.retry}`;
   const assistantSmokeText = `Live functional smoke checks interview-prep study loop validation (${studyTag})`;
@@ -231,7 +240,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const authAction = useSetup ? setupButton : signInButton;
   await expect(authAction).toBeVisible();
   await Promise.all([page.waitForURL(/\/assistant/), authAction.click()]);
-  await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
+  await expectAssistantSurface(page);
   await screenshot(page, testInfo, "01-assistant-open");
 
   const composer = page.getByPlaceholder("Ask, capture, plan, review, or move something forward...");
@@ -244,9 +253,10 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, capabilityPrompt)).toBeVisible();
-  await expect(page.getByText(/Starlog dynamic UI/i)).toBeVisible();
-  await expect(page.getByText(/topic unlock\/read/i)).toBeVisible();
-  await expect(page.getByText(/review grading/i)).toBeVisible();
+  const latestCapabilityResponse = latestAssistantMessageWithText(page, /Starlog dynamic UI/i);
+  await expect(latestCapabilityResponse).toBeVisible();
+  await expect(latestCapabilityResponse).toContainText(/topic unlock\/read/i);
+  await expect(latestCapabilityResponse).toContainText(/review grading/i);
   await screenshot(page, testInfo, "02-assistant-capability-prompt");
 
   const assistantSmokeResponse = await sendAssistantMessage(page, composer, assistantSmokeText);
@@ -356,7 +366,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await screenshot(page, testInfo, "05-review-reveal");
 
   await page.goto("/assistant");
-  await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
+  await expectAssistantSurface(page);
   await expect(composer).toBeEnabled();
   const reviewGradePanel = await expectAssistantUiDataPart(page, "assistant-ui-review-grade", "interview.review_grade");
   await expect(reviewGradePanel).toContainText("Interview review");
@@ -364,9 +374,9 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(reviewGradePanel.getByLabel("Interview review prompt")).toBeVisible();
   await expect(reviewGradePanel.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
   await expect(reviewGradePanel.getByText("Recommendation reason")).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
+  await expect(reviewGradePanel.getByRole("radio", { name: "Good" })).toBeVisible();
+  await expect(reviewGradePanel.getByRole("button", { name: "Save grade" })).toBeVisible();
+  await expect(reviewGradePanel.getByRole("button", { name: "Keep in Review" })).toBeVisible();
   await screenshot(page, testInfo, "06-assistant-review-grade-controls");
 
   const assistantGradeRequest = page.waitForRequest((request) =>
@@ -376,11 +386,11 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     response.request().method() === "POST" && isAssistantInterruptSubmitRequest(response.url()) && response.status() >= 200
       && response.status() < 300,
   );
-  await page.getByRole("radio", { name: "Good" }).click();
+  await reviewGradePanel.getByRole("radio", { name: "Good" }).click();
   await Promise.all([
     assistantGradeRequest,
     assistantGradeResponse,
-    page.getByRole("button", { name: "Save grade" }).click(),
+    reviewGradePanel.getByRole("button", { name: "Save grade" }).click(),
   ]);
 
   const assistantGradePayload = (await assistantGradeRequest).postDataJSON() as AssistantInterruptSubmitPayload;
@@ -389,7 +399,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   });
 
   await assistantGradeResponse;
-  await expect(page.getByText(/Recorded Good for .+ review/i)).toBeVisible();
+  await expect(latestAssistantMessageWithText(page, /Recorded Good for .+ review/i)).toBeVisible();
   const savedReviewGrade = await expectAssistantUiDataPart(page, "assistant-ui-review-grade", "interview.review_grade");
   await expect(savedReviewGrade).toContainText("Review grade saved");
   await expect(savedReviewGrade).toContainText("4");
@@ -438,7 +448,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   expect(scheduledAlarmPayload.device_target).toBe("pwa");
   expect(typeof scheduledAlarmPayload.trigger_at).toBe("string");
 
-  await expect(page.getByText(/Alarm scheduled/i)).toBeVisible();
-  await expect(page.locator("article", { hasText: /pwa/i })).toBeVisible();
+  await expect(page.getByText(/Alarm scheduled/i).last()).toBeVisible();
+  await expect(page.locator("article", { hasText: /pwa/i }).first()).toBeVisible();
   await screenshot(page, testInfo, "09-alarm-scheduled");
 });

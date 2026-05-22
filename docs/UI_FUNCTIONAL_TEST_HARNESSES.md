@@ -64,14 +64,16 @@ TMPDIR=/tmp STARLOG_LIVE_FUNCTIONAL_API_PORT=8042 STARLOG_LIVE_FUNCTIONAL_WEB_PO
 ```
 
 That browser smoke should be paired with native Android proof for phone-owned flows.
-Current 2026-05-21 proof-refresh results on `master`: `corepack pnpm test:ui:pwa-functional`
+Current 2026-05-22 proof-refresh results on `master`: `corepack pnpm test:ui:pwa-functional`
 passed 16 tests with evidence under `.localdata/ui-functional/latest/test-results/`, the live
-functional PWA flow passed with evidence under `.localdata/live-functional/latest/test-results/`, and
-API due-date pytest passed. PR #282 also merged dynamic-panel e2e validation with Playwright 2/2, API
-pytest 2/2, and web lint passing with the existing `initialDraft` dependency warning. The live PWA
-smoke keeps Assistant-tab and Review-tab evidence distinct: Review only reveals the card, then
-`/assistant` must show the assistant-ui shell/composer plus the generated review-grade dynamic UI before
-the grade is submitted.
+functional PWA flow passed 1/1 with evidence under `.localdata/live-functional/latest/test-results/`,
+and the focused auth-gate spec passed 4/4 with evidence under `.localdata/pwa-release-gate/latest/test-results/`.
+PR #289 also merged mocked runtime-command review-grade coverage. The live PWA smoke now asserts the
+current approved `Assistant` heading and keeps Assistant-tab and Review-tab evidence distinct: Review
+only reveals the card, then `/assistant` must show the assistant-ui shell/composer plus the generated
+review-grade dynamic UI before the grade is submitted. The PWA Review functional test waits for the
+intercepted reveal and grade requests before asserting request arrays, so the prior 21/22 Review timing
+failure is not a known residual.
 
 Public hosted reachability can be checked without secrets:
 
