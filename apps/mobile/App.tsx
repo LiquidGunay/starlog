@@ -130,6 +130,10 @@ import {
   runAssistantLocalSttFlow,
 } from "./src/assistant-mobile-voice";
 import {
+  buildNativeAssistantInterruptSubmitRequest,
+  buildNativeAssistantThreadMessageRequest,
+} from "./src/mobile-assistant-thread-api";
+import {
   handleAssistantCardActionOnMobile,
   openAssistantEntityOnMobile,
 } from "./src/assistant-mobile-thread-actions";
@@ -3428,14 +3432,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     }
 
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/interrupts/${interruptId}/submit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ values }),
-      });
+      const request = buildNativeAssistantInterruptSubmitRequest({ apiBase, token, interruptId, values });
+      const response = await fetch(request.url, request.init);
       if (!response.ok) {
         const errorBody = await response.text();
         throw new Error(`Interrupt submit failed: ${response.status} ${errorBody}`);
@@ -3497,22 +3495,8 @@ export default function App({ initialIntentUrl = null }: AppProps) {
     });
 
     try {
-      const response = await fetch(`${normalizeBaseUrl(apiBase)}/v1/assistant/threads/primary/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          content: command,
-          input_mode: sourceLabel === "voice" ? "voice" : "text",
-          device_target: "mobile-native",
-          metadata: {
-            surface: "assistant_mobile",
-            submitted_via: sourceLabel,
-          },
-        }),
-      });
+      const request = buildNativeAssistantThreadMessageRequest({ apiBase, token, content: command, sourceLabel });
+      const response = await fetch(request.url, request.init);
       if (!response.ok) {
         const errorBody = await response.text();
         throw new Error(`Assistant turn failed: ${response.status} ${errorBody}`);

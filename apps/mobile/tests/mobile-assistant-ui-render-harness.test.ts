@@ -384,6 +384,7 @@ try {
   const { MobileAssistantRebuild } = require("../src/mobile-assistant-rebuild");
   const { mobileDynamicPanelStates } = require("../src/mobile-assistant-panel-state");
   const { mobileDynamicPanelInterruptsFromStarlogMessage } = require("../src/mobile-assistant-aui-adapter");
+  const { buildNativeAssistantThreadMessageRequest, buildNativeAssistantInterruptSubmitRequest } = require("../src/mobile-assistant-thread-api");
 
   const palette = {
     accent: "#f3b242",
@@ -945,8 +946,35 @@ try {
         insight: "The answer had the right frame but missed the boundary case.",
       },
     });
+    const voiceTranscript = "Grade my Sliding Window recall as good.";
+    const threadRequest = buildNativeAssistantThreadMessageRequest({
+      apiBase: "https://api.starlog.test/",
+      token: "mobile-token",
+      content: voiceTranscript,
+      sourceLabel: "voice",
+    });
+    const threadRequestBody = JSON.parse(threadRequest.init.body) as Record<string, unknown>;
+    assert.equal(threadRequest.url, "https://api.starlog.test/v1/assistant/threads/primary/messages");
+    assert.equal(threadRequest.url.includes("/v1/agent/command"), false);
+    assert.equal(threadRequestBody.input_mode, "voice");
+    assert.equal(threadRequestBody.device_target, "mobile-native");
+    assert.deepEqual(threadRequestBody.metadata, { surface: "assistant_mobile", submitted_via: "voice" });
+
     const submits: Array<{ id: string; values: Record<string, unknown> }> = [];
+    const submitRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
     const dismisses: string[] = [];
+    let returnedSnapshot: any = null;
+    const userVoiceMessage: AssistantThreadMessage = {
+      id: "msg_voice_user_review_grade",
+      thread_id: "primary",
+      run_id: null,
+      role: "user",
+      status: "complete",
+      created_at: "2026-05-19T04:59:00Z",
+      updated_at: "2026-05-19T04:59:00Z",
+      metadata: { input_mode: "voice", submitted_via: "voice", device_target: "mobile-native" },
+      parts: [{ type: "text", id: "part-voice-user", text: voiceTranscript }],
+    };
     const message: AssistantThreadMessage = {
       id: "msg_review_grade_panel",
       thread_id: "primary",
@@ -957,7 +985,7 @@ try {
       updated_at: "2026-05-19T05:00:00Z",
       metadata: {},
       parts: [
-        { type: "text", id: "part-text", text: "Grade the last recall." },
+        { type: "text", id: "part-text", text: "I can save this recall grade after you confirm. This deterministic mobile proof uses mocked on-device STT, not live STT or live LLM selection." },
         { type: "interrupt_request", id: "part-review-grade", interrupt: reviewGrade },
       ],
     };
@@ -985,18 +1013,42 @@ try {
           slug: "primary",
           title: "Primary",
           mode: "assistant",
-          messages: [message],
+          messages: [userVoiceMessage, message],
           interrupts: [reviewGrade],
           next_cursor: null,
           updated_at: "2026-05-19T05:00:00Z",
           metadata: {},
         },
-        visibleThreadMessages: [message],
+        visibleThreadMessages: [userVoiceMessage, message],
         hiddenThreadMessageCount: 0,
         previewCommandFlow: () => undefined,
         formatCardMeta: () => "",
         onCardAction: () => undefined,
         onInterruptSubmit: (id: string, values: Record<string, unknown>) => {
+          const request = buildNativeAssistantInterruptSubmitRequest({
+            apiBase: "https://api.starlog.test/",
+            token: "mobile-token",
+            interruptId: id,
+            values,
+          });
+          submitRequests.push({ url: request.url, body: JSON.parse(request.init.body) as Record<string, unknown> });
+          returnedSnapshot = {
+            metadata: {
+              session_state: {
+                review: {
+                  last_grade: values.grade,
+                  source: "native_voice_dynamic_panel_proof",
+                },
+              },
+            },
+            interrupts: [
+              {
+                ...reviewGrade,
+                status: "submitted",
+                resolution: { values },
+              } as AssistantInterrupt,
+            ],
+          };
           submits.push({ id, values });
         },
         onInterruptDismiss: (id: string) => {
@@ -1017,7 +1069,10 @@ try {
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-submit-review-grade-panel").length, 1);
     assert.equal(findByTestId(tree, "mobile-dynamic-panel-secondary-review-grade-panel").length, 1);
     assert.equal(findText(tree, "Review grade"), true);
+    assert.equal(findText(tree, voiceTranscript), true);
     assert.equal(findText(tree, "Explain the sliding window invariant."), true);
+    assert.equal(textIncludes(tree, "I can save this recall grade after you confirm."), true);
+    assert.equal(textIncludes(tree, "not live STT or live LLM selection"), true);
     assert.equal(textIncludes(tree, "interview.review_grade"), false);
     assert.equal(textIncludes(tree, "grade_review_recall"), false);
     assert.equal(textIncludes(tree, "Inline panel"), false);
@@ -1026,6 +1081,10 @@ try {
     (findByTestId(tree, "mobile-dynamic-panel-secondary-review-grade-panel")[0].props.onPress as () => void)();
 
     assert.deepEqual(submits, [{ id: "review-grade-panel", values: { grade: "good", support_action: "review_soon" } }]);
+    assert.equal(submitRequests[0]?.url, "https://api.starlog.test/v1/assistant/interrupts/review-grade-panel/submit");
+    assert.deepEqual(submitRequests[0]?.body, { values: { grade: "good", support_action: "review_soon" } });
+    assert.equal(((returnedSnapshot?.metadata.session_state as Record<string, unknown>).review as Record<string, unknown>).last_grade, "good");
+    assert.equal(returnedSnapshot?.interrupts[0]?.status, "submitted");
     assert.deepEqual(dismisses, ["review-grade-panel"]);
   }
 

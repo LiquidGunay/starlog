@@ -49,8 +49,12 @@ where Starlog is going. Use this page for current implementation confidence.
   with evidence under `.localdata/pwa-release-gate/latest/test-results/`. The Assistant dynamic-ui e2e
   proof now also covers mocked PWA voice capture through the real `/assistant` voice control, queued
   `assistant_thread_voice` STT completion, runtime-emitted `interview.review_grade`, user confirmation,
-  SRS mutation, and Assistant session-state awareness without live STT/LLM credentials. The earlier
-  Review request timing failure is not a known residual after this explicit wait/assertion refresh.
+  SRS mutation, and Assistant session-state awareness without live STT/LLM credentials. The native
+  mobile focused proof now also covers mocked on-device-STT-style transcript handling through the
+  canonical `/v1/assistant/threads/primary/messages` request builder, native assistant-ui rendering of
+  `interview.review_grade` without raw protocol labels, interrupt-submit request construction, and a
+  mocked returned session-state/SRS mutation boundary. The earlier Review request timing failure is not
+  a known residual after this explicit wait/assertion refresh.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
   `.localdata/latest/android-study-proof-seed-20260521/latest.json`. PR #283 merged the Android
@@ -123,10 +127,12 @@ where Starlog is going. Use this page for current implementation confidence.
   `.localdata/pwa-release-gate/latest/test-results/`, passing API due-date/review-grade pytest from the
   dynamic-panel lanes, and merged dynamic-panel/runtime-command e2e validation. The e2e harness includes
   the mocked PWA voice-thread proof from voice button capture to queued STT job completion to Review-grade
-  dynamic panel confirmation and SRS mutation. The live harness now asserts the approved `Assistant`
-  surface heading, and the Review functional harness waits for intercepted reveal/grade mutations before
-  asserting request arrays. These prove current local web and native-code UI behavior; the connected-phone
-  Android proof is tracked in the native interview-prep evidence below.
+  dynamic panel confirmation and SRS mutation. Native focused tests now prove the on-device-STT-style
+  transcript boundary into the canonical Assistant thread path plus native assistant-ui Review-grade panel
+  submit/snapshot handling with deterministic mocks. The live harness now asserts the approved
+  `Assistant` surface heading, and the Review functional harness waits for intercepted reveal/grade
+  mutations before asserting request arrays. These prove current local web and native-code UI behavior;
+  the connected-phone Android proof is tracked in the native interview-prep evidence below.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -262,15 +268,18 @@ Known outcome for `Inference Engineering.pdf`:
 - **Railway production access:** public hosted page/API checks on 2026-05-19 returned Railway fallback
   `HTTP 404` for the configured web and API domains. Hosted smoke, release-gate checks, and any
   authenticated login claims are blocked until Railway deployment/domain routing serves Starlog again.
-- **On-device-first voice completeness:** on-device STT/TTS direction is established, but mobile-native
-  provider polish and fallback behavior still need focused validation.
+- **On-device-first voice completeness:** on-device STT/TTS direction is established, and focused native
+  tests now prove a mocked on-device-STT-style transcript enters the canonical Assistant thread path and
+  can drive a Review-grade dynamic panel to the interrupt-submit/session-state boundary. Real Android STT
+  capture, provider polish, and fallback behavior still need focused physical-device validation.
 - **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Web has partial data/tool UI and
   dynamic-ui metadata paths plus a CI-safe mocked runtime-command proof for due-date and
   interview-prep review-grade dynamic panels. Native mobile currently uses the
   `server-owned-local-protocol-bridge` path over Starlog messages, so full server-owned runtime
   migration is still pending even though the bounded interview-prep dynamic UI loop now has fresh
-  physical Android proof.
+  physical Android proof plus deterministic native-code proof for voice-transcript-to-Review-grade-panel
+  handling.
 - **Android validation stability:** the fresh 2026-05-21 run passed on the attached, unlocked Android
   phone, but future claims should still rerun the preflight because USB/WSL bridge and lock-screen state
   can invalidate phone proof. The preflight reports Linux `adb`, Windows `adb.exe`, `powershell.exe`,
@@ -308,9 +317,12 @@ Known outcome for `Inference Engineering.pdf`:
   evidence at `.localdata/ui-functional/latest/test-results/`, and the focused auth-gate spec 4/4 with
   evidence at `.localdata/pwa-release-gate/latest/test-results/`. The refreshed assertions match the
   current `Assistant` surface heading and the Review request-array timing flake has an explicit
-  request/wait guard rather than a residual failure note. Keep run output in `.localdata/`, ignored
-  build folders, or a single explicitly requested latest proof bundle; do not treat removed dated
-  artifact folders as current evidence.
+  request/wait guard rather than a residual failure note. Focused native proof also passed the manual
+  `tsconfig.voice-tests.json` compile plus compiled `mobile-assistant-voice.test.js`,
+  `corepack pnpm --filter mobile test:assistant-ui-render`, and
+  `corepack pnpm --filter mobile test:assistant-aui`. Keep run output in `.localdata/`, ignored build
+  folders, or a single explicitly requested latest proof bundle; do not treat removed dated artifact
+  folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). The current proof is

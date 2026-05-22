@@ -5,9 +5,12 @@ import {
   deriveAssistantVoiceActionState,
   resolveCachedBriefingPlaybackMode,
   type CachedBriefingPlaybackMode,
+  runAssistantLocalSttFlow,
 } from "../src/assistant-mobile-voice";
+import { buildNativeAssistantThreadMessageRequest } from "../src/mobile-assistant-thread-api";
 
 declare const require: (moduleName: string) => { equal: (...args: unknown[]) => void; deepEqual: (...args: unknown[]) => void };
+declare const process: { exit: (code?: number) => never };
 
 const assert = require("node:assert/strict");
 
@@ -101,3 +104,49 @@ const readyToSendPrimaryAction = assistantPrimaryVoiceAction({
   voiceClipTarget: "assistant",
 });
 assert.equal(readyToSendPrimaryAction.kind, "send_clip");
+
+runNativeVoiceThreadPathProof().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});
+
+async function runNativeVoiceThreadPathProof() {
+  const statuses: string[] = [];
+  const listeningStates: boolean[] = [];
+  const threadRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+  await runAssistantLocalSttFlow({
+    prompt: "Speak your message for Assistant",
+    listeningStatus: "Listening for an Assistant message...",
+    requestPermission: async () => ({ granted: true }),
+    recognizeSpeechOnce: async () => ({ transcript: "  Grade my Sliding Window recall as good.  " }),
+    setListening: (value) => {
+      listeningStates.push(value);
+    },
+    setStatus: (value) => {
+      statuses.push(value);
+    },
+    onTranscript: async (transcript) => {
+      const request = buildNativeAssistantThreadMessageRequest({
+        apiBase: "https://api.starlog.test/",
+        token: "mobile-token",
+        content: transcript,
+        sourceLabel: "voice",
+      });
+      threadRequests.push({ url: request.url, body: JSON.parse(request.init.body) as Record<string, unknown> });
+    },
+  });
+
+  assert.deepEqual(listeningStates, [true, false]);
+  assert.deepEqual(statuses, ["Listening for an Assistant message..."]);
+  assert.equal(threadRequests.length, 1);
+  assert.equal(threadRequests[0]?.url, "https://api.starlog.test/v1/assistant/threads/primary/messages");
+  assert.equal(threadRequests[0]?.url.includes("/v1/agent/command"), false);
+  assert.equal(threadRequests[0]?.body.content, "Grade my Sliding Window recall as good.");
+  assert.equal(threadRequests[0]?.body.input_mode, "voice");
+  assert.equal(threadRequests[0]?.body.device_target, "mobile-native");
+  assert.deepEqual(threadRequests[0]?.body.metadata, {
+    surface: "assistant_mobile",
+    submitted_via: "voice",
+  });
+}
