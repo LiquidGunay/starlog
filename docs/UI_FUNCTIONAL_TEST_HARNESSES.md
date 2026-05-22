@@ -17,7 +17,10 @@ share capture, briefing cache/playback, alarms, or local runtime work. Treat the
 fallback surface, not the main phone implementation target.
 
 This is functional UI coverage, not a live-agent evaluation. Most tests mock API responses and
-assistant protocol snapshots so the UI can be validated deterministically. For hosted-path discovery,
+assistant protocol snapshots so the UI can be validated deterministically. A CI-safe mocked
+assistant-runtime bridge now covers the product-level command path from Assistant command to
+runtime-emitted dynamic panel to confirmed backend mutation for due-date task creation and
+interview-prep review grading. For hosted-path discovery,
 `https://starlog-web-production.up.railway.app/login` is the intended user entry URL, and the hosted API
 base is `https://starlog-api-production.up.railway.app`. Fresh public unauthenticated checks on
 2026-05-19 returned Railway fallback `HTTP 404` with `x-railway-fallback: true` for hosted `/login`,
@@ -98,7 +101,7 @@ Current functional areas:
 | Mobile Assistant concept | `apps/web/tests/ui-functional/mobile-assistant-concept.functional.spec.ts` | Phone-width Assistant thread behavior with one active inline panel, schedule-conflict decision, task details, capture triage, review grade, clarification, defer, project picker, compact activity, and no raw protocol labels. |
 | PWA Assistant study-command | `apps/web/tests/pwa-assistant-study-command.web-functional.spec.ts` | Assistant study-command and due-date task creation paths against mocked API responses; current due-date coverage is 5/5 passing. |
 | PWA dynamic panel renderer | `apps/web/tests/pwa-dynamic-panel-renderer.spec.ts` | Production-rendered dynamic panel field behavior, interrupt submit/dismiss APIs, field-id reuse, due-date task panel controls, and hidden diagnostic labels; current coverage is 4/4 passing. |
-| Assistant dynamic-ui e2e | `apps/web/tests/assistant-dynamic-ui-e2e.spec.ts` | Deterministic web/API due-date dynamic panel flow creates a Planner task end to end; current coverage is 1/1 passing. |
+| Assistant dynamic-ui e2e | `apps/web/tests/assistant-dynamic-ui-e2e.spec.ts` | Web/API command coverage for deterministic due-date task creation plus mocked assistant-runtime bridge flows for agent-emitted due-date and interview-prep review-grade panels. The review-grade path clicks through `/assistant`, verifies the `interview.review_grade` dynamic renderer with no raw protocol labels, submits the grade, verifies SRS state mutation, and verifies Assistant session-state awareness; current coverage is 3/3 passing. |
 | PWA Library | `apps/web/tests/ui-functional/pwa-library.functional.spec.ts` | Capture pipeline, conversion actions, offline queued actions, assistant event sync behavior, artifact detail, provenance, source layers, generated outputs, and timeline. |
 | Mobile Library viewport | `apps/web/tests/ui-functional/mobile-library.functional.spec.ts` | Compact mobile Library main surface, tab layout, horizontal overflow guard, and attempted artifact detail reachability. |
 | PWA Planner | `apps/web/tests/ui-functional/pwa-planner.functional.spec.ts` | Planner summary, blocks, calendar events, conflict repair actions, and Assistant handoff drafts against mocked planner/calendar APIs. |
@@ -121,6 +124,10 @@ Covered:
 - The live PWA harness sends `show me what UI actions you can take`, requires the Assistant capability
   prompt to describe dynamic UI actions without raw protocol labels, reveals a card from Review, then
   returns to Assistant to submit the generated review-grade dynamic panel.
+- The mocked assistant-runtime bridge e2e sends natural-language Assistant commands through the real
+  `/assistant` UI and API, verifies runtime-provided UI capabilities, renders agent-emitted dynamic
+  panels, confirms user choices, mutates Planner/SRS backend state, and verifies the Assistant thread
+  session state knows the review-grade outcome.
 - The due-date dynamic UI path creates a Planner task and keeps the user-facing panel free of raw
   protocol/fallback labels and `create_time_block` or time-block controls; the expected copy says
   "Time blocking can be handled next." Current PWA proof covers the live/interview due-date flow plus
@@ -142,31 +149,30 @@ Covered:
 Not yet covered:
 
 - A live LLM/Codex agent interpreting a natural-language command and deciding to emit a dynamic panel.
-- End-to-end command control of all surfaces from phone/PWA without clicks.
+- End-to-end command control of all surfaces from phone/PWA without clicks; the mocked bridge currently
+  proves one Review-grade interview-prep loop and due-date task creation, not every surface command.
 - Voice command to assistant run to dynamic panel to confirmed mutation.
 - Native iOS automation of dynamic panels.
 - Repeatable Android functional automation for the full native assistant-ui runtime.
 - Full server-owned assistant-ui runtime migration across web and native mobile.
 - Real provider credentials or production Codex bridge behavior.
 
-The missing product-level test should look like:
+The CI-safe product-level mocked bridge test now follows this shape:
 
 ```text
 User command
   -> assistant run starts
-  -> deterministic mocked model or mocked Codex bridge emits tool call / interrupt
+  -> deterministic mocked runtime bridge emits tool call / interrupt
   -> dynamic panel appears in chat
-  -> user resolves through panel or command
+  -> user resolves through the panel
   -> backend mutation completes
-  -> card or ambient event confirms the result
+  -> assistant confirmation and session state record the result
 ```
 
-This should be added with a mocked model/bridge first so CI does not require Codex credentials.
-
-This missing test is separate from the current partial assistant-ui adapter coverage: assistant-ui is
-the long-term web and native runtime, but the proof gaps are whether a command can produce the right
-Starlog protocol parts and complete the workflow end to end across web and native mobile, and whether
-the native surface can run that path repeatably through Android automation.
+This proof is separate from live-provider evaluation and native runtime parity: assistant-ui is the
+long-term web and native runtime, but remaining proof gaps are whether a live provider chooses the
+right Starlog protocol parts, whether all surface commands can complete end to end, and whether the
+native surface can run that path repeatably through Android automation.
 
 ## Historical Screenshot Comparisons
 

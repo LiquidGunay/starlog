@@ -259,6 +259,10 @@ class GradeReviewRecallInterruptHandler:
         rating_label = context.review_rating_label(rating)
         next_due_at = str(reviewed.get("next_due_at") or "")
         next_due_label = next_due_at[:10] if next_due_at else "the next review window"
+        response_text = (
+            f"Recorded {rating_label} for {review_mode_label} review: {prompt_text}. "
+            f"Next due: {next_due_label}."
+        )
         assistant_message = assistant_thread_service.append_message(
             conn,
             thread_id=row["thread_id"],
@@ -272,9 +276,7 @@ class GradeReviewRecallInterruptHandler:
                 "review_mode": review_mode,
             },
             parts=[
-                assistant_projection_service.text_part(
-                    f"Recorded {rating_label} for {review_mode_label} review: {prompt_text}. Next due: {next_due_label}."
-                ),
+                assistant_projection_service.text_part(response_text),
                 assistant_projection_service.tool_result_part(
                     tool_call_id=str(metadata.get("tool_call_id") or new_id("toolcall")),
                     status="complete",
@@ -319,6 +321,45 @@ class GradeReviewRecallInterruptHandler:
             result=reviewed,
             interrupt_id=context.interrupt_id,
             message_id=assistant_message["id"],
+        )
+        context.record_trace(
+            conn,
+            thread_id=row["thread_id"],
+            assistant_message_id=assistant_message["id"],
+            tool_name="grade_review_recall",
+            arguments={
+                "rating": rating,
+                "latency_ms": latency_ms,
+                "card_id": card_id,
+                "card_type": card_type,
+                "review_mode": review_mode,
+            },
+            status="completed",
+            result=reviewed,
+            metadata={
+                "resolved_from_interrupt": context.interrupt_id,
+                "runtime_provider_used": metadata.get("runtime_provider_used"),
+                "renderer_key": "interview.review_grade",
+            },
+        )
+        context.merge_session_state(
+            conn,
+            command=str(metadata.get("user_content") or "Grade review recall"),
+            response_text=response_text,
+            matched_intent="grade_review_recall",
+            planner=str(metadata.get("runtime_provider_used") or "runtime_interrupt"),
+            status="executed",
+            tool_names=["grade_review_recall"],
+            extra={
+                "last_chat_turn_model": str(metadata.get("runtime_model") or ""),
+                "last_review_grade": {
+                    "card_id": card_id,
+                    "rating": rating,
+                    "rating_label": rating_label,
+                    "review_mode": review_mode,
+                    "next_due_at": reviewed.get("next_due_at"),
+                },
+            },
         )
         context.complete_interrupt(
             conn,

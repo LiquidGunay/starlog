@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-21
+Last updated: 2026-05-22
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -37,13 +37,17 @@ where Starlog is going. Use this page for current implementation confidence.
   tests, the full web Playwright config passed 42 tests, the live PWA interview flow spec passed 1 test,
   the mobile viewport functional harness passed 6 tests, and `apps/mobile` `test:assistant-ui-render`,
   `test:assistant-aui`, and `test:assistant-thread-actions` passed.
-- **Latest local interview-prep/UI proof known on 2026-05-21:** PR #282 merged the dynamic-panel e2e
+- **Latest local interview-prep/UI proof known on 2026-05-22:** PR #282 merged the dynamic-panel e2e
   proof at squash `48f1a92a009992ac09f20c412f124a729382eb51`; its validation included Playwright
   dynamic-panel e2e 2/2, API pytest 2/2, and `corepack pnpm --filter web lint` with the existing
   `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning. Current
   `origin/master` proof also passed `corepack pnpm test:ui:pwa-functional` 16/16 with evidence under
   `.localdata/ui-functional/latest/test-results/`, the live functional PWA flow with evidence under
-  `.localdata/live-functional/latest/test-results/`, and API due-date pytest.
+  `.localdata/live-functional/latest/test-results/`, and API due-date pytest. The runtime-command
+  coverage lane adds a CI-safe mocked assistant-runtime bridge test for command -> run ->
+  `interview.review_grade` dynamic panel -> user confirmation -> SRS mutation -> Assistant
+  confirmation/session-state awareness, validated by `assistant-dynamic-ui-e2e.spec.ts` 3/3 and the
+  focused review-grade API pytest.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
   `.localdata/latest/android-study-proof-seed-20260521/latest.json`. PR #283 merged the Android
@@ -255,9 +259,11 @@ Known outcome for `Inference Engineering.pdf`:
   provider polish and fallback behavior still need focused validation.
 - **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Web has partial data/tool UI and
-  dynamic-ui metadata paths. Native mobile currently uses the `server-owned-local-protocol-bridge`
-  path over Starlog messages, so full server-owned runtime migration is still pending even though the
-  bounded interview-prep dynamic UI loop now has fresh physical Android proof.
+  dynamic-ui metadata paths plus a CI-safe mocked runtime-command proof for due-date and
+  interview-prep review-grade dynamic panels. Native mobile currently uses the
+  `server-owned-local-protocol-bridge` path over Starlog messages, so full server-owned runtime
+  migration is still pending even though the bounded interview-prep dynamic UI loop now has fresh
+  physical Android proof.
 - **Android validation stability:** the fresh 2026-05-21 run passed on the attached, unlocked Android
   phone, but future claims should still rerun the preflight because USB/WSL bridge and lock-screen state
   can invalidate phone proof. The preflight reports Linux `adb`, Windows `adb.exe`, `powershell.exe`,
@@ -287,15 +293,17 @@ Known outcome for `Inference Engineering.pdf`:
   `https://starlog-api-production.up.railway.app/v1/health`. These checks intentionally did not use or
   expose the hosted passphrase or bearer token, and token material from local authenticated checks must
   not be copied into this document.
-- Latest local UI/interview-prep evidence on 2026-05-21:
+- Latest local UI/interview-prep evidence on 2026-05-22:
   PR #282 dynamic-panel e2e validation passed Playwright 2/2 and API pytest 2/2, and
   `corepack pnpm --filter web lint` passed with the existing
   `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning.
   Current `master` also passed `corepack pnpm test:ui:pwa-functional` 16/16 with evidence at
   `.localdata/ui-functional/latest/test-results/`, the live functional PWA flow with evidence at
-  `.localdata/live-functional/latest/test-results/`, and API due-date pytest. Keep run output in
-  `.localdata/`, ignored build folders, or a single explicitly requested latest proof bundle; do not
-  treat removed dated artifact folders as current evidence.
+  `.localdata/live-functional/latest/test-results/`, and API due-date pytest. The runtime-command
+  coverage lane passed `assistant-dynamic-ui-e2e.spec.ts` 3/3 with screenshots at
+  `.localdata/pwa-release-gate/latest/test-results/` and focused review-grade API pytest 1/1. Keep run
+  output in `.localdata/`, ignored build folders, or a single explicitly requested latest proof bundle;
+  do not treat removed dated artifact folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). The current proof is
@@ -314,8 +322,10 @@ Known outcome for `Inference Engineering.pdf`:
 - Assistant-ui/dynamic UI status evidence is still bounded: desktop web assistant-ui rendering is
   partial with compatibility fallbacks, and mobile React Native uses the
   `server-owned-local-protocol-bridge` path over Starlog messages. Functional harnesses now require the
-  actual Assistant surface for capability, due-date, and review-grade dynamic UI proof, with current
-  physical Android evidence from `.localdata/latest/android-study-proof-seed-20260521/latest.json`.
+  actual Assistant surface for capability, due-date, and review-grade dynamic UI proof. The current
+  web/API mocked runtime-command proof is the focused Playwright run whose screenshots live under
+  `.localdata/pwa-release-gate/latest/test-results/`; current physical Android evidence remains
+  `.localdata/latest/android-study-proof-seed-20260521/latest.json`.
 - The PDF pipeline now uses manifest-driven preflight evidence:
   `ingestion_manifest.json`, `candidate_cards.jsonl`, and blocked segment entries in the preflight report/
   manifest are the first pass for trusted extraction before final card import.
