@@ -274,6 +274,116 @@ def _parse_execution_targets(raw: str, family: str) -> list[str]:
     return normalized
 
 
+def limitation_response_for_command(command: str) -> AgentCommandResponse | None:
+    text = " ".join(command.strip().split())
+    lower = text.lower()
+    if not lower:
+        return None
+
+    library_requested = any(
+        token in lower for token in ("library", "artifact", "artifacts", "clip", "clips", "inbox")
+    )
+    planner_requested = any(
+        token in lower
+        for token in (
+            "planner",
+            "calendar",
+            "google calendar",
+            "time block",
+            "time blocks",
+            "alarm",
+            "briefing",
+            "schedule",
+        )
+    )
+    review_requested = any(token in lower for token in ("review", "card", "cards", "srs", "recall"))
+    assistant_requested = any(token in lower for token in ("assistant", "agent", "codex", "llm", "provider"))
+
+    if review_requested and any(
+        phrase in lower
+        for phrase in ("auto grade", "autograde", "grade every", "grade all", "bulk grade", "delete all")
+    ):
+        return AgentCommandResponse(
+            command=command,
+            planner="deterministic",
+            matched_intent="review_action_unavailable",
+            status="executed",
+            summary=(
+                "I cannot bulk-grade, auto-grade, or delete Review cards from chat. "
+                "I can load due cards and record an explicit grade for a specific revealed review card "
+                "when you confirm the result."
+            ),
+            steps=[],
+        )
+
+    if library_requested and any(
+        phrase in lower
+        for phrase in ("delete all", "bulk delete", "erase", "clear library", "clear artifacts", "remove all", "purge")
+    ):
+        return AgentCommandResponse(
+            command=command,
+            planner="deterministic",
+            matched_intent="library_action_unavailable",
+            status="executed",
+            summary=(
+                "I cannot delete or bulk-edit Library artifacts from chat yet. "
+                "I can capture text, list artifacts, inspect an artifact graph, and search Library. "
+                "Try 'capture title: text', 'list artifacts', or 'open artifact <title>'."
+            ),
+            steps=[],
+        )
+
+    if planner_requested and (
+        "google calendar" in lower
+        or "external calendar" in lower
+        or "two-way sync" in lower
+        or "sync calendar" in lower
+        or "resolve every" in lower
+        or "resolve all" in lower
+        or "conflict" in lower
+    ):
+        return AgentCommandResponse(
+            command=command,
+            planner="deterministic",
+            matched_intent="planner_action_unavailable",
+            status="executed",
+            summary=(
+                "I cannot connect Google Calendar, run external sync, or resolve Planner conflicts "
+                "automatically from chat yet. I can create tasks, create internal calendar events, "
+                "list events, generate time blocks, generate briefings, render briefing audio, and "
+                "schedule a morning alarm."
+            ),
+            steps=[],
+        )
+
+    if assistant_requested and any(
+        phrase in lower
+        for phrase in (
+            "live llm",
+            "live provider",
+            "provider selection",
+            "codex panel",
+            "codex provider",
+            "background agent",
+            "autonomously",
+        )
+    ):
+        return AgentCommandResponse(
+            command=command,
+            planner="deterministic",
+            matched_intent="assistant_action_unavailable",
+            status="executed",
+            summary=(
+                "I cannot enable or prove live LLM/Codex panel selection from this deterministic "
+                "Assistant path yet. I can answer capability questions, route typed commands and queued "
+                "voice transcripts, open supported task and Review panels, and report the remaining limits."
+            ),
+            steps=[],
+        )
+
+    return None
+
+
 def _plan_command(conn: Connection, command: str, device_target: str) -> tuple[str, str, list[PlannedToolCall]]:
     text = " ".join(command.strip().split())
     lower = text.lower()

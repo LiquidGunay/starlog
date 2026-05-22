@@ -53,7 +53,10 @@ where Starlog is going. Use this page for current implementation confidence.
   capability/limitation response now explicitly covers the approved `Assistant`, `Library`, `Planner`,
   and `Review` surfaces, separates tested typed/queued-voice dynamic-panel paths from unproven live
   STT/LLM/provider/production/all-surface coverage, and keeps raw protocol labels out of the visible
-  capability text. The native mobile focused proof now also covers mocked on-device-STT-style transcript
+  capability text. Focused deterministic command coverage now also proves typed Assistant-thread
+  commands for Library capture and Planner internal calendar-event mutation, Review due-card loading,
+  and clear limitation-aware responses for unsupported Library bulk edits, Planner Google sync/conflict
+  actions, Review bulk/auto grading, and live provider-selection requests. The native mobile focused proof now also covers mocked on-device-STT-style transcript
   handling through the canonical `/v1/assistant/threads/primary/messages` request builder, native
   assistant-ui rendering of `interview.review_grade` without raw protocol labels, interrupt-submit
   request construction, and a

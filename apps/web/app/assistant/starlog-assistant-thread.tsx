@@ -298,10 +298,25 @@ function toolLabel(toolName: string): string {
   if (toolName === "request_due_date") {
     return "Task details";
   }
+  if (toolName === "capture_text_as_artifact") {
+    return "Saved capture";
+  }
+  if (toolName === "list_artifacts" || toolName === "get_artifact_graph" || toolName === "search_starlog") {
+    return "Checked Library";
+  }
+  if (toolName === "create_calendar_event") {
+    return "Created event";
+  }
+  if (toolName === "generate_time_blocks") {
+    return "Planned time blocks";
+  }
+  if (toolName === "schedule_morning_brief_alarm") {
+    return "Scheduled alarm";
+  }
   if (toolName === "search_planner") {
     return "Checked Planner";
   }
-  if (toolName === "search_review") {
+  if (toolName === "list_due_cards" || toolName === "search_review") {
     return "Checked Review";
   }
   if (toolName === "create_task") {
@@ -1038,6 +1053,14 @@ function useStarlogAssistantUiRegistration({
   useAssistantDataUI({ name: "starlog-status", render: StatusDataPart });
   useAssistantDataUI({ name: "starlog-interrupt-resolution", render: ResolutionDataPart });
   useAssistantToolUI({ toolName: "grade_review_recall", render: ReviewToolPart });
+  useAssistantToolUI({ toolName: "capture_text_as_artifact", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "list_artifacts", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "get_artifact_graph", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "search_starlog", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "create_calendar_event", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "generate_time_blocks", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "schedule_morning_brief_alarm", render: ToolCallPart });
+  useAssistantToolUI({ toolName: "list_due_cards", render: ToolCallPart });
 }
 
 function SupportSurfaceSummary({

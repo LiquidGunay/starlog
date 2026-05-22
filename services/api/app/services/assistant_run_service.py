@@ -53,11 +53,12 @@ def _ui_capability_manifest() -> dict[str, Any]:
                 "status": "partial_supported_now",
                 "supported_now": [
                     "Understand Library as the artifact/capture/provenance surface.",
+                    "Capture text, list recent artifacts, inspect artifact graphs, and search Library from deterministic Assistant commands.",
                     "Describe capture triage as a supported dynamic-panel shape when emitted by the runtime.",
                     "Use the canonical /library user-facing route in guidance.",
                 ],
                 "limitations": [
-                    "Broad Library mutation by voice or dynamic panel is not fully proven.",
+                    "Bulk delete/edit Library actions are not supported from chat and return a limitation-aware response.",
                     "Browser clipper and desktop-helper capture flows are separate clients, not full Assistant panels.",
                 ],
             },
@@ -67,10 +68,11 @@ def _ui_capability_manifest() -> dict[str, Any]:
                 "supported_now": [
                     "Create tasks from deterministic Assistant commands when enough fields are present.",
                     "Ask for a missing task due date through a supported dynamic panel.",
-                    "Use existing morning-briefing and alarm command paths where available.",
+                    "Create internal calendar events, list events, generate time blocks, generate briefings, render briefing audio, and schedule morning alarms from deterministic commands.",
                 ],
                 "limitations": [
-                    "Full time-block and conflict-resolution mutation coverage is not proven end to end.",
+                    "Google Calendar connection/sync and Planner conflict resolution are not supported from chat and return limitation-aware responses.",
+                    "Full Planner conflict-resolution mutation coverage is not proven end to end.",
                     "Production-hosted Planner parity is not currently proven.",
                 ],
             },
@@ -92,6 +94,8 @@ def _ui_capability_manifest() -> dict[str, Any]:
             "typed Assistant capability questions",
             "queued voice transcript completion into the Assistant thread",
             "task due-date request dynamic panels",
+            "deterministic Library capture/list/inspect/search commands",
+            "deterministic Planner task/calendar/time-block/briefing/alarm commands",
             "Review recall grading dynamic panels with SRS mutation",
             "bounded local PWA/native proof for current focused interview-prep flows",
         ],
@@ -213,6 +217,10 @@ def _ui_capability_manifest() -> dict[str, Any]:
             "read Sliding Window",
             "quiz me with application questions",
             "quiz me on application questions for Sliding Window",
+            "capture Article note: summarize this later",
+            "list artifacts",
+            "create event Deep Work from 2026-05-25 09:00 to 2026-05-25 10:00",
+            "generate time blocks for tomorrow from 9 to 17",
         ],
     }
 
@@ -1636,7 +1644,22 @@ def start_run(
                 summary = ""
                 planned_calls = []
 
-            if planned_calls:
+            limitation_response = None
+            if not planned_calls:
+                limitation_response = agent_command_service.limitation_response_for_command(command_for_planning)
+
+            if limitation_response is not None:
+                _assistant_message_from_command_response(
+                    conn,
+                    thread_id=thread["id"],
+                    run_id=run["id"],
+                    command=content,
+                    response=limitation_response,
+                    input_mode=input_mode,
+                    device_target=device_target,
+                    metadata=request_metadata,
+                )
+            elif planned_calls:
                 first_call = planned_calls[0]
                 if first_call.tool_name == "create_task" and "due_at" not in first_call.arguments:
                     _request_due_date_interrupt(

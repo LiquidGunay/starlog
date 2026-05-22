@@ -78,14 +78,22 @@ render briefing audio for today
 create task Review project notes due tomorrow priority 2
 summarize latest artifact
 make cards from the last capture
+list artifacts
+capture Article note: save this for later
 plan time blocks for today from 9 to 17
+create event Deep Work from 2026-05-25 09:00 to 2026-05-25 10:00
 show due cards
 ```
 
 The Assistant records the command in the persistent thread and returns cards or follow-up actions
-when a support surface needs attention. You can also ask what it can control or where its current
-limits are; the capability answer covers Assistant, Library, Planner, and Review while calling out
-unproven live STT, live provider-chosen panels, production parity, and full all-surface mutation coverage.
+when a support surface needs attention. Deterministic command coverage currently includes Library
+capture/list/inspect/search commands, Planner task/internal-calendar/time-block/briefing/alarm commands,
+and Review due-card loading plus explicit review-grade confirmation paths. Unsupported actions such as
+Library bulk deletion, Google Calendar connection/sync or conflict resolution from chat, Review bulk or
+auto-grading, and live provider-selected panels return clear limitation responses instead of fake success.
+You can also ask what it can control or where its current limits are; the capability answer covers
+Assistant, Library, Planner, and Review while calling out unproven live STT, live provider-chosen panels,
+production parity, and full all-surface mutation coverage.
 
 ## Surfaces
 

@@ -357,6 +357,8 @@ def _assert_capability_manifest_covers_surface_limits(manifest: dict) -> None:
     assert any("queued voice transcript" in item for item in manifest["supported_now"])
     assert any("task due-date" in item for item in manifest["supported_now"])
     assert any("Review recall grading" in item for item in manifest["supported_now"])
+    assert any("Library capture/list/inspect/search" in item for item in manifest["supported_now"])
+    assert any("Planner task/calendar/time-block/briefing/alarm" in item for item in manifest["supported_now"])
     assert any("live LLM/Codex" in item for item in manifest["unavailable_or_unproven"])
     assert any("real microphone audio" in item for item in manifest["unavailable_or_unproven"])
     assert any("production-hosted parity" in item for item in manifest["unavailable_or_unproven"])
@@ -376,6 +378,10 @@ def _assert_capability_text_is_user_facing(text: str) -> None:
         "full all-surface mutation coverage",
     ]:
         assert expected in text
+    _assert_visible_text_has_no_raw_protocol_labels(text)
+
+
+def _assert_visible_text_has_no_raw_protocol_labels(text: str) -> None:
     for raw_label in [
         "interview.review_grade",
         "interview.question_request",
@@ -383,6 +389,11 @@ def _assert_capability_text_is_user_facing(text: str) -> None:
         "assistant_thread_voice",
         "tool_call",
         "tool_result",
+        "renderer_key",
+        "tool_name",
+        "capture_text_as_artifact",
+        "create_calendar_event",
+        "list_due_cards",
     ]:
         assert raw_label not in text
 
@@ -685,6 +696,136 @@ def test_assistant_surface_capability_response_is_reachable_from_queued_voice_tr
     )
     _assert_capability_manifest_covers_surface_limits(tool_result["output"])
     assert tool_result["ui_meta"] == {"tone": "system", "source": "backend_capability_registry"}
+
+
+def test_assistant_typed_commands_cover_approved_surfaces_without_runtime(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
+    monkeypatch.setattr(
+        ai_service,
+        "execute_chat_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")),
+    )
+
+    assistant_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="what app surfaces can you control",
+    )
+    assert assistant_payload["run"]["status"] == "completed"
+    assert assistant_payload["assistant_message"]["metadata"]["matched_intent"] == "list_dynamic_ui_capabilities"
+    _assert_capability_text_is_user_facing(_assistant_visible_text(assistant_payload))
+
+    library_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="capture Library command proof: saved from the Assistant thread",
+    )
+    assert library_payload["run"]["status"] == "completed"
+    assert library_payload["assistant_message"]["metadata"]["matched_intent"] == "capture"
+    library_tool_call = _assistant_tool_call(library_payload, "capture_text_as_artifact")
+    library_tool_result = _assistant_tool_result_for_call(library_payload, library_tool_call["id"])
+    assert library_tool_result["output"]["artifact"]["title"] == "Library command proof"
+    _assert_visible_text_has_no_raw_protocol_labels(_assistant_visible_text(library_payload))
+
+    artifacts = client.get("/v1/artifacts", headers=auth_headers)
+    assert artifacts.status_code == 200
+    created_artifact = next(
+        artifact for artifact in artifacts.json() if artifact["title"] == "Library command proof"
+    )
+    assert created_artifact["normalized_content"] == "saved from the Assistant thread"
+
+    planner_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="create event Planner command proof from 2026-05-25 09:00 to 2026-05-25 10:00",
+    )
+    assert planner_payload["run"]["status"] == "completed"
+    assert planner_payload["assistant_message"]["metadata"]["matched_intent"] == "create_calendar_event"
+    planner_tool_call = _assistant_tool_call(planner_payload, "create_calendar_event")
+    planner_tool_result = _assistant_tool_result_for_call(planner_payload, planner_tool_call["id"])
+    assert planner_tool_result["output"]["event"]["title"] == "Planner command proof"
+    _assert_visible_text_has_no_raw_protocol_labels(_assistant_visible_text(planner_payload))
+
+    events = client.get("/v1/calendar/events", headers=auth_headers)
+    assert events.status_code == 200
+    created_event = next(event for event in events.json() if event["title"] == "Planner command proof")
+    assert created_event["starts_at"] == "2026-05-25T09:00:00Z"
+    assert created_event["ends_at"] == "2026-05-25T10:00:00Z"
+
+    card = _create_assistant_due_card(
+        client,
+        auth_headers,
+        prompt="Use a monotonic queue to solve the sliding window maximum prompt.",
+    )
+    review_payload = _post_assistant_study_command(
+        client,
+        auth_headers,
+        content="load due cards",
+    )
+    assert review_payload["run"]["status"] == "completed"
+    assert review_payload["assistant_message"]["metadata"]["matched_intent"] == "list_due_cards"
+    review_tool_call = _assistant_tool_call(review_payload, "list_due_cards")
+    review_tool_result = _assistant_tool_result_for_call(review_payload, review_tool_call["id"])
+    due_cards = review_tool_result["output"]["value"]
+    assert any(item["id"] == card["id"] for item in due_cards)
+    _assert_visible_text_has_no_raw_protocol_labels(_assistant_visible_text(review_payload))
+
+
+@pytest.mark.parametrize(
+    ("content", "matched_intent", "expected_phrases"),
+    [
+        (
+            "delete all Library artifacts",
+            "library_action_unavailable",
+            ["cannot delete or bulk-edit Library artifacts", "capture text", "list artifacts"],
+        ),
+        (
+            "connect Google Calendar and resolve every Planner conflict",
+            "planner_action_unavailable",
+            ["cannot connect Google Calendar", "create internal calendar events", "schedule a morning alarm"],
+        ),
+        (
+            "auto grade every Review card",
+            "review_action_unavailable",
+            ["cannot bulk-grade", "load due cards", "explicit grade"],
+        ),
+        (
+            "make the Assistant live provider selection autonomous",
+            "assistant_action_unavailable",
+            ["cannot enable or prove live LLM/Codex", "capability questions", "remaining limits"],
+        ),
+    ],
+)
+def test_assistant_unsupported_surface_actions_return_limitations_without_runtime(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    content: str,
+    matched_intent: str,
+    expected_phrases: list[str],
+) -> None:
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
+    monkeypatch.setattr(
+        ai_service,
+        "execute_chat_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")),
+    )
+
+    payload = _post_assistant_study_command(client, auth_headers, content=content)
+
+    assert payload["run"]["status"] == "completed"
+    assert payload["assistant_message"]["metadata"]["matched_intent"] == matched_intent
+    command = payload["assistant_message"]["metadata"]["assistant_command"]
+    assert command["status"] == "executed"
+    assert command["steps"] == []
+    visible_text = _assistant_visible_text(payload)
+    for phrase in expected_phrases:
+        assert phrase in visible_text
+    _assert_visible_text_has_no_raw_protocol_labels(visible_text)
 
 
 def test_assistant_handoff_token_is_resolved_into_trusted_context(

@@ -338,13 +338,38 @@ def _assistant_summary_card(response: Any) -> dict[str, Any]:
     )
 
 
+def _tool_step_title(tool_name: str) -> str:
+    labels = {
+        "capture_text_as_artifact": "Saved capture",
+        "list_artifacts": "Checked Library",
+        "get_artifact_graph": "Checked Library",
+        "search_starlog": "Checked Starlog",
+        "create_task": "Created task",
+        "update_task": "Updated task",
+        "list_tasks": "Checked Planner",
+        "create_calendar_event": "Created event",
+        "list_calendar_events": "Checked calendar",
+        "generate_time_blocks": "Planned time blocks",
+        "generate_briefing": "Prepared briefing",
+        "render_briefing_audio": "Queued briefing audio",
+        "schedule_morning_brief_alarm": "Scheduled alarm",
+        "list_due_cards": "Checked review queue",
+        "grade_review_recall": "Recorded review grade",
+    }
+    if tool_name in labels:
+        return labels[tool_name]
+    return "Assistant check"
+
+
 def _tool_step_card(step: Any) -> dict[str, Any]:
+    tool_name = str(getattr(step, "tool_name", "") or "")
     return normalize_card(
         {
             "kind": "tool_step",
-            "title": getattr(step, "tool_name", "tool_step"),
+            "title": _tool_step_title(tool_name),
             "body": getattr(step, "message", None) or getattr(step, "status", "completed"),
             "metadata": {
+                "tool_name": tool_name,
                 "status": getattr(step, "status", "completed"),
                 "arguments": getattr(step, "arguments", {}),
                 "confirmation_state": getattr(step, "confirmation_state", "not_required"),
