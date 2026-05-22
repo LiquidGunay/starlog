@@ -512,7 +512,6 @@ const MOBILE_DB_NAME = "starlog-mobile.db";
 const MOBILE_STATE_KEY = "state_v2";
 const MOBILE_SECURE_TOKEN_KEY = "starlog.api.token";
 const KITTEN_TTS_BUNDLE_STATE = normalizeKittenTtsBundleState(RUNTIME_ENV.EXPO_PUBLIC_STARLOG_KITTEN_TTS_STATUS);
-const SERIF_FONT_FAMILY = Platform.select({ ios: "Georgia", android: "serif", default: undefined });
 const DEFAULT_EXECUTION_TARGETS: Record<ExecutionPolicyFamily, ExecutionTarget[]> = {
   llm: ["on_device", "batch_local_bridge", "server_local", "codex_bridge", "api_fallback"],
   stt: ["on_device", "batch_local_bridge", "server_local", "api_fallback"],
@@ -638,39 +637,39 @@ function usePalette(): Palette {
   return useMemo(() => {
     if (scheme === "light") {
       return {
-        bg: "#faf4f6",
-        bgAlt: "#f5eaef",
-        panel: "rgba(255,248,250,0.84)",
-        border: "rgba(101,57,76,0.16)",
-        text: "#311820",
-        muted: "#6f5961",
-        accent: "#8d4860",
-        accentMuted: "rgba(141,72,96,0.12)",
-        secondary: "#7e7564",
-        tertiary: "#b97d97",
+        bg: "#f7f8f5",
+        bgAlt: "#edf1ec",
+        panel: "rgba(255,255,252,0.9)",
+        border: "rgba(47,67,58,0.14)",
+        text: "#16201b",
+        muted: "#5e6a63",
+        accent: "#2f7156",
+        accentMuted: "rgba(47,113,86,0.12)",
+        secondary: "#425f80",
+        tertiary: "#866a2e",
         error: "#b33834",
-        onAccent: "#fff6fa",
-        surfaceLow: "#fff7f9",
-        surfaceHigh: "#f2e4ea",
-        surfaceHighest: "#ead8e0",
+        onAccent: "#f7fbf8",
+        surfaceLow: "#ffffff",
+        surfaceHigh: "#edf2ee",
+        surfaceHighest: "#dfe8e2",
       };
     }
     return {
-      bg: "#1e0f16",
-      bgAlt: "#27171e",
-      panel: "rgba(71,52,60,0.4)",
-      border: "rgba(73,71,63,0.18)",
-      text: "#f8dbe6",
-      muted: "#cac6bb",
-      accent: "#f1b6cd",
-      accentMuted: "rgba(241,182,205,0.14)",
-      secondary: "#cbc7b3",
-      tertiary: "#65394c",
+      bg: "#101419",
+      bgAlt: "#151b21",
+      panel: "rgba(22,29,35,0.92)",
+      border: "rgba(158,174,165,0.16)",
+      text: "#edf4ef",
+      muted: "#aeb9b2",
+      accent: "#8fc7a3",
+      accentMuted: "rgba(143,199,163,0.14)",
+      secondary: "#9db9de",
+      tertiary: "#d3b56b",
       error: "#ffb4ab",
-      onAccent: "#320f20",
-      surfaceLow: "#2b1b23",
-      surfaceHigh: "#37252d",
-      surfaceHighest: "#422f38",
+      onAccent: "#0d1a13",
+      surfaceLow: "#161d23",
+      surfaceHigh: "#1d252d",
+      surfaceHighest: "#27313a",
     };
   }, [scheme]);
 }
@@ -4645,7 +4644,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
   if (!token) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+        <ExpoStatusBar style={palette.bg === "#101419" ? "light" : "dark"} />
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="always">
           <MobileLoginSurface
             styles={styles}
@@ -4672,7 +4671,7 @@ export default function App({ initialIntentUrl = null }: AppProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ExpoStatusBar style={palette.bg === "#1e0f16" ? "light" : "dark"} />
+      <ExpoStatusBar style={palette.bg === "#101419" ? "light" : "dark"} />
       {shouldShowMobileTopBar(activeTab) ? (
         <MobileTopBar
           styles={styles}
@@ -5289,24 +5288,6 @@ function themedStyles(palette: Palette) {
       flex: 1,
       backgroundColor: palette.bg,
     },
-    bgOrbTop: {
-      position: "absolute",
-      top: -80,
-      right: -60,
-      width: 220,
-      height: 220,
-      borderRadius: 999,
-      backgroundColor: palette.accentMuted,
-    },
-    bgOrbCenter: {
-      position: "absolute",
-      top: 220,
-      left: -60,
-      width: 180,
-      height: 180,
-      borderRadius: 999,
-      backgroundColor: "rgba(109,61,83,0.16)",
-    },
     topBar: {
       paddingHorizontal: 18,
       paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 24) + 6 : 8,
@@ -5314,16 +5295,16 @@ function themedStyles(palette: Palette) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      backgroundColor: "rgba(5,16,29,0.9)",
+      backgroundColor: palette.panel,
       borderBottomWidth: 1,
-      borderBottomColor: "rgba(245,169,73,0.14)",
+      borderBottomColor: palette.border,
     },
     topBarAssistant: {
       paddingTop: Platform.OS === "android" ? 18 : 6,
       paddingBottom: 8,
-      backgroundColor: "rgba(30,15,22,0.08)",
+      backgroundColor: palette.bg,
       borderBottomWidth: 1,
-      borderBottomColor: "rgba(255,255,255,0.04)",
+      borderBottomColor: palette.border,
       alignItems: "center",
     },
     topBarBrand: {
@@ -5342,8 +5323,8 @@ function themedStyles(palette: Palette) {
       height: 28,
       borderRadius: 14,
       borderWidth: 1,
-      borderColor: "rgba(245,169,73,0.28)",
-      backgroundColor: "rgba(245,169,73,0.08)",
+      borderColor: palette.border,
+      backgroundColor: palette.accentMuted,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -5412,8 +5393,8 @@ function themedStyles(palette: Palette) {
       height: 34,
       borderRadius: 17,
       borderWidth: 1,
-      borderColor: "rgba(245,169,73,0.16)",
-      backgroundColor: "rgba(255,255,255,0.035)",
+      borderColor: palette.border,
+      backgroundColor: palette.surfaceLow,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -5461,8 +5442,8 @@ function themedStyles(palette: Palette) {
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.panel,
-      borderRadius: 28,
-      padding: 22,
+      borderRadius: 12,
+      padding: 16,
       gap: 12,
     },
     eyebrow: {
@@ -5473,10 +5454,9 @@ function themedStyles(palette: Palette) {
     },
     title: {
       color: palette.text,
-      fontSize: 52,
-      lineHeight: 58,
-      fontWeight: "400",
-      fontFamily: SERIF_FONT_FAMILY,
+      fontSize: 30,
+      lineHeight: 36,
+      fontWeight: "800",
     },
     body: {
       color: palette.muted,
@@ -5535,7 +5515,7 @@ function themedStyles(palette: Palette) {
       justifyContent: "space-between",
     },
     intentHeroCard: {
-      borderRadius: 24,
+      borderRadius: 12,
       paddingHorizontal: 18,
       paddingVertical: 18,
       gap: 10,
@@ -5556,17 +5536,15 @@ function themedStyles(palette: Palette) {
     },
     intentHeroCopy: {
       color: palette.onAccent,
-      fontSize: 24,
-      lineHeight: 34,
-      fontWeight: "400",
-      fontFamily: SERIF_FONT_FAMILY,
+      fontSize: 18,
+      lineHeight: 26,
+      fontWeight: "800",
     },
     editorialCardCopy: {
       color: palette.text,
-      fontSize: 28,
-      lineHeight: 38,
-      fontWeight: "400",
-      fontFamily: SERIF_FONT_FAMILY,
+      fontSize: 20,
+      lineHeight: 28,
+      fontWeight: "800",
     },
     contextCard: {
       borderWidth: 1,
@@ -5676,10 +5654,9 @@ function themedStyles(palette: Palette) {
     },
     captureArtifactTitle: {
       color: palette.text,
-      fontSize: 36,
-      fontWeight: "400",
-      lineHeight: 44,
-      fontFamily: SERIF_FONT_FAMILY,
+      fontSize: 22,
+      fontWeight: "800",
+      lineHeight: 28,
     },
     miniTag: {
       borderWidth: 1,
@@ -5791,10 +5768,9 @@ function themedStyles(palette: Palette) {
     },
     surfaceLeadTitle: {
       color: palette.text,
-      fontSize: 26,
-      lineHeight: 32,
-      fontFamily: SERIF_FONT_FAMILY,
-      fontWeight: "400",
+      fontSize: 20,
+      lineHeight: 26,
+      fontWeight: "800",
     },
     surfaceLeadCopy: {
       color: palette.muted,
@@ -5820,7 +5796,6 @@ function themedStyles(palette: Palette) {
       fontSize: 22,
       lineHeight: 26,
       fontWeight: "800",
-      fontFamily: "Manrope",
     },
     surfaceStatLabel: {
       color: palette.muted,
@@ -5855,7 +5830,7 @@ function themedStyles(palette: Palette) {
       borderColor: palette.border,
       borderRadius: 20,
       padding: 14,
-      backgroundColor: "rgba(16,20,26,0.66)",
+      backgroundColor: palette.surfaceLow,
       gap: 8,
     },
     reviewMeta: {
@@ -5880,7 +5855,7 @@ function themedStyles(palette: Palette) {
       height: 2,
       width: 46,
       borderRadius: 999,
-      backgroundColor: "rgba(201,190,255,0.2)",
+      backgroundColor: palette.accentMuted,
       alignSelf: "center",
     },
     reviewAnswerLarge: {
@@ -5906,8 +5881,8 @@ function themedStyles(palette: Palette) {
       gap: 4,
     },
     reviewRateButtonActive: {
-      borderColor: "rgba(201,190,255,0.38)",
-      backgroundColor: "rgba(201,190,255,0.16)",
+      borderColor: palette.accent,
+      backgroundColor: palette.accentMuted,
     },
     reviewRateLabel: {
       color: palette.muted,
@@ -5932,10 +5907,9 @@ function themedStyles(palette: Palette) {
     },
     alarmClockText: {
       color: palette.text,
-      fontSize: 50,
-      fontWeight: "400",
-      lineHeight: 56,
-      fontFamily: SERIF_FONT_FAMILY,
+      fontSize: 40,
+      fontWeight: "800",
+      lineHeight: 46,
     },
     alarmClockPeriod: {
       color: palette.accent,
@@ -5985,7 +5959,7 @@ function themedStyles(palette: Palette) {
     alarmWaveBar: {
       flex: 1,
       borderRadius: 999,
-      backgroundColor: "rgba(201,190,255,0.7)",
+      backgroundColor: palette.accent,
     },
     alarmPlayerButtons: {
       flexDirection: "row",
@@ -6036,8 +6010,8 @@ function themedStyles(palette: Palette) {
       borderWidth: 1,
       borderColor: palette.border,
       backgroundColor: palette.panel,
-      borderRadius: 24,
-      padding: 18,
+      borderRadius: 12,
+      padding: 14,
       gap: 12,
     },
     sectionKicker: {
@@ -6048,9 +6022,8 @@ function themedStyles(palette: Palette) {
     },
     panelTitle: {
       color: palette.text,
-      fontSize: 19,
-      fontWeight: "600",
-      fontFamily: SERIF_FONT_FAMILY,
+      fontSize: 17,
+      fontWeight: "700",
     },
     chipRow: {
       flexDirection: "row",
@@ -6104,7 +6077,7 @@ function themedStyles(palette: Palette) {
       borderRadius: 14,
       padding: 12,
       gap: 8,
-      backgroundColor: "rgba(16,20,26,0.55)",
+      backgroundColor: palette.surfaceLow,
       marginTop: 2,
     },
     opsSectionTitle: {
@@ -6114,11 +6087,11 @@ function themedStyles(palette: Palette) {
     },
     inlineCard: {
       borderWidth: 1,
-      borderColor: "rgba(241, 182, 205, 0.14)",
+      borderColor: palette.border,
       borderRadius: 16,
       padding: 12,
       gap: 6,
-      backgroundColor: "rgba(16,20,26,0.76)",
+      backgroundColor: palette.surfaceLow,
       marginTop: 6,
       shadowColor: "#000",
       shadowOpacity: 0.12,
@@ -6127,7 +6100,7 @@ function themedStyles(palette: Palette) {
       elevation: 2,
     },
     inlineCardActive: {
-      borderColor: "rgba(241, 182, 205, 0.34)",
+      borderColor: palette.accent,
       shadowColor: palette.accent,
       shadowOpacity: 0.22,
       shadowRadius: 14,
@@ -6140,20 +6113,20 @@ function themedStyles(palette: Palette) {
     },
     detailCard: {
       borderWidth: 1,
-      borderColor: "rgba(241, 182, 205, 0.14)",
+      borderColor: palette.border,
       borderRadius: 16,
       padding: 12,
       gap: 8,
-      backgroundColor: "rgba(16,20,26,0.68)",
+      backgroundColor: palette.surfaceLow,
       marginTop: 8,
     },
     threadMessageCard: {
       borderWidth: 1,
-      borderColor: "rgba(241, 182, 205, 0.12)",
+      borderColor: palette.border,
       borderRadius: 18,
       padding: 12,
       gap: 10,
-      backgroundColor: "rgba(16,20,26,0.76)",
+      backgroundColor: palette.surfaceLow,
       shadowColor: "#000",
       shadowOpacity: 0.12,
       shadowRadius: 14,
@@ -6172,7 +6145,7 @@ function themedStyles(palette: Palette) {
       letterSpacing: 0,
       fontWeight: "800",
       borderWidth: 1,
-      borderColor: "rgba(241, 182, 205, 0.14)",
+      borderColor: palette.border,
       borderRadius: 999,
       paddingHorizontal: 8,
       paddingVertical: 4,
@@ -6192,7 +6165,7 @@ function themedStyles(palette: Palette) {
     },
     threadDetailToggle: {
       borderWidth: 1,
-      borderColor: "rgba(241, 182, 205, 0.12)",
+      borderColor: palette.border,
       borderRadius: 999,
       paddingHorizontal: 8,
       paddingVertical: 4,
@@ -6273,11 +6246,11 @@ function themedStyles(palette: Palette) {
     },
     reviewCard: {
       borderWidth: 1,
-      borderColor: "rgba(241, 182, 205, 0.12)",
+      borderColor: palette.border,
       borderRadius: 16,
       padding: 12,
       gap: 8,
-      backgroundColor: "rgba(16,20,26,0.72)",
+      backgroundColor: palette.surfaceLow,
       marginTop: 8,
       shadowColor: "#000",
       shadowOpacity: 0.1,
@@ -6318,7 +6291,7 @@ function themedStyles(palette: Palette) {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: "rgba(30,15,22,0.92)",
+      backgroundColor: palette.panel,
       paddingHorizontal: 16,
       paddingTop: 10,
       paddingBottom: 14,

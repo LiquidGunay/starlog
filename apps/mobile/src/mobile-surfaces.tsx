@@ -218,11 +218,11 @@ type MobileCalendarSurfaceProps = SharedProps & {
 
 function cardBase(palette: Record<string, string>) {
   return {
-    borderRadius: 24,
+    borderRadius: 12,
     backgroundColor: palette.surfaceLow,
     borderWidth: 1,
     borderColor: palette.border,
-    padding: 18,
+    padding: 14,
     gap: 10,
   } as const;
 }
@@ -239,8 +239,8 @@ function kickerStyle(palette: Record<string, string>) {
 function headingStyle(palette: Record<string, string>) {
   return {
     color: palette.text,
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "800" as const,
   };
 }
@@ -367,7 +367,7 @@ function conversationCardTone(kind: string, palette: Record<string, string>) {
   if (kind === "review_queue") {
     return {
       cardBorder: "rgba(166, 222, 191, 0.12)",
-      cardBackground: "rgba(43, 28, 37, 0.92)",
+      cardBackground: palette.surfaceLow,
       accentBackground: "rgba(166, 222, 191, 0.09)",
       accentBorder: "rgba(166, 222, 191, 0.16)",
       accentText: "#cfeeda",
@@ -377,7 +377,7 @@ function conversationCardTone(kind: string, palette: Record<string, string>) {
   if (kind === "task_list") {
     return {
       cardBorder: "rgba(243, 207, 122, 0.12)",
-      cardBackground: "rgba(43, 28, 37, 0.92)",
+      cardBackground: palette.surfaceLow,
       accentBackground: "rgba(243, 207, 122, 0.09)",
       accentBorder: "rgba(243, 207, 122, 0.16)",
       accentText: "#f4ddb0",
@@ -387,7 +387,7 @@ function conversationCardTone(kind: string, palette: Record<string, string>) {
   if (kind === "knowledge_note") {
     return {
       cardBorder: "rgba(151, 188, 255, 0.12)",
-      cardBackground: "rgba(43, 28, 37, 0.92)",
+      cardBackground: palette.surfaceLow,
       accentBackground: "rgba(151, 188, 255, 0.09)",
       accentBorder: "rgba(151, 188, 255, 0.16)",
       accentText: "#d7e6ff",
@@ -396,29 +396,29 @@ function conversationCardTone(kind: string, palette: Record<string, string>) {
   }
   if (kind === "briefing") {
     return {
-      cardBorder: "rgba(241, 182, 205, 0.13)",
-      cardBackground: "rgba(45, 30, 39, 0.94)",
-      accentBackground: "rgba(241, 182, 205, 0.09)",
-      accentBorder: "rgba(241, 182, 205, 0.16)",
+      cardBorder: palette.border,
+      cardBackground: palette.surfaceLow,
+      accentBackground: palette.accentMuted,
+      accentBorder: palette.border,
       accentText: palette.accent,
       bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   if (kind === "capture_item") {
     return {
-      cardBorder: "rgba(241, 182, 205, 0.13)",
-      cardBackground: "rgba(45, 30, 39, 0.94)",
-      accentBackground: "rgba(241, 182, 205, 0.09)",
-      accentBorder: "rgba(241, 182, 205, 0.16)",
+      cardBorder: palette.border,
+      cardBackground: palette.surfaceLow,
+      accentBackground: palette.accentMuted,
+      accentBorder: palette.border,
       accentText: palette.accent,
       bodyBackground: "rgba(255,255,255,0.02)",
     };
   }
   return {
-    cardBorder: "rgba(241, 182, 205, 0.12)",
-    cardBackground: "rgba(43, 29, 37, 0.92)",
-    accentBackground: "rgba(241, 182, 205, 0.09)",
-    accentBorder: "rgba(241, 182, 205, 0.15)",
+    cardBorder: palette.border,
+    cardBackground: palette.surfaceLow,
+    accentBackground: palette.accentMuted,
+    accentBorder: palette.border,
     accentText: palette.accent,
     bodyBackground: "rgba(255,255,255,0.02)",
   };
@@ -613,7 +613,7 @@ function conversationActionTone(
   if (action.style === "primary") {
     return {
       backgroundColor: "rgba(96, 57, 75, 0.62)",
-      borderColor: "rgba(241, 182, 205, 0.12)",
+      borderColor: palette.border,
       color: palette.accent,
     };
   }
@@ -677,7 +677,7 @@ function plannerMetricTone(tone: string, palette: Record<string, string>) {
     return { color: "#9fbfff", background: "rgba(159, 191, 255, 0.08)", border: "rgba(159, 191, 255, 0.15)" };
   }
   if (tone === "task") {
-    return { color: palette.accent, background: "rgba(241, 182, 205, 0.08)", border: "rgba(241, 182, 205, 0.14)" };
+    return { color: palette.accent, background: palette.accentMuted, border: palette.border };
   }
   return { color: "#c8b9c1", background: "rgba(255, 255, 255, 0.04)", border: "rgba(255, 255, 255, 0.08)" };
 }
@@ -690,7 +690,7 @@ function plannerPlanTone(tone: string, palette: Record<string, string>) {
     return { color: "#77b7ff", background: "rgba(119, 183, 255, 0.1)", border: "rgba(119, 183, 255, 0.2)", icon: "account-group-outline" as const };
   }
   if (tone === "task") {
-    return { color: palette.accent, background: "rgba(245, 169, 73, 0.1)", border: "rgba(245, 169, 73, 0.22)", icon: "checkbox-marked-circle-outline" as const };
+    return { color: palette.accent, background: palette.accentMuted, border: palette.border, icon: "checkbox-marked-circle-outline" as const };
   }
   if (tone === "done") {
     return { color: "#69d083", background: "rgba(105, 208, 131, 0.12)", border: "rgba(105, 208, 131, 0.22)", icon: "check" as const };
@@ -703,7 +703,7 @@ function plannerPlanTone(tone: string, palette: Record<string, string>) {
 
 function reviewStageTone(stage: MobileReviewStageChip, palette: Record<string, string>) {
   if (stage.active) {
-    return { color: palette.onAccent, background: palette.accent, border: "rgba(241, 182, 205, 0.2)" };
+    return { color: palette.onAccent, background: palette.accent, border: palette.border };
   }
   if (stage.tone === "due") {
     return { color: "#f3cf7a", background: "rgba(243, 207, 122, 0.08)", border: "rgba(243, 207, 122, 0.18)" };
@@ -716,7 +716,7 @@ function reviewGradeTone(option: MobileReviewGradeOption, palette: Record<string
     return { color: palette.error, background: "rgba(255, 180, 171, 0.08)", border: "rgba(255, 180, 171, 0.18)" };
   }
   if (option.tone === "good") {
-    return { color: palette.accent, background: "rgba(241, 182, 205, 0.12)", border: "rgba(241, 182, 205, 0.2)" };
+    return { color: palette.accent, background: palette.accentMuted, border: palette.border };
   }
   if (option.tone === "easy") {
     return { color: "#a6debf", background: "rgba(166, 222, 191, 0.08)", border: "rgba(166, 222, 191, 0.18)" };
@@ -793,9 +793,9 @@ function librarySegmentButton(
         justifyContent: "center",
         flexDirection: "row",
         gap: compact ? 4 : 5,
-        backgroundColor: active ? "rgba(245, 169, 73, 0.16)" : "transparent",
+        backgroundColor: active ? palette.accentMuted : "transparent",
         borderWidth: 1,
-        borderColor: active ? "rgba(245, 169, 73, 0.34)" : "transparent",
+        borderColor: active ? palette.accent : "transparent",
       }}
     >
       {showDecoration ? <MaterialCommunityIcons name={icon} size={compact ? 14 : 15} color={active ? palette.secondary : palette.muted} /> : null}
@@ -803,7 +803,7 @@ function librarySegmentButton(
         {segment}
       </Text>
       {showDecoration && countLabel ? (
-        <View style={{ minWidth: 22, borderRadius: 11, backgroundColor: active ? "rgba(245, 169, 73, 0.18)" : palette.surfaceHigh, paddingHorizontal: 5, paddingVertical: 2 }}>
+        <View style={{ minWidth: 22, borderRadius: 11, backgroundColor: active ? palette.accentMuted : palette.surfaceHigh, paddingHorizontal: 5, paddingVertical: 2 }}>
           <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? palette.secondary : palette.muted, fontSize: 10, fontWeight: "800", textAlign: "center" }}>
             {countLabel}
           </Text>
@@ -882,9 +882,9 @@ function mobileCaptureRow(
               maxWidth: compact ? 62 : 86,
               minHeight: compact ? 20 : 24,
               borderRadius: compact ? 10 : 12,
-              backgroundColor: row.statusTone === "processed" ? "rgba(166, 222, 191, 0.08)" : "rgba(245, 169, 73, 0.09)",
+              backgroundColor: row.statusTone === "processed" ? palette.accentMuted : palette.surfaceHigh,
               borderWidth: 1,
-              borderColor: row.statusTone === "processed" ? "rgba(166, 222, 191, 0.16)" : "rgba(245, 169, 73, 0.18)",
+              borderColor: row.statusTone === "processed" ? palette.border : palette.border,
               paddingHorizontal: compact ? 6 : 8,
               alignItems: "center",
               justifyContent: "center",
@@ -913,7 +913,7 @@ function mobileCaptureRow(
             gap: compact ? 4 : 6,
             backgroundColor: enabled ? palette.accent : "rgba(255,255,255,0.035)",
             borderWidth: 1,
-            borderColor: enabled ? "rgba(245, 169, 73, 0.28)" : palette.border,
+            borderColor: enabled ? palette.accent : palette.border,
             opacity: enabled ? 1 : 0.76,
           };
           const label = libraryActionDisplayLabel(action, compact);
@@ -995,7 +995,7 @@ function artifactSectionCard(
             height: 26,
             borderRadius: 13,
             borderWidth: 1,
-            borderColor: "rgba(245, 169, 73, 0.58)",
+            borderColor: palette.accent,
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -1232,7 +1232,7 @@ function mobileArtifactDetailView(
         </View>
       </View>
       {model.fallbackNotice ? (
-        <View style={{ borderRadius: 12, backgroundColor: "rgba(245, 169, 73, 0.08)", borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.18)", paddingHorizontal: 10, paddingVertical: 8 }}>
+        <View style={{ borderRadius: 12, backgroundColor: palette.accentMuted, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 10, paddingVertical: 8 }}>
           <Text {...LIBRARY_TIGHT_TEXT_PROPS} numberOfLines={2} style={{ color: palette.secondary, fontSize: 11, lineHeight: 15, fontWeight: "800" }}>{model.fallbackNotice}</Text>
         </View>
       ) : null}
@@ -1310,7 +1310,7 @@ function mobileArtifactDetailView(
         isExpanded("preview"),
         () => toggleSection("preview"),
         <View style={{ gap: 12 }}>
-          <View style={{ borderRadius: 14, backgroundColor: "#050b12", borderWidth: 1, borderColor: palette.border, minHeight: 132, padding: 14, justifyContent: "center" }}>
+          <View style={{ borderRadius: 14, backgroundColor: palette.bgAlt, borderWidth: 1, borderColor: palette.border, minHeight: 132, padding: 14, justifyContent: "center" }}>
             <Text numberOfLines={6} style={{ color: palette.text, fontSize: 15, lineHeight: 22, textAlign: "center" }}>
               {model.quickCapture.preview || "No source preview was returned."}
             </Text>
@@ -1357,7 +1357,7 @@ function mobileArtifactDetailView(
                 padding: 12,
                 gap: 6,
                 borderWidth: 1,
-                borderColor: layer.present ? "rgba(241, 182, 205, 0.16)" : "rgba(255,255,255,0.04)",
+                borderColor: layer.present ? palette.accent : palette.border,
               }}
             >
               <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
@@ -1402,7 +1402,7 @@ function mobileArtifactDetailView(
                 minHeight: 96,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: executableRequest ? "rgba(245, 169, 73, 0.24)" : palette.border,
+                borderColor: executableRequest ? palette.accent : palette.border,
                 backgroundColor: palette.surfaceHigh,
                 padding: 12,
                 gap: 6,
@@ -1537,10 +1537,10 @@ export function MobileHomeSurface({
     <View style={{ gap: 14 }}>
       <View
         style={{
-          borderRadius: 24,
+          borderRadius: 12,
           borderWidth: 1,
-          borderColor: "rgba(241, 182, 205, 0.08)",
-          backgroundColor: "rgba(26, 17, 23, 0.72)",
+          borderColor: palette.border,
+          backgroundColor: palette.panel,
           paddingHorizontal: 14,
           paddingVertical: 14,
           gap: 10,
@@ -1585,9 +1585,9 @@ export function MobileHomeSurface({
                 width: 46,
                 height: 46,
                 borderRadius: 16,
-                backgroundColor: "rgba(241, 182, 205, 0.08)",
+                backgroundColor: palette.accentMuted,
                 borderWidth: 1,
-                borderColor: "rgba(241, 182, 205, 0.12)",
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -1645,12 +1645,12 @@ export function MobileHomeSurface({
                 <View
                   style={{
                     maxWidth: isUser ? "82%" : "96%",
-                    borderRadius: 24,
+                    borderRadius: 12,
                     borderBottomRightRadius: isUser ? 11 : 24,
                     borderBottomLeftRadius: isUser ? 24 : 11,
-                    backgroundColor: isUser ? "rgba(57, 38, 47, 0.58)" : "transparent",
+                    backgroundColor: isUser ? palette.surfaceHigh : "transparent",
                     borderWidth: isUser ? 1 : 0,
-                    borderColor: isUser ? "rgba(241, 182, 205, 0.06)" : "transparent",
+                    borderColor: isUser ? palette.border : "transparent",
                     paddingHorizontal: isUser ? 14 : 0,
                     paddingVertical: isUser ? 10 : 0,
                   }}
@@ -1676,7 +1676,7 @@ export function MobileHomeSurface({
                         top: 4,
                         bottom: 10,
                         width: 1,
-                        backgroundColor: "rgba(241, 182, 205, 0.06)",
+                        backgroundColor: palette.accentMuted,
                       }}
                     />
                     {primaryCards.map((card, cardIndex) => {
@@ -1705,7 +1705,7 @@ export function MobileHomeSurface({
                               paddingTop: 20,
                             }}
                           >
-                            <View style={{ height: 1, backgroundColor: "rgba(241, 182, 205, 0.1)" }} />
+                            <View style={{ height: 1, backgroundColor: palette.border }} />
                           </View>
                           <View
                             style={{
@@ -1713,7 +1713,7 @@ export function MobileHomeSurface({
                               borderRadius: 18,
                               borderWidth: 1,
                               borderColor: tone.cardBorder,
-                              backgroundColor: "rgba(43, 28, 37, 0.62)",
+                              backgroundColor: tone.cardBackground,
                               paddingHorizontal: 13,
                               paddingVertical: 12,
                               gap: 10,
@@ -1786,9 +1786,9 @@ export function MobileHomeSurface({
                                     ...pillStyle(palette, true),
                                     paddingHorizontal: 10,
                                     paddingVertical: 5,
-                                    backgroundColor: "rgba(241, 182, 205, 0.06)",
+                                    backgroundColor: palette.accentMuted,
                                     borderWidth: 1,
-                                    borderColor: "rgba(241, 182, 205, 0.08)",
+                                    borderColor: palette.border,
                                   }}
                                   onPress={() =>
                                     setRevealedReviewCards((previous) => ({
@@ -1917,10 +1917,10 @@ export function MobileHomeSurface({
 
       <View
         style={{
-          borderRadius: 24,
-          backgroundColor: "rgba(32, 20, 27, 0.78)",
+          borderRadius: 12,
+          backgroundColor: palette.panel,
           borderWidth: 1,
-          borderColor: "rgba(241, 182, 205, 0.07)",
+          borderColor: palette.border,
           paddingHorizontal: 10,
           paddingVertical: 10,
           shadowColor: "#000",
@@ -1950,8 +1950,8 @@ export function MobileHomeSurface({
                 paddingHorizontal: 9,
                 paddingVertical: 5,
                 borderWidth: 1,
-                borderColor: index === 0 ? "rgba(241, 182, 205, 0.1)" : "rgba(255,255,255,0.05)",
-                backgroundColor: index === 0 ? "rgba(241, 182, 205, 0.06)" : "rgba(255,255,255,0.02)",
+                borderColor: index === 0 ? palette.accent : palette.border,
+                backgroundColor: index === 0 ? palette.accentMuted : palette.surfaceHigh,
               }}
             >
               <Text
@@ -2384,7 +2384,7 @@ export function MobileNotesSurface({
             </View>
           </View>
         ) : visibleRows.length > 0 ? (
-          <View style={{ ...cardBase(palette), backgroundColor: "rgba(8, 19, 32, 0.9)", padding: compactLibraryLayout ? 10 : 14, gap: 0 }}>
+          <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, padding: compactLibraryLayout ? 10 : 14, gap: 0 }}>
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, paddingBottom: compactLibraryLayout ? 6 : 10 }}>
               <View style={{ flex: 1, gap: 2 }}>
                 <Text {...LIBRARY_TEXT_PROPS} numberOfLines={1} style={{ color: palette.text, fontSize: compactLibraryLayout ? 15 : 18, lineHeight: compactLibraryLayout ? 19 : 23, fontWeight: "800" }}>
@@ -2444,7 +2444,7 @@ export function MobileNotesSurface({
                 style={{
                   borderRadius: 16,
                   minHeight: 96,
-                  backgroundColor: "#07111c",
+                  backgroundColor: palette.bgAlt,
                   color: palette.text,
                   padding: 14,
                   fontSize: 16,
@@ -2504,7 +2504,7 @@ export function MobileNotesSurface({
               </View>
             </>
           ) : (
-            <View style={{ borderRadius: 16, backgroundColor: "#07111c", borderWidth: 1, borderColor: palette.border, padding: 14, gap: 5 }}>
+            <View style={{ borderRadius: 16, backgroundColor: palette.bgAlt, borderWidth: 1, borderColor: palette.border, padding: 14, gap: 5 }}>
               <Text {...LIBRARY_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: palette.muted, fontSize: 9 }]}>Draft</Text>
               <Text {...LIBRARY_TEXT_PROPS} numberOfLines={2} style={{ color: palette.text, fontSize: 14, lineHeight: 20 }}>
                 {quickCaptureText.trim() || captureCommandPreview}
@@ -2630,7 +2630,7 @@ export function MobileReviewSurface({
     .sort((left, right) => right.due_count - left.due_count)[0] ?? null;
 
   return (
-    <View style={{ gap: 10, paddingBottom: 120 }}>
+    <View style={{ gap: 8, paddingBottom: 120 }}>
       <View style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1, gap: 5 }}>
@@ -2640,7 +2640,7 @@ export function MobileReviewSurface({
                 {model.syncedLabel}
               </Text>
             </View>
-            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "700" }}>
+            <Text {...REVIEW_TEXT_PROPS} style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "800" }}>
               {hasReviewCard ? "Interview prep" : model.queueState.title}
             </Text>
           </View>
@@ -2671,7 +2671,7 @@ export function MobileReviewSurface({
       </View>
 
       {activeStudyTopic ? (
-        <View style={{ ...cardBase(palette), borderRadius: 16, padding: 12, gap: 10 }}>
+        <View style={{ borderRadius: 10, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.bgAlt, padding: 10, gap: 8 }}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <View style={{ flex: 1, gap: 4 }}>
               <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Study loop</Text>
@@ -2736,7 +2736,7 @@ export function MobileReviewSurface({
       ) : null}
 
       {hasReviewCard ? (
-        <View style={{ ...cardBase(palette), borderRadius: 16, gap: 12, padding: 14 }}>
+        <View style={{ ...cardBase(palette), borderRadius: 12, gap: 10, padding: 12 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
             <View style={{ flex: 1, gap: 5 }}>
               <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>{model.activeStage}</Text>
@@ -2846,7 +2846,7 @@ export function MobileReviewSurface({
           </View>
         </View>
       ) : (
-        <View style={{ ...cardBase(palette), borderRadius: 16, gap: 12, padding: 14 }}>
+        <View style={{ ...cardBase(palette), borderRadius: 12, gap: 10, padding: 12 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <View style={{ flex: 1, gap: 5 }}>
               <Text {...REVIEW_TEXT_PROPS} style={kickerStyle(palette)}>Focused review</Text>
@@ -3263,9 +3263,9 @@ export function MobileCalendarSurface({
   });
   const plannerLoaded = Boolean(plannerSummary);
   const plannerNavy = "rgba(5, 16, 29, 0.94)";
-  const plannerNavySoft = "rgba(9, 25, 41, 0.82)";
+  const plannerNavySoft = palette.surfaceLow;
   const plannerGold = "#f5a949";
-  const plannerGoldDim = "rgba(245, 169, 73, 0.28)";
+  const plannerGoldDim = palette.accent;
   const compactDecisionDetail = plannerLoaded ? "Counts synced" : "Not loaded";
   const visibleDecisionLabel = plannerLoaded ? planner.decisionLabel : "Planner not loaded";
   const visibleBriefingChip = plannerLoaded ? planner.alarmBriefing.chipLabel : "Load Planner state";
@@ -3282,7 +3282,7 @@ export function MobileCalendarSurface({
           gap: 7,
         }}
       >
-        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: "rgba(245, 169, 73, 0.22)", padding: 7, gap: 7 }}>
+        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: palette.border, padding: 7, gap: 7 }}>
           <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             {!planner.dateControls.isToday ? (
               <TouchableOpacity style={{ ...pillStyle(palette), minWidth: 62, alignItems: "center", paddingVertical: 8 }} onPress={() => setSelectedPlannerDate(planner.dateControls.todayDate)}>
@@ -3328,7 +3328,7 @@ export function MobileCalendarSurface({
                   paddingHorizontal: 8,
                   paddingVertical: 6,
                   gap: 1,
-                  backgroundColor: day.active ? "rgba(245, 169, 73, 0.14)" : plannerNavySoft,
+                  backgroundColor: day.active ? palette.accentMuted : plannerNavySoft,
                   borderWidth: 1,
                   borderColor: day.active ? plannerGold : "rgba(255,255,255,0.08)",
                 }}
@@ -3343,7 +3343,7 @@ export function MobileCalendarSurface({
         </View>
       </View>
 
-      <View style={{ ...cardBase(palette), backgroundColor: plannerNavySoft, borderColor: "rgba(245,169,73,0.16)", padding: 10, gap: 6 }}>
+      <View style={{ ...cardBase(palette), backgroundColor: palette.surfaceLow, borderColor: palette.border, padding: 10, gap: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Text {...PLANNER_TIGHT_TEXT_PROPS} style={[kickerStyle(palette), { color: plannerGold, flex: 1 }]}>Active decision</Text>
           <Text {...PLANNER_TIGHT_TEXT_PROPS} numberOfLines={1} style={{ color: palette.muted, fontSize: 10, fontWeight: "800" }}>{compactDecisionDetail}</Text>
