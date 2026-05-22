@@ -59,8 +59,10 @@ where Starlog is going. Use this page for current implementation confidence.
   actions, Review bulk/auto grading, and live provider-selection requests. The native mobile focused proof now also covers mocked on-device-STT-style transcript
   handling through the canonical `/v1/assistant/threads/primary/messages` request builder, native
   assistant-ui rendering of `interview.review_grade` without raw protocol labels, interrupt-submit
-  request construction, and a
-  mocked returned session-state/SRS mutation boundary. The earlier Review request timing failure is not
+  request construction, and a mocked returned session-state/SRS mutation boundary. Focused API coverage
+  also proves the explicit voice-style phrase `Grade my Sliding Window recall as good` opens the
+  canonical `interview.review_grade` panel, preserves `input_mode: "voice"` plus mobile metadata, and
+  records the confirmed SRS mutation without invoking the hosted runtime. The earlier Review request timing failure is not
   a known residual after this explicit wait/assertion refresh.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
@@ -70,8 +72,13 @@ where Starlog is going. Use this page for current implementation confidence.
   grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling on the attached Android
   phone. Future fallback-assisted Study question proof must use the distinct
   `native_study_question_request_fallback_after_visible_tap` marker and be treated as lower-confidence
-  than pure native-tap proof. It does not prove production-hosted Android parity or full server-owned
-  native assistant-ui runtime migration.
+  than pure native-tap proof. A focused 2026-05-22 real-STT dynamic-panel harness run built and
+  installed a fresh APK, seeded the proof Review card, logged in, opened the native Assistant shell,
+  and stopped honestly at `validation_stage: blocked` for required operator speech at
+  `.localdata/latest/android-real-stt-dynamic-panel-proof-20260522/latest.json` via the latest metadata
+  pointer. It does not prove production-hosted Android parity, full server-owned native assistant-ui
+  runtime migration, or completed real microphone STT-to-mutation until the interactive speech step is
+  rerun and passes.
 
 ## Post-Merge PR Status
 
@@ -277,8 +284,12 @@ Known outcome for `Inference Engineering.pdf`:
   authenticated login claims are blocked until Railway deployment/domain routing serves Starlog again.
 - **On-device-first voice completeness:** on-device STT/TTS direction is established, and focused native
   tests now prove a mocked on-device-STT-style transcript enters the canonical Assistant thread path and
-  can drive a Review-grade dynamic panel to the interrupt-submit/session-state boundary. Real Android STT
-  capture, provider polish, and fallback behavior still need focused physical-device validation.
+  can drive a Review-grade dynamic panel to the interrupt-submit/session-state boundary. Focused API
+  coverage now proves the explicit voice-style grade phrase through the canonical Assistant message API
+  and confirmed SRS mutation. The physical Android harness can build/install/login/open Assistant and
+  can pause in interactive mode for real operator speech; the latest noninteractive run did not complete microphone STT, panel submission,
+  or mutation proof because it stopped at the manual speech checkpoint. Provider polish and fallback
+  behavior still need focused physical-device validation.
 - **Dynamic-panel parity status:** web and native assistant-ui coverage is partial and intentionally keeps
   compatibility fallbacks for unsupported Starlog protocol parts. Web has partial data/tool UI and
   dynamic-ui metadata paths plus a CI-safe mocked runtime-command proof for due-date and
@@ -331,7 +342,7 @@ Known outcome for `Inference Engineering.pdf`:
   folders, or a single explicitly requested latest proof bundle; do not treat removed dated artifact
   folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
-  indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
+  indexed in `.localdata/latest/android-real-stt-dynamic-panel-proof-20260522/latest.json` (and companion artifact files
   listed there). The current proof is
   `.localdata/latest/android-study-proof-seed-20260521/latest.json`, with validated flows for
   install/login, Assistant, Review/Study, grading, Assistant due-date dynamic UI, and Planner alarm

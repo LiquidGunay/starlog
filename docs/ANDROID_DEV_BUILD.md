@@ -279,6 +279,25 @@ prints the exact device/ADB remediation. If the Windows ADB bridge is returning 
 `UtilAcceptVsock: accept4 failed 110`, the same latest metadata records the bridge error. Only set
 `SKIP_ADB_PREFLIGHT=1` when you intentionally want to bypass this guardrail.
 
+Use the focused Assistant voice dynamic-panel wrapper when the goal is specifically to prove real
+Android microphone audio through on-device STT into the native Assistant Review-grade panel:
+
+```bash
+cd /home/ubuntu/starlog
+ADB=/mnt/c/Temp/android-platform-tools/platform-tools/adb.exe \
+  ADB_SERIAL=<SERIAL> \
+  ASSISTANT_REAL_STT_INTERACTIVE=1 \
+  bash ./scripts/android_assistant_voice_dynamic_panel_validation.sh
+```
+
+The wrapper delegates to `android_fresh_local_srs_validation.sh --assistant-voice-dynamic-panel-only`.
+It builds and installs a fresh APK, seeds a due `Sliding Window` Review card, opens the native Assistant
+shell, grants or handles Android microphone permission when possible, and captures screenshots/XML plus
+Assistant thread/card JSON under `.localdata/android-local-validation/builds/<UTC>/`. When prompted,
+press Enter, let the script tap the Assistant mic, approve any Android microphone permission prompt if
+shown, then speak exactly: `Grade my Sliding Window recall as good`. Noninteractive runs stop at
+`validation_stage: blocked` with `manual_speech_required` metadata rather than claiming real STT proof.
+
 ```bash
 cd /home/ubuntu/starlog
 ADB_SERIAL=<SERIAL> CLEAN_BUILD=1 REACT_NATIVE_ARCHITECTURES=arm64-v8a \

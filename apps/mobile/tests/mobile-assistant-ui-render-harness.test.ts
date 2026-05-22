@@ -469,6 +469,9 @@ try {
     assert.equal(findByTestId(tree, "assistant-ui-thread").length, 1);
     assert.equal(findByTestId(tree, "assistant-ui-composer").length, 1);
     assert.equal(findByTestId(tree, "mobile-assistant-aui-composer-surface").length, 1);
+    const voiceAction = findByTestId(tree, "mobile-assistant-voice-action");
+    assert.equal(voiceAction.length, 1);
+    assert.equal(voiceAction[0].props.accessibilityLabel, "Start Assistant voice input");
     assert.equal(findByAccessibilityLabel(tree, "Assistant conversation").length > 0, true);
     assert.equal(findByAccessibilityLabel(tree, "Conversation messages").length > 0, true);
     assert.equal(findByAccessibilityLabel(tree, "Message composer").length > 0, true);

@@ -25,6 +25,8 @@ from app.services import (
     integrations_service,
     memory_service,
     memory_vault_service,
+    review_mode_service,
+    srs_service,
 )
 from app.services.common import execute_fetchall, execute_fetchone, new_id
 
@@ -233,6 +235,71 @@ def _review_rating_label(rating: int) -> str:
         4: "Good",
         5: "Easy",
     }.get(rating, f"Rating {rating}")
+
+
+_REVIEW_GRADE_BY_LABEL = {
+    "again": 1,
+    "hard": 3,
+    "good": 4,
+    "easy": 5,
+}
+
+
+def _parse_review_grade_request(content: str) -> dict[str, Any] | None:
+    normalized = re.sub(r"[^a-z0-9]+", " ", content.lower()).strip()
+    if not normalized:
+        return None
+    if "grade" not in normalized or not any(token in normalized for token in ("review", "recall", "card")):
+        return None
+    tokens = set(normalized.split())
+    if tokens.intersection({"all", "every", "bulk", "autograde"}) or "auto grade" in normalized:
+        return None
+
+    rating = None
+    for label, value in _REVIEW_GRADE_BY_LABEL.items():
+        if re.search(rf"\b{label}\b", normalized):
+            rating = value
+            break
+
+    if rating is None:
+        return None
+
+    topic_hint = ""
+    hint_match = re.search(
+        r"\bgrade(?:\s+my|\s+the)?\s+(.+?)\s+(?:recall|review|card)\b",
+        normalized,
+    )
+    if hint_match:
+        topic_hint = hint_match.group(1).strip()
+    if topic_hint in {"current", "this", "latest", "revealed"}:
+        topic_hint = ""
+
+    return {"rating": rating, "topic_hint": topic_hint}
+
+
+def _review_grade_request_matches_card(card: dict[str, Any], topic_hint: str) -> bool:
+    tokens = [token for token in re.split(r"[^a-z0-9]+", topic_hint.lower()) if token]
+    if not tokens:
+        return True
+    haystack = " ".join(
+        [
+            str(card.get("prompt") or ""),
+            str(card.get("answer") or ""),
+            " ".join(str(tag) for tag in (card.get("tags") or [])),
+        ]
+    ).lower()
+    return all(token in haystack for token in tokens)
+
+
+def _find_review_grade_request_card(
+    conn: Connection, *, topic_hint: str
+) -> dict[str, Any] | None:
+    due_cards = srs_service.due_cards(conn, limit=50)
+    if topic_hint:
+        for card in due_cards:
+            if _review_grade_request_matches_card(card, topic_hint):
+                return card
+    return due_cards[0] if due_cards else None
 
 
 def _assistant_client_timezone(
@@ -951,6 +1018,166 @@ def _request_due_date_interrupt(
     return interrupt, assistant_message
 
 
+def _request_review_grade_interrupt(
+    conn: Connection,
+    *,
+    thread_id: str,
+    run_id: str,
+    content: str,
+    card: dict[str, Any],
+    rating: int | None,
+    input_mode: str,
+    device_target: str,
+    metadata: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    card_id = str(card.get("id") or "").strip()
+    prompt_text = str(card.get("prompt") or "this card").strip() or "this card"
+    card_type = str(card.get("card_type") or "").strip() or None
+    review_mode = review_mode_service.review_mode_for_card_type(card_type)
+    review_mode_label = review_mode.replace("_", " ").title()
+    recommended_defaults = {"rating": str(rating)} if rating in {1, 3, 4, 5} else {}
+    interrupt = _create_interrupt(
+        conn,
+        run_id=run_id,
+        thread_id=thread_id,
+        tool_name="grade_review_recall",
+        interrupt_type="choice",
+        title=f"Grade {review_mode_label}",
+        body=f"How well did this {review_mode_label.lower()} item go: {prompt_text}?",
+        fields=[
+            {
+                "id": "rating",
+                "kind": "select",
+                "label": f"{review_mode_label} quality",
+                "required": True,
+                "options": [
+                    {"label": "Again", "value": "1"},
+                    {"label": "Hard", "value": "3"},
+                    {"label": "Good", "value": "4"},
+                    {"label": "Easy", "value": "5"},
+                ],
+            }
+        ],
+        primary_label="Save grade",
+        secondary_label="Keep in Review",
+        metadata={
+            "planned_tool_name": "grade_review_recall",
+            "card_id": card_id,
+            "prompt": prompt_text,
+            "card_type": card_type,
+            "review_mode": review_mode,
+            "user_content": content,
+            "input_mode": input_mode,
+            "device_target": device_target,
+            "request_metadata": metadata,
+            "display_mode": "inline",
+            "consequence_preview": "Updates the review schedule for this item.",
+            "defer_label": "Keep in Review",
+            "recommended_defaults": recommended_defaults,
+            "source": "deterministic_review_grade_request",
+        },
+        entity_ref={
+            "entity_type": "card",
+            "entity_id": card_id,
+            "href": "/review",
+            "title": prompt_text,
+        },
+        renderer_key="interview.review_grade",
+        renderer_version=1,
+        placement="inline",
+        structured_content={
+            "card_id": card_id,
+            "grade": None,
+            "next_due_at": None,
+        },
+        ui_meta={
+            "tone": "review",
+            "card_type": card_type,
+            "review_mode": review_mode,
+            "rating_label": _review_rating_label(rating) if rating else None,
+        },
+    )
+    rating_phrase = (
+        f" I heard {str(_review_rating_label(rating)).lower()} as the suggested grade."
+        if rating in {1, 3, 4, 5}
+        else ""
+    )
+    assistant_message = assistant_thread_service.append_message(
+        conn,
+        thread_id=thread_id,
+        role="assistant",
+        status="requires_action",
+        run_id=run_id,
+        metadata={
+            "assistant_command": {
+                "command": content,
+                "planner": "deterministic",
+                "matched_intent": "grade_review_recall",
+                "status": "planned",
+                "summary": "Review grade requested",
+                "steps": [],
+            },
+            "interrupt_id": interrupt["id"],
+            "matched_intent": "grade_review_recall",
+            "planner": "deterministic",
+            "status": "planned",
+            "input_mode": input_mode,
+            "device_target": device_target,
+            "request_metadata": metadata,
+        },
+        parts=[
+            assistant_projection_service.text_part(
+                "I can record that Review grade after you confirm it here." + rating_phrase
+            ),
+            assistant_projection_service.interrupt_request_part(interrupt),
+            assistant_projection_service.status_part("requires_action", "Waiting for Review grade"),
+        ],
+    )
+    _record_step(
+        conn,
+        run_id=run_id,
+        thread_id=thread_id,
+        step_index=0,
+        title="Grade review recall",
+        tool_name="grade_review_recall",
+        tool_kind="ui_tool",
+        status="requires_action",
+        arguments={"card_id": card_id, "rating": rating},
+        result={"interrupt_id": interrupt["id"]},
+        interrupt_id=interrupt["id"],
+        message_id=assistant_message["id"],
+    )
+    _record_trace(
+        conn,
+        thread_id=thread_id,
+        assistant_message_id=assistant_message["id"],
+        tool_name="grade_review_recall",
+        arguments={"card_id": card_id, "rating": rating},
+        status="requires_action",
+        result={"interrupt_id": interrupt["id"]},
+        metadata={"planner": "deterministic", "kind": "ui_tool", "renderer_key": "interview.review_grade"},
+    )
+    _update_run(conn, run_id=run_id, status="interrupted", summary="Review grade requested")
+    _merge_session_state(
+        conn,
+        command=content,
+        response_text="Review grade requested",
+        matched_intent="grade_review_recall",
+        planner="deterministic",
+        status="planned",
+        tool_names=["grade_review_recall"],
+        extra={
+            "last_review_grade_request": {
+                "card_id": card_id,
+                "suggested_rating": rating,
+                "review_mode": review_mode,
+                "source": "deterministic_review_grade_request",
+            }
+        },
+    )
+    return interrupt, assistant_message
+
+
 def _assistant_message_from_command_response(
     conn: Connection,
     *,
@@ -1632,6 +1859,45 @@ def start_run(
                 device_target=device_target,
                 metadata=request_metadata,
             )
+        elif (review_grade_request := _parse_review_grade_request(command_for_planning)) is not None:
+            review_card = _find_review_grade_request_card(
+                conn, topic_hint=str(review_grade_request.get("topic_hint") or "")
+            )
+            if review_card is None:
+                _assistant_message_from_command_response(
+                    conn,
+                    thread_id=thread["id"],
+                    run_id=run["id"],
+                    command=content,
+                    response=AgentCommandResponse(
+                        command=content,
+                        planner="deterministic",
+                        matched_intent="grade_review_recall_unavailable",
+                        status="executed",
+                        summary=(
+                            "I can record a Review grade after there is a due card to grade. "
+                            "Load or reveal a Review card first, then ask me to grade that recall item."
+                        ),
+                        steps=[],
+                    ),
+                    input_mode=input_mode,
+                    device_target=device_target,
+                    metadata=request_metadata,
+                )
+            else:
+                _request_review_grade_interrupt(
+                    conn,
+                    thread_id=thread["id"],
+                    run_id=run["id"],
+                    content=content,
+                    card=review_card,
+                    rating=review_grade_request.get("rating")
+                    if isinstance(review_grade_request.get("rating"), int)
+                    else None,
+                    input_mode=input_mode,
+                    device_target=device_target,
+                    metadata=request_metadata,
+                )
         else:
             try:
                 matched_intent, summary, planned_calls = agent_command_service.plan_command(

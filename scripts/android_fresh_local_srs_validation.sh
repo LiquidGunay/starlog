@@ -40,6 +40,11 @@ ASSISTANT_COMMAND="${ASSISTANT_COMMAND:-summarize latest artifact}"
 ASSISTANT_DUE_DATE_RUN_LABEL="${ASSISTANT_DUE_DATE_RUN_LABEL:-$(date -u +%Y%m%dT%H%M%SZ)}"
 ASSISTANT_DUE_DATE_TASK_TITLE="${ASSISTANT_DUE_DATE_TASK_TITLE:-Review diffusion notes ${ASSISTANT_DUE_DATE_RUN_LABEL}}"
 ASSISTANT_DUE_DATE_COMMAND="${ASSISTANT_DUE_DATE_COMMAND:-create task ${ASSISTANT_DUE_DATE_TASK_TITLE}}"
+ASSISTANT_REAL_STT_PHRASE="${ASSISTANT_REAL_STT_PHRASE:-Grade my Sliding Window recall as good}"
+ASSISTANT_REAL_STT_INTERACTIVE="${ASSISTANT_REAL_STT_INTERACTIVE:-0}"
+ASSISTANT_REAL_STT_SPEECH_WINDOW_SEC="${ASSISTANT_REAL_STT_SPEECH_WINDOW_SEC:-10}"
+ASSISTANT_VOICE_DYNAMIC_PANEL_ONLY=0
+VALIDATION_PROFILE="default"
 ADB_INSTALL_TIMEOUT_SEC="${ADB_INSTALL_TIMEOUT_SEC:-900}"
 SKIP_ADB_PREFLIGHT="${SKIP_ADB_PREFLIGHT:-0}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -104,6 +109,10 @@ Environment overrides:
 
 Options:
   --adb-preflight-only          Check adb/device readiness, then exit before build/API work
+  --assistant-voice-dynamic-panel-only
+                                Run only the focused real Android STT -> Assistant Review panel proof.
+                                Set ASSISTANT_REAL_STT_INTERACTIVE=1 in an interactive shell so the script
+                                pauses for an operator to speak ASSISTANT_REAL_STT_PHRASE.
   --help                        Show this help
 EOF
 }
@@ -893,6 +902,35 @@ if int(seed.get("locked_due_count") or 0) <= 0:
 PY
 }
 
+seed_real_stt_review_card() {
+  [[ -n "$STARLOG_LOCAL_ACCESS_TOKEN" ]] || fail "Local access token missing before real STT review-card seed"
+  log "Seeding due Sliding Window review card for real STT dynamic-panel proof"
+  local due_at
+  due_at="$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S+00:00)"
+  local seed_body="$BUILD_DIR/assistant-real-stt-review-card.json"
+  local seed_status
+  seed_status="$(curl -sS -o "$seed_body" -w '%{http_code}' \
+    -X POST "$API_BASE/v1/cards" \
+    -H "Authorization: Bearer $STARLOG_LOCAL_ACCESS_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d "{\"prompt\":\"Sliding Window recall proof: explain how the window boundaries move.\",\"answer\":\"Move the left edge only when the invariant breaks, and keep the right edge advancing through the input.\",\"card_type\":\"qa\",\"tags\":[\"interview-prep\",\"sliding-window\",\"real-stt-proof\"],\"due_at\":\"${due_at}\"}")"
+  if [[ "$seed_status" != "201" ]]; then
+    fail "Real STT review-card seed failed with HTTP $seed_status: $(cat "$seed_body")"
+  fi
+  python3 - "$seed_body" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if not str(payload.get("id") or "").startswith("crd_"):
+    raise SystemExit(f"Seeded card payload did not include a card id: {payload}")
+if "Sliding Window" not in str(payload.get("prompt") or ""):
+    raise SystemExit(f"Seeded card prompt drifted: {payload}")
+PY
+  mark_validated_flow "assistant_real_stt_review_card_seeded"
+}
+
 build_apk() {
   log "Building fresh development release APK"
   export JAVA_HOME ANDROID_HOME ANDROID_SDK_ROOT
@@ -1131,6 +1169,112 @@ handle_notification_permission_dialog() {
   return 0
 }
 
+microphone_permission_dialog_is_visible() {
+  python3 - "$UI_XML" <<'PYMIC'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+root = ET.parse(path).getroot()
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+has_message = False
+has_allow = False
+for node in root.iter("node"):
+    package = node.attrib.get("package") or ""
+    if package not in {"com.google.android.permissioncontroller", "com.android.permissioncontroller"}:
+        continue
+
+    text = normalize(node.attrib.get("text") or "")
+    desc = normalize(node.attrib.get("content-desc") or "")
+    resource_id = node.attrib.get("resource-id") or ""
+    combined = f"{text} {desc}"
+    if "record audio" in combined or "microphone" in combined:
+        has_message = True
+    if node.attrib.get("clickable") == "true" and (
+        text in {"while using the app", "only this time", "allow"}
+        or resource_id.endswith(":id/permission_allow_foreground_only_button")
+        or resource_id.endswith(":id/permission_allow_one_time_button")
+        or resource_id.endswith(":id/permission_allow_button")
+    ):
+        has_allow = True
+
+if has_message and has_allow:
+    raise SystemExit(0)
+raise SystemExit(1)
+PYMIC
+}
+
+microphone_permission_allow_coords() {
+  python3 - "$UI_XML" <<'PYMICCOORDS'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path = sys.argv[1]
+root = ET.parse(path).getroot()
+
+
+def center(bounds: str) -> str:
+    left, top, right, bottom = map(int, re.findall(r"\d+", bounds))
+    return f"{(left + right) // 2} {(top + bottom) // 2}"
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+matches = []
+for node in root.iter("node"):
+    package = node.attrib.get("package") or ""
+    if package not in {"com.google.android.permissioncontroller", "com.android.permissioncontroller"}:
+        continue
+    if node.attrib.get("clickable") != "true":
+        continue
+
+    text = normalize(node.attrib.get("text") or "")
+    resource_id = node.attrib.get("resource-id") or ""
+    if resource_id.endswith(":id/permission_allow_foreground_only_button") or text == "while using the app":
+        matches.append((0, node))
+    elif resource_id.endswith(":id/permission_allow_one_time_button") or text == "only this time":
+        matches.append((1, node))
+    elif resource_id.endswith(":id/permission_allow_button") or text == "allow":
+        matches.append((2, node))
+
+if not matches:
+    raise SystemExit(1)
+
+matches.sort(key=lambda item: item[0])
+print(center(matches[0][1].attrib["bounds"]))
+PYMICCOORDS
+}
+
+handle_microphone_permission_dialog() {
+  local prefix="${1:-microphone-permission-dialog}"
+  if ! microphone_permission_dialog_is_visible; then
+    return 1
+  fi
+
+  local coords
+  coords="$(microphone_permission_allow_coords)" || return 1
+  log "Microphone permission dialog detected; tapping Allow"
+  capture_screen "$SCREENSHOT_DIR/${prefix}.png"
+  snapshot_phone_state "$prefix"
+  adb_cmd shell input tap ${coords} >/dev/null
+  sleep 1
+  dump_ui || true
+  capture_screen "$SCREENSHOT_DIR/${prefix}-allowed.png"
+  snapshot_phone_state "${prefix}-allowed"
+  adb_cmd shell dumpsys package "$APP_PACKAGE" >"$BUILD_DIR/package-permissions.txt" 2>/dev/null || true
+  if grep -F "android.permission.RECORD_AUDIO: granted=true" "$BUILD_DIR/package-permissions.txt" >/dev/null 2>&1; then
+    mark_validated_flow "assistant_real_stt_microphone_permission_granted"
+  fi
+  return 0
+}
+
 handle_play_protect_dialog() {
   dump_ui
   if ! ui_has_text "Play Protect" \
@@ -1227,6 +1371,17 @@ install_apk() {
   done
 
   fail "Timed out waiting for package $APP_PACKAGE to update to $STARLOG_VERSION_NAME"
+}
+
+grant_microphone_permission() {
+  log "Granting Android microphone permission for Assistant real STT proof"
+  adb_cmd shell pm grant "$APP_PACKAGE" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
+  adb_cmd shell dumpsys package "$APP_PACKAGE" >"$BUILD_DIR/package-permissions.txt" 2>/dev/null || true
+  if grep -F "android.permission.RECORD_AUDIO: granted=true" "$BUILD_DIR/package-permissions.txt" >/dev/null 2>&1; then
+    mark_validated_flow "assistant_real_stt_microphone_permission_granted"
+    return 0
+  fi
+  log "Microphone permission grant was not confirmed; the app may request permission during the voice action"
 }
 
 dump_ui() {
@@ -5787,6 +5942,231 @@ PY
   fi
 }
 
+write_assistant_thread_snapshot() {
+  local path="$1"
+  [[ -n "$STARLOG_LOCAL_ACCESS_TOKEN" ]] || fail "Local access token missing before Assistant thread snapshot"
+  curl -fsS "$API_BASE/v1/assistant/threads/primary" \
+    -H "Authorization: Bearer $STARLOG_LOCAL_ACCESS_TOKEN" \
+    >"$path"
+}
+
+assert_no_raw_review_grade_labels_visible() {
+  dump_ui || return 1
+  if ui_has_text "interview.review_grade" || ui_has_text "grade_review_recall" || ui_has_text "renderer_key"; then
+    capture_screen "$SCREENSHOT_DIR/assistant-real-stt-raw-label.png"
+    snapshot_phone_state "assistant-real-stt-raw-label"
+    fail "Assistant real STT Review panel exposed raw renderer/tool labels"
+  fi
+}
+
+assert_real_stt_voice_snapshot() {
+  local snapshot_path="$1"
+  local seed_card_path="$2"
+  local phase="${3:-pending}"
+  python3 - "$snapshot_path" "$seed_card_path" "$ASSISTANT_REAL_STT_PHRASE" "$phase" <<'PYREALSTT'
+from pathlib import Path
+import json
+import re
+import sys
+
+snapshot = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+seed_card = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+phrase = sys.argv[3]
+phase = sys.argv[4]
+card_id = seed_card["id"]
+
+def message_text(message):
+    return "\n".join(
+        str(part.get("text") or "")
+        for part in message.get("parts", [])
+        if part.get("type") == "text"
+    )
+
+voice_messages = [
+    message
+    for message in snapshot.get("messages", [])
+    if message.get("role") == "user"
+    and message.get("metadata", {}).get("input_mode") == "voice"
+    and message.get("metadata", {}).get("device_target") == "mobile-native"
+]
+if not voice_messages:
+    raise SystemExit("No mobile-native voice user message found in Assistant thread")
+latest_voice = voice_messages[-1]
+transcript = message_text(latest_voice)
+required_tokens = {"sliding", "window", "recall", "good"}
+observed_tokens = set(re.findall(r"[a-z0-9]+", transcript.lower()))
+missing = sorted(required_tokens - observed_tokens)
+if missing:
+    raise SystemExit(f"Voice transcript missing expected token(s) {missing}: {transcript!r}; expected phrase was {phrase!r}")
+request_metadata = latest_voice.get("metadata", {}).get("request_metadata") or {}
+if request_metadata.get("surface") != "assistant_mobile" or request_metadata.get("submitted_via") != "voice":
+    raise SystemExit(f"Voice user message metadata did not preserve mobile voice origin: {request_metadata}")
+
+interrupts = [
+    interrupt
+    for interrupt in snapshot.get("interrupts", [])
+    if interrupt.get("tool_name") == "grade_review_recall"
+    and interrupt.get("renderer_key") == "interview.review_grade"
+    and (interrupt.get("structured_content") or {}).get("card_id") == card_id
+]
+if not interrupts:
+    raise SystemExit("No Review-grade dynamic panel interrupt found for the real STT proof card")
+latest_interrupt = interrupts[-1]
+if phase == "pending":
+    if latest_interrupt.get("status") != "pending":
+        raise SystemExit(f"Expected pending Review-grade interrupt, got {latest_interrupt.get('status')}")
+    if latest_interrupt.get("recommended_defaults") != {"rating": "4"}:
+        raise SystemExit(f"Expected Good recommended default, got {latest_interrupt.get('recommended_defaults')}")
+else:
+    state = snapshot.get("session_state") or {}
+    last_grade = state.get("last_review_grade") or {}
+    if last_grade.get("card_id") != card_id or int(last_grade.get("rating") or 0) != 4:
+        raise SystemExit(f"Session state did not record Good grade for proof card: {last_grade}")
+    if state.get("last_matched_intent") != "grade_review_recall":
+        raise SystemExit(f"Session state did not record grade_review_recall intent: {state}")
+PYREALSTT
+}
+
+assert_real_stt_review_card_progress() {
+  local seed_card_path="$1"
+  local cards_path="$BUILD_DIR/assistant-real-stt-cards-after.json"
+  curl -fsS "$API_BASE/v1/cards?tag=real-stt-proof" \
+    -H "Authorization: Bearer $STARLOG_LOCAL_ACCESS_TOKEN" \
+    >"$cards_path"
+  python3 - "$cards_path" "$seed_card_path" <<'PYREALCARD'
+from pathlib import Path
+import json
+import sys
+
+cards = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+seed = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+card = next((item for item in cards if item.get("id") == seed.get("id")), None)
+if card is None:
+    raise SystemExit("Real STT proof card was not returned by cards API")
+if int(card.get("repetitions") or 0) < 1:
+    raise SystemExit(f"Real STT proof card was not reviewed: {card}")
+if int(card.get("interval_days") or 0) < 1:
+    raise SystemExit(f"Real STT proof card interval did not update: {card}")
+PYREALCARD
+}
+
+wait_for_assistant_real_stt_panel() {
+  local deadline=$((SECONDS + 90))
+  while (( SECONDS < deadline )); do
+    if ! app_is_foreground; then
+      bring_app_to_foreground
+    fi
+    if dump_ui; then
+      assert_no_raw_review_grade_labels_visible
+      if (ui_has_text "Grade Recall" || ui_has_text "Review grade" || ui_has_text "How well did this recall") \
+        && ui_has_text "Good" \
+        && ui_has_text "Save grade"; then
+        return 0
+      fi
+    fi
+    assistant_transcript_scroll_once up
+    sleep 1
+  done
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-review-panel-timeout.png"
+  snapshot_phone_state "assistant-real-stt-review-panel-timeout"
+  fail "Timed out waiting for real STT Review-grade dynamic panel"
+}
+
+wait_for_assistant_real_stt_submission() {
+  local snapshot_path="$BUILD_DIR/assistant-real-stt-after-submit.json"
+  local deadline=$((SECONDS + 45))
+  while (( SECONDS < deadline )); do
+    write_assistant_thread_snapshot "$snapshot_path" || true
+    if assert_real_stt_voice_snapshot "$snapshot_path" "$BUILD_DIR/assistant-real-stt-review-card.json" submitted >/dev/null 2>&1; then
+      return 0
+    fi
+    if dump_ui; then
+      assert_no_raw_review_grade_labels_visible
+    fi
+    sleep 1
+  done
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-submit-timeout.png"
+  snapshot_phone_state "assistant-real-stt-submit-timeout"
+  fail "Timed out waiting for real STT Review-grade submission to update Assistant session state"
+}
+
+prompt_for_real_stt_speech() {
+  if ! truthy "$ASSISTANT_REAL_STT_INTERACTIVE" || [[ ! -t 0 ]]; then
+    write_metadata manual_speech_required
+    block "Real Android STT proof requires an unlocked phone and operator speech. Rerun in an interactive shell with ASSISTANT_REAL_STT_INTERACTIVE=1, press Enter when prompted, then speak exactly: $ASSISTANT_REAL_STT_PHRASE"
+  fi
+  printf '\n[android-local-srs] Real STT manual step: after pressing Enter, the script taps the Assistant mic. Speak exactly: %s\n' "$ASSISTANT_REAL_STT_PHRASE"
+  read -r -p "Press Enter when you are ready to speak into the phone microphone... " _starlog_real_stt_ready
+}
+
+launch_and_validate_assistant_voice_dynamic_panel() {
+  log "Launching app for focused real STT -> Assistant Review panel validation"
+  adb_cmd reverse "tcp:${API_PORT}" "tcp:${API_PORT}" >/dev/null
+  adb_cmd shell am start -W -n "$APP_COMPONENT" >/dev/null
+  sleep 2
+
+  wait_for_any_ui_text "PASSPHRASE" "API ENDPOINT" "SIGN IN"
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-login.png"
+  snapshot_phone_state "assistant-real-stt-login"
+
+  tap_nth_edit_text 0
+  clear_focused_text_field
+  adb_cmd shell input text "$API_BASE" >/dev/null
+  sleep 1
+
+  bring_app_to_foreground
+  tap_nth_edit_text 1
+  clear_focused_text_field
+  adb_cmd shell input text "$STARLOG_TEST_PASSPHRASE" >/dev/null
+  sleep 1
+  bring_app_to_foreground
+  tap_exact_text "SIGN IN"
+  wait_for_post_login_surface
+
+  if tap_bottom_nav_tab "assistant"; then
+    wait_for_assistant_surface
+  else
+    adb_cmd shell am start -W -a android.intent.action.VIEW -d "starlog://surface?tab=assistant" -n "$APP_COMPONENT" >/dev/null || true
+    wait_for_assistant_surface
+  fi
+  wait_for_ui_text "Start Assistant voice input"
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-open.png"
+  snapshot_phone_state "assistant-real-stt-open"
+  mark_validated_flow "assistant_real_stt_shell_ready"
+
+  prompt_for_real_stt_speech
+  tap_text "Start Assistant voice input"
+  sleep 1
+  if dump_ui && handle_microphone_permission_dialog "assistant-real-stt-microphone-permission"; then
+    if dump_ui && ui_has_text "Start Assistant voice input"; then
+      tap_text "Start Assistant voice input"
+      sleep 1
+    fi
+  fi
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-listening.png"
+  snapshot_phone_state "assistant-real-stt-listening"
+  log "Speak now: $ASSISTANT_REAL_STT_PHRASE"
+  sleep "$ASSISTANT_REAL_STT_SPEECH_WINDOW_SEC"
+
+  wait_for_assistant_real_stt_panel
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-review-grade-controls.png"
+  snapshot_phone_state "assistant-real-stt-review-grade-controls"
+  write_assistant_thread_snapshot "$BUILD_DIR/assistant-real-stt-panel.json"
+  assert_real_stt_voice_snapshot "$BUILD_DIR/assistant-real-stt-panel.json" "$BUILD_DIR/assistant-real-stt-review-card.json" pending
+  mark_validated_flow "assistant_real_stt_transcript_to_review_panel_verified"
+
+  tap_mobile_dynamic_panel_sheet_control "Good" "assistant-real-stt-good-missing"
+  sleep 1
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-good-selected.png"
+  snapshot_phone_state "assistant-real-stt-good-selected"
+  tap_mobile_dynamic_panel_sheet_control "Save grade" "assistant-real-stt-save-grade-missing" "submit"
+  wait_for_assistant_real_stt_submission
+  capture_screen "$SCREENSHOT_DIR/assistant-real-stt-submitted.png"
+  snapshot_phone_state "assistant-real-stt-submitted"
+  assert_real_stt_review_card_progress "$BUILD_DIR/assistant-real-stt-review-card.json"
+  mark_validated_flow "assistant_real_stt_review_grade_submitted"
+}
+
 launch_and_validate_review() {
   log "Launching app into fresh login state"
   adb_cmd reverse "tcp:${API_PORT}" "tcp:${API_PORT}" >/dev/null
@@ -6000,6 +6380,7 @@ write_metadata() {
   SCREENSHOT_DIR_ENV="$SCREENSHOT_DIR" \
   VALIDATED_FLOW_MARKERS_PATH_ENV="$VALIDATED_FLOW_MARKERS_PATH" \
   METADATA_STAGE_ENV="$metadata_stage" \
+  VALIDATION_PROFILE_ENV="$VALIDATION_PROFILE" \
   FAILURE_REASON_ENV="${STARLOG_FAILURE_REASON:-}" \
   python3 - <<'PY'
 from pathlib import Path
@@ -6009,6 +6390,7 @@ import os
 path = Path(os.environ["METADATA_PATH_ENV"])
 screenshot_dir = os.environ["SCREENSHOT_DIR_ENV"]
 metadata_stage = os.environ["METADATA_STAGE_ENV"]
+validation_profile = os.environ.get("VALIDATION_PROFILE_ENV") or "default"
 include_local_metadata = os.environ["INCLUDE_LOCAL_METADATA_ENV"].lower() in {"1", "true", "yes"}
 failure_reason = os.environ.get("FAILURE_REASON_ENV") or None
 validated_flow_markers_path = Path(os.environ["VALIDATED_FLOW_MARKERS_PATH_ENV"])
@@ -6076,6 +6458,14 @@ screenshot_candidates = {
     "planner_briefing_path": f"{screenshot_dir}/planner-briefing-path.png",
     "planner_alarm": f"{screenshot_dir}/planner-alarm.png",
     "planner_alarm_briefing_path": f"{screenshot_dir}/planner-alarm-briefing-path.png",
+    "assistant_real_stt_login": f"{screenshot_dir}/assistant-real-stt-login.png",
+    "assistant_real_stt_open": f"{screenshot_dir}/assistant-real-stt-open.png",
+    "assistant_real_stt_microphone_permission": f"{screenshot_dir}/assistant-real-stt-microphone-permission.png",
+    "assistant_real_stt_microphone_permission_allowed": f"{screenshot_dir}/assistant-real-stt-microphone-permission-allowed.png",
+    "assistant_real_stt_listening": f"{screenshot_dir}/assistant-real-stt-listening.png",
+    "assistant_real_stt_review_grade_controls": f"{screenshot_dir}/assistant-real-stt-review-grade-controls.png",
+    "assistant_real_stt_good_selected": f"{screenshot_dir}/assistant-real-stt-good-selected.png",
+    "assistant_real_stt_submitted": f"{screenshot_dir}/assistant-real-stt-submitted.png",
 }
 
 evidence_candidates = {
@@ -6102,7 +6492,29 @@ evidence_candidates = {
     "planner_alarm_xml": f"{path.parent}/planner-alarm.xml",
     "planner_alarm_briefing_path_xml": f"{path.parent}/planner-alarm-briefing-path.xml",
     "latest_briefing_json": f"{path.parent}/briefing-latest.json",
+    "package_permissions": f"{path.parent}/package-permissions.txt",
+    "assistant_real_stt_login_xml": f"{path.parent}/assistant-real-stt-login.xml",
+    "assistant_real_stt_open_xml": f"{path.parent}/assistant-real-stt-open.xml",
+    "assistant_real_stt_microphone_permission_xml": f"{path.parent}/assistant-real-stt-microphone-permission.xml",
+    "assistant_real_stt_microphone_permission_allowed_xml": f"{path.parent}/assistant-real-stt-microphone-permission-allowed.xml",
+    "assistant_real_stt_listening_xml": f"{path.parent}/assistant-real-stt-listening.xml",
+    "assistant_real_stt_review_grade_controls_xml": f"{path.parent}/assistant-real-stt-review-grade-controls.xml",
+    "assistant_real_stt_good_selected_xml": f"{path.parent}/assistant-real-stt-good-selected.xml",
+    "assistant_real_stt_submitted_xml": f"{path.parent}/assistant-real-stt-submitted.xml",
+    "assistant_real_stt_seed_card_json": f"{path.parent}/assistant-real-stt-review-card.json",
+    "assistant_real_stt_panel_json": f"{path.parent}/assistant-real-stt-panel.json",
+    "assistant_real_stt_after_submit_json": f"{path.parent}/assistant-real-stt-after-submit.json",
+    "assistant_real_stt_cards_after_json": f"{path.parent}/assistant-real-stt-cards-after.json",
 }
+
+if validation_profile == "assistant_real_stt_dynamic_panel":
+    validated_flows = [
+        "assistant_real_stt_review_card_seeded",
+        "assistant_real_stt_microphone_permission_granted",
+        "assistant_real_stt_shell_ready",
+        "assistant_real_stt_transcript_to_review_panel_verified",
+        "assistant_real_stt_review_grade_submitted",
+    ]
 
 if (
     metadata_stage == "final"
@@ -6161,6 +6573,11 @@ while [[ $# -gt 0 ]]; do
       ADB_PREFLIGHT_ONLY=1
       shift
       ;;
+    --assistant-voice-dynamic-panel-only)
+      ASSISTANT_VOICE_DYNAMIC_PANEL_ONLY=1
+      VALIDATION_PROFILE="assistant_real_stt_dynamic_panel"
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -6191,6 +6608,9 @@ import_local_srs_deck
 import_local_neetcode_study_core
 seed_native_interview_loop_review_queue
 verify_local_review_queue
+if [[ "$ASSISTANT_VOICE_DYNAMIC_PANEL_ONLY" == "1" ]]; then
+  seed_real_stt_review_card
+fi
 if [[ "$SKIP_BUILD" == "1" ]]; then
   stage_existing_apk
 else
@@ -6201,10 +6621,19 @@ write_metadata pre
 remove_phone_builds
 ensure_phone_ready
 install_apk
-launch_and_validate_review
+if [[ "$ASSISTANT_VOICE_DYNAMIC_PANEL_ONLY" == "1" ]]; then
+  grant_microphone_permission
+  launch_and_validate_assistant_voice_dynamic_panel
+else
+  launch_and_validate_review
+fi
 write_metadata final
 VALIDATION_PASSED=1
 
-log "Fresh local SRS validation completed"
+if [[ "$ASSISTANT_VOICE_DYNAMIC_PANEL_ONLY" == "1" ]]; then
+  log "Focused Assistant real STT dynamic-panel validation completed"
+else
+  log "Fresh local SRS validation completed"
+fi
 log "Build metadata: $METADATA_PATH"
 log "Passphrase file: $PASSPHRASE_FILE"

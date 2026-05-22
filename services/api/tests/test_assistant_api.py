@@ -2103,6 +2103,89 @@ def test_assistant_voice_message_queue_completes_into_shared_thread(
     assert any(task["title"] == "Voice thread task" for task in tasks.json())
 
 
+def test_assistant_real_stt_style_voice_grade_phrase_opens_review_panel_without_runtime(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
+    monkeypatch.setattr(
+        ai_service,
+        "execute_chat_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")),
+    )
+    card = _create_assistant_due_card(
+        client,
+        auth_headers,
+        prompt="Sliding Window recall proof: explain how the window boundaries move.",
+        card_type="qa",
+    )
+
+    response = client.post(
+        "/v1/assistant/threads/primary/messages",
+        json={
+            "content": "Grade my Sliding Window recall as good",
+            "input_mode": "voice",
+            "device_target": "mobile-native",
+            "metadata": {
+                "surface": "assistant_mobile",
+                "submitted_via": "voice",
+                "client_timezone": "UTC",
+            },
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["run"]["status"] == "interrupted"
+    assert payload["assistant_message"]["status"] == "requires_action"
+    assert payload["user_message"]["metadata"]["input_mode"] == "voice"
+    assert payload["user_message"]["metadata"]["device_target"] == "mobile-native"
+    assert payload["user_message"]["metadata"]["request_metadata"] == {
+        "surface": "assistant_mobile",
+        "submitted_via": "voice",
+        "client_timezone": "UTC",
+    }
+
+    interrupt = payload["run"]["current_interrupt"]
+    assert interrupt["tool_name"] == "grade_review_recall"
+    assert interrupt["renderer_key"] == "interview.review_grade"
+    assert interrupt["structured_content"]["card_id"] == card["id"]
+    assert interrupt["recommended_defaults"] == {"rating": "4"}
+    assert interrupt["ui_meta"]["rating_label"] == "Good"
+    visible_text = _assistant_visible_text(payload)
+    assert "interview.review_grade" not in visible_text
+    assert "grade_review_recall" not in visible_text
+    assert "I heard good as the suggested grade" in visible_text
+
+    submit = client.post(
+        f"/v1/assistant/interrupts/{interrupt['id']}/submit",
+        json={"values": {"rating": "4"}},
+        headers=auth_headers,
+    )
+    assert submit.status_code == 200
+    snapshot = submit.json()
+    completed_run = next(run for run in snapshot["runs"] if run["id"] == payload["run"]["id"])
+    assert completed_run["status"] == "completed"
+    assert completed_run["current_interrupt"] is None
+    assert any(
+        part["type"] == "text" and "Recorded Good for recall review" in part["text"]
+        for message in snapshot["messages"]
+        for part in message["parts"]
+        if part["type"] == "text"
+    )
+    session_state = snapshot["session_state"]
+    assert session_state["last_matched_intent"] == "grade_review_recall"
+    assert session_state["last_tool_names"] == ["grade_review_recall"]
+    assert session_state["last_review_grade"]["card_id"] == card["id"]
+    assert session_state["last_review_grade"]["rating"] == 4
+
+    cards = client.get("/v1/cards", headers=auth_headers)
+    assert cards.status_code == 200
+    reviewed = next(item for item in cards.json() if item["id"] == card["id"])
+    assert reviewed["repetitions"] == 1
+
+
 def test_assistant_voice_message_completion_can_open_and_resolve_runtime_review_panel(
     client: TestClient,
     auth_headers: dict[str, str],
