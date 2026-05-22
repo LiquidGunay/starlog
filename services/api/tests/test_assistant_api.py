@@ -338,6 +338,55 @@ def _assistant_tool_result_for_call(payload: dict, tool_call_id: str) -> dict:
     )
 
 
+def _assistant_visible_text(payload: dict) -> str:
+    return "\n".join(
+        part["text"]
+        for part in payload["assistant_message"]["parts"]
+        if part["type"] == "text"
+    )
+
+
+def _assert_capability_manifest_covers_surface_limits(manifest: dict) -> None:
+    assert manifest["approved_surfaces"] == ["Assistant", "Library", "Planner", "Review"]
+    surfaces = {entry["surface"]: entry for entry in manifest["surface_capabilities"]}
+    assert set(surfaces) == {"Assistant", "Library", "Planner", "Review"}
+    assert surfaces["Assistant"]["status"] == "supported_now"
+    assert surfaces["Review"]["status"] == "supported_now"
+    assert surfaces["Library"]["status"] == "partial_supported_now"
+    assert surfaces["Planner"]["status"] == "partial_supported_now"
+    assert any("queued voice transcript" in item for item in manifest["supported_now"])
+    assert any("task due-date" in item for item in manifest["supported_now"])
+    assert any("Review recall grading" in item for item in manifest["supported_now"])
+    assert any("live LLM/Codex" in item for item in manifest["unavailable_or_unproven"])
+    assert any("real microphone audio" in item for item in manifest["unavailable_or_unproven"])
+    assert any("production-hosted parity" in item for item in manifest["unavailable_or_unproven"])
+    assert any("full all-surface mutation coverage" in item for item in manifest["unavailable_or_unproven"])
+
+
+def _assert_capability_text_is_user_facing(text: str) -> None:
+    for expected in [
+        "Assistant",
+        "Library",
+        "Planner",
+        "Review",
+        "queued voice transcripts",
+        "live microphone STT",
+        "live LLM/Codex panel choice",
+        "production-hosted parity",
+        "full all-surface mutation coverage",
+    ]:
+        assert expected in text
+    for raw_label in [
+        "interview.review_grade",
+        "interview.question_request",
+        "request_due_date",
+        "assistant_thread_voice",
+        "tool_call",
+        "tool_result",
+    ]:
+        assert raw_label not in text
+
+
 def _assert_dynamic_tool_result(
     payload: dict,
     *,
@@ -536,6 +585,8 @@ def test_assistant_dynamic_ui_capabilities_are_structured_and_survive_reload(
     assert payload["run"]["status"] == "completed"
     assert payload["run"]["dynamic_ui_capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
     assert payload["run"]["metadata"]["ui_capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    _assert_capability_manifest_covers_surface_limits(payload["run"]["dynamic_ui_capabilities"])
+    _assert_capability_text_is_user_facing(_assistant_visible_text(payload))
     renderer_keys = {
         renderer["renderer_key"]
         for renderer in payload["run"]["dynamic_ui_capabilities"]["renderers"]
@@ -545,6 +596,8 @@ def test_assistant_dynamic_ui_capabilities_are_structured_and_survive_reload(
     tool_result = _assistant_tool_result_for_call(payload, tool_call["id"])
     assert tool_result["output"]["version"] == "starlog.dynamic_ui_capabilities.v1"
     assert tool_result["structured_content"]["capabilities"]["version"] == "starlog.dynamic_ui_capabilities.v1"
+    _assert_capability_manifest_covers_surface_limits(tool_result["output"])
+    _assert_capability_manifest_covers_surface_limits(tool_result["structured_content"]["capabilities"])
     assert tool_result["ui_meta"] == {"tone": "system", "source": "backend_capability_registry"}
     assert "renderer_key" not in tool_result
 
@@ -560,6 +613,78 @@ def test_assistant_dynamic_ui_capabilities_are_structured_and_survive_reload(
         if part["type"] == "tool_result" and part["tool_result"]["tool_call_id"] == tool_call["id"]
     )
     assert reloaded_result["output"]["renderers"] == tool_result["output"]["renderers"]
+
+
+def test_assistant_surface_capability_response_is_reachable_from_queued_voice_transcript(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ai_runtime_service.AI_RUNTIME_BASE_ENV, raising=False)
+    monkeypatch.setattr(
+        ai_service,
+        "execute_chat_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected runtime turn")),
+    )
+
+    queued = client.post(
+        "/v1/assistant/threads/primary/voice",
+        headers=auth_headers,
+        files={"file": ("assistant-capabilities.webm", b"voice-bytes", "audio/webm")},
+        data={
+            "title": "Assistant capability voice question",
+            "duration_ms": "1800",
+            "device_target": "web-desktop",
+            "provider_hint": "whisper_local",
+            "metadata_json": json.dumps({"surface": "assistant_web", "submitted_via": "voice_recording"}),
+        },
+    )
+    assert queued.status_code == 201
+    job_id = queued.json()["id"]
+    assert queued.json()["action"] == "assistant_thread_voice"
+
+    claim = client.post(
+        f"/v1/ai/jobs/{job_id}/claim",
+        json={"worker_id": "assistant-capability-voice-worker"},
+        headers=auth_headers,
+    )
+    assert claim.status_code == 200
+
+    transcript = "what app surfaces can you control and what are your limitations"
+    complete = client.post(
+        f"/v1/ai/jobs/{job_id}/complete",
+        json={
+            "worker_id": "assistant-capability-voice-worker",
+            "provider_used": "whisper_local",
+            "output": {"transcript": transcript},
+        },
+        headers=auth_headers,
+    )
+    assert complete.status_code == 200
+    assert complete.json()["output"]["assistant_thread"]["run_status"] == "completed"
+    assert complete.json()["output"]["assistant_thread"]["transcript"] == transcript
+
+    snapshot = client.get("/v1/assistant/threads/primary", headers=auth_headers)
+    assert snapshot.status_code == 200
+    thread_payload = snapshot.json()
+    assistant_message = next(
+        message
+        for message in reversed(thread_payload["messages"])
+        if message["role"] == "assistant"
+        and message.get("metadata", {}).get("matched_intent") == "list_dynamic_ui_capabilities"
+    )
+    visible_text = "\n".join(
+        part["text"] for part in assistant_message["parts"] if part["type"] == "text"
+    )
+    _assert_capability_text_is_user_facing(visible_text)
+
+    tool_result = next(
+        part["tool_result"]
+        for part in assistant_message["parts"]
+        if part["type"] == "tool_result"
+    )
+    _assert_capability_manifest_covers_surface_limits(tool_result["output"])
+    assert tool_result["ui_meta"] == {"tone": "system", "source": "backend_capability_registry"}
 
 
 def test_assistant_handoff_token_is_resolved_into_trusted_context(

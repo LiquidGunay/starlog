@@ -32,12 +32,86 @@ from app.services.common import execute_fetchall, execute_fetchone, new_id
 def _ui_capability_manifest() -> dict[str, Any]:
     return {
         "version": "starlog.dynamic_ui_capabilities.v1",
+        "approved_surfaces": ["Assistant", "Library", "Planner", "Review"],
+        "surface_capabilities": [
+            {
+                "surface": "Assistant",
+                "status": "supported_now",
+                "supported_now": [
+                    "Maintain the persistent primary chat thread across clients.",
+                    "Answer capability and limitation questions without calling the hosted runtime.",
+                    "Route typed commands and queued voice transcripts into the same Assistant run path.",
+                    "Open supported dynamic panels for task due-date collection and Review grading.",
+                ],
+                "limitations": [
+                    "Live microphone-to-transcript audio proof is not complete in this deterministic path.",
+                    "Live LLM/Codex provider selection of panels is not proven by this manifest response.",
+                ],
+            },
+            {
+                "surface": "Library",
+                "status": "partial_supported_now",
+                "supported_now": [
+                    "Understand Library as the artifact/capture/provenance surface.",
+                    "Describe capture triage as a supported dynamic-panel shape when emitted by the runtime.",
+                    "Use the canonical /library user-facing route in guidance.",
+                ],
+                "limitations": [
+                    "Broad Library mutation by voice or dynamic panel is not fully proven.",
+                    "Browser clipper and desktop-helper capture flows are separate clients, not full Assistant panels.",
+                ],
+            },
+            {
+                "surface": "Planner",
+                "status": "partial_supported_now",
+                "supported_now": [
+                    "Create tasks from deterministic Assistant commands when enough fields are present.",
+                    "Ask for a missing task due date through a supported dynamic panel.",
+                    "Use existing morning-briefing and alarm command paths where available.",
+                ],
+                "limitations": [
+                    "Full time-block and conflict-resolution mutation coverage is not proven end to end.",
+                    "Production-hosted Planner parity is not currently proven.",
+                ],
+            },
+            {
+                "surface": "Review",
+                "status": "supported_now",
+                "supported_now": [
+                    "Reveal and grade due review cards through the tested Review flow.",
+                    "Record supported Review grades into SRS scheduling state.",
+                    "Render Review grading panels from typed commands and queued voice-transcript completions.",
+                ],
+                "limitations": [
+                    "All possible study/review actions are not exposed as dedicated Assistant dynamic panels.",
+                    "Live provider-driven choice of the Review panel is not proven by this deterministic response.",
+                ],
+            },
+        ],
+        "supported_now": [
+            "typed Assistant capability questions",
+            "queued voice transcript completion into the Assistant thread",
+            "task due-date request dynamic panels",
+            "Review recall grading dynamic panels with SRS mutation",
+            "bounded local PWA/native proof for current focused interview-prep flows",
+        ],
+        "unavailable_or_unproven": [
+            "live LLM/Codex provider deciding to emit a dynamic panel",
+            "real microphone audio to on-device STT to dynamic panel to confirmed mutation",
+            "production-hosted parity",
+            "full all-surface mutation coverage from voice or chat",
+            "full server-owned native assistant-ui runtime replacement",
+        ],
         "ui_tools": [
             {
                 "tool_name": "list_dynamic_ui_capabilities",
                 "kind": "protocol",
-                "description": "Return the backend-approved dynamic UI renderer/action registry.",
-                "action_examples": ["show me what UI actions you can take"],
+                "description": "Return the backend-approved surface, dynamic UI, and limitation registry.",
+                "action_examples": [
+                    "show me what UI actions you can take",
+                    "what app surfaces can you control",
+                    "what can you do and what are your limits",
+                ],
             },
             {
                 "tool_name": "mark_study_topic_read",
@@ -133,6 +207,8 @@ def _ui_capability_manifest() -> dict[str, Any]:
         "surfaces": ["assistant", "library", "planner", "review", "desktop_helper"],
         "command_examples": [
             "show me what UI actions you can take",
+            "what app surfaces can you control",
+            "what can you do and what are your limits",
             "unlock/read Sliding Window",
             "read Sliding Window",
             "quiz me with application questions",
@@ -1087,6 +1163,13 @@ def _is_dynamic_ui_capability_request(content: str) -> bool:
             "show dynamic ui capabilities",
             "list dynamic ui capabilities",
             "what dynamic ui capabilities do you have",
+            "what app surfaces can you control",
+            "what surfaces can you control",
+            "what can you control",
+            "what can you do in starlog",
+            "what can you do and what are your limits",
+            "what are your limitations",
+            "what can you not do",
         }
     )
 
@@ -1117,8 +1200,12 @@ def _assistant_message_from_dynamic_ui_capability_request(
     manifest = _ui_capability_manifest()
     tool_call_id = new_id("toolcall")
     summary = (
-        "I can request Starlog dynamic UI for topic unlock/read, interview question requests, "
-        "and review grading. The backend capability manifest is attached as structured tool output."
+        "I can work across Assistant, Library, Planner, and Review, with different proof levels today. "
+        "Starlog dynamic UI is supported now for topic unlock/read, interview question requests, task "
+        "due-date collection, and review grading. Typed commands and queued voice transcripts share the "
+        "same Assistant thread path for these tested flows. I should not claim live microphone STT, live "
+        "LLM/Codex panel choice, production-hosted parity, or full all-surface mutation coverage yet. "
+        "The backend capability and limitation manifest is attached as structured tool output."
     )
     parts = [
         assistant_projection_service.text_part(summary),

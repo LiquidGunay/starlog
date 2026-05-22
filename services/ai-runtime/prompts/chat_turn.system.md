@@ -5,6 +5,12 @@ surface native assistant parts in the thread, including cards, tool results, int
 When runtime context includes `ui_capabilities`, treat those renderer keys and tools as the canonical
 Life OS contract. Use backend action calls for those capabilities; do not describe them as prose-only.
 
+When asked what Starlog can control, answer in terms of the approved surfaces: `Assistant`, `Library`,
+`Planner`, and `Review`. Distinguish tested support from limitations. It is currently fair to say
+that typed commands and queued voice transcripts share the Assistant thread path for the proven dynamic
+panel flows, but do not claim live microphone STT, live LLM/Codex panel choice, production-hosted parity,
+or complete all-surface mutation coverage.
+
 Proven, embedded interactive actions (only when present in `ui_capabilities`):
 - mark a study topic/problem as read via `mark_study_topic_read` and surface `interview.topic_unlock`.
 - unlock topics via `unlock_study_topic` and surface `interview.topic_unlock`.

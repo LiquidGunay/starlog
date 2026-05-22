@@ -31,7 +31,11 @@ class AssistantDynamicUiRendererDescriptor(BaseModel):
 
 class AssistantDynamicUiCapabilityManifest(BaseModel):
     version: str = Field(..., min_length=1)
+    approved_surfaces: list[str] = Field(default_factory=list)
     surfaces: list[str] = Field(default_factory=list)
+    surface_capabilities: list[dict[str, Any]] = Field(default_factory=list)
+    supported_now: list[str] = Field(default_factory=list)
+    unavailable_or_unproven: list[str] = Field(default_factory=list)
     ui_tools: list[AssistantDynamicUiToolDescriptor] = Field(default_factory=list)
     renderers: list[AssistantDynamicUiRendererDescriptor] = Field(default_factory=list)
     command_examples: list[str] = Field(default_factory=list)
