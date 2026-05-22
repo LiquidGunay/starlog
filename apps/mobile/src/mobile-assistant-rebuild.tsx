@@ -1716,6 +1716,9 @@ export function MobileAssistantRebuild({
 
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={voiceActionState === "listening" ? "Cancel Assistant voice listening" : "Start Assistant voice input"}
+          testID="mobile-assistant-voice-action"
           style={{
             width: 42,
             height: 42,

@@ -118,6 +118,7 @@ Current functional areas:
 | PWA Review | `apps/web/tests/ui-functional/pwa-review.functional.spec.ts` | Clean Review shell/study-loop surface, queue health, reveal answer, grading, assistant event emission on reveal, learning insights, recommended drill, and quiet compatibility when learning fields are missing. |
 | Mobile view-model tests | `apps/mobile/tests/*.test.ts` | React Native view-model and panel-state shaping for Assistant, Library, Planner, Review, and mobile dynamic panels. Focused native voice/render tests also prove mocked on-device-STT-style transcript submission through the canonical Assistant thread path and native `interview.review_grade` panel submit/snapshot handling. These are not browser screenshots or device automation. |
 | Native Android fresh-local SRS validation | `scripts/android_fresh_local_srs_validation.sh` | Physical-device evidence for install/login, Assistant, Review/Study, grading, Assistant-hosted due-date dynamic UI, and Planner alarm scheduling. The current proof is `.localdata/latest/android-study-proof-seed-20260521/latest.json` with `validation_passed: true` and `validation_stage: final`; PR #283 stabilized the harness around exact enabled Study controls and fresh Planner alarm targets. |
+| Native Android Assistant voice dynamic-panel proof | `scripts/android_assistant_voice_dynamic_panel_validation.sh` | Focused physical-device path for real Android microphone audio -> on-device STT -> canonical Assistant thread -> `interview.review_grade` panel -> confirmed SRS mutation. It seeds a due Sliding Window proof card, drives install/login/Assistant shell, captures screenshots/XML/thread/card evidence, handles the Android microphone permission dialog when shown, and requires `ASSISTANT_REAL_STT_INTERACTIVE=1` in an interactive shell to pause for operator speech. The latest 2026-05-22 run reached `manual_speech_required` with shell evidence, so it is a repeatable proof harness, not completed real-STT proof yet. |
 | Native Android interview functional capture | `scripts/android_interview_functional_capture.sh` | Lightweight installed-device capture path for the interview-prep loop. It keeps the phone awake, opens Assistant/Review/Planner deeplinks, records screenshots and UI XML, and pauses for manual checkpoints around topic unlock/read, Review reveal/grade, and progress/recommendation verification. |
 
 ## Dynamic UI Coverage Boundary
@@ -147,7 +148,10 @@ Covered:
 - Native focused tests compile and run a mocked on-device-STT-style transcript through the canonical
   native Assistant thread request builder, render the resulting native assistant-ui
   `interview.review_grade` panel without raw protocol labels, submit the panel through the interrupt
-  submit request builder, and verify the mocked returned session-state/SRS mutation boundary.
+  submit request builder, and verify the mocked returned session-state/SRS mutation boundary. Focused
+  API coverage also proves the explicit voice-style phrase `Grade my Sliding Window recall as good`
+  enters `/v1/assistant/threads/primary/messages` with `input_mode: "voice"`, opens the canonical
+  Review-grade panel without runtime fallback, and records the confirmed SRS mutation.
 - The due-date dynamic UI path creates a Planner task and keeps the user-facing panel free of raw
   protocol/fallback labels and `create_time_block` or time-block controls; the expected copy says
   "Time blocking can be handled next." Current PWA proof covers the live/interview due-date flow plus
@@ -171,9 +175,10 @@ Not yet covered:
 - A live LLM/Codex agent interpreting a natural-language command and deciding to emit a dynamic panel.
 - End-to-end command control of all surfaces from phone/PWA without clicks; the mocked bridge currently
   proves one Review-grade interview-prep loop and due-date task creation, not every surface command.
-- Real Android on-device STT audio capture to assistant run to dynamic panel to confirmed mutation; the
-  PWA browser recording/job-completion path and native on-device-STT-style transcript path are covered
-  with deterministic mocks, not live speech recognition.
+- Completed real Android on-device STT audio capture to assistant run to dynamic panel to confirmed
+  mutation; the PWA browser recording/job-completion path and native on-device-STT-style transcript path
+  are covered with deterministic mocks, and the focused Android harness is ready, but the latest physical
+  run stopped at the required manual speech checkpoint before live speech recognition.
 - Native iOS automation of dynamic panels.
 - Repeatable Android functional automation for the full native assistant-ui runtime.
 - Full server-owned assistant-ui runtime migration across web and native mobile.
