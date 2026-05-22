@@ -85,7 +85,7 @@ test("sign-in on pre-login experience routes to assistant", async ({ page }) => 
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL("/assistant");
-  await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Assistant", exact: true })).toBeVisible();
 });
 
 test("setup on an existing Starlog reports the passphrase recovery path", async ({ page }) => {

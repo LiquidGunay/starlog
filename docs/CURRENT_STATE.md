@@ -38,16 +38,16 @@ where Starlog is going. Use this page for current implementation confidence.
   the mobile viewport functional harness passed 6 tests, and `apps/mobile` `test:assistant-ui-render`,
   `test:assistant-aui`, and `test:assistant-thread-actions` passed.
 - **Latest local interview-prep/UI proof known on 2026-05-22:** PR #282 merged the dynamic-panel e2e
-  proof at squash `48f1a92a009992ac09f20c412f124a729382eb51`; its validation included Playwright
-  dynamic-panel e2e 2/2, API pytest 2/2, and `corepack pnpm --filter web lint` with the existing
-  `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning. Current
-  `origin/master` proof also passed `corepack pnpm test:ui:pwa-functional` 16/16 with evidence under
-  `.localdata/ui-functional/latest/test-results/`, the live functional PWA flow with evidence under
-  `.localdata/live-functional/latest/test-results/`, and API due-date pytest. The runtime-command
-  coverage lane adds a CI-safe mocked assistant-runtime bridge test for command -> run ->
-  `interview.review_grade` dynamic panel -> user confirmation -> SRS mutation -> Assistant
-  confirmation/session-state awareness, validated by `assistant-dynamic-ui-e2e.spec.ts` 3/3 and the
-  focused review-grade API pytest.
+  proof at squash `48f1a92a009992ac09f20c412f124a729382eb51`; PR #289 merged the CI-safe mocked
+  assistant-runtime bridge proof for command -> run -> `interview.review_grade` dynamic panel -> user
+  confirmation -> SRS mutation -> Assistant confirmation/session-state awareness. The current PWA
+  harness refresh validates the approved `Assistant` heading instead of the stale `Starlog Assistant`
+  title and waits for Review reveal/grade request capture before asserting mutation arrays. Fresh local
+  validation passed the live functional PWA flow 1/1 with evidence under
+  `.localdata/live-functional/latest/test-results/`, `corepack pnpm test:ui:pwa-functional` 16/16 with
+  evidence under `.localdata/ui-functional/latest/test-results/`, and the focused auth-gate spec 4/4
+  with evidence under `.localdata/pwa-release-gate/latest/test-results/`. The earlier Review request
+  timing failure is not a known residual after this explicit wait/assertion refresh.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
   `.localdata/latest/android-study-proof-seed-20260521/latest.json`. PR #283 merged the Android
@@ -113,13 +113,16 @@ where Starlog is going. Use this page for current implementation confidence.
   over server-owned Starlog messages. It is useful for rendering/transcript slices and selected
   dynamic-panel host integration, but it is not yet the full visible phone chat/runtime replacement
   unless the pending mobile runtime work lands and is validated.
-- **Current local UI harness proof:** as of 2026-05-21, current `master` has passing PWA functional
-  proof (`corepack pnpm test:ui:pwa-functional`, 16/16) at
+- **Current local UI harness proof:** as of 2026-05-22, current local validation has passing PWA
+  functional proof (`corepack pnpm test:ui:pwa-functional`, 16/16) at
   `.localdata/ui-functional/latest/test-results/`, passing live functional PWA proof at
-  `.localdata/live-functional/latest/test-results/`, passing API due-date pytest, and the merged PR #282
-  dynamic-panel e2e validation. The broader 2026-05-20 PWA and mobile viewport harness passes remain
-  useful baseline evidence. These prove current local web and native-code UI behavior; the
-  connected-phone Android proof is tracked in the native interview-prep evidence below.
+  `.localdata/live-functional/latest/test-results/`, passing focused auth-gate proof at
+  `.localdata/pwa-release-gate/latest/test-results/`, passing API due-date/review-grade pytest from the
+  dynamic-panel lanes, and merged dynamic-panel/runtime-command e2e validation. The live harness now
+  asserts the approved `Assistant` surface heading, and the Review functional harness waits for
+  intercepted reveal/grade mutations before asserting request arrays. These prove current local web and
+  native-code UI behavior; the connected-phone Android proof is tracked in the native interview-prep
+  evidence below.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API
@@ -294,16 +297,16 @@ Known outcome for `Inference Engineering.pdf`:
   expose the hosted passphrase or bearer token, and token material from local authenticated checks must
   not be copied into this document.
 - Latest local UI/interview-prep evidence on 2026-05-22:
-  PR #282 dynamic-panel e2e validation passed Playwright 2/2 and API pytest 2/2, and
-  `corepack pnpm --filter web lint` passed with the existing
-  `app/assistant/starlog-assistant-thread.tsx:560` `initialDraft` dependency warning.
-  Current `master` also passed `corepack pnpm test:ui:pwa-functional` 16/16 with evidence at
-  `.localdata/ui-functional/latest/test-results/`, the live functional PWA flow with evidence at
-  `.localdata/live-functional/latest/test-results/`, and API due-date pytest. The runtime-command
-  coverage lane passed `assistant-dynamic-ui-e2e.spec.ts` 3/3 with screenshots at
-  `.localdata/pwa-release-gate/latest/test-results/` and focused review-grade API pytest 1/1. Keep run
-  output in `.localdata/`, ignored build folders, or a single explicitly requested latest proof bundle;
-  do not treat removed dated artifact folders as current evidence.
+  PR #282 dynamic-panel e2e validation passed Playwright 2/2 and API pytest 2/2, and PR #289 passed
+  `assistant-dynamic-ui-e2e.spec.ts` 3/3 plus focused review-grade API pytest 1/1. The current harness
+  refresh passed the live functional PWA flow 1/1 with evidence at
+  `.localdata/live-functional/latest/test-results/`, `corepack pnpm test:ui:pwa-functional` 16/16 with
+  evidence at `.localdata/ui-functional/latest/test-results/`, and the focused auth-gate spec 4/4 with
+  evidence at `.localdata/pwa-release-gate/latest/test-results/`. The refreshed assertions match the
+  current `Assistant` surface heading and the Review request-array timing flake has an explicit
+  request/wait guard rather than a residual failure note. Keep run output in `.localdata/`, ignored
+  build folders, or a single explicitly requested latest proof bundle; do not treat removed dated
+  artifact folders as current evidence.
 - Android native evidence should be written by `scripts/android_fresh_local_srs_validation.sh` and
   indexed in `.localdata/android-local-validation/builds/latest.json` (and companion artifact files
   listed there). The current proof is

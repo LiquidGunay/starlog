@@ -217,6 +217,11 @@ function escapedRegExp(value: string): RegExp {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
 
+async function expectAssistantSurface(page: Page): Promise<void> {
+  await expect(page.getByRole("heading", { name: "Assistant", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Assistant state")).toBeVisible();
+}
+
 test("live PWA user flow covers study loop + review + briefing hints and alarm", async ({ page }, testInfo) => {
   const studyTag = `run:${TEST_RUN_ID}-w${testInfo.workerIndex}-r${testInfo.retry}`;
   const assistantSmokeText = `Live functional smoke checks interview-prep study loop validation (${studyTag})`;
@@ -231,7 +236,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   const authAction = useSetup ? setupButton : signInButton;
   await expect(authAction).toBeVisible();
   await Promise.all([page.waitForURL(/\/assistant/), authAction.click()]);
-  await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
+  await expectAssistantSurface(page);
   await screenshot(page, testInfo, "01-assistant-open");
 
   const composer = page.getByPlaceholder("Ask, capture, plan, review, or move something forward...");
@@ -356,7 +361,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await screenshot(page, testInfo, "05-review-reveal");
 
   await page.goto("/assistant");
-  await expect(page.getByRole("heading", { name: "Starlog Assistant" })).toBeVisible();
+  await expectAssistantSurface(page);
   await expect(composer).toBeEnabled();
   const reviewGradePanel = await expectAssistantUiDataPart(page, "assistant-ui-review-grade", "interview.review_grade");
   await expect(reviewGradePanel).toContainText("Interview review");

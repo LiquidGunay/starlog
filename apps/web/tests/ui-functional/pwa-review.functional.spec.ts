@@ -211,18 +211,29 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   const goodButton = page.getByRole("button", { name: /Good/ });
   await expect(goodButton).toBeDisabled();
 
-  await page.getByRole("button", { name: "Reveal answer" }).click();
+  const revealEventRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && request.url() === `${API_BASE}/v1/assistant/threads/primary/events`,
+  );
+  await Promise.all([
+    revealEventRequest,
+    page.getByRole("button", { name: "Reveal answer" }).click(),
+  ]);
   await expect(page.getByText("Inspect the earliest high-friction step")).toBeVisible();
   await expect(goodButton).toBeEnabled();
-  expect(assistantEvents).toEqual([
+  await expect.poll(() => assistantEvents.length, { message: "review reveal event should be emitted" }).toBe(1);
+  expect(assistantEvents[0]).toEqual(
     expect.objectContaining({
       kind: "review.answer.revealed",
       entity_ref: expect.objectContaining({ entity_id: "card_application" }),
     }),
-  ]);
+  );
 
-  await goodButton.click();
-  expect(reviewRequests).toEqual([expect.objectContaining({ card_id: "card_application", rating: 4 })]);
+  const reviewGradeRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && request.url() === `${API_BASE}/v1/reviews`,
+  );
+  await Promise.all([reviewGradeRequest, goodButton.click()]);
+  await expect.poll(() => reviewRequests.length, { message: "review grade mutation should be captured" }).toBe(1);
+  expect(reviewRequests[0]).toEqual(expect.objectContaining({ card_id: "card_application", rating: 4 }));
   await expect(page.locator("[aria-live='polite']")).toHaveText("Recorded Good for card_application.");
   await expect(page.locator(".review-ladder-step", { hasText: "Application" }).getByText("2 due")).toBeVisible();
   await expect(page.getByText("Recall 2 · Understanding 1 · Application 2 · Synthesis 1")).toBeVisible();
