@@ -83,7 +83,9 @@ show due cards
 ```
 
 The Assistant records the command in the persistent thread and returns cards or follow-up actions
-when a support surface needs attention.
+when a support surface needs attention. You can also ask what it can control or where its current
+limits are; the capability answer covers Assistant, Library, Planner, and Review while calling out
+unproven live STT, live provider-chosen panels, production parity, and full all-surface mutation coverage.
 
 ## Surfaces
 

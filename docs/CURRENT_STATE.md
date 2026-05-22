@@ -49,10 +49,14 @@ where Starlog is going. Use this page for current implementation confidence.
   with evidence under `.localdata/pwa-release-gate/latest/test-results/`. The Assistant dynamic-ui e2e
   proof now also covers mocked PWA voice capture through the real `/assistant` voice control, queued
   `assistant_thread_voice` STT completion, runtime-emitted `interview.review_grade`, user confirmation,
-  SRS mutation, and Assistant session-state awareness without live STT/LLM credentials. The native
-  mobile focused proof now also covers mocked on-device-STT-style transcript handling through the
-  canonical `/v1/assistant/threads/primary/messages` request builder, native assistant-ui rendering of
-  `interview.review_grade` without raw protocol labels, interrupt-submit request construction, and a
+  SRS mutation, and Assistant session-state awareness without live STT/LLM credentials. The Assistant
+  capability/limitation response now explicitly covers the approved `Assistant`, `Library`, `Planner`,
+  and `Review` surfaces, separates tested typed/queued-voice dynamic-panel paths from unproven live
+  STT/LLM/provider/production/all-surface coverage, and keeps raw protocol labels out of the visible
+  capability text. The native mobile focused proof now also covers mocked on-device-STT-style transcript
+  handling through the canonical `/v1/assistant/threads/primary/messages` request builder, native
+  assistant-ui rendering of `interview.review_grade` without raw protocol labels, interrupt-submit
+  request construction, and a
   mocked returned session-state/SRS mutation boundary. The earlier Review request timing failure is not
   a known residual after this explicit wait/assertion refresh.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21

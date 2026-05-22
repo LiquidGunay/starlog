@@ -132,7 +132,10 @@ Covered:
 - Resolved panels leave the UI in a settled state.
 - The live PWA harness sends `show me what UI actions you can take`, requires the Assistant capability
   prompt to describe dynamic UI actions without raw protocol labels, reveals a card from Review, then
-  returns to Assistant to submit the generated review-grade dynamic panel.
+  returns to Assistant to submit the generated review-grade dynamic panel. Focused API tests also prove
+  that the same deterministic capability/limitation response covers `Assistant`, `Library`, `Planner`,
+  and `Review`, and is reachable from a queued `assistant_thread_voice` transcript completion without
+  invoking live STT or hosted runtime selection.
 - The mocked assistant-runtime bridge e2e sends natural-language Assistant commands through the real
   `/assistant` UI and API, verifies runtime-provided UI capabilities, renders agent-emitted dynamic
   panels, confirms user choices, mutates Planner/SRS backend state, and verifies the Assistant thread
