@@ -46,8 +46,11 @@ where Starlog is going. Use this page for current implementation confidence.
   validation passed the live functional PWA flow 1/1 with evidence under
   `.localdata/live-functional/latest/test-results/`, `corepack pnpm test:ui:pwa-functional` 16/16 with
   evidence under `.localdata/ui-functional/latest/test-results/`, and the focused auth-gate spec 4/4
-  with evidence under `.localdata/pwa-release-gate/latest/test-results/`. The earlier Review request
-  timing failure is not a known residual after this explicit wait/assertion refresh.
+  with evidence under `.localdata/pwa-release-gate/latest/test-results/`. The Assistant dynamic-ui e2e
+  proof now also covers mocked PWA voice capture through the real `/assistant` voice control, queued
+  `assistant_thread_voice` STT completion, runtime-emitted `interview.review_grade`, user confirmation,
+  SRS mutation, and Assistant session-state awareness without live STT/LLM credentials. The earlier
+  Review request timing failure is not a known residual after this explicit wait/assertion refresh.
 - **Native Android evidence known:** the fresh local physical-device validation passed on 2026-05-21
   with `validation_passed: true` at
   `.localdata/latest/android-study-proof-seed-20260521/latest.json`. PR #283 merged the Android
@@ -118,11 +121,12 @@ where Starlog is going. Use this page for current implementation confidence.
   `.localdata/ui-functional/latest/test-results/`, passing live functional PWA proof at
   `.localdata/live-functional/latest/test-results/`, passing focused auth-gate proof at
   `.localdata/pwa-release-gate/latest/test-results/`, passing API due-date/review-grade pytest from the
-  dynamic-panel lanes, and merged dynamic-panel/runtime-command e2e validation. The live harness now
-  asserts the approved `Assistant` surface heading, and the Review functional harness waits for
-  intercepted reveal/grade mutations before asserting request arrays. These prove current local web and
-  native-code UI behavior; the connected-phone Android proof is tracked in the native interview-prep
-  evidence below.
+  dynamic-panel lanes, and merged dynamic-panel/runtime-command e2e validation. The e2e harness includes
+  the mocked PWA voice-thread proof from voice button capture to queued STT job completion to Review-grade
+  dynamic panel confirmation and SRS mutation. The live harness now asserts the approved `Assistant`
+  surface heading, and the Review functional harness waits for intercepted reveal/grade mutations before
+  asserting request arrays. These prove current local web and native-code UI behavior; the connected-phone
+  Android proof is tracked in the native interview-prep evidence below.
 - **API stability baseline:** the API test harness now pins TestClient paths to Python 3.12 through
   [services/api/tests/conftest.py](/home/ubuntu/starlog/services/api/tests/conftest.py), and
   `httpx` is constrained to a compatible range for the current FastAPI/TestClient stack. Treat API

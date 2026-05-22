@@ -372,6 +372,46 @@ async function seedBrowserSession(page: Page, token: string): Promise<void> {
     { baseUrl: apiBase, accessToken: token },
   );
 }
+async function seedBrowserVoiceCapture(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if (!navigator.mediaDevices) {
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: {},
+        configurable: true,
+      });
+    }
+
+    navigator.mediaDevices.getUserMedia = async () => new MediaStream();
+
+    class MockMediaRecorder {
+      mimeType = "audio/webm";
+      stream: MediaStream;
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+
+      constructor(stream: MediaStream) {
+        this.stream = stream;
+      }
+
+      start(): void {
+        // The Assistant voice UI only needs a non-empty recording for this e2e proof.
+      }
+
+      stop(): void {
+        const blob = new Blob(["voice-review-grade-command"], { type: this.mimeType });
+        this.ondataavailable?.({ data: blob });
+        this.onstop?.();
+      }
+    }
+
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      writable: true,
+      value: MockMediaRecorder,
+    });
+  });
+}
+
 
 test.beforeAll(async () => {
   await startMockRuntimeServer();
@@ -583,6 +623,168 @@ test("grades an interview-prep review card through a mocked agent-emitted dynami
     expect.objectContaining({
       last_turn_kind: "chat_turn",
       last_user_message: command,
+      last_matched_intent: "grade_review_recall",
+      last_status: "executed",
+      last_tool_names: ["grade_review_recall"],
+      last_chat_turn_provider: "mock_codex_bridge",
+      last_chat_turn_model: "mock-agent-interview-review",
+      last_assistant_response: expect.stringContaining(`Recorded Good for ${card.review_mode} review: ${prompt}`),
+      last_review_grade: expect.objectContaining({
+        card_id: card.id,
+        rating: 4,
+        rating_label: "Good",
+        review_mode: card.review_mode,
+      }),
+    }),
+  );
+
+  mockReviewCardTarget = null;
+});
+
+
+test("grades an interview-prep review card from a PWA voice command through the Assistant thread", async ({ page, request }) => {
+  const token = await bootstrapAndLogin(request);
+  await seedBrowserSession(page, token);
+  await seedBrowserVoiceCapture(page);
+
+  const prompt = "Use two pointers to explain a minimum-window interview prompt.";
+  const createCardResponse = await request.post(`${apiBase}/v1/cards`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      prompt,
+      answer: "Expand the right pointer, count needed characters, then shrink the left pointer while preserving validity.",
+      card_type: "scenario",
+      due_at: "2026-05-01T00:00:00.000Z",
+      interval_days: 1,
+      repetitions: 0,
+      ease_factor: 2.5,
+      tags: ["interview-prep", "two-pointers", "voice"],
+    },
+  });
+  expect(createCardResponse.ok()).toBeTruthy();
+  const card = (await createCardResponse.json()) as CardResponse;
+  mockReviewCardTarget = {
+    cardId: card.id,
+    prompt: card.prompt,
+    cardType: card.card_type,
+    reviewMode: card.review_mode,
+  };
+
+  const dueBeforeResponse = await request.get(`${apiBase}/v1/cards/due`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(dueBeforeResponse.ok()).toBeTruthy();
+  const dueBefore = (await dueBeforeResponse.json()) as CardResponse[];
+  expect(dueBefore.some((dueCard) => dueCard.id === card.id)).toBeTruthy();
+
+  mockRuntimeRequests.length = 0;
+  const transcript = "I answered the current interview prep review card; grade it from voice";
+  await page.goto("/assistant");
+
+  const holdToTalk = page.getByTestId("assistant-voice-control");
+  await expect(holdToTalk).toBeEnabled();
+  await holdToTalk.focus();
+  await expect(holdToTalk).toBeFocused();
+  await page.keyboard.down("Space");
+  await expect(page.getByText("Recording voice command...")).toBeVisible();
+  await page.keyboard.up("Space");
+  await expect(page.getByText("Voice clip captured and ready for upload.")).toBeVisible();
+
+  const voiceUploadResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" && response.url().endsWith("/voice"),
+  );
+  await page.getByRole("button", { name: /Plan voice/i }).click();
+  const upload = await voiceUploadResponse;
+  expect(upload.status()).toBe(201);
+  const voiceJob = (await upload.json()) as { id: string; action: string; status: string };
+  expect(voiceJob.action).toBe("assistant_thread_voice");
+  await expect(page.getByText(/Uploaded 1 queued voice command/i)).toBeVisible();
+  await expect(page.getByText(voiceJob.id, { exact: false })).toBeVisible();
+
+  const claim = await request.post(`${apiBase}/v1/ai/jobs/${voiceJob.id}/claim`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { worker_id: "pwa-voice-thread-e2e" },
+  });
+  expect(claim.ok()).toBeTruthy();
+
+  const complete = await request.post(`${apiBase}/v1/ai/jobs/${voiceJob.id}/complete`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      worker_id: "pwa-voice-thread-e2e",
+      provider_used: "whisper_local_mock",
+      output: { transcript },
+    },
+  });
+  expect(complete.ok()).toBeTruthy();
+  const completedPayload = await complete.json() as {
+    output: { assistant_thread: { run_status: string; transcript: string } };
+  };
+  expect(completedPayload.output.assistant_thread.run_status).toBe("interrupted");
+  expect(completedPayload.output.assistant_thread.transcript).toBe(transcript);
+
+  await page.reload();
+
+  const main = page.locator("main");
+  const rawProtocolText = /renderer_key|tool_name|tool_call|tool_result|starlog-interrupt-request|Fallback|Diagnostic|Raw|ui_tool|domain_tool|grade_review_recall/i;
+  const reviewPanel = page.getByTestId("assistant-ui-review-grade").filter({ hasText: prompt });
+  await expect(reviewPanel).toHaveAttribute("data-dynamic-ui-renderer", "interview.review_grade");
+  await expect(reviewPanel.getByText("Interview review", { exact: true })).toBeVisible();
+  await expect(reviewPanel.getByLabel("Interview review prompt")).toContainText(prompt);
+  await expect(reviewPanel.getByText("Updates the SRS schedule for this interview-prep card.")).toBeVisible();
+  await expect(reviewPanel.getByRole("radiogroup", { name: "Review quality" })).toBeVisible();
+  await expect(main).not.toContainText(rawProtocolText);
+
+  expect(mockRuntimeRequests).toHaveLength(1);
+  expect(mockRuntimeRequests[0].text).toBe(transcript);
+  expect(mockRuntimeRequests[0].context).toEqual(
+    expect.objectContaining({
+      ui_capabilities: expect.objectContaining({ version: expect.any(String) }),
+    }),
+  );
+
+  await reviewPanel.getByRole("radio", { name: "Good" }).click();
+  await reviewPanel.getByRole("button", { name: "Record grade" }).click();
+
+  await expect(page.getByText(`Recorded Good for ${card.review_mode} review: ${prompt}`).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record grade" })).toHaveCount(0);
+  await expect(main).not.toContainText(rawProtocolText);
+
+  const cardsResponse = await request.get(`${apiBase}/v1/cards`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(cardsResponse.ok()).toBeTruthy();
+  const cards = (await cardsResponse.json()) as CardResponse[];
+  const reviewedCard = cards.find((candidate) => candidate.id === card.id);
+  expect(reviewedCard).toBeTruthy();
+  expect(reviewedCard?.repetitions).toBe(1);
+  expect(reviewedCard?.interval_days).toBe(1);
+  expect(reviewedCard?.due_at ? Date.parse(reviewedCard.due_at) : 0).toBeGreaterThan(Date.parse(card.due_at));
+
+  const dueAfterResponse = await request.get(`${apiBase}/v1/cards/due`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(dueAfterResponse.ok()).toBeTruthy();
+  const dueAfter = (await dueAfterResponse.json()) as CardResponse[];
+  expect(dueAfter.some((dueCard) => dueCard.id === card.id)).toBeFalsy();
+
+  const threadResponse = await request.get(`${apiBase}/v1/assistant/threads/primary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(threadResponse.ok()).toBeTruthy();
+  const thread = (await threadResponse.json()) as AssistantThreadSnapshot;
+  const reviewRun = thread.runs.find((run) =>
+    run.steps.some((step) => step.tool_name === "chat_turn_runtime") &&
+    run.steps.some((step) => step.tool_name === "grade_review_recall" && step.arguments.rating === 4),
+  );
+  expect(reviewRun).toBeTruthy();
+  expect(reviewRun?.status).toBe("completed");
+  expect(reviewRun?.current_interrupt).toBeNull();
+  expect(reviewRun?.steps.map((step) => step.step_index)).toEqual([0, 1, 2]);
+  expect(reviewRun?.steps.map((step) => step.tool_name)).toEqual(["grade_review_recall", "chat_turn_runtime", "grade_review_recall"]);
+  expect(thread.session_state).toEqual(
+    expect.objectContaining({
+      last_turn_kind: "chat_turn",
+      last_user_message: transcript,
       last_matched_intent: "grade_review_recall",
       last_status: "executed",
       last_tool_names: ["grade_review_recall"],
