@@ -42,6 +42,11 @@ type CardResponse = {
   ease_factor: number;
 };
 
+type ArtifactResponse = {
+  title: string | null;
+  normalized_content: string | null;
+};
+
 type AssistantThreadSnapshot = {
   session_state: Record<string, unknown>;
   runs: Array<{
@@ -459,6 +464,45 @@ test("creates a task through the deterministic Assistant due-date dynamic panel"
   expect(createdTask?.priority).toBe(4);
   expect(createdTask?.due_at ? new Date(createdTask.due_at).toISOString() : null).toBe(expectedDueAt);
 });
+
+test("captures a Library artifact through the deterministic Assistant command path", async ({ page, request }) => {
+  const token = await bootstrapAndLogin(request);
+  await seedBrowserSession(page, token);
+
+  const command = "capture Library UI command proof: saved from the Assistant UI";
+  await page.goto("/assistant");
+
+  await page.getByPlaceholder("Ask, capture, plan, review, or move something forward...").fill(command);
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const main = page.locator("main");
+  await expect(page.getByText("Capture text into Starlog inbox").first()).toBeVisible();
+  await expect(page.getByText("Library UI command proof").first()).toBeVisible();
+  await expect(main).not.toContainText(/tool_call|tool_result|renderer_key|capture_text_as_artifact|Diagnostic|Raw/i);
+
+  const artifactsResponse = await request.get(`${apiBase}/v1/artifacts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(artifactsResponse.ok()).toBeTruthy();
+
+  const artifacts = (await artifactsResponse.json()) as ArtifactResponse[];
+  const artifact = artifacts.find((candidate) => candidate.title === "Library UI command proof");
+  expect(artifact).toBeTruthy();
+  expect(artifact?.normalized_content).toBe("saved from the Assistant UI");
+
+  const threadResponse = await request.get(`${apiBase}/v1/assistant/threads/primary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(threadResponse.ok()).toBeTruthy();
+  const thread = (await threadResponse.json()) as AssistantThreadSnapshot;
+  const captureRun = thread.runs.find((run) =>
+    run.steps.some((step) => step.tool_name === "capture_text_as_artifact"),
+  );
+  expect(captureRun).toBeTruthy();
+  expect(captureRun?.status).toBe("completed");
+  expect(captureRun?.current_interrupt).toBeNull();
+});
+
 
 test("creates a task through a mocked agent-emitted dynamic panel", async ({ page, request }) => {
   const token = await bootstrapAndLogin(request);

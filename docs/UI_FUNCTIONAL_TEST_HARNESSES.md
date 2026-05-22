@@ -135,7 +135,9 @@ Covered:
   returns to Assistant to submit the generated review-grade dynamic panel. Focused API tests also prove
   that the same deterministic capability/limitation response covers `Assistant`, `Library`, `Planner`,
   and `Review`, and is reachable from a queued `assistant_thread_voice` transcript completion without
-  invoking live STT or hosted runtime selection.
+  invoking live STT or hosted runtime selection. Focused API tests also prove typed Assistant-thread
+  command handling for Library capture, Planner internal calendar-event mutation, Review due-card
+  loading, and unsupported-action limitation responses without falling through to the hosted runtime.
 - The mocked assistant-runtime bridge e2e sends natural-language Assistant commands through the real
   `/assistant` UI and API, verifies runtime-provided UI capabilities, renders agent-emitted dynamic
   panels, confirms user choices, mutates Planner/SRS backend state, and verifies the Assistant thread
