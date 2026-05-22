@@ -184,6 +184,10 @@ function latestCommandMessage(page: Page, expected: string | RegExp): Locator {
   return page.locator("main").getByText(expected).last();
 }
 
+function latestAssistantMessageWithText(page: Page, expected: string | RegExp): Locator {
+  return page.locator("main [class*='message_assistant']").filter({ hasText: expected }).last();
+}
+
 function assistantUiDataParts(
   page: Page,
   testId: "assistant-ui-question-request" | "assistant-ui-review-grade" | "assistant-ui-topic-unlock",
@@ -249,9 +253,10 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     status: "executed",
   });
   await expect(latestCommandMessage(page, capabilityPrompt)).toBeVisible();
-  await expect(page.getByText(/Starlog dynamic UI/i)).toBeVisible();
-  await expect(page.getByText(/topic unlock\/read/i)).toBeVisible();
-  await expect(page.getByText(/review grading/i)).toBeVisible();
+  const latestCapabilityResponse = latestAssistantMessageWithText(page, /Starlog dynamic UI/i);
+  await expect(latestCapabilityResponse).toBeVisible();
+  await expect(latestCapabilityResponse).toContainText(/topic unlock\/read/i);
+  await expect(latestCapabilityResponse).toContainText(/review grading/i);
   await screenshot(page, testInfo, "02-assistant-capability-prompt");
 
   const assistantSmokeResponse = await sendAssistantMessage(page, composer, assistantSmokeText);
@@ -369,9 +374,9 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   await expect(reviewGradePanel.getByLabel("Interview review prompt")).toBeVisible();
   await expect(reviewGradePanel.getByLabel("Interview review prompt")).toContainText(expectedRevealedCard.prompt);
   await expect(reviewGradePanel.getByText("Recommendation reason")).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Good" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save grade" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Keep in Review" })).toBeVisible();
+  await expect(reviewGradePanel.getByRole("radio", { name: "Good" })).toBeVisible();
+  await expect(reviewGradePanel.getByRole("button", { name: "Save grade" })).toBeVisible();
+  await expect(reviewGradePanel.getByRole("button", { name: "Keep in Review" })).toBeVisible();
   await screenshot(page, testInfo, "06-assistant-review-grade-controls");
 
   const assistantGradeRequest = page.waitForRequest((request) =>
@@ -381,11 +386,11 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
     response.request().method() === "POST" && isAssistantInterruptSubmitRequest(response.url()) && response.status() >= 200
       && response.status() < 300,
   );
-  await page.getByRole("radio", { name: "Good" }).click();
+  await reviewGradePanel.getByRole("radio", { name: "Good" }).click();
   await Promise.all([
     assistantGradeRequest,
     assistantGradeResponse,
-    page.getByRole("button", { name: "Save grade" }).click(),
+    reviewGradePanel.getByRole("button", { name: "Save grade" }).click(),
   ]);
 
   const assistantGradePayload = (await assistantGradeRequest).postDataJSON() as AssistantInterruptSubmitPayload;
@@ -394,7 +399,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   });
 
   await assistantGradeResponse;
-  await expect(page.getByText(/Recorded Good for .+ review/i)).toBeVisible();
+  await expect(latestAssistantMessageWithText(page, /Recorded Good for .+ review/i)).toBeVisible();
   const savedReviewGrade = await expectAssistantUiDataPart(page, "assistant-ui-review-grade", "interview.review_grade");
   await expect(savedReviewGrade).toContainText("Review grade saved");
   await expect(savedReviewGrade).toContainText("4");
@@ -443,7 +448,7 @@ test("live PWA user flow covers study loop + review + briefing hints and alarm",
   expect(scheduledAlarmPayload.device_target).toBe("pwa");
   expect(typeof scheduledAlarmPayload.trigger_at).toBe("string");
 
-  await expect(page.getByText(/Alarm scheduled/i)).toBeVisible();
-  await expect(page.locator("article", { hasText: /pwa/i })).toBeVisible();
+  await expect(page.getByText(/Alarm scheduled/i).last()).toBeVisible();
+  await expect(page.locator("article", { hasText: /pwa/i }).first()).toBeVisible();
   await screenshot(page, testInfo, "09-alarm-scheduled");
 });
