@@ -1,5 +1,5 @@
-import { AuthEntry } from "./components/auth-entry";
+import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  return <AuthEntry />;
+  redirect("/today");
 }

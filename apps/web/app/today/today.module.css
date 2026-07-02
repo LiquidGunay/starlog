@@ -1,0 +1,378 @@
+.shell {
+  min-height: 100svh;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(236, 241, 245, 0.98)),
+    #f7fafc;
+  color: #17202a;
+  padding: 28px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto 24px;
+  border-bottom: 1px solid rgba(23, 32, 42, 0.12);
+  padding-bottom: 20px;
+}
+
+.brand {
+  display: inline-flex;
+  color: #3f6257;
+  font-weight: 750;
+  text-decoration: none;
+  margin-bottom: 18px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 48px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.header p {
+  max-width: 620px;
+  margin: 12px 0 0;
+  color: #5a6570;
+  font-size: 16px;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.nav a,
+.panelHead a,
+.buttonRow a,
+.emptyState a {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(23, 32, 42, 0.14);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #17202a;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.72);
+  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+}
+
+.nav a:hover,
+.panelHead a:hover,
+.buttonRow a:hover,
+.emptyState a:hover {
+  border-color: rgba(63, 98, 87, 0.45);
+  background: #ffffff;
+  transform: translateY(-1px);
+}
+
+.overview {
+  max-width: 1280px;
+  margin: 0 auto 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid rgba(23, 32, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.overview div {
+  padding: 18px 20px;
+  border-right: 1px solid rgba(23, 32, 42, 0.1);
+}
+
+.overview div:last-child {
+  border-right: 0;
+}
+
+.overview span,
+.overview small,
+.panelHead p,
+.deckLabel,
+.status,
+.details p,
+.field span,
+.dateField span {
+  color: #61707c;
+}
+
+.overview span,
+.panelHead p,
+.field span,
+.dateField span,
+.deckLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.overview strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.overview small {
+  display: block;
+  margin-top: 8px;
+}
+
+.workspace {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.05fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  border: 1px solid rgba(23, 32, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 22px;
+  box-shadow: 0 18px 45px rgba(28, 40, 51, 0.08);
+}
+
+.dailyPanel {
+  grid-column: 1 / -1;
+}
+
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panelHead h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.panelHead button,
+.primaryButton,
+.ratingRow button {
+  min-height: 42px;
+  border: 1px solid rgba(23, 32, 42, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17202a;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.panelHead button:hover,
+.primaryButton:hover,
+.ratingRow button:hover {
+  border-color: rgba(63, 98, 87, 0.45);
+  transform: translateY(-1px);
+}
+
+.panelHead button:disabled,
+.primaryButton:disabled,
+.ratingRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.primaryButton {
+  background: #274b42;
+  border-color: #274b42;
+  color: #ffffff;
+}
+
+.reviewBody h3,
+.emptyState h3 {
+  margin: 10px 0 18px;
+  font-size: 28px;
+  line-height: 1.14;
+  letter-spacing: 0;
+}
+
+.answer {
+  margin-top: 16px;
+  border-left: 3px solid #3f6257;
+  padding: 14px 0 14px 16px;
+  background: rgba(63, 98, 87, 0.06);
+}
+
+.answer span {
+  display: block;
+  margin-bottom: 8px;
+  color: #61707c;
+  font-size: 13px;
+}
+
+.answer p,
+.emptyState p {
+  margin: 0;
+  color: #27313a;
+  line-height: 1.55;
+}
+
+.ratingRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.field,
+.dateField {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.field input,
+.field select,
+.field textarea,
+.dateField input {
+  width: 100%;
+  border: 1px solid rgba(23, 32, 42, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17202a;
+  padding: 12px 13px;
+  font: inherit;
+  resize: vertical;
+}
+
+.field textarea {
+  min-height: 112px;
+}
+
+.dailyPanel .field textarea {
+  min-height: 180px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.dateField input:focus {
+  border-color: #3f6257;
+  outline: 3px solid rgba(63, 98, 87, 0.14);
+}
+
+.details {
+  margin: 4px 0 16px;
+  color: #27313a;
+}
+
+.details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.details p {
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+
+.buttonRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status {
+  min-height: 20px;
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.emptyState {
+  border: 1px dashed rgba(23, 32, 42, 0.18);
+  border-radius: 8px;
+  padding: 22px;
+  background: rgba(247, 250, 252, 0.8);
+}
+
+@media (max-width: 860px) {
+  .shell {
+    padding: 18px;
+  }
+
+  .header {
+    display: grid;
+  }
+
+  .header h1 {
+    font-size: 38px;
+  }
+
+  .nav {
+    justify-content: flex-start;
+  }
+
+  .overview,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .overview div {
+    border-right: 0;
+    border-bottom: 1px solid rgba(23, 32, 42, 0.1);
+  }
+
+  .overview div:last-child {
+    border-bottom: 0;
+  }
+
+  .dailyPanel {
+    grid-column: auto;
+  }
+
+  .panelHead {
+    display: grid;
+  }
+
+  .ratingRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .reviewBody h3,
+  .emptyState h3 {
+    font-size: 23px;
+  }
+
+  .nav a,
+  .panelHead a,
+  .buttonRow a,
+  .emptyState a,
+  .panelHead button,
+  .primaryButton,
+  .ratingRow button {
+    width: 100%;
+  }
+}

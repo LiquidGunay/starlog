@@ -118,6 +118,18 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS daily_notes (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL UNIQUE,
+  note_id TEXT NOT NULL UNIQUE,
+  morning_plan_md TEXT NOT NULL,
+  evening_reflection_md TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (note_id) REFERENCES notes(id)
+);
+
 CREATE TABLE IF NOT EXISTS note_blocks (
   id TEXT PRIMARY KEY,
   note_id TEXT NOT NULL,
@@ -819,6 +831,7 @@ CREATE INDEX IF NOT EXISTS idx_sync_activity_client ON sync_activity(client_id, 
 CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at);
 CREATE INDEX IF NOT EXISTS idx_media_assets_created_at ON media_assets(created_at);
 CREATE INDEX IF NOT EXISTS idx_artifact_relations_artifact ON artifact_relations(artifact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_notes_date ON daily_notes(date DESC);
 CREATE INDEX IF NOT EXISTS idx_cards_due_at ON cards(due_at);
 CREATE INDEX IF NOT EXISTS idx_study_topics_source ON study_topics(source_id, display_order);
 CREATE INDEX IF NOT EXISTS idx_source_chunks_topic ON source_chunks(topic_id, chunk_index);
@@ -952,6 +965,18 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
           token_hash TEXT PRIMARY KEY,
           used_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS daily_notes (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL UNIQUE,
+          note_id TEXT NOT NULL UNIQUE,
+          morning_plan_md TEXT NOT NULL,
+          evening_reflection_md TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (note_id) REFERENCES notes(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_daily_notes_date ON daily_notes(date DESC);
         CREATE TABLE IF NOT EXISTS study_sources (
           id TEXT PRIMARY KEY,
           title TEXT NOT NULL,

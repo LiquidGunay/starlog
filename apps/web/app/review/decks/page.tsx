@@ -284,7 +284,7 @@ export default function DeckBrowserPage() {
             <p className="eyebrow">Review</p>
             <h1>Deck Browser</h1>
             <p className="console-copy">
-              Browse every card, create focused decks, tag items, and tune the initial schedule without waiting for cards to become due.
+              Add manual cards, keep decks tidy, and edit scheduling only when a card needs it.
             </p>
           </div>
           <div className="button-row">
@@ -374,40 +374,43 @@ export default function DeckBrowserPage() {
               value={deckDescription}
               onChange={(event) => setDeckDescription(event.target.value)}
             />
-            <label className="label" htmlFor="deck-offset">New card due offset (hours)</label>
-            <input
-              id="deck-offset"
-              className="input"
-              type="number"
-              value={deckSchedule.new_cards_due_offset_hours}
-              onChange={(event) => setDeckSchedule((previous) => ({
-                ...previous,
-                new_cards_due_offset_hours: Number(event.target.value || "0"),
-              }))}
-            />
-            <label className="label" htmlFor="deck-interval">Initial interval (days)</label>
-            <input
-              id="deck-interval"
-              className="input"
-              type="number"
-              value={deckSchedule.initial_interval_days}
-              onChange={(event) => setDeckSchedule((previous) => ({
-                ...previous,
-                initial_interval_days: Number(event.target.value || "1"),
-              }))}
-            />
-            <label className="label" htmlFor="deck-ease">Initial ease factor</label>
-            <input
-              id="deck-ease"
-              className="input"
-              type="number"
-              step="0.1"
-              value={deckSchedule.initial_ease_factor}
-              onChange={(event) => setDeckSchedule((previous) => ({
-                ...previous,
-                initial_ease_factor: Number(event.target.value || "2.5"),
-              }))}
-            />
+            <details className="review-browser-advanced">
+              <summary>Deck schedule</summary>
+              <label className="label" htmlFor="deck-offset">New card due offset (hours)</label>
+              <input
+                id="deck-offset"
+                className="input"
+                type="number"
+                value={deckSchedule.new_cards_due_offset_hours}
+                onChange={(event) => setDeckSchedule((previous) => ({
+                  ...previous,
+                  new_cards_due_offset_hours: Number(event.target.value || "0"),
+                }))}
+              />
+              <label className="label" htmlFor="deck-interval">Initial interval (days)</label>
+              <input
+                id="deck-interval"
+                className="input"
+                type="number"
+                value={deckSchedule.initial_interval_days}
+                onChange={(event) => setDeckSchedule((previous) => ({
+                  ...previous,
+                  initial_interval_days: Number(event.target.value || "1"),
+                }))}
+              />
+              <label className="label" htmlFor="deck-ease">Initial ease factor</label>
+              <input
+                id="deck-ease"
+                className="input"
+                type="number"
+                step="0.1"
+                value={deckSchedule.initial_ease_factor}
+                onChange={(event) => setDeckSchedule((previous) => ({
+                  ...previous,
+                  initial_ease_factor: Number(event.target.value || "2.5"),
+                }))}
+              />
+            </details>
             <div className="button-row">
               <button className="button" type="button" onClick={() => createDeck()} disabled={missingConfig}>Create Deck</button>
               <button className="button" type="button" onClick={() => saveDeck()} disabled={missingConfig}>Save Selected</button>
@@ -460,18 +463,21 @@ export default function DeckBrowserPage() {
             <textarea id="card-answer" className="textarea" value={cardAnswer} onChange={(event) => setCardAnswer(event.target.value)} />
             <label className="label" htmlFor="card-tags">Tags (comma separated)</label>
             <input id="card-tags" className="input" value={cardTags} onChange={(event) => setCardTags(event.target.value)} />
-            <label className="label" htmlFor="card-due">Due at</label>
-            <input id="card-due" className="input" type="datetime-local" value={cardDueAt} onChange={(event) => setCardDueAt(event.target.value)} />
-            <label className="label" htmlFor="card-interval">Interval days</label>
-            <input id="card-interval" className="input" type="number" value={cardIntervalDays} onChange={(event) => setCardIntervalDays(event.target.value)} />
-            <label className="label" htmlFor="card-repetitions">Repetitions</label>
-            <input id="card-repetitions" className="input" type="number" value={cardRepetitions} onChange={(event) => setCardRepetitions(event.target.value)} />
-            <label className="label" htmlFor="card-ease">Ease factor</label>
-            <input id="card-ease" className="input" type="number" step="0.1" value={cardEaseFactor} onChange={(event) => setCardEaseFactor(event.target.value)} />
-            <label className="label review-browser-checkbox">
-              <input type="checkbox" checked={cardSuspended} onChange={(event) => setCardSuspended(event.target.checked)} />
-              Suspend this card
-            </label>
+            <details className="review-browser-advanced">
+              <summary>Advanced scheduling</summary>
+              <label className="label" htmlFor="card-due">Due at</label>
+              <input id="card-due" className="input" type="datetime-local" value={cardDueAt} onChange={(event) => setCardDueAt(event.target.value)} />
+              <label className="label" htmlFor="card-interval">Interval days</label>
+              <input id="card-interval" className="input" type="number" value={cardIntervalDays} onChange={(event) => setCardIntervalDays(event.target.value)} />
+              <label className="label" htmlFor="card-repetitions">Repetitions</label>
+              <input id="card-repetitions" className="input" type="number" value={cardRepetitions} onChange={(event) => setCardRepetitions(event.target.value)} />
+              <label className="label" htmlFor="card-ease">Ease factor</label>
+              <input id="card-ease" className="input" type="number" step="0.1" value={cardEaseFactor} onChange={(event) => setCardEaseFactor(event.target.value)} />
+              <label className="label review-browser-checkbox">
+                <input type="checkbox" checked={cardSuspended} onChange={(event) => setCardSuspended(event.target.checked)} />
+                Suspend this card
+              </label>
+            </details>
             <div className="button-row">
               <button className="button" type="button" onClick={() => createCard()} disabled={missingConfig}>Create Card</button>
               <button className="button" type="button" onClick={() => saveCard()} disabled={missingConfig}>Save Selected</button>

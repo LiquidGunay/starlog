@@ -1,12 +1,14 @@
 # Starlog
 
-Starlog is a single-user assistant for capture, planning, review, and follow-up.
+Starlog is a single-user study, notes, planning, and assistant system.
 
-The product is organized around one persistent Assistant thread. `Library`, `Planner`, and
-`Review` are support views for deeper work, not separate products.
+The default browser entry point is `Today`: manual card creation, due review, and daily
+morning/evening notes. `Assistant`, `Library`, `Planner`, and `Review` remain the official
+surfaces, with Assistant secondary to the focused study workflow for now.
 
 ## What You Use
 
+- `Today`: focused daily entry point for cards, due review, and daily notes
 - `Assistant`: the primary thread for commands, follow-up questions, confirmations, and returned cards
 - `Library`: notes, captures, saved artifacts, and source history
 - `Planner`: tasks, schedule, briefings, and time blocks
@@ -17,14 +19,11 @@ The product is organized around one persistent Assistant thread. `Library`, `Pla
 
 For a first-time user, the normal path is:
 
-1. Open the web app at `/assistant`.
+1. Open the web app at `/today`.
 2. If this is a new Starlog instance, choose `Set Up Starlog` and create a passphrase with at least 12 characters.
 3. Sign in with that same passphrase.
-4. Start in the Assistant thread with a plain command such as:
-   - `summarize latest artifact`
-   - `create task Review project notes tomorrow at 10`
-   - `make cards from the last capture`
-5. Use the cards returned in chat to jump into `Library`, `Planner`, or `Review` when you need a deeper surface.
+4. Add cards manually, review due cards, and save the daily morning plan/evening reflection.
+5. Open `Assistant`, `Library`, `Planner`, or the full `Review` surface only when needed.
 
 Important:
 
@@ -42,12 +41,13 @@ User docs:
 
 The intended flow is simple:
 
-1. Capture something.
-   Use the web app, the mobile app, the desktop helper, or a share/deep-link path.
-2. Ask Assistant to do the next step.
-   Summarize it, make cards, create a task, plan time, or pull related context.
-3. Open a support view only when needed.
-   `Library` for artifact/note inspection, `Planner` for scheduling, `Review` for recall sessions.
+1. Start at `/today`.
+2. Write or update the daily note.
+3. Create cards manually from what you are studying.
+4. Review due cards.
+5. Open a support view only when needed:
+   `Library` for notes/artifacts, `Planner` for scheduling, `Review` for full deck work, and
+   `Assistant` for command-style help.
 
 ## Native Mobile
 

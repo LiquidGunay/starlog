@@ -1,7 +1,8 @@
 # Starlog User Guide
 
-Starlog is organized around one persistent Assistant thread. Use `Assistant` for commands and
-decisions, then open `Library`, `Planner`, or `Review` only when you need a deeper surface.
+Starlog's default browser workflow starts at `Today`: create cards manually, review due cards, and
+write the daily morning plan/evening reflection. Use `Assistant`, `Library`, `Planner`, or the full
+`Review` surface only when you need that deeper route.
 
 ## First Run
 
@@ -22,11 +23,12 @@ For phone testing on the same network:
    - local laptop: `http://localhost:8000`
    - phone over LAN: `http://<LAN_IP>:8000`
 4. Open a browser path for your surface:
-   - Laptop browser: `http://localhost:3000/assistant`
-   - Phone browser on LAN: `http://<LAN_IP>:3000/assistant`
+   - Laptop browser: `http://localhost:3000/today`
+   - Phone browser on LAN: `http://<LAN_IP>:3000/today`
    - Hosted fallback: `https://starlog-web-production.up.railway.app/login`
 5. For browser access, choose `Set Up Starlog` on a new instance and create a passphrase.
-6. Sign in with the same passphrase and return to `/assistant`.
+6. Sign in with the same passphrase. Default login lands on `/today`; deep links return to the
+   requested route.
 
 ## PWA Access And Login
 
@@ -57,7 +59,7 @@ Hosted login flow for verification smoke and operator checks:
 
 Current access status:
 
-- Public hosted `/login`, `/assistant`, and API health reachability status is tracked in
+- Public hosted `/login`, `/today`, and API health reachability status is tracked in
   `docs/CURRENT_STATE.md`; current hosted proof should be regenerated into the latest ignored
   `.localdata` evidence lane before release decisions.
 - Authenticated hosted passphrase login was last proven on 2026-05-15. The current docs do not include
@@ -68,7 +70,19 @@ Current access status:
 
 ## Daily Use
 
-Start in `Assistant`.
+Start in `Today`.
+
+Use `/today` for:
+
+- due-card review
+- manual prompt/answer card creation
+- daily morning plan
+- daily evening reflection
+
+Manual cards use the selected deck schedule. The default Inbox schedule makes new cards first due
+about one day after creation.
+
+Assistant remains available for command-style help, but it is not required for the core study loop.
 
 Useful commands:
 
@@ -94,6 +108,11 @@ auto-grading, and live provider-selected panels return clear limitation response
 You can also ask what it can control or where its current limits are; the capability answer covers
 Assistant, Library, Planner, and Review while calling out unproven live STT, live provider-chosen panels,
 production parity, and full all-surface mutation coverage.
+
+## Entry Point
+
+- `Today`: focused entry point for manual cards, due review, and daily notes. It is not a separate
+  Starlog surface; it pulls the common daily actions from the surfaces below into one starting view.
 
 ## Surfaces
 

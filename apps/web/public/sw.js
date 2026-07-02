@@ -3,13 +3,17 @@ const APP_SHELL_CACHE = `${CACHE_VERSION}-app-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL_URLS = [
   "/",
+  "/today",
   "/artifacts",
+  "/library",
   "/notes",
   "/tasks",
   "/calendar",
   "/search",
   "/sync-center",
   "/assistant",
+  "/review",
+  "/review/decks",
   "/manifest.webmanifest",
   "/icons/starlog-192.svg",
   "/icons/starlog-512.svg",
