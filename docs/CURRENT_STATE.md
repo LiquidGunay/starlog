@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-22
+Last updated: 2026-07-01
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -12,18 +12,18 @@ where Starlog is going. Use this page for current implementation confidence.
 ## Access + Validation Snapshot
 
 - **Local PWA access paths:** laptop primary path is `http://localhost:3000`; phone browser fallback is
-  `http://<LAN_IP>:3000` after `./scripts/dev_stack.sh --lan`.
+  `http://<LAN_IP>:3000` after `./scripts/dev_stack.sh --lan`. The focused browser workflow starts
+  at `/today`.
 - **Hosted Railway access paths:** hosted browser entry is
   `https://starlog-web-production.up.railway.app/login`; hosted API base is
   `https://starlog-api-production.up.railway.app`.
-- **Hosted reachability known on 2026-05-19:** fresh public no-secret checks for `/login`,
-  `/assistant`, and `/v1/health` returned Railway fallback `HTTP 404` responses with
-  `x-railway-fallback: true`. Treat the configured Railway domains as not currently serving the
-  Starlog web/API apps until deployment/domain routing is fixed and revalidated.
-- **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15,
-  but that historical proof is superseded for current access confidence by the 2026-05-19 Railway
-  fallback responses. Do not claim hosted authenticated Starlog session behavior until the public
-  routes serve the app again and an authenticated smoke is rerun without exposing token material.
+- **Hosted reachability known on 2026-07-01:** public no-secret checks returned `HTTP 200` for
+  hosted `/login` and `{"status":"ok","env":"prod","users":1}` for hosted `/v1/health`. This proves
+  public reachability only. Authenticated hosted passphrase login and cross-device sync still need a
+  fresh no-secret smoke after the focused `/today` workflow is deployed.
+- **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15.
+  Do not claim current authenticated hosted Starlog session behavior until the hosted `/today` flow is
+  smoked without exposing token material.
 - **Native vs PWA priority:** native mobile is the primary phone surface; PWA is fallback-only on phone and
   remains supported for browser checks or when the app is unavailable.
 - **assistant-ui migration status:** desktop web and native assistant-ui migration are partial. Web has
@@ -114,6 +114,9 @@ where Starlog is going. Use this page for current implementation confidence.
 
 ## Works Today
 
+- **Focused PWA Today workflow:** `/today` is the default post-login browser entry point for manual
+  card creation, due-card review, and daily morning/evening notes. Daily notes are stored through
+  `/v1/daily-notes/*` and mirrored into normal Library notes for search.
 - **Core local stack:** the repo contains a FastAPI backend, Next.js PWA, native mobile app, desktop
   helper, browser extension scaffold, shared contracts, and AI runtime. Local startup is documented in
   [README.md](/home/ubuntu/starlog/README.md) and [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md).

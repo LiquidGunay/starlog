@@ -23,6 +23,17 @@ function inferIdentity(apiBase: string): string {
   }
 }
 
+function safeNextPath(fallback = "/today"): string {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  const next = new URLSearchParams(window.location.search).get("next") || "";
+  if (!next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) {
+    return fallback;
+  }
+  return next;
+}
+
 async function responseErrorDetail(response: Response): Promise<string> {
   const body = await response.text();
   if (!body) {
@@ -77,9 +88,9 @@ export function AuthEntry() {
       throw new Error(await authErrorMessage(response, "login"));
     }
 
-    const payload = (await response.json()) as AuthResponse;
-    setToken(payload.access_token);
-    return payload;
+      const payload = (await response.json()) as AuthResponse;
+      setToken(payload.access_token);
+      return payload;
   }
 
   async function handleLogin() {
@@ -91,7 +102,7 @@ export function AuthEntry() {
     try {
       await login(passphrase.trim());
       setStatus("Session established.");
-      router.push("/assistant");
+      router.push(safeNextPath());
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Login failed");
     } finally {
@@ -118,7 +129,7 @@ export function AuthEntry() {
 
       await login(passphrase.trim());
       setStatus(response.status === 201 ? "Starlog is ready." : "Starlog already existed. Session refreshed.");
-      router.push("/assistant");
+      router.push(safeNextPath());
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Bootstrap failed");
     } finally {
@@ -166,11 +177,14 @@ export function AuthEntry() {
                 </div>
               </div>
               <div className="auth-actions">
-                <button className="auth-primary-button" type="button" onClick={() => router.push("/assistant")}>
-                  Open {PRODUCT_SURFACES.assistant.label}
+                <button className="auth-primary-button" type="button" onClick={() => router.push("/today")}>
+                  Open Today
                 </button>
                 <button className="auth-secondary-button" type="button" onClick={() => router.push("/review")}>
                   Open {PRODUCT_SURFACES.review.label}
+                </button>
+                <button className="auth-secondary-button" type="button" onClick={() => router.push("/assistant")}>
+                  Open {PRODUCT_SURFACES.assistant.label}
                 </button>
                 <button className="auth-tertiary-button" type="button" onClick={handleLogout}>
                   Clear Session
@@ -221,6 +235,7 @@ export function AuthEntry() {
           {hasSession ? (
             <div className="auth-footer-links">
               <Link href="/assistant">{PRODUCT_SURFACES.assistant.label}</Link>
+              <Link href="/today">Today</Link>
               <Link href="/library">{PRODUCT_SURFACES.library.label}</Link>
               <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
               <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>

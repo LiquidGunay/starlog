@@ -16,7 +16,7 @@ export function TopNavigation() {
   const { isOnline, outbox } = useSessionConfig();
   const activeSurface = resolveSurface(pathname);
   const utilityLinks = SURFACE_CONTEXT_LINKS[activeSurface.id];
-  const hideForPrimarySurfaceRoute = ["/", "/login", "/assistant", "/library", "/notes", "/review", "/planner"].some(
+  const hideForPrimarySurfaceRoute = ["/", "/login", "/today", "/assistant", "/library", "/notes", "/review", "/planner"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 

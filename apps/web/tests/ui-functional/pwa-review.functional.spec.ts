@@ -185,28 +185,16 @@ test("PWA review renders the ladder summary and supports reveal plus grading", a
   await expect(page.getByRole("button", { name: "All due" })).toHaveCount(0);
   await expect(page.getByText("Queue context by card mode")).toBeVisible();
   await expect(page.getByText("Generated drills and deeper scenario flows are not active here yet.")).toHaveCount(0);
-  const learningCard = page.locator(".review-learning-card");
-  const firstInsight = learningCard.locator(".review-insight", { hasText: "Application and synthesis miss pattern" });
-  await expect(page.getByText("Learning insights")).toBeVisible();
-  await expect(firstInsight.getByText("Application and synthesis miss pattern")).toBeVisible();
-  await expect(firstInsight.getByText("Repeated misses show answers stall")).toBeVisible();
-  await expect(firstInsight.getByText("4x")).toBeVisible();
-  await expect(firstInsight.getByText("High", { exact: true })).toBeVisible();
-  await expect(firstInsight.getByText("Application", { exact: true })).toBeVisible();
-  await expect(firstInsight.getByText("Scenario transfer", { exact: true })).toBeVisible();
-  await expect(learningCard.getByText("Recommended drill", { exact: true })).toBeVisible();
-  await expect(learningCard.getByText("Apply the onboarding evidence")).toBeVisible();
-  await expect(learningCard.getByText("Reason: Application misses repeated 4 times across the current queue.")).toBeVisible();
-  await expect(learningCard.getByText("Give me a 10 minute application drill using my missed onboarding review cards.")).toBeVisible();
-  await expect(learningCard.getByRole("link", { name: "Open in Assistant" })).toHaveAttribute(
-    "href",
-    "/assistant?draft=Give%20me%20a%2010%20minute%20application%20drill%20using%20my%20missed%20onboarding%20review%20cards.",
-  );
+  await expect(page.locator(".review-learning-card")).toHaveCount(0);
+  await expect(page.getByText("Learning insights")).toHaveCount(0);
+  await expect(page.getByText("Recommended drill")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open in Assistant" })).toHaveCount(0);
+  await expect(page.getByText("Application misses repeated 4 times across the current queue.")).toBeVisible();
   await expect(page.getByText("Projects deck")).toBeVisible();
   await expect(page.locator(".review-rail-deck", { hasText: "Projects" }).getByText("3 items")).toBeVisible();
   await expect(page.getByText("Onboarding flow polish")).toBeVisible();
 
-  await page.screenshot({ path: testInfo.outputPath("pwa-review-learning-insights.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("pwa-review-focused.png"), fullPage: true });
 
   const goodButton = page.getByRole("button", { name: /Good/ });
   await expect(goodButton).toBeDisabled();
@@ -277,6 +265,45 @@ test("PWA review hides learning signals quietly when the summary has no insights
   await expect(page.locator(".review-drill")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Open in Assistant" })).toHaveCount(0);
   await expect(page.getByText("Generated drills and deeper scenario flows are not active here yet.")).toHaveCount(0);
+});
+
+test("PWA review stays usable on mobile viewport", async ({ page }, testInfo) => {
+  await seedAssistantSession(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.route(`${API_BASE}/v1/surfaces/review/summary`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(reviewSummary),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/cards/due**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(dueCards),
+    });
+  });
+
+  await page.route(`${API_BASE}/v1/cards/decks`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(decks),
+    });
+  });
+
+  await page.goto("/review", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Focused review" })).toBeVisible();
+  await expect(page.getByText("Your onboarding flow has a 62% drop-off. What do you inspect first?")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reveal answer" })).toBeVisible();
+  await expect(page.getByText("Application misses repeated 4 times across the current queue.")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("pwa-review-mobile.png"), fullPage: true });
 });
 
 test("PWA review remains compatible with legacy summaries that omit learning signal fields", async ({ page }) => {

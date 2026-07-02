@@ -25,7 +25,8 @@ export function AuthGate({ children }: Readonly<PropsWithChildren>) {
 
   useEffect(() => {
     if (hydrated && !hasSession && !publicRoute) {
-      router.replace("/login");
+      const nextPath = `${pathname}${window.location.search}`;
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
     }
   }, [hydrated, hasSession, pathname, publicRoute, router]);
 

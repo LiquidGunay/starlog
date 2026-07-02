@@ -11,6 +11,7 @@ from app.api.routes import (
     conversations,
     capture,
     conflicts,
+    daily_notes,
     events,
     export,
     health,
@@ -46,6 +47,7 @@ api_router.include_router(media.router, tags=["media"])
 api_router.include_router(artifacts.router, tags=["artifacts"])
 api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(notes.router, tags=["notes"])
+api_router.include_router(daily_notes.router, tags=["daily-notes"])
 api_router.include_router(tasks.router, tags=["tasks"])
 api_router.include_router(strategic_context.router, tags=["strategic-context"])
 api_router.include_router(calendar.router, tags=["calendar"])
