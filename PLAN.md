@@ -1,7 +1,7 @@
 # Starlog — canonical product plan
 
 Updated: 2026-10-03
-Status: product scope accepted; architecture discussion in progress; implementation has not started.
+Status: product scope and architecture preferences accepted; concrete architecture proposal ready for review; implementation has not started.
 
 ## Authority and how to use this plan
 
@@ -11,7 +11,7 @@ Read this plan first. Read AGENTS.md for repository process and docs/CURRENT_STA
 
 Previous material is preserved under docs/archive/2026-10-03-legacy/. It is historical evidence, not instructions. Do not load or search it during normal planning or development. Consult a specific archived file only when a concrete question requires history or the user requests it. Archive recovery instructions are in that directory's README.
 
-The existing application is legacy. The next product is a fresh implementation; reuse a specific piece only after showing that it fits the new plan. Existing schemas, routes, prompts, infrastructure, UI, and migrations create no obligations. Repository location and any data migration remain architecture decisions.
+The existing application is legacy. The next product is a fresh implementation; reuse a specific piece only after showing that it fits the new plan. Existing schemas, routes, prompts, infrastructure, UI, and migrations create no obligations. Start the new app with a fresh Library while preserving existing data. Legacy data migration is not a first-release requirement; selective imports can follow actual need. The proposed fresh source layout is in section 7.
 
 ## 1. Vision
 
@@ -293,16 +293,18 @@ Deferred items are options, not a promised backlog. Exact offline alarms and clo
 
 ## 7. Architecture decisions and remaining work
 
+### Confirmed decisions
+
 Confirmed in the architecture discussion:
 
 - Railway is the intended host. The app and intelligence should work independently of the user's personal computer. Credential arrangements and supported model access still need validation; choosing a host does not authorize a deployment.
 - Use one TypeScript codebase with a Next.js/React web app and a separate Node background worker on Railway. Share application logic and PostgreSQL for private records, history, relationships, search, and persistent jobs. Use pg-boss for queued work and private object storage for images and attachments. This foundation supports requested answers continuing after page closure and scheduled work; exact scheduling, recovery, capacity, and object-storage configuration remain to be specified.
-- Starlog owns the working notes. Markdown and attachment export remain useful; live editing of the same notes in Obsidian or an external folder is not required.
+- Starlog owns the working notes. Start with a fresh Library and preserve existing data; selective imports can come later. Markdown and attachment export remain useful; live editing of the same notes in Obsidian or an external folder is not required.
 - Context begins with the active Thread and its attached material, with automatic retrieval of relevant knowledge records elsewhere in the Library when useful. Keep context inspectable and allow exclusions or a restricted discussion. Preserve source/authorship distinctions and the strict journal boundary.
 - Graph memory is a possible later enhancement to retrieval. This is separate from a visible global graph and does not select a graph database now.
 - Keep three update mechanisms separate: saved note changes refresh relevant knowledge context; recurring outputs refresh on a schedule or user trigger; tutoring and briefing instructions are versioned and changed deliberately. Automatic self-improvement of skills is a distant possibility, not initial scope.
 - Use Tiptap with Markdown shortcuts and versioned structured documents as the working format. Provide Markdown and attachment export plus complete backups retaining the original structured documents. Equations, code, and tables must render, including pasted or clipped material. Validate extraction, paste, rendering, and export fidelity on representative content; the clipping extraction library is not selected.
-- The new code may be open source and self-hostable, while the personal instance and data remain private. The user may reconsider the model for future commercial releases. Exact licensing is still open; this decision does not authorize relicensing existing third-party material.
+- Use MIT for new original Starlog code, with the personal instance and data remaining private. The user accepts commercial and proprietary reuse by others under that license. Preserve the applicable licenses and notices of dependencies, reused material, and outside contributions; this is not a repository-wide relicensing decision.
 - Local extension clipping is the primary full-capture route for Firefox on Android and supported desktop browsers. The user is willing to open material in Firefox to clip it. Keep URL/text sharing as the fallback for other apps and browsers. Defer remote browser capture unless actual use demonstrates a need.
 - Retry ordinary queued saves automatically. If a stale device edit conflicts with a newer note, preserve both versions and offer a choice or manual combination; do not silently overwrite the newer edit. Sophisticated simultaneous-edit merging is deferred.
 - Finish and save an already requested model answer when the user switches apps or closes the page, so it is available on return. Leaving must not initiate extra follow-up work. An explicit Stop action cancels the active request.
@@ -311,6 +313,8 @@ Confirmed in the architecture discussion:
 - Build independent account ownership into the first implementation while admitting only the owner initially. Private records, relationships, derived context, background jobs, attachments, model connections, and any cached results must retain account scope. Derive access from authenticated server context and check resource ownership for every operation; use PostgreSQL row-level security as an additional safeguard with restricted runtime credentials. Preserve the journal/knowledge separation inside each account. Test cross-account denial with two accounts from the first usable slice, including background work and reused connections/caches. Public registration and broader service operations remain deferred.
 - Keep Starlog account/session management separate internally from permission to use a ChatGPT plan. A separate app login is acceptable; a single visible ChatGPT sign-in is also acceptable if supported for the deployment. No particular login provider is selected. Intelligence remains central to the product, while its temporary unavailability must not block access to saved work.
 - Include web search in contextual discussions. Validate native search, citations, contextual follow-ups, and limit behavior with the actual account and selected model before depending on the integration.
+
+### Evidence and unresolved integration constraints
 
 Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/quickstart) and a [self-hosted VM route](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms). This supersedes any assumption that Sign in with ChatGPT is categorically unavailable. Starlog's eligibility, fit with Railway, and actual account inference remain unverified. It offers a [constrained Responses API flow](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations); it does not establish feature parity with API-key access. No model runtime or authentication route is selected yet.
 
@@ -322,24 +326,109 @@ Capture evidence: [Obsidian Web Clipper officially supports Firefox Mobile](http
 
 [Railway also documents Playwright in Docker](https://docs.railway.com/guides/playwright), but remote browser capture is deferred. A later server-side capture would see what the server can access, not the phone's authenticated session. No browser capture route has been implemented or tested. Compare local extraction on representative equations, code, and tables before selecting the implementation.
 
-Licensing distinction: releasing future versions privately does not revoke the licenses of earlier open-source releases. Preserve that distinction when selecting a license and evaluating contributions or dependencies; see the [OSI FAQ](https://opensource.org/faq). No license is selected by this plan.
+Licensing distinction: [MIT](https://opensource.org/license/mit) is selected for the new original code. Future proprietary versions remain possible subject to included third-party and contribution rights; earlier MIT releases retain their permissions. See the [OSI FAQ](https://opensource.org/faq). No existing files or third-party materials have been relicensed by this documentation change.
 
-The application foundation and editor are selected. The model runtime, authentication route, detailed content and job design, and fresh repository layout remain open. Next, reason through concrete scenarios and record decisions here:
+### Concrete architecture proposal for review
 
-1. Walk through the narrow notes/questions loop and the newspaper, capture, and journal interactions, including failure and resumption.
-2. Settle the smallest content/state model for notes, Threads, discussions, raw clips, Library/Queue/Up next, tags, checkpoints, and relationships. Distinguish user-authored, suggested, accepted, read, and committed material without imposing a processing pipeline.
-3. Validate the selected editor and choose the local clipper implementation, PostgreSQL search design, and contextual discussion attachment; validate Firefox Android capture and desktop support.
-4. Design evidence-linked, correctable knowledge context and enforce the separate journal context boundary. Evaluate existing memory techniques without adopting a framework by default.
-5. Test eligible ChatGPT plan access, supported tools, limit behavior, worker hosting, and unattended newspaper generation on the actual account.
-6. Choose authentication, specify the accepted account-isolation policies and tests, specify backup/restore, and design a minimal persistent edit queue with stale-write and conflict handling.
-7. Detail job scheduling, cancellation, notification delivery, and restart recovery on the selected web/worker topology. Implement the agreed bounded-retry, partial-output, user-request-priority, background-budget, and missed-edition rules after implementation is authorized.
-8. Choose a minimal RSS ingestion and curation approach with useful recommendation controls, source attribution, and finite editions.
-9. Decide how skill versions, source packets, feedback, and narrow regressions are maintained.
-10. Choose the fresh implementation location and shared interfaces so the first usable loop can ship while independent work proceeds safely in parallel.
+The choices above are accepted. The layout, module interfaces, data relationships, and mechanics below are the proposed implementation of those choices, pending review and the focused validation checks below. This is a design, not evidence of running software. Keep this proposal in the canonical plan rather than creating another product document.
 
-Use existing products or prototypes when they answer a specific uncertainty. The earlier multi-project MCP exploration is no longer a compulsory gate. Retain useful lessons without rerunning an entire old research program.
+#### Source layout and runtime
 
-Implement only after the user has worked through the architecture and scope. Deliver a complete usable loop, then iterate on the friction revealed by actual use. Do not build an extensibility framework before the first daily experience works.
+Use a fresh `product/` workspace in this repository, with its own package manifests, lockfile, TypeScript configuration, tests, and build entrypoints. Keep the current root tooling and legacy application outside its imports. Root workspace globs currently cover `apps/*`, `packages/*`, and `tools/*`; `product/` is unused. Verify the package manager actually resolves the intended workspace root before installation. Point future CI and Railway build contexts at the new workspace deliberately; their configuration is not changed by this plan.
+
+```text
+product/
+  apps/web/          Next.js UI, authenticated requests, live answer delivery
+  apps/worker/       Durable jobs, model execution, schedules, notifications
+  apps/clipper/      Firefox Android and supported desktop capture
+  packages/core/    Application modules and shared domain contracts
+  packages/storage/ PostgreSQL migrations, queries, private-object access
+  behavior/         Versioned tutoring, review, briefing, and journal text/examples
+```
+
+These are code locations, not six deployed applications. Start with the accepted web process, worker process, PostgreSQL, and private object storage. The extension is a separately installed browser client. Keep model credentials in protected server/worker storage; the browser and extension use narrowly authorized Starlog sessions or tokens.
+
+```mermaid
+flowchart LR
+    Browser[Web app and local edit queue] --> Web[Next.js web process]
+    Clipper[Local browser clipper] --> Web
+    Web <--> Database[PostgreSQL: records, jobs, run events]
+    Web <--> Objects[Private attachment storage]
+    Worker[Node worker] <--> Database
+    Worker <--> Objects
+    Worker --> Model[Eligible model access and web search]
+```
+
+#### Application modules
+
+Modules share one codebase and use explicit interfaces; they do not imply separate network services. Keep framework routes and job handlers thin. Centralize the complicated rules in the module that owns them.
+
+| Module | Interface and owned rules |
+| --- | --- |
+| Accounts | Establish authenticated account scope, authorize a resource, and connect model access. Own admission, sessions, credential protection, refresh coordination, and connection state. A client-supplied account ID cannot establish access. |
+| Library | Save a note revision, retain a clip/reference, attach material to a Thread, and change tags, links, Queue, or Up next. Own stale-edit checks, attribution, account-consistent relationships, and exportable content. |
+| Context | Prepare a bounded source packet for a specific account and purpose; refresh interpretations and apply user corrections. Own evidence revisions, exclusions, journal separation, and review-stage restrictions. |
+| Discussions | Start or continue a discussion, revisit an idea, save an optional checkpoint, and attach feedback. Own conversation order, author/assistance distinctions, and the relationship between messages and requested work. |
+| Journal | Save entries and configured questions, request journal-only follow-ups, and schedule the chosen reminder. Own entry history and all derived journal context; expose no journal material to Library search or learning context. |
+| Newspaper | Fetch selected RSS material, select candidates, produce a finite edition, and record preference/quality feedback. Own source attribution, duplicates, account preferences, and edition state. |
+| Work | Enqueue, execute, observe, and cancel a requested run. Own durable state, model transport using Accounts-provided connection handles, priority, bounded retries, budget checks, and persisted output. |
+
+Start with one supported model implementation behind Work, preferably the documented direct Responses route if eligible and validated. A Codex runtime is an alternative to evaluate only if it supplies a needed capability. Do not build a provider marketplace or assume unsupported Responses features. Long-running work belongs to Starlog's worker regardless of provider background-mode support.
+
+#### Minimal records and relationships
+
+All private records and relationships carry account ownership. These are domain relationships, not a final SQL schema; use ordinary relational tables and explicit foreign keys rather than a generic graph store.
+
+| Record or concept | Proposed representation |
+| --- | --- |
+| Note | Stable identity, current structured document, and revisions with attribution. A note can stand alone or appear in several Threads without copying its content. |
+| Raw clip / reference | Source URL and capture metadata, retained extracted content when available, and attachment references. Preserve source material separately from authored notes; render retained HTML safely. A reference may remain only a link. |
+| Thread | An ongoing question/pursuit plus links to notes, sources, discussions, and checkpoints. Membership does not imply understanding, Queue membership, or ownership transfer. |
+| Discussion / message | An ordered conversation with an optional Thread and explicit material attachments. Messages preserve author, cited sources, assistance context when known, and associated run. Quick questions need not create a Thread first. |
+| Checkpoint | An optional, editable account of current thinking, open questions, and a possible next step, retaining model/user provenance. Saving a discussion does not require accepting a checkpoint. |
+| Connection | A link with an optional user explanation or label. Model suggestions retain reasons and supporting passages plus suggested/accepted/rejected state; they do not overwrite authored thinking or become commitments automatically. |
+| Library / Queue / Up next | Library is the view of retained notes, clips, and references. Queue is explicit membership; Up next adds selection/order within it. Read status is independent. Removing Queue membership preserves the record. |
+| Knowledge interpretation | A provisional claim with exact evidence revisions/passages, extraction version, and validity state. Corrections/rejections persist independently of re-extraction. There is no automatic mastery score. |
+| Journal entry / interpretation | Journal-owned records and revisions, including journal-only model exchanges. Enforce their purpose in storage/query paths and background work, even if infrastructure is shared. |
+| RSS item / edition | Source metadata and candidate material; an edition stores its selected items, explanations, dates, and feedback. Reading an edition does not silently create Library or Queue records. |
+| Run | Request identity, account and purpose, source packet, behavior version, model/settings when available, attempts, output/citations, and terminal status. |
+| Feedback | A response to an exact output, including its run and behavior version, with optional explanation. It does not point only to a mutable current note. |
+
+#### Core data flows
+
+**Save and sync.** Use IndexedDB to commit the local draft and persistent edit outbox together, with a stable mutation ID and base revision, then send the mutation to the server. Local-save status requires that transaction to succeed; synced status requires server acknowledgement. Handle quota/storage errors visibly and request persistent storage where supported, while recognizing that cleared browser data cannot be recovered from the outbox alone. The server authorizes ownership, deduplicates retries, and either commits a new revision or preserves the conflicting versions for resolution. Flush after edits and on reconnect/app opening; connectivity events are retry hints, not proof the server is reachable. Do not depend on Background Sync or the browser running continuously. This covers pending edits and loaded material, not full offline Library replication.
+
+**Prepare context.** Load current attached material and the active Thread first, then bounded account-scoped PostgreSQL full-text results and explicit links. Apply access, purpose, exclusions, and durable corrections before supplying passages to the model. Keep exact source revisions in the packet so an answer remains attributable after later edits. Current note text is available immediately; invalidate affected interpretations synchronously and coalesce expensive re-extraction in the worker. Reject stale extraction results when their source revisions have changed. Add semantic/vector or graph retrieval only when concrete retrieval failures justify it; plan access does not establish an embeddings endpoint.
+
+**Ask and return.** Flush pending edits to attached notes before submitting a question. If saving fails or conflicts, keep the question as a draft and expose the problem instead of answering from an unnoticed older revision. Persist the user's message and run, and enqueue work atomically. The worker builds the source packet, executes the versioned behavior through the selected model route, and persists ordered output events and citations. The web process delivers those events and can replay persisted progress on return. Closing a tab leaves the requested run active. Serialize turns within a discussion, or require an explicit separate discussion, so two simultaneous requests cannot silently corrupt its order.
+
+**Recover and stop.** Use stable run/attempt identities and explicit queued, running, completed, interrupted, failed, or cancelled states. Persist partial output, classify retryable failures, and honor the agreed retry/budget rules. An explicit Stop prevents further work and propagates cancellation to the active model connection. Durable queues cannot guarantee exactly-once external inference: a worker may die after the provider accepted a request. Treat uncertain completion as interrupted rather than blindly issuing duplicate paid/allowance-consuming work. Retry/Continue creates a traceable attempt and never presents the old partial output as a completed answer.
+
+**Review and learn.** During an unaided revisit, show the question/cue and collect the attempt before revealing the prior answer; exclude answer-bearing reference material from any model-generated cue at that stage. Feedback can then use the earlier note and sources. Preserve whether a response was independent, quoted, model-supplied, or assisted when known, and use conservative interpretations when it is not known. Test rejected claims returning in a new paraphrase as well as exact duplicates.
+
+**Capture and scheduled work.** Propose a thin extension using [Defuddle](https://github.com/kepano/defuddle) on the currently loaded page with `useAsync: false` to disable optional external extraction fallbacks. Send source metadata, extracted content, and best-effort attachments to an authenticated Starlog capture endpoint. Preserve image links and report unavailable assets rather than promising every protected image can be copied. Treat clips and web results as source data, not behavior instructions. RSS ingestion performs inexpensive fetching/deduplication before bounded model curation; save one finite edition and coalesce missed schedules instead of replaying every missed day. Use server-scheduled Web Push for the evening reminder on user-selected subscribed devices where supported, with deduplication and expiry of stale reminders; delivery remains subject to browser permission and OS behavior. Exact alarms and closed-page audio remain outside scope.
+
+#### Isolation, behavior versions, and recovery
+
+Use account-scoped application queries plus PostgreSQL row-level security on private tables. Runtime roles must not own those tables or bypass the policies; migration credentials stay separate. Scope pooled connections within a transaction, authorize run streams and Stop actions, and check attachment ownership before issuing temporary access URLs. Keep journal-only data out of learning search indexes and context queries; account isolation alone does not enforce this additional purpose restriction.
+
+Store behavior instructions and a small set of representative evaluation examples in `product/behavior/`. Pin each run to an immutable version and retain its source packet, with user-visible provenance. Reuse lessons from the earlier skills only after inspecting those specific packages; do not load the legacy runtime prompt collection. Exercise the accepted failure modes: leading questions, unsupported inferences, source fidelity, stale/rejected context, answer leakage, and journal leakage. Improve from real feedback; no automatic skill self-modification.
+
+Full recovery must cover PostgreSQL records, structured note revisions, behavior versions, and the referenced attachment objects. Use stable immutable object keys for retained revisions and a manifest linking records to objects; Markdown export is a separate portability feature. Choose backup retention, credentials, and storage configuration during setup, and prove a restore into an empty instance before relying on the pilot for unique work. Portable content exports exclude provider secrets; protect backup credentials separately and allow model reconnection after recovery. Preserve all existing legacy data during the reset.
+
+#### Validation and delivery order
+
+| Step | Evidence required and consequence |
+| --- | --- |
+| 1. Model-access feasibility | Establish deployment eligibility separately from OAuth success. Then test the actual account/model for ordinary discussion, native web search with citations, a contextual follow-up, credential refresh/restart, and scheduled worker execution. If no eligible route fits, revisit hosting/model access with the user; do not silently substitute a billed provider. Hosting changes remain approval-gated. |
+| 2. Capture/editor feasibility | On Firefox Android and a supported desktop browser, capture representative prose, equations, code, tables, selections, and images; paste/render/edit in Tiptap, export Markdown, and restore structured content. Document losses and unavailable assets. Select extension packaging from these results. |
+| 3. Shared foundation | Establish the isolated workspace, migrations, account scope, outbox, run lifecycle, storage, and behavior-version contracts. Prove two-account denial, stale-edit recovery, stale-job rejection, and complete database-plus-object restoration. Test under the actual restricted runtime roles. |
+| 4. First usable loop | Deliver note/capture → contextual question → saved discussion/checkpoint → search/resume → optional revisit. Verify browser closure, reconnect, worker interruption, Stop, partial answers, and limit handling on the real route; use desktop and phone UX evidence. Begin personal use and collect exact-output feedback. |
+| 5. Broader daily iteration | Build RSS editions and the isolated journal/reminder against the shared contracts. They may proceed in parallel once the foundation is stable and parallel work is requested. Validate missed schedules, workload priority, finite budgets, and actual notification delivery. They do not gate the narrow pilot. |
+
+Supporting references: [PostgreSQL row security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html), [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API), [browser storage limits](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria), [Background Sync limitations](https://developer.mozilla.org/en-US/docs/Web/API/Background_Synchronization_API), and [Web Push](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). These describe mechanisms; they do not establish Starlog or device success.
+
+This is the proposed sequence, not permission to deploy or an assertion that any check has passed. Before implementation, review the consolidated architecture and define the focused feasibility work. Once approved, turn the sequence into scoped workitems that point here, then deliver a complete usable loop. Concrete evidence can revise a technical choice without reopening settled product scope by default.
 
 ## 8. Open preferences and decision record
 
@@ -355,7 +444,7 @@ Still open:
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
-- The remaining architecture choices in section 7, including sign-in, isolation-policy details, job implementation, editor/clipper validation, and the license for the new code.
+- Review of the concrete architecture proposal and validation results in section 7, including the supported sign-in/model route, source layout, and detailed module contracts. MIT and a fresh Library are agreed.
 
 Accepted on 2026-10-03:
 
@@ -382,6 +471,8 @@ Accepted on 2026-10-03:
 - Embed draft skills into real use and iterate from feedback.
 
 - Keep web-first delivery and deliberate human interaction.
+
+- Start with a fresh Library, preserve existing data, and use MIT for new original code.
 
 - Discuss architecture before starting the fresh application.
 

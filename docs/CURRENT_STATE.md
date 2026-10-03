@@ -6,9 +6,9 @@ Updated: 2026-10-03
 
 [PLAN.md](../PLAN.md) is the sole product source. The user accepted the deliberate learning workspace direction and requested consolidation and archival.
 
-The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The product interview is complete; architecture discussion remains in progress. PLAN.md records the accepted application foundation, editor/storage approach, account-isolation requirements, and model-recovery and workload-priority rules.
+The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The product and architecture preference interviews are recorded in PLAN.md, including a fresh Library, preserved legacy data, and MIT for new original code. The same plan now contains a concrete architecture proposal covering modules, records, execution flows, source layout, and validation order. That proposal is ready for review; it is not implementation evidence.
 
-The new application is not implemented or deployed. The selected stack, Firefox Android clipper, editor fidelity, two-account isolation, request recovery, and workload priorities have not been tested. ChatGPT integration eligibility, hosted account inference, and web search remain unverified. Detailed architecture and the fresh implementation location remain open.
+The new application is not implemented or deployed. The selected stack, Firefox Android clipper, editor fidelity, two-account isolation, request recovery, and workload priorities have not been tested. ChatGPT integration eligibility, hosted account inference, and web search remain unverified. The proposed product/ workspace and detailed module contracts remain subject to review and validation. No product workspace or new license file has been created.
 
 The existing apps, services, packages, and capture tools are the legacy implementation. They have not been modified or validated as part of this documentation reset. Earlier build, phone, and production evidence is historical and cannot establish current readiness.
 
