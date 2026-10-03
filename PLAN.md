@@ -211,6 +211,8 @@ Reliability requirements:
 
 - Notes and journal remain usable when model access is unavailable or limits are reached.
 
+- Model failures preserve partial output with an incomplete state and explicit Retry/Continue; automatic transient retries are bounded. Queued user requests take priority over background model work, with visible delays and no backlog of missed newspaper editions.
+
 - No repeated CLI, prompt-copying, or skill-management chores in daily use.
 
 Judge the pilot by whether the user returns, develops worthwhile questions or explanations, finishes a useful small session, and identifies actionable friction. Do not substitute completion counts or model-graded mastery for this evidence. Exact trial duration and cadence are open.
@@ -304,6 +306,8 @@ Confirmed in the architecture discussion:
 - Local extension clipping is the primary full-capture route for Firefox on Android and supported desktop browsers. The user is willing to open material in Firefox to clip it. Keep URL/text sharing as the fallback for other apps and browsers. Defer remote browser capture unless actual use demonstrates a need.
 - Retry ordinary queued saves automatically. If a stale device edit conflicts with a newer note, preserve both versions and offer a choice or manual combination; do not silently overwrite the newer edit. Sophisticated simultaneous-edit merging is deferred.
 - Finish and save an already requested model answer when the user switches apps or closes the page, so it is available on return. Leaving must not initiate extra follow-up work. An explicit Stop action cancels the active request.
+- Retry brief transient model failures a limited number of times. After a persistent failure or exhausted allowance, preserve any partial answer, mark it incomplete, and offer Retry/Continue. Do not silently resume the discussion hours later. Explicitly stopped work must not be restarted by retry handling.
+- Give queued user-initiated model requests priority over background newspaper generation and derived-context updates. Combine background updates where useful and apply a bounded scheduled-work budget, tuned from actual use. Saved note text must remain available to the next discussion immediately; batching derived interpretations must not present stale interpretations as current. Show delayed work when model access is unavailable and avoid accumulating missed newspaper editions as a backlog.
 - Build independent account ownership into the first implementation while admitting only the owner initially. Private records, relationships, derived context, background jobs, attachments, model connections, and any cached results must retain account scope. Derive access from authenticated server context and check resource ownership for every operation; use PostgreSQL row-level security as an additional safeguard with restricted runtime credentials. Preserve the journal/knowledge separation inside each account. Test cross-account denial with two accounts from the first usable slice, including background work and reused connections/caches. Public registration and broader service operations remain deferred.
 - Keep Starlog account/session management separate internally from permission to use a ChatGPT plan. A separate app login is acceptable; a single visible ChatGPT sign-in is also acceptable if supported for the deployment. No particular login provider is selected. Intelligence remains central to the product, while its temporary unavailability must not block access to saved work.
 - Include web search in contextual discussions. Validate native search, citations, contextual follow-ups, and limit behavior with the actual account and selected model before depending on the integration.
@@ -328,7 +332,7 @@ The application foundation and editor are selected. The model runtime, authentic
 4. Design evidence-linked, correctable knowledge context and enforce the separate journal context boundary. Evaluate existing memory techniques without adopting a framework by default.
 5. Test eligible ChatGPT plan access, supported tools, limit behavior, worker hosting, and unattended newspaper generation on the actual account.
 6. Choose authentication, specify the accepted account-isolation policies and tests, specify backup/restore, and design a minimal persistent edit queue with stale-write and conflict handling.
-7. Specify job scheduling, retries, cancellation, and the notification approach on the selected web/worker topology; define behavior after worker interruption, missed schedules, or unavailable inference.
+7. Detail job scheduling, cancellation, notification delivery, and restart recovery on the selected web/worker topology. Implement the agreed bounded-retry, partial-output, user-request-priority, background-budget, and missed-edition rules after implementation is authorized.
 8. Choose a minimal RSS ingestion and curation approach with useful recommendation controls, source attribution, and finite editions.
 9. Decide how skill versions, source packets, feedback, and narrow regressions are maintained.
 10. Choose the fresh implementation location and shared interfaces so the first usable loop can ship while independent work proceeds safely in parallel.
