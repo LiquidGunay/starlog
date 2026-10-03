@@ -59,7 +59,7 @@ Names and layout can be refined in design. These responsibilities describe the f
 
 Desktop should give the note or source the main space and allow discussion alongside it. Phone browsers should offer the same core workflow in a suitable compact layout. Writing must be easy to reach. A universal chat thread is not the organizing requirement.
 
-Use a formatted editor with Markdown shortcuts and reliable export. Rendering equations, code blocks, and tables is required, including material pasted or brought in through clips. How extraction and paste preserve the underlying math and document structure still needs validation; faithful display does not automatically imply lossless recovery of editable source.
+Use Tiptap as the formatted editor with Markdown shortcuts. Store versioned structured documents as the working format, offer Markdown plus attachments for portable export, and retain the original structured documents in complete backups. Rendering equations, code blocks, and tables is required, including material pasted or brought in through clips. How extraction and paste preserve the underlying math and document structure still needs validation; faithful display does not automatically imply lossless recovery of editable source. Markdown export may simplify complex formatting and is not the complete backup format.
 
 ### Notes, Threads, and questions
 
@@ -247,7 +247,7 @@ Weekly or monthly reflection may reveal recurring interests, obstacles, and patt
 
 Improve relevance and assistance using explicit preferences and observed interactions, within the journal/knowledge boundary. Let users inspect and correct what the app assumes, control which material is used, pause directions, and export their work.
 
-Other users must have their own private data and preferences. Account isolation, onboarding, support, and commercial model access must be resolved before offering a public service; personal subscription access does not settle that architecture.
+Other users must have their own private data and preferences. This expansion means independent personal accounts; collaboration within shared accounts or documents is not required. Account isolation, onboarding, support, and commercial model access must be resolved before offering a public service; personal subscription access does not settle that architecture.
 
 ## 6. Boundaries and deferred scope
 
@@ -291,12 +291,13 @@ Deferred items are options, not a promised backlog. Exact offline alarms and clo
 
 Confirmed in the architecture discussion:
 
-- Railway is the intended host. The app and intelligence should work independently of the user's personal computer. Exact services, credential arrangements, and supported model access still need validation; choosing a host does not authorize a deployment.
+- Railway is the intended host. The app and intelligence should work independently of the user's personal computer. Credential arrangements and supported model access still need validation; choosing a host does not authorize a deployment.
+- Use one TypeScript codebase with a Next.js/React web app and a separate Node background worker on Railway. Share application logic and PostgreSQL for private records, history, relationships, search, and persistent jobs. Use pg-boss for queued work and private object storage for images and attachments. This foundation supports requested answers continuing after page closure and scheduled work; exact scheduling, recovery, capacity, and object-storage configuration remain to be specified.
 - Starlog owns the working notes. Markdown and attachment export remain useful; live editing of the same notes in Obsidian or an external folder is not required.
 - Context begins with the active Thread and its attached material, with automatic retrieval of relevant knowledge records elsewhere in the Library when useful. Keep context inspectable and allow exclusions or a restricted discussion. Preserve source/authorship distinctions and the strict journal boundary.
 - Graph memory is a possible later enhancement to retrieval. This is separate from a visible global graph and does not select a graph database now.
 - Keep three update mechanisms separate: saved note changes refresh relevant knowledge context; recurring outputs refresh on a schedule or user trigger; tutoring and briefing instructions are versioned and changed deliberately. Automatic self-improvement of skills is a distant possibility, not initial scope.
-- Use a formatted editor with Markdown shortcuts and reliable export; equations, code, and tables must render, including pasted or clipped material. The editor and extraction libraries are not selected.
+- Use Tiptap with Markdown shortcuts and versioned structured documents as the working format. Provide Markdown and attachment export plus complete backups retaining the original structured documents. Equations, code, and tables must render, including pasted or clipped material. Validate extraction, paste, rendering, and export fidelity on representative content; the clipping extraction library is not selected.
 - The new code may be open source and self-hostable, while the personal instance and data remain private. The user may reconsider the model for future commercial releases. Exact licensing is still open; this decision does not authorize relicensing existing third-party material.
 - Local extension clipping is the primary full-capture route for Firefox on Android and supported desktop browsers. The user is willing to open material in Firefox to clip it. Keep URL/text sharing as the fallback for other apps and browsers. Defer remote browser capture unless actual use demonstrates a need.
 - Retry ordinary queued saves automatically. If a stale device edit conflicts with a newer note, preserve both versions and offer a choice or manual combination; do not silently overwrite the newer edit. Sophisticated simultaneous-edit merging is deferred.
@@ -308,21 +309,23 @@ Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-
 
 Sign-in evidence: OpenAI distinguishes identity, the application's own session, and permission to use plan allowance. Its [hosted website sign-in](https://developers.openai.com/siwc/website) currently requires selected-partner access and a registered callback. The [open-source registration flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) supplies verified identity too, but documents a local loopback callback; it does not establish an unrestricted Railway website-login flow. Internal separation need not mean two visible logins. Choose the simplest eligible flow after validation. [Native web search](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) is subject to model and account/workspace policy; text inference alone does not prove it works.
 
+Foundation evidence: Railway documents a [Next.js web app with a separate worker and PostgreSQL](https://docs.railway.com/guides/fullstack-nextjs); its example's Redis queue is not a requirement for Starlog. [pg-boss](https://github.com/timgit/pg-boss) supplies persistent PostgreSQL-backed jobs. Tiptap recommends [JSON persistence](https://tiptap.dev/docs/editor/core-concepts/persistence), while its [Markdown support](https://tiptap.dev/docs/editor/markdown) has conversion limitations. These are architecture selections supported by documentation, not an implemented or tested stack.
+
 Capture evidence: [Obsidian Web Clipper officially supports Firefox Mobile](https://obsidian.md/help/web-clipper). A Firefox Android extension can capture the locally loaded page and send the resulting clip to Starlog; rich Android clipping does not inherently require a remote browser. Obsidian's [clipper source](https://github.com/obsidianmd/obsidian-clipper) uses Defuddle for extraction and Markdown conversion and is MIT licensed, excluding its branding assets. An adapted Starlog save destination or a thin extension around the extractor would still need implementation and device testing.
 
 [Railway also documents Playwright in Docker](https://docs.railway.com/guides/playwright), but remote browser capture is deferred. A later server-side capture would see what the server can access, not the phone's authenticated session. No browser capture route has been implemented or tested. Compare local extraction on representative equations, code, and tables before selecting the implementation.
 
 Licensing distinction: releasing future versions privately does not revoke the licenses of earlier open-source releases. Preserve that distinction when selecting a license and evaluating contributions or dependencies; see the [OSI FAQ](https://opensource.org/faq). No license is selected by this plan.
 
-The framework, database, service topology, model runtime, and fresh repository layout remain open. Next, reason through concrete scenarios and record decisions here:
+The application foundation and editor are selected. The model runtime, authentication route, detailed content and job design, and fresh repository layout remain open. Next, reason through concrete scenarios and record decisions here:
 
 1. Walk through the narrow notes/questions loop and the newspaper, capture, and journal interactions, including failure and resumption.
 2. Settle the smallest content/state model for notes, Threads, discussions, raw clips, Library/Queue/Up next, tags, checkpoints, and relationships. Distinguish user-authored, suggested, accepted, read, and committed material without imposing a processing pipeline.
-3. Choose the note editor, local clipper implementation, search, and contextual discussion attachment; validate Firefox Android capture and desktop support.
+3. Validate the selected editor and choose the local clipper implementation, PostgreSQL search design, and contextual discussion attachment; validate Firefox Android capture and desktop support.
 4. Design evidence-linked, correctable knowledge context and enforce the separate journal context boundary. Evaluate existing memory techniques without adopting a framework by default.
 5. Test eligible ChatGPT plan access, supported tools, limit behavior, worker hosting, and unattended newspaper generation on the actual account.
-6. Decide authentication, online storage, backup/export, and a minimal persistent edit queue with stale-write and conflict handling.
-7. Choose the Railway service topology and notification approach; specify what happens when a worker sleeps or inference is unavailable.
+6. Decide authentication, account isolation, backup/restore implementation, and a minimal persistent edit queue with stale-write and conflict handling.
+7. Specify job scheduling, retries, cancellation, and the notification approach on the selected web/worker topology; define behavior after worker interruption, missed schedules, or unavailable inference.
 8. Choose a minimal RSS ingestion and curation approach with useful recommendation controls, source attribution, and finite editions.
 9. Decide how skill versions, source packets, feedback, and narrow regressions are maintained.
 10. Choose the fresh implementation location and shared interfaces so the first usable loop can ship while independent work proceeds safely in parallel.
@@ -345,7 +348,7 @@ Still open:
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
-- The remaining architecture choices in section 7, including sign-in, service and job implementation, validated editor/clipper libraries, and the license for the new code.
+- The remaining architecture choices in section 7, including sign-in, account isolation, job implementation, editor/clipper validation, and the license for the new code.
 
 Accepted on 2026-10-03:
 
