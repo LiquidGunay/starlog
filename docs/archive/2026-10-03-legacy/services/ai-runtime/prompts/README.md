@@ -1,5 +1,3 @@
-> Legacy implementation documentation. The current product direction is in [PLAN.md](../../../PLAN.md). This file does not define the fresh application's architecture or requirements.
-
 # AI Runtime Prompt Pack
 
 These markdown files are the canonical, user-editable behavior layer for Starlog assistant and

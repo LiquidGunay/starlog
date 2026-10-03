@@ -1,5 +1,3 @@
-> Legacy implementation documentation. The current product direction is in [PLAN.md](../../../PLAN.md). This file does not define the fresh application's architecture or requirements.
-
 # Starlog Desktop Local Bridge
 
 This package is the localhost-facing Python bridge for desktop-local voice and context flows.

@@ -1,0 +1,4 @@
+# Historical requirements must not enter routine discovery.
+docs/archive/
+# These prompts belong to the legacy implementation, not the fresh product.
+services/ai-runtime/prompts/
