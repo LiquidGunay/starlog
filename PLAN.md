@@ -1,6 +1,6 @@
 # Starlog — canonical product plan
 
-Updated: 2026-10-03
+Updated: 2026-10-04
 Status: product scope and architecture preferences accepted; concrete architecture proposal ready for review; implementation has not started.
 
 ## Authority and how to use this plan
@@ -297,7 +297,7 @@ Deferred items are options, not a promised backlog. Exact offline alarms and clo
 
 Confirmed in the architecture discussion:
 
-- Railway is the intended host. The app and intelligence should work independently of the user's personal computer. Credential arrangements and supported model access still need validation; choosing a host does not authorize a deployment.
+- Railway is the intended host. The app and intelligence should work independently of the user's personal computer. On 2026-10-04 the user accepted personal, open-source Railway hosting as the working eligibility assumption; do not keep this classification as an unresolved planning gate. Credential arrangements, actual account inference, search, refresh, and hosted execution still need validation. This assumption is not a claim of provider-specific confirmation, and choosing a host does not authorize deployment.
 - Use one TypeScript codebase with a Next.js/React web app and a separate Node background worker on Railway. Share application logic and PostgreSQL for private records, history, relationships, search, and persistent jobs. Use pg-boss for queued work and private object storage for images and attachments. This foundation supports requested answers continuing after page closure and scheduled work; exact scheduling, recovery, capacity, and object-storage configuration remain to be specified.
 - Starlog owns the working notes. Start with a fresh Library and preserve existing data; selective imports can come later. Markdown and attachment export remain useful; live editing of the same notes in Obsidian or an external folder is not required.
 - Context begins with the active Thread and its attached material, with automatic retrieval of relevant knowledge records elsewhere in the Library when useful. Keep context inspectable and allow exclusions or a restricted discussion. Preserve source/authorship distinctions and the strict journal boundary.
@@ -316,7 +316,7 @@ Confirmed in the architecture discussion:
 
 ### Evidence and unresolved integration constraints
 
-Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/quickstart) and a [self-hosted VM route](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms). This supersedes any assumption that Sign in with ChatGPT is categorically unavailable. Starlog's eligibility, fit with Railway, and actual account inference remain unverified. It offers a [constrained Responses API flow](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations); it does not establish feature parity with API-key access. No model runtime or authentication route is selected yet.
+Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/quickstart) and a [self-hosted VM route](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms). This supersedes any assumption that Sign in with ChatGPT is categorically unavailable. The user accepts personal, open-source Railway eligibility as a working assumption. Provider-specific confirmation has not been obtained; actual account inference and technical fit remain unverified. It offers a [constrained Responses API flow](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations); it does not establish feature parity with API-key access. No model runtime or authentication route is selected yet.
 
 Sign-in evidence: OpenAI distinguishes identity, the application's own session, and permission to use plan allowance. Its [hosted website sign-in](https://developers.openai.com/siwc/website) currently requires selected-partner access and a registered callback. The [open-source registration flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) supplies verified identity too, but documents a local loopback callback; it does not establish an unrestricted Railway website-login flow. Internal separation need not mean two visible logins. Choose the simplest eligible flow after validation. [Native web search](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) is subject to model and account/workspace policy; text inference alone does not prove it works.
 
@@ -420,7 +420,7 @@ Full recovery must cover PostgreSQL records, structured note revisions, behavior
 
 | Step | Evidence required and consequence |
 | --- | --- |
-| 1. Model-access feasibility | Establish deployment eligibility separately from OAuth success. Then test the actual account/model for ordinary discussion, native web search with citations, a contextual follow-up, credential refresh/restart, and scheduled worker execution. If no eligible route fits, revisit hosting/model access with the user; do not silently substitute a billed provider. Hosting changes remain approval-gated. |
+| 1. Model-access feasibility | Proceed under the accepted personal, open-source Railway eligibility assumption, keeping that distinct from provider confirmation and OAuth success. Test the actual account/model for ordinary discussion, native web search with citations, a contextual follow-up, credential refresh/restart, and scheduled worker execution. If actual provider behavior contradicts the assumed route, revisit hosting/model access with the user; do not silently substitute a billed provider. Hosting changes remain approval-gated. |
 | 2. Capture/editor feasibility | On Firefox Android and a supported desktop browser, capture representative prose, equations, code, tables, selections, and images; paste/render/edit in Tiptap, export Markdown, and restore structured content. Document losses and unavailable assets. Select extension packaging from these results. |
 | 3. Shared foundation | Establish the isolated workspace, migrations, account scope, outbox, run lifecycle, storage, and behavior-version contracts. Prove two-account denial, stale-edit recovery, stale-job rejection, and complete database-plus-object restoration. Test under the actual restricted runtime roles. |
 | 4. First usable loop | Deliver note/capture → contextual question → saved discussion/checkpoint → search/resume → optional revisit. Verify browser closure, reconnect, worker interruption, Stop, partial answers, and limit handling on the real route; use desktop and phone UX evidence. Begin personal use and collect exact-output feedback. |
@@ -436,7 +436,7 @@ The initial product scope is settled enough to proceed to architecture. Remainin
 
 Still open:
 
-- Detailed desktop and phone interaction design for writing, contextual discussion, resuming a Thread, and revisiting earlier thinking. The surface responsibilities are agreed; a conversation sketch is not an approved visual reference.
+- Detailed desktop and phone interaction design for writing, contextual discussion, resuming a Thread, and revisiting earlier thinking. The surface responsibilities are agreed; a conversation sketch is not an approved visual reference. The [product and learning literature review](docs/research/INTERACTION_REVIEW.md) and [interaction reference atlas](docs/research/interaction-atlas.html) provide evidence and comparison artifacts for this decision, not additional requirements or an approved layout.
 
 - Exact RSS sources, edition timing, and the first recommendation controls; focus and approximate reading time are agreed.
 

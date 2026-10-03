@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-10-03
+Updated: 2026-10-04
 
 ## Product reset
 
@@ -8,7 +8,7 @@ Updated: 2026-10-03
 
 The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The product and architecture preference interviews are recorded in PLAN.md, including a fresh Library, preserved legacy data, and MIT for new original code. The same plan now contains a concrete architecture proposal covering modules, records, execution flows, source layout, and validation order. That proposal is ready for review; it is not implementation evidence.
 
-The new application is not implemented or deployed. Limited local feasibility evidence is recorded below; Firefox Android capture, real clipboard behavior, two-account isolation, request recovery, and workload priorities remain untested. ChatGPT integration eligibility, account inference, and web search remain unverified. The proposed product/ workspace and detailed module contracts remain subject to review and validation. No product workspace or new license file has been created.
+The new application is not implemented or deployed. Limited local feasibility evidence is recorded below; Firefox Android capture, real clipboard behavior, two-account isolation, request recovery, and workload priorities remain untested. The user accepts personal, open-source Railway eligibility as a working assumption; provider-specific confirmation, account inference, and web search remain unverified. The proposed product/ workspace and detailed module contracts remain subject to review and validation. No product workspace or new license file has been created.
 
 The existing apps, services, packages, and capture tools are the legacy implementation. They have not been modified or validated as part of this documentation reset. Earlier build, phone, and production evidence is historical and cannot establish current readiness.
 
@@ -16,9 +16,15 @@ The existing apps, services, packages, and capture tools are the legacy implemen
 
 The user authorized delegated feasibility checks on 2026-10-03. Repeatable harnesses and full evidence are ignored under `.localdata/feasibility/` in the `codex/starlog-product-decisions` worktree; they are not application code or a second plan.
 
-- **Model access:** Python 3.12.9 passed a local PKCE test vector and loopback callback round-trip, plus live unauthenticated OpenAI OIDC discovery and public verification-key retrieval. Evidence: `model-access/REPORT.md`, `readiness.py`, and `readiness.json`. No client registration, account consent, token validation, inference, native search, refresh, or hosted scheduling was tested. Personal Railway eligibility remains unresolved separately from OAuth mechanics; the next account check requires a newly granted Starlog session.
+- **Model access:** Python 3.12.9 passed a local PKCE test vector and loopback callback round-trip, plus live unauthenticated OpenAI OIDC discovery and public verification-key retrieval. Evidence: `model-access/REPORT.md`, `readiness.py`, and `readiness.json`. No client registration, account consent, token validation, inference, native search, refresh, or hosted scheduling was tested. Personal, open-source Railway eligibility is now the user-accepted working assumption, without provider-specific confirmation; the next account check requires a newly granted Starlog session.
 - **Capture/editor:** Defuddle 0.19.4, Tiptap 3.31.4, and JSDOM 26.1.0 were exercised on seven synthetic fixtures with Node 24.19.0: 14 assertions passed and one semantic-fidelity assertion failed. Structured document restoration was exact after import; that cannot recover an earlier extraction loss. Stock HTML import lost editable math; an explicit adapter preserved tested equations with retained LaTeX. For MathML without original LaTeX, a fraction became plain letters; this is an unresolved failure. Preserve original MathML and distinguish original from inferred LaTeX, with an explicit unsupported/read-only fallback until conversion fidelity is verified. Complex tables retained spans in structured storage but lost structure through Markdown. Image references survived, without downloading image bytes. Evidence: `capture-editor/REPORT.md`, `harness.mjs`, and `evidence/results.json`. These library checks do not establish real browser, clipboard, extension, authenticated-page, protected-attachment, or Android success.
 - **Interface:** Today, Notebook, Reading, and the note/source-centered interaction are agreed at a high level. Detailed layouts and controls are still proposals. A disposable conversation sketch demonstrates writing, contextual discussion, optional saved outcomes, returning through a Thread, and review before revealing a note. Ten DOM interaction checks passed. The browser preview tool failed to initialize, so rendered layout and phone behavior were not verified. The sketch is not an approved visual reference or production UI.
+
+## Product and interaction research
+
+On 2026-10-04 the user requested a literature/product review before deciding the interface. The [review](research/INTERACTION_REVIEW.md) covers eight priority studies, narrower product comparisons, ten learning/HCI evidence summaries, and additional research interfaces. The [reference atlas](research/interaction-atlas.html) presents twelve exhibits with original official media or stable illustrated source pages, documented-flow summaries, dates/platform limits, and interpretations for Starlog. These are research artifacts, not application screens or new product requirements. PLAN.md remains canonical.
+
+The review distinguishes product documentation from learning evidence. Competitor applications were not operated: browser inspection failed to initialize. Official media is linked or embedded without claiming visual inspection; the Textfocals paper figures on pages 4–5 were rendered and inspected. The atlas passed 45 DOM checks for navigation, filters, links, and media failure handling. All 17 retained embedded-media URLs returned HTTP 200; three unavailable Day One media links were replaced with their stable illustrated guide pages. Header checks establish reachability, not image or playback correctness. Browser rendering, image playback, and device behavior remain unverified. Supporting handoffs and check results are ignored under `.localdata/interaction-research/`.
 
 ## What exists to reuse selectively
 
