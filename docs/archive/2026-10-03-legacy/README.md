@@ -21,4 +21,4 @@ The living coordination procedure remains at docs/PARALLEL_AGENT_WORKFLOW.md out
 
 To recover one item, identify it in manifest.json, check its hash, and copy it to an explicitly chosen location. Do not restore the full old planning set as active guidance.
 
-The original untracked NEWPLAN.md is retained in canonical master until the reset is approved and integrated. Verify its hash against the manifest before removing that entrypoint.
+If an original untracked NEWPLAN.md remains at the repository root, it is an obsolete entrypoint. Verify its hash against the manifest before removing it. The preserved copy in this archive is historical only.

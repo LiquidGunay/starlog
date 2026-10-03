@@ -20,9 +20,9 @@ The pilot artifacts are local to the owner's machine at C:/Users/bossg/Documents
 
 ## Deployment boundary
 
-The archived Railway setup notes document GitHub deployment hooks on master. Their current configuration has not been reverified. Merging the documentation reset could therefore trigger deployment and needs the user's approval under AGENTS.md.
+The owner authorized merging the documentation reset on 2026-10-03, including the possibility of a Railway deployment triggered by master. The archived setup notes document these hooks, but the current hook configuration and hosted behavior have not been reverified. Future deployment or production changes still require approval under AGENTS.md.
 
-Until the reset is merged, the attached codex/starlog-canonical-plan worktree is the reviewable version; canonical master still contains the old guidance. After approval, update master and remove the original untracked NEWPLAN.md only after checking it matches the archived copy.
+PLAN.md is the entrypoint for subsequent work. Any remaining untracked NEWPLAN.md at the repository root is obsolete; remove that old entrypoint only after checking its hash against the archived copy. The archive manifest preserves the original content.
 
 ## Development skills
 
