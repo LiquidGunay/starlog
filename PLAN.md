@@ -199,6 +199,8 @@ Reliability requirements:
 
 - Persistent private data and a recoverable save path.
 
+- Account isolation verified with two test accounts from the first usable slice, even while real access is limited to the owner. Cover direct reads/writes, search and model-context retrieval, jobs and answer streams, attachments, exports, and cancellation.
+
 - Clear distinction between saved locally and synced.
 
 - Safe retry behavior; conflicting stale edits preserve both versions for user resolution instead of silently overwriting newer work.
@@ -283,7 +285,7 @@ Deferred:
 
 - Automated import or amalgamation of X, YouTube, or Google recommendation feeds.
 
-- Public multi-user infrastructure before a useful personal pilot.
+- Public registration and multi-user service operations before a useful personal pilot. Account ownership and isolation are required from the first implementation.
 
 Deferred items are options, not a promised backlog. Exact offline alarms and closed-app audio should not be assumed available merely because the app is a PWA.
 
@@ -302,6 +304,7 @@ Confirmed in the architecture discussion:
 - Local extension clipping is the primary full-capture route for Firefox on Android and supported desktop browsers. The user is willing to open material in Firefox to clip it. Keep URL/text sharing as the fallback for other apps and browsers. Defer remote browser capture unless actual use demonstrates a need.
 - Retry ordinary queued saves automatically. If a stale device edit conflicts with a newer note, preserve both versions and offer a choice or manual combination; do not silently overwrite the newer edit. Sophisticated simultaneous-edit merging is deferred.
 - Finish and save an already requested model answer when the user switches apps or closes the page, so it is available on return. Leaving must not initiate extra follow-up work. An explicit Stop action cancels the active request.
+- Build independent account ownership into the first implementation while admitting only the owner initially. Private records, relationships, derived context, background jobs, attachments, model connections, and any cached results must retain account scope. Derive access from authenticated server context and check resource ownership for every operation; use PostgreSQL row-level security as an additional safeguard with restricted runtime credentials. Preserve the journal/knowledge separation inside each account. Test cross-account denial with two accounts from the first usable slice, including background work and reused connections/caches. Public registration and broader service operations remain deferred.
 - Keep Starlog account/session management separate internally from permission to use a ChatGPT plan. A separate app login is acceptable; a single visible ChatGPT sign-in is also acceptable if supported for the deployment. No particular login provider is selected. Intelligence remains central to the product, while its temporary unavailability must not block access to saved work.
 - Include web search in contextual discussions. Validate native search, citations, contextual follow-ups, and limit behavior with the actual account and selected model before depending on the integration.
 
@@ -324,7 +327,7 @@ The application foundation and editor are selected. The model runtime, authentic
 3. Validate the selected editor and choose the local clipper implementation, PostgreSQL search design, and contextual discussion attachment; validate Firefox Android capture and desktop support.
 4. Design evidence-linked, correctable knowledge context and enforce the separate journal context boundary. Evaluate existing memory techniques without adopting a framework by default.
 5. Test eligible ChatGPT plan access, supported tools, limit behavior, worker hosting, and unattended newspaper generation on the actual account.
-6. Decide authentication, account isolation, backup/restore implementation, and a minimal persistent edit queue with stale-write and conflict handling.
+6. Choose authentication, specify the accepted account-isolation policies and tests, specify backup/restore, and design a minimal persistent edit queue with stale-write and conflict handling.
 7. Specify job scheduling, retries, cancellation, and the notification approach on the selected web/worker topology; define behavior after worker interruption, missed schedules, or unavailable inference.
 8. Choose a minimal RSS ingestion and curation approach with useful recommendation controls, source attribution, and finite editions.
 9. Decide how skill versions, source packets, feedback, and narrow regressions are maintained.
@@ -348,7 +351,7 @@ Still open:
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
-- The remaining architecture choices in section 7, including sign-in, account isolation, job implementation, editor/clipper validation, and the license for the new code.
+- The remaining architecture choices in section 7, including sign-in, isolation-policy details, job implementation, editor/clipper validation, and the license for the new code.
 
 Accepted on 2026-10-03:
 
