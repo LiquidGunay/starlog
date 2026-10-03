@@ -139,7 +139,7 @@ Use one evening reminder with an easy skip/resume path. Exact time and questions
 
 ### Clips, Library, Queue, and Up next
 
-Adopt Obsidian-style browser clipping: preserve useful selected or extracted content and its source attribution. Storing text, HTML, and images is acceptable; link to videos. Reading and watching normally happen at the original source. The feasible capture route on desktop and Android browsers, extraction fidelity, and any extension or sharing integration remain architecture decisions.
+Adopt Obsidian-style browser clipping: preserve useful selected or extracted content and its source attribution. Storing text, HTML, and images is acceptable; link to videos. Reading and watching normally happen at the original source. Use local extension capture in Firefox on Android and supported desktop browsers, sending the resulting clip to Starlog for storage. URL/text sharing remains the fallback for other apps and browsers. Exact extension packaging, authentication, extraction fidelity, and attachment handling remain implementation choices to validate. Remote browser capture is deferred unless actual use demonstrates a need.
 
 Raw clippings are retained source material. Notes can reference one or several clips when useful. Keep authored thinking distinct from quotations. There is no required processed state and no automatic promotion from a clip to a note.
 
@@ -296,7 +296,7 @@ Confirmed in the architecture discussion:
 - Keep three update mechanisms separate: saved note changes refresh relevant knowledge context; recurring outputs refresh on a schedule or user trigger; tutoring and briefing instructions are versioned and changed deliberately. Automatic self-improvement of skills is a distant possibility, not initial scope.
 - Use a formatted editor with Markdown shortcuts and reliable export; equations, code, and tables must render, including pasted or clipped material. The editor and extraction libraries are not selected.
 - The new code may be open source and self-hostable, while the personal instance and data remain private. The user may reconsider the model for future commercial releases. Exact licensing is still open; this decision does not authorize relicensing existing third-party material.
-- Basic Android sharing is acceptable, with a preference for better capture. The user has not accepted remote browser capture as the default; Firefox-on-Android extension capture is now under consideration. Choose the primary capture route and its fallback behavior explicitly.
+- Local extension clipping is the primary full-capture route for Firefox on Android and supported desktop browsers. The user is willing to open material in Firefox to clip it. Keep URL/text sharing as the fallback for other apps and browsers. Defer remote browser capture unless actual use demonstrates a need.
 - Retry ordinary queued saves automatically. If a stale device edit conflicts with a newer note, preserve both versions and offer a choice or manual combination; do not silently overwrite the newer edit. Sophisticated simultaneous-edit merging is deferred.
 - Finish and save an already requested model answer when the user switches apps or closes the page, so it is available on return. Leaving must not initiate extra follow-up work. An explicit Stop action cancels the active request.
 
@@ -304,7 +304,7 @@ Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-
 
 Capture evidence: [Obsidian Web Clipper officially supports Firefox Mobile](https://obsidian.md/help/web-clipper). A Firefox Android extension can capture the locally loaded page and send the resulting clip to Starlog; rich Android clipping does not inherently require a remote browser. Obsidian's [clipper source](https://github.com/obsidianmd/obsidian-clipper) uses Defuddle for extraction and Markdown conversion and is MIT licensed, excluding its branding assets. An adapted Starlog save destination or a thin extension around the extractor would still need implementation and device testing.
 
-[Railway also documents Playwright in Docker](https://docs.railway.com/guides/playwright). Server-side fetch/extraction and bounded browser rendering remain optional alternatives for URL-only captures. They see what the server can access, not the phone's authenticated session. No browser capture route has been implemented or tested. Compare extraction on representative equations, code, and tables before selecting the implementation.
+[Railway also documents Playwright in Docker](https://docs.railway.com/guides/playwright), but remote browser capture is deferred. A later server-side capture would see what the server can access, not the phone's authenticated session. No browser capture route has been implemented or tested. Compare local extraction on representative equations, code, and tables before selecting the implementation.
 
 Licensing distinction: releasing future versions privately does not revoke the licenses of earlier open-source releases. Preserve that distinction when selecting a license and evaluating contributions or dependencies; see the [OSI FAQ](https://opensource.org/faq). No license is selected by this plan.
 
@@ -312,7 +312,7 @@ The framework, database, service topology, model runtime, and fresh repository l
 
 1. Walk through the narrow notes/questions loop and the newspaper, capture, and journal interactions, including failure and resumption.
 2. Settle the smallest content/state model for notes, Threads, discussions, raw clips, Library/Queue/Up next, tags, checkpoints, and relationships. Distinguish user-authored, suggested, accepted, read, and committed material without imposing a processing pipeline.
-3. Choose the note editor, desktop/Android clipping route, search, and contextual discussion attachment.
+3. Choose the note editor, local clipper implementation, search, and contextual discussion attachment; validate Firefox Android capture and desktop support.
 4. Design evidence-linked, correctable knowledge context and enforce the separate journal context boundary. Evaluate existing memory techniques without adopting a framework by default.
 5. Test eligible ChatGPT plan access, supported tools, limit behavior, worker hosting, and unattended newspaper generation on the actual account.
 6. Decide authentication, online storage, backup/export, and a minimal persistent edit queue with stale-write and conflict handling.
@@ -339,7 +339,7 @@ Still open:
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
-- The remaining architecture choices in section 7, including the primary Android clipping route and its fallbacks, service and job implementation, and the license for the new code.
+- The remaining architecture choices in section 7, including sign-in, service and job implementation, validated editor/clipper libraries, and the license for the new code.
 
 Accepted on 2026-10-03:
 
