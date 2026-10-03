@@ -59,6 +59,8 @@ Names and layout can be refined in design. These responsibilities describe the f
 
 Desktop should give the note or source the main space and allow discussion alongside it. Phone browsers should offer the same core workflow in a suitable compact layout. Writing must be easy to reach. A universal chat thread is not the organizing requirement.
 
+Use a formatted editor with Markdown shortcuts and reliable export. Rendering equations, code blocks, and tables is required, including material pasted or brought in through clips. How extraction and paste preserve the underlying math and document structure still needs validation; faithful display does not automatically imply lossless recovery of editable source.
+
 ### Notes, Threads, and questions
 
 Create or edit a note without choosing a project, taxonomy, or learning technique. Begin with a real question, passage, thought, or rough explanation from reading or work. Quick notes can stand alone.
@@ -291,9 +293,16 @@ Confirmed in the architecture discussion:
 - Starlog owns the working notes. Markdown and attachment export remain useful; live editing of the same notes in Obsidian or an external folder is not required.
 - Context begins with the active Thread and its attached material, with automatic retrieval of relevant knowledge records elsewhere in the Library when useful. Keep context inspectable and allow exclusions or a restricted discussion. Preserve source/authorship distinctions and the strict journal boundary.
 - Graph memory is a possible later enhancement to retrieval. This is separate from a visible global graph and does not select a graph database now.
-- Update timing depends on the interaction. Saved note changes should trigger context updates; longer-running workflows update on a schedule or explicit user trigger. The precise meaning of updating their prompts, and which artifacts refresh, still needs clarification before designing those jobs.
+- Keep three update mechanisms separate: saved note changes refresh relevant knowledge context; recurring outputs refresh on a schedule or user trigger; tutoring and briefing instructions are versioned and changed deliberately. Automatic self-improvement of skills is a distant possibility, not initial scope.
+- Use a formatted editor with Markdown shortcuts and reliable export; equations, code, and tables must render, including pasted or clipped material. The editor and extraction libraries are not selected.
+- The new code may be open source and self-hostable, while the personal instance and data remain private. The user may reconsider the model for future commercial releases. Exact licensing is still open; this decision does not authorize relicensing existing third-party material.
+- Basic Android sharing is acceptable, with a preference for better capture. Investigate Android-triggered server-side browser capture on Railway; its access boundaries and the final fallback behavior remain to be settled.
 
 Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/quickstart) and a [self-hosted VM route](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms). This supersedes any assumption that Sign in with ChatGPT is categorically unavailable. Starlog's eligibility, fit with Railway, and actual account inference remain unverified. It offers a [constrained Responses API flow](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations); it does not establish feature parity with API-key access. No model runtime or authentication route is selected yet.
+
+Capture evidence: [Railway documents Playwright in Docker](https://docs.railway.com/guides/playwright). A candidate pipeline saves the supplied URL/text first, tries ordinary article extraction, then uses a bounded browser render if needed. This captures what the server can access, not the phone's authenticated session. Browser isolation, content fidelity, and real device behavior have not been tested. Compare existing extractors on representative equations, code, and tables before selecting one.
+
+Licensing distinction: releasing future versions privately does not revoke the licenses of earlier open-source releases. Preserve that distinction when selecting a license and evaluating contributions or dependencies; see the [OSI FAQ](https://opensource.org/faq). No license is selected by this plan.
 
 The framework, database, service topology, model runtime, and fresh repository layout remain open. Next, reason through concrete scenarios and record decisions here:
 
@@ -326,7 +335,7 @@ Still open:
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
-- The remaining architecture choices in section 7, including the refresh behavior for longer-running workflows.
+- The remaining architecture choices in section 7, including capture fallbacks, cross-device editing behavior, job lifetimes, and the license for the new code.
 
 Accepted on 2026-10-03:
 
