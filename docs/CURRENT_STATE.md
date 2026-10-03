@@ -6,7 +6,7 @@ Updated: 2026-10-03
 
 [PLAN.md](../PLAN.md) is the sole product source. The user accepted the deliberate learning workspace direction and requested consolidation and archival.
 
-The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The product interview, including Q26 on lightweight early review, is complete and its confirmed decisions are recorded in PLAN.md. Product scope is ready for architecture discussion. The new application is not implemented. Architecture, model integration, deployment, and the fresh implementation location still need to be worked through with the user.
+The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The product interview, including Q26 on lightweight early review, is complete and its confirmed decisions are recorded in PLAN.md. Architecture discussion has started: Railway is the intended host, Starlog owns working notes, and cross-library knowledge retrieval is accepted. The new application is not implemented or deployed. The remaining architecture, model integration, and fresh implementation location still need to be worked through with the user.
 
 The existing apps, services, packages, and capture tools are the legacy implementation. They have not been modified or validated as part of this documentation reset. Earlier build, phone, and production evidence is historical and cannot establish current readiness.
 
@@ -32,7 +32,7 @@ All 37 skills from mattpocock/skills at revision d81f3a183412e71a5b1e84ca21bc1a3
 
 These are development workflows, not Starlog's runtime briefing or tutoring skills. The grill-me/grilling workflow has been used to clarify the product. Engineering workflows can be configured after choosing the fresh workspace.
 
-Research inspected existing daily briefs and primary documentation about memory, clipping, and feed access, plus learning evidence relevant to review. This informed the product discussion; it did not validate live integrations, model access, learning outcomes, or a deployed app.
+Research inspected existing daily briefs and primary documentation about memory, clipping, and feed access, plus learning evidence relevant to review. Current official documentation also describes Sign in with ChatGPT plan usage and self-hosted VM setup. This research informs the discussion; it does not establish Starlog eligibility, Railway compatibility, live integrations, account inference, learning outcomes, or a deployed app.
 
 ## Next evidence needed
 

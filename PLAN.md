@@ -1,7 +1,7 @@
 # Starlog — canonical product plan
 
 Updated: 2026-10-03
-Status: product direction accepted; architecture and implementation have not been selected.
+Status: product scope accepted; architecture discussion in progress; implementation has not started.
 
 ## Authority and how to use this plan
 
@@ -283,11 +283,19 @@ Deferred:
 
 Deferred items are options, not a promised backlog. Exact offline alarms and closed-app audio should not be assumed available merely because the app is a PWA.
 
-## 7. Architecture work still to do
+## 7. Architecture decisions and remaining work
 
-This plan does not select a framework, database, deployment provider, model runtime, or repository layout.
+Confirmed in the architecture discussion:
 
-Next, reason through concrete scenarios and record decisions here:
+- Railway is the intended host. The app and intelligence should work independently of the user's personal computer. Exact services, credential arrangements, and supported model access still need validation; choosing a host does not authorize a deployment.
+- Starlog owns the working notes. Markdown and attachment export remain useful; live editing of the same notes in Obsidian or an external folder is not required.
+- Context begins with the active Thread and its attached material, with automatic retrieval of relevant knowledge records elsewhere in the Library when useful. Keep context inspectable and allow exclusions or a restricted discussion. Preserve source/authorship distinctions and the strict journal boundary.
+- Graph memory is a possible later enhancement to retrieval. This is separate from a visible global graph and does not select a graph database now.
+- Update timing depends on the interaction. Saved note changes should trigger context updates; longer-running workflows update on a schedule or explicit user trigger. The precise meaning of updating their prompts, and which artifacts refresh, still needs clarification before designing those jobs.
+
+Current integration evidence: OpenAI now documents [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/quickstart) and a [self-hosted VM route](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms). This supersedes any assumption that Sign in with ChatGPT is categorically unavailable. Starlog's eligibility, fit with Railway, and actual account inference remain unverified. It offers a [constrained Responses API flow](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations); it does not establish feature parity with API-key access. No model runtime or authentication route is selected yet.
+
+The framework, database, service topology, model runtime, and fresh repository layout remain open. Next, reason through concrete scenarios and record decisions here:
 
 1. Walk through the narrow notes/questions loop and the newspaper, capture, and journal interactions, including failure and resumption.
 2. Settle the smallest content/state model for notes, Threads, discussions, raw clips, Library/Queue/Up next, tags, checkpoints, and relationships. Distinguish user-authored, suggested, accepted, read, and committed material without imposing a processing pipeline.
@@ -295,7 +303,7 @@ Next, reason through concrete scenarios and record decisions here:
 4. Design evidence-linked, correctable knowledge context and enforce the separate journal context boundary. Evaluate existing memory techniques without adopting a framework by default.
 5. Test eligible ChatGPT plan access, supported tools, limit behavior, worker hosting, and unattended newspaper generation on the actual account.
 6. Decide authentication, online storage, backup/export, and a minimal persistent edit queue with stale-write and conflict handling.
-7. Choose a deployable web topology and notification approach; specify what happens when a worker sleeps or inference is unavailable.
+7. Choose the Railway service topology and notification approach; specify what happens when a worker sleeps or inference is unavailable.
 8. Choose a minimal RSS ingestion and curation approach with useful recommendation controls, source attribution, and finite editions.
 9. Decide how skill versions, source packets, feedback, and narrow regressions are maintained.
 10. Choose the fresh implementation location and shared interfaces so the first usable loop can ship while independent work proceeds safely in parallel.
@@ -318,7 +326,7 @@ Still open:
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
-- The architecture choices in section 7.
+- The remaining architecture choices in section 7, including the refresh behavior for longer-running workflows.
 
 Accepted on 2026-10-03:
 
