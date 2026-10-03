@@ -1,5 +1,3 @@
-> Legacy implementation documentation. The current product direction is in [PLAN.md](../../PLAN.md). This file does not define the fresh application's architecture or requirements.
-
 # Starlog AI Runtime
 
 This service is the dedicated home for Starlog AI orchestration.

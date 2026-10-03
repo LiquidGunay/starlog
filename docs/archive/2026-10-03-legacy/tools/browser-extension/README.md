@@ -1,5 +1,3 @@
-> Legacy implementation documentation. The current product direction is in [PLAN.md](../../PLAN.md). This file does not define the fresh application's architecture or requirements.
-
 # Starlog Browser Clipper
 
 Initial Chromium MV3 extension scaffold.
