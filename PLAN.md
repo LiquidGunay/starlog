@@ -55,7 +55,7 @@ Notes and questions are the first usable loop. A narrow release is acceptable be
 | Notebook | Notes, ongoing Threads, contextual discussions, search, links, and drafts |
 | Reading | Raw clips and references in the Library, a deliberate Queue, and a small Up next selection |
 
-Names and layout can be refined in design. These responsibilities describe the first daily-use iteration; the narrow notes/questions pilot does not wait for every surface to be complete.
+Names and layout can be refined in design. These responsibilities describe the first daily-use iteration; the narrow notes/questions pilot does not wait for every surface to be complete. Detailed screen layouts, controls, and phone navigation have not been approved. Review a disposable interaction sketch of the core loop before implementing the product UI; the sketch is a design proposal, not a new visual specification or implementation authorization.
 
 Desktop should give the note or source the main space and allow discussion alongside it. Phone browsers should offer the same core workflow in a suitable compact layout. Writing must be easy to reach. A universal chat thread is not the organizing requirement.
 
@@ -428,13 +428,15 @@ Full recovery must cover PostgreSQL records, structured note revisions, behavior
 
 Supporting references: [PostgreSQL row security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html), [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API), [browser storage limits](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria), [Background Sync limitations](https://developer.mozilla.org/en-US/docs/Web/API/Background_Synchronization_API), and [Web Push](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). These describe mechanisms; they do not establish Starlog or device success.
 
-This is the proposed sequence, not permission to deploy or an assertion that any check has passed. Before implementation, review the consolidated architecture and define the focused feasibility work. Once approved, turn the sequence into scoped workitems that point here, then deliver a complete usable loop. Concrete evidence can revise a technical choice without reopening settled product scope by default.
+The user has authorized delegated feasibility checks. Current results and limits belong in docs/CURRENT_STATE.md; local library or public-endpoint checks do not establish browser, account, or hosted success. The remaining sequence is proposed, not permission to implement or deploy. Before product implementation, review the consolidated architecture and concrete interface flow, then turn approved work into scoped workitems that point here and deliver a complete usable loop. Concrete evidence can revise a technical choice without reopening settled product scope by default.
 
 ## 8. Open preferences and decision record
 
 The initial product scope is settled enough to proceed to architecture. Remaining configuration and interaction details can be chosen during design or real use; they do not require another product-scope round. Revisit an accepted scope decision only if concrete feasibility evidence or use reveals a need.
 
 Still open:
+
+- Detailed desktop and phone interaction design for writing, contextual discussion, resuming a Thread, and revisiting earlier thinking. The surface responsibilities are agreed; a conversation sketch is not an approved visual reference.
 
 - Exact RSS sources, edition timing, and the first recommendation controls; focus and approximate reading time are agreed.
 
