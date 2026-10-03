@@ -6,7 +6,7 @@ Updated: 2026-10-03
 
 [PLAN.md](../PLAN.md) is the sole product source. The user accepted the deliberate learning workspace direction and requested consolidation and archival.
 
-The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The subsequent product interview is complete and its confirmed decisions are recorded in PLAN.md; the proposal to add lightweight early review remains open. The new application is not implemented. Architecture, model integration, deployment, and the fresh implementation location still need to be worked through with the user.
+The documentation reset provides the canonical plan, narrowed agent instructions, and a recoverable archive. The product interview, including Q26 on lightweight early review, is complete and its confirmed decisions are recorded in PLAN.md. Product scope is ready for architecture discussion. The new application is not implemented. Architecture, model integration, deployment, and the fresh implementation location still need to be worked through with the user.
 
 The existing apps, services, packages, and capture tools are the legacy implementation. They have not been modified or validated as part of this documentation reset. Earlier build, phone, and production evidence is historical and cannot establish current readiness.
 
@@ -36,7 +36,7 @@ Research inspected existing daily briefs and primary documentation about memory,
 
 ## Next evidence needed
 
-- Resolve the early-review proposal and architecture decisions in PLAN.md.
+- Work through architecture decisions in PLAN.md, including any scope tradeoffs revealed by concrete feasibility evidence.
 
 - A verified intelligence path for the actual account and intended hosting arrangement.
 

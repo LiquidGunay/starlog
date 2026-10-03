@@ -93,6 +93,14 @@ The tutoring behavior should make the smallest useful intervention that leaves m
 
 - Do not treat repeating a supplied hint as independent understanding.
 
+### Lightweight review
+
+Include an optional Revisit this action on an existing note or Thread in the first pilot. The user attempts an explanation, comparison, or application before revealing the earlier note or answer, then compares it with source-grounded feedback. They can revise their explanation, reopen the question, or finish. Reuse the contextual discussion workflow and distinguish later unaided attempts from guided in-session responses.
+
+A revisit may occasionally be the suggested starting point on Today. It does not create a deck, grade, formal schedule, or accumulating obligation. Saving material does not automatically create a review commitment.
+
+Formal spaced repetition remains a later option for explicitly chosen retention targets. Its introduction should follow a demonstrated wish to retain selected material, rather than an arbitrary library-size threshold. Participatory links belong early; a global graph remains deferred until it answers a concrete navigation or synthesis need.
+
 ### Inspectable knowledge context
 
 Maintain provisional, correctable interpretations of the user's knowledge from notes and discussions, with links to their supporting evidence. Keep source records distinct from model inferences. Corrections take precedence over inferred interpretations, and rejected interpretations must not silently reappear. Copied text, model-authored explanations, and successful responses after hints do not establish independent understanding.
@@ -177,8 +185,9 @@ The narrow personal pilot must support a complete notes/questions loop:
 2. Ask a question or examine an explanation in context, with direct help available.
 3. Keep the discussion, optionally save an editable checkpoint, and connect a note if useful.
 4. Find prior work through search and resume an open Thread or something from Up next without reconstructing context.
-5. Return after missed days without an intimidating backlog.
-6. Flag an unhelpful question directly where it occurred.
+5. Optionally revisit a note or Thread, attempt an explanation or application before revealing the prior answer, and compare or revise it.
+6. Return after missed days without an intimidating backlog.
+7. Flag an unhelpful question or review directly where it occurred.
 
 The newspaper and journal complete the broader daily-use iteration as they become ready: read a finite RSS edition and leave feedback; write with chosen journal questions, optionally request a follow-up, and receive one evening reminder where delivery is supported. These features may progress in parallel once shared architecture is settled. They are not prerequisites for starting the narrow pilot.
 
@@ -216,7 +225,7 @@ A question can connect sources, notes, discussions, experiments, applications, a
 
 ### User-chosen learning commitments
 
-Users can decide that something should be retained or practised. Support recall, teach-back, comparison, misconception checks, application, interleaving, and project work when useful. These commitments remain part of the fuller vision; whether lightweight optional review enters the first pilot is still open in section 8.
+Users can decide that something should be retained or practised. Support recall, teach-back, comparison, misconception checks, application, interleaving, and project work when useful. These formal commitments remain part of the fuller vision. The first pilot includes optional lightweight review without requiring a persistent practice commitment.
 
 Distinguish a learning target from any particular exercise. Fixed cards, regenerated questions, and ephemeral exercises can coexist where evidence justifies them. Important conceptual formulation remains participatory; automatic generation may help mechanical material.
 
@@ -297,6 +306,8 @@ Implement only after the user has worked through the architecture and scope. Del
 
 ## 8. Open preferences and decision record
 
+The initial product scope is settled enough to proceed to architecture. Remaining configuration and interaction details can be chosen during design or real use; they do not require another product-scope round. Revisit an accepted scope decision only if concrete feasibility evidence or use reveals a need.
+
 Still open:
 
 - Exact RSS sources, edition timing, and the first recommendation controls; focus and approximate reading time are agreed.
@@ -304,8 +315,6 @@ Still open:
 - Exact journal questions and evening reminder time; a single reminder and journal-only use of entries are agreed.
 
 - The concrete interaction for the first connection suggestion and the need that would justify a larger graph.
-
-- Whether lightweight optional review should enter the first pilot. The current proposal is to revisit an existing note or Thread, attempt an explanation, comparison, or application before revealing the old answer, then inspect feedback. Formal spaced repetition and a global graph would remain later decisions. This proposal is not yet accepted scope.
 
 - Pilot cadence and the threshold for expanding beyond personal use.
 
@@ -329,7 +338,9 @@ Accepted on 2026-10-03:
 
 - Provide customizable journaling, optional follow-ups, and one evening reminder. Journal entries and their derived context influence journal recommendations only.
 
-- Start with participatory links and distinguish model suggestions. A large graph and formal learning commitments belong to the fuller vision unless a further decision brings a narrow part forward.
+- Include lightweight optional review in the first pilot: attempt before revealing the earlier answer, compare with feedback, and revise or reopen. No automatic deck or due backlog.
+
+- Start with participatory links and distinguish model suggestions. Formal SRS for chosen retention targets and a global graph remain later options, driven by actual retention or navigation needs.
 
 - Embed draft skills into real use and iterate from feedback.
 
