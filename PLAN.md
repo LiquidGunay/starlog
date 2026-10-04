@@ -65,6 +65,8 @@ Use Tiptap as the formatted editor with Markdown shortcuts. Store versioned stru
 
 Create or edit a note without choosing a project, taxonomy, or learning technique. Begin with a real question, passage, thought, or rough explanation from reading or work. Quick notes can stand alone.
 
+On 2026-10-04 the user accepted three entrances into ongoing inquiry: a fragment, a question, or a selected passage. These are ways to begin, not three mandatory setup modes. Writing stays quiet until assistance is requested; asking does not require first creating or naming a note. Compare their concrete controls and continuation flows in a disposable prototype before choosing a detailed layout.
+
 A Thread holds an ongoing question or pursuit across notes, sources, and discussions. Topics work as tags, rather than a required folder hierarchy. On return, suggest one useful starting point from the Queue or an existing open Thread, explain why, and make alternatives or a new start easy to choose.
 
 Provide lightweight ways to express intent:
@@ -144,6 +146,10 @@ Use one evening reminder with an easy skip/resume path. Exact time and questions
 Adopt Obsidian-style browser clipping: preserve useful selected or extracted content and its source attribution. Storing text, HTML, and images is acceptable; link to videos. Reading and watching normally happen at the original source. Use local extension capture in Firefox on Android and supported desktop browsers, sending the resulting clip to Starlog for storage. URL/text sharing remains the fallback for other apps and browsers. Exact extension packaging, authentication, extraction fidelity, and attachment handling remain implementation choices to validate. Remote browser capture is deferred unless actual use demonstrates a need.
 
 Raw clippings are retained source material. Notes can reference one or several clips when useful. Keep authored thinking distinct from quotations. There is no required processed state and no automatic promotion from a clip to a note.
+
+Keep three things distinct in the interaction: material retained by Starlog, material currently visible to the user, and material actually used for a model response. A link alone is not evidence that the model has read the page. A selected passage retains attribution and can support a focused discussion; an extracted article can be retained while discussion focuses on only one part. Stored material does not automatically belong in every prompt. When an author-specific question needs surrounding context, make that limitation and any subsequent context expansion visible, with attribution. General explanation and interpretation of a particular source must remain distinguishable.
+
+For the pilot, books, long PDFs, and videos are references with chosen excerpts; a whole-source reader/import workflow remains a later decision based on actual need. This does not remove ordinary extracted-article clipping or the already agreed contextual Library retrieval. Exact capture controls and source-scope presentation are still to be compared.
 
 Separate retained material from intended attention:
 
@@ -435,6 +441,8 @@ The user has authorized delegated feasibility checks. Current results and limits
 The initial product scope is settled enough to proceed to architecture. Remaining configuration and interaction details can be chosen during design or real use; they do not require another product-scope round. Revisit an accepted scope decision only if concrete feasibility evidence or use reveals a need.
 
 Still open:
+
+The next interaction comparisons proceed in this order: source/context behavior; starting and discussing through the three entrances; then retaining useful thinking and returning. Automatic discussion saving, optional checkpoints, source/authorship distinctions, and optional review remain settled. A prototype tests presentation and transitions rather than reopening those principles.
 
 - Detailed desktop and phone interaction design for writing, contextual discussion, resuming a Thread, and revisiting earlier thinking. The surface responsibilities are agreed; a conversation sketch is not an approved visual reference. The [product and learning literature review](docs/research/INTERACTION_REVIEW.md) and [interaction reference atlas](docs/research/interaction-atlas.html) provide evidence and comparison artifacts for this decision, not additional requirements or an approved layout.
 
