@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-10-04
+Updated: 2026-10-17
 
 ## Product reset
 
@@ -29,6 +29,12 @@ Script parsing and direct DOM inspection confirmed that expanding retained conte
 On 2026-10-04 the user requested a literature/product review before deciding the interface. The [review](research/INTERACTION_REVIEW.md) covers eight priority studies, narrower product comparisons, ten learning/HCI evidence summaries, and additional research interfaces. The [reference atlas](research/interaction-atlas.html) presents twelve exhibits with original official media or stable illustrated source pages, documented-flow summaries, dates/platform limits, and interpretations for Starlog. These are research artifacts, not application screens or new product requirements. PLAN.md remains canonical.
 
 The review distinguishes product documentation from learning evidence. Competitor applications were not operated: browser inspection failed to initialize. Official media is linked or embedded without claiming visual inspection; the Textfocals paper figures on pages 4–5 were rendered and inspected. The atlas passed 45 DOM checks for navigation, filters, links, and media failure handling. All 17 retained embedded-media URLs returned HTTP 200; three unavailable Day One media links were replaced with their stable illustrated guide pages. Header checks establish reachability, not image or playback correctness. Browser rendering, image playback, and device behavior remain unverified. Supporting handoffs and check results are ignored under `.localdata/interaction-research/`.
+
+## Dots feasibility research
+
+On 2026-10-17 the user reopened the integration question: could Dots provide intelligence and memory around a document store and intelligent UI? The [feasibility review](research/DOTS_FEASIBILITY.md) compares a Dot plus existing Pages/documents, a custom MCP/plugin UI, and an independent app using managed intelligence. Current official documentation supports cloud responsibilities, plugin skills/tools, Space interaction with Dots, and persistent plugin UI entrypoints. It does not establish a public personal-Dot or Dot-memory API, every extension inside Dot/on Android, or the required journal-only memory boundary. Dot mobile web is explicitly unsupported; the ChatGPT mobile app is a different option.
+
+This is documentation research, not account or device validation. No plugin, Site, schedule, model integration or new application was created. PLAN.md and its proposed architecture are unchanged; this alternative awaits a decision and a real personal-use experiment. The historical MCP brief was consulted only for the user's explicit comparison question; its old scope was not reinstated.
 
 ## What exists to reuse selectively
 
