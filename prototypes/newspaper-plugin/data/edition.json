@@ -1,0 +1,61 @@
+{
+  "id": "starlog-design-edition-thinking-with-tools",
+  "label": "Research edition · Design sample",
+  "date": "24 October 2026",
+  "title": "Thinking with tools",
+  "subtitle": "What should become easier—and what is worth doing yourself?",
+  "provenance": "A sample selected from this conversation, using published research. No personal memory or private notes were retrieved.",
+  "stories": [
+    {
+      "id": "helper-leaves",
+      "section": "The lead",
+      "title": "What remains when the helper leaves?",
+      "dek": "Two tutoring studies point toward a better question than whether AI helps: what kind of help, measured when?",
+      "paragraphs": [
+        "A session can feel productive because the answer arrived quickly. It can also feel productive because something became easier to explain. Those experiences are easy to confuse while the tool is still open. Two studies published in June 2025 make that distinction unusually concrete.",
+        "In a high-school mathematics experiment, Hamsa Bastani and colleagues compared ordinary GPT-4 assistance, a tutor with teacher-informed safeguards, and a group without AI. Both AI groups performed better during practice. Once assistance was removed, the ordinary-chat group performed worse than the control group. The guarded tutor largely avoided that penalty, but did not establish a positive effect on the subsequent unaided exam. Its safeguards included problem-specific solutions and hints, not merely an instruction to be Socratic.",
+        "A different experiment by Greg Kestin and colleagues found higher immediate learning gains with a structured AI tutor than with an active-learning physics class. Students could work at their own pace, and the system used carefully prepared material and feedback. This was a deliberately built teaching environment. The authors even found that a system prompt alone could not reliably keep multipart problems in sequence; the interface supplied that structure.",
+        "These results do not form a contest with one winner. They involve different learners, tasks and interventions. Neither establishes what happens to a person's judgment after months of using a general assistant. Together, they make the interaction itself worth investigating: what work does the tool remove, and what work does it leave for the learner?",
+        "For a personal reading system, our design hypothesis is modest. Let the assistant remove search and formatting friction. When an idea matters, offer a small opportunity to explain, apply or question it. Keep that optional: sometimes the purpose is simply to retrieve a fact. The useful checkpoint is a better question or a clearer distinction—not the amount of text produced."
+      ],
+      "sourceIds": ["bastani-2025", "kestin-2025"],
+      "editorialBoundary": "The final paragraph is a design hypothesis. These studies did not test this newspaper."
+    },
+    {
+      "id": "external-memory",
+      "section": "From the archive",
+      "title": "A note can do more than remember",
+      "dek": "Decide which job the external record is doing.",
+      "paragraphs": [
+        "Cognitive offloading is the use of external actions or tools to reduce a task's mental demands. Risko and Gilbert's review includes familiar cases such as reminders and rearranging information. Offloading is therefore broader than outsourcing an answer to AI.",
+        "For this newspaper, that suggests two distinct kinds of saving. A reference preserves something you may need again. A thinking note preserves your question, explanation or disagreement. This distinction is an editorial proposal, not a result established by the review. It gives a saved item a purpose without requiring every interesting link to become homework."
+      ],
+      "sourceIds": ["risko-gilbert-2016"]
+    },
+    {
+      "id": "ui-in-conversation",
+      "section": "Tools to watch",
+      "title": "The conversation can contain a workspace",
+      "dek": "A reusable component can hold the interaction steady while its content changes.",
+      "paragraphs": [
+        "MCP Apps became an official extension in January 2026. It lets a tool provide an interactive interface inside a compatible chat client. The interface runs in a sandboxed frame and can exchange information with its host.",
+        "For a newspaper, that could mean opening evidence, keeping your response beside an explanation, or asking a follow-up without reconstructing the article in another app. The useful experiment is consistency: do familiar controls help you think? The standard enables that experiment; it does not establish that a particular interface improves learning."
+      ],
+      "sourceIds": ["mcp-apps-2026"]
+    }
+  ],
+  "reflection": {
+    "id": "distinguish-performance-learning",
+    "label": "One question, if useful",
+    "prompt": "An assistant helps you solve a problem. What observation would distinguish a useful answer from a change in your own understanding?",
+    "placeholder": "A sentence, an example, or a question is enough.",
+    "hint": "Consider what you could observe with the assistant present, and what you could observe later or on a different problem.",
+    "evidence": "The lead separates assisted performance from subsequent unaided performance. A fresh explanation or transfer problem could be one useful check, depending on your goal. It would still be limited evidence: one successful attempt does not establish durable understanding. If your aim was simply to obtain accurate information, independent recall may not be the right success criterion."
+  },
+  "sources": [
+    {"id":"bastani-2025","title":"Generative AI without guardrails can harm learning","publisher":"Bastani et al. · PNAS","date":"25 June 2025","url":"https://doi.org/10.1073/pnas.2422633122"},
+    {"id":"kestin-2025","title":"AI tutoring outperforms in-class active learning","publisher":"Kestin et al. · Scientific Reports","date":"3 June 2025","url":"https://www.nature.com/articles/s41598-025-97652-6"},
+    {"id":"risko-gilbert-2016","title":"Cognitive Offloading","publisher":"Risko & Gilbert · Trends in Cognitive Sciences","date":"2016","url":"https://discovery.ucl.ac.uk/id/eprint/1508770/"},
+    {"id":"mcp-apps-2026","title":"MCP Apps: Bringing UI to MCP","publisher":"Model Context Protocol maintainers","date":"26 January 2026","url":"https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/"}
+  ]
+}

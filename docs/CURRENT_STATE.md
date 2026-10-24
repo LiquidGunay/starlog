@@ -1,6 +1,12 @@
 # Current state
 
-Updated: 2026-10-03
+Updated: 2026-10-24
+
+## Newspaper and MCP Apps experiment
+
+The disposable [prototype](../prototypes/newspaper-plugin/README.md) uses the same reader source for three inline newspaper designs and an MCP App. A source-backed research sample is supplied, not a live feed or a memory-personalized edition. The MCP server supports explicit local note saves, retrieval and idempotent retries. Real SDK client tests cover STDIO, HTTP, the built UI resource, invalid requests and saved data surviving a new process.
+
+Browser checks exercised the real local AppBridge host: a note was saved through the UI and read back through the MCP server; question responses survived article navigation and evidence disclosure; drafts stayed separate by article. Narrow layouts were inspected at 297–320 pixels without horizontal overflow. This is local browser/protocol evidence, not proof of installed ChatGPT/Dot integration, live model discussion, Drive access, scheduling or cross-device durability. Generated screenshots remain in task-local ignored/visualization output. No production deployment or new application implementation was performed.
 
 ## Product reset
 
