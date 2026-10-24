@@ -258,3 +258,7 @@ Existing skill experiment:
 - Matt Pocock's [skills repository](https://github.com/mattpocock/skills) supplies development workflows for subsequent questioning and design. Installing these does not settle architecture or start implementation.
 
 If a development skill normally produces another product document, incorporate the relevant decision into this PLAN.md instead. Technical detail and tickets may reference it without duplicating the vision.
+
+## 10. Bounded newspaper and plugin experiment — 2026-10-24
+
+The user requested several concrete newspaper presentations and a reusable interactive component that can run both in this conversation and as a plugin. The disposable [newspaper/MCP Apps experiment](prototypes/newspaper-plugin/README.md) compares a newspaper, a magazine and a quiet reader using identical, cited sample material. It checks optional questions, source disclosure, explicit note saves and the boundary between an inline preview and a real MCP host. This authorizes the experiment, not a production implementation, deployment, selected design or replacement architecture. Feedback from using these alternatives should inform the next decision in this plan.
