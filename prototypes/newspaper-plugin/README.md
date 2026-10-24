@@ -66,4 +66,3 @@ Reusable components reviewed against primary sources:
 | [assistant-ui](https://www.assistant-ui.com/docs/tools/tool-ui) | MIT custom tool-result components | More useful for a standalone chat client than this embedded reader. |
 
 The actual reuse here is the pinned official MCP Apps/SDK implementation, with complete dependency notices retained. Its licensing transition is preserved rather than reduced to the package metadata's MIT label. The editorial design is ours to change.
-

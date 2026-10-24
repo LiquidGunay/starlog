@@ -22,5 +22,5 @@ for (const [name, directory] of [...packages].sort(([a],[b]) => a.localeCompare(
   text += `\n## ${name} ${metadata.version}\n`;
   for (const filename of files) text += `\n### ${filename}\n\n${await readFile(join(directory,filename),'utf8')}\n`;
 }
-await writeFile(join(root,'THIRD_PARTY_NOTICES.md'),text);
+await writeFile(join(root,'THIRD_PARTY_NOTICES.md'),text.split('\n').map(line=>line.trimEnd()).join('\n').trimEnd()+'\n');
 console.log(`Preserved notices for ${packages.size} bundled/build dependencies.`);

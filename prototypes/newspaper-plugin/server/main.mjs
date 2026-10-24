@@ -57,4 +57,3 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     await server.connect(new StdioServerTransport());
   }
 }
-
