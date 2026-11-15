@@ -1,0 +1,181 @@
+.shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(236, 241, 245, 0.98)),
+    #f7fafc;
+  color: #17202a;
+  padding: 24px;
+}
+
+.panel {
+  width: min(620px, 100%);
+  border: 1px solid rgba(23, 32, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 28px;
+  box-shadow: 0 18px 45px rgba(28, 40, 51, 0.08);
+}
+
+.brand a {
+  display: inline-flex;
+  color: #3f6257;
+  font-weight: 750;
+  text-decoration: none;
+  margin-bottom: 18px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.brand p {
+  margin: 12px 0 24px;
+  color: #5a6570;
+  line-height: 1.55;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.field span,
+.sessionBox span {
+  color: #61707c;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid rgba(23, 32, 42, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17202a;
+  padding: 12px 13px;
+  font: inherit;
+}
+
+.field input:focus {
+  border-color: #3f6257;
+  outline: 3px solid rgba(63, 98, 87, 0.14);
+}
+
+.sessionBox {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border: 1px solid rgba(23, 32, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(247, 250, 252, 0.84);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.sessionBox strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.primaryButton,
+.secondaryButton,
+.footerNav a {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(23, 32, 42, 0.14);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #17202a;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease, opacity 140ms ease;
+}
+
+.primaryButton {
+  background: #274b42;
+  border-color: #274b42;
+  color: #ffffff;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.footerNav a:hover {
+  border-color: rgba(63, 98, 87, 0.45);
+  background: #ffffff;
+  transform: translateY(-1px);
+}
+
+.primaryButton:hover {
+  background: #274b42;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.status {
+  min-height: 20px;
+  margin: 16px 0 0;
+  color: #61707c;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.footerNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid rgba(23, 32, 42, 0.1);
+  margin-top: 22px;
+  padding-top: 16px;
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding: 12px;
+    place-items: start stretch;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .brand h1 {
+    font-size: 38px;
+  }
+
+  .sessionBox {
+    grid-template-columns: 1fr;
+  }
+
+  .primaryButton,
+  .secondaryButton,
+  .footerNav a {
+    width: 100%;
+  }
+}

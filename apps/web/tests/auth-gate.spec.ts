@@ -70,6 +70,33 @@ test("sign-in on login experience routes to today by default", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
 });
 
+test("login page can replace a saved stale session", async ({ page }) => {
+  await page.addInitScript(
+    ({ token }) => {
+      window.localStorage.setItem("starlog-token", token);
+    },
+    { token: "stale-pc-token" },
+  );
+
+  await page.route(`${API_BASE}/v1/auth/login`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ access_token: TOKEN, expires_at: "2099-01-01T00:00:00Z", token_type: "bearer" }),
+    });
+  });
+  await routeTodayShell(page);
+
+  await page.goto("/login");
+  await expect(page.getByText("This browser has a saved session.")).toBeVisible();
+  await expect(page.getByLabel("Passphrase")).toBeVisible();
+  await page.getByLabel("Passphrase").fill("unit-test-passphrase");
+  await page.getByRole("button", { name: "Replace session" }).click();
+
+  await expect(page).toHaveURL("/today");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("starlog-token"))).toBe(TOKEN);
+});
+
 test("sign-in preserves deep links after auth", async ({ page }) => {
   await page.route(`${API_BASE}/v1/auth/login`, async (route) => {
     await route.fulfill({

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { apiRequest } from "../../lib/starlog-client";
 import { useSessionConfig } from "../../session-provider";
+import styles from "./deck-browser.module.css";
 
 type DeckSchedule = {
   new_cards_due_offset_hours: number;
@@ -19,8 +20,6 @@ type Deck = {
   schedule: DeckSchedule;
   card_count: number;
   due_count: number;
-  created_at: string;
-  updated_at: string;
 };
 
 type Card = {
@@ -34,8 +33,6 @@ type Card = {
   interval_days: number;
   repetitions: number;
   ease_factor: number;
-  created_at: string;
-  updated_at?: string | null;
 };
 
 const DEFAULT_SCHEDULE: DeckSchedule = {
@@ -44,122 +41,168 @@ const DEFAULT_SCHEDULE: DeckSchedule = {
   initial_ease_factor: 2.5,
 };
 
+function parseTags(value: string): string[] {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function formatDue(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Due time unavailable";
+  }
+  return parsed.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function localDateTimeValue(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  const offsetMillis = parsed.getTimezoneOffset() * 60_000;
+  return new Date(parsed.getTime() - offsetMillis).toISOString().slice(0, 16);
+}
+
 export default function DeckBrowserPage() {
   const { apiBase, token } = useSessionConfig();
-  const missingToken = !token;
-  const missingApiBase = !apiBase;
-  const missingConfig = missingToken || missingApiBase;
+  const missingConfig = !apiBase || !token;
   const [decks, setDecks] = useState<Deck[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
-  const [status, setStatus] = useState("Ready");
-  const [selectedDeckFilter, setSelectedDeckFilter] = useState("all");
-  const [selectedDeckId, setSelectedDeckId] = useState("");
+  const [selectedDeckId, setSelectedDeckId] = useState("all");
   const [selectedCardId, setSelectedCardId] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("Loading decks...");
+  const [loading, setLoading] = useState(false);
 
   const [deckName, setDeckName] = useState("");
   const [deckDescription, setDeckDescription] = useState("");
   const [deckSchedule, setDeckSchedule] = useState<DeckSchedule>(DEFAULT_SCHEDULE);
-  const [isCreatingDeck, setIsCreatingDeck] = useState(false);
+  const [editingDeckId, setEditingDeckId] = useState("");
 
+  const [cardDeckId, setCardDeckId] = useState("");
   const [cardPrompt, setCardPrompt] = useState("");
   const [cardAnswer, setCardAnswer] = useState("");
   const [cardTags, setCardTags] = useState("");
-  const [cardDeckId, setCardDeckId] = useState("");
   const [cardDueAt, setCardDueAt] = useState("");
   const [cardIntervalDays, setCardIntervalDays] = useState("1");
   const [cardRepetitions, setCardRepetitions] = useState("0");
   const [cardEaseFactor, setCardEaseFactor] = useState("2.5");
   const [cardSuspended, setCardSuspended] = useState(false);
 
-  const deckMap = useMemo(() => new Map(decks.map((deck) => [deck.id, deck])), [decks]);
-  const selectedDeck = decks.find((deck) => deck.id === selectedDeckId) ?? null;
+  const selectedDeck = selectedDeckId === "all" ? null : decks.find((deck) => deck.id === selectedDeckId) ?? null;
+  const editingDeck = decks.find((deck) => deck.id === editingDeckId) ?? null;
   const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null;
+  const deckById = useMemo(() => new Map(decks.map((deck) => [deck.id, deck])), [decks]);
+
+  const visibleCards = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return cards;
+    }
+    return cards.filter((card) =>
+      [
+        card.prompt,
+        card.answer,
+        deckById.get(card.deck_id || "")?.name || "Inbox",
+        ...(card.tags || []),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [cards, deckById, search]);
 
   const loadDecks = useCallback(async () => {
-    if (missingConfig) {
-      setDecks([]);
-      return [];
-    }
     const payload = await apiRequest<Deck[]>(apiBase, token, "/v1/cards/decks");
     setDecks(payload);
-    if (!isCreatingDeck && !selectedDeckId && payload[0]) {
-      setSelectedDeckId(payload[0].id);
-      setCardDeckId(payload[0].id);
-    }
+    setCardDeckId((previous) => previous || payload[0]?.id || "");
+    setEditingDeckId((previous) => previous || payload[0]?.id || "");
     return payload;
-  }, [apiBase, isCreatingDeck, missingConfig, selectedDeckId, token]);
+  }, [apiBase, token]);
 
-  const loadCards = useCallback(async (nextDeckFilter = selectedDeckFilter) => {
-    if (missingConfig) {
-      setCards([]);
-      return [];
-    }
+  const loadCards = useCallback(async (deckId: string) => {
     const params = new URLSearchParams({ limit: "500" });
-    if (nextDeckFilter !== "all") {
-      params.set("deck_id", nextDeckFilter);
+    if (deckId !== "all") {
+      params.set("deck_id", deckId);
     }
     const payload = await apiRequest<Card[]>(apiBase, token, `/v1/cards?${params.toString()}`);
     setCards(payload);
+    setSelectedCardId((previous) => (payload.some((card) => card.id === previous) ? previous : payload[0]?.id || ""));
     return payload;
-  }, [apiBase, missingConfig, selectedDeckFilter, token]);
+  }, [apiBase, token]);
 
-  const reload = useCallback(async (nextDeckFilter = selectedDeckFilter) => {
+  const reload = useCallback(async (deckId = selectedDeckId) => {
     if (missingConfig) {
       setDecks([]);
       setCards([]);
-      setStatus("Connect to the API to load decks and cards.");
+      setStatus("Sign in to load decks.");
       return;
     }
+    setLoading(true);
     try {
-      const [nextDecks, nextCards] = await Promise.all([loadDecks(), loadCards(nextDeckFilter)]);
-      setStatus(`Loaded ${nextDecks.length} decks and ${nextCards.length} cards`);
+      const [nextDecks, nextCards] = await Promise.all([loadDecks(), loadCards(deckId)]);
+      const deckLabel = deckId === "all" ? "all decks" : nextDecks.find((deck) => deck.id === deckId)?.name || "selected deck";
+      setStatus(`Loaded ${nextCards.length} cards from ${deckLabel}.`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load decks and cards");
+      setStatus(error instanceof Error ? error.message : "Failed to load decks.");
+    } finally {
+      setLoading(false);
     }
-  }, [loadCards, loadDecks, missingConfig, selectedDeckFilter]);
+  }, [loadCards, loadDecks, missingConfig, selectedDeckId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   useEffect(() => {
-    if (!selectedDeck) {
+    if (!editingDeck) {
       return;
     }
-    setDeckName(selectedDeck.name);
-    setDeckDescription(selectedDeck.description || "");
-    setDeckSchedule(selectedDeck.schedule);
-  }, [selectedDeck]);
+    setDeckName(editingDeck.name);
+    setDeckDescription(editingDeck.description || "");
+    setDeckSchedule(editingDeck.schedule);
+  }, [editingDeck]);
 
   useEffect(() => {
     if (!selectedCard) {
       return;
     }
+    setCardDeckId(selectedCard.deck_id || decks[0]?.id || "");
     setCardPrompt(selectedCard.prompt);
     setCardAnswer(selectedCard.answer);
-    setCardTags(selectedCard.tags.join(", "));
-    setCardDeckId(selectedCard.deck_id || "");
-    setCardDueAt(selectedCard.due_at.slice(0, 16));
+    setCardTags((selectedCard.tags || []).join(", "));
+    setCardDueAt(localDateTimeValue(selectedCard.due_at));
     setCardIntervalDays(String(selectedCard.interval_days));
     setCardRepetitions(String(selectedCard.repetitions));
     setCardEaseFactor(String(selectedCard.ease_factor));
     setCardSuspended(selectedCard.suspended);
-  }, [selectedCard]);
+  }, [decks, selectedCard]);
 
-  function clearDeckEditor() {
-    setSelectedDeckId("");
-    setIsCreatingDeck(true);
+  function selectDeck(deckId: string) {
+    setSelectedDeckId(deckId);
+    setSelectedCardId("");
+    if (deckId !== "all") {
+      setCardDeckId(deckId);
+      setEditingDeckId(deckId);
+    }
+    void reload(deckId);
+  }
+
+  function startNewDeck() {
+    setEditingDeckId("");
     setDeckName("");
     setDeckDescription("");
     setDeckSchedule(DEFAULT_SCHEDULE);
   }
 
-  function clearCardEditor(deckId = cardDeckId || selectedDeckFilter) {
+  function startNewCard() {
     setSelectedCardId("");
+    setCardDeckId(selectedDeck?.id || decks[0]?.id || "");
     setCardPrompt("");
     setCardAnswer("");
     setCardTags("");
-    setCardDeckId(deckId === "all" ? "" : deckId);
     setCardDueAt("");
     setCardIntervalDays("1");
     setCardRepetitions("0");
@@ -169,7 +212,7 @@ export default function DeckBrowserPage() {
 
   async function createDeck() {
     if (missingConfig) {
-      setStatus("Connect to the API before creating decks.");
+      setStatus("Sign in before creating decks.");
       return;
     }
     try {
@@ -181,27 +224,27 @@ export default function DeckBrowserPage() {
           schedule: deckSchedule,
         }),
       });
+      setEditingDeckId(created.id);
       setSelectedDeckId(created.id);
       setCardDeckId(created.id);
-      setIsCreatingDeck(false);
-      setStatus(`Created deck ${created.name}`);
-      await reload(selectedDeckFilter);
+      setStatus(`Created ${created.name}.`);
+      await reload(created.id);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to create deck");
+      setStatus(error instanceof Error ? error.message : "Failed to create deck.");
     }
   }
 
   async function saveDeck() {
-    if (!selectedDeckId) {
-      setStatus("Select a deck or create a new one");
+    if (!editingDeckId) {
+      await createDeck();
       return;
     }
     if (missingConfig) {
-      setStatus("Connect to the API before saving decks.");
+      setStatus("Sign in before saving decks.");
       return;
     }
     try {
-      const updated = await apiRequest<Deck>(apiBase, token, `/v1/cards/decks/${selectedDeckId}`, {
+      const updated = await apiRequest<Deck>(apiBase, token, `/v1/cards/decks/${editingDeckId}`, {
         method: "PATCH",
         body: JSON.stringify({
           name: deckName.trim() || undefined,
@@ -209,17 +252,20 @@ export default function DeckBrowserPage() {
           schedule: deckSchedule,
         }),
       });
-      setStatus(`Saved deck ${updated.name}`);
-      setIsCreatingDeck(false);
-      await reload(selectedDeckFilter);
+      setStatus(`Saved ${updated.name}.`);
+      await reload(selectedDeckId);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to save deck");
+      setStatus(error instanceof Error ? error.message : "Failed to save deck.");
     }
   }
 
   async function createCard() {
     if (missingConfig) {
-      setStatus("Connect to the API before creating cards.");
+      setStatus("Sign in before creating cards.");
+      return;
+    }
+    if (!cardPrompt.trim() || !cardAnswer.trim()) {
+      setStatus("Prompt and answer are required.");
       return;
     }
     try {
@@ -227,9 +273,9 @@ export default function DeckBrowserPage() {
         method: "POST",
         body: JSON.stringify({
           deck_id: cardDeckId || null,
-          prompt: cardPrompt.trim() || "New prompt",
-          answer: cardAnswer.trim() || "New answer",
-          tags: cardTags.split(",").map((item) => item.trim()).filter(Boolean),
+          prompt: cardPrompt.trim(),
+          answer: cardAnswer.trim(),
+          tags: parseTags(cardTags),
           due_at: cardDueAt ? new Date(cardDueAt).toISOString() : undefined,
           interval_days: Number(cardIntervalDays || "1"),
           repetitions: Number(cardRepetitions || "0"),
@@ -238,20 +284,20 @@ export default function DeckBrowserPage() {
         }),
       });
       setSelectedCardId(created.id);
-      setStatus(`Created card ${created.id}`);
-      await reload(selectedDeckFilter);
+      setStatus(`Created card. First review: ${formatDue(created.due_at)}.`);
+      await reload(selectedDeckId);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to create card");
+      setStatus(error instanceof Error ? error.message : "Failed to create card.");
     }
   }
 
   async function saveCard() {
     if (!selectedCardId) {
-      setStatus("Select a card or create a new one");
+      await createCard();
       return;
     }
     if (missingConfig) {
-      setStatus("Connect to the API before saving cards.");
+      setStatus("Sign in before saving cards.");
       return;
     }
     try {
@@ -261,7 +307,7 @@ export default function DeckBrowserPage() {
           deck_id: cardDeckId || null,
           prompt: cardPrompt.trim() || undefined,
           answer: cardAnswer.trim() || undefined,
-          tags: cardTags.split(",").map((item) => item.trim()).filter(Boolean),
+          tags: parseTags(cardTags),
           due_at: cardDueAt ? new Date(cardDueAt).toISOString() : undefined,
           interval_days: Number(cardIntervalDays || "1"),
           repetitions: Number(cardRepetitions || "0"),
@@ -269,221 +315,213 @@ export default function DeckBrowserPage() {
           suspended: cardSuspended,
         }),
       });
-      setStatus(`Saved card ${updated.id}`);
-      await reload(selectedDeckFilter);
+      setStatus(`Saved ${updated.id}.`);
+      await reload(selectedDeckId);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to save card");
+      setStatus(error instanceof Error ? error.message : "Failed to save card.");
     }
   }
 
   return (
-    <main className="shell">
-      <section className="workspace glass">
-        <div className="panel glass review-browser-hero">
-          <div>
-            <p className="eyebrow">Review</p>
-            <h1>Deck Browser</h1>
-            <p className="console-copy">
-              Add manual cards, keep decks tidy, and edit scheduling only when a card needs it.
-            </p>
-          </div>
-          <div className="button-row">
-            <Link className="button" href="/review">Due Queue</Link>
-            <button className="button" type="button" onClick={() => reload(selectedDeckFilter)} disabled={missingConfig}>Refresh</button>
-            <button className="button" type="button" onClick={() => clearDeckEditor()} disabled={missingConfig}>New Deck</button>
-            <button className="button" type="button" onClick={() => clearCardEditor()} disabled={missingConfig}>New Card</button>
-            {missingConfig ? <Link className="button" href="/runtime">Open Runtime</Link> : null}
-          </div>
-          <p className="status">{status}</p>
+    <main className={styles.shell}>
+      <header className={styles.header}>
+        <div>
+          <Link className={styles.brand} href="/today">Starlog</Link>
+          <h1>Decks</h1>
+          <p>{status}</p>
         </div>
+        <nav className={styles.nav} aria-label="Deck navigation">
+          <Link href="/today">Today</Link>
+          <Link href="/review">Review</Link>
+          <Link href="/library">Library</Link>
+          <Link href="/assistant">Assistant</Link>
+        </nav>
+      </header>
 
-        <div className="panel glass review-browser-deck-strip">
-          <h2>Deck filters</h2>
-          <div className="button-row">
-            <button
-              className="button"
-              type="button"
-              onClick={() => {
-                setIsCreatingDeck(false);
-                setSelectedDeckFilter("all");
-                void reload("all");
-              }}
-              disabled={missingConfig}
-            >
-              All decks
-            </button>
-            {decks.map((deck) => (
-              <button
-                key={deck.id}
-                className="button"
-                type="button"
-                onClick={() => {
-                  setSelectedDeckFilter(deck.id);
-                  setSelectedDeckId(deck.id);
-                  setCardDeckId(deck.id);
-                  setIsCreatingDeck(false);
-                  void reload(deck.id);
-                }}
-                disabled={missingConfig}
-              >
-                {deck.name} ({deck.card_count})
-              </button>
-            ))}
-          </div>
+      <section className={styles.overview} aria-label="Deck summary">
+        <div>
+          <span>Decks</span>
+          <strong>{decks.length}</strong>
+          <small>{selectedDeck?.name || "All decks"}</small>
         </div>
+        <div>
+          <span>Cards</span>
+          <strong>{cards.length}</strong>
+          <small>{visibleCards.length} visible</small>
+        </div>
+        <div>
+          <span>Due</span>
+          <strong>{selectedDeck?.due_count ?? decks.reduce((total, deck) => total + deck.due_count, 0)}</strong>
+          <small>ready now</small>
+        </div>
+      </section>
 
-        <div className="console-grid">
-          <div className="panel glass">
-            <h2>Decks</h2>
-            {decks.length === 0 ? (
-              <p className="console-copy">
-                {missingConfig ? "Connect to the API to load decks." : "No decks loaded yet."}
-              </p>
-            ) : (
-              <ul className="review-browser-list">
-                {decks.map((deck) => (
-                  <li key={deck.id} className={deck.id === selectedDeckId ? "review-browser-item active" : "review-browser-item"}>
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => {
-                        setSelectedDeckId(deck.id);
-                        setIsCreatingDeck(false);
-                      }}
-                    >
-                      {deck.name}
-                    </button>
-                    <p className="console-copy">
-                      {deck.card_count} cards | {deck.due_count} due
-                    </p>
-                    {deck.description ? <p className="console-copy">{deck.description}</p> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+      <section className={styles.deckStrip} aria-label="Deck filters">
+        <button data-active={selectedDeckId === "all"} type="button" onClick={() => selectDeck("all")}>
+          All decks
+          <span>{decks.reduce((total, deck) => total + deck.card_count, 0)}</span>
+        </button>
+        {decks.map((deck) => (
+          <button
+            key={deck.id}
+            data-active={selectedDeckId === deck.id}
+            type="button"
+            onClick={() => selectDeck(deck.id)}
+          >
+            {deck.name}
+            <span>{deck.card_count}</span>
+          </button>
+        ))}
+        <button type="button" onClick={startNewDeck}>New deck</button>
+        <button type="button" onClick={startNewCard}>New card</button>
+        <button type="button" onClick={() => void reload()} disabled={loading}>Refresh</button>
+      </section>
 
-          <div className="panel glass">
-            <h2>Deck editor</h2>
-            <label className="label" htmlFor="deck-name">Deck name</label>
-            <input id="deck-name" className="input" value={deckName} onChange={(event) => setDeckName(event.target.value)} />
-            <label className="label" htmlFor="deck-description">Description</label>
-            <textarea
-              id="deck-description"
-              className="textarea"
-              value={deckDescription}
-              onChange={(event) => setDeckDescription(event.target.value)}
-            />
-            <details className="review-browser-advanced">
-              <summary>Deck schedule</summary>
-              <label className="label" htmlFor="deck-offset">New card due offset (hours)</label>
-              <input
-                id="deck-offset"
-                className="input"
-                type="number"
-                value={deckSchedule.new_cards_due_offset_hours}
-                onChange={(event) => setDeckSchedule((previous) => ({
-                  ...previous,
-                  new_cards_due_offset_hours: Number(event.target.value || "0"),
-                }))}
-              />
-              <label className="label" htmlFor="deck-interval">Initial interval (days)</label>
-              <input
-                id="deck-interval"
-                className="input"
-                type="number"
-                value={deckSchedule.initial_interval_days}
-                onChange={(event) => setDeckSchedule((previous) => ({
-                  ...previous,
-                  initial_interval_days: Number(event.target.value || "1"),
-                }))}
-              />
-              <label className="label" htmlFor="deck-ease">Initial ease factor</label>
-              <input
-                id="deck-ease"
-                className="input"
-                type="number"
-                step="0.1"
-                value={deckSchedule.initial_ease_factor}
-                onChange={(event) => setDeckSchedule((previous) => ({
-                  ...previous,
-                  initial_ease_factor: Number(event.target.value || "2.5"),
-                }))}
-              />
-            </details>
-            <div className="button-row">
-              <button className="button" type="button" onClick={() => createDeck()} disabled={missingConfig}>Create Deck</button>
-              <button className="button" type="button" onClick={() => saveDeck()} disabled={missingConfig}>Save Selected</button>
+      <section className={styles.workspace}>
+        <section className={styles.panel} aria-labelledby="deck-list-title">
+          <div className={styles.panelHead}>
+            <div>
+              <p>Browse</p>
+              <h2 id="deck-list-title">Cards</h2>
             </div>
+            <label className={styles.searchField}>
+              <span>Search</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="chip, gradient, leakage..." />
+            </label>
           </div>
+          {visibleCards.length === 0 ? (
+            <div className={styles.emptyState}>
+              <h3>No cards here</h3>
+              <p>{missingConfig ? "Sign in to load cards." : "Try another deck or clear search."}</p>
+            </div>
+          ) : (
+            <ul className={styles.cardList}>
+              {visibleCards.map((card) => (
+                <li key={card.id}>
+                  <button
+                    className={selectedCardId === card.id ? styles.selectedCard : ""}
+                    type="button"
+                    onClick={() => setSelectedCardId(card.id)}
+                  >
+                    <strong>{card.prompt}</strong>
+                    <span>{deckById.get(card.deck_id || "")?.name || "Inbox"} | {formatDue(card.due_at)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-          <div className="panel glass">
-            <h2>Cards</h2>
-            {cards.length === 0 ? (
-              <p className="console-copy">
-                {missingConfig ? "Connect to the API to load cards." : "No cards loaded for this filter."}
-              </p>
-            ) : (
-              <ul className="review-browser-list scroll-panel">
-                {cards.map((card) => (
-                  <li key={card.id} className={card.id === selectedCardId ? "review-browser-item active" : "review-browser-item"}>
-                    <button className="button" type="button" onClick={() => setSelectedCardId(card.id)}>
-                      {card.prompt}
-                    </button>
-                    <p className="console-copy">
-                      Deck: {deckMap.get(card.deck_id || "")?.name || "Inbox"} | Due: {new Date(card.due_at).toLocaleString()}
-                    </p>
-                    <div className="chips">
-                      {card.tags.map((tag) => <span key={`${card.id}-${tag}`} className="chip">{tag}</span>)}
-                      {card.suspended ? <span className="chip">suspended</span> : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+        <section className={styles.panel} aria-labelledby="card-editor-title">
+          <div className={styles.panelHead}>
+            <div>
+              <p>{selectedCard ? "Edit" : "Create"}</p>
+              <h2 id="card-editor-title">{selectedCard ? "Selected card" : "New card"}</h2>
+            </div>
+            <button type="button" onClick={startNewCard}>Clear</button>
           </div>
-
-          <div className="panel glass">
-            <h2>Card editor</h2>
-            <label className="label" htmlFor="card-deck">Deck</label>
-            <select
-              id="card-deck"
-              className="input"
-              value={cardDeckId}
-              onChange={(event) => setCardDeckId(event.target.value)}
-            >
-              <option value="">Inbox</option>
+          <label className={styles.field}>
+            <span>Deck</span>
+            <select value={cardDeckId} onChange={(event) => setCardDeckId(event.target.value)}>
               {decks.map((deck) => (
                 <option key={deck.id} value={deck.id}>{deck.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="card-prompt">Prompt</label>
-            <textarea id="card-prompt" className="textarea" value={cardPrompt} onChange={(event) => setCardPrompt(event.target.value)} />
-            <label className="label" htmlFor="card-answer">Answer</label>
-            <textarea id="card-answer" className="textarea" value={cardAnswer} onChange={(event) => setCardAnswer(event.target.value)} />
-            <label className="label" htmlFor="card-tags">Tags (comma separated)</label>
-            <input id="card-tags" className="input" value={cardTags} onChange={(event) => setCardTags(event.target.value)} />
-            <details className="review-browser-advanced">
-              <summary>Advanced scheduling</summary>
-              <label className="label" htmlFor="card-due">Due at</label>
-              <input id="card-due" className="input" type="datetime-local" value={cardDueAt} onChange={(event) => setCardDueAt(event.target.value)} />
-              <label className="label" htmlFor="card-interval">Interval days</label>
-              <input id="card-interval" className="input" type="number" value={cardIntervalDays} onChange={(event) => setCardIntervalDays(event.target.value)} />
-              <label className="label" htmlFor="card-repetitions">Repetitions</label>
-              <input id="card-repetitions" className="input" type="number" value={cardRepetitions} onChange={(event) => setCardRepetitions(event.target.value)} />
-              <label className="label" htmlFor="card-ease">Ease factor</label>
-              <input id="card-ease" className="input" type="number" step="0.1" value={cardEaseFactor} onChange={(event) => setCardEaseFactor(event.target.value)} />
-              <label className="label review-browser-checkbox">
-                <input type="checkbox" checked={cardSuspended} onChange={(event) => setCardSuspended(event.target.checked)} />
-                Suspend this card
+          </label>
+          <label className={styles.field}>
+            <span>Prompt</span>
+            <textarea value={cardPrompt} onChange={(event) => setCardPrompt(event.target.value)} rows={5} />
+          </label>
+          <label className={styles.field}>
+            <span>Answer</span>
+            <textarea value={cardAnswer} onChange={(event) => setCardAnswer(event.target.value)} rows={6} />
+          </label>
+          <label className={styles.field}>
+            <span>Tags</span>
+            <input value={cardTags} onChange={(event) => setCardTags(event.target.value)} placeholder="comma separated" />
+          </label>
+          <details className={styles.details}>
+            <summary>Advanced schedule</summary>
+            <label className={styles.field}>
+              <span>Due at</span>
+              <input type="datetime-local" value={cardDueAt} onChange={(event) => setCardDueAt(event.target.value)} />
+            </label>
+            <div className={styles.threeColumn}>
+              <label className={styles.field}>
+                <span>Interval days</span>
+                <input type="number" value={cardIntervalDays} onChange={(event) => setCardIntervalDays(event.target.value)} />
               </label>
-            </details>
-            <div className="button-row">
-              <button className="button" type="button" onClick={() => createCard()} disabled={missingConfig}>Create Card</button>
-              <button className="button" type="button" onClick={() => saveCard()} disabled={missingConfig}>Save Selected</button>
+              <label className={styles.field}>
+                <span>Repetitions</span>
+                <input type="number" value={cardRepetitions} onChange={(event) => setCardRepetitions(event.target.value)} />
+              </label>
+              <label className={styles.field}>
+                <span>Ease</span>
+                <input type="number" step="0.1" value={cardEaseFactor} onChange={(event) => setCardEaseFactor(event.target.value)} />
+              </label>
             </div>
+            <label className={styles.checkField}>
+              <input type="checkbox" checked={cardSuspended} onChange={(event) => setCardSuspended(event.target.checked)} />
+              Suspended
+            </label>
+          </details>
+          <div className={styles.buttonRow}>
+            <button className={styles.primaryButton} type="button" onClick={() => void saveCard()}>
+              {selectedCard ? "Save card" : "Create card"}
+            </button>
           </div>
-        </div>
+        </section>
+
+        <section className={`${styles.panel} ${styles.deckEditor}`} aria-labelledby="deck-editor-title">
+          <div className={styles.panelHead}>
+            <div>
+              <p>Deck</p>
+              <h2 id="deck-editor-title">{editingDeck ? "Selected deck" : "New deck"}</h2>
+            </div>
+            <button type="button" onClick={startNewDeck}>Clear</button>
+          </div>
+          <label className={styles.field}>
+            <span>Name</span>
+            <input value={deckName} onChange={(event) => setDeckName(event.target.value)} />
+          </label>
+          <label className={styles.field}>
+            <span>Description</span>
+            <textarea value={deckDescription} onChange={(event) => setDeckDescription(event.target.value)} rows={4} />
+          </label>
+          <details className={styles.details}>
+            <summary>Deck schedule</summary>
+            <div className={styles.threeColumn}>
+              <label className={styles.field}>
+                <span>New card due offset</span>
+                <input
+                  type="number"
+                  value={deckSchedule.new_cards_due_offset_hours}
+                  onChange={(event) => setDeckSchedule((previous) => ({ ...previous, new_cards_due_offset_hours: Number(event.target.value || 0) }))}
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Initial interval</span>
+                <input
+                  type="number"
+                  value={deckSchedule.initial_interval_days}
+                  onChange={(event) => setDeckSchedule((previous) => ({ ...previous, initial_interval_days: Number(event.target.value || 1) }))}
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Initial ease</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={deckSchedule.initial_ease_factor}
+                  onChange={(event) => setDeckSchedule((previous) => ({ ...previous, initial_ease_factor: Number(event.target.value || 2.5) }))}
+                />
+              </label>
+            </div>
+          </details>
+          <button className={styles.primaryButton} type="button" onClick={() => void saveDeck()}>
+            {editingDeck ? "Save deck" : "Create deck"}
+          </button>
+        </section>
       </section>
     </main>
   );

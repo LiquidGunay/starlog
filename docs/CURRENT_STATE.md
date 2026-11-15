@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-07-01
+Last updated: 2026-07-02
 
 This is the concise status page for what Starlog can be treated as working today versus what still
 needs fresh proof. It is a synthesis of repo-local code, tests, and the latest local PWA/Android
@@ -17,13 +17,13 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Hosted Railway access paths:** hosted browser entry is
   `https://starlog-web-production.up.railway.app/login`; hosted API base is
   `https://starlog-api-production.up.railway.app`.
-- **Hosted reachability known on 2026-07-01:** public no-secret checks returned `HTTP 200` for
-  hosted `/login` and `{"status":"ok","env":"prod","users":1}` for hosted `/v1/health`. This proves
-  public reachability only. Authenticated hosted passphrase login and cross-device sync still need a
-  fresh no-secret smoke after the focused `/today` workflow is deployed.
-- **Hosted login status known:** authenticated hosted passphrase login was last proven on 2026-05-15.
-  Do not claim current authenticated hosted Starlog session behavior until the hosted `/today` flow is
-  smoked without exposing token material.
+- **Hosted reachability known on 2026-07-02:** public no-secret checks returned `HTTP 200` for
+  hosted `/today` and `{"status":"ok","env":"prod","users":1}` for hosted `/v1/health`.
+- **Hosted login and focused workflow known on 2026-07-02:** authenticated hosted passphrase login,
+  `/today` daily-note save, manual card creation, due-card reveal/grade, and mobile-viewport `/today`
+  layout were smoked without exposing token material. The smoke restored the previous daily note
+  content and suspended smoke cards afterward. True physical desktop-phone cross-device sync remains a
+  separate re-prove item.
 - **Native vs PWA priority:** native mobile is the primary phone surface; PWA is fallback-only on phone and
   remains supported for browser checks or when the app is unavailable.
 - **assistant-ui migration status:** desktop web and native assistant-ui migration are partial. Web has
@@ -117,6 +117,8 @@ where Starlog is going. Use this page for current implementation confidence.
 - **Focused PWA Today workflow:** `/today` is the default post-login browser entry point for manual
   card creation, due-card review, and daily morning/evening notes. Daily notes are stored through
   `/v1/daily-notes/*` and mirrored into normal Library notes for search.
+- **Barebones PWA deck browser:** `/review/decks` provides a focused deck/card browser for separate
+  decks, card inspection/editing, deck creation, and card moves without the older observatory shell.
 - **Core local stack:** the repo contains a FastAPI backend, Next.js PWA, native mobile app, desktop
   helper, browser extension scaffold, shared contracts, and AI runtime. Local startup is documented in
   [README.md](/home/ubuntu/starlog/README.md) and [docs/USER_GUIDE.md](/home/ubuntu/starlog/docs/USER_GUIDE.md).
@@ -201,13 +203,11 @@ where Starlog is going. Use this page for current implementation confidence.
   commands for `Sliding Window`, verifies due-card gating, reveals a Review card, returns to the
   Assistant to grade the generated review-grade dynamic UI, generates a recommendation-backed briefing,
   and creates an alarm.
-- **Hosted PWA/API reachability:** `https://starlog-web-production.up.railway.app/login` is the intended
+- **Hosted PWA/API access:** `https://starlog-web-production.up.railway.app/login` is the intended
   hosted browser entry point and `https://starlog-api-production.up.railway.app` is the intended hosted
-  API base. Fresh public checks on 2026-05-19 returned Railway fallback `HTTP 404` for hosted `/login`,
-  `/assistant`, and `/v1/health`, so hosted Starlog access is currently unproven/broken. Authenticated
-  hosted passphrase login was last proven on 2026-05-15, but that old proof should not be used for
-  current readiness. Do not copy passphrases, bearer tokens, or token-bearing command output from local
-  verification artifacts into docs.
+  API base. Fresh hosted checks on 2026-07-02 proved public health plus authenticated login and the
+  focused `/today` card/daily-note/review workflow. Do not copy passphrases, bearer tokens, or
+  token-bearing command output from local verification artifacts into docs.
 - **PWA and native alarm path:** PWA Planner can generate a briefing and create an API alarm plan.
   Native Android Planner can cache a briefing package and schedule local notification playback after
   granting notification permission.

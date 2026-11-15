@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PRODUCT_SURFACES, productCopy } from "@starlog/contracts";
 
 import { useSessionConfig } from "../session-provider";
+import styles from "./auth-entry.module.css";
 
 type AuthMode = "login" | "bootstrap";
 
@@ -72,7 +72,7 @@ export function AuthEntry() {
   const [passphrase, setPassphrase] = useState("");
   const [revealPassphrase, setRevealPassphrase] = useState(false);
   const [busy, setBusy] = useState<AuthMode | null>(null);
-  const [status, setStatus] = useState(productCopy.auth.readyStatus);
+  const [status, setStatus] = useState("Enter your passphrase to open Starlog.");
 
   const identityPreview = useMemo(() => inferIdentity(apiBase), [apiBase]);
   const hasSession = token.trim().length > 0;
@@ -88,9 +88,9 @@ export function AuthEntry() {
       throw new Error(await authErrorMessage(response, "login"));
     }
 
-      const payload = (await response.json()) as AuthResponse;
-      setToken(payload.access_token);
-      return payload;
+    const payload = (await response.json()) as AuthResponse;
+    setToken(payload.access_token);
+    return payload;
   }
 
   async function handleLogin() {
@@ -139,109 +139,91 @@ export function AuthEntry() {
 
   function handleLogout() {
     setToken("");
-    setStatus("Session cleared on this client.");
+    setPassphrase("");
+    setStatus("Session cleared on this browser. Sign in again when ready.");
   }
 
   return (
-    <main className="auth-shell">
-      <div className="auth-nebula" aria-hidden="true" />
-      <div className="auth-orb auth-orb-top" aria-hidden="true" />
-      <div className="auth-orb auth-orb-bottom" aria-hidden="true" />
-
-      <section className="auth-column">
-        <div className="auth-brand">
-          <div className="auth-brand-mark">✦</div>
-          <h1>{hasSession ? productCopy.auth.signedInTitle : productCopy.auth.signedOutTitle}</h1>
+    <main className={styles.shell}>
+      <section className={styles.panel}>
+        <div className={styles.brand}>
+          <Link href="/today">Starlog</Link>
+          <h1>{hasSession ? "Session saved" : "Sign in"}</h1>
           <p>
             {hasSession
-              ? "The current browser already carries a valid session token."
-              : productCopy.auth.signedOutBody}
+              ? "This browser has a saved session. You can open Today, clear it, or replace it with your passphrase."
+              : "Use the same passphrase on desktop and phone to sync through the hosted Starlog API."}
           </p>
         </div>
 
-        <div className="auth-panel">
-          {hasSession ? (
-            <>
-              <div className="auth-field">
-                <label htmlFor="station-endpoint">Station endpoint</label>
-                <input id="station-endpoint" value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
-              </div>
-              <div className="auth-session-meta">
-                <div>
-                  <span>Universal Identifier</span>
-                  <strong>{identityPreview}</strong>
-                </div>
-                <div>
-                  <span>Session state</span>
-                  <strong>Linked</strong>
-                </div>
-              </div>
-              <div className="auth-actions">
-                <button className="auth-primary-button" type="button" onClick={() => router.push("/today")}>
-                  Open Today
-                </button>
-                <button className="auth-secondary-button" type="button" onClick={() => router.push("/review")}>
-                  Open {PRODUCT_SURFACES.review.label}
-                </button>
-                <button className="auth-secondary-button" type="button" onClick={() => router.push("/assistant")}>
-                  Open {PRODUCT_SURFACES.assistant.label}
-                </button>
-                <button className="auth-tertiary-button" type="button" onClick={handleLogout}>
-                  Clear Session
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="auth-field">
-                <label htmlFor="station-endpoint">Universal Identifier</label>
-                <input
-                  id="station-endpoint"
-                  value={apiBase}
-                  onChange={(event) => setApiBase(event.target.value)}
-                  placeholder="http://localhost:8000"
-                />
-              </div>
-              <div className="auth-field">
-                <div className="auth-field-row">
-                  <label htmlFor="access-cipher">Passphrase</label>
-                  <button type="button" className="auth-inline-action" onClick={() => setRevealPassphrase((value) => !value)}>
-                    {revealPassphrase ? "Hide" : "Reveal"}
-                  </button>
-                </div>
-                <input
-                  id="access-cipher"
-                  value={passphrase}
-                  onChange={(event) => setPassphrase(event.target.value)}
-                  type={revealPassphrase ? "text" : "password"}
-                  placeholder="minimum 12 characters for first setup"
-                />
-              </div>
-              <div className="auth-actions stacked">
-                <button className="auth-primary-button" type="button" onClick={handleLogin} disabled={busy !== null}>
-                  {busy === "login" ? "Signing in..." : "Sign In"}
-                </button>
-                <button className="auth-secondary-button" type="button" onClick={handleBootstrap} disabled={busy !== null}>
-                  {busy === "bootstrap" ? "Setting up..." : "Set Up Starlog"}
-                </button>
-              </div>
-            </>
-          )}
-          <p className="auth-status">{status}</p>
+        <label className={styles.field} htmlFor="station-endpoint">
+          <span>API endpoint</span>
+          <input
+            id="station-endpoint"
+            value={apiBase}
+            onChange={(event) => setApiBase(event.target.value)}
+            placeholder="https://starlog-api-production.up.railway.app"
+          />
+        </label>
+
+        {hasSession ? (
+          <div className={styles.sessionBox} aria-label="Saved session">
+            <div>
+              <span>Current endpoint</span>
+              <strong>{identityPreview}</strong>
+            </div>
+            <div>
+              <span>Local browser token</span>
+              <strong>Saved</strong>
+            </div>
+          </div>
+        ) : null}
+
+        <label className={styles.field} htmlFor="access-cipher">
+          <span>Passphrase</span>
+          <input
+            id="access-cipher"
+            value={passphrase}
+            onChange={(event) => setPassphrase(event.target.value)}
+            type={revealPassphrase ? "text" : "password"}
+            placeholder="Enter your Starlog passphrase"
+          />
+        </label>
+
+        <div className={styles.buttonRow}>
+          <button className={styles.primaryButton} type="button" onClick={handleLogin} disabled={busy !== null}>
+            {busy === "login" ? "Signing in..." : hasSession ? "Replace session" : "Sign In"}
+          </button>
+          <button className={styles.secondaryButton} type="button" onClick={handleBootstrap} disabled={busy !== null}>
+            {busy === "bootstrap" ? "Setting up..." : "Set Up Starlog"}
+          </button>
+          <button className={styles.secondaryButton} type="button" onClick={() => setRevealPassphrase((value) => !value)}>
+            {revealPassphrase ? "Hide passphrase" : "Show passphrase"}
+          </button>
         </div>
 
-        <footer className="auth-footer">
-          <p>{hasSession ? "Primary routes:" : productCopy.brand.tagline}</p>
-          {hasSession ? (
-            <div className="auth-footer-links">
-              <Link href="/assistant">{PRODUCT_SURFACES.assistant.label}</Link>
-              <Link href="/today">Today</Link>
-              <Link href="/library">{PRODUCT_SURFACES.library.label}</Link>
-              <Link href="/review">{PRODUCT_SURFACES.review.label}</Link>
-              <Link href="/planner">{PRODUCT_SURFACES.planner.label}</Link>
-            </div>
-          ) : null}
-        </footer>
+        {hasSession ? (
+          <div className={styles.buttonRow}>
+            <button className={styles.primaryButton} type="button" onClick={() => router.push("/today")}>
+              Open Today
+            </button>
+            <button className={styles.secondaryButton} type="button" onClick={handleLogout}>
+              Clear saved session
+            </button>
+          </div>
+        ) : null}
+
+        <p className={styles.status} aria-live="polite">{status}</p>
+
+        {hasSession ? (
+          <nav className={styles.footerNav} aria-label="Primary routes">
+            <Link href="/today">Today</Link>
+            <Link href="/review/decks">Decks</Link>
+            <Link href="/review">Review</Link>
+            <Link href="/library">Library</Link>
+            <Link href="/assistant">Assistant</Link>
+          </nav>
+        ) : null}
       </section>
     </main>
   );

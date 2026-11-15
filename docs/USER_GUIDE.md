@@ -40,9 +40,9 @@ On a new local instance, choose `Set Up Starlog` and create a Starlog passphrase
 instance, choose `Sign In` and enter that same passphrase. Keep the passphrase and bearer token out
 of docs, commits, screenshots, and chat transcripts.
 
-The PWA should only receive the Starlog API base and Starlog session/token information from the
-login/session controls. Do not put OpenAI, Codex, Railway, or local worker credentials into the PWA
-or native mobile app.
+The browser login screen always keeps the passphrase form available. If a desktop browser has a
+stale saved session, either sign in again to replace it or use `Clear saved session` before signing
+in. Do not put OpenAI, Codex, Railway, or local worker credentials into the PWA or native mobile app.
 
 Hosted access currently uses:
 
@@ -54,18 +54,18 @@ Hosted login flow for verification smoke and operator checks:
 - Open the hosted login URL.
 - On first use for a device/user, choose `Set Up Starlog` and set the passphrase.
 - On return visits, choose `Sign In` and enter the same passphrase.
-- After sign-in, copy the session token from the in-app login/session controls only when required for
-  scripted checks, then clear it from temporary notes/screenshots after use.
+- For scripted checks, use API login in the local operator script and keep bearer tokens out of
+  notes, screenshots, and chat transcripts.
 
 Current access status:
 
 - Public hosted `/login`, `/today`, and API health reachability status is tracked in
   `docs/CURRENT_STATE.md`; current hosted proof should be regenerated into the latest ignored
   `.localdata` evidence lane before release decisions.
-- Authenticated hosted passphrase login was last proven on 2026-05-15. The current docs do not include
-  the hosted passphrase or bearer token.
-- Hosted full-flow smoke and release-gate checks are still re-prove items before treating Railway as
-  release-ready.
+- Authenticated hosted passphrase login and the focused `/today` workflow were last proven on
+  2026-07-02 without exposing the hosted passphrase or bearer token.
+- True desktop-phone cross-device sync remains a separate hosted smoke item before treating Railway
+  as release-ready.
 - Native app remains primary on phone; the browser PWA path is fallback-only.
 
 ## Daily Use
@@ -81,6 +81,10 @@ Use `/today` for:
 
 Manual cards use the selected deck schedule. The default Inbox schedule makes new cards first due
 about one day after creation.
+
+Use `/review/decks` when you need to browse separate decks, inspect cards, create decks, or move/edit
+cards. Scheduling fields are available under advanced sections and are not part of the normal card
+creation path.
 
 Assistant remains available for command-style help, but it is not required for the core study loop.
 
