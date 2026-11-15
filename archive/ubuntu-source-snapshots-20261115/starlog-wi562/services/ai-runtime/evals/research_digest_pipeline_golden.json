@@ -1,0 +1,40 @@
+{
+  "id": "research-digest-pipeline-pr58-001",
+  "workflow": "research_digest",
+  "source_prs": [
+    58
+  ],
+  "input": {
+    "title": "Research digest pipeline",
+    "text": "Rank today's arXiv and manual-ingest papers, summarize the top items, and keep provenance visible.",
+    "context": {
+      "sources": [
+        "arxiv",
+        "manual_url",
+        "manual_pdf"
+      ],
+      "limit": 10,
+      "deeper_summary": true
+    }
+  },
+  "checks": {
+    "must_include": [
+      "ranking rationale",
+      "provenance",
+      "deeper summary option"
+    ],
+    "must_not_include": [
+      "fabricated citation",
+      "missing source adapter context"
+    ]
+  },
+  "golden_output": {
+    "top_n": 10,
+    "required_fields": [
+      "title",
+      "summary",
+      "source",
+      "follow_up"
+    ]
+  }
+}

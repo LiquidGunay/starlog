@@ -1,0 +1,44 @@
+{
+  "id": "voice-native-surface-pr59-001",
+  "workflow": "chat_turn",
+  "source_prs": [
+    59
+  ],
+  "input": {
+    "title": "Voice-native surface guidance",
+    "text": "Explain how the Starlog frontend should look and behave after the moodboard refresh.",
+    "context": {
+      "palette": [
+        "teal",
+        "amber"
+      ],
+      "surfaces": [
+        "Command Center",
+        "Artifact Nexus",
+        "Neural Sync",
+        "Chronos Matrix"
+      ],
+      "spoken_reply_style": "short",
+      "interaction_model": "chat_first"
+    }
+  },
+  "checks": {
+    "must_include": [
+      "chat-first",
+      "teal",
+      "short spoken replies"
+    ],
+    "must_not_include": [
+      "button-first",
+      "violet-heavy palette"
+    ]
+  },
+  "golden_output": {
+    "style": "intentional",
+    "interaction_priority": [
+      "voice",
+      "chat",
+      "inline cards"
+    ]
+  }
+}

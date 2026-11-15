@@ -1,0 +1,35 @@
+{
+  "id": "runtime-conversation-preview-pr60-001",
+  "workflow": "chat_turn",
+  "source_prs": [
+    60
+  ],
+  "input": {
+    "title": "Runtime conversation preview",
+    "text": "Reset the live session state but keep the persistent thread, its cards, and tool traces intact.",
+    "context": {
+      "thread_slug": "primary",
+      "mode": "voice_native",
+      "tool_trace_visibility": true
+    }
+  },
+  "checks": {
+    "must_include": [
+      "persistent thread",
+      "session state reset",
+      "tool traces"
+    ],
+    "must_not_include": [
+      "delete conversation history",
+      "local-only transcript"
+    ]
+  },
+  "golden_output": {
+    "reset_scope": "short_term_only",
+    "preserved_entities": [
+      "messages",
+      "cards",
+      "tool_traces"
+    ]
+  }
+}
