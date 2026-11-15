@@ -170,10 +170,12 @@ where Starlog is going. Use this page for current implementation confidence.
   Assistant Today also folds stored recommendation events into its `reason_stack`, so existing
   PWA/native "why now" UI can render recommendation-backed rationale without a separate surface
   contract.
-- **ML Interviews Part II SRS deck import:** `data/ml_interviews_part_ii_qa_cards.jsonl` is the
-  checked-in deck source. `scripts/bootstrap_ml_interview_srs.py` is idempotent: it reuses the named
-  deck, bootstrap artifact, first card-set version, and deck note while preserving existing review
-  scheduling state. Dry-run import is documented in [docs/srs/README.md](/home/ubuntu/starlog/docs/srs/README.md).
+- **Chip Huyen ML Interviews Part II SRS deck import:** `data/ml_interviews_part_ii_qa_cards.jsonl`
+  is the checked-in deck source. `scripts/bootstrap_ml_interview_srs.py` is idempotent: it reuses the
+  named Chip Huyen deck, bootstrap artifact, first card-set version, and deck note while preserving
+  existing review scheduling state. Generated model answers are not used for missing source answers;
+  unmatched cards are marked `manual-required`. Dry-run import is documented in
+  [docs/srs/README.md](/home/ubuntu/starlog/docs/srs/README.md).
 - **PDF deck preflight safety path:** `scripts/pdf_deck_preflight.py` calls
   `pdf_ingest_service.extract_pdf_text(Path(...))` directly. It does not boot FastAPI, does not use
   FastAPI `TestClient`, and only allows localhost parse/OCR server URLs. It now writes
@@ -217,7 +219,7 @@ where Starlog is going. Use this page for current implementation confidence.
 Current status with the latest 2026-05-21 proof refresh:
 
 1. Import or validate structured study material:
-   - ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
+   - Chip Huyen ML Interviews Part II deck via `scripts/bootstrap_ml_interview_srs.py`.
    - NeetCode 150 local Study Core/SRS import via `scripts/import_neetcode_150.py`.
    - `Inference Engineering.pdf` review cards via local LiteParse/OCR preflight, final-card build,
      and `scripts/import_pdf_review_cards.py`.

@@ -21,12 +21,12 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import interview_prep_quality  # noqa: E402
 
-DECK_NAME = "ML Interviews Part II"
-DECK_DESCRIPTION = "Machine learning interview study cards from ML Interviews Book Part II."
+DECK_NAME = "Chip Huyen ML Interviews Part II"
+DECK_DESCRIPTION = "Machine learning interview study cards from Chip Huyen's ML Interviews Book Part II."
 SOURCE_URL = "https://huyenchip.com/ml-interviews-book/contents/part-ii.-questions.html"
-ARTIFACT_TITLE = "ML Interviews Part II SRS bootstrap"
-NOTE_TITLE = "ML Interviews Part II SRS deck"
-IMPORT_KEY_PREFIX = "ml-interviews-part-ii"
+ARTIFACT_TITLE = "Chip Huyen ML Interviews Part II SRS bootstrap"
+NOTE_TITLE = "Chip Huyen ML Interviews Part II SRS deck"
+IMPORT_KEY_PREFIX = "chip-huyen-ml-interviews-part-ii"
 QUALITY_SPEC = interview_prep_quality.load_quality_spec()
 
 
@@ -117,7 +117,7 @@ def stable_card_tags(card: dict[str, Any]) -> list[str]:
     source = str(metadata.get("answer_source") or metadata.get("source_url") or card.get("source_url") or "unknown-source")
     quality = card_quality_metadata(card)
     return [
-        "ml-interviews-part-ii",
+        "chip-huyen-ml-interviews-part-ii",
         "interview-prep",
         "topic-gated",
         f"style-{slug_tag(str(quality['question_style_id']))}",
@@ -190,7 +190,7 @@ def build_note_block_content(card: dict[str, Any]) -> str:
 
 def build_deck_note_body(card_count: int) -> str:
     return (
-        "# ML Interviews Part II SRS deck\n\n"
+        "# Chip Huyen ML Interviews Part II SRS deck\n\n"
         f"Source: {SOURCE_URL}\n\n"
         f"Deck: {DECK_NAME}\n\n"
         f"Cards: {card_count}\n\n"
@@ -222,8 +222,8 @@ def _artifact_payload(deck_path: Path, cards: list[dict[str, Any]]) -> dict[str,
     return {
         "source_type": "srs_bootstrap",
         "title": ARTIFACT_TITLE,
-        "raw_content": f"ML Interviews Part II questions\nSource: {SOURCE_URL}",
-        "normalized_content": "Bootstrap SRS deck for ML Interviews Book Part II.",
+        "raw_content": f"Chip Huyen ML Interviews Part II questions\nSource: {SOURCE_URL}",
+        "normalized_content": "Bootstrap SRS deck for Chip Huyen's ML Interviews Book Part II.",
         "extracted_content": json.dumps(cards, indent=2, sort_keys=True),
         "metadata": {
             "bootstrap": True,
@@ -342,7 +342,7 @@ def _section_summary(section: str, cards: list[dict[str, Any]]) -> str:
         for card in section_cards
     )
     mix = ", ".join(f"{key}: {difficulty_counts[key]}" for key in sorted(difficulty_counts))
-    return f"ML Interviews Part II section with {len(section_cards)} review cards. Difficulty mix: {mix}."
+    return f"Chip Huyen ML Interviews Part II section with {len(section_cards)} review cards. Difficulty mix: {mix}."
 
 
 def _upsert_section_topics(conn: Any, source_id: str, cards: list[dict[str, Any]], now_iso: str) -> dict[str, int]:
@@ -1059,7 +1059,7 @@ def import_cards(deck_path: Path, dry_run: bool) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Import the ML Interviews Part II SRS deck.")
+    parser = argparse.ArgumentParser(description="Import the Chip Huyen ML Interviews Part II SRS deck.")
     parser.add_argument(
         "--deck",
         type=Path,

@@ -84,6 +84,56 @@ def test_build_deck_uses_answer_repo_when_available(monkeypatch) -> None:
     assert card["metadata"]["source_url"] == "https://huyenchip.com/ml-interviews-book/contents/test.html"
 
 
+def test_build_deck_uses_nested_inner_answer_repo_pairs(monkeypatch) -> None:
+    def fake_fetch_from_repo(path: str) -> str:
+        if path == "SUMMARY.md":
+            return "## Part II: Questions\n- [1.1](contents/test.md)\n## Appendix"
+        if path == "contents/test.md":
+            return "# Sample Section\n\n- Dot product\n  - What is the geometric interpretation?\n"
+        raise AssertionError(f"unexpected path: {path}")
+
+    def fake_fetch_answer_source() -> str:
+        return r"""
+\begin{QandA}
+  \item Dot product
+  \begin{InnerQandA}
+    \item What is the geometric interpretation?
+    \begin{answer}
+      Projection-scaled similarity.
+    \end{answer}
+  \end{InnerQandA}
+\end{QandA}
+"""
+
+    monkeypatch.setattr(build, "fetch_from_repo", fake_fetch_from_repo)
+    monkeypatch.setattr(build, "fetch_answer_source", fake_fetch_answer_source)
+
+    deck = build.build_deck()
+
+    assert len(deck) == 1
+    assert deck[0]["prompt"] == "Dot product\nWhat is the geometric interpretation?"
+    assert deck[0]["answer"] == "Projection-scaled similarity."
+    assert deck[0]["metadata"]["answer_source"] == "zafstojano/ml-interview-questions-and-answers"
+
+
+def test_build_deck_marks_unmatched_answers_manual_required(monkeypatch) -> None:
+    def fake_fetch_from_repo(path: str) -> str:
+        if path == "SUMMARY.md":
+            return "## Part II: Questions\n- [1.1](contents/test.md)\n## Appendix"
+        if path == "contents/test.md":
+            return "# Sample Section\n\n- What is missing?\n"
+        raise AssertionError(f"unexpected path: {path}")
+
+    monkeypatch.setattr(build, "fetch_from_repo", fake_fetch_from_repo)
+    monkeypatch.setattr(build, "fetch_answer_source", lambda: "")
+
+    deck = build.build_deck()
+
+    assert len(deck) == 1
+    assert deck[0]["metadata"]["answer_source"] == "manual-required"
+    assert deck[0]["answer"].startswith("Manual answer required.")
+
+
 def test_build_deck_raises_on_chapter_fetch_failure(monkeypatch) -> None:
     def fake_fetch_from_repo(path: str) -> str:
         if path == "SUMMARY.md":
@@ -126,7 +176,7 @@ def test_build_note_block_content_contains_provenance() -> None:
 
     content = bootstrap.build_note_block_content(card)
 
-    assert "Import Key: ml-interviews-part-ii:0001" in content
+    assert "Import Key: chip-huyen-ml-interviews-part-ii:0001" in content
     assert "Question Style: conceptual_recall" in content
     assert "Progression Stage: 1" in content
     assert "Progression Gate: topic_read" in content
@@ -136,7 +186,7 @@ def test_build_note_block_content_contains_provenance() -> None:
     assert "Question Index: 0001" in content
     assert "Answer Source: heuristic" in content
     assert (
-        "Tags: ml-interviews-part-ii, interview-prep, topic-gated, style-conceptual-recall, "
+        "Tags: chip-huyen-ml-interviews-part-ii, interview-prep, topic-gated, style-conceptual-recall, "
         "section-sample-section, difficulty-e, source-heuristic"
     ) in content
     assert "X is the first quantity." in content
@@ -156,7 +206,7 @@ def test_stable_card_tags_use_section_difficulty_and_source() -> None:
     }
 
     assert bootstrap.stable_card_tags(card) == [
-        "ml-interviews-part-ii",
+        "chip-huyen-ml-interviews-part-ii",
         "interview-prep",
         "topic-gated",
         "style-conceptual-recall",
@@ -247,7 +297,7 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
     try:
         first = bootstrap.import_cards(deck_path, dry_run=False)
 
-        assert first["deck_name"] == "ML Interviews Part II"
+        assert first["deck_name"] == "Chip Huyen ML Interviews Part II"
         assert first["inserted_cards"] == 1
         assert first["updated_cards"] == 0
         assert first["source"]["created"] == 1
@@ -313,13 +363,13 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
                 "card_topic_links": 1,
             }
             deck = conn.execute("SELECT name FROM card_decks WHERE id = ?", (first["deck_id"],)).fetchone()
-            assert deck["name"] == "ML Interviews Part II"
+            assert deck["name"] == "Chip Huyen ML Interviews Part II"
             card = conn.execute(
                 "SELECT id, deck_id, tags_json, due_at, interval_days, repetitions, ease_factor FROM cards"
             ).fetchone()
             assert card["deck_id"] == first["deck_id"]
             assert json.loads(card["tags_json"]) == [
-                "ml-interviews-part-ii",
+                "chip-huyen-ml-interviews-part-ii",
                 "interview-prep",
                 "topic-gated",
                 "style-conceptual-recall",
@@ -335,16 +385,16 @@ def test_import_cards_is_idempotent_and_preserves_review_state(
             assert "Source Path: contents/sample.md" in note_block["content"]
             assert '"answer_source": "heuristic"' in note_block["content"]
             source = conn.execute("SELECT title, source_type, artifact_id, metadata_json FROM study_sources").fetchone()
-            assert source["title"] == "ML Interviews Part II"
+            assert source["title"] == "Chip Huyen ML Interviews Part II"
             assert source["source_type"] == "interview_prep"
             assert source["artifact_id"] == first["artifact_id"]
             source_metadata = json.loads(source["metadata_json"])
-            assert source_metadata["import_key"] == "ml-interviews-part-ii"
+            assert source_metadata["import_key"] == "chip-huyen-ml-interviews-part-ii"
             assert source_metadata["section_counts"] == {"Sample Section": 1}
             assert source_metadata["question_style_counts"] == {"conceptual_recall": 1}
             assert source_metadata["quality_spec"]["spec_id"] == "interview-prep-card-quality-v1"
             assert source_metadata["progression_gating"]["requires_topic_read"] is True
-            topic = study_service.resolve_topic_reference(conn, "ML Interviews Part II Sample Section")
+            topic = study_service.resolve_topic_reference(conn, "Chip Huyen ML Interviews Part II Sample Section")
             assert topic["source_id"] == first["source_id"]
             assert topic["title"] == "Sample Section"
             chunk = conn.execute(
@@ -407,7 +457,7 @@ def test_import_cards_removes_stale_section_link_after_rename_and_releases_due_c
         assert second["topics"]["deleted"] == 1
         assert second["card_topic_links"]["deleted"] == 1
         with get_connection() as conn:
-            new_topic = study_service.resolve_topic_reference(conn, "ML Interviews Part II New Section")
+            new_topic = study_service.resolve_topic_reference(conn, "Chip Huyen ML Interviews Part II New Section")
             links = conn.execute(
                 """
                 SELECT topic_id, gate_required
